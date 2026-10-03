@@ -53,7 +53,7 @@ series.
 | Tick function on EventBridge Scheduler | — | 📄 |
 | One binary `access-roster` (`serve`, `tick`, `migrate`) | 📄 | 📄 |
 | One chart `access-roster` | 📄 | — |
-| One configuration file validated against a schema | 📄 | 📄 |
+| One configuration file validated against a schema | 🧪 | 📄 |
 
 ## Identity
 

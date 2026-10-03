@@ -68,7 +68,7 @@ its host and acts on nothing until then.
    directory and is still in the channel is reported as a **leaver**
    (`roster.slack_leaver.reported`), and somebody has to remove them in Slack.
 
-A workspace only acts where `slackRoster.actsIn` names it; every other one is
+A workspace only acts where `slackRoster.config.enabledWorkspaces` names it; every other one is
 derived and reported, and left alone. See
 [slack-workspace.md](slack-workspace.md).
 
@@ -212,7 +212,7 @@ Each record is the versioned document `_shared.<name>.json` in
 `ConfigMap <release>-slack-workspaces`, beside the workspaces' own records; the
 controller mounts that ConfigMap and reads it on every pass. It is also in the
 `Secret <release>-slack-records` mirror that the recovery copy pushes. Needs
-`directory.store: kubernetes`: with any other store a record would not survive
+`config.store: kubernetes`: with any other store a record would not survive
 a restart, and the console says so instead of writing one.
 
 ## Audit

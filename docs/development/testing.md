@@ -12,7 +12,7 @@ conflict detection, the overlay merge.
 
 ## Demonstration fixtures
 
-`DEMO=1` brings up two tenants in memory and a policy that exercises every
+`demo: true` in the configuration file brings up two tenants in memory and a policy that exercises every
 mechanic, so the behaviour can be watched rather than described: two
 companies feeding one internal group, two fragments whose lists merge, a
 lifetime that differs by privilege with the shortest winning, a client

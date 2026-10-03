@@ -319,11 +319,11 @@ installation, which is [the security note](../../CHANGELOG.md).
 ### The absolute session limit
 
 Everything above bounds *inactivity* — a session dies once nothing
-refreshes it for `lifetimes.refresh`. Nothing bounded the sign-in
+refreshes it for `config.lifetimes.refresh`. Nothing bounded the sign-in
 ITSELF: a client that refreshed often enough stayed signed in
 indefinitely, because a rotation only ever asked "was this used
 recently", never "how long ago did this person actually authenticate".
-`lifetimes.absolute` (default 24h) is that second question, and a
+`config.lifetimes.absolute` (default 24h) is that second question, and a
 per-client session's end has been `min(now+refresh, auth_time+absolute)`
 since v1.30.0 — decided when it opens and recomputed on every rotation,
 so a sliding refresher plateaus at the limit rather than climbing past
@@ -360,7 +360,7 @@ which reads as the same zero value. Both are unaffected on purpose, not
 by omission: there is nothing to cap either against, the same reasoning
 either way.
 
-The console's own session (`directory.sessionLifetime`, a fixed-duration
+The console's own session (`config.lifetimes.session`, a fixed-duration
 cookie rather than a sliding one) is capped too — by the shorter of the
 two — because it is issued once at sign-in and its issue time already IS
 its `auth_time`.
@@ -676,7 +676,7 @@ limited to one a minute per organisation under the records' version, and
 audited.
 
 Every pass derives everything, for every bound organisation, and changes
-only those listed in `githubRoster.actsIn`: an organisation is born
+only those listed in `githubRoster.config.enabledOrgs`: an organisation is born
 disabled, and its report is the dry run an operator reads before enabling
 it. Removal is the part that needs one more question than addition.
 Absence from a holders list is never evidence — an unreadable workspace
@@ -866,7 +866,7 @@ manages is never probed.
 invites or removes no guest, removes nobody from a public channel, never
 converts a channel's visibility, never unarchives, never creates a second
 channel under another name, and never removes anyone the directory has not
-vouched for. It acts only in workspaces listed in `slackRoster.actsIn`; every
+vouched for. It acts only in workspaces listed in `slackRoster.config.enabledWorkspaces`; every
 other workspace is derived and reported.
 
 **A read is whole or it is nothing.** A missing `users:read.email` scope, a

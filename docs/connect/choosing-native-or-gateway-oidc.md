@@ -20,7 +20,7 @@ them is this issuer's to reach directly
 - the **application's own local session**, on its own clock, once it has
   signed somebody in.
 
-The installation's absolute limit — `lifetimes.absolute`, 24 hours from
+The installation's absolute limit — `config.lifetimes.absolute`, 24 hours from
 `auth_time` by default — is enforced at the first two, three ways: a
 refresh at or after the limit is refused (`invalid_grant`) and the
 session revoked; an access or ID token's `exp` is capped at

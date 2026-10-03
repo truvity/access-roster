@@ -50,11 +50,17 @@ and the per-workspace steps — is
 
 ## Chart values
 
-The OAuth client is named once per installation:
+The OAuth client is named once per installation, in the service's `config`,
+and its Secret is mounted where the config says:
 
 ```yaml
-oauthClient:
-  secret: { name: google-oauth-client }   # keys client-id and client-secret
+config:
+  oauthClient:                            # keys client-id and client-secret
+    secretName: google-oauth-client
+    idFile: /var/run/access-issuer/oauth-client/client-id
+    secretFile: /var/run/access-issuer/oauth-client/client-secret
+secretMounts:
+  - { secretName: google-oauth-client, mountPath: /var/run/access-issuer/oauth-client }
 ```
 
 A service-account key is a **declared workspace**, in the chart's

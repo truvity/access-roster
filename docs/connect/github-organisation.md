@@ -107,9 +107,9 @@ the same reason every other grant lives here.
    controller* below. Its first pass reports on the GitHub page what it
    WOULD do; read it.
 7. **Enable the organisation** by adding its login to
-   `githubRoster.actsIn`. That is a reviewed change, and the next pass acts.
-   Remove an organisation from `actsIn` before removing it from the policy: the
-   chart refuses to render an `actsIn` entry the policy does not bind.
+   `githubRoster.config.enabledOrgs`. That is a reviewed change, and the next pass acts.
+   Remove an organisation from `enabledOrgs` before removing it from the policy: the
+   chart refuses to render an `enabledOrgs` entry the policy does not bind.
 
 The service reaches `api.github.com` for Create, Install and Disconnect,
 so the cluster's egress policy must allow it.
@@ -121,7 +121,9 @@ The controller is a second process from the same chart:
 ```yaml
 githubRoster:
   enabled: true
-  actsIn: []            # born disabled: nothing is changed until an organisation is listed
+  config:
+    consoleURL: http://access-issuer.access.svc:8080/console   # this release's own Service
+    enabledOrgs: []     # born disabled: nothing is changed until an organisation is listed
 exchange:
   clusters:
     - name: prod        # this cluster: the service verifies the controller's token against its key set
@@ -164,8 +166,8 @@ asking a console that had not yet heard of it. Such a pass is tried again
 within seconds, so the page shows it failed only until the last replica
 on the previous policy has gone.
 
-The controller pushes metrics over OTLP when `telemetry.otlpEndpoint`
-is set: passes, changes, rows by state, seats, breaker trips, links by
+The controller pushes metrics over OTLP when the platform sets
+`OTEL_EXPORTER_OTLP_ENDPOINT` on its pod: passes, changes, rows by state, seats, breaker trips, links by
 state and source. Nothing is exported without it.
 
 **It needs to reach `api.github.com`**, and a default-deny egress policy
@@ -215,7 +217,7 @@ For each organisation the policy binds:
      buy one or refuse;
    - if the removals concern **more than half the organisation's members**,
      nobody is removed until an operator confirms exactly that set.
-6. **Act** where the organisation is in `actsIn`, and **report**: the
+6. **Act** where the organisation is in `enabledOrgs`, and **report**: the
    GitHub page shows every person's state and what comes next, and each
    change, each newly held action and each owner the policy would change
    is recorded in the audit trail.
@@ -347,8 +349,9 @@ is confined to its tier. The chart declares the tiers, and the *Runners*
 tab then shows a row per bound organisation per tier:
 
 ```yaml
-githubRunnerApps:
-  tiers: [preview, stable]
+config:
+  github:
+    runnerTiers: [preview, stable]
 ```
 
 An operator creates each App with the same two clicks as an

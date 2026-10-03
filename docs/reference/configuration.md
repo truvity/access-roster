@@ -44,27 +44,18 @@ service writes *itself*, where it is the producer and gets to choose.
 
 | Value | Default | Meaning |
 |---|---|---|
-| `issuerURL` | **required** | baked into every token and every relying party's trust. There is no default, because one would be a value nobody chose spread across an estate |
+| `config` | see [the file](#the-configuration-file) | **the service's configuration**, rendered as it stands into the ConfigMap `<release>-config` and mounted at `/etc/access-issuer/config.yaml`. Validated by `values.schema.json` against the schema the binary uses. Everything the service decides is here (the issuer URL, lifetimes, the store, Valkey, recovery, audit, the signing key's rotation); `issuerURL` is **required** and has no default, because one would be a value nobody chose spread across an estate |
+| `secretEnv[]` | `[]` | the only way a secret reaches a process: `{name, secretName, key, optional}` puts a Secret's key in the variable `name`, which the config names (`valkey.passwordEnv`, `oauthClient.secretEnv`, `adminPasswordEnv`). A secret is never in `config` |
+| `secretMounts[]` | `[]` | `{secretName, mountPath}`: a Secret mounted read-only as a directory, for a file the config names by path (`oauthClient.idFile`, `oauthClient.secretFile`). Each key is a file |
+| `githubRoster.config` | see [the file](#the-configuration-file) | the GitHub controller's configuration, rendered as it stands into `<release>-github-roster-config`. `consoleURL` is required, and is this release's own Service |
+| `slackRoster.config` | see [the file](#the-configuration-file) | the Slack controller's, into `<release>-slack-roster-config` |
 | `replicaCount` | `2` | two replicas need Valkey; one may use the in-memory store. Every replica serves every workspace, including one connected through the console on the other replica: a reader missing locally is opened from the stored credential on first use |
 | `image.repository` / `tag` | `ghcr.io/truvity/access-roster/access-issuer` / app version | |
-| `listeners.port` | `8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount` |
-| `listeners.healthPort` | `7070` | `/healthz`, `/readyz` |
-| `valkey.address` | `""` | host:port of the shared store; empty keeps sessions and snapshots in memory, which is one replica only |
-| `valkey.passwordSecret.name` / `.key` | `""` / `password` | optional Secret with the password |
-| `valkey.tls` | `false` | |
-| `valkey.cluster` | `false` | speak the cluster protocol. **Off by default since 2026-09-10**: with one shard it makes the client learn node addresses from `CLUSTER SLOTS` and talk to those, bypassing the Service — the one mechanism whose job is to survive a pod moving. Turn it on when the store has three shards with a replica each, which is the smallest Valkey Cluster that fails over by itself (one primary can never win an election, so `shards: 1, replicas: 1` stays down when its primary dies). In cluster mode the client re-reads the topology as soon as a node stops answering, not only when a node says it moved, so a dead primary costs its shard a few seconds, not a minute (`TestTheClientSurvivesTheLossOfAPrimary` in `internal/valkey` proves it against a real cluster) |
 | `signingKey.existingSecret` / `.key` | `""` / `tls.key` | a Secret holding a PEM private key -- RSA, or ECDSA on P-256, P-384 or P-521. Empty renders a cert-manager `Certificate` instead. **Never minted by the service**: two replicas with two keys hand out tokens half the fleet cannot verify |
 | `signingKey.certificate.issuerName` / `.issuerKind` | `selfsigned` / `ClusterIssuer` | the cert-manager issuer that produces the key, when no `existingSecret` is named. The certificate is a by-product; only the key is used |
 | `signingKey.certificate.algorithm` / `.size` / `.encoding` | `ECDSA` / `384` / `PKCS8` | the key, and so what the issuer signs with BY DEFAULT: RSA signs RS256, and P-256, P-384 and P-521 sign ES256, ES384 and ES512. ECDSA takes 256, 384 or 521; RSA takes 2048, 3072 or 4096; PKCS1 encodes only RSA. A combination cert-manager would not issue is refused at render. The default P-384 key means ES384 for every audience that pins no `signing_alg` of its own — for the one relying party that lags (Kargo; EKS's associated OIDC provider; both RS256-only), pin **that audience's** policy row instead of this whole installation's default; see `signingKey.additional` below and [policy.md#signing-algorithm-per-audience](policy.md#signing-algorithm-per-audience). Changing THIS value changes the default for every audience that names none, and is not "just a rotation" the way adding a `signingKey.additional` entry is: every other algorithm now lives on its own track, and this value decides which one is "the default" |
 | `signingKey.additional[]` | `[]` | every OTHER algorithm this installation signs with AT THE SAME TIME as the default above: `{algorithm, size, encoding, issuerName, issuerKind, renewBefore, duration}`, one cert-manager `Certificate` and `Secret` per entry, each on its OWN rotation track — renewing one never disturbs another's schedule, including the default's. Two entries (or one entry and the default) naming the same algorithm are refused at render: each algorithm publishes only one key at a time. This is how a client or a resource's `signing_alg` (RS256, ES256 or ES384 — [policy.md#signing-algorithm-per-audience](policy.md#signing-algorithm-per-audience)) has a key to actually sign with; naming an algorithm nothing here configures is refused **at issuer start**, not on the first request that reaches it |
-| `signingKey.certificate.renewBefore` / `.duration` | `720h` / `8760h` | how long before expiry cert-manager replaces the key, and the certificate's life. A renewal is a **new key** (`rotationPolicy: Always`). `renewBefore` only decides how OFTEN that happens; `signingKey.rotation.overlap` is what has to be kept longer than `lifetimes.token` |
-| `signingKey.rotation.pollInterval` / `.activationDelay` / `.overlap` | `30s` / `15m` / `lifetimes.token` + 5m | live rotation, with no restart: each replica polls the mounted file, publishes a newly seen key immediately but signs with it only after `activationDelay` — long enough for every replica's kubelet to have projected the same update and longer than the longest JWKS cache among your verifiers (Envoy's default is 10 minutes) — and keeps a superseded key published for `overlap` before it drops out. The schedule for a given key is decided once and shared through Valkey when one is configured, so a restarted replica does not forget a key still inside its overlap |
-| `directory.store` | `kubernetes` | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
-| `directory.freshness.refreshInterval` | `15m` | how often the refresher takes a new snapshot per workspace |
-| `directory.freshness.freshnessWindow` | `30m` | how old a snapshot may be before its domains stop being authoritative |
-| `directory.freshness.probeInterval` | `5m` | how often a credential is probed and the domain list re-read |
-| `directory.sessionLifetime` | `12h` | how long the console's own session lasts |
-| `directory.login` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door: the issuer's page is the one people use |
+| `signingKey.certificate.renewBefore` / `.duration` | `720h` / `8760h` | how long before expiry cert-manager replaces the key, and the certificate's life. A renewal is a **new key** (`rotationPolicy: Always`). `renewBefore` only decides how OFTEN that happens; `config.signingKey.overlap` is what has to be kept longer than `config.lifetimes.token` |
 | `directory.workspaces[]` | `[]` | declared workspaces, see below |
 | `directory.push` | absent | a **recovery copy** of `Secret <release>-workspace-credentials`: `{secretStore: {name, kind}, remoteKey, refreshInterval}` renders `PushSecret <release>-workspace-copy`, which writes the whole Secret as one JSON object at `remoteKey` — bundled, because the keys inside are `<workspace-id>.json` and a reconnect mints a new id, so a per-key mapping would go stale while reporting healthy. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`, because the case this exists for is the Secret going away. Refused at render without `directory.store: kubernetes`, without a store or a key, or for two pushes sharing one path. It is a push and not an `ExternalSecret` because the service is the writer: a pull would let a stale copy overwrite a freshly connected workspace. What lands there **is** the credential |
 | `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants, push}` each — created and installed by an operator on the GitHub page (the Apps tab: the App's own page). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. A default set to copy ships as the chart's `examples/github-apps.yaml`. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
@@ -74,24 +65,11 @@ service writes *itself*, where it is the producer and gets to choose.
 | `slackState.push` | absent | a **recovery copy** of the Slack state, in the shape of `directory.push` with one more key: `{secretStore: {name, kind}, remoteKey, recordsRemoteKey, refreshInterval}` renders `PushSecret <release>-slack-credentials-copy` (the whole of `Secret <release>-slack-credentials`, at `remoteKey`) and `PushSecret <release>-slack-records-copy` (the whole of `Secret <release>-slack-records`, at `recordsRemoteKey`). Each is bundled under one remote key because the keys inside are `<workspace-id>.json`. `recordsRemoteKey` is required and must differ from `remoteKey`. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`. Refused at render without `directory.store: kubernetes`, without a store or either key, or for two pushes sharing one path. The records are a mirror Secret because they live in a ConfigMap and a `PushSecret` reads Secrets only. What lands there **is** every workspace's credential |
 | `slackApps[]` | `[]` | Slack Apps declared as data — `{id, workspace, name, description, botScopes, push}` each — created (with a throwaway app configuration token, used once and never stored) and installed (by an owner of the workspace) by an operator on the console's Slack area (the Apps tab). `id` is `[a-z0-9-]`, at most 32, unique, and never changes; `workspace` is a key of the policy's `slack.workspaces` (lowercase letters, digits and `-`, at most 40, as the policy itself requires); `name` defaults to `<workspace>-<id>`, at most 35; `description` at most 140. Rendered to `ConfigMap <release>-slack-apps-catalogue`; the service refuses to start on a malformed entry or an entry for a workspace the policy does not name. Needs `directory.store: kubernetes`. See [connect/slack-apps-catalogue.md](../connect/slack-apps-catalogue.md) |
 | `slackApps[].push` | absent | copy one App's bot token — one key, `bot_token`, never the client secret or the record — to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}`, rendering `PushSecret <release>-slack-app-<id>`. Refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one |
-| `githubRunnerApps.tiers` | `[]` | the runner tiers an operator may create a runner App for on the GitHub page (the Runners tab), one App per bound organisation per tier — e.g. `[preview, stable]`. Empty creates none. The Apps are kept in `Secret <release>-github-runner-apps` for the deployment to hand to its runners |
-| `oauthClient.secret.name` | `""` | a Secret holding the client for sign-in and admin consent. Empty means nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
-| `oauthClient.secret.keys.clientId` / `.clientSecret` | `client-id` / `client-secret` | **what those keys are called in that Secret.** Configurable because the service does not produce this object: whatever delivers it already had an opinion, and a chart that insisted on two names could not read a Secret already in the namespace |
 | `console.mount` | `/console` | where the console sits on this origin. A **path** and not a host, because discovery must be at the root of the origin named in every token's `iss`. It is also what the console prefixes onto every link it hands a browser — `/login` resolves against the origin, where the issuer's page is. Empty serves no console |
-| `console.client` | `""` | the declared client the console signs people in as. Somebody with no session is sent to `/authorize`, signs in at the issuer's page, and comes back with the issuer's session set. Its `redirects` must name this origin plus the mount with a trailing slash. Empty keeps the console's own page, which in a deployment with an issuer beside it is a second door |
-| `console.origin` | `""` | the one **other** origin allowed to call `SessionService` from a browser. Obsolete on one origin, which is the shipped shape; it remains for a console served from somewhere else |
-| `exchange.audience` | the release name | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof |
 | `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes. **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
 | `exchange.aws.accounts[]` | `[]` | the AWS accounts whose IAM roles may exchange their outbound-identity-federation token: `{account, name, issuer, jwksUri, orgId, algs}` per account, verified against the key set that account's issuer publishes. **No secret in any row. Empty verifies no AWS token at all**: any AWS account can mint a valid token for a role of its own, so the row is the trust boundary. See [connect/aws-workloads.md](../connect/aws-workloads.md) |
 | `exchange.aws.audience` | the issuer URL | the audience the role must request from `sts:GetWebIdentityToken`; a token for any other is refused |
 | `exchange.aws.maxAge` | `5m` | refuse a token whose `iat` is older, whatever its `exp` allows (AWS permits an hour). At most `1h` |
-| `github.owners[]` | `[]` | the GitHub organisations whose workflows may exchange. **Empty verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
-| `cluster` | `""` | what this cluster is called, which becomes part of a ServiceAccount's subject. Empty keeps the older unqualified form |
-| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
-| `lifetimes.absolute` | `24h` | the global timeout: no per-client session, and no access or ID token, outlives `auth_time` by more than this, no matter how often it is refreshed — without it a client that refreshes forever stays signed in forever, because `.refresh` above only bounds the gap *between* refreshes. A session's actual end is always the EARLIER of `.absolute` (from `auth_time`) and `.refresh` (from the last refresh); it may be set shorter than `.refresh` for a hard daily sign-in, or generously longer to make `.refresh` the only limit in practice. Refused at render and at start if it is zero, negative, or shorter than `.token` — a session cannot be limited to less time than its own first access token needs to live. A refresh presented at or after the limit is refused (`invalid_grant`) and the session is revoked, with its own reason in the log and the audit trail; an SSO session past the limit is ended the same way `/logout` ends one — Back-Channel Logout included — rather than answering a silent `/authorize`. A **behaviour change**: before this existed, a session refreshed often enough never ended on its own |
-| `recovery.enabled` | `true` | the way in for the day the ordinary one is broken. It stores nothing: a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. **The only thing left that asks the cluster anything** |
-| `recovery.serviceAccountName` | `<release>-recovery` | the account recovery proves access as; the chart creates it, bound to nobody. Granting `create` on `serviceaccounts/token` for it is how an installation says who may recover |
-| `recovery.audience` | `<release>-recovery` | the audience the token must be minted for. Without one, every mounted ServiceAccount token in the cluster would be a recovery token |
 | `route.host` | `""` | the hostname on the gateway. Empty renders no Gateway, HTTPRoute or Certificate, which is right for an installation reached by port-forward |
 | `route.rootRedirect` | `""` | where a bare GET of the host goes. The issuer serves nothing at `/` — every endpoint it answers is a named one — so point this at `/console/` and somebody who types the domain lands somewhere useful |
 | `route.gatewayClassName`, `route.certificate.issuerName` / `.issuerKind` | `internal`, `internal-ca` / `ClusterIssuer` | which class the Gateway joins, and who issues its TLS certificate |
@@ -99,28 +77,17 @@ service writes *itself*, where it is the producer and gets to choose.
 | `route.sharedWith[]` | `[]` | namespaces besides this one allowed to attach an HTTPRoute to this Gateway. A **gateway-level** admission, not a ReferenceGrant: whether a Gateway accepts a route from another namespace is entirely its own `allowedRoutes` |
 | `route.parentRefs[]` | `[]` | parents for the issuer's routes, written out in full (e.g. a platform `ListenerSet` carrying `route.host`). When set the chart renders **no Gateway and no TLS Certificate**: the parent owns the listener and its certificate, and `gatewayClassName`, `certificate` and `sharedWith` have no effect. Write `group` and `kind` out |
 | `policy` | `{}` | the declared policy, see [policy.md](policy.md) |
-| `groupsScoping` | `report` | how far this installation has moved toward per-audience `groups` scoping ([policy.md#groups-in-a-token-scoping](policy.md#groups-in-a-token-scoping)). `off` computes and logs nothing -- quote it (`"off"`), or YAML reads the bare word as the boolean `false` and the render refuses it. `report` computes what each minted token's audience would keep and logs one line per token when it would have dropped something, at INFO, WITHOUT changing the token: every token mints exactly as it does today either way. `enforce` actually narrows a token's `groups` claim, and `/userinfo`'s answer, to that same computation, and logs the same finding at DEBUG instead -- opt-in; the default stays `report` |
 | `networkPolicy.enabled` | `false` | |
 | `networkPolicy.clients[]` | `[]` | namespaces allowed to reach the service in-cluster: the proxies verifying tokens and the workloads exchanging them |
 | `networkPolicy.gatewayNamespace` | `""` | the gateway's namespace, admitted to the service's port besides `clients`. Empty admits no gateway, so with the policy enabled nothing with a browser reaches it |
 | `serviceAccount.annotations` | `{}` | annotations on the ServiceAccount, which is how a cloud identity reaches this service: an admission webhook (EKS Pod Identity, GKE Workload Identity, the self-hosted `amazon-eks-pod-identity-webhook`) reads one and injects credentials into every pod using the account. Without it a self-hosted installation cannot give the service an AWS identity, and `audit.s3` has nothing to authenticate with; the chart mounts no credential of its own and takes none as a value. On AWS: `eks.amazonaws.com/role-arn: <the role's ARN>` |
 | `githubRoster.enabled` | `false` | render the GitHub controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, because either is a controller that can read nothing |
-| `githubRoster.actsIn[]` | `[]` | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled |
-| `githubRoster.interval` | `15m` | how long between passes |
 | `githubRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/github-roster` / app version / `IfNotPresent` | from the same release as the service |
 | `slackRoster.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason. The policy must put the controller's ServiceAccount (`<release>-slack-roster`) in `all:access-roster:viewer`; without it every pass fails on the first read. Roll the console before the controller when upgrading from before 1.42.0 (the controller needs `ListServedDomains`) |
-| `slackRoster.actsIn[]` | `[]` | the workspaces (the policy's keys) the controller **changes**. Every other declared workspace is derived and reported, and left alone: a workspace is born disabled. The controller refuses to start if `actsIn` names a workspace the policy does not declare |
-| `slackRoster.interval` | `15m` | how long between passes |
 | `slackRoster.image.repository` / `.tag` / `.pullPolicy` | `ghcr.io/truvity/access-roster/slack-roster` / app version / `IfNotPresent` | from the same release as the service |
 | `slackRoster.resources` | `{}` | the controller pod's resources |
-| `audit.writer` | `""` | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; empty, nothing is kept beyond the log line every record also is. The installation must map every service account (`<release>`, `<release>-github-roster`, `<release>-slack-roster`) to the source `roster` |
-| `audit.query` | `""` | the installation's query service, for the console's Audit page; empty shows no page |
-| `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail; the query service's grants must trust this issuer with it |
 | `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the receiver |
-| `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so the first entry is never taken. `0` records the connection's peer. Behind an edge that appends the client and a gateway that appends the edge's connector, it is `1` |
-| `telemetry.otlpEndpoint` | `""` | the collector's OTLP/HTTP endpoint for metrics, from the service and the controller. Empty exports nothing and opens no listener |
 | `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `githubRoster.image.pullPolicy`, `githubRoster.resources` | | passthrough |
-| `logLevel` | `info` | debug, info, warn, error |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
 to an `HTTPRoute`, so the console's path is a separate object: anything
@@ -343,77 +310,119 @@ A restored workspace shows as never probed until its first probe. A link
 token may have rotated since the copy; that person links again. A
 declared Secret is re-delivered by whatever declared it.
 
-**`STORE=memory`** turns all of it off: nothing is written, and a restart
+**`store: memory`** turns all of it off: nothing is written, and a restart
 is a fresh installation. It is the default for the binary, because a local
-run and the demonstration should need no cluster; the chart always sets
-`kubernetes`. A service started on the memory store says so at WARN on its
+run and the demonstration should need no cluster; the chart's `config` defaults
+to `kubernetes`. A service started on the memory store says so at WARN on its
 first line, naming what a restart would lose.
 
-## Environment
+## The configuration file
 
-The binary is configured by environment variables; the chart sets them
-from the values above.
+Each binary is configured by **one YAML file**, given with `--config <file>`,
+and by nothing else: `--version` and `--help` are the only other flags.
+[0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md) is the
+decision, and truvity/policy's
+[configuration contract](https://github.com/truvity/policy/blob/master/docs/contracts/config.md)
+the rule it follows.
 
-| Variable | From |
-|---|---|
-| `ISSUER_URL` | `issuerURL` — required, and in every token |
-| `NAMESPACE` | the pod's namespace (downward API) |
-| `STORE` | `directory.store` |
-| `RELEASE_NAME` | the chart's full name, which prefixes every object the service writes and every key it uses in Valkey |
-| `PORT`, `HEALTH_PORT` | `listeners.*` |
-| `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `directory.freshness.*` |
-| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER`, `VALKEY_PASSWORD` | `valkey.*`. No address keeps everything in memory, which is correct for one replica and wrong for more |
-| `SIGNING_KEY_FILE` | the mounted key. Read from a FILE, never through the API, so a compromise of this service cannot become a read of every credential in its namespace |
-| `SIGNING_KEY_POLL_INTERVAL`, `SIGNING_KEY_ACTIVATION_DELAY`, `SIGNING_KEY_OVERLAP` | `signingKey.rotation.*` — live rotation with no restart; `SIGNING_KEY_OVERLAP` unset falls back to `TOKEN_LIFETIME` |
-| `OAUTH_CLIENT_ID_FILE`, `OAUTH_CLIENT_SECRET_FILE` | the same client, as files, for signing a person in |
-| `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | the same client, through the API, for the admin-consent flow. One credential read two ways, from one value, so it cannot be half rotated |
-| `OVERLAY_FILE` | set when `directory.workspaces` is non-empty |
-| `CLUSTERS_FILE` | set when `exchange.clusters` is non-empty |
-| `AWS_FEDERATION_FILE` | set when `exchange.aws.accounts` is non-empty: a mounted YAML file `{audience, maxAge, accounts: [{account, name, issuer, jwksUri?, orgId?, algs?}]}`. A malformed file stops the service at start: a duplicate account, issuer or name, an account that is not twelve digits, an issuer that is not `https`, an algorithm other than `ES384` or `RS256`, an unknown key, or accounts with no `audience` |
-| `CONSOLE_CLIENT_ID` | `console.client` |
-| `CONSOLE_ORIGIN` | `console.origin`, for a console on another host |
-| `PUBLIC_URL` | `https://<route.host><console.mount>` — where a browser reaches the console |
-| `PUBLIC_ROOT_URL` | `https://<route.host>` — the origin root, which is where the **admin-consent callback** stays. Its redirect URI is registered with every corporate tenant, so moving it under the console's path would mean re-registering it in each of them |
-| `SECURE_COOKIES` | `true` when `route.host` is set. The binary's own default follows the scheme of `ISSUER_URL`, so an https issuer marks its cookies Secure whether or not anything sets this. Set it explicitly only for a TLS terminator the URL does not mention |
-| `EXCHANGE_AUDIENCE` | `exchange.audience` |
-| `GITHUB_OWNERS` | `github.owners` |
-| `GITHUB_RUNNER_TIERS` | `githubRunnerApps.tiers`, comma-separated, set only when not empty |
-| `CLUSTER` | `cluster` |
-| `IN_CLUSTER` | `true` when `recovery.enabled` — the one thing left that asks the API server anything |
-| `RECOVERY_ENABLED`, `RECOVERY_SERVICE_ACCOUNT`, `RECOVERY_AUDIENCE` | `recovery.*` |
-| `TOKEN_LIFETIME`, `REFRESH_LIFETIME`, `HOLD_WINDOW`, `ABSOLUTE_LIFETIME` | `lifetimes.*` |
-| `SESSION_LIFETIME` | `directory.sessionLifetime` |
-| `LOGIN_DIRECTORY` | `directory.login` |
-| `POLICY_DIR` | where the policy is mounted; every YAML file in it merges. **Both halves read this one directory**, and the merged service loads it once and hands the same policy to both — two halves that could disagree about the policy is the failure the merge existed to end |
-| `GROUPS_SCOPING` | `groupsScoping`. Refused at start on anything but `off`, `report` or `enforce` |
-| `AUDIT_WRITER_URL`, `AUDIT_QUERY_URL`, `AUDIT_AUDIENCE`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.*` |
-| `AUDIT_TOKEN_FILE` | the projected token, mounted when an installation is connected. Set on the GitHub controller as well, with its own token |
-| `POD_NAME` | the pod's name, from the downward API: names the instance on every audit record |
-| `CLIENT_SECRETS_DIR` | where the confidential clients' Secrets are mounted, one file per client |
-| `GITHUB_APPS_CATALOGUE_FILE` | the mounted `githubApps.catalogue`, set only when not empty. Read once at start; a malformed catalogue stops the service |
-| `SLACK_APPS_CATALOGUE_FILE` | the mounted `slackApps`, set only when not empty. Read once at start; a malformed catalogue, or an entry for a workspace the policy does not name, stops the service. See [connect/slack-apps-catalogue.md](../connect/slack-apps-catalogue.md) |
-| (none) | Slack Connect channels and console channels have no value and no environment: they are records the console writes into `<release>-slack-workspaces` (`_shared.<name>.json`, `_channel.<workspace>.<name>.json`), validated against the policy and fed by directory groups. See [connect/slack-connect-channels.md](../connect/slack-connect-channels.md) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty. Metrics are pushed over OTLP/HTTP; with nothing set, nothing is exported and no listener is opened. Every other `OTEL_*` variable OpenTelemetry defines is honoured too. Set on the GitHub controller as well |
-| `LOG_LEVEL` | `logLevel` |
+- **Validated before anything starts.** The file is held to its JSON Schema
+  (`schemas/config/<binary>.schema.json`, embedded in the binary) first. An
+  unknown key, a missing required key or a value of the wrong type refuses to
+  start and names the path to it. The chart's `values.schema.json` embeds the
+  same schemas under each component's `config`, so the same mistake fails
+  `helm install`, and the chart's tests hold what it renders to them.
+- **Secrets are the one thing the environment adds, and only the ones the
+  file names.** A key ending in `Env` holds the *name* of a variable
+  (`valkey.passwordEnv: VALKEY_PASSWORD`), and the process reads exactly the
+  variables the file names; an unset or empty one refuses to start, naming the
+  variable. A key ending in `File` or `Dir` holds a path. A secret in the file
+  is refused: there is no key to put it in, and a URL or address with a password
+  in it does not match the schema.
+- **Telemetry is not here.** It is OpenTelemetry's own `OTEL_*` environment
+  (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, ...), read by the SDK and
+  set on the pod by the platform. Nothing in the file restates it.
+- **The old environment is refused, not ignored.** A variable of the old
+  configuration that is still set (`ISSUER_URL`, `VALKEY_PASSWORD`, ...) stops
+  the process at start, naming the key that replaces it. The tables
+  [below](#migrating-from-environment-variables) are that list.
+- **Durations** are Go duration strings (`30s`, `15m`, `168h`).
 
-## The GitHub controller's environment
+The schemas are the exhaustive reference, with every key's description and
+default. What follows is the orientation: each key, its default when unset, and
+what to know. A key the table gives no default for is unset by default, which
+is the binary's own behaviour.
 
-The controller reads its own few, all set by
-`templates/github-roster.yaml`:
+### `access-issuer` (the chart's `config`)
 
-| Variable | From |
-|---|---|
-| `RELEASE_NAME` | the chart's full name, so it finds `<release>-github-status` |
-| `NAMESPACE` | the pod's namespace |
-| `POLICY_DIR` | the same policy ConfigMap the service mounts; its `github` table is the bindings |
-| `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
-| `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
-| `APPS_DIR` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
-| `RECORDS_DIR` | the mounted `<release>-github-orgs` ConfigMap: the organisations' records and the console's requests for a pass. With `APPS_DIR` it is looked at every 30 seconds, and a change (an install, a credential, a **Refresh**) runs a pass without waiting for `INTERVAL` |
-| `INTERVAL` | `githubRoster.interval` |
-| `ENABLED_ORGS` | `githubRoster.actsIn` |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
-| `LOG_LEVEL` | `logLevel` |
+The issuer, the console and the directory hub, one process.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `issuerURL` | **required** | baked into every token and every relying party's trust. There is no default, because one would be a value nobody chose spread across an estate. An http or https URL with no credentials |
+| `release` | `access-issuer` | the name this installation's objects carry (`<release>-github-orgs`, the prefix of its keys in Valkey). **The chart requires it to be the release's full name**, and says what to write |
+| `cluster` | unset | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. Empty keeps the older unqualified form |
+| `store` | `memory` (the chart: `kubernetes`) | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
+| `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
+| `probes.address` | `:7070` | `/healthz`, `/readyz` |
+| `log.level` | `info` | `debug`, `info`, `warn`, `error` |
+| `policyDir` | built-in two groups | the directory the policy is mounted at. The chart requires `/var/run/access-issuer/policy` |
+| `overlayFile` | unset | the file of declared workspaces; the chart renders it from `directory.workspaces` |
+| `publicURL`, `publicRootURL` | `http://localhost:8081`, `publicURL` | where a browser reaches the console (with its mount) and the origin root, where the admin-consent callback stays. With `route.host` and `console.mount` set the chart requires `https://<host><mount>` and `https://<host>` |
+| `secureCookies` | follows the scheme of `issuerURL` | mark session cookies Secure. The chart refuses `false` on a route served over TLS |
+| `groupsScoping` | `report` | how far this installation has moved toward per-audience `groups` scoping ([policy.md#groups-in-a-token-scoping](policy.md#groups-in-a-token-scoping)): `off` computes and logs nothing -- quote it (`"off"`), or YAML reads the bare word as a boolean -- `report` logs what would be dropped without changing a token, `enforce` narrows the claim |
+| `demo` | `false` | two tenants held in memory, which need no credential and no network |
+| `allowInsecure` | `false` | accept a plain-http issuer URL, for a local run |
+| `inCluster` | `false` | recovery proves access to the cluster the pod runs in. Required with `recovery.enabled` |
+| `clientSecretsDir` | unset | one file per confidential client, named after the client id, each the client's secret; read per call, so a rotated Secret takes effect without a restart. The chart requires `/var/run/access-issuer/clients` when a policy client names a `secret` |
+| `adminPasswordEnv` | unset | the *name* of the variable holding the hub's recovery password, for a run outside a cluster. Unset generates one and prints it once |
+| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
+| `lifetimes.absolute` | `24h` | the global timeout: no per-client session, and no access or ID token, outlives `auth_time` by more than this, no matter how often it is refreshed. Refused when zero, negative, or shorter than `lifetimes.token`: at render, and at start |
+| `lifetimes.session` | `12h` | how long the console's own session lasts, capped at `lifetimes.absolute` |
+| `freshness.refreshInterval` / `.freshnessWindow` / `.probeInterval` | `15m` / `30m` / `5m` | how often the refresher takes a new snapshot per workspace, how old a snapshot may be before its domains stop being authoritative, and how often a credential is probed and the domain list re-read |
+| `exchange.audience` | `release` | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof. The controllers' projected tokens are minted for it |
+| `exchange.clustersFile` / `.awsFile` | unset | the files naming the federated clusters and AWS accounts; the chart renders them from `exchange.clusters` and `exchange.aws.accounts` and requires the paths where it mounts them |
+| `recovery.enabled` | unset: off for the issuer, on for the hub | the way in for the day the ordinary one is broken. It stores nothing: a short-lived ServiceAccount token proving access to the API server, so the authority is the cluster's own RBAC. **The only thing left that asks the cluster anything.** The chart's default is `true` |
+| `recovery.serviceAccount` / `.audience` | the chart: `access-issuer-recovery` for both | the account recovery proves access as, which the chart creates and binds to nobody, and the audience its token must be minted for. Granting `create` on `serviceaccounts/token` for the account is how an installation says who may recover |
+| `api.audience` / `api.consumersFile` | `directory-roster` / unset | the directory API's guard |
+| `login.directory` | `true` | whether the console offers a sign-in of its own, under `<mount>/login`. With `console.client` set it is a second door |
+| `login.signOutURL`, `login.forwarded.*` | unset | where sign-out sends the browser, and a sign-in an authenticating proxy has already done |
+| `console.client` | unset | the declared client the console signs people in as. Somebody with no session is sent to `/authorize`, signs in at the issuer's page, and comes back with the issuer's session set |
+| `console.origin` | unset | the one **other** origin allowed to call `SessionService` from a browser. Obsolete on one origin, which is the shipped shape |
+| `oauthClient.*` | unset | the client registered once with the directory backend, for sign-in and admin consent. `idFile` and `secretFile` name files (mount the Secret with `secretMounts`), or `secretEnv` names the variable that holds the secret; `secretName`, `idKey` and `secretKey` name the Kubernetes Secret the console shows as declared. With none, nobody can sign in and this installation issues tokens to machines only, which is a real posture and is said at start |
+| `signingKey.file` | unset: a key generated for the process | the primary signing key, provisioned and never minted here. The chart requires `/var/run/access-issuer/signing-key/<signingKey.key>` |
+| `signingKey.additionalFiles[]` | unset | one file per `signingKey.additional` entry, in the order they are declared; the chart requires exactly that list |
+| `signingKey.pollInterval` / `.activationDelay` / `.overlap` | `30s` / `15m` / `lifetimes.token` + 5m | live rotation, with no restart: how often the mounted file is re-read, how long a newly seen key is published before this replica signs with it (longer than the longest JWKS cache among the verifiers, plus the slowest kubelet projection; refused below `pollInterval`), and how long a superseded key stays published (it must cover `lifetimes.token`) |
+| `valkey.address` | unset | host:port of the shared store, with no credentials; unset keeps sessions and snapshots in memory, which is one replica only |
+| `valkey.passwordEnv` | unset | the *name* of the variable holding the password |
+| `valkey.tls` | `false` | speak TLS to the server |
+| `valkey.cluster` | `true` (the chart's guidance: `false`) | speak the cluster protocol. **Leave it off for a single-node Valkey:** with one shard it makes the client learn node addresses from `CLUSTER SLOTS` and talk to those, bypassing the Service -- the one mechanism whose job is to survive a pod moving. Turn it on when the store has three shards with a replica each (see [Valkey: a recommendation](#valkey-a-recommendation)) |
+| `github.owners[]` | unset | the GitHub organisations whose workflows may exchange. **Unset verifies no CI token at all**, deliberately: anybody may run a workflow in their own repository and get a valid GitHub token, so a list invented by the chart would admit every repository there is |
+| `github.runnerTiers[]` | unset | the runner tiers an operator may create a runner App for on the GitHub page (the Runners tab), one App per bound organisation per tier -- e.g. `[preview, stable]`. Lower-case letters, digits and dashes, at most 16, each once |
+| `github.catalogueFile`, `slack.catalogueFile` | unset | the files declaring the GitHub and Slack Apps; the chart renders them from `githubApps.catalogue` and `slackApps`. A malformed one stops the service |
+| `audit.writer` | unset | the audit installation's receiver: one address, which takes the records and answers the catalogue's registration on the same port. Set, the service and the controller record into it, each with its own projected token; unset, nothing is kept beyond the log line every record also is |
+| `audit.tokenFile` | the chart: `/var/run/audit/token` | the projected token presented to the receiver; the chart requires that path when `audit.writer` is set |
+| `audit.queryURL` | unset | the installation's query service, for the console's Audit page; unset shows no page. Needs `audit.writer` |
+| `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail |
+| `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so it is never taken on its own. `0` records the peer |
+
+### `github-roster` (the chart's `githubRoster.config`)
+
+The GitHub controller: it makes each organisation's teams match the policy's
+`github` table. It has no listener.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `policyDir` | **required** | the same policy ConfigMap the service mounts; its `github` table is the bindings. The chart requires `/var/run/github-roster/policy` |
+| `consoleURL` | **required** | the console's API, which answers who holds a group. The chart requires this release's own Service plus `console.mount`, and prints it |
+| `release` | `access-issuer` | the name the service's objects carry, so the controller finds `<release>-github-status`. The chart requires the release's full name |
+| `tokenFile` | `/var/run/secrets/github-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
+| `appsDir` | `/var/run/github-roster/apps` | the mounted `<release>-github-apps` Secret, one file per connected organisation |
+| `recordsDir` | `/var/run/github-roster/records` | the mounted `<release>-github-orgs` ConfigMap: the organisations' records and the console's requests for a pass. With `appsDir` it is looked at every 30 seconds, and a change (an install, a Refresh) runs a pass at once |
+| `catalogueFile` | unset | the GitHub App catalogue, read only so the warning about an internal group nothing consumes does not name a group a grant consumes. Never fatal here |
+| `interval` | `15m` | how long between passes. Positive |
+| `enabledOrgs[]` | unset | the organisations the controller **changes**. Every other bound organisation is derived and reported, and left alone: an organisation is born disabled. Each must be bound by the policy: the controller refuses to start otherwise, and the chart refuses to render |
+| `log.level` | `info` | |
+| `audit.writer` / `.tokenFile` | unset | the audit installation; the controller records for itself, as its own workload |
 
 Its account, `<release>-github-roster`, has two permissions, each by
 name: `get`, `update` and `patch` on the ConfigMap
@@ -422,33 +431,135 @@ Secret `<release>-github-links` it rewrites as it checks links. The App
 keys and the console's records are volumes, so it holds no permission to read
 any other Secret or ConfigMap, and watching them for a change takes none.
 
-## The Slack controller's environment
+### `slack-roster` (the chart's `slackRoster.config`)
 
-The controller reads its own few, all set by
-`templates/slack-roster.yaml`. It runs as one replica with `Recreate`: two
+The Slack controller: it makes each workspace's channels match the policy's
+`slack` table. It has no listener, and runs as one replica with `Recreate`: two
 controllers would make every change twice.
 
-| Variable | From |
-|---|---|
-| `RELEASE_NAME` | the chart's full name, so it finds `<release>-slack-status` |
-| `NAMESPACE` | the pod's namespace |
-| `POLICY_DIR` | the same policy ConfigMap the service mounts; its `slack` and `people` tables are the bindings |
-| `CONSOLE_URL` | the service's in-cluster address plus `console.mount` |
-| `TOKEN_FILE` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
-| `CREDENTIALS_DIR` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |
-| `RECORDS_DIR` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, Slack Connect records, console channel records, confirmations and pass requests; optional |
-| `INTERVAL` | `slackRoster.interval`: the pass interval (15m by default). Independently, the controller looks at the mounted credentials and records every 30 seconds and passes without waiting for the interval when a workspace's credential changed or an operator pressed Refresh. It reads them afresh at every pass, so rotating or restoring them needs no restart |
-| `ENABLED_WORKSPACES` | `slackRoster.actsIn`. Naming a key the policy does not declare stops the controller at start |
-| `AUDIT_WRITER_URL`, `AUDIT_TOKEN_FILE` | `audit.writer` and the projected token; the controller records for itself, as its own workload |
-| `POD_NAME` | the pod's name, from the downward API |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `telemetry.otlpEndpoint`, set only when not empty |
-| `LOG_LEVEL` | `logLevel` |
+| Key | Default | Meaning |
+|---|---|---|
+| `policyDir` | **required** | the same policy ConfigMap the service mounts; its `slack` and `people` tables are the bindings. The chart requires `/var/run/slack-roster/policy` |
+| `consoleURL` | **required** | as for `github-roster` |
+| `release` | `access-issuer` | as for `github-roster`; it finds `<release>-slack-status` |
+| `tokenFile` | `/var/run/secrets/slack-roster/token` | the projected ServiceAccount token, for `exchange.audience`, read on every call |
+| `credentialsDir` | `/var/run/slack-roster/credentials` | the mounted `<release>-slack-credentials` Secret, one file per connected workspace; optional |
+| `recordsDir` | `/var/run/slack-roster/workspaces` | the mounted `<release>-slack-workspaces` ConfigMap: workspace records, Slack Connect records, console channel records, confirmations and pass requests; optional |
+| `interval` | `15m` | the pass interval. Independently, the controller looks at the mounted credentials and records every 30 seconds and passes without waiting for the interval when they change |
+| `enabledWorkspaces[]` | unset | the workspaces (the policy's keys) the controller **changes**. Every other declared workspace is derived and reported, and left alone. Naming a key the policy does not declare stops the controller at start, and the chart refuses to render |
+| `log.level` | `info` | |
+| `audit.writer` / `.tokenFile` | unset | the audit installation; the controller records for itself, as its own workload |
 
 Its account, `<release>-slack-roster`, has one permission, by name: `get`,
 `update` and `patch` on the ConfigMap `<release>-slack-status` it reports into.
 The credentials and records are volumes, so it holds no permission to read any
 Secret or other ConfigMap. See [Connect a Slack
 workspace](../connect/slack-workspace.md).
+
+## Migrating from environment variables
+
+Everything the binaries read from the environment is a key of the file, and the
+chart's flat values that fed them are now the component's `config`. An old
+variable that is still set is **refused at start** with the key that replaces
+it; nothing is ignored. The platform-supplied `NAMESPACE` (now read from the
+pod's mounted service-account namespace) and `POD_NAME` (now the pod's
+hostname, which is the pod's name) are not configuration and the chart no
+longer sets them.
+
+### The service
+
+| Old variable | Key of `access-issuer`'s file |
+|---|---|
+| `ISSUER_URL` | `issuerURL` |
+| `PORT` | `listen.address` (`:<port>`) |
+| `HEALTH_PORT` | `probes.address` |
+| `API_PORT`, `CONSOLE_PORT` | none: the directory's own listeners are not served by `access-issuer`; the console is on the issuer's listener |
+| `DEMO` | `demo` |
+| `ALLOW_INSECURE` | `allowInsecure` |
+| `IN_CLUSTER` | `inCluster` |
+| `PUBLIC_URL`, `PUBLIC_ROOT_URL` | `publicURL`, `publicRootURL` |
+| `SECURE_COOKIES` | `secureCookies` |
+| `STORE` | `store` |
+| `OVERLAY_FILE` | `overlayFile` |
+| `POLICY_DIR` | `policyDir` |
+| `GROUPS_SCOPING` | `groupsScoping` |
+| `CLUSTER` | `cluster` |
+| `RELEASE_NAME` | `release` |
+| `CLIENT_SECRETS_DIR` | `clientSecretsDir` |
+| `ADMIN_PASSWORD` | `adminPasswordEnv`, which names the variable that holds it |
+| `RECOVERY_ENABLED`, `RECOVERY_SERVICE_ACCOUNT`, `RECOVERY_AUDIENCE` | `recovery.enabled`, `recovery.serviceAccount`, `recovery.audience` |
+| `API_AUDIENCE`, `CONSUMERS_FILE` | `api.audience`, `api.consumersFile` |
+| `LOGIN_DIRECTORY`, `SIGN_OUT_URL` | `login.directory`, `login.signOutURL` |
+| `FORWARDED_EMAIL_HEADER`, `FORWARDED_ISSUER`, `FORWARDED_AUDIENCE` | `login.forwarded.emailHeader`, `.issuer`, `.audience` |
+| `CONSOLE_ORIGIN`, `CONSOLE_CLIENT_ID` | `console.origin`, `console.client` |
+| `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_ID_FILE` | `oauthClient.id`, `oauthClient.idFile` |
+| `OAUTH_CLIENT_SECRET`, `OAUTH_CLIENT_SECRET_FILE` | `oauthClient.secretEnv` (names the variable), `oauthClient.secretFile` |
+| `OAUTH_CLIENT_SECRET_NAME`, `OAUTH_CLIENT_ID_KEY`, `OAUTH_CLIENT_SECRET_KEY` | `oauthClient.secretName`, `.idKey`, `.secretKey` |
+| `SIGNING_KEY_FILE`, `SIGNING_KEY_FILES` | `signingKey.file`, `signingKey.additionalFiles` |
+| `SIGNING_KEY_POLL_INTERVAL`, `SIGNING_KEY_ACTIVATION_DELAY`, `SIGNING_KEY_OVERLAP` | `signingKey.pollInterval`, `.activationDelay`, `.overlap` |
+| `TOKEN_LIFETIME`, `REFRESH_LIFETIME`, `ABSOLUTE_LIFETIME`, `HOLD_WINDOW` | `lifetimes.token`, `.refresh`, `.absolute`, `.hold` |
+| `SESSION_LIFETIME` | `lifetimes.session` |
+| `REFRESH_INTERVAL`, `FRESHNESS_WINDOW`, `PROBE_INTERVAL` | `freshness.refreshInterval`, `.freshnessWindow`, `.probeInterval` |
+| `EXCHANGE_AUDIENCE`, `CLUSTERS_FILE`, `AWS_FEDERATION_FILE` | `exchange.audience`, `exchange.clustersFile`, `exchange.awsFile` |
+| `VALKEY_ADDRESS`, `VALKEY_TLS`, `VALKEY_CLUSTER` | `valkey.address`, `.tls`, `.cluster` |
+| `VALKEY_PASSWORD` | `valkey.passwordEnv`, which names the variable that holds it |
+| `GITHUB_OWNERS`, `GITHUB_RUNNER_TIERS`, `GITHUB_APPS_CATALOGUE_FILE` | `github.owners`, `github.runnerTiers`, `github.catalogueFile` |
+| `SLACK_APPS_CATALOGUE_FILE` | `slack.catalogueFile` |
+| `AUDIT_WRITER_URL`, `AUDIT_TOKEN_FILE` | `audit.writer`, `audit.tokenFile` |
+| `AUDIT_QUERY_URL`, `AUDIT_AUDIENCE`, `AUDIT_FORWARDED_FOR_TRUSTED_HOPS` | `audit.queryURL`, `.audience`, `.forwardedForTrustedHops` |
+| `LOG_LEVEL` | `log.level` |
+| `SECRET_MANAGERS_FILE` | none: the console's secret-store view was removed in v1.30.0 ([0002](../decisions/0002-mission-boundary-tokens-and-memberships.md)) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` (and the other `OTEL_*`) | unchanged: set by the platform, not by the file. The chart's `telemetry.otlpEndpoint` is removed |
+
+### The controllers
+
+| Old variable | `github-roster` | `slack-roster` |
+|---|---|---|
+| `RELEASE_NAME` | `release` | `release` |
+| `POLICY_DIR` | `policyDir` | `policyDir` |
+| `CONSOLE_URL` | `consoleURL` | `consoleURL` |
+| `TOKEN_FILE` | `tokenFile` | `tokenFile` |
+| `APPS_DIR` | `appsDir` | none |
+| `CREDENTIALS_DIR` | none | `credentialsDir` |
+| `RECORDS_DIR` | `recordsDir` | `recordsDir` |
+| `INTERVAL` | `interval` | `interval` |
+| `ENABLED_ORGS` | `enabledOrgs` | none |
+| `ENABLED_WORKSPACES` | none | `enabledWorkspaces` |
+| `GITHUB_APPS_CATALOGUE_FILE` | `catalogueFile` | none |
+| `AUDIT_WRITER_URL`, `AUDIT_TOKEN_FILE` | `audit.writer`, `audit.tokenFile` | `audit.writer`, `audit.tokenFile` |
+| `LOG_LEVEL` | `log.level` | `log.level` |
+
+### The chart's values
+
+| Old value | Now |
+|---|---|
+| `issuerURL` | `config.issuerURL` |
+| `listeners.port`, `listeners.healthPort` | `config.listen.address`, `config.probes.address` |
+| `logLevel` | `config.log.level` |
+| `groupsScoping`, `cluster` | `config.groupsScoping`, `config.cluster` |
+| `lifetimes.*` | `config.lifetimes.*` |
+| `directory.store` | `config.store` |
+| `directory.freshness.*`, `directory.sessionLifetime`, `directory.login` | `config.freshness.*`, `config.lifetimes.session`, `config.login.directory` |
+| `recovery.enabled`, `.serviceAccountName`, `.audience` | `config.recovery.enabled`, `.serviceAccount`, `.audience`, with `config.inCluster: true` |
+| `exchange.audience` | `config.exchange.audience` |
+| `valkey.address`, `.tls`, `.cluster` | `config.valkey.address`, `.tls`, `.cluster` |
+| `valkey.passwordSecret.name` / `.key` | `config.valkey.passwordEnv` and a `secretEnv` entry |
+| `oauthClient.secret.name` / `.keys.*` | `config.oauthClient.{secretName,idKey,secretKey,idFile,secretFile}` and a `secretMounts` entry |
+| `github.owners` | `config.github.owners` |
+| `githubRunnerApps.tiers` | `config.github.runnerTiers` |
+| `console.origin`, `console.client` | `config.console.origin`, `config.console.client` (`console.mount` stays: it is the route's) |
+| `signingKey.rotation.*` | `config.signingKey.pollInterval`, `.activationDelay`, `.overlap` |
+| `audit.writer`, `.query`, `.audience`, `.forwardedForTrustedHops` | `config.audit.writer`, `.queryURL`, `.audience`, `.forwardedForTrustedHops` (`audit.token.*` stays: it is the chart's) |
+| `githubRoster.interval`, `githubRoster.actsIn` | `githubRoster.config.interval`, `githubRoster.config.enabledOrgs` |
+| `slackRoster.interval`, `slackRoster.actsIn` | `slackRoster.config.interval`, `slackRoster.config.enabledWorkspaces` |
+| `telemetry.otlpEndpoint` | removed: `OTEL_*` is set on the pods by the platform |
+
+The old values are removed, not aliased: an old key is refused at render
+(`values.schema.json` names it), so a values file that was not migrated fails
+`helm template` and not a rollout. The paths the config names are where the
+chart mounts what it renders, and the chart refuses a config that names another:
+the defaults in `values.yaml` carry them, so a values file states only what it
+changes.
 
 ## Roles
 
@@ -507,7 +618,7 @@ spec:
   tls: false
 ```
 
-Point the chart at its Service (`valkey.address=directory-roster-cache.directory-roster.svc:6379`)
+Point the chart at its Service (`config.valkey.address: directory-roster-cache.directory-roster.svc:6379`)
 and, if the operator issues a password Secret, at that Secret.
 
 ## The gateway: a recommendation

@@ -125,7 +125,7 @@ status document and the audit actions stay in the system's own package
 [ADR 0024](../decisions/0024-reconciler-rails-are-shared-pieces-not-a-framework.md).
 A new one ships with: its fake of the system (`internal/slackapp/slackfake` is
 the worked example), a pure `reconcile` package tested without I/O, a status
-document the console shows, a chart value `…Roster.actsIn` (born disabled), its
+document the console shows, a chart value `…Roster.config.enabled…` (born disabled), its
 audit actions, and a `docs/connect/<system>.md` page. Order the rollout so the
 console, which the controller reads, goes first.
 

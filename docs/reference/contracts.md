@@ -26,7 +26,7 @@ without a generated client.
 ## Authentication
 
 **A workload.** A caller presents a Kubernetes ServiceAccount token as a
-bearer, projected for the audience `exchange.audience` names, and the
+bearer, projected for the audience `config.exchange.audience` names, and the
 service verifies it against the key set its cluster publishes — one of
 the `exchange.clusters` rows, the same rows token exchange uses — never
 by a TokenReview, so that it holds access to no cluster. The policy's
@@ -60,7 +60,7 @@ Unauthenticated RPCs get `unauthenticated`; a missing role gets
 **A workload calling the console's API** — a controller beside the
 issuer: the GitHub controller and the Slack controller — presents its own projected
 ServiceAccount token as `Authorization: Bearer`, with the audience token
-exchange uses (`exchange.audience`, the release name by default). It is
+exchange uses (`config.exchange.audience`, the release name by default). It is
 verified against the same cluster key sets as an exchange, so only a
 cluster the chart federates can produce one, and there is no exchange in
 front of it: the issuer would verify that very token and re-sign it. The
@@ -580,7 +580,7 @@ carries its roles and scopes beside the fields the Go module's
 
 ```sh
 # From a workload: its projected ServiceAccount token, minted for
-# exchange.audience, is the bearer.
+# config.exchange.audience, is the bearer.
 TOKEN=$(cat /var/run/secrets/access-roster/token)
 
 # WhoAmI, over GET (Connect's idempotent-GET encoding)

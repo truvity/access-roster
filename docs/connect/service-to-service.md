@@ -52,7 +52,7 @@ the only one.
 > **access-roster's own console API accepts exactly this**, for a
 > controller running beside the issuer. The GitHub controller reads
 > `AccessService.ListHolders` with its projected token, audience
-> `exchange.audience`, and the policy names it in a `service_account`
+> `config.exchange.audience`, and the policy names it in a `service_account`
 > matcher — see [reference/contracts.md](../reference/contracts.md).
 > The one difference from the pattern above is how the token is
 > checked: against the cluster's published key set, the same rows token

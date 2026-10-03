@@ -480,7 +480,7 @@ githubApps:
   is installed, so an App created and left uninstalled pushes nothing.
 - **Refused at render:** two entries pushing to one path in one store
   (one would overwrite the other, and the reader could not tell which
-  App's key it held), and `push` without `directory.store: kubernetes`
+  App's key it held), and `push` without `config.store: kubernetes`
   (there would be no Secret to push from).
 - **What lands there is a real credential** — the App's private key, a
   second durable copy, to be rotated as one, and the store that holds it
