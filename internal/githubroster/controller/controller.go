@@ -34,6 +34,8 @@ import (
 	"github.com/truvity/access-roster/internal/githubroster/connection"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
 	"github.com/truvity/access-roster/internal/githubroster/status"
+	"github.com/truvity/access-roster/internal/port"
+	"github.com/truvity/access-roster/internal/port/memory"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/policy"
 )
@@ -102,7 +104,14 @@ type Deps struct {
 	// controller and the console restart at different moments, and a group
 	// the new policy binds has, under the old one, nobody in it.
 	Policy string
-	Now    func() time.Time
+	// Leases takes a lease on each target before its tick, from the State
+	// port. Nil runs every tick without one: a single runner, which is what
+	// a deployment with no shared State has (see docs/design/ports.md).
+	Leases *rails.Leases
+	// Trigger says that a target has work: a notification runs that
+	// target's tick. Nil is an in-process trigger.
+	Trigger port.Trigger
+	Now     func() time.Time
 }
 
 // Controller is the loop and what it remembers between passes.
@@ -144,6 +153,9 @@ func New(cfg Config, deps Deps) *Controller {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 15 * time.Minute
 	}
+	if deps.Trigger == nil {
+		deps.Trigger = memory.NewTrigger()
+	}
 	return &Controller{
 		cfg: cfg, deps: deps, tokens: map[string]installationToken{},
 		journal: &rails.Journal[status.Org]{
@@ -153,37 +165,132 @@ func New(cfg Config, deps Deps) *Controller {
 	}
 }
 
+// LinksTarget is the target of the link check: asking GitHub about every
+// person's linked account and keeping what changed. An organisation's tick
+// reads the links as that check last left them and does not depend on it
+// running first.
+const LinksTarget = "github:links"
+
+// ErrUnknownTarget is a target that is neither an organisation the policy
+// binds nor [LinksTarget].
+var ErrUnknownTarget = errors.New("not a target of this controller")
+
+// The kinds of lease: one per kind of target, so an organisation named
+// "links" cannot be mistaken for the link check.
+const (
+	leaseOrg   = "github-tick"
+	leaseLinks = "github-links"
+)
+
+// Targets are what a pass ticks, in order: the link check, then every bound
+// organisation by login.
+func (c *Controller) Targets() []string {
+	return append([]string{LinksTarget}, slices.Sorted(maps.Keys(c.deps.Bindings))...)
+}
+
 // Run passes now and then every interval, until the context ends. A pass
 // that met a console answering under another policy is tried again soon
 // (see [rails.Run]).
 //
-// Beside the interval, the mounted credentials and records are watched (see
-// [Controller.watchCredentials]): a new install, a changed credential or an
-// operator's request for a pass runs a pass within the poll period.
+// Beside the interval, a notification for a target (the trigger) ticks that
+// target, and the mounted credentials and records are watched (see
+// [Controller.watchCredentials]): a new install or a changed credential runs
+// a pass, and an operator's request ticks its organisation, within the poll
+// period.
 func (c *Controller) Run(ctx context.Context) error {
 	wake := make(chan struct{}, 1)
 	watchCtx, stop := context.WithCancel(ctx)
 	defer stop()
+	unsubscribe := c.deps.Trigger.Subscribe(func(target string) { c.notified(watchCtx, target) })
+	defer unsubscribe()
 	go c.watchCredentials(watchCtx, wake)
 	return rails.Run(ctx, c.deps.Log, rails.Pacing{Interval: c.cfg.Interval, PolicyRetry: c.cfg.PolicyRetry, Wake: wake}, c.Pass)
 }
 
-// Pass goes over every bound organisation once and replaces the report.
-// It says whether any answer it was given came from a console under
-// another policy — a pass worth trying again soon, because the difference
-// is usually a rollout that has not finished.
-func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
-	reports := map[string]status.Org{}
-	links, linksErr := c.checkLinks(ctx)
-	confirmed := c.confirmations(ctx)
-	for _, org := range slices.Sorted(maps.Keys(c.deps.Bindings)) {
-		report, differs := c.organisation(ctx, org, c.deps.Bindings[org], links, linksErr, confirmed[org])
-		otherPolicy = otherPolicy || differs
-		c.metrics.recordPass(ctx, &report)
-		reports[org] = report
+// notified ticks the target a notification names. A notification is a hint:
+// one for a target this controller does not have is dropped, and one that
+// finds the target leased elsewhere is answered by whoever holds it.
+func (c *Controller) notified(ctx context.Context, target string) {
+	if ctx.Err() != nil {
+		return
 	}
-	c.journal.Publish(ctx, reports)
+	switch _, _, err := c.RunTarget(ctx, target); {
+	case errors.Is(err, ErrUnknownTarget):
+		c.deps.Log.DebugContext(ctx, "a notification names no target of this controller", "target", target)
+	case err != nil:
+		c.deps.Log.WarnContext(ctx, "a notified tick failed", "target", target, "error", err)
+	}
+}
+
+// Pass is a sweep: every target once, links first, each under its own lease
+// and publishing its own report. A target another runner holds is that
+// runner's. It says whether any answer it was given came from a console
+// under another policy — a pass worth trying again soon, because the
+// difference is usually a rollout that has not finished.
+func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
+	for _, target := range c.Targets() {
+		_, differs, err := c.RunTarget(ctx, target)
+		if err != nil {
+			c.deps.Log.WarnContext(ctx, "a tick failed", "target", target, "error", err)
+		}
+		otherPolicy = otherPolicy || differs
+	}
+	// A report of an organisation the policy no longer binds leaves the page.
+	c.journal.Prune(ctx, slices.Sorted(maps.Keys(c.deps.Bindings)))
 	return otherPolicy
+}
+
+// RunTarget ticks one target under its lease and says whether it ran:
+// false, with no error, when another runner holds the lease. The tick's
+// context ends if the lease is lost, so it stops before its next write.
+func (c *Controller) RunTarget(ctx context.Context, target string) (ran, otherPolicy bool, err error) {
+	if !c.known(target) {
+		return false, false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
+	}
+	tick := func(ctx context.Context) { otherPolicy, err = c.Tick(ctx, target) }
+	if c.deps.Leases == nil {
+		tick(ctx)
+		return true, otherPolicy, err
+	}
+	kind, name := leaseOrg, target
+	if target == LinksTarget {
+		kind, name = leaseLinks, "all"
+	}
+	ran, leaseErr := c.deps.Leases.Do(ctx, kind, name, tick)
+	if leaseErr != nil {
+		return false, false, leaseErr
+	}
+	if !ran {
+		c.deps.Log.DebugContext(ctx, "a target is leased to another runner", "target", target)
+	}
+	return ran, otherPolicy, err
+}
+
+func (c *Controller) known(target string) bool {
+	if target == LinksTarget {
+		return true
+	}
+	_, bound := c.deps.Bindings[target]
+	return bound
+}
+
+// Tick is one target's work, with no lease (see [Controller.RunTarget]):
+// the link check for [LinksTarget]; for an organisation, its pass, ending in
+// its own report whatever happened. The bool says whether an answer came
+// from a console under another policy.
+func (c *Controller) Tick(ctx context.Context, target string) (otherPolicy bool, err error) {
+	if target == LinksTarget {
+		return false, c.checkLinks(ctx)
+	}
+	binding, bound := c.deps.Bindings[target]
+	if !bound {
+		return false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
+	}
+	links, linksErr := c.storedLinks(ctx)
+	report, differs := c.organisation(ctx, target, binding, links, linksErr, c.confirmations(ctx)[target])
+	c.metrics.recordPass(ctx, &report)
+	c.journal.PublishOne(ctx, target, report)
+	return differs, nil
 }
 
 // organisation is one organisation's pass, ending in its report whatever

@@ -54,3 +54,60 @@ func TestReportsAreReplacedAsAWholeAndReadBack(t *testing.T) {
 		})
 	}
 }
+
+// A tick publishes its own report and no other: the others' objects are not
+// rewritten, so their bytes and versions are exactly what they were.
+func TestPutWritesOneReportAndLeavesTheOthersUntouched(t *testing.T) {
+	t.Parallel()
+	for name, blob := range map[string]port.Blob{
+		"an adapter that replaces in one write": memory.New().Blobs(),
+		"an adapter with only Write and Delete": plainBlob{memory.New().Blobs()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctx := context.Background()
+			reports := rails.NewBlobReports(blob, "reports/slack/")
+			if err := reports.Replace(ctx, map[string]string{"acme.json": `{"a":1}`, "globex.json": `{"g":1}`}); err != nil {
+				t.Fatal(err)
+			}
+			before, err := blob.Read(ctx, "reports/slack/globex.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = reports.Put(ctx, "acme.json", `{"a":2}`); err != nil {
+				t.Fatal(err)
+			}
+			after, err := blob.Read(ctx, "reports/slack/globex.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after.Body) != string(before.Body) || after.Version != before.Version {
+				t.Errorf("globex's report was rewritten by acme's tick: %q (%s) -> %q (%s)", before.Body, before.Version, after.Body, after.Version)
+			}
+			got, _ := reports.Reports(ctx)
+			if want := map[string]string{"acme.json": `{"a":2}`, "globex.json": `{"g":1}`}; !maps.Equal(got, want) {
+				t.Errorf("Reports = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+// A report of a target the policy no longer has leaves; the others stay.
+func TestPruneRemovesOnlyRetiredTargets(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	blob := memory.New().Blobs()
+	reports := rails.NewBlobReports(blob, "reports/slack/")
+	if err := reports.Replace(ctx, map[string]string{"acme.json": "a", "gone.json": "g"}); err != nil {
+		t.Fatal(err)
+	}
+	journal := &rails.Journal[string]{
+		Store: reports, Key: func(t string) string { return t + ".json" },
+		Encode: func(s string) (string, error) { return s, nil }, Decode: func(s string) (string, error) { return s, nil },
+	}
+	journal.Prune(ctx, []string{"acme"})
+	got, _ := reports.Reports(ctx)
+	if want := map[string]string{"acme.json": "a"}; !maps.Equal(got, want) {
+		t.Errorf("after pruning = %v, want %v", got, want)
+	}
+}

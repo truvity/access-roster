@@ -24,9 +24,12 @@ import (
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/hub"
+	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/port"
 	"github.com/truvity/access-roster/internal/settings"
 	"github.com/truvity/access-roster/internal/slackapp"
 	slackcatalogue "github.com/truvity/access-roster/internal/slackapp/catalogue"
+	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/version"
 )
 
@@ -193,6 +196,13 @@ type ConsoleDeps struct {
 	// Audit records what an identity did through the console. Nil records
 	// nothing.
 	Audit audit.Recorder
+	// Trigger is told which target a write of the console concerns, so its
+	// tick runs soon (docs/decisions/0029). With the legacy adapter the
+	// trigger is in this process, and the controllers are other processes: the
+	// notification reaches nobody there, and the controller notices the same
+	// write through the records it mounts (see docs/design/ports.md). Nil
+	// notifies nobody.
+	Trigger port.Trigger
 }
 
 // Console serves WorkspaceService, SettingsService and AccessService on
@@ -229,6 +239,27 @@ func NewConsole(_ context.Context, deps ConsoleDeps) (*Console, error) {
 		c.connectors[conn.Kind()] = conn
 	}
 	return c, nil
+}
+
+// notify asks for the tick of a target (a GitHub organisation's login or a
+// Slack workspace's key) after a write that concerns it. A notification is a
+// hint: failing to send one is logged, never the request's failure.
+func (c *Console) notify(ctx context.Context, target string) {
+	if c.deps.Trigger == nil || target == "" {
+		return
+	}
+	if err := c.deps.Trigger.Notify(ctx, target); err != nil {
+		c.log().WarnContext(ctx, "a tick could not be requested", "target", logsafe.Value(target), "error", logsafe.Error(err))
+	}
+}
+
+// notifyShared notifies every workspace a shared channel's record names: the
+// host, which invites, and each guest, which accepts.
+func (c *Console) notifyShared(ctx context.Context, ch reconcile.SharedChannel) {
+	c.notify(ctx, ch.Host)
+	for _, guest := range ch.With {
+		c.notify(ctx, guest)
+	}
 }
 
 // log is the console's logger: the one it was given, or the default.

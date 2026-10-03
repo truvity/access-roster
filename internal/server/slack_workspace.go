@@ -251,6 +251,7 @@ func (c *Console) RequestSlackPass(
 			"a pass over %s was asked for %s ago: the controller notices a request within a minute, so wait for it",
 			workspace, now.Sub(last).Round(time.Second)))
 	}
+	c.notify(ctx, workspace)
 	c.log().InfoContext(ctx, "a Slack pass was requested", "workspace", logsafe.Value(workspace), "by", logsafe.Value(who.Who()))
 	return connect.NewResponse(&directoryrosterv1.RequestSlackPassResponse{RequestedAt: timestampOf(now)}), nil
 }

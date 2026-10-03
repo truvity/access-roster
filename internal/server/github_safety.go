@@ -66,6 +66,7 @@ func (c *Console) ConfirmGitHubRemovals(
 	}
 	c.record(ctx, audit.GitHubRemovalsConfirmed(identityActor(id), org, fingerprint,
 		report.Breaker.Affected, report.Breaker.Members))
+	c.notify(ctx, org)
 	return connect.NewResponse(&directoryrosterv1.ConfirmGitHubRemovalsResponse{}), nil
 }
 

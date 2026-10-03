@@ -197,3 +197,27 @@ func TestDiscoveredChannelsAndTheConsoleMarkAreAdditiveAndOrdered(t *testing.T) 
 		t.Errorf("old document: %+v %v", old, err)
 	}
 }
+
+// The sides a host's tick probed round-trip, in a fixed order, and an old
+// document with none still reads.
+func TestGuestSidesRoundTripInAFixedOrder(t *testing.T) {
+	w := status.Workspace{Workspace: "acme", GuestSides: []status.GuestSide{
+		{Workspace: "initech", Discovered: status.Discovered{ID: "C2", Name: "b", Teams: []string{"T2", "T1"}}},
+		{Workspace: "globex", Discovered: status.Discovered{ID: "C1", Name: "a"}},
+	}}
+	raw, err := status.Encode(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := status.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.GuestSides) != 2 || got.GuestSides[0].Workspace != "globex" || got.GuestSides[1].Teams[0] != "T1" {
+		t.Errorf("guest sides = %+v, want globex first and the teams sorted", got.GuestSides)
+	}
+	old, err := status.Decode(`{"version":1,"workspace":"acme","enabled":true,"tick":{}}`)
+	if err != nil || len(old.GuestSides) != 0 {
+		t.Errorf("a document with no guest sides = %+v, %v", old, err)
+	}
+}

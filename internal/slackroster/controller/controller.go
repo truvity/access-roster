@@ -1,36 +1,47 @@
-// Package controller is the Slack controller's loop: every pass, for every
-// workspace the policy declares, read what Slack holds and who holds the
-// groups the channels are bound to, decide, act where the workspace is
-// enabled, and report.
+// Package controller is the Slack controller: for every workspace the
+// policy declares, read what Slack holds and who holds the groups the
+// channels are bound to, decide, act where the workspace is enabled, and
+// report.
 //
 // It has no listener. It reads the console's API with its own ServiceAccount
-// token, writes to Slack with each workspace's bot token, replaces one
-// ConfigMap with its reports, and records what it changed to the audit
+// token, writes to Slack with each workspace's bot token, writes its reports
+// through the blob port, and records what it changed to the audit
 // installation as its own workload. It holds nothing of the issuer's: no
 // signing key, no session store, no directory credential.
 //
-// # One pass
+// # Ticks
 //
-//  1. The policy is the one loaded at start; its digest is what the console's
-//     answers must carry ([rails.PolicyGuard]).
-//  2. The mounted credentials and the console's records are read: bot tokens,
-//     each installed workspace's bot user id, the shared channels' definitions
-//     and the console's ordinary channels (validated against the policy; the
-//     refused are reported), and the
-//     operators' confirmations that are still current.
-//  3. The holders of every bound group are asked once for all workspaces, and
-//     who is in every DIRECTORY group the console channels and the shared
-//     channels name, nested groups expanded. A record whose source is not a
-//     group of an allowed directory is refused and reported; a directory that
-//     cannot be read fails only the workspaces that depend on one.
-//  4. Per workspace: observe Slack whole, derive, ask the directory to vouch
+// The unit of work is a tick of one workspace (docs/decisions/0029), run
+// under a lease on it ([Controller.RunTarget]) and publishing its own report
+// and no other. A pass is a sweep of every workspace, run on the interval
+// and when a credential changed; an operator's request, or the console's
+// write, ticks only its workspace.
+//
+// # One tick
+//
+//  1. The inputs every workspace's tick shares are read once and kept, by the
+//     policy digest and what is mounted ([Controller.inputs]): the mounted
+//     credentials and the console's records (bot tokens, each installed
+//     workspace's bot user id, the shared channels' definitions and the
+//     console's ordinary channels, validated against the policy, the refused
+//     reported, and the operators' confirmations that are still current), the
+//     holders of every bound group, who is in every DIRECTORY group the
+//     console channels and the shared channels name (nested groups expanded;
+//     a record whose source is not a group of an allowed directory is
+//     refused and reported; a directory that cannot be read fails only the
+//     workspaces that depend on one), and the domains each directory serves.
+//  2. The workspace: observe Slack whole, derive, ask the directory to vouch
 //     for each address a removal or a leaver report rests on (one question per
-//     address per pass, however many channels or workspaces name it), decide.
-//  5. An enabled workspace ([rails.Switch]) carries the decision out and
+//     address however many ticks name it), decide.
+//  3. An enabled workspace ([rails.Switch]) carries the decision out and
 //     records what became of it; every other workspace is a dry run, which
 //     changes and records nothing.
-//  6. One publication of every workspace's report. A workspace whose pass
-//     failed keeps its previous report with the failure on it, and no other
+//  4. A workspace that hosts a managed Slack Connect channel probes the
+//     guest sides its bot does not list, reading the guests' reports
+//     ([Controller.probeGuestSides]), and asks the guests to tick when it
+//     invited one.
+//  5. The workspace's report is published. A workspace whose tick failed
+//     keeps its previous report with the failure on it, and no other
 //     workspace is affected.
 package controller
 
@@ -42,6 +53,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -51,6 +63,8 @@ import (
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/port"
+	"github.com/truvity/access-roster/internal/port/memory"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackroster/apply"
@@ -116,7 +130,14 @@ type Deps struct {
 	// Slack makes the client that acts with a bot token. Nil is Slack's own
 	// API.
 	Slack func(token string) *slackapp.Client
-	Now   func() time.Time
+	// Leases takes a lease on each workspace before its tick, from the State
+	// port. Nil runs every tick without one: a single runner, which is what
+	// a deployment with no shared State has (see docs/design/ports.md).
+	Leases *rails.Leases
+	// Trigger says that a workspace has work: a notification runs that
+	// workspace's tick. Nil is an in-process trigger.
+	Trigger port.Trigger
+	Now     func() time.Time
 }
 
 // Controller is the loop and what it remembers between passes.
@@ -137,6 +158,9 @@ type Controller struct {
 	// the place the reports are written.
 	journal *rails.Journal[status.Workspace]
 	metrics instruments
+
+	// shared is what every workspace's tick reads, kept by [Controller.inputs].
+	shared sharedInputs
 }
 
 // New returns a controller.
@@ -153,6 +177,9 @@ func New(cfg Config, deps Deps) *Controller {
 	if cfg.Interval <= 0 {
 		cfg.Interval = 15 * time.Minute
 	}
+	if deps.Trigger == nil {
+		deps.Trigger = memory.NewTrigger()
+	}
 	return &Controller{
 		cfg: cfg, deps: deps, metrics: newInstruments(),
 		journal: &rails.Journal[status.Workspace]{
@@ -165,18 +192,110 @@ func New(cfg Config, deps Deps) *Controller {
 // that met a console answering under another policy is tried again soon
 // (see [rails.Run]).
 //
-// Beside the interval, the mounted credentials are watched (see
-// [Controller.watchCredentials]): a changed bot token runs a pass within the
-// poll period.
+// Beside the interval, a notification for a workspace (the trigger) ticks that
+// workspace, and the mounted credentials are watched (see
+// [Controller.watchCredentials]): a changed bot token runs a pass, and an
+// operator's request ticks its workspace, within the poll period.
 func (c *Controller) Run(ctx context.Context) error {
 	wake := make(chan struct{}, 1)
 	watchCtx, stop := context.WithCancel(ctx)
 	defer stop()
+	unsubscribe := c.deps.Trigger.Subscribe(func(target string) { c.notified(watchCtx, target) })
+	defer unsubscribe()
 	go c.watchCredentials(watchCtx, wake)
 	return rails.Run(ctx, c.deps.Log, rails.Pacing{Interval: c.cfg.Interval, PolicyRetry: c.cfg.PolicyRetry, Wake: wake}, c.Pass)
 }
 
-// pass is what one pass shares between its workspaces.
+// ErrUnknownTarget is a target that is not a workspace the policy declares.
+var ErrUnknownTarget = errors.New("not a target of this controller")
+
+// leaseKind is the kind of lease on a workspace's tick.
+const leaseKind = "slack-tick"
+
+// Targets are what a pass ticks: every declared workspace by key.
+func (c *Controller) Targets() []string {
+	return slices.Sorted(maps.Keys(c.deps.Policy.Slack.Workspaces))
+}
+
+// notified ticks the workspace a notification names. A notification is a
+// hint: one for a workspace this controller does not have is dropped, and one
+// that finds the workspace leased elsewhere is answered by whoever holds it.
+func (c *Controller) notified(ctx context.Context, target string) {
+	if ctx.Err() != nil {
+		return
+	}
+	switch _, _, err := c.RunTarget(ctx, target); {
+	case errors.Is(err, ErrUnknownTarget):
+		c.deps.Log.DebugContext(ctx, "a notification names no workspace of this controller", "target", logsafe.Value(target))
+	case err != nil:
+		c.deps.Log.WarnContext(ctx, "a notified tick failed", "target", logsafe.Value(target), "error", logsafe.Error(err))
+	}
+}
+
+// Pass is a sweep: every declared workspace once, each under its own lease
+// and publishing its own report. A workspace another runner holds is that
+// runner's. It starts from fresh inputs, which the ticks of the sweep share.
+// It says whether any answer it was given came from a console under another
+// policy — a pass worth trying again soon, because the difference is usually
+// a rollout that has not finished.
+//
+// The sweep is also what carries a Slack Connect share to its guest when the
+// host's tick could not notify it (the notification reaches this process
+// only, and the lease may be another's), until the share's own storage exists
+// (docs/decisions/0029, B3).
+func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
+	c.inputs(ctx, true)
+	for _, target := range c.Targets() {
+		_, differs, err := c.RunTarget(ctx, target)
+		if err != nil {
+			c.deps.Log.WarnContext(ctx, "a tick failed", "workspace", logsafe.Value(target), "error", logsafe.Error(err))
+		}
+		otherPolicy = otherPolicy || differs
+	}
+	// A report of a workspace the policy no longer declares leaves the page.
+	c.journal.Prune(ctx, c.Targets())
+	return otherPolicy
+}
+
+// RunTarget ticks one workspace under its lease and says whether it ran:
+// false, with no error, when another runner holds the lease. The tick's
+// context ends if the lease is lost, so it stops before its next write.
+func (c *Controller) RunTarget(ctx context.Context, target string) (ran, otherPolicy bool, err error) {
+	if _, declared := c.deps.Policy.Slack.Workspaces[target]; !declared {
+		return false, false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
+	}
+	tick := func(ctx context.Context) { otherPolicy, err = c.Tick(ctx, target) }
+	if c.deps.Leases == nil {
+		tick(ctx)
+		return true, otherPolicy, err
+	}
+	ran, leaseErr := c.deps.Leases.Do(ctx, leaseKind, target, tick)
+	if leaseErr != nil {
+		return false, false, leaseErr
+	}
+	if !ran {
+		c.deps.Log.DebugContext(ctx, "a workspace is leased to another runner", "workspace", logsafe.Value(target))
+	}
+	return ran, otherPolicy, err
+}
+
+// Tick is one workspace's work, with no lease (see [Controller.RunTarget]):
+// its pass, ending in its own report whatever happened, which it publishes.
+// The bool says whether an answer came from a console under another policy.
+func (c *Controller) Tick(ctx context.Context, target string) (otherPolicy bool, err error) {
+	if _, declared := c.deps.Policy.Slack.Workspaces[target]; !declared {
+		return false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
+	}
+	p := c.inputs(ctx, false)
+	report, differs := c.workspace(ctx, p, target)
+	c.probeGuestSides(ctx, p, target, &report)
+	c.metrics.recordPass(ctx, &report)
+	c.journal.PublishOne(ctx, target, report)
+	return differs, nil
+}
+
+// pass is what the ticks of one policy share between workspaces: the inputs
+// [Controller.inputs] reads once.
 type pass struct {
 	store   store
 	shared  []reconcile.SharedChannel
@@ -196,7 +315,9 @@ type pass struct {
 	served    map[string][]string
 	servedErr error
 	// answers are the directory's answers so far, by address: one question
-	// per address per pass, whoever asks.
+	// per address while the inputs last, whoever asks. mu guards it, since
+	// ticks of two workspaces may run at once.
+	mu      sync.Mutex
 	answers map[string]answer
 }
 
@@ -204,48 +325,6 @@ type answer struct {
 	vouch   rails.Vouch
 	ok      bool
 	differs bool
-}
-
-// Pass goes over every declared workspace once and replaces the reports.
-// It says whether any answer it was given came from a console under another
-// policy — a pass worth trying again soon, because the difference is
-// usually a rollout that has not finished.
-func (c *Controller) Pass(ctx context.Context) (otherPolicy bool) {
-	p := &pass{answers: map[string]answer{}}
-	p.store = readStore(c.cfg.CredentialsDir, c.cfg.RecordsDir, c.deps.Log)
-	p.shared, p.refused = p.store.sharedChannels(c.deps.Policy)
-	invalid := 0
-	for host, list := range p.refused {
-		for i := range list {
-			invalid++
-			c.deps.Log.WarnContext(ctx, "a shared channel's definition is refused and not acted on",
-				"channel", logsafe.Value(list[i].name), "host", logsafe.Value(host), "error", logsafe.Error(list[i].err))
-		}
-	}
-	p.console, p.consoleRefused = p.store.consoleChannels(c.deps.Policy)
-	p.holders, p.holdersErr = c.directory().Holders(ctx, c.groups())
-	c.resolveSources(ctx, p)
-	for ws, list := range p.consoleRefused {
-		for i := range list {
-			invalid++
-			c.deps.Log.WarnContext(ctx, "a console channel's record is refused and not acted on",
-				"channel", logsafe.Value(list[i].name), "workspace", logsafe.Value(ws), "error", logsafe.Error(list[i].err))
-		}
-	}
-	c.metrics.recordInvalid(ctx, invalid)
-	p.served, p.servedErr = c.servedDomains(ctx)
-
-	workspaces := c.deps.Policy.Slack.Workspaces
-	reports := map[string]status.Workspace{}
-	for _, key := range slices.Sorted(maps.Keys(workspaces)) {
-		report, differs := c.workspace(ctx, p, key)
-		otherPolicy = otherPolicy || differs
-		c.metrics.recordPass(ctx, &report)
-		reports[key] = report
-	}
-	c.probeGuestSides(ctx, p, reports)
-	c.journal.Publish(ctx, reports)
-	return otherPolicy
 }
 
 // groups are every internal group a policy channel is bound to.
@@ -409,7 +488,9 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		result := apply.Apply(ctx, client, decision, apply.Options{Workspace: key, Audit: c.deps.Audit})
 		found := c.fold(ctx, key, &report, result)
 		c.recordNew(ctx, key, decision, found, &report)
+		c.inviteGuests(ctx, key, result)
 	})
+	c.wakePendingGuests(ctx, key, in)
 	report.Tick.Waiting = countWaiting(report)
 	report.Tick.Outcome = status.OutcomeOf(rails.Switch(enabled).Decide(rails.Tick{
 		Changes: report.Tick.Changes, Held: report.Tick.Held, Retrying: report.Tick.Retrying, Waiting: report.Tick.Waiting,
@@ -599,12 +680,16 @@ func (c *Controller) vouch(ctx context.Context, p *pass, emails []string) (map[s
 	out := map[string]rails.Vouch{}
 	differs := false
 	for _, email := range emails {
+		p.mu.Lock()
 		a, asked := p.answers[email]
+		p.mu.Unlock()
 		if !asked {
 			answers, other := c.directory().Vouch(ctx, []string{email})
 			a.vouch, a.ok = answers[email]
 			a.differs = other
+			p.mu.Lock()
 			p.answers[email] = a
+			p.mu.Unlock()
 		}
 		if a.ok {
 			out[email] = a.vouch

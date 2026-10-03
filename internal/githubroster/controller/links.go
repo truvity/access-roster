@@ -30,21 +30,22 @@ type LinkStore interface {
 // Several passes' worth, so one failed pass does not let it lapse.
 const refreshAhead = 2 * time.Hour
 
-// checkLinks asks GitHub about every link once, keeps what changed, and
-// returns the links an organisation's pass should use.
+// checkLinks is the link check, the tick of [LinksTarget]: it asks GitHub
+// about every link once and keeps what changed. An organisation's tick reads
+// the result with [Controller.storedLinks].
 //
 // Only GitHub's own answer ever makes a link lost: an address missing from
 // the account's verified addresses, or GitHub saying the token is no
 // longer valid. An outage, a refused refresh GitHub does not explain, or a
 // token pair lost in a refresh leaves the link as it was, or makes it
 // unverifiable — which removes nobody.
-func (c *Controller) checkLinks(ctx context.Context) ([]reconcile.Link, error) {
+func (c *Controller) checkLinks(ctx context.Context) error {
 	if c.deps.Links == nil {
-		return nil, nil
+		return nil
 	}
 	links, err := c.deps.Links.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read the linked accounts: %w", err)
+		return fmt.Errorf("read the linked accounts: %w", err)
 	}
 	credential, err := c.linkCredential()
 	switch {
@@ -82,6 +83,21 @@ func (c *Controller) checkLinks(ctx context.Context) ([]reconcile.Link, error) {
 	}
 
 	c.metrics.recordLinks(ctx, links)
+	return nil
+}
+
+// storedLinks reads the links as the link check last left them, and says
+// which an organisation's decisions may use. Nothing is asked of GitHub and
+// nothing is written. Without the links every linked member would read as
+// unlinked, so a failed read fails the organisation's tick.
+func (c *Controller) storedLinks(ctx context.Context) ([]reconcile.Link, error) {
+	if c.deps.Links == nil {
+		return nil, nil
+	}
+	links, err := c.deps.Links.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read the linked accounts: %w", err)
+	}
 	var out []reconcile.Link
 	for k := range links {
 		l := &links[k]

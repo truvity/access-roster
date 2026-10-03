@@ -25,6 +25,8 @@ import (
 	"github.com/truvity/access-roster/internal/audit/audittest"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/port"
+	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackapp/slackfake"
@@ -64,6 +66,14 @@ type console struct {
 	// resolveErr is the answer to a question about directory groups when
 	// the console cannot give one.
 	resolveErr error
+	// held counts the questions about who holds a group.
+	held int
+}
+
+func (c *console) heldQuestions() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.held
 }
 
 // fakeDirGroup is what the fake console says of one directory group, over
@@ -157,6 +167,7 @@ func (c *console) ListHolders(
 ) (*connect.Response[directoryrosterv1.ListHoldersResponse], error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.held++
 	out := &directoryrosterv1.ListHoldersResponse{PolicyDigest: c.policy}
 	for _, addr := range slices.Sorted(maps.Keys(c.dir)) {
 		if slices.Contains(c.dir[addr], req.Msg.GetGroup()) {
@@ -194,13 +205,35 @@ func (c *console) set(f func()) {
 type reports struct {
 	mu        sync.Mutex
 	documents map[string]string
-	replaced  int
+	// puts counts the writes of each workspace's own report.
+	puts map[string]int
 }
 
 func (r *reports) Replace(_ context.Context, documents map[string]string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.documents, r.replaced = documents, r.replaced+1
+	r.documents = documents
+	return nil
+}
+
+func (r *reports) Put(_ context.Context, key, document string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.documents == nil {
+		r.documents = map[string]string{}
+	}
+	r.documents[key] = document
+	if r.puts == nil {
+		r.puts = map[string]int{}
+	}
+	r.puts[key]++
+	return nil
+}
+
+func (r *reports) Remove(_ context.Context, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.documents, key)
 	return nil
 }
 
@@ -249,6 +282,9 @@ type rig struct {
 	controllers map[string]*controller.Controller
 	// logs, when set, receives the controllers' log at debug level.
 	logs *bytes.Buffer
+	// trigger and leases, when set, are the controllers' (see ticks_test.go).
+	trigger port.Trigger
+	leases  *rails.Leases
 }
 
 // captureLogs makes every controller built after it log into the returned buffer.
@@ -384,6 +420,7 @@ func (r *rig) freshWith(poll time.Duration, enabled ...string) *controller.Contr
 	return controller.New(cfg, controller.Deps{
 		Log:    r.logger(),
 		Access: r.console, Audit: r.audit, Status: r.reports, Policy: r.policy, Digest: testPolicy,
+		Trigger: r.trigger, Leases: r.leases,
 		Now: func() time.Time { return r.now },
 		Slack: func(token string) *slackapp.Client {
 			return slackapp.New(token, slackapp.WithBaseURL(r.fake.URL()), slackapp.WithPageSize(2), slackapp.WithRetries(1),
@@ -417,7 +454,7 @@ func (r *rig) actions(action string) int {
 
 // Born disabled: every pass derives everything and changes nothing, and the
 // report says what WOULD happen. Nothing is recorded, because nothing
-// happened, and every workspace's report is written in one publication.
+// happened, and every workspace publishes its own report once.
 func TestADisabledWorkspaceIsADryRunThatPublishesItsReport(t *testing.T) {
 	r := newRig(t)
 	r.person("ann@acme.example", []string{"g-all", "g-eng"}, "acme")
@@ -431,8 +468,8 @@ func TestADisabledWorkspaceIsADryRunThatPublishesItsReport(t *testing.T) {
 	if got := r.audit.Actions(); len(got) != 0 {
 		t.Errorf("a dry run recorded %v", got)
 	}
-	if r.reports.replaced != 1 {
-		t.Errorf("the reports were published %d times in one pass, want once", r.reports.replaced)
+	if got := r.reports.published(); got != 1 {
+		t.Errorf("a workspace's report was published %d times in one pass, want once", got)
 	}
 	for _, ws := range []string{"acme", "globex"} {
 		got := r.reports.workspace(t, ws)
@@ -1178,7 +1215,11 @@ func TestTheFirstPassOverAnAdoptedStrictChannelIsHeldToTheBreaker(t *testing.T) 
 func (r *reports) published() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.replaced
+	most := 0
+	for _, n := range r.puts {
+		most = max(most, n)
+	}
+	return most
 }
 
 // waitFor polls until cond holds, or fails after the timeout.
@@ -1490,9 +1531,14 @@ func TestAGuestSideTheBotDoesNotListIsProbedAndPublished(t *testing.T) {
 	r.manage("legacy", ch.ID, "globex")
 	r.pass("acme", "globex")
 
-	got := r.reports.workspace(t, "globex").DiscoveredShared
-	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].Private || got[0].HostTeam != "TACME" {
-		t.Fatalf("globex's discovered = %+v", got)
+	// The host's tick probed the guest and publishes the side in ITS report,
+	// as the guest's: a tick publishes its own report only.
+	got := r.reports.workspace(t, "acme").GuestSides
+	if len(got) != 1 || got[0].Workspace != "globex" || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].Private || got[0].HostTeam != "TACME" {
+		t.Fatalf("acme's guest sides = %+v", got)
+	}
+	if got := r.reports.workspace(t, "globex").GuestSides; len(got) != 0 {
+		t.Errorf("a guest publishes no guest sides: %+v", got)
 	}
 	if n := r.probes("TGLOBEX"); n != 1 {
 		t.Errorf("probes of globex = %d, want 1 per pass", n)
@@ -1522,7 +1568,7 @@ func TestAPrivateGuestSideStaysUnknown(t *testing.T) {
 	if !strings.Contains(logs.String(), "level=DEBUG") || !strings.Contains(logs.String(), "guest-side probe") {
 		t.Errorf("want a debug line and an info summary:\n%s", logs)
 	}
-	if got := r.reports.workspace(t, "globex").DiscoveredShared; len(got) != 0 {
+	if got := r.reports.workspace(t, "acme").GuestSides; len(got) != 0 {
 		t.Errorf("globex's private side was published: %+v", got)
 	}
 	if got := r.reports.workspace(t, "acme").DiscoveredShared; len(got) != 1 || got[0].ID != ch.ID {
@@ -1545,7 +1591,7 @@ func TestAFailingProbeDoesNotFailThePass(t *testing.T) {
 			t.Errorf("%s failed: %+v", ws, tick)
 		}
 	}
-	if got := r.reports.workspace(t, "globex").DiscoveredShared; len(got) != 0 {
+	if got := r.reports.workspace(t, "acme").GuestSides; len(got) != 0 {
 		t.Errorf("a failed probe published %+v", got)
 	}
 	if n := r.probes("TGLOBEX"); n != 1 {
@@ -1609,12 +1655,9 @@ func TestEveryWorkspaceIsProbedWhenSlackNamesNoGuests(t *testing.T) {
 	if n := r.probes("TACME"); n != 0 {
 		t.Errorf("acme listed it and must not be probed: %d", n)
 	}
-	got := r.reports.workspace(t, "globex").DiscoveredShared
-	if len(got) != 1 || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].HostTeam != "TACME" {
+	got := r.reports.workspace(t, "acme").GuestSides
+	if len(got) != 1 || got[0].Workspace != "globex" || got[0].ID != ch.ID || got[0].Name != "legacy-globex" || got[0].HostTeam != "TACME" {
 		t.Errorf("globex's visible side = %+v", got)
-	}
-	if got := r.reports.workspace(t, "initech").DiscoveredShared; len(got) != 0 {
-		t.Errorf("initech's invisible side was published: %+v", got)
 	}
 	if strings.Contains(logs.String(), "probing a workspace") {
 		t.Errorf("an expected channel_not_found warned:\n%s", logs)

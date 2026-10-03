@@ -936,6 +936,7 @@ func New(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (*
 	}
 
 	console, err := server.NewConsole(ctx, server.ConsoleDeps{
+		Trigger:      st.Ports.Trigger,
 		Log:          log,
 		Hub:          directory,
 		Authorizer:   authorizer,

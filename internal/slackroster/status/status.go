@@ -75,6 +75,13 @@ type Workspace struct {
 	// that does not know the field shows no discovery, and nothing else
 	// changes.
 	DiscoveredShared []Discovered `json:"discovered_shared,omitempty"`
+	// GuestSides are the sides of a managed Slack Connect channel THIS
+	// workspace hosts that the guest's own bot does not list, asked for by
+	// this workspace's tick (docs/decisions/0029: a tick publishes its own
+	// report only, so the probe's answer rides on the host's). A reader reads
+	// each as a sighting by the guest workspace it names. Additive, like
+	// DiscoveredShared.
+	GuestSides []GuestSide `json:"guest_sides,omitempty"`
 	// Discovered are the ordinary channels this workspace's bot can see
 	// that nothing manages: no policy binding and no console record. Public
 	// channels, and private ones the bot is in. Additive, like
@@ -119,6 +126,14 @@ type Discovered struct {
 	// Managed is whether a shared channel record matches it, by channel id,
 	// else by the host and the name.
 	Managed bool `json:"managed,omitempty"`
+}
+
+// GuestSide is one guest workspace's side of a shared channel, as the host's
+// tick probed it with the guest's bot.
+type GuestSide struct {
+	// Workspace is the guest workspace whose bot answered.
+	Workspace string `json:"workspace"`
+	Discovered
 }
 
 // Channel is one channel's report.
@@ -337,6 +352,20 @@ func Encode(w Workspace) (string, error) {
 	})
 	for i := range w.DiscoveredShared {
 		w.DiscoveredShared[i].Teams = slices.Sorted(slices.Values(w.DiscoveredShared[i].Teams))
+	}
+	w.GuestSides = slices.Clone(w.GuestSides)
+	sort.Slice(w.GuestSides, func(i, j int) bool {
+		a, b := w.GuestSides[i], w.GuestSides[j]
+		if a.Workspace != b.Workspace {
+			return a.Workspace < b.Workspace
+		}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
+	})
+	for i := range w.GuestSides {
+		w.GuestSides[i].Teams = slices.Sorted(slices.Values(w.GuestSides[i].Teams))
 	}
 	w.Discovered = slices.Clone(w.Discovered)
 	sort.Slice(w.Discovered, func(i, j int) bool {

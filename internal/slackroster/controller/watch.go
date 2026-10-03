@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/truvity/access-roster/internal/logsafe"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 )
@@ -47,8 +48,9 @@ func (c *Controller) passRequests() map[string]time.Time {
 // record changed (a hash of every workspace's credential and record, and of
 // the console's channel and Slack Connect records: what a connect, an install
 // or a save changes), or an operator asked for a pass (see [rails.Watch]).
-// The pass is the full one: the reports are published as one document set, so
-// a pass over a single workspace would blank the others'.
+// A changed credential or record runs a sweep, since the digest does not say
+// which workspace changed; an operator's request names its workspace, and only
+// that workspace ticks, through the trigger.
 func (c *Controller) watchCredentials(ctx context.Context, wake chan<- struct{}) {
 	rails.Watch{
 		Poll: c.cfg.CredentialPoll,
@@ -57,5 +59,10 @@ func (c *Controller) watchCredentials(ctx context.Context, wake chan<- struct{})
 		},
 		Requests: c.passRequests,
 		Changed:  "a workspace's credentials changed",
+		OnRequest: func(workspace string) {
+			if err := c.deps.Trigger.Notify(ctx, workspace); err != nil {
+				c.deps.Log.WarnContext(ctx, "a requested pass could not be handed to the trigger", "workspace", logsafe.Value(workspace), "error", logsafe.Error(err))
+			}
+		},
 	}.Run(ctx, c.deps.Log, wake)
 }

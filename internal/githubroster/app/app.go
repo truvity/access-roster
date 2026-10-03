@@ -232,6 +232,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	leaseState, shared := stores.LeaseState()
+	if !shared {
+		log.InfoContext(ctx, "no shared state backs the tick leases, so they are held in this process: run one replica",
+			"adapter", stores.Adapter)
+	}
 	return &App{
 		log:   log,
 		trail: trail,
@@ -244,6 +249,8 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Console:  directoryrosterv1connect.NewGitHubServiceClient(web, cfg.console, bearer),
 			Policy:   set.Digest(),
 			Status:   rails.NewBlobReports(stores.Ports.Blob, "reports/github/"),
+			Leases:   &rails.Leases{State: leaseState, Holder: rails.NewHolder(), Log: log},
+			Trigger:  stores.Ports.Trigger,
 			Links:    links,
 			Bindings: declared.GitHub,
 		}),
@@ -266,6 +273,18 @@ func (a *App) Run(ctx context.Context) error {
 	case err := <-done:
 		return err
 	}
+}
+
+// Tick runs one target's tick once, under its lease, and returns: an
+// organisation's login, or controller.LinksTarget. It is what
+// `access-roster tick github` runs, and the shape of a function that lives
+// for one invocation. A target another runner holds is left to it.
+func (a *App) Tick(ctx context.Context, target string) error {
+	ran, _, err := a.controller.RunTarget(ctx, target)
+	if err == nil && !ran {
+		a.log.InfoContext(ctx, "the target is leased to another runner: nothing to do", "target", target)
+	}
+	return err
 }
 
 func keys(m map[string]bool) []string {

@@ -818,3 +818,42 @@ func TestAReportThatListsTheChannelPlacesItsWorkspaceWithoutATeamID(t *testing.T
 		t.Errorf("the named side = %+v", i)
 	}
 }
+
+// The host's tick probes the guest's side with the guest's bot and publishes
+// it in the HOST's report (a tick publishes its own report only). The page
+// shows it as the guest's side, exactly as when the guest's report held it,
+// and a guest's own listing wins over a probe of it.
+func TestAGuestSideProbedByTheHostsTickIsTheGuestsSide(t *testing.T) {
+	h := newConnectHarness(t)
+	teams := []string{acmeTeam, globexTeam}
+	probed := status.Discovered{ID: "C0LEGACY1", Name: "legacy-globex", Private: true, Members: 7, HostTeam: acmeTeam, Teams: teams}
+	raw, err := status.Encode(status.Workspace{
+		Version: status.Version, Workspace: "acme", Team: acmeTeam, Enabled: true,
+		DiscoveredShared: []status.Discovered{{ID: "C0LEGACY1", Name: "legacy", Members: 7, HostTeam: acmeTeam, Teams: []string{acmeTeam}}},
+		GuestSides:       []status.GuestSide{{Workspace: "globex", Discovered: probed}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.reports[status.Key("acme")] = raw
+	h.report(t, "globex", globexTeam)
+
+	row := h.list(as(everywhere), t).Discovered[0]
+	if g := sideOf(row, "globex"); g == nil || !g.Seen || !g.Listed || g.Name != "legacy-globex" || g.Privacy != "private" {
+		t.Errorf("globex side = %+v, want the probed private side", g)
+	}
+
+	// The guest lists it itself in its own report: that one is the side.
+	h.report(t, "globex", globexTeam, status.Discovered{ID: "C0LEGACY1", Name: "own-name", Members: 9, HostTeam: acmeTeam, Teams: teams})
+	row = h.list(as(everywhere), t).Discovered[0]
+	if g := sideOf(row, "globex"); g == nil || g.Name != "own-name" || g.Privacy != "public" {
+		t.Errorf("globex side = %+v, want its own listing over the probe", g)
+	}
+	// A caller who may not view globex is shown nothing of its probed side.
+	h.report(t, "globex", globexTeam)
+	for _, s := range h.list(as(northOp), t).Discovered[0].Sides {
+		if s.Workspace != "acme" {
+			t.Errorf("a scoped viewer is shown the side of %s", s.Workspace)
+		}
+	}
+}
