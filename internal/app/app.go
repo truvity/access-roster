@@ -43,6 +43,7 @@ import (
 	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
+	"github.com/truvity/access-roster/internal/exports"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubapp/mints"
 	"github.com/truvity/access-roster/internal/githubroster/catalogueapp"
@@ -129,6 +130,8 @@ type Config struct {
 	// slackCatalogue is every Slack App the deployment declares, from the
 	// file slack.catalogueFile names. Empty declares none.
 	slackCatalogue *slackcatalogue.Catalogue
+	// exports are the secrets copied out of the service, from `exports`.
+	exports []exports.Spec
 }
 
 // The listeners the hub's own Run serves. The merged service serves none of
@@ -289,6 +292,9 @@ func FromConfig(f *config.Serve) (Config, error) {
 	// only a reinstall by the workspace's owner can change.
 	if c.slackCatalogue, err = slackcatalogue.Load(slackFile); err != nil {
 		return Config{}, fmt.Errorf("slack.catalogueFile: %w", err)
+	}
+	if err = c.readExports(f); err != nil {
+		return Config{}, err
 	}
 	// A demonstration run declares its own tiers and catalogue, unless the
 	// run declares some: the Apps page is otherwise the two Apps this
@@ -718,6 +724,38 @@ func openPortStores(ctx context.Context, cfg Config, st *store.Stores, log *slog
 	return out, nil
 }
 
+// readExports validates `exports` against what this deployment declares, so
+// that an export naming an App nobody declared stops the service at start
+// rather than copying nothing for ever.
+func (c *Config) readExports(f *config.Serve) error {
+	if len(f.Exports) == 0 {
+		return nil
+	}
+	if c.demo {
+		return errors.New("exports: a demonstration keeps no credential worth copying")
+	}
+	if f.Ports == nil || f.Ports.Export == nil {
+		return errors.New("exports: nothing says where to copy to: set ports.export")
+	}
+	declared := exports.Declared{
+		SlackApps:   []string{},
+		GitHubApps:  []string{},
+		RunnerTiers: append([]string{}, c.githubRunnerTiers...),
+	}
+	for _, a := range c.slackCatalogue.Apps {
+		declared.SlackApps = append(declared.SlackApps, a.ID)
+	}
+	for i := range c.githubCatalogue.Apps {
+		declared.GitHubApps = append(declared.GitHubApps, c.githubCatalogue.Apps[i].ID)
+	}
+	var err error
+	c.exports, err = exports.FromConfig(f.Exports, declared)
+	return err
+}
+
+// Exports are the copies this deployment makes of its secrets, validated.
+func (c Config) Exports() []exports.Spec { return c.exports }
+
 // LogLevel is the level the process should log at.
 func (c Config) LogLevel() slog.Level { return c.logLevel }
 
@@ -744,7 +782,13 @@ type App struct {
 	// here, read by the console's Apps pages, written by the half that
 	// mints them. Nil where the deployment declares no App.
 	githubMints *mints.Ring
+	// exportSources is what the exports read.
+	exportSources exports.Sources
 }
+
+// ExportSources are the stores an export reads: the same ones the console
+// writes, seen read-only. A store this deployment does not keep is nil.
+func (a *App) ExportSources() exports.Sources { return a.exportSources }
 
 // Audit is the service's one recorder, for the half assembled after this
 // one: both halves write one history.
@@ -1102,6 +1146,8 @@ func New(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (*
 
 		catalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
 		githubMints:   githubMints,
+
+		exportSources: exportSources(kept),
 	}, nil
 }
 
@@ -1660,4 +1706,29 @@ func (demoConnections) PassRequests(context.Context) (map[string]connection.Pass
 
 func (demoConnections) SetOwner(context.Context, string, string) (string, bool, error) {
 	return "", false, errDemoConnect
+}
+
+// exportSources is the read half of the stores. An interface holding a nil
+// pointer is not nil, so each is set only where the store exists.
+func exportSources(kept stores) exports.Sources {
+	var s exports.Sources
+	if kept.workspaces != nil && kept.credentials != nil {
+		s.Workspaces, s.Credentials = kept.workspaces, kept.credentials
+	}
+	if kept.githubOrgs != nil {
+		s.GitHubOrgs = kept.githubOrgs
+	}
+	if kept.githubLinks != nil {
+		s.GitHubLinks = kept.githubLinks
+	}
+	if kept.githubRunnerApps != nil {
+		s.RunnerApps = kept.githubRunnerApps
+	}
+	if kept.githubCatalogueApps != nil {
+		s.GitHubCatalogueApps = kept.githubCatalogueApps
+	}
+	if kept.slackCatalogueApps != nil {
+		s.SlackCatalogueApps = kept.slackCatalogueApps
+	}
+	return s
 }

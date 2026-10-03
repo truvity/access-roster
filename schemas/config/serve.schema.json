@@ -186,6 +186,131 @@
       },
       "type": "object"
     },
+    "exports": {
+      "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0033): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves.",
+      "items": {
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "enum": [
+                    "slack-app",
+                    "github-app"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "app"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "runner-app"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "tier",
+                "org"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "source": {
+                  "const": "bundle"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "bundle"
+              ]
+            }
+          }
+        ],
+        "description": "One copy: what is copied (`source` and the field that names it) and where it goes (`path`, in `namespace`).",
+        "properties": {
+          "app": {
+            "description": "The catalogue id, for `slack-app` and `github-app`. It must be declared in the catalogue.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "bundle": {
+            "description": "The bundle, for `bundle`: each is what the Kubernetes Secret of that name held, one JSON document per entry. Written with `replace`: the key holds exactly the bundle.",
+            "enum": [
+              "workspace-credentials",
+              "github-apps",
+              "github-links",
+              "github-runner-apps",
+              "github-catalogue-apps"
+            ]
+          },
+          "interval": {
+            "$ref": "#/$defs/duration",
+            "default": "1h",
+            "description": "How often the copy is made again with nothing changed, to put back what somebody altered. A change is copied at once; this is the backstop."
+          },
+          "name": {
+            "description": "Identifies the export in the log, the metrics and its lease: lower-case letters, digits, '.', '_' and '-'. Absent, the source and what it names, e.g. `slack-app.alerts`.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespace": {
+            "description": "The OpenBao namespace. Absent, `ports.export.openbao.namespace`.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "org": {
+            "description": "The organisation, for `runner-app`.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "description": "The key under the KV mount: `slack-apps/alerts`. No leading or trailing slash.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "properties": {
+            "additionalProperties": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "description": "Which properties of the App are written and under what names: `{private_key: github-private-key}`. Absent, all of the source's, under the names the External Secrets PushSecrets wrote: `bot_token`; `app_id`, `installation_id`, `private_key`; `github-app-id`, `github-installation-id`, `github-private-key` for a runner App. A property export is a PATCH: other properties of the key are left as they are. Not for `bundle`.",
+            "type": "object"
+          },
+          "source": {
+            "description": "What is copied. `slack-app`: a catalogue Slack App's bot token (`app`). `github-app`: a catalogue GitHub App's id, installation id and private key (`app`). `runner-app`: a runner App's id, installation id and private key (`tier`, `org`). `bundle`: one of the disaster-recovery bundles, whole (`bundle`).",
+            "enum": [
+              "slack-app",
+              "github-app",
+              "runner-app",
+              "bundle"
+            ]
+          },
+          "tier": {
+            "description": "A runner tier, for `runner-app`. It must be one of `github.runnerTiers`.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "path"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "freshness": {
       "additionalProperties": false,
       "description": "How the directory's snapshot is kept current.",
@@ -532,6 +657,125 @@
           },
           "required": [
             "table"
+          ],
+          "type": "object"
+        },
+        "export": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "adapter": {
+                    "const": "openbao"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "openbao"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "auth": {
+                    "properties": {
+                      "method": {
+                        "const": "jwt"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "auth": {
+                    "required": [
+                      "tokenFile"
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "description": "The store the copies of `exports` are written to (docs/decisions/0033). Absent, nothing is copied out of the service, and `exports` must be empty.",
+          "properties": {
+            "adapter": {
+              "description": "`openbao` writes to a KV version 2 mount of an OpenBao. `memory` keeps the copies in this process and is for a test or the demonstration.",
+              "enum": [
+                "openbao",
+                "memory"
+              ]
+            },
+            "openbao": {
+              "additionalProperties": false,
+              "description": "The OpenBao the copies are written to. Nothing is contacted at start: an OpenBao that is down must not stop the service, since a copy is never a dependency.",
+              "properties": {
+                "address": {
+                  "$ref": "#/$defs/url",
+                  "description": "The server, with no path: `https://openbao.example`."
+                },
+                "auth": {
+                  "additionalProperties": false,
+                  "description": "How the service logs in, inside each namespace it writes to. The `kubernetes` and `jwt` methods take the same request (`auth/<mount>/login` with a role and a JWT) and differ in the mount they default to and where the JWT comes from.",
+                  "properties": {
+                    "method": {
+                      "description": "`kubernetes`: the Kubernetes auth method, with this pod's ServiceAccount token. `jwt`: the JWT/OIDC method, with a token the platform projects (a ServiceAccount token of another audience, or, on AWS Lambda, the web identity token of outbound federation) from `tokenFile`.",
+                      "enum": [
+                        "kubernetes",
+                        "jwt"
+                      ]
+                    },
+                    "mount": {
+                      "description": "The auth method's mount path in each namespace. Absent, the method's name.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "description": "The role the login asks for. It must be bound to this workload's identity and carry a policy that reads, creates, updates and patches only the paths `exports` names.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "tokenFile": {
+                      "description": "Where the JWT is read from, afresh on every login. Absent with `kubernetes`, the pod's ServiceAccount token; required with `jwt`.",
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "role"
+                  ],
+                  "type": "object"
+                },
+                "caFile": {
+                  "description": "A PEM bundle of the authorities that sign the server's certificate, in place of the system's.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "mount": {
+                  "default": "kv",
+                  "description": "The KV version 2 mount.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "namespace": {
+                  "description": "The OpenBao namespace an export that names none is written to.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "address",
+                "auth"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "adapter"
           ],
           "type": "object"
         },

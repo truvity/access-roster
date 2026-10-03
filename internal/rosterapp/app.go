@@ -30,6 +30,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
 	"github.com/truvity/access-roster/internal/config"
+	"github.com/truvity/access-roster/internal/exports"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hublocal"
 	"github.com/truvity/access-roster/internal/issuer"
@@ -86,6 +87,9 @@ type App struct {
 	issuer    *issuerapp.App
 	stores    *store.Stores
 	log       *slog.Logger
+	// exports copies secrets out of the service, out of band; nil when the
+	// deployment declares none.
+	exports *exports.Runner
 }
 
 // Handler is everything served on the public port: the OpenID surface
@@ -192,9 +196,15 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Token: auditToken(assembled, audience),
 		})
 	}
+	copies, err := openExports(cfg, stores, directory, log)
+	if err != nil {
+		directory.Close()
+		stores.Close()
+		return nil, err
+	}
 	log.InfoContext(ctx, "access-roster assembled as one service: a login makes no network "+
 		"call except to the corporate directory")
-	return &App{directory: directory, issuer: assembled, stores: stores, log: log}, nil
+	return &App{directory: directory, issuer: assembled, stores: stores, log: log, exports: copies}, nil
 }
 
 // Run serves the listeners and drives the directory's loops until the
@@ -203,6 +213,11 @@ func (a *App) Run(ctx context.Context) error {
 	group, gctx := errgroup.WithContext(ctx)
 	group.Go(func() error { return a.issuer.Run(gctx) })
 	group.Go(func() error { return a.directory.RunLoops(gctx) })
+	if a.exports != nil {
+		// Run returns nil whatever the store does: an export never ends the
+		// service, and ends with it.
+		group.Go(func() error { return a.exports.Run(gctx) })
+	}
 	if err := group.Wait(); err != nil {
 		return fmt.Errorf("access-roster: %w", err)
 	}

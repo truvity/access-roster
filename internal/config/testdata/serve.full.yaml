@@ -56,4 +56,34 @@ audit:
   queryURL: http://audit-query.access-issuer.svc:8080
   audience: audit
   forwardedForTrustedHops: 1
-ports: {adapter: legacy}
+ports:
+  adapter: nats
+  nats: {url: "nats://nats.nats.svc:4222"}
+  export:
+    adapter: openbao
+    openbao:
+      address: https://openbao.kernel.truvity.private
+      caFile: /var/run/openbao/ca.pem
+      mount: kv
+      namespace: kernel
+      auth:
+        method: jwt
+        mount: jwt-kernel
+        role: access-roster-writer
+        tokenFile: /var/run/openbao/token
+exports:
+  - name: slack-app.alerts
+    source: slack-app
+    app: alerts
+    namespace: kernel
+    path: slack-apps/alerts
+    properties: {bot_token: bot_token}
+    interval: 1h
+  - source: runner-app
+    tier: stable
+    org: example-org
+    namespace: kernel
+    path: arc/example
+  - source: bundle
+    bundle: github-apps
+    path: access-roster-backup/github-apps

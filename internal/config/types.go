@@ -151,6 +151,60 @@ type (
 		Cluster     *bool  `json:"cluster,omitempty"`
 	}
 
+	// Export is one copy of a secret the console keeps, made out of the service
+	// into a secret store a consumer reads (docs/decisions/0033). Source names
+	// what is copied, Path where, and the fields beside them say which.
+	Export struct {
+		// Name identifies the export in the log, the metrics and its lease.
+		// Empty is the source and what it names.
+		Name string `json:"name,omitempty"`
+		// Source is slack-app, github-app, runner-app or bundle.
+		Source string `json:"source"`
+		// App is the catalogue id of a slack-app or a github-app.
+		App string `json:"app,omitempty"`
+		// Tier and Org name a runner-app.
+		Tier string `json:"tier,omitempty"`
+		Org  string `json:"org,omitempty"`
+		// Bundle names a bundle.
+		Bundle string `json:"bundle,omitempty"`
+		// Namespace is the OpenBao namespace written to; empty is the
+		// adapter's.
+		Namespace string `json:"namespace,omitempty"`
+		// Path is the key under the KV mount.
+		Path string `json:"path"`
+		// Properties maps a property of the source to the property written.
+		Properties map[string]string `json:"properties,omitempty"`
+		// Interval is how often the copy is made again with nothing changed.
+		Interval *Duration `json:"interval,omitempty"`
+	}
+
+	// PortsExport names the adapter behind the Export port.
+	PortsExport struct {
+		Adapter string              `json:"adapter,omitempty"`
+		OpenBao *PortsExportOpenBao `json:"openbao,omitempty"`
+	}
+
+	// PortsExportOpenBao is the OpenBao KV mount the `openbao` Export adapter
+	// writes to and how it logs in. No credential is configured: the login
+	// presents a token the platform provides, read from a file.
+	PortsExportOpenBao struct {
+		Address   string       `json:"address,omitempty"`
+		CAFile    string       `json:"caFile,omitempty"`
+		Mount     string       `json:"mount,omitempty"`
+		Namespace string       `json:"namespace,omitempty"`
+		Auth      *OpenBaoAuth `json:"auth,omitempty"`
+	}
+
+	// OpenBaoAuth is how the service logs in to OpenBao inside each namespace
+	// it writes to: the kubernetes or the jwt auth method, as a role, with a
+	// token read from a file.
+	OpenBaoAuth struct {
+		Method    string `json:"method,omitempty"`
+		Mount     string `json:"mount,omitempty"`
+		Role      string `json:"role,omitempty"`
+		TokenFile string `json:"tokenFile,omitempty"`
+	}
+
 	// Ports chooses the adapter behind the storage ports of
 	// docs/design/ports.md.
 	//
@@ -165,6 +219,9 @@ type (
 		NATS    *NATS        `json:"nats,omitempty"`
 		// DynamoDB is the table of the `dynamodb` adapter.
 		DynamoDB *DynamoDB `json:"dynamodb,omitempty"`
+		// Export replaces the Export port, which has no adapter by default:
+		// nothing is copied out of the service unless a deployment says where.
+		Export *PortsExport `json:"export,omitempty"`
 	}
 
 	// DynamoDB is where the `dynamodb` adapter keeps State, the transitional
@@ -288,6 +345,9 @@ type Serve struct {
 	GitHub      *GitHub      `json:"github,omitempty"`
 	Slack       *Slack       `json:"slack,omitempty"`
 	Audit       *Audit       `json:"audit,omitempty"`
+	// Exports are the copies of secrets this service makes out of itself, into
+	// the secret store named by ports.export (docs/decisions/0033).
+	Exports []Export `json:"exports,omitempty"`
 }
 
 // Roster is what the two controllers share.

@@ -443,3 +443,42 @@ func where(t *testing.T, client *http.Client, url string) string {
 	defer func() { _ = response.Body.Close() }()
 	return response.Header.Get("Location")
 }
+
+// An export names what the deployment declares and where to copy it, or the
+// service does not start: an export of an App nobody declared would copy
+// nothing for ever and say nothing.
+func TestExportsAreHeldToWhatTheDeploymentDeclares(t *testing.T) {
+	dir := t.TempDir()
+	catalogue := filepath.Join(dir, "slack.yaml")
+	if err := os.WriteFile(catalogue, []byte("apps:\n  - id: alerts\n    workspace: acme\n    botScopes: [chat:write]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	export := config.Export{Source: "slack-app", App: "alerts", Path: "slack-apps/alerts"}
+	to := &config.Ports{Export: &config.PortsExport{Adapter: "memory"}}
+	for _, tc := range []struct {
+		name   string
+		change func(*config.Serve)
+		want   string
+	}{
+		{"no place to copy to", func(f *config.Serve) { f.Demo, f.Exports = false, []config.Export{export} }, "ports.export"},
+		{"a demonstration", func(f *config.Serve) { f.Demo, f.Ports, f.Exports = true, to, []config.Export{export} }, "demonstration"},
+		{"an App nobody declared", func(f *config.Serve) { f.Demo, f.Ports, f.Exports = false, to, []config.Export{export} }, "not declared in slackApps"},
+		{"a source this build does not know", func(f *config.Serve) {
+			f.Demo, f.Ports, f.Exports = false, to, []config.Export{{Source: "ssh-key", Path: "a/b"}}
+		}, "ssh-key"},
+	} {
+		if _, err := app.FromConfig(issuerFile(t, tc.change)); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: %v, want an error with %q", tc.name, err, tc.want)
+		}
+	}
+	cfg, err := app.FromConfig(issuerFile(t, func(f *config.Serve) {
+		f.Demo, f.Ports, f.Exports = false, to, []config.Export{export}
+		f.Slack = &config.Slack{CatalogueFile: catalogue}
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Exports(); len(got) != 1 || got[0].Name != "slack-app.alerts" {
+		t.Errorf("exports = %+v", got)
+	}
+}
