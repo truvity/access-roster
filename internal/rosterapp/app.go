@@ -29,6 +29,7 @@ import (
 
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/hublocal"
 	"github.com/truvity/access-roster/internal/issuer"
@@ -36,27 +37,36 @@ import (
 	"github.com/truvity/access-roster/internal/server"
 )
 
-// Config is both halves' configuration. Each is read from the
-// environment by its own package, so the chart remains the one place
-// that decides anything, and neither half grows a second way to be
-// configured.
+// Config is both halves' configuration. Both are built from the one file the
+// service is given, so neither half grows a second way to be configured, and
+// the two cannot read the same key two ways.
 type Config struct {
 	Directory app.Config
 	Issuer    issuerapp.Config
 }
 
 // LogLevel is the level the process should log at. It is the issuer's,
-// because both read the same LOG_LEVEL and the issuer is the half that
+// because both read the same log.level and the issuer is the half that
 // owns the origin.
 func (c Config) LogLevel() slog.Level { return c.Issuer.LogLevel() }
 
-// Load reads the configuration from the environment.
-func Load() (Config, error) {
-	directory, err := app.Load()
+// Load reads the configuration file, holds it to its schema, and builds both
+// halves' settings from it.
+func Load(file string) (Config, error) {
+	f, err := config.LoadIssuer(file)
 	if err != nil {
 		return Config{}, err
 	}
-	issuer, err := issuerapp.Load()
+	return FromConfig(f)
+}
+
+// FromConfig builds both halves' settings from a configuration already read.
+func FromConfig(f *config.Issuer) (Config, error) {
+	directory, err := app.FromConfig(f)
+	if err != nil {
+		return Config{}, err
+	}
+	issuer, err := issuerapp.FromConfig(f)
 	if err != nil {
 		return Config{}, err
 	}
@@ -104,11 +114,11 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		Directory: hublocal.New(directory.Hub(), 0),
 		Console:   directory.ConsoleHandler(),
 		Ready:     []health.Dependency{directory.Readiness()},
-		// The SAME policy, loaded once. Both halves read POLICY_DIR, so
+		// The SAME policy, loaded once. Both halves read policyDir, so
 		// they would ordinarily agree — but their fallbacks differ, and
 		// two halves that can disagree about the policy is the class of
 		// failure this merge existed to end. Found by running it: with
-		// DEMO=1 the directory built a demonstration policy and the
+		// `demo` the directory built a demonstration policy and the
 		// issuer refused to start on an empty path.
 		Policy: directory.Policy(),
 		// And the console learns who is signed in from the issuer's own
@@ -157,7 +167,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		target, err := url.Parse(queryURL)
 		if err != nil || target.Scheme == "" || target.Host == "" {
 			directory.Close()
-			return nil, fmt.Errorf("access-roster: AUDIT_QUERY_URL %q is not a URL", queryURL)
+			return nil, fmt.Errorf("access-roster: audit.queryURL %q is not a URL", queryURL)
 		}
 		directory.ConsoleServer().UseAuditQuery(&server.AuditQuery{
 			URL:   target,

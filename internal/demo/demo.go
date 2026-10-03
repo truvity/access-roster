@@ -32,7 +32,7 @@ type Tenant struct {
 
 // Policy is the demonstration policy: enough of every table that each
 // mechanic can be seen working rather than described. It is used only
-// when the prototype runs with DEMO=1 and no policy of its own.
+// when the prototype runs with `demo: true` and no policy of its own.
 //
 // What each part is here to show:
 //

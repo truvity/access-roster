@@ -89,7 +89,7 @@ const (
 )
 
 // CheckGroupsScopingMode refuses a value no release has ever run.
-// [issuerapp.Load] calls it on whatever `GROUPS_SCOPING` names, before a
+// [issuerapp.FromConfig] calls it on whatever `groupsScoping` names, before a
 // [Config] is ever built, so an installation that asks for something
 // unrecognised is refused at start with a reason rather than silently
 // falling back to a mode it did not ask for — silence here would be the

@@ -14,34 +14,36 @@ import (
 
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
+	"github.com/truvity/access-roster/internal/config"
 )
 
-// boot assembles a hub the way a deployment would: through the
-// environment, because that is the contract the chart writes to and the
-// place four settings were being read and never set.
-// Each of these builds a whole hub from the environment, so none of them
-// can run in parallel: t.Setenv and t.Parallel are mutually exclusive,
-// and reading the environment is exactly what is being tested.
-func boot(t *testing.T, env map[string]string) *app.App {
+// issuerFile is the service's configuration file as a test states it: the
+// defaults a test wants, then what the test changes.
+func issuerFile(t *testing.T, change ...func(*config.Issuer)) *config.Issuer {
 	t.Helper()
-	base := map[string]string{
-		"DEMO":             "1",
-		"STORE":            "memory",
-		"API_PORT":         "0",
-		"CONSOLE_PORT":     "0",
-		"HEALTH_PORT":      "0",
-		"ADMIN_PASSWORD":   "recover-me",
-		"RECOVERY_ENABLED": "true",
+	// The recovery password is a declared secret: the file names the variable.
+	t.Setenv("ACCESS_TEST_ADMIN_PASSWORD", "recover-me")
+	enabled := true
+	f := &config.Issuer{
+		IssuerURL:        "https://issuer.example",
+		Demo:             true,
+		Store:            "memory",
+		AdminPasswordEnv: "ACCESS_TEST_ADMIN_PASSWORD",
+		Recovery:         &config.Recovery{Enabled: &enabled},
 	}
-	for k, v := range env {
-		base[k] = v
+	for _, c := range change {
+		c(f)
 	}
-	for k, v := range base {
-		t.Setenv(k, v)
-	}
-	cfg, err := app.Load()
+	return f
+}
+
+// boot assembles a hub the way a deployment would: from the configuration
+// file's settings, which is the contract the chart writes to.
+func boot(t *testing.T, change ...func(*config.Issuer)) *app.App {
+	t.Helper()
+	cfg, err := app.FromConfig(issuerFile(t, change...))
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("FromConfig: %v", err)
 	}
 	assembled, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
@@ -51,13 +53,19 @@ func boot(t *testing.T, env map[string]string) *app.App {
 	return assembled
 }
 
+// noDirectoryLogin turns the directory sign-in off.
+func noDirectoryLogin(f *config.Issuer) {
+	off := false
+	f.Login = &config.Login{Directory: &off}
+}
+
 // console boots a hub that knows its own address.
 //
-// The order matters: a sign-in redirect is built from PUBLIC_URL, so the
+// The order matters: a sign-in redirect is built from publicURL, so the
 // hub has to be told where it is before it can send a browser back to
 // itself. The listener is opened first with a handler it does not have
 // yet, which is the only way round the circle.
-func console(t *testing.T, env map[string]string) (*http.Client, string, *app.App) {
+func console(t *testing.T, change ...func(*config.Issuer)) (*http.Client, string, *app.App) {
 	t.Helper()
 	var handler http.Handler
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,11 +73,7 @@ func console(t *testing.T, env map[string]string) (*http.Client, string, *app.Ap
 	}))
 	t.Cleanup(server.Close)
 
-	settings := map[string]string{"PUBLIC_URL": server.URL}
-	for k, v := range env {
-		settings[k] = v
-	}
-	assembled := boot(t, settings)
+	assembled := boot(t, append([]func(*config.Issuer){func(f *config.Issuer) { f.PublicURL = server.URL }}, change...)...)
 	handler = assembled.ConsoleHandler()
 
 	jar, err := cookiejar.New(nil)
@@ -129,7 +133,7 @@ func rpc(t *testing.T, client *http.Client, url, body string) (int, string) {
 // service exists for, and until recently the button on the sign-in page
 // led to a route that did not exist.
 func TestAPersonSignsInAndReachesTheConsole(t *testing.T) {
-	client, at, _ := console(t, nil)
+	client, at, _ := console(t)
 
 	code, page := get(t, client, at+"/login")
 	if code != http.StatusOK || !strings.Contains(page, "Continue with") {
@@ -165,7 +169,7 @@ func TestAPersonSignsInAndReachesTheConsole(t *testing.T) {
 	}
 }
 
-// Both OAuth redirect URIs are built from PUBLIC_URL, and so are the
+// Both OAuth redirect URIs are built from publicURL, and so are the
 // values the setup steps tell an operator to paste. A deployment that
 // leaves it unset registers a redirect no browser will reach — which is
 // what the chart was doing.
@@ -173,7 +177,7 @@ func TestTheRedirectsFollowThePublicURL(t *testing.T) {
 	// A fixed public URL, so the values are assertable — and recovery
 	// rather than a sign-in to read them, because a sign-in redirect
 	// built from that URL would go somewhere this test is not.
-	client, at, _ := console(t, map[string]string{"PUBLIC_URL": "https://directory.example"})
+	client, at, _ := console(t, func(f *config.Issuer) { f.PublicURL = "https://directory.example" })
 	if code, body := rpc(t, client, at+"/login/recovery", `{"proof":"recover-me"}`); code != http.StatusNoContent {
 		t.Fatalf("recovery = %d, %q", code, body)
 	}
@@ -199,7 +203,7 @@ func TestTheRedirectsFollowThePublicURL(t *testing.T) {
 // against, so it is open — and that is a development posture, asserted
 // here so that it cannot become a deployed one unnoticed.
 func TestTheAPIListenerIsOpenOnlyWithNothingToVerifyAgainst(t *testing.T) {
-	assembled := boot(t, nil)
+	assembled := boot(t)
 	client, server := browser(t, assembled.APIHandler())
 
 	code, body := rpc(t, client, server.URL+"/directory.v1.DirectoryService/Describe", "{}")
@@ -214,7 +218,7 @@ func TestTheAPIListenerIsOpenOnlyWithNothingToVerifyAgainst(t *testing.T) {
 // Turning the hub's own sign-in off closes the routes, and leaves the
 // recovery path and the API alone.
 func TestSignInOffLeavesOneDoor(t *testing.T) {
-	client, at, _ := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client, at, _ := console(t, noDirectoryLogin)
 
 	code, page := get(t, client, at+"/login")
 	if code != http.StatusOK || strings.Contains(page, "Continue with") {
@@ -231,7 +235,7 @@ func TestSignInOffLeavesOneDoor(t *testing.T) {
 // Recovery is the way in when the ordinary one is broken, and it grants
 // operator without any membership at all.
 func TestRecoveryReachesTheConsole(t *testing.T) {
-	client, at, _ := console(t, nil)
+	client, at, _ := console(t)
 
 	code, body := rpc(t, client, at+"/login/recovery", `{"proof":"wrong"}`)
 	if code != http.StatusUnauthorized {
@@ -252,7 +256,7 @@ func TestRecoveryReachesTheConsole(t *testing.T) {
 // A deployment with no recovery path has none: the page offers nothing
 // and the route is closed.
 func TestRecoveryCanBeTurnedOff(t *testing.T) {
-	client, at, _ := console(t, map[string]string{"RECOVERY_ENABLED": "false"})
+	client, at, _ := console(t, func(f *config.Issuer) { off := false; f.Recovery.Enabled = &off })
 
 	code, page := get(t, client, at+"/login")
 	if code != http.StatusOK || strings.Contains(page, "Recovery sign-in") {
@@ -266,17 +270,18 @@ func TestRecoveryCanBeTurnedOff(t *testing.T) {
 // Configuration that cannot work is refused at start rather than
 // producing a hub that behaves unlike the one that was asked for.
 func TestImpossibleConfigurationIsRefused(t *testing.T) {
-
-	for _, tc := range []struct{ name, key, value string }{
-		{"an unknown store", "STORE", "postgres"},
-		{"a duration that is not one", "REFRESH_INTERVAL", "soon"},
-		{"a log level that is not one", "LOG_LEVEL", "chatty"},
+	for _, tc := range []struct {
+		name   string
+		change func(*config.Issuer)
+	}{
+		{"an unknown store", func(f *config.Issuer) { f.Store = "postgres" }},
+		{"a log level that is not one", func(f *config.Issuer) { f.Log = &config.Log{Level: "chatty"} }},
+		{"a runner tier that is not one", func(f *config.Issuer) { f.GitHub = &config.GitHub{RunnerTiers: []string{"Not A Tier"}} }},
+		{"a recovery password variable that is not set", func(f *config.Issuer) { f.AdminPasswordEnv = "ACCESS_TEST_NOT_SET" }},
 	} {
-		t.Setenv(tc.key, tc.value)
-		if _, err := app.Load(); err == nil {
+		if _, err := app.FromConfig(issuerFile(t, tc.change)); err == nil {
 			t.Errorf("%s was accepted", tc.name)
 		}
-		t.Setenv(tc.key, "")
 	}
 }
 
@@ -293,16 +298,18 @@ func TestAMalformedGitHubAppCatalogueIsRefusedAtStart(t *testing.T) {
 		return path
 	}
 
-	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", write("level.yaml", "apps:\n  - id: renovate\n    org: example-org\n    permissions: {contents: owner}\n"))
-	if _, err := app.Load(); err == nil || !strings.Contains(err.Error(), "GITHUB_APPS_CATALOGUE_FILE") {
+	withCatalogue := func(path string) func(*config.Issuer) {
+		return func(f *config.Issuer) { f.GitHub = &config.GitHub{CatalogueFile: path} }
+	}
+	level := write("level.yaml", "apps:\n  - id: renovate\n    org: example-org\n    permissions: {contents: owner}\n")
+	if _, err := app.FromConfig(issuerFile(t, withCatalogue(level))); err == nil || !strings.Contains(err.Error(), "github.catalogueFile") {
 		t.Errorf("a permission level GitHub does not have = %v", err)
 	}
-	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", filepath.Join(dir, "absent.yaml"))
-	if _, err := app.Load(); err == nil {
+	if _, err := app.FromConfig(issuerFile(t, withCatalogue(filepath.Join(dir, "absent.yaml")))); err == nil {
 		t.Error("a catalogue file that is not there was accepted")
 	}
 
-	t.Setenv("GITHUB_APPS_CATALOGUE_FILE", write("grant.yaml", `
+	grant := write("grant.yaml", `
 apps:
   - id: renovate
     org: example-org
@@ -311,13 +318,10 @@ apps:
       - group: nobody:declares:this
         repositories: ["*"]
         permissions: {contents: read}
-`))
-	for k, v := range map[string]string{"DEMO": "1", "STORE": "memory", "ADMIN_PASSWORD": "recover-me"} {
-		t.Setenv(k, v)
-	}
-	cfg, err := app.Load()
+`)
+	cfg, err := app.FromConfig(issuerFile(t, withCatalogue(grant)))
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("FromConfig: %v", err)
 	}
 	if assembled, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
 		assembled.Close()
@@ -341,7 +345,7 @@ apps:
 // arriving with no session anywhere still has to get one. What it
 // removes is the second session for a person who already has one.
 func TestTheConsoleAdmitsWhoeverTheIssuerSignedIn(t *testing.T) {
-	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client, at, assembled := console(t, noDirectoryLogin)
 
 	// Nobody yet: the console has no opinion and sends them to sign in.
 	if code, _ := get(t, client, at+"/.access/whoami"); code != http.StatusOK {
@@ -371,7 +375,7 @@ func TestTheConsoleAdmitsWhoeverTheIssuerSignedIn(t *testing.T) {
 // door: the console is a client of the issuer like any other
 // application, and holds nothing special.
 func TestSomebodyWithNoSessionIsSentToTheIssuer(t *testing.T) {
-	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client, at, assembled := console(t, noDirectoryLogin)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	// Before: the console's own page, which is the split deployment's
@@ -394,7 +398,7 @@ func TestSomebodyWithNoSessionIsSentToTheIssuer(t *testing.T) {
 // session the flow established — so leaving it in the URL would only put
 // it in a bookmark and in every referrer.
 func TestTheCodeIsStrippedFromTheConsolesURL(t *testing.T) {
-	client, at, assembled := console(t, map[string]string{"LOGIN_DIRECTORY": "false"})
+	client, at, assembled := console(t, noDirectoryLogin)
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 	assembled.ConsoleServer().UseSignedIn(func(*http.Request) (access.Principal, bool) {

@@ -166,12 +166,8 @@ func TestSigningKeyRotatesUnderARunningIssuerWithNoRestart(t *testing.T) {
 	// sign-in tests use -- so [App.MintFor] below has something real to
 	// decide rather than refusing every audience the way the default
 	// nobody{} directory does.
-	app := bootWith(t, map[string]string{
-		"SIGNING_KEY_FILE":             keyPath,
-		"SIGNING_KEY_POLL_INTERVAL":    "20ms",
-		"SIGNING_KEY_ACTIVATION_DELAY": "40ms",
-		"SIGNING_KEY_OVERLAP":          "1h",
-	}, stubHub(t, true, false))
+	app := bootWith(t, stubHub(t, true, false),
+		signingKeys(keyPath, nil, 20*time.Millisecond, 40*time.Millisecond, time.Hour))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -251,13 +247,7 @@ func TestAdditionalSigningKeyRotatesOnItsOwnFileIndependently(t *testing.T) {
 	}
 	rotateProjectedECKey(t, extraDir, 1, extraKey1)
 
-	app := boot(t, map[string]string{
-		"SIGNING_KEY_FILE":             primaryPath,
-		"SIGNING_KEY_FILES":            extraPath,
-		"SIGNING_KEY_POLL_INTERVAL":    "20ms",
-		"SIGNING_KEY_ACTIVATION_DELAY": "40ms",
-		"SIGNING_KEY_OVERLAP":          "1h",
-	})
+	app := boot(t, signingKeys(primaryPath, []string{extraPath}, 20*time.Millisecond, 40*time.Millisecond, time.Hour))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

@@ -1,0 +1,10 @@
+release: access-issuer
+policyDir: /var/run/slack-roster/policy
+consoleURL: http://access-issuer.access.svc:8080/console
+tokenFile: /var/run/secrets/slack-roster/token
+recordsDir: /var/run/slack-roster/workspaces
+interval: 15m
+log: {level: info}
+audit: {writer: "http://audit.access-issuer.svc:8080", tokenFile: /var/run/audit/token}
+credentialsDir: /var/run/slack-roster/credentials
+enabledWorkspaces: [example]

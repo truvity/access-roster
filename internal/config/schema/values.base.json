@@ -1,0 +1,983 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "access-issuer",
+  "type": "object",
+  "additionalProperties": false,
+  "_comment": "Nothing is required here that the template already refuses to render without. The schema catches typos and wrong types; `required` in the template catches an unset value, with a sentence saying why it matters. Each component's `config` is generated into this file from the schema its binary validates against (`just config-schemas`); the rest is written in internal/config/schema/values.base.json.",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        }
+      }
+    },
+    "signingKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerName": {
+              "type": "string",
+              "minLength": 1
+            },
+            "issuerKind": {
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            },
+            "algorithm": {
+              "enum": [
+                "RSA",
+                "ECDSA"
+              ]
+            },
+            "size": {
+              "type": "integer",
+              "enum": [
+                256,
+                384,
+                521,
+                2048,
+                3072,
+                4096
+              ]
+            },
+            "encoding": {
+              "enum": [
+                "PKCS1",
+                "PKCS8"
+              ]
+            },
+            "renewBefore": {
+              "$ref": "#/definitions/duration"
+            },
+            "duration": {
+              "$ref": "#/definitions/duration"
+            }
+          }
+        },
+        "additional": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "algorithm",
+              "size"
+            ],
+            "properties": {
+              "algorithm": {
+                "enum": [
+                  "RSA",
+                  "ECDSA"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "enum": [
+                  256,
+                  384,
+                  521,
+                  2048,
+                  3072,
+                  4096
+                ]
+              },
+              "encoding": {
+                "enum": [
+                  "PKCS1",
+                  "PKCS8"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "issuerName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "issuerKind": {
+                "enum": [
+                  "Issuer",
+                  "ClusterIssuer"
+                ]
+              },
+              "renewBefore": {
+                "$ref": "#/definitions/duration"
+              },
+              "duration": {
+                "$ref": "#/definitions/duration"
+              }
+            }
+          }
+        }
+      }
+    },
+    "exchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "clusters": {
+          "type": "array",
+          "description": "Clusters whose workloads may exchange, each verified against the key set that cluster publishes. No secret in any row.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "issuer"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The estate's word for the cluster; what a workload matcher names."
+              },
+              "issuer": {
+                "type": "string",
+                "description": "The `iss` its ServiceAccount tokens carry."
+              },
+              "jwksUri": {
+                "type": "string",
+                "description": "Where its public keys are. Empty discovers it from the issuer."
+              }
+            }
+          }
+        },
+        "aws": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "AWS accounts whose IAM roles may exchange their outbound-identity-federation token. Empty verifies none.",
+          "properties": {
+            "audience": {
+              "type": "string",
+              "description": "The audience the role must request from STS. Empty means the issuer's own URL."
+            },
+            "maxAge": {
+              "type": "string",
+              "description": "Refuse a token whose iat is older, whatever its exp allows. Default 5m, at most 1h."
+            },
+            "accounts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "account",
+                  "name",
+                  "issuer"
+                ],
+                "properties": {
+                  "account": {
+                    "type": "string",
+                    "pattern": "^[0-9]{12}$",
+                    "description": "The 12-digit AWS account id."
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "The estate's word for the account, for logs."
+                  },
+                  "issuer": {
+                    "type": "string",
+                    "description": "The account's token issuer, from get-outbound-web-identity-federation-info."
+                  },
+                  "jwksUri": {
+                    "type": "string",
+                    "description": "Where its public keys are. Empty means <issuer>/.well-known/jwks.json."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Require this AWS Organizations id in the token."
+                  },
+                  "algs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "ES384",
+                        "RS256"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "policy": {
+      "type": "object"
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "parentRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "namespace": {
+                "type": "string"
+              },
+              "sectionName": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "gatewayClassName": {
+          "type": "string"
+        },
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerName": {
+              "type": "string"
+            },
+            "issuerKind": {
+              "enum": [
+                "Issuer",
+                "ClusterIssuer"
+              ]
+            },
+            "privateKey": {
+              "$ref": "#/definitions/privateKey"
+            }
+          }
+        },
+        "sharedWith": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rootRedirect": {
+          "type": "string",
+          "description": "Where a bare GET of the host root goes; empty serves 404."
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "clients": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gatewayNamespace": {
+          "type": "string"
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "githubRoster": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The GitHub controller: a second process beside the service that makes each organisation's teams match the policy's github table.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "slackRoster": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The Slack controller: a second process beside the service that makes each workspace's channels match the policy's slack table.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Render the controller. Needs exchange.clusters to name this cluster and console.mount to be set."
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "resources": {
+          "type": "object"
+        }
+      }
+    },
+    "githubApps": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalogue": {
+          "type": "array",
+          "description": "GitHub Apps declared as data, created and installed from the console. The service validates the whole catalogue again at start.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "org",
+              "permissions"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+              },
+              "org": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9]|-[A-Za-z0-9])*$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 34
+              },
+              "description": {
+                "type": "string"
+              },
+              "public": {
+                "type": "boolean"
+              },
+              "permissions": {
+                "type": "object",
+                "minProperties": 1,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "read",
+                    "write",
+                    "admin"
+                  ]
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                }
+              },
+              "installation": {
+                "type": "string",
+                "enum": [
+                  "all",
+                  "selected"
+                ]
+              },
+              "grants": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "group",
+                    "repositories",
+                    "permissions"
+                  ],
+                  "properties": {
+                    "group": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "repositories": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "permissions": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "propertyNames": {
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "read",
+                          "write",
+                          "admin"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "push": {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Copy this App's credential to a secret store with an External Secrets PushSecret: its three property keys only, to the store and path named here. Absent pushes nothing.",
+                "required": [
+                  "secretStore",
+                  "remoteKey"
+                ],
+                "properties": {
+                  "secretStore": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "SecretStore",
+                          "ClusterSecretStore"
+                        ]
+                      }
+                    }
+                  },
+                  "remoteKey": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "refreshInterval": {
+                    "$ref": "#/definitions/duration"
+                  },
+                  "deletionPolicy": {
+                    "type": "string",
+                    "enum": [
+                      "None",
+                      "Delete"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the link App and one App per bound organisation to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            }
+          }
+        }
+      }
+    },
+    "secretManagers": {
+      "description": "Removed in v1.30.0 — the console's secret-store view was removed. Setting this key fails the render with a clear message. See CHANGELOG.md and docs/decisions/0002-mission-boundary-tokens-and-memberships.md."
+    },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The projected service-account token this service and the controllers present to the audit installation. The installation itself (`audit.writer` and the rest) is the `config`'s.",
+      "properties": {
+        "token": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "audience": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The audience of the projected token presented to the receiver."
+            },
+            "expirationSeconds": {
+              "type": "integer",
+              "minimum": 600
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object"
+    },
+    "podAnnotations": {
+      "type": "object"
+    },
+    "nodeSelector": {
+      "type": "object"
+    },
+    "tolerations": {
+      "type": "array"
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the console is mounted on the issuer's origin. The rest of what the console is configured with is the `config`'s.",
+      "properties": {
+        "mount": {
+          "type": "string",
+          "description": "Where the console is mounted on this issuer's origin, e.g. /console. Empty serves no console."
+        }
+      }
+    },
+    "directory": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The corporate directories this service reads itself.",
+      "properties": {
+        "workspaces": {
+          "type": "array",
+          "description": "Declared workspaces: each names a Secret holding a service-account key and the admin to impersonate.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "backend",
+              "admin",
+              "secretName"
+            ],
+            "properties": {
+              "backend": {
+                "type": "string"
+              },
+              "admin": {
+                "type": "string"
+              },
+              "secretName": {
+                "type": "string"
+              },
+              "secretKey": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "serve": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "syncGroups": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected workspace to a secret store with an External Secrets PushSecret, for recovery: the whole Secret bundled under one remote key, because the key names inside it are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            }
+          }
+        }
+      }
+    },
+    "slackApps": {
+      "type": "array",
+      "description": "Slack Apps declared as data, created and installed from the console. The service validates the whole catalogue again at start, and refuses an entry for a workspace the policy's slack.workspaces does not name.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "workspace",
+          "botScopes"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$"
+          },
+          "workspace": {
+            "type": "string",
+            "pattern": "^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$",
+            "description": "A key of the policy's slack.workspaces."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 140
+          },
+          "botScopes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_.:-]*$"
+            }
+          },
+          "push": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Copy this App's bot token to a secret store with an External Secrets PushSecret: that one key only, to the store and path named here. Absent pushes nothing.",
+            "required": [
+              "secretStore",
+              "remoteKey"
+            ],
+            "properties": {
+              "secretStore": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "SecretStore",
+                      "ClusterSecretStore"
+                    ]
+                  }
+                }
+              },
+              "remoteKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "refreshInterval": {
+                "$ref": "#/definitions/duration"
+              },
+              "deletionPolicy": {
+                "type": "string",
+                "enum": [
+                  "None",
+                  "Delete"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "slackState": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A recovery copy of the Slack state: see push.",
+      "properties": {
+        "push": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Copy the credential of every connected Slack workspace, and the mirror of the records that say which workspaces and Slack Connect channels the console holds, to a secret store with an External Secrets PushSecret, for recovery: each whole Secret bundled under its own remote key (remoteKey for the credentials, recordsRemoteKey for the records), because the key names inside are not stable. Absent pushes nothing. deletionPolicy is deliberately not settable -- the case this exists for is the Secret going away.",
+          "required": [
+            "secretStore",
+            "remoteKey",
+            "recordsRemoteKey"
+          ],
+          "properties": {
+            "secretStore": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "SecretStore",
+                    "ClusterSecretStore"
+                  ]
+                }
+              }
+            },
+            "remoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "recordsRemoteKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "refreshInterval": {
+              "$ref": "#/definitions/duration"
+            }
+          }
+        }
+      }
+    },
+    "secretEnv": {
+      "$ref": "#/definitions/secretEnv"
+    },
+    "secretMounts": {
+      "$ref": "#/definitions/secretMounts"
+    }
+  },
+  "definitions": {
+    "privateKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "RSA",
+            "ECDSA"
+          ]
+        },
+        "size": {
+          "type": "integer",
+          "enum": [
+            256,
+            384,
+            521,
+            2048,
+            3072,
+            4096
+          ]
+        },
+        "encoding": {
+          "enum": [
+            "PKCS1",
+            "PKCS8"
+          ]
+        },
+        "rotationPolicy": {
+          "enum": [
+            "Never",
+            "Always"
+          ]
+        }
+      }
+    },
+    "duration": {
+      "type": "string",
+      "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$"
+    },
+    "secretEnv": {
+      "type": "array",
+      "description": "Environment variables from a Secret's keys: the holders of the secrets the config names (`valkey.passwordEnv`, `oauthClient.secretEnv`, `adminPasswordEnv`). A secret is never in `config`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "secretName",
+          "key"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The variable, as the config names it."
+          },
+          "secretName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Secret."
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The key in the Secret."
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "Start without it when the Secret or the key is absent."
+          }
+        }
+      }
+    },
+    "secretMounts": {
+      "type": "array",
+      "description": "Secrets mounted read-only as directories, for a file the config names by path (`oauthClient.idFile`, `oauthClient.secretFile`). Each key is a file.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "secretName",
+          "mountPath"
+        ],
+        "properties": {
+          "secretName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The Secret."
+          },
+          "mountPath": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The directory it appears in."
+          }
+        }
+      }
+    }
+  }
+}

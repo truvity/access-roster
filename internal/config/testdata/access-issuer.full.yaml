@@ -1,0 +1,58 @@
+# Every key the schema has, set: the type must hold each one.
+issuerURL: https://access.example
+release: access-issuer
+cluster: devel
+allowInsecure: true
+demo: true
+inCluster: true
+listen: {address: ":8080"}
+probes: {address: ":7070"}
+log: {level: debug}
+store: kubernetes
+policyDir: /var/run/access-issuer/policy
+overlayFile: /var/run/access-issuer/directory/overlay.yaml
+publicURL: https://access.example/console
+publicRootURL: https://access.example
+secureCookies: true
+groupsScoping: enforce
+clientSecretsDir: /var/run/access-issuer/clients
+adminPasswordEnv: ACCESS_ADMIN_PASSWORD
+lifetimes: {token: 1h, refresh: 12h, absolute: 24h, hold: 4h, session: 12h}
+freshness: {refreshInterval: 15m, freshnessWindow: 30m, probeInterval: 5m}
+exchange:
+  audience: access-issuer
+  clustersFile: /var/run/access-issuer/clusters.yaml
+  awsFile: /var/run/access-issuer/aws.yaml
+recovery: {enabled: true, serviceAccount: access-issuer-recovery, audience: access-issuer-recovery}
+api: {audience: directory-roster, consumersFile: /var/run/access-issuer/consumers.yaml}
+login:
+  directory: true
+  signOutURL: https://access.example/logout
+  forwarded: {issuer: https://proxy.example, audience: access, emailHeader: X-Email}
+console: {origin: https://access.example, client: console}
+oauthClient:
+  id: client-id
+  idFile: /var/run/access-issuer/oauth-client/client-id
+  secretFile: /var/run/access-issuer/oauth-client/client-secret
+  secretEnv: ACCESS_OAUTH_CLIENT_SECRET
+  secretName: google-oauth
+  idKey: client-id
+  secretKey: client-secret
+signingKey:
+  file: /var/run/access-issuer/signing-key/tls.key
+  additionalFiles: [/var/run/access-issuer/signing-key-rs256/tls.key]
+  pollInterval: 30s
+  activationDelay: 15m
+  overlap: 2h
+valkey: {address: "valkey:6379", passwordEnv: VALKEY_PASSWORD, tls: true, cluster: false}
+github:
+  owners: [example-org]
+  runnerTiers: [small, large]
+  catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml
+slack: {catalogueFile: /var/run/access-issuer/slack-apps-catalogue.yaml}
+audit:
+  writer: http://audit.access-issuer.svc:8080
+  tokenFile: /var/run/audit/token
+  queryURL: http://audit-query.access-issuer.svc:8080
+  audience: audit
+  forwardedForTrustedHops: 1
