@@ -1,4 +1,6 @@
-## Unreleased
+## v1.55.0
+
+This release adds a DynamoDB adapter for State, the session index and the Trigger. Installations on `ports.adapter: legacy` see no change.
 
 - **A DynamoDB adapter for State, the session index and the Trigger:
   `ports.adapter: dynamodb`.** `internal/port/dynamodb` keeps them in one table
