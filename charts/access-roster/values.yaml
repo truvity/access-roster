@@ -560,6 +560,27 @@ exchange:
 # authenticate, and says so in the log rather than at the token endpoint.
 policy: {}
 
+# The access document, as an alternative to writing `policy` out by hand: the
+# list-shaped sections an installation derives from its access matrix
+# (lifetimes, groups, people, slack, github, vocabulary, clients,
+# clientDocuments, resources) and `overlay`, the rows that are the
+# installation's own. The chart renders both to access.yaml beside the policy;
+# the binaries reshape it into a policy layer when they load it, so a group,
+# client or person is declared once, in `policy` or here, never in both. See
+# docs/reference/policy.md#the-access-document.
+#
+#   access:
+#     lifetimes: {default: 4h}
+#     groups:
+#       - name: env:ssh:admin
+#         emails: [ada@example.com]
+#   overlay:
+#     groups:
+#       all:access-roster:operator:
+#         matchers: [{service_account: {namespace: access-issuer, name: access-issuer-recovery}}]
+access: {}
+overlay: {}
+
 # The issuer's hostname on the gateway. Empty renders no route, which is
 # right for a hub reached by port-forward while it is being tried.
 route:

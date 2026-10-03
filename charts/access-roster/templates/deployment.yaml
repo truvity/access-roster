@@ -231,7 +231,7 @@ spec:
         - name: client-secrets
           projected:
             sources:
-              {{- range $id, $client := .Values.policy.clients }}
+              {{- range $id, $client := (include "access-roster.declaredClients" . | fromYaml) }}
               {{- if $client.secret }}
               - secret:
                   name: {{ $client.secret }}

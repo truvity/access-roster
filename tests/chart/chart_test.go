@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/truvity/access-roster/internal/config"
+	"github.com/truvity/access-roster/policy"
 )
 
 // What each ConfigMap is named for: where its config lives in the values, and
@@ -222,5 +223,40 @@ func TestEveryShippedExampleConfigurationIsAccepted(t *testing.T) {
 	}
 	if len(examples) == 0 {
 		t.Error("no example found: the sweep proved nothing")
+	}
+}
+
+// The access document the chart renders is what the binaries accept: the
+// policy ConfigMap, mounted as a directory, loads through the same loader the
+// service and the controllers call, and the overlay's matcher lands on the
+// group the document declared.
+func TestTheRenderedAccessDocumentLoads(t *testing.T) {
+	var data map[string]any
+	for _, doc := range render(t, filepath.Join("..", "cases", "access-roster", "access-document", "values.yaml"), "identity") {
+		if got, ok := dig(doc, "data"); ok && doc["kind"] == "ConfigMap" {
+			if m, isMap := got.(map[string]any); isMap && m["access.yaml"] != nil {
+				data = m
+			}
+		}
+	}
+	if data == nil {
+		t.Fatal("no ConfigMap carries access.yaml")
+	}
+	dir := t.TempDir()
+	for name, content := range data {
+		text, _ := content.(string)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := policy.LoadDeclared(dir)
+	if err != nil {
+		t.Fatalf("the rendered policy directory does not load: %v", err)
+	}
+	if m := loaded.Groups["all:access-roster:operator"].Matchers; len(m) != 1 || m[0].ServiceAccount == nil {
+		t.Errorf("the overlay's matcher is not on the group the access document declared: %+v", m)
+	}
+	if _, ok := loaded.Clients["access-console"]; !ok {
+		t.Error("the access document's client was not loaded")
 	}
 }

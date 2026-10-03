@@ -1287,6 +1287,58 @@ groups count as consumed, so they are not reported by the unused-group
 lint. Validation runs on the merged policy, so a reference across files
 is checked once, after the merge.
 
+## The access document
+
+An installation that derives its policy from an access matrix does not have
+to write the reshaping itself. A file with an `access` key is an *access
+document*: the same tables as above, spelled as lists and camelCase, which the
+loader turns into the layer it would have read had it been written by hand.
+`policy.ParseAccess` does it, `LoadDeclared` calls it for such a file, and the
+chart renders `access` and `overlay` from its values to `access.yaml` beside
+`policy.yaml`.
+
+```yaml
+version: 1
+access:
+  lifetimes: {default: 4h}
+  groups:
+    - name: env:ssh:admin
+      members: [ops@example.com]
+      emails: [ada@example.com]        # one `email` matcher each
+      github: [{owner: example-org, visibility: private}]
+      service_accounts: [{cluster: alpha, namespace: widgets, name: e2e}]
+      aws: [{account: "123456789012", role: probe, path: /}]
+  people: [{name: ada, addresses: [ada@example.com]}]
+  slack: [{workspace: acme, channels: [{name: ops, mode: strict, from: [env:ssh:admin]}]}]
+  github: [{org: example-org, teams: [{slug: platform, members: [example-org:platform:member]}]}]
+  vocabulary: {scopes: [{name: alpha}], things: [{name: ssh, scopes: [alpha], roles: [{name: admin}]}]}
+  clients: [{name: console, kind: confidential, secret: console-client, requires: [env:ssh:admin]}]
+  clientDocuments: {origins: [assistant.example.com], requires: [env:ssh:admin]}
+  resources: [{id: "https://mcp.example.com", requires: [env:ssh:admin]}]
+overlay:
+  groups:
+    all:access-roster:operator:
+      matchers: [{service_account: {namespace: access-issuer, name: access-issuer-recovery}}]
+  clients:
+    probe: {kind: exchange, requires: [env:ssh:admin]}
+```
+
+It adds no concept. A group's matchers are written in this order: `emails`,
+`github`, `service_accounts`, `aws`, then the overlay's. A group the overlay
+names and the access part does not is created with only those matchers: the
+matrix describes people, so a workload rule has nothing there to attach to.
+A client the overlay declares that the access part also declares is refused.
+The access document is one layer like any other: a group, client or person
+declared in it and in another file is the same clash it would be between two
+files, and the merged policy is validated once.
+
+A group's `github` entry carries only the eight fields the CI-job rows of an
+estate use (`repository`, `owner`, `visibility`, `ref`, `ref_type`,
+`event_name`, `workflow_ref`, `job_workflow_ref`), `service_accounts` and `aws`
+only theirs; an unknown key is refused. A client row also accepts the keys its
+own deployment reads (`secretKey`, `hostname`, `prefix`, `mount`, `cluster`,
+`proxy`, `deliver`), which take no part in the policy.
+
 ## One source
 
 The deployment's ConfigMap(s), rendered from the installation's own

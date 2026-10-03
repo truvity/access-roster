@@ -1,0 +1,282 @@
+# Every value the chart reads, set. Where one value switches another off
+# -- signingKey.existingSecret drops the signing-key Certificate,
+# route.parentRefs drops the Gateway and its certificate, config.store
+# memory drops the Role, config.recovery.enabled false drops recovery -- this case
+# keeps the side that renders more, and the other side is its own case
+# (`headless`, `listenerset`).
+replicaCount: 3
+
+image:
+  repository: registry.example/access-roster/access-roster
+  tag: v1.2.3
+  pullPolicy: Always
+
+# The service's configuration, rendered as it stands: every key the schema
+# has that the chart does not own, set. The paths are where the chart mounts
+# what it renders, and the URLs are what the route and the Service make them.
+config:
+  issuerURL: https://access.example
+  release: access-roster
+  cluster: example-cluster
+  store: kubernetes
+  inCluster: true
+  listen:
+    address: ":8443"
+  probes:
+    address: ":9090"
+  log:
+    level: debug
+  policyDir: /var/run/access-issuer/policy
+  overlayFile: /var/run/access-issuer/directory/overlay.yaml
+  publicURL: https://access.example/console
+  publicRootURL: https://access.example
+  secureCookies: true
+  clientSecretsDir: /var/run/access-issuer/clients
+  lifetimes:
+    token: 30m
+    refresh: 6h
+    hold: 2h
+    session: 8h
+  freshness:
+    refreshInterval: 10m
+    freshnessWindow: 20m
+    probeInterval: 2m
+  exchange:
+    audience: access-exchange
+    clustersFile: /var/run/access-issuer/clusters.yaml
+    awsFile: /var/run/access-issuer/aws.yaml
+  recovery:
+    enabled: true
+    serviceAccount: break-glass
+    audience: break-glass-audience
+  login:
+    directory: false
+  console:
+    origin: https://access.example
+    client: access-console
+  oauthClient:
+    idFile: /var/run/access-issuer/oauth-client/id
+    secretFile: /var/run/access-issuer/oauth-client/secret
+    secretName: sign-in-client
+    idKey: id
+    secretKey: secret
+  signingKey:
+    file: /var/run/access-issuer/signing-key/tls.key
+    pollInterval: 30s
+    activationDelay: 15m
+  valkey:
+    address: valkey.example.svc:6379
+    passwordEnv: VALKEY_PASSWORD
+    tls: true
+    cluster: true
+  github:
+    owners:
+      - acme
+      - globex
+    runnerTiers:
+      - preview
+      - stable
+    catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml
+  audit:
+    # The installation rendered beside this service: one address for the
+    # records and the catalogue, one for the page to read.
+    writer: http://audit.access-issuer.svc:8080
+    tokenFile: /var/run/audit/token
+    queryURL: http://audit-query.access-issuer.svc:8080
+    audience: audit
+    forwardedForTrustedHops: 1
+
+# What the config names, from Secrets: the variable a `...Env` key names, and
+# the directory a `...File` key names.
+secretEnv:
+  - name: VALKEY_PASSWORD
+    secretName: valkey-password
+    key: secret
+secretMounts:
+  - secretName: sign-in-client
+    mountPath: /var/run/access-issuer/oauth-client
+
+directory:
+  workspaces:
+    - backend: google
+      admin: admin@acme.example
+      secretName: acme-directory-key
+      secretKey: service-account.json
+      id: C0acme
+      serve:
+        - acme.example
+      syncGroups:
+        - engineering@acme.example
+    - backend: google
+      admin: admin@globex.example
+      secretName: globex-directory-key
+
+signingKey:
+  existingSecret: ""
+  key: tls.key
+  certificate:
+    issuerName: signing-issuer
+    issuerKind: Issuer
+    algorithm: RSA
+    size: 4096
+    encoding: PKCS1
+    renewBefore: 360h
+    duration: 4380h
+
+exchange:
+  clusters:
+    - name: example-cluster
+      issuer: https://oidc.eu-example-1.example/id/EXAMPLE
+      jwksUri: https://oidc.eu-example-1.example/id/EXAMPLE/keys
+    - name: example-edge
+      issuer: https://edge.example
+  aws:
+    maxAge: 3m
+    accounts:
+      - account: "111122223333"
+        name: apps
+        issuer: https://example-id.tokens.sts.global.api.aws
+        orgId: o-example1234
+        algs: [ES384]
+      - account: "444455556666"
+        name: data
+        issuer: https://other-id.tokens.sts.global.api.aws
+        jwksUri: https://keys.example/jwks.json
+
+# The policy as the access document: the same content as the `full` case, but
+# list-shaped and with the estate's own row (the recovery account) in the
+# overlay. The enabledOrgs and enabledWorkspaces below are checked against it.
+access:
+  github:
+    - org: acme
+    - org: globex
+  slack:
+    - workspace: acme
+    - workspace: globex-eu
+  groups:
+    - name: all:platform:engineer
+      members:
+        - engineering@acme.example
+        - engineering@globex.example
+    - name: all:access-roster:operator
+      members:
+        - platform@acme.example
+  clients:
+    - name: access-console
+      kind: confidential
+      secret: access-console-client
+      redirects:
+        - https://access.example/console/
+      requires:
+        - all:access-roster:operator
+overlay:
+  groups:
+    all:access-roster:operator:
+      matchers:
+        - service_account: {namespace: access-issuer, name: access-issuer-recovery}
+
+route:
+  host: access.example
+  rootRedirect: /console/
+  gatewayClassName: shared
+  certificate:
+    issuerName: web-ca
+    issuerKind: Issuer
+    privateKey:
+      algorithm: ECDSA
+      size: 384
+      encoding: PKCS8
+      rotationPolicy: Always
+  sharedWith:
+    - consoles
+  parentRefs: []
+
+networkPolicy:
+  enabled: true
+  clients:
+    - workloads
+    - proxies
+  gatewayNamespace: gateway-system
+
+serviceAccount:
+  name: issuer
+
+controllerGithub:
+  enabled: true
+  config:
+    policyDir: /var/run/github-roster/policy
+    tokenFile: /var/run/secrets/github-roster/token
+    appsDir: /var/run/github-roster/apps
+    recordsDir: /var/run/github-roster/records
+    catalogueFile: /var/run/github-roster/github-apps-catalogue.yaml
+    consoleURL: http://access-roster.identity.svc:8443/console
+    interval: 5m
+    enabledOrgs:
+      - acme
+      - globex
+    audit:
+      writer: http://audit.access-issuer.svc:8080
+      tokenFile: /var/run/audit/token
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+controllerSlack:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.identity.svc:8443/console
+    interval: 5m
+    enabledWorkspaces:
+      - acme
+      - globex-eu
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+
+githubApps:
+  catalogue:
+    - id: dependency-bot
+      org: acme
+      name: acme-dependency-bot
+      description: Dependency updates
+      public: false
+      permissions:
+        contents: write
+        pull_requests: write
+      events:
+        - pull_request
+      installation: selected
+      grants:
+        - group: all:platform:engineer
+          repositories:
+            - "*"
+          permissions:
+            contents: read
+
+# The projected token the chart mounts for the audit receiver the configs
+# name, with the audience the installation knows this workload by.
+audit:
+  token:
+    audience: audit
+    expirationSeconds: 1800
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+podAnnotations:
+  example.com/scrape: "false"
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: identity
+    effect: NoSchedule
+
+console:
+  mount: /console

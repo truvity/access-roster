@@ -1,0 +1,183 @@
+# A neutral fixture shaped like what an installation derives from its
+# access matrix. helm-rendered.yaml is what the hand-written Helm loops this
+# document replaces produce for the same input (estate rows renamed).
+version: 1
+access:
+  lifetimes:
+    default: 4h
+    rung:admin: 4h
+    rung:ops: 12h
+  groups:
+  - name: alpha:k8s:admin
+    members:
+    - eng-admins@example.com
+    emails:
+    - ada@example.com
+    - grace@example.com
+  - name: all:access-roster:viewer
+    emails:
+    - lin@example.com
+  - name: alpha:ci:release
+    github:
+    - owner: example-org
+      visibility: private
+      event_name: pull_request
+    - repository: example-org/widgets
+      ref: refs/heads/main
+      ref_type: branch
+      event_name: push
+      workflow_ref: example-org/widgets/.github/workflows/release.yaml@refs/heads/main
+      job_workflow_ref: example-org/ci/.github/workflows/release.yaml@*
+    service_accounts:
+    - cluster: alpha
+      namespace: widgets
+      name: widgets-e2e
+    aws:
+    - account: '123456789012'
+      role: probe-role
+      path: /
+  - name: alpha:docs:reader
+  people:
+  - name: ada
+    addresses:
+    - ada@example.com
+    - ada@example.org
+  slack:
+  - workspace: acme
+    channels:
+    - name: general
+      mode: extend
+      from:
+      - alpha:k8s:admin
+    - name: ops
+      private: true
+      mode: strict
+      adopt: C0123
+      ignore:
+      - U1
+      from:
+      - alpha:k8s:admin
+      - alpha:ci:release
+  - workspace: empty
+  github:
+  - org: example-org
+    members:
+    - alpha:k8s:admin
+    ignore:
+    - bot-account
+    teams:
+    - slug: platform
+      members:
+      - example-org:platform:member
+      maintainers:
+      - example-org:platform:maintainer
+    - slug: docs
+      members:
+      - example-org:docs:member
+  vocabulary:
+    scopes:
+    - name: all
+    - name: alpha
+      sensitive: true
+    things:
+    - name: access-roster
+      scopes:
+      - all
+      roles:
+      - name: operator
+        implies:
+        - viewer
+      - name: viewer
+    - name: k8s
+      scopes:
+      - alpha
+      roles:
+      - name: admin
+        implies:
+        - reader
+      - name: reader
+        scopes:
+        - alpha
+      - name: auditor
+        scopes:
+        - alpha
+        implies:
+        - reader
+  clients:
+  - name: directory-console
+    kind: confidential
+    displayName: Console
+    description: Where operators look.
+    secret: console-client
+    redirects:
+    - https://console.example.com/oauth2/callback
+    signedOut:
+    - https://console.example.com/console/
+    backchannelLogout: https://console.example.com/oauth2/backchannel-logout
+    ttlCap: 8h
+    requires:
+    - all:access-roster:viewer
+    groups:
+    - k8s
+    - docs
+    hostname: console.example.com
+    prefix: /console
+  - name: ssh-fleet
+    kind: public
+    signingAlg: RS256
+    groupsDelimiter: .
+    signInExchange: true
+    requires:
+    - alpha:k8s:admin
+    groups: all
+  clientDocuments:
+    origins:
+    - assistant.example.com
+    requires:
+    - rung:ops
+    ttlCap: 15m0s
+    groups:
+    - docs
+  resources:
+  - id: https://mcp.example.com/grafana
+    displayName: Dashboards
+    description: Read-only.
+    requires:
+    - rung:ops
+    - rung:admin
+    ttlCap: 15m0s
+    signingAlg: ES256
+    groups: all
+overlay:
+  groups:
+    all:access-roster:operator:
+      matchers:
+      - &id001
+        service_account:
+          namespace: access-issuer
+          name: access-issuer-recovery
+    alpha:k8s:auditor:
+      matchers:
+      - *id001
+    beta:probe:exchange:
+      matchers:
+      - service_account:
+          cluster: beta
+          namespace: access-roster-probe
+          name: exchange-probe
+    all:access-roster:viewer:
+      matchers:
+      - email_domain: example.com
+      - service_account:
+          namespace: access-issuer
+          name: access-issuer-github-roster
+          cluster: alpha
+      - service_account:
+          namespace: access-issuer
+          name: access-issuer-slack-roster
+          cluster: alpha
+  clients:
+    exchange-probe:
+      kind: exchange
+      requires:
+      - beta:probe:exchange

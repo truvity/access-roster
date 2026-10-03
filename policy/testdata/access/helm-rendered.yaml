@@ -1,0 +1,184 @@
+lifetimes:
+  "default": "4h"
+  "rung:admin": "4h"
+  "rung:ops": "12h"
+groups:
+  "alpha:k8s:admin":
+    members:
+      - eng-admins@example.com
+    matchers:
+      - email: ada@example.com
+      - email: grace@example.com
+  "all:access-roster:viewer":
+    matchers:
+      - email: lin@example.com
+      - email_domain: example.com
+      - service_account:
+          cluster: alpha
+          name: access-issuer-github-roster
+          namespace: access-issuer
+      - service_account:
+          cluster: alpha
+          name: access-issuer-slack-roster
+          namespace: access-issuer
+  "alpha:ci:release":
+    matchers:
+      - github:
+          owner: "example-org"
+          visibility: "private"
+          event_name: "pull_request"
+      - github:
+          repository: "example-org/widgets"
+          ref: "refs/heads/main"
+          ref_type: "branch"
+          event_name: "push"
+          workflow_ref: "example-org/widgets/.github/workflows/release.yaml@refs/heads/main"
+          job_workflow_ref: "example-org/ci/.github/workflows/release.yaml@*"
+      - service_account:
+          cluster: "alpha"
+          namespace: "widgets"
+          name: "widgets-e2e"
+      - aws:
+          account: "123456789012"
+          role: "probe-role"
+          path: "/"
+  "alpha:docs:reader":
+
+  "all:access-roster:operator":
+    matchers:
+      - service_account:
+          name: access-issuer-recovery
+          namespace: access-issuer
+  "alpha:k8s:auditor":
+    matchers:
+      - service_account:
+          name: access-issuer-recovery
+          namespace: access-issuer
+  "beta:probe:exchange":
+    matchers:
+      - service_account:
+          cluster: beta
+          name: exchange-probe
+          namespace: access-roster-probe
+people:
+  "ada":
+    - "ada@example.com"
+    - "ada@example.org"
+slack:
+  workspaces:
+    "acme":
+      channels:
+        "general":
+          mode: extend
+          from:
+            - "alpha:k8s:admin"
+        "ops":
+          private: true
+          mode: strict
+          adopt: "C0123"
+          ignore:
+            - "U1"
+          from:
+            - "alpha:k8s:admin"
+            - "alpha:ci:release"
+    "empty":
+      {}
+github:
+  "example-org":
+    members:
+      - "alpha:k8s:admin"
+    teams:
+      "platform":
+        members:
+          - "example-org:platform:member"
+        maintainers:
+          - "example-org:platform:maintainer"
+      "docs":
+        members:
+          - "example-org:docs:member"
+    ignore:
+      - "bot-account"
+
+vocabulary:
+  scopes:
+    "all":
+      {}
+    "alpha":
+      sensitive: true
+  things:
+    "access-roster":
+      scopes:
+        - "all"
+      roles:
+        "operator":
+
+          - "viewer"
+        "viewer":
+          []
+    "k8s":
+      scopes:
+        - "alpha"
+      roles:
+        "admin":
+
+          - "reader"
+        "reader":
+
+          scopes:
+            - "alpha"
+        "auditor":
+
+          scopes:
+            - "alpha"
+          implies:
+            - "reader"
+clients:
+  
+  "exchange-probe":
+    kind: exchange
+    requires:
+      - beta:probe:exchange
+  "directory-console":
+    kind: confidential
+    display_name: "Console"
+    description: "Where operators look."
+    secret: console-client
+    redirects:
+      - "https://console.example.com/oauth2/callback"
+    signed_out:
+      - "https://console.example.com/console/"
+    backchannel_logout_uri: "https://console.example.com/oauth2/backchannel-logout"
+    ttl_cap: "8h"
+    requires:
+      - all:access-roster:viewer
+    groups:
+      - k8s
+      - docs
+  "ssh-fleet":
+    kind: public
+    signing_alg: "RS256"
+    groups_delimiter: "."
+    sign_in_exchange: true
+    requires:
+      - alpha:k8s:admin
+    groups: all
+
+client_documents:
+  origins:
+    - "assistant.example.com"
+  requires:
+    - rung:ops
+  ttl_cap: "15m0s"
+  groups:
+    - docs
+
+resources:
+  "https://mcp.example.com/grafana":
+    display_name: "Dashboards"
+    description: "Read-only."
+    requires:
+      - rung:ops
+      - rung:admin
+    ttl_cap: "15m0s"
+    signing_alg: "ES256"
+    groups: all
