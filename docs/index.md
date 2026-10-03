@@ -32,6 +32,7 @@ yet know which of those you want.
 | move an installation from the `access-issuer` chart and the three images to the one `access-roster` chart and image | [reference/configuration.md — migrating from the access-issuer chart](reference/configuration.md#migrating-from-the-access-issuer-chart) |
 | deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md) (and [the configuration file](reference/configuration.md#the-configuration-file), with the [migration from environment variables](reference/configuration.md#migrating-from-environment-variables)), then [operations/connect-runbook.md](operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
+| run it on AWS: the Pulumi library for the bucket, key, table and Pod Identity roles | [deployment/aws.md](deployment/aws.md) |
 | run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
 | see what it publishes, alert on it, put it on a dashboard | [operations/telemetry.md](operations/telemetry.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
