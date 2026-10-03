@@ -45,7 +45,7 @@ func (f *kmsFake) Decrypt(_ context.Context, in *kms.DecryptInput, _ ...func(*km
 	return &kms.DecryptOutput{Plaintext: parts[2], KeyId: &id}, nil
 }
 
-// env is one composition under test: a State, a Sealer, and how to open
+// Env is one composition under test: a State, a Sealer, and how to open
 // another "process" onto the same State and Sealer (two replicas of the
 // service, or the host's runner and the guest's).
 type Env struct {
