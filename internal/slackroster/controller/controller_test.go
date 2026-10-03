@@ -30,6 +30,7 @@ import (
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackapp/slackfake"
+	"github.com/truvity/access-roster/internal/slackroster/apply"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/controller"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
@@ -285,6 +286,11 @@ type rig struct {
 	// trigger and leases, when set, are the controllers' (see ticks_test.go).
 	trigger port.Trigger
 	leases  *rails.Leases
+	// source, handoff and members, when set, put the records, the share
+	// hand-off and the member cache on the State port (see ports_test.go).
+	source  controller.RecordSource
+	handoff controller.Handoff
+	members apply.MemberCache
 }
 
 // captureLogs makes every controller built after it log into the returned buffer.
@@ -420,7 +426,7 @@ func (r *rig) freshWith(poll time.Duration, enabled ...string) *controller.Contr
 	return controller.New(cfg, controller.Deps{
 		Log:    r.logger(),
 		Access: r.console, Audit: r.audit, Status: r.reports, Policy: r.policy, Digest: testPolicy,
-		Trigger: r.trigger, Leases: r.leases,
+		Trigger: r.trigger, Leases: r.leases, Records: r.source, Handoff: r.handoff, Members: r.members,
 		Now: func() time.Time { return r.now },
 		Slack: func(token string) *slackapp.Client {
 			return slackapp.New(token, slackapp.WithBaseURL(r.fake.URL()), slackapp.WithPageSize(2), slackapp.WithRetries(1),

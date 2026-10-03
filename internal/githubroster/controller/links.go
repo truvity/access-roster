@@ -47,7 +47,7 @@ func (c *Controller) checkLinks(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read the linked accounts: %w", err)
 	}
-	credential, err := c.linkCredential()
+	credential, err := c.linkCredential(ctx)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		if len(links) > 0 {
@@ -111,7 +111,17 @@ func (c *Controller) storedLinks(ctx context.Context) ([]reconcile.Link, error) 
 	return out, nil
 }
 
-func (c *Controller) linkCredential() (link.AppCredential, error) {
+func (c *Controller) linkCredential(ctx context.Context) (link.AppCredential, error) {
+	if c.deps.Apps != nil {
+		credential, found, err := c.deps.Apps.LinkAppCredential(ctx)
+		switch {
+		case err != nil:
+			return link.AppCredential{}, err
+		case !found:
+			return link.AppCredential{}, os.ErrNotExist
+		}
+		return credential, nil
+	}
 	raw, err := os.ReadFile(filepath.Join(c.cfg.AppsDir, link.AppKey)) //nolint:gosec // the directory is the mounted Secret
 	if err != nil {
 		return link.AppCredential{}, err
@@ -199,10 +209,19 @@ func (c *Controller) refresh(
 	l.RefreshingSince = now
 	written, err := c.deps.Links.Update(ctx, []link.Link{l})
 	if err != nil || len(written) != 1 {
-		// Lost a race with the person linking again, or the store is down:
-		// nothing was refreshed, so nothing is at risk. Next pass.
-		c.deps.Log.WarnContext(ctx, "a link's refresh could not be started", "account", l.ID, "error", err)
+		// Lost the swap: another replica claimed this refresh (its marker is
+		// what the swap lost to), or the person linked again, or the store is
+		// down. Nothing was refreshed by us, so nothing is at risk, and the
+		// single-use refresh token was not spent. If the winner has already
+		// finished, its pair is the one to check with.
 		l.RefreshingSince = time.Time{}
+		if err == nil {
+			if current, ok := c.refreshedElsewhere(ctx, l, now); ok {
+				c.deps.Log.InfoContext(ctx, "a link was refreshed by another replica; using its token pair", "account", l.ID)
+				return current, nil, true
+			}
+		}
+		c.deps.Log.WarnContext(ctx, "a link's refresh could not be started", "account", l.ID, "error", err)
 		return l, nil, false
 	}
 	l = written[0]
@@ -239,6 +258,29 @@ func (c *Controller) refresh(
 	}
 	// Carried in memory for this pass; the next one finds the marker.
 	return l, nil, true
+}
+
+// refreshedElsewhere re-reads the link after a lost swap, and returns it when
+// another replica has finished refreshing it: the marker cleared and a pair
+// that does not need renewing. A link another replica is still refreshing, or
+// one that changed some other way, is left to the next pass.
+func (c *Controller) refreshedElsewhere(ctx context.Context, was link.Link, now time.Time) (link.Link, bool) {
+	links, err := c.deps.Links.List(ctx)
+	if err != nil {
+		return link.Link{}, false
+	}
+	for i := range links {
+		l := links[i]
+		if l.ID != was.ID {
+			continue
+		}
+		if l.Revision != was.Revision && l.State == link.StateLinked && l.RefreshingSince.IsZero() &&
+			l.RefreshToken != "" && now.Add(refreshAhead).Before(l.AccessExpires) {
+			return l, true
+		}
+		return link.Link{}, false
+	}
+	return link.Link{}, false
 }
 
 func (c *Controller) lose(l link.Link, now time.Time, reason string) (link.Link, *record.Record) {

@@ -33,6 +33,26 @@ func normalise(address string) string { return strings.ToLower(strings.TrimSpace
 // member is, and pending Slack Connect invitations. in.Observed is ignored
 // and the returned value replaces it.
 func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (reconcile.Observed, error) {
+	return ObserveCached(ctx, client, in, nil)
+}
+
+// MemberCache remembers who a Slack user id is across passes and runners
+// (internal/portstore.UserCache, on `cache.slack.user.<workspace>.<id>`), so
+// that identifying every other member of a channel is not one users.info call
+// per member per pass. Get says whether it knew; a failure of either side is a
+// miss, never an error: Slack is the source of truth, the cache an
+// optimisation.
+type MemberCache interface {
+	Get(ctx context.Context, workspace, id string) (reconcile.Member, bool)
+	Put(ctx context.Context, workspace string, m reconcile.Member)
+}
+
+// ObserveCached is [Observe] that consults a cache before asking Slack who a
+// channel's member is. Only that lookup is cached: who the token is, the
+// account of each address, the channels and their members are read from Slack
+// every pass, because a decision to add or remove somebody rests on them. Nil
+// is no cache.
+func ObserveCached(ctx context.Context, client *slackapp.Client, in reconcile.Input, cache MemberCache) (reconcile.Observed, error) {
 	cfg, ok := in.Workspaces[in.Workspace]
 	if !ok {
 		return reconcile.Observed{}, fmt.Errorf("apply: workspace %q is not declared", in.Workspace)
@@ -101,12 +121,22 @@ func Observe(ctx context.Context, client *slackapp.Client, in reconcile.Input) (
 			if _, known := obs.Members[id]; known {
 				continue
 			}
+			if cache != nil {
+				if member, hit := cache.Get(ctx, in.Workspace, id); hit {
+					obs.Members[id] = member
+					continue
+				}
+			}
 			user, err := client.UserInfo(ctx, id)
 			if err != nil {
 				return reconcile.Observed{}, fmt.Errorf("apply: identify a channel member: %w", err)
 			}
-			obs.Members[id] = reconcile.Member{
+			member := reconcile.Member{
 				ID: id, Email: normalise(user.Email()), TeamID: user.TeamID, Bot: user.IsAutomated(), Deleted: user.Deleted, Guest: user.IsGuest(),
+			}
+			obs.Members[id] = member
+			if cache != nil {
+				cache.Put(ctx, in.Workspace, member)
 			}
 		}
 	}

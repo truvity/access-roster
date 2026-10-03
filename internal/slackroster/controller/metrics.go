@@ -23,6 +23,8 @@ type instruments struct {
 	channels metric.Int64Gauge
 	leavers  metric.Int64Gauge
 	invalid  metric.Int64Gauge
+	// userCache counts who-is-this lookups by whether the cache answered.
+	userCache metric.Int64Counter
 }
 
 func newInstruments() instruments {
@@ -43,7 +45,9 @@ func newInstruments() instruments {
 		metric.WithDescription("People gone from the directory and still active in a managed channel."))
 	invalid, _ := meter.Int64Gauge("slack_roster.shared_invalid",
 		metric.WithDescription("Shared channel definitions the policy refuses, which are reported and not acted on."))
-	return instruments{passes, changes, breakers, rows, channels, leavers, invalid}
+	userCache, _ := meter.Int64Counter("slack_roster.user_cache",
+		metric.WithDescription("users.info lookups of a channel's members, by whether the cache answered (hit) or Slack was asked (miss)."))
+	return instruments{passes, changes, breakers, rows, channels, leavers, invalid, userCache}
 }
 
 // recordPass records one workspace's report.
@@ -91,4 +95,13 @@ func (m instruments) recordChange(ctx context.Context, workspace string, action 
 // recordInvalid records how many shared channel definitions were refused.
 func (m instruments) recordInvalid(ctx context.Context, n int) {
 	m.invalid.Record(ctx, int64(n))
+}
+
+// recordUserCache records one lookup of a member in the cache.
+func (m instruments) recordUserCache(ctx context.Context, workspace string, hit bool) {
+	result := "miss"
+	if hit {
+		result = "hit"
+	}
+	m.userCache.Add(ctx, 1, metric.WithAttributes(attribute.String("workspace", workspace), attribute.String("result", result)))
 }

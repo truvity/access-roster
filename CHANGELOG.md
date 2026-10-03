@@ -1,5 +1,33 @@
 ## Unreleased
 
+- **The domain stores on the ports.** With `ports.adapter` set to `nats` or
+  `memory`, the directory workspaces and their credentials, the GitHub
+  organisations, the link App, runner and catalogue Apps, people's GitHub links,
+  the Slack workspaces, Slack Connect and channel records, the operators'
+  confirmations and requests for a pass and the console's session key are kept in
+  State (`ws.`, `gh.org.`, `gh.link.`, `app.`, `rec.`, `gate.`), a record and its
+  secret in one item, every secret sealed with the item's own key as the binding.
+  `ports.adapter: legacy`, the default, keeps the ConfigMap and Secret stores
+  unchanged. A Sealer is required: the start is refused, naming `ports.sealer`,
+  without one (so `nats` needs `ports.sealer`). The controllers read the same
+  records from the State instead of the mounted files. See
+  [docs/design/ports.md](docs/design/ports.md#the-domain-stores).
+
+- **A GitHub link is one item with one compare-and-swap refresh.**
+  `gh.link.<account>` holds the link and its sealed token pair; the refresh
+  marker is the claim on the single-use refresh token, so two replicas never
+  spend it twice, and the replica that loses uses the winner's pair. A claim that
+  spans accounts is steps with a marker that the next read finishes. Links are
+  permanent keys (a link outlives its tokens).
+
+- **The Slack Connect hand-off and a `users.info` cache on the State.** The
+  host's tick writes `share.<host>.<channel>` (which asks the guest's runner to
+  tick), the guest's tick marks its side accepted; 14 days while pending, 7 once
+  accepted. Who a channel's member is, is cached 24 hours in
+  `cache.slack.user.<workspace>.<id>` and counted by
+  `slack_roster.user_cache{result=hit|miss}`. The shared inputs cache stays in
+  memory. Additive: nothing changes with the default adapter.
+
 - **The NATS JetStream adapter of the State port.** `ports.adapter: nats`
   (with `ports.nats`: `url`, `bucket`, `replicas`, `tokenFile` or `credsFile`,
   `caFile`, `create`) keeps State, the transitional session Index and the

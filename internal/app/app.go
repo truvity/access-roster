@@ -53,6 +53,7 @@ import (
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/portstore"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/server"
 	"github.com/truvity/access-roster/internal/settings"
@@ -447,6 +448,13 @@ func consumers(
 	}
 }
 
+// githubOrgStore is what the console asks of where organisations are kept.
+type githubOrgStore interface {
+	server.GitHubConnections
+	server.GitHubLinkApp
+	server.GitHubConfirmations
+}
+
 // stores is everything the hub writes down, and where.
 type stores struct {
 	workspaces  hub.Store
@@ -463,34 +471,41 @@ type stores struct {
 	githubReports server.GitHubReports
 	// githubOrgs is where connected GitHub organisations are kept. Nil
 	// with the memory store, for the same reason.
-	githubOrgs *kube.GitHubOrgs
+	githubOrgs githubOrgStore
 	// githubLinks is where people's linked GitHub accounts are kept. Nil
 	// with the memory store, for the same reason.
-	githubLinks *kube.GitHubLinks
+	githubLinks server.GitHubLinks
 	// githubRunnerApps is where runner Apps are kept. Nil with the memory
 	// store, for the same reason.
-	githubRunnerApps *kube.GitHubRunnerApps
+	githubRunnerApps server.GitHubRunnerApps
 	// githubCatalogueApps is where catalogue Apps are kept. Nil with the
 	// memory store, for the same reason.
-	githubCatalogueApps *kube.GitHubCatalogueApps
+	githubCatalogueApps server.GitHubCatalogueApps
 	// slackCatalogueApps is where catalogue Slack Apps are kept. Nil with
 	// the memory store, for the same reason.
-	slackCatalogueApps *kube.SlackCatalogueApps
+	slackCatalogueApps server.SlackCatalogueApps
 	// slackShared keeps Slack Connect channel definitions, and slackStatus is
 	// what the Slack controller reported. Nil with the memory store.
-	slackShared *kube.SlackShared
+	slackShared server.SlackSharedRecords
 	// slackChannels keeps console channels' records, in the same ConfigMap.
-	slackChannels *kube.SlackChannels
+	slackChannels server.SlackChannelRecords
 	// slackReports is what the Slack controller reported.
 	slackReports server.SlackStatusReports
 	// slackWorkspaces is where Slack workspaces are connected.
-	slackWorkspaces *kube.SlackWorkspaces
+	slackWorkspaces server.SlackWorkspaces
 }
 
 // openStores builds them, and says plainly in the log which was chosen.
 // The memory store losing everything on restart is correct for a
 // prototype and catastrophic for a deployment, so it is never silent.
 func openStores(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (stores, error) {
+	// The one switch between the two storages: any adapter but `legacy` keeps
+	// the domain stores in State and seals their credentials. `legacy` keeps
+	// today's ConfigMaps and Secrets, unchanged. A demonstration has fixed
+	// stores of its own and keeps them.
+	if st.Adapter != store.AdapterLegacy && !cfg.demo {
+		return openPortStores(ctx, cfg, st, log)
+	}
 	if cfg.store == storeMemory {
 		key, err := access.NewSessionKey()
 		if err != nil {
@@ -658,6 +673,49 @@ func openStores(ctx context.Context, cfg Config, st *store.Stores, log *slog.Log
 		reviewToken: st.Ports.Identity.Verify,
 		namespace:   client.Namespace(),
 	}, nil
+}
+
+// openPortStores keeps the domain stores on the ports: records in State,
+// every credential sealed by the Sealer (internal/portstore). Nothing here is
+// a ConfigMap or a Secret, so the cluster's objects are needed only for what
+// is still the cluster's: the token review, and the declared OAuth client
+// a deployment mounts, which is an input and not a record this service writes.
+func openPortStores(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (stores, error) {
+	base := portstore.New(st.Ports)
+	if err := base.CheckSealer(ctx); err != nil {
+		return stores{}, fmt.Errorf("store: ports.adapter %s: %w", st.Adapter, err)
+	}
+	key, err := base.SessionKey(ctx, access.NewSessionKey)
+	if err != nil {
+		return stores{}, err
+	}
+	log.InfoContext(ctx, "keeping the domain records in the state port, credentials sealed",
+		"adapter", st.Adapter, "shared", st.Shared)
+	out := stores{
+		workspaces:          portstore.NewWorkspaces(base),
+		credentials:         portstore.NewCredentials(base),
+		settings:            settings.NewMemory(settings.OAuthClient{}),
+		sessionKey:          key,
+		githubReports:       rails.NewBlobReports(st.Ports.Blob, "reports/github/"),
+		slackReports:        rails.NewBlobReports(st.Ports.Blob, "reports/slack/"),
+		githubOrgs:          portstore.NewGitHubOrgs(base),
+		githubLinks:         portstore.NewGitHubLinks(base),
+		githubRunnerApps:    portstore.NewGitHubRunnerApps(base),
+		githubCatalogueApps: portstore.NewGitHubCatalogueApps(base),
+		slackCatalogueApps:  portstore.NewSlackCatalogueApps(base),
+		slackShared:         portstore.NewSlackShared(base),
+		slackChannels:       portstore.NewSlackChannels(base),
+		slackWorkspaces:     portstore.NewSlackWorkspaces(base),
+	}
+	if st.Backend != nil && st.Backend.Kube != nil {
+		client := st.Backend.Kube
+		out.reviewToken = st.Ports.Identity.Verify
+		out.namespace = client.Namespace()
+		out.settings = kube.NewSettings(client, kube.DeclaredClient{
+			Name: cfg.oauthSecretName, IDKey: cfg.oauthIDKey, SecretKey: cfg.oauthSecretKey,
+		})
+	}
+	return out, nil
 }
 
 // LogLevel is the level the process should log at.
@@ -963,11 +1021,11 @@ func New(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) (*
 		GitHubCatalogueApps: githubCatalogueApps(kept.githubCatalogueApps, cfg.demo, demoAppKey),
 		GitHubMints:         githubMints,
 		SlackCatalogue:      cfg.slackCatalogue,
-		SlackCatalogueApps:  slackCatalogueApps(kept.slackCatalogueApps),
-		SlackShared:         slackSharedRecords(kept.slackShared),
-		SlackChannels:       slackChannelRecords(kept.slackChannels),
+		SlackCatalogueApps:  kept.slackCatalogueApps,
+		SlackShared:         kept.slackShared,
+		SlackChannels:       kept.slackChannels,
 		SlackStatus:         kept.slackReports,
-		SlackWorkspaces:     slackWorkspaces(kept.slackWorkspaces),
+		SlackWorkspaces:     kept.slackWorkspaces,
 		GitHubHTTP:          demoGitHub(cfg.demo && kept.githubCatalogueApps == nil),
 		Audit:               recorder,
 	})
@@ -1398,7 +1456,7 @@ func (r fixedReports) Reports(context.Context) (map[string]string, error) { retu
 // githubConnections is the store as the console's interface, or nil — for
 // the same typed-nil reason as githubReports. A demonstration run with no
 // Kubernetes shows its one organisation connected, and connects nothing.
-func githubConnections(store *kube.GitHubOrgs, demonstration bool, key string) server.GitHubConnections {
+func githubConnections(store githubOrgStore, demonstration bool, key string) server.GitHubConnections {
 	switch {
 	case store != nil:
 		return store
@@ -1411,7 +1469,7 @@ func githubConnections(store *kube.GitHubOrgs, demonstration bool, key string) s
 
 // githubRunnerApps is the store as the console's interface, or nil. A
 // demonstration run shows one tier's App created and one left to create.
-func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key string) server.GitHubRunnerApps {
+func githubRunnerApps(store server.GitHubRunnerApps, demonstration bool, key string) server.GitHubRunnerApps {
 	switch {
 	case store != nil:
 		return store
@@ -1422,42 +1480,10 @@ func githubRunnerApps(store *kube.GitHubRunnerApps, demonstration bool, key stri
 	}
 }
 
-// slackSharedRecords and slackChannelRecords are the stores as the console's
-// interfaces, or nil: a typed nil pointer in an interface is not nil.
-func slackSharedRecords(store *kube.SlackShared) server.SlackSharedRecords {
-	if store == nil {
-		return nil
-	}
-	return store
-}
-
-func slackChannelRecords(store *kube.SlackChannels) server.SlackChannelRecords {
-	if store == nil {
-		return nil
-	}
-	return store
-}
-
-func slackWorkspaces(store *kube.SlackWorkspaces) server.SlackWorkspaces {
-	if store == nil {
-		return nil
-	}
-	return store
-}
-
-// slackCatalogueApps is the store as the console's interface, or nil: a
-// typed nil pointer in an interface is not nil.
-func slackCatalogueApps(store *kube.SlackCatalogueApps) server.SlackCatalogueApps {
-	if store == nil {
-		return nil
-	}
-	return store
-}
-
 // githubCatalogueApps is the store as the console's interface, or nil. A
 // demonstration run shows Apps created from its catalogue, one of them
 // edited on GitHub since.
-func githubCatalogueApps(store *kube.GitHubCatalogueApps, demonstration bool, key string) server.GitHubCatalogueApps {
+func githubCatalogueApps(store server.GitHubCatalogueApps, demonstration bool, key string) server.GitHubCatalogueApps {
 	switch {
 	case store != nil:
 		return store
@@ -1518,7 +1544,7 @@ func (demoCatalogueApps) Delete(context.Context, string) error { return errDemoC
 
 // githubLinkApp is the store as the console's interface, or nil. A
 // demonstration run shows a link App already created.
-func githubLinkApp(store *kube.GitHubOrgs, demonstration bool) server.GitHubLinkApp {
+func githubLinkApp(store githubOrgStore, demonstration bool) server.GitHubLinkApp {
 	switch {
 	case store != nil:
 		return store
@@ -1531,7 +1557,7 @@ func githubLinkApp(store *kube.GitHubOrgs, demonstration bool) server.GitHubLink
 
 // githubLinks is the store as the console's interface, or nil. A
 // demonstration run shows a few links, and links nobody.
-func githubLinks(store *kube.GitHubLinks, demonstration bool) server.GitHubLinks {
+func githubLinks(store server.GitHubLinks, demonstration bool) server.GitHubLinks {
 	switch {
 	case store != nil:
 		return store
@@ -1587,7 +1613,7 @@ func (demoLinks) Adopt(context.Context, []link.Link) ([]link.Link, map[int64]str
 
 // githubConfirmations is the store as the console's interface, or nil. A
 // demonstration run confirms nothing: there is nothing to remove.
-func githubConfirmations(store *kube.GitHubOrgs) server.GitHubConfirmations {
+func githubConfirmations(store githubOrgStore) server.GitHubConfirmations {
 	if store == nil {
 		return nil
 	}

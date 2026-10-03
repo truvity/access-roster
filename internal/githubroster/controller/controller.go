@@ -12,6 +12,7 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -32,6 +33,7 @@ import (
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/githubapp"
 	"github.com/truvity/access-roster/internal/githubroster/connection"
+	"github.com/truvity/access-roster/internal/githubroster/link"
 	"github.com/truvity/access-roster/internal/githubroster/reconcile"
 	"github.com/truvity/access-roster/internal/githubroster/status"
 	"github.com/truvity/access-roster/internal/port"
@@ -111,7 +113,25 @@ type Deps struct {
 	// Trigger says that a target has work: a notification runs that
 	// target's tick. Nil is an in-process trigger.
 	Trigger port.Trigger
-	Now     func() time.Time
+	// Apps is where the organisations' credentials, the link App's and the
+	// operators' requests for a pass are read from when they are kept on the
+	// State port. Nil reads the mounted directories of [Config].
+	Apps AppSource
+	Now  func() time.Time
+}
+
+// AppSource is the State-port counterpart of the mounted AppsDir and
+// RecordsDir (internal/portstore.GitHubOrgs implements it).
+type AppSource interface {
+	// Credential is one organisation's credential.
+	Credential(ctx context.Context, org string) (connection.Credential, bool, error)
+	// LinkAppCredential is what a person's authorization is refreshed with.
+	LinkAppCredential(ctx context.Context) (link.AppCredential, bool, error)
+	// PassRequests are the operators' last requests for a pass now.
+	PassRequests(ctx context.Context) (map[string]connection.PassRequest, error)
+	// Digest summarises what a change to wakes a pass: the organisations'
+	// credentials and records and the link App's.
+	Digest(ctx context.Context) ([sha256.Size]byte, error)
 }
 
 // Controller is the loop and what it remembers between passes.
@@ -381,14 +401,7 @@ func (c *Controller) token(ctx context.Context, org string) (string, error) {
 		return kept.value, nil
 	}
 
-	raw, err := os.ReadFile(filepath.Join(c.cfg.AppsDir, connection.Key(org))) //nolint:gosec // the directory is the mounted Secret
-	if errors.Is(err, os.ErrNotExist) {
-		return "", fmt.Errorf("%s is not connected: connect it from the console's GitHub page", org)
-	}
-	if err != nil {
-		return "", fmt.Errorf("read %s's credential: %w", org, err)
-	}
-	credential, err := connection.DecodeCredential(raw)
+	credential, err := c.orgCredential(ctx, org)
 	if err != nil {
 		return "", err
 	}
@@ -412,6 +425,29 @@ func (c *Controller) token(ctx context.Context, org string) (string, error) {
 	c.tokens[org] = installationToken{value: value, expires: expires}
 	c.mu.Unlock()
 	return value, nil
+}
+
+// orgCredential reads one organisation's credential: from the State port, or
+// from the mounted Secret.
+func (c *Controller) orgCredential(ctx context.Context, org string) (connection.Credential, error) {
+	if c.deps.Apps != nil {
+		credential, found, err := c.deps.Apps.Credential(ctx, org)
+		switch {
+		case err != nil:
+			return connection.Credential{}, fmt.Errorf("read %s's credential: %w", org, err)
+		case !found:
+			return connection.Credential{}, fmt.Errorf("%s is not connected: connect it from the console's GitHub page", org)
+		}
+		return credential, nil
+	}
+	raw, err := os.ReadFile(filepath.Join(c.cfg.AppsDir, connection.Key(org))) //nolint:gosec // the directory is the mounted Secret
+	if errors.Is(err, os.ErrNotExist) {
+		return connection.Credential{}, fmt.Errorf("%s is not connected: connect it from the console's GitHub page", org)
+	}
+	if err != nil {
+		return connection.Credential{}, fmt.Errorf("read %s's credential: %w", org, err)
+	}
+	return connection.DecodeCredential(raw)
 }
 
 // read is what GitHub holds for the organisation: all of it, or an error.

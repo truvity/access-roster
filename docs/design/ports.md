@@ -7,13 +7,17 @@ to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); thi
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: the ports and five adapters are built; DynamoDB is designed.** The
-interfaces, an in-memory adapter, a temporary `legacy` adapter, a NATS JetStream
-adapter for State, Index and Trigger, an S3 Blob and a KMS Sealer exist
-([Implementation status](#implementation-status)); DynamoDB does not, and
-nothing runs on the NATS adapter yet. The running service still keeps its state as
-described in [access-roster.md](access-roster.md#the-store) and
-[../operations/high-availability.md](../operations/high-availability.md). This
+**Status: the ports and five adapters are built, the domain stores are on them;
+DynamoDB is designed.** The interfaces, an in-memory adapter, a temporary
+`legacy` adapter, a NATS JetStream adapter for State, Index and Trigger, an S3
+Blob and a KMS Sealer exist, and every domain store (workspaces and their
+credentials, GitHub organisations and Apps, a person's GitHub link, the Slack
+records) has an implementation on State and the Sealer
+([The domain stores](#the-domain-stores)); DynamoDB does not. With `ports.adapter`
+`legacy`, the default, the running service still keeps its state as described in
+[access-roster.md](access-roster.md#the-store) and
+[../operations/high-availability.md](../operations/high-availability.md); with any
+other adapter it keeps the domain records here. This
 page is what an adapter is built and tested against; the current layout stays
 true until the migration in
 [0031](../decisions/0031-a-generic-migration-tool.md) has run.
@@ -121,18 +125,32 @@ hot path.
 | `sso.<id>` | `SSO#<id>` | the browser-wide SSO session and the clients it covers | issuer | the session lifetime |
 | `tok.<jti>` | `TOK#<jti>` | a minted token's own record, for userinfo and revocation | issuer | until the token expires |
 | `keyring.<kid>` | `KEYRING#<kid>` | a signing key's schedule: first seen, activation | issuer replicas | 30 days, renewed on each poll |
-| `ws.<id>` | `WS#<id>` | a connected Slack workspace or directory record, with its sealed credential | console | permanent |
-| `gh.org.<id>` | `GHORG#<id>` | a connected GitHub organisation record, with its sealed App key | console | permanent |
-| `gh.link.<person>` | `GHLINK#<person>` | a person's GitHub link and its token pair, **one item**, including `RefreshingSince` | link flow, GitHub tick | until refresh expiry |
-| `app.<id>` | `APP#<id>` | a catalogue App's record and sealed token | console | permanent |
+| `ws.dir.<id>` | `WS#dir` / `<id>` | a connected directory workspace: its record **and its sealed credential, one item** | console | permanent |
+| `ws.slack.<workspace>` | `WS#slack` / `<workspace>` | a connected Slack workspace: its record and its sealed client secret and bot token, one item | console | permanent |
+| `gh.org.<org>` | `GHORG#<org>` | a connected GitHub organisation: its record and its sealed App key, one item | console | permanent |
+| `gh.link.<account>` | `GHLINK#<account>` | a GitHub account's link, keyed by the **account id**; the token pair is sealed inside the one item, the rest of the link, `RefreshingSince` and the `Revision` counter included, is plain | link flow, GitHub tick | permanent |
+| `app.gh.link` | `APP#gh` / `link` | the link App: record and sealed client secret | console | permanent |
+| `app.gh.runner.<tier>.<org>` | `APP#gh` / `runner.<tier>.<org>` | a runner App: record and sealed key | console | permanent |
+| `app.gh.cat.<id>` | `APP#gh` / `cat.<id>` | a catalogue GitHub App: record and sealed key | console | permanent |
+| `app.slack.cat.<id>` | `APP#slack` / `cat.<id>` | a catalogue Slack App: record and sealed client secret and bot token | console | permanent |
+| `rec.slack.shared.<name>` | `REC#slack` / `shared.<name>` | a Slack Connect channel's definition | console | permanent |
+| `rec.slack.channel.<workspace>.<name>` | `REC#slack` / `channel.<workspace>.<name>` | a console channel's record | console | permanent |
+| `rec.console.session-key` | `REC#console` / `session-key` | the key the console signs its sessions with, sealed; created by the first replica that starts | console | permanent |
 | `lease.<target>` | `LEASE#<target>` | the holder of a target's tick, by id | ticks | seconds, renewed |
-| `gate.<target>.<name>` | `GATE#<target>` / `<name>` | a held-once ledger entry, a breaker, a fingerprint | ticks | by gate |
-| `share.<host>.<channel>` | `SHARE#<host>` / `<channel>` | a pending Slack Connect share, written by the host's tick; its write enqueues the guest's tick | host tick | until accepted, then 7 days |
-| `cache.<digest>.<name>` | `CACHE#<digest>` / `<name>` | a shared input (a group's holders, an address's state), keyed by the policy digest | ticks | the digest's lifetime |
+| `gate.<target>.<name>` | `GATE#<target>` / `<name>` | a held-once ledger entry, a breaker, a fingerprint. Written today: `gate.github.<org>.confirm` and `.pass`, `gate.slack.<workspace>.confirm[.<channel>]` and `.pass` (an operator's confirmation of a removal set, 24 h; a request for a pass now, 24 h), `gate.github-claim.<account>` (the marker of a link claim, below) | ticks, console | by gate |
+| `share.<host>.<channel>` | `SHARE#<host>` / `<channel>` | a Slack Connect share: the guests that were invited and each side's state; written by the host's tick, its write enqueues the guest's tick, and the guest's tick marks its own side accepted | host tick, guest tick | 14 days while a guest is pending, then 7 days once every guest has accepted |
+| `cache.slack.user.<workspace>.<id>` | `CACHE#slack` / `user.<workspace>.<id>` | who a Slack member is (address, team, bot, guest): `users.info` once a day, not once a pass. A deactivated account is never cached | slack tick | 24 h |
+| `cache.<digest>.<name>` | `CACHE#<digest>` / `<name>` | a shared input (a group's holders, an address's state), keyed by the policy digest. **Not written yet**: the Slack controller's shared inputs stay in memory ([why](#the-domain-stores)) | ticks | the digest's lifetime |
 | `dedupe.<id>` | `DEDUPE#<id>` | an idempotency marker for an external write | ticks | by use |
 
-The records marked permanent are the only ones with no TTL. A key that no
-longer appears in this table is not written by the service.
+The records marked permanent are the only ones with no TTL (`ws.`, `gh.org.`,
+`gh.link.`, `app.` and `rec.`: the layout was first drawn with a lifetime on a
+link, "until the refresh expires", which is wrong for the links that hold no
+tokens at all, a profile match or an import, and for a lost link, whose record is
+what removes a person: a link that expired would read as unlinked). A key that no
+longer appears in this table is not written by the service. Names that go into a
+key (an id, a login, a channel) are written one segment each, every byte but a
+letter, a digit, `-` and `_` as `~XX`, so a dot in a name cannot end its segment.
 
 Secrets in a record are **sealed** before they reach the port
 ([Sealing](#sealing)); the State store never sees a plaintext credential.
@@ -411,6 +429,123 @@ mapping; in short:
   are other adapters' ports. A test with the real clock covers the server's own
   TTL reaping.
 
+### The domain stores
+
+`internal/portstore` implements, on State and the Sealer, the interface each
+domain store already had, so business code did not change; `internal/app` picks
+the implementation in one place (`openStores`): **any `ports.adapter` but
+`legacy` keeps the domain records on the ports, `legacy` keeps the ConfigMaps
+and Secrets of `internal/kube` unchanged** (a demonstration keeps its fixed
+stores either way). The controllers read the same records the same way
+(`controller.RecordSource` on the Slack side, `controller.AppSource` on the
+GitHub side, both implemented by `portstore`) instead of the mounted
+directories, and are woken by a poll of the records' revisions, which is the
+digest of the mounted files made over keys and revisions (no value is read or
+opened for it). The kernel still runs `legacy`.
+
+| Domain (interface) | Keys | Sealed, bound to the key |
+|---|---|---|
+| directory workspaces (`hub.Store`, `hub.CredentialStore`) | `ws.dir.<id>`: record and credential, one item | the credential |
+| GitHub organisations, the link App, confirmations, pass requests (`server.GitHubConnections`, `GitHubLinkApp`, `GitHubConfirmations`) | `gh.org.<org>`, `app.gh.link`, `gate.github.<org>.confirm`, `.pass` | the App key, the link App's client secret |
+| a person's GitHub link (`server.GitHubLinks`, `controller.LinkStore`) | `gh.link.<account>`, `gate.github-claim.<account>` | the token pair |
+| runner and catalogue Apps (`server.GitHubRunnerApps`, `GitHubCatalogueApps`, `SlackCatalogueApps`) | `app.gh.runner.<tier>.<org>`, `app.gh.cat.<id>`, `app.slack.cat.<id>` | the App key, or the client secret and bot token |
+| Slack workspaces (`server.SlackWorkspaces`) | `ws.slack.<workspace>`, `gate.slack.<workspace>.…` | client secret and bot token |
+| Slack Connect and console channel records (`server.SlackSharedRecords`, `SlackChannelRecords`) | `rec.slack.shared.<name>`, `rec.slack.channel.<workspace>.<name>` | — |
+| the console's session key | `rec.console.session-key` | the key |
+| `users.info` (`apply.MemberCache`) and the Slack Connect hand-off (`controller.Handoff`) | `cache.slack.user.<workspace>.<id>`, `share.<host>.<channel>` | — |
+| the OAuth client (`settings.Store`) | none: see below | — |
+
+- **Sealing.** A secret is `port.Seal`ed with **the item's own key as the
+  binding**, so an item copied under another key does not open (`ErrUnwrap`: the
+  tests copy raw items between keys and assert it, for the record store and for
+  every kind of App). A read opens only what it needs: listing the organisations,
+  workspaces or Apps never calls the Sealer, and with KMS an open is one
+  `kms:Decrypt` in CloudTrail. A link read with its tokens (the controller's
+  check) costs one per self-link; the console's page, which shows
+  `link.Public()`, reads the same list and pays the same today.
+  Starting on an adapter with no Sealer (the legacy one's, which refuses on
+  purpose, and NATS without `ports.sealer`) **stops the start**, naming
+  `ports.sealer`, instead of failing on the first credential an operator
+  connects.
+- **A record and its credential are one item**, written in one
+  compare-and-swap: the credential-first, record-second ordering of the kube
+  stores and the copy of the record inside the credential (which a restore read)
+  are not needed, and neither is the Slack records' recovery mirror. `ReconcileRecords`
+  is a no-op there. A directory workspace's record is rewritten by every probe
+  and carries its sealed credential along untouched; a credential saved before its
+  record is an item that is not listed.
+- **Every update is a compare-and-swap** (`editRaw`): read, change, `Update(rev)`
+  or `Create`, retried against what a concurrent writer left, 16 times. The
+  stores that took `decide` callbacks (`Apply`) keep their contract: `decide` runs
+  again on every retry, and a conflict that outlasts them is
+  `ErrSharedConflict` or `ErrChannelConflict`.
+- **A person's link is one item and one compare-and-swap.** `gh.link.<account>`
+  holds the link, its token pair sealed. The link's own `Revision` (which a check
+  uses so that a person who linked again meanwhile is never overwritten) is
+  checked **under the key's revision**, so of two writers that read one link
+  exactly one writes it. The refresh is the controller's two phase write, kept:
+  (1) the `RefreshingSince` marker is written with `Update` at the revision read;
+  (2) GitHub is asked for the new pair; (3) the pair is written, clearing the
+  marker. A plain read-exchange-write would let two replicas exchange the same
+  single-use refresh token, the loser's exchange being refused as a revoked
+  authorization; the marker write is the claim, and only the replica whose swap
+  lands may exchange. The replica that loses re-reads: when the winner has
+  finished (the marker cleared, a pair that does not need renewing) it checks
+  with the winner's pair, otherwise it leaves the link to the next pass. A crash
+  between (1) and (3) leaves the marker, as before, and the next pass asks
+  whether the old token still works. The test runs two controllers over two
+  connections to one NATS bucket, with a barrier that makes both read the same
+  revision before either writes, and counts the exchanges at the fake GitHub:
+  exactly one. With the compare removed it fails with two.
+- **A claim spans keys, so it is steps with a marker.** `Claim` writes
+  `gate.github-claim.<account>`, then the claimed link, then narrows each other
+  account that held one of its addresses (each its own swap, re-reading the
+  account first), then deletes the marker. A reader that finds the marker
+  finishes the narrowing (`List` does), so a crash leaves an address proven by two
+  accounts for a moment, never by none. `Adopt` and `Invalidate` are per-link
+  swaps that re-check the account when they write; `Adopt`'s check across
+  candidates is made against the links read at its start, so two `Adopt`s at once
+  could both take one address (the kube store did it in one write); it is run by
+  one actor.
+- **The Slack Connect hand-off** is `share.<host>.<channel>`. After Slack accepts
+  an invitation the host's tick writes the guest's side as `pending` (the write is
+  the notification: it asks the guest's runner to tick through the Trigger, which
+  on NATS crosses processes; a lost notification is answered at the guest's next
+  sweep), the guest's tick accepts the invitation and marks its side `accepted`,
+  and the host reads it. The record lives 14 days while a guest is pending (as
+  long as the invitation) and 7 days once every guest has accepted. The
+  process-local hint stays when no hand-off is configured, and is used if the
+  write fails. The tests run the host and the guest as two controllers with two
+  connections to one bucket.
+- **The `users.info` cache** answers `Observe`'s who-is-this lookup of a channel's
+  other members, 24 hours, shared by every runner; the account of an address, who
+  the token is, the channels and their members are read from Slack every pass,
+  because a decision rests on them. A member who left is reported as a leaver up
+  to a day late; nothing is removed on a cached answer, and a deactivated account
+  is never cached. `slack_roster.user_cache{workspace,result=hit|miss}` counts it.
+- **The shared inputs cache stays in memory.** What the Slack controller shares
+  across a sweep (who holds each bound group, each directory group's members, what
+  each directory serves, the decoded records) is a graph of the controller's own
+  types, rebuilt from the console in one round of calls; serialising it under
+  `cache.<digest>.<name>` is not cheap and buys one round of calls per runner per
+  five minutes. A second replica reads the console as the first does. It is the
+  first thing to move if the console's load shows it.
+- **The OAuth client is an input, not a record.** `settings.Store` only reads the
+  client the deployment declared (a mounted Secret, which the service never
+  writes; the console's old write path and the memberships have been dead since
+  they moved to policy), so it stays what it is: read from the declared Secret
+  where a cluster is reachable, otherwise empty.
+- **What is not atomic any more.** A console channel's check against every other
+  channel's records (a channel id declared twice) is made on the listing read at
+  the start of the write, not under one version of all of them as the ConfigMap
+  gave: two creates at once of different names for one Slack channel could both
+  pass. The names a record is kept under are what each swap protects.
+- **Conformance.** `porttest` is unchanged: nothing generic was needed. The
+  domain tests (`internal/portstore`, the two controllers and `internal/app`)
+  run each store over **memory and an embedded NATS, each sealed by the in-process
+  Sealer and by the KMS adapter over a fake KMS** (`portstoretest`), and open two
+  "processes" onto one State where the point is a second replica.
+
 ### The legacy adapter
 
 `internal/port/legacy` is temporary: it implements the ports over today's
@@ -469,10 +604,7 @@ thing, and the conformance suite names the exception:
 - **Listing is a scan** (`SCAN` of every primary, or one `GET` of the ConfigMap),
   for an operator or a watcher and not a request path.
 
-What does not go through the ports yet: the ConfigMap and Secret domain stores
-of a connected workspace and its credential, an organisation's credential, a
-person's GitHub link, the catalogue Apps, the OAuth client and memberships, and
-the Slack records with their recovery mirror. They stay behind their own
-interfaces and are written by `internal/kube`, which only `internal/app`,
-`internal/githubroster/app` and the legacy adapter import. Each moves when its
-key family of the layout has an adapter that can hold it.
+What still does not go through the ports, with the default adapter: every
+domain store. They stay behind their own interfaces, written by `internal/kube`,
+which only `internal/app`, `internal/githubroster/app` and the legacy adapter
+import, until an installation sets `ports.adapter` to one that holds the keys.

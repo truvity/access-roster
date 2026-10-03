@@ -1,11 +1,14 @@
 package controller
 
 import (
+	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/truvity/access-roster/internal/logsafe"
@@ -138,6 +141,76 @@ func readStore(credentialsDir, recordsDir string, log *slog.Logger) store {
 				s.confirmation = append(s.confirmation, confirmation)
 			}
 		}
+	}
+	return s
+}
+
+// RecordSource is where a pass reads the workspaces' records and credentials
+// from when they are not mounted files: the domain stores on the State port
+// (internal/portstore.SlackSource). Without one the controller reads the two
+// mounted directories, as it always has.
+type RecordSource interface {
+	// Records are the connected workspaces' records.
+	Records(ctx context.Context) ([]connection.Record, error)
+	// Credential is one workspace's credential; found is false when it has none.
+	Credential(ctx context.Context, workspace string) (credential connection.Credential, found bool, err error)
+	// Shared and Channels are the console's Slack Connect and channel records.
+	Shared(ctx context.Context) ([]connection.SharedRecord, error)
+	Channels(ctx context.Context) ([]connection.ChannelRecord, error)
+	// Confirmations are the operators' confirmations that still stand.
+	Confirmations(ctx context.Context) (map[string]connection.Confirmation, error)
+	// PassRequests are the operators' last requests for a pass now.
+	PassRequests(ctx context.Context) (map[string]connection.PassRequest, error)
+	// Digest summarises what a change to wakes a pass: the records and the
+	// credentials, not the confirmations and the pass requests.
+	Digest(ctx context.Context) ([sha256.Size]byte, error)
+}
+
+// readStoreFrom reads the same store from a [RecordSource]. A part that could
+// not be read is logged and left empty, as a file that could not be read is:
+// a credential that cannot be read is an error on its workspace, never an
+// absent one.
+func readStoreFrom(ctx context.Context, src RecordSource, log *slog.Logger) store {
+	s := store{credentials: map[string]credentialResult{}, bots: map[string]string{}, recorded: map[string]recorded{}}
+	records, err := src.Records(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "the workspaces' records could not be read", "error", logsafe.Error(err))
+	}
+	for i := range records {
+		record := &records[i]
+		s.recorded[record.Workspace] = recorded{team: record.TeamID, owner: record.Owner}
+		if record.Installed() {
+			s.bots[record.Workspace] = record.BotUserID
+		}
+		credential, found, err := src.Credential(ctx, record.Workspace)
+		switch {
+		case err != nil:
+			s.credentials[record.Workspace] = credentialResult{err: fmt.Errorf("read %s's credential: %w", record.Workspace, err)}
+		case found:
+			s.credentials[record.Workspace] = credentialResult{credential: credential}
+		}
+	}
+	shared, err := src.Shared(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "the shared channels' records could not be read", "error", logsafe.Error(err))
+	}
+	for i := range shared {
+		s.shared = append(s.shared, sharedRecord{key: shared[i].Name, channel: shared[i].Channel, err: shared[i].Err})
+	}
+	channels, err := src.Channels(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "the console channels' records could not be read", "error", logsafe.Error(err))
+	}
+	for i := range channels {
+		rec := &channels[i]
+		s.console = append(s.console, consoleRecord{workspace: rec.Workspace, name: rec.Name, channel: rec.Channel, err: rec.Err})
+	}
+	confirmations, err := src.Confirmations(ctx)
+	if err != nil {
+		log.WarnContext(ctx, "the confirmations could not be read and confirm nothing", "error", logsafe.Error(err))
+	}
+	for _, key := range slices.Sorted(maps.Keys(confirmations)) {
+		s.confirmation = append(s.confirmation, confirmations[key])
 	}
 	return s
 }
