@@ -58,14 +58,14 @@ service writes *itself*, where it is the producer and gets to choose.
 | `signingKey.additional[]` | `[]` | every OTHER algorithm this installation signs with AT THE SAME TIME as the default above: `{algorithm, size, encoding, issuerName, issuerKind, renewBefore, duration}`, one cert-manager `Certificate` and `Secret` per entry, each on its OWN rotation track — renewing one never disturbs another's schedule, including the default's. Two entries (or one entry and the default) naming the same algorithm are refused at render: each algorithm publishes only one key at a time. This is how a client or a resource's `signing_alg` (RS256, ES256 or ES384 — [policy.md#signing-algorithm-per-audience](policy.md#signing-algorithm-per-audience)) has a key to actually sign with; naming an algorithm nothing here configures is refused **at issuer start**, not on the first request that reaches it |
 | `signingKey.certificate.renewBefore` / `.duration` | `720h` / `8760h` | how long before expiry cert-manager replaces the key, and the certificate's life. A renewal is a **new key** (`rotationPolicy: Always`). `renewBefore` only decides how OFTEN that happens; `config.signingKey.overlap` is what has to be kept longer than `config.lifetimes.token` |
 | `directory.workspaces[]` | `[]` | declared workspaces, see below |
-| `directory.push` | absent | a **recovery copy** of `Secret <release>-workspace-credentials`: `{secretStore: {name, kind}, remoteKey, refreshInterval}` renders `PushSecret <release>-workspace-copy`, which writes the whole Secret as one JSON object at `remoteKey` — bundled, because the keys inside are `<workspace-id>.json` and a reconnect mints a new id, so a per-key mapping would go stale while reporting healthy. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`, because the case this exists for is the Secret going away. Refused at render without `directory.store: kubernetes`, without a store or a key, or for two pushes sharing one path. It is a push and not an `ExternalSecret` because the service is the writer: a pull would let a stale copy overwrite a freshly connected workspace. What lands there **is** the credential |
+| `directory.push` | absent | **Deprecated** (needs `config.store: kubernetes`; a State-backed deployment uses [`exports`](#exports-and-the-export-port)). a **recovery copy** of `Secret <release>-workspace-credentials`: `{secretStore: {name, kind}, remoteKey, refreshInterval}` renders `PushSecret <release>-workspace-copy`, which writes the whole Secret as one JSON object at `remoteKey` — bundled, because the keys inside are `<workspace-id>.json` and a reconnect mints a new id, so a per-key mapping would go stale while reporting healthy. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`, because the case this exists for is the Secret going away. Refused at render without `directory.store: kubernetes`, without a store or a key, or for two pushes sharing one path. It is a push and not an `ExternalSecret` because the service is the writer: a pull would let a stale copy overwrite a freshly connected workspace. What lands there **is** the credential |
 | `githubApps.catalogue[]` | `[]` | GitHub Apps declared as data — `{id, org, name, description, public, permissions, events, installation, grants, push}` each — created and installed by an operator on the GitHub page (the Apps tab: the App's own page). Rendered to `ConfigMap <release>-github-apps-catalogue`; the service refuses to start on a malformed entry or a grant naming a group the policy does not declare. A default set to copy ships as the chart's `examples/github-apps.yaml`. See [connect/github-apps-catalogue.md](../connect/github-apps-catalogue.md) |
 | `githubApps.catalogue[].grants[]` | `[]` | who may ask for that App's installation tokens, and for how much: `{group, repositories[], permissions{}}` each. `group` is an internal group the policy declares; `repositories` are names in the App's organisation, `["*"]` for all; `permissions` is `{name: level}`. A request is served by the first grant, in catalogue order, that covers all of it ([contract](contracts.md#installation-tokens-at-token)) |
-| `githubApps.catalogue[].push` | absent | copy one App's credential to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}` renders `PushSecret <release>-github-app-<id>`, which writes `app_id`, `installation_id` and `private_key` at `remoteKey` — that App's three property keys and nothing else. Off unless written, and refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one. See [connect/infrastructure-as-code.md](../connect/infrastructure-as-code.md) |
-| `githubApps.push` | absent | a **recovery copy** of `Secret <release>-github-apps` — the link App and one App per bound organisation, the identities this service acts as — with the same shape and rules as `directory.push`, rendering `PushSecret <release>-github-apps-copy`. Distinct from `catalogue[].push`, which copies one catalogue App's three keys for a consumer that must act as it; this copies the service's own Apps, and only so they can be restored. An App cannot be re-created with its old id, so losing them means every grant rebinds and every installation is re-authorised by hand |
-| `slackState.push` | absent | a **recovery copy** of the Slack state, in the shape of `directory.push` with one more key: `{secretStore: {name, kind}, remoteKey, recordsRemoteKey, refreshInterval}` renders `PushSecret <release>-slack-credentials-copy` (the whole of `Secret <release>-slack-credentials`, at `remoteKey`) and `PushSecret <release>-slack-records-copy` (the whole of `Secret <release>-slack-records`, at `recordsRemoteKey`). Each is bundled under one remote key because the keys inside are `<workspace-id>.json`. `recordsRemoteKey` is required and must differ from `remoteKey`. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`. Refused at render without `directory.store: kubernetes`, without a store or either key, or for two pushes sharing one path. The records are a mirror Secret because they live in a ConfigMap and a `PushSecret` reads Secrets only. What lands there **is** every workspace's credential |
+| `githubApps.catalogue[].push` | absent | **Deprecated** (needs `config.store: kubernetes`; a State-backed deployment uses [`exports`](#exports-and-the-export-port)). copy one App's credential to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}` renders `PushSecret <release>-github-app-<id>`, which writes `app_id`, `installation_id` and `private_key` at `remoteKey` — that App's three property keys and nothing else. Off unless written, and refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one. See [connect/infrastructure-as-code.md](../connect/infrastructure-as-code.md) |
+| `githubApps.push` | absent | **Deprecated** (needs `config.store: kubernetes`; a State-backed deployment uses [`exports`](#exports-and-the-export-port)). a **recovery copy** of `Secret <release>-github-apps` — the link App and one App per bound organisation, the identities this service acts as — with the same shape and rules as `directory.push`, rendering `PushSecret <release>-github-apps-copy`. Distinct from `catalogue[].push`, which copies one catalogue App's three keys for a consumer that must act as it; this copies the service's own Apps, and only so they can be restored. An App cannot be re-created with its old id, so losing them means every grant rebinds and every installation is re-authorised by hand |
+| `slackState.push` | absent | **Deprecated** (needs `config.store: kubernetes`; a State-backed deployment uses [`exports`](#exports-and-the-export-port)). a **recovery copy** of the Slack state, in the shape of `directory.push` with one more key: `{secretStore: {name, kind}, remoteKey, recordsRemoteKey, refreshInterval}` renders `PushSecret <release>-slack-credentials-copy` (the whole of `Secret <release>-slack-credentials`, at `remoteKey`) and `PushSecret <release>-slack-records-copy` (the whole of `Secret <release>-slack-records`, at `recordsRemoteKey`). Each is bundled under one remote key because the keys inside are `<workspace-id>.json`. `recordsRemoteKey` is required and must differ from `remoteKey`. `kind` defaults to `SecretStore`, `refreshInterval` to `1h`; `deletionPolicy` is fixed at `None`. Refused at render without `directory.store: kubernetes`, without a store or either key, or for two pushes sharing one path. The records are a mirror Secret because they live in a ConfigMap and a `PushSecret` reads Secrets only. What lands there **is** every workspace's credential |
 | `slackApps[]` | `[]` | Slack Apps declared as data — `{id, workspace, name, description, botScopes, push}` each — created (with a throwaway app configuration token, used once and never stored) and installed (by an owner of the workspace) by an operator on the console's Slack area (the Apps tab). `id` is `[a-z0-9-]`, at most 32, unique, and never changes; `workspace` is a key of the policy's `slack.workspaces` (lowercase letters, digits and `-`, at most 40, as the policy itself requires); `name` defaults to `<workspace>-<id>`, at most 35; `description` at most 140. Rendered to `ConfigMap <release>-slack-apps-catalogue`; the service refuses to start on a malformed entry or an entry for a workspace the policy does not name. Needs `directory.store: kubernetes`. See [connect/slack-apps-catalogue.md](../connect/slack-apps-catalogue.md) |
-| `slackApps[].push` | absent | copy one App's bot token — one key, `bot_token`, never the client secret or the record — to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}`, rendering `PushSecret <release>-slack-app-<id>`. Refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one |
+| `slackApps[].push` | absent | **Deprecated** (needs `config.store: kubernetes`; a State-backed deployment uses [`exports`](#exports-and-the-export-port)). copy one App's bot token — one key, `bot_token`, never the client secret or the record — to a secret store: `{secretStore: {name, kind}, remoteKey, refreshInterval, deletionPolicy}`, rendering `PushSecret <release>-slack-app-<id>`. Refused at render for two entries sharing one path in one store, or without `directory.store: kubernetes`. The copy is a real credential, rotated as one |
 | `console.mount` | `/console` | where the console sits on this origin. A **path** and not a host, because discovery must be at the root of the origin named in every token's `iss`. It is also what the console prefixes onto every link it hands a browser — `/login` resolves against the origin, where the issuer's page is. Empty serves no console |
 | `exchange.clusters[]` | `[]` | the clusters whose workloads may exchange: `{name, issuer, jwksUri}` per cluster, verified against the key set that cluster publishes. **No secret in any row**, and this service holds access to no cluster — including its own, which is a row like any other |
 | `exchange.aws.accounts[]` | `[]` | the AWS accounts whose IAM roles may exchange their outbound-identity-federation token: `{account, name, issuer, jwksUri, orgId, algs}` per account, verified against the key set that account's issuer publishes. **No secret in any row. Empty verifies no AWS token at all**: any AWS account can mint a valid token for a role of its own, so the row is the trust boundary. See [connect/aws-workloads.md](../connect/aws-workloads.md) |
@@ -86,6 +86,9 @@ service writes *itself*, where it is the producer and gets to choose.
 | `controllerSlack.enabled` | `false` | render the Slack controller beside the service. Refused without an `exchange.clusters` row for this cluster or a `console.mount`, for the same reason. The policy must put the controller's ServiceAccount (`<release>-slack-roster`) in `all:access-roster:viewer`; without it every pass fails on the first read. Roll the console before the controller when upgrading from before 1.42.0 (the controller needs `ListServedDomains`) |
 | `controllerSlack.resources` | `{}` | the controller pod's resources |
 | `audit.token.audience` / `.expirationSeconds` | `audit` / `3600` | the projected token presented to the receiver |
+| `exports.openbao.caBundle` | `""` | PEM of the authorities that sign OpenBao's certificate, for the service's [exports](#exports-and-the-export-port): a ConfigMap `<release>-openbao-ca` mounted at `/var/run/access-issuer/openbao-ca/ca.pem`, which `config.ports.export.openbao.caFile` must then be (the chart refuses another path). Empty mounts nothing |
+| `exports.openbao.token.audience` / `.expirationSeconds` | `""` / `3600` | a ServiceAccount token projected at `/var/run/openbao/token` for the `jwt` auth method, which `config.ports.export.openbao.auth.tokenFile` must then be. Empty projects nothing, which is what the `kubernetes` method wants |
+| `alerts.rules.exportFailing` / `.exportStale` | enabled, `warning`: 3 failures in `30m` for `15m`; no copy for `10800`s for `10m` | the two rules over the exports ([telemetry](../operations/telemetry.md#alerts)) |
 | `image.pullPolicy`, `serviceAccount.name`, `resources`, `podAnnotations`, `nodeSelector`, `tolerations`, `controllerGithub.resources` | | passthrough |
 
 **Two routes, and the second is not tidiness.** A gateway policy attaches
@@ -293,6 +296,11 @@ the whole Secret under one remote key — because those two are the ones
 nothing upstream can re-deliver; the other three are a `PushSecret` of
 the deployment's own. Nothing in the service depends on the copy.
 
+On a State adapter there are no Secrets to copy, and the same five bundles are
+written into OpenBao by the service itself, entry for entry as the Secret held
+them: [`exports`](#exports-and-the-export-port) with `source: bundle`. Restore
+from one by writing its entries back into the Secret of that name.
+
 Each credential carries a copy of its record. So after the five Secrets
 are put back into an empty namespace, the next start does the rest before
 reopening anything:
@@ -380,6 +388,12 @@ The issuer, the console and the directory hub, one process.
 | `ports.dynamodb.table` | **required with `dynamodb`** | the table: a string partition key `pk`, a string sort key `sk` and TTL on `expires` ([design/ports.md](../design/ports.md#the-dynamodb-adapter)) |
 | `ports.dynamodb.region` / `.endpoint` | the SDK's (`AWS_REGION`) / AWS | the table's region; LocalStack's or DynamoDB Local's address. Credentials are the platform's (Pod Identity, IRSA, a Lambda role) and are never configured |
 | `ports.dynamodb.create` | `false` | make the table at start when it is not there (on-demand, TTL on `expires`), for a test or a development installation. Off binds to the table the infrastructure code made; the role needs `dynamodb:GetItem`, `PutItem`, `DeleteItem`, `Query` and `DescribeTable` on it, and `Scan` for `migrate` |
+| `ports.export.adapter` | unset: nothing is copied out | the adapter behind the Export port ([design/ports.md](../design/ports.md#export)): `openbao` writes to a KV version 2 mount of an OpenBao; `memory` keeps the copies in the process, for a test. `exports` needs one. See [Exports and the export port](#exports-and-the-export-port) |
+| `ports.export.openbao.address` | **required with `openbao`** | the OpenBao server, `https://openbao.example`, with no path or credentials. Nothing is contacted at start |
+| `ports.export.openbao.caFile` / `.mount` / `.namespace` | system authorities / `kv` / unset | a PEM bundle for the server's certificate in place of the system's; the KV version 2 mount; the OpenBao namespace an export that names none is written to |
+| `ports.export.openbao.auth.method` | **required with `openbao`** | `kubernetes` (the Kubernetes auth method, with the pod's ServiceAccount token) or `jwt` (the JWT/OIDC method, with a token read from `tokenFile`). Both log in with `POST auth/<mount>/login {role, jwt}`, inside each namespace written to |
+| `ports.export.openbao.auth.mount` / `.role` / `.tokenFile` | the method's name / **required** / the pod's ServiceAccount token for `kubernetes`, **required** for `jwt` | the auth mount path in each namespace; the role the login asks for; and where the JWT is read from, afresh on every login (a projected ServiceAccount token, or on AWS the web identity token of outbound federation) |
+| `exports[]` | `[]` | the secrets copied out of the service, each `{name, source, app, tier, org, bundle, namespace, path, properties, interval}`: see [Exports and the export port](#exports-and-the-export-port). Validated at start |
 | `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
 | `probes.address` | `:7070` | `/healthz`, `/readyz` |
 | `log.level` | `info` | `debug`, `info`, `warn`, `error` |
@@ -422,6 +436,96 @@ The issuer, the console and the directory hub, one process.
 | `audit.queryURL` | unset | the installation's query service, for the console's Audit page; unset shows no page. Needs `audit.writer` |
 | `audit.audience` | `audit` | the policy client whose audience the Audit page's tokens carry. The policy must declare it, requiring the groups that may read the trail |
 | `audit.forwardedForTrustedHops` | `0` | how many of the deployment's own proxies append to `X-Forwarded-For` in front of the service. A record's client address is the entry just left of them, read from the right; the left end is whatever a caller sent, so it is never taken on its own. `0` records the peer |
+
+### Exports and the export port
+
+`exports` copies the secrets the console keeps (they are sealed in State, and no
+Kubernetes Secret holds them) into OpenBao, where the programs that act as an App
+and cannot ask the service read them, and where the recovery bundles are kept
+([0034](../decisions/0034-exports-go-to-openbao-directly.md)). `ports.export` says
+which OpenBao and how to log in. It needs a `ports.adapter` other than `legacy`: on
+`legacy` the Secrets still exist and the chart's `push` values (deprecated) copy
+them.
+
+| `source` | Fields | Copies | Written as | Mode |
+|---|---|---|---|---|
+| `slack-app` | `app` | a catalogue Slack App's bot token, once it is installed | `bot_token` | patch |
+| `github-app` | `app` | a catalogue GitHub App, once it is installed | `app_id`, `installation_id`, `private_key` | patch |
+| `runner-app` | `tier`, `org` | a runner App, once it is installed | `github-app-id`, `github-installation-id`, `github-private-key` | patch |
+| `bundle` | `bundle` | `workspace-credentials`, `github-apps`, `github-links`, `github-runner-apps` or `github-catalogue-apps`, whole | one JSON document per entry, as the Secret of that name held them | replace |
+
+`path` is the key under the KV mount and `namespace` the OpenBao namespace (a
+runner App of the preview tier goes to `devel`, the rest to `kernel`). `properties`
+maps a property of the App to the name it is written as and writes only those.
+`interval` (default `1h`, at least `1m`) is how often the copy is made again with
+nothing changed. `name` (default `<source>.<what>`, for instance
+`slack-app.alerts`) identifies the export in the log, the metrics and its lease.
+
+The full block that reproduces, on the kernel cluster, the External Secrets
+PushSecrets the estate ran before (`ports.adapter: nats` with a Sealer, the
+`slackApps` and `github.runnerTiers` declared as usual):
+
+```yaml
+ports:
+  export:
+    adapter: openbao
+    openbao:
+      address: https://openbao.kernel.truvity.private
+      caFile: /var/run/access-issuer/openbao-ca/ca.pem   # exports.openbao.caBundle
+      mount: kv
+      namespace: kernel
+      auth:
+        method: jwt                      # or kubernetes
+        mount: jwt-kernel
+        role: access-roster-writer
+        tokenFile: /var/run/openbao/token                # exports.openbao.token.audience
+exports:
+  - {source: slack-app, app: alerts, path: slack-apps/alerts}
+  - {source: slack-app, app: alerts-trustform, path: slack-apps/alerts-trustform}
+  - {source: slack-app, app: deadman, path: slack-apps/deadman}
+  - {source: runner-app, tier: preview, org: trust-form, namespace: devel, path: arc/trustform}
+  - {source: runner-app, tier: preview, org: truvity, namespace: devel, path: arc/truvity}
+  - {source: runner-app, tier: stable, org: trust-form, path: arc/trustform}
+  - {source: runner-app, tier: stable, org: truvity, path: arc/truvity}
+  - {source: bundle, bundle: workspace-credentials, path: access-roster-backup/workspace-credentials}
+  - {source: bundle, bundle: github-apps, path: access-roster-backup/github-apps}
+  - {source: bundle, bundle: github-links, path: access-roster-backup/github-links}
+  - {source: bundle, bundle: github-runner-apps, path: access-roster-backup/github-runner-apps}
+  - {source: bundle, bundle: github-catalogue-apps, path: access-roster-backup/github-catalogue-apps}
+```
+
+What the service does, and does not do:
+
+- **A copy, asynchronous, never a dependency.** An export runs out of band after
+  the State write that changed its source, so sign-in, a tick and a console action
+  neither wait for it nor learn of its failure. An OpenBao outage changes nothing
+  live: the copy is stale until the next attempt, which is retried after 5 seconds,
+  doubling to 5 minutes. The service starts with OpenBao down.
+- **When.** Every export is made once at start, again within seconds of a change to
+  its source (a watch of the State, at most once in 30 seconds per export), and again
+  every `interval`. Where the State cannot be watched, only the interval remains.
+- **Exactly one writer.** Each export runs under a lease on the State, so replicas
+  divide the exports; an identical write changes nothing, so a State that is not
+  shared costs nothing but a read.
+- **Nothing to copy is not written.** An App created and not installed, and an empty
+  bundle, are `skipped`: the key is not touched and a good copy is never emptied.
+- **Never deleted.** Removing an export, or an App, leaves the copy where it is.
+- **KV version 2 semantics.** `replace` is a `POST` of the whole key; `patch` is a
+  `PATCH` with a JSON merge patch (the other properties of the key stay), and a
+  `POST` when the key is absent. Both read the key first and write nothing when it
+  already holds the data, so the reconcile makes no new KV version. External Secrets'
+  vault provider does the same read-merge-write for a PushSecret with a `property`
+  (it reads the key, sets the property and writes the key back), and a `POST` of the
+  whole data for one without: assumed from its documented behaviour, and the reason a
+  patch is the right mode for `runner-app`, whose key other properties may share.
+- **No Kubernetes RBAC.** The service reads State and writes OpenBao; it holds no
+  permission on Secrets or ConfigMaps for this, and the chart's Roles are unchanged.
+  The `kubernetes` auth method has OpenBao itself review the pod's token.
+- **OpenBao policy.** The role needs `read`, `create`, `update` and `patch` on
+  `kv/data/<prefix>/*` in each namespace it writes to. Never `list` or `delete`.
+
+The metrics, the two alerts and the dashboard row are in
+[telemetry](../operations/telemetry.md#the-exports).
 
 ### `controller-github` (the chart's `controllerGithub.config`; `access-roster controller github`)
 

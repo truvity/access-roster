@@ -196,6 +196,21 @@ outcome is the call rate, the error rate and the **compare-and-swap conflicts**
 (`outcome="conflict"`): a lost conflict is a lease or a session rotation
 working, and is not an error.
 
+### The exports
+
+| Metric | Type | Labels | What it says |
+|---|---|---|---|
+| `access_roster.export.attempts` | counter | `export`, `outcome` | Export attempts ([0034](../decisions/0034-exports-go-to-openbao-directly.md)). `outcome` is `ok` (the copy is in the store: written, or already as it should be), `failed` (retried with backoff; the copy is stale) or `skipped` (the source has nothing to copy yet: an App created and not installed, an empty bundle). |
+| `access_roster.export.duration` | histogram, `s` | `outcome` | How long an attempt took. |
+| `access_roster.export.last_success_timestamp` | gauge, `s` | `export` | When the export last had its copy in the store (Unix seconds). |
+| `access_roster.export.contended` | counter | `export` | Attempts another replica held the lease for. The normal answer of the replica that did not win. |
+
+`export` is the export's name, which the deployment declares (`slack-app.alerts`,
+`runner-app.stable.truvity`, `bundle.github-apps`), so the label is bounded by the
+configuration and never carries a path, a namespace or a value. An attempt is also a
+span (`export`, with the target kind and the outcome). The log names the export and
+the target on every failure and never a value.
+
 ### No workspace or organisation label on the issuer's series
 
 Nothing on the issuer's or the ports' series is labelled by workspace,
@@ -208,7 +223,7 @@ Nothing a person controls becomes a label.
 
 ## Alerts
 
-Ten rules, in one group, rendered by the chart with `renders: alerts`. Every
+Twelve rules, in one group, rendered by the chart with `renders: alerts`. Every
 threshold is a value (`alerts.rules.<rule>`) and its reason is in the comment
 above the rule in `charts/access-roster/templates/alerts.yaml`. Every
 aggregation keeps the cluster label, since one store holds many clusters.
@@ -225,6 +240,8 @@ aggregation keeps the cluster label, since one store holds many clusters.
 | `AccessRosterGitHubRateLimitLow` | warning | GitHub's budget is nearly spent, for long. | under 100 for 30m |
 | `AccessRosterSeatsShort` | warning | An organisation lacks the seats to invite. | `> 0` for 30m |
 | `AccessRosterPortErrors` | critical | Storage port calls are failing. | over 5% and at least 5 errors, over 5m, for 10m |
+| `AccessRosterExportFailing` | warning | One export's copy keeps failing. | 3 in 30m, for 15m |
+| `AccessRosterExportStale` | warning | An export has not had its copy in the store for a long while (absence). | 10800s (three default intervals), for 10m |
 
 A rule whose series is absent does not fire: whether the issuer or the
 controller is running at all is the platform's alert on its own scrape, not
@@ -316,6 +333,28 @@ the namespace's ConfigMaps and Secrets; blobs are the reports' ConfigMaps.
 NetworkPolicy to it); `error` is anything else, and the log line beside it names
 the call. Lost conflicts and missing keys are not counted.
 
+#### AccessRosterExportFailing
+
+An export's copy into OpenBao failed three times in half an hour, held for fifteen
+minutes. What a consumer reads there is stale; nothing live is affected, which is why
+this is a warning. The log line "an export failed, so the copy is stale" names the
+export, the target and the error. A `403` naming `permission denied` on `log in` is a
+role that does not exist or is not bound to this workload's identity; on a path it is a
+policy that lacks `read`, `create`, `update` or `patch` on `kv/data/<prefix>/*` in that
+namespace; `unavailable` is OpenBao being down, sealed or unreachable, or its
+certificate not trusted (`ports.export.openbao.caFile`). An export that fails from the
+first attempt has no last-success series, which is why this rule exists beside the next.
+
+#### AccessRosterExportStale
+
+An export has not had its copy in the store for three hours, with an interval of one.
+It catches what the failure counter cannot: the service is not running its exports
+(`exports` is empty, or the process is down), nobody can take the export's lease
+(`lease.export:<name>` is held by a replica that is gone; it expires on its own), or a
+loop hangs. A source that has nothing to copy is `skipped` and stamps nothing: an App
+that is declared in `exports` and not yet installed fires this rule once it has once
+been copied and is then removed, and not before.
+
 ## Installing the modes
 
 The chart's `renders` value chooses what a release is. The default, `app`, is the
@@ -355,7 +394,7 @@ contract: a `datasource` variable that every panel uses, a `cluster` variable
 filled by `label_values()`, a `namespace` variable, `$cluster` in the title and
 in every query, and no datasource UID written into it. Its rows: is it healthy;
 the issuer's requests, errors and latency by route; tokens, sign-ins and keys;
-the controllers' ticks and leases; the storage ports; GitHub rate limits and
+the controllers' ticks and leases; the storage ports; the exports; GitHub rate limits and
 seats.
 
 ## How it is held

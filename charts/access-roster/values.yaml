@@ -364,7 +364,7 @@ directory:
   # written out. DEPRECATED, with every `push` below: it needs
   # `config.store: kubernetes`. On a State adapter the service copies it
   # itself, into OpenBao: `config.exports` with `source: bundle` (see `exports`
-  # below and docs/decisions/0033).
+  # below and docs/decisions/0034).
   #
   #   push:
   #     secretStore: {name: openbao, kind: ClusterSecretStore}
@@ -953,7 +953,7 @@ audit:
 # What the chart mounts for the service's exports: copies of the secrets the
 # console keeps (a Slack App's bot token, the runner Apps, the recovery
 # bundles), made into OpenBao by the service itself, asynchronously and never
-# as a dependency (docs/decisions/0033). WHAT is copied is `config.exports`;
+# as a dependency (docs/decisions/0034). WHAT is copied is `config.exports`;
 # WHERE, and how the service logs in, is `config.ports.export`. This is the
 # part that is not config: a CA bundle and a projected token, mounted where
 # the config's `caFile` and `auth.tokenFile` must say (the chart refuses

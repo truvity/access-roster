@@ -349,7 +349,7 @@ holds none of the trail. Both take (dict "root" $ "cfg" <the component's config>
 {{- end -}}
 
 {{/*
-What the exports need on the pod (docs/decisions/0033): the CA that signs
+What the exports need on the pod (docs/decisions/0034): the CA that signs
 OpenBao's certificate, and the projected token the `jwt` login presents. Both
 are optional and independent. Takes the root.
 */}}

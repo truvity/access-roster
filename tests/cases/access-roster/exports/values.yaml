@@ -1,5 +1,5 @@
 # The copies of the secrets the console keeps, made into OpenBao by the
-# service itself (docs/decisions/0033): what reproduces, on kernel, the External
+# service itself (docs/decisions/0034): what reproduces, on kernel, the External
 # Secrets PushSecrets the deployment ran before. The chart mounts the CA and
 # projects the token the jwt login presents; WHAT is copied and where is the
 # config's, and the chart renders it as it stands.

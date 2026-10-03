@@ -38,7 +38,7 @@ rest is the deployment's job.
 `config.exports` copies the secrets the console keeps (a Slack App's bot token, the
 runner and catalogue Apps, the five recovery bundles) into OpenBao, written by the
 service itself and never a dependency
-([0033](../../docs/decisions/0033-exports-go-to-openbao-directly.md)); `config.ports.export`
+([0034](../../docs/decisions/0034-exports-go-to-openbao-directly.md)); `config.ports.export`
 says which OpenBao and how to log in, and `exports.openbao.caBundle` and
 `exports.openbao.token.audience` mount the CA and project the token the login
 presents. On a State adapter this replaces the `push` values, which stay for the

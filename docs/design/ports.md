@@ -3,11 +3,11 @@
 The target shape of access-roster's storage, signalling and identity edges, and
 the contract each adapter must meet. The reasoning is in the records
 [0026](../decisions/0026-two-platforms-permanently-kubernetes-and-aws-lambda.md)
-to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); this
+to [0034](../decisions/0034-exports-go-to-openbao-directly.md); this
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: the ports and six adapters are built, the domain stores are on them;
+**Status: the ports and eight adapters are built, the domain stores are on them;
 DynamoDB has run on LocalStack and not yet on AWS.** The interfaces, an in-memory
 adapter, a temporary `legacy` adapter, a NATS JetStream adapter and a DynamoDB
 adapter for State, Index and Trigger, an S3 Blob and a KMS Sealer exist, and
@@ -35,6 +35,7 @@ business rule.
 | [Blob](#blob) | status reports, directory snapshots | S3 | S3 |
 | [Trigger](#trigger) | a change becomes a tick | KV watch | asynchronous `lambda:Invoke` |
 | [Sealing](#sealing) | wraps the data key of a sealed secret | KMS, OpenBao Transit, or a mounted key | KMS |
+| [Export](#export) | copies a secret out of the service, into a store a consumer reads | OpenBao KV | OpenBao KV |
 | [Inputs](#inputs) | policy, configuration, operator-managed secrets | mounted ConfigMaps and Secrets | file in the image, or a parameter store |
 | [Identity](#identity) | proves a workload to the issuer, and the service to the cloud | ServiceAccount token, AWS federation | the same |
 | [Audit sink](#audit-sink) | records what the service did | `http`, `nats` | `sqs` |
@@ -232,6 +233,52 @@ Adapters: **KMS** (AWS; on Kubernetes through Pod Identity), **OpenBao Transit**
 and a **mounted key** (a file, for an installation with neither). The signing-key
 schedule's private material is not stored by this port: the signing key stays a
 mounted file ([access-roster.md](access-roster.md#the-store)).
+
+## Export
+
+The reverse of State: a copy of a secret the service keeps, put where a program that
+cannot ask the service reads it (Alertmanager posting as a Slack bot, a runner scale
+set with its GitHub App), and the disaster-recovery bundles. Nothing is read back,
+and nothing depends on it
+([0034](../decisions/0034-exports-go-to-openbao-directly.md)).
+
+```go
+type Export interface {
+    Put(ctx, target ExportTarget, properties map[string]string, mode ExportMode) error
+    Delete(ctx, target ExportTarget) error
+}
+```
+
+- A target is a `Path` under the adapter's mount (`slack-apps/alerts`: segments of
+  anything but `?#%\*` and space, no empty, `.` or `..` segment, no leading or
+  trailing slash) and an optional `Namespace` of the store.
+- **`ExportReplace`** makes the key hold exactly the properties. **`ExportPatch`**
+  sets them and leaves every other property of the key, creating the key when it is
+  absent. A `Put` of no properties is refused (`ErrNoProperties`): a copy is never
+  emptied by a source that read nothing.
+- **Idempotent.** Putting what the key already holds writes nothing, and in a store
+  that versions its keys makes no new version.
+- **Never on a request's path.** A caller treats a failed `Put` as "the copy is
+  stale" and retries it out of band; an `Export` that is down changes nothing live.
+- An error names the call, the target and the status, and never a value.
+
+Adapters: `internal/port/memory` (`NewExport`, which a test reads back and can make
+fail) and `internal/port/openbao`, a KV version 2 mount: `POST data/<path>` to
+replace, `PATCH data/<path>` with a JSON merge patch to patch (and a `POST` for a key
+that is not there), a `GET` first so that nothing is written when nothing differs,
+and a login of its own per namespace with the `kubernetes` or the `jwt` auth method
+(a token read afresh from a file, or from a `TokenSource` a Lambda sets to its web
+identity token). The policy it needs is `read`, `create`, `update` and `patch` on
+`<mount>/data/<prefix>/*`; `Delete` removes every version through
+`<mount>/metadata/<path>` and is not used by the exporter. `porttest.RunExport` is the
+conformance suite both pass; the OpenBao one runs against a fake KV mount in
+`go test`.
+
+What is copied, where and how often is `exports` in the configuration file
+([../reference/configuration.md](../reference/configuration.md#exports-and-the-export-port)),
+run by `internal/exports`: one worker per export, under a per-export lease on the
+State, retried with backoff, and counted
+([../operations/telemetry.md](../operations/telemetry.md#the-exports)).
 
 ## Inputs
 
