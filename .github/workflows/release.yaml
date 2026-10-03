@@ -86,3 +86,50 @@ jobs:
           # The repository's version is the tag; package.json carries none.
           npm version "${TAG#v}" --no-git-tag-version --allow-same-version
           npm publish
+
+  # A Go module in a subdirectory is released by a tag that carries the
+  # directory: `deploy/pulumi/vX.Y.Z` is how
+  # `go get github.com/truvity/sluis/deploy/pulumi@vX.Y.Z` finds it, and a plain
+  # `vX.Y.Z` does not. release-public.yaml (truvity/ci-workflows) cuts nothing but
+  # the tag that triggered it, so this job adds the library's at the same commit,
+  # once the release itself succeeded.
+  #
+  # Idempotent, so that a re-run of a release does not fail on its own tag, and
+  # a tag a person pushed by hand (signed, annotated) counts when it peels to
+  # the release commit. It refuses a tag that already exists at another
+  # commit: a tag fetched once cannot be taken back, and the proxy remembers
+  # the first.
+  pulumi-tag:
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: tag the Pulumi library at the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # deploy/pulumi is a module of its own, so that Pulumi is not in the
+          # root's dependency graph; it does not depend on the root.
+          for dir in deploy/pulumi; do
+            tag="$dir/${GITHUB_REF_NAME}"
+            if ref=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>/dev/null); then
+              read -r otype existing <<<"$ref"
+              # A signed or annotated tag is an object of its own: the ref
+              # points at the tag object and only its peeled target is the
+              # commit. Compare the commit, never the tag object.
+              while [ "$otype" = "tag" ]; do
+                read -r otype existing < <(gh api "repos/$REPO/git/tags/$existing" --jq '.object.type + " " + .object.sha')
+              done
+              if [ "$otype" = "commit" ] && [ "$existing" = "$GITHUB_SHA" ]; then
+                echo "$tag already points at $GITHUB_SHA"
+                continue
+              fi
+              echo "::error::$tag exists at $existing ($otype), not at the release commit $GITHUB_SHA"
+              exit 1
+            fi
+            gh api "repos/$REPO/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA" --jq .ref
+          done
