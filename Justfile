@@ -78,6 +78,7 @@ test-s3:
 lint: console
     golangci-lint config verify
     golangci-lint run ./...
+    cd deploy/pulumi && GOWORK=off golangci-lint run ./...
     # A `;` inside a mermaid sequenceDiagram is a STATEMENT SEPARATOR, not
     # punctuation: it splits the message text in half, the second half
     # parses as a statement with no arrow, and GitHub renders "Unable to
@@ -85,6 +86,16 @@ lint: console
     # normal build reads these files, so the first reader to notice is
     # somebody looking at the documentation.
     ! grep -rn --include=*.md -E '^[[:space:]]*[A-Za-z][A-Za-z0-9_]*[[:space:]]*-?->>?.*;' docs/
+
+# The Pulumi library (deploy/pulumi) is a module of its own so that Pulumi is
+# not in the root's dependency graph; the root has no go.work, and `./...` does
+# not descend into a nested module, so the root build, test and lint never see
+# it and this recipe is its only gate. Its tests use Pulumi's mocks, so they
+# create nothing and need no credentials, and the rendered `ports:` block is
+# validated against the schemas in schemas/config, so the library cannot drift
+# from the binaries it configures.
+pulumi-test:
+    cd deploy/pulumi && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...
 
 # Run Go vulnerability check. Deliberately not part of `check`: a newly
 # published CVE in a dependency must not turn a PR that never touched it
@@ -387,4 +398,4 @@ audit-sentences:
 # `ts` is in here despite being slow: it typechecks and tests the
 # published package, which nothing else does. `console` arrives through
 # `build`, which needs it.
-check: build test lint chart-lint telemetry archive-check docs-check leak-canary audit-catalogue ts
+check: build test pulumi-test lint chart-lint telemetry archive-check docs-check leak-canary audit-catalogue ts
