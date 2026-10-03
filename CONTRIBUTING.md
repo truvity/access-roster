@@ -66,7 +66,7 @@ Everything comes from [devbox](https://www.jetify.com/devbox): `devbox shell`
 helm, just and lefthook at the pinned versions. Never install the tools by
 hand next to it.
 
-`just check` runs what CI runs — build, test, lint, chart-lint,
+`just check` runs what CI runs — build, test, lint, chart-lint, telemetry,
 archive-check, docs-check, leak-canary, audit-catalogue, ts (`console` runs
 inside `build`). The pre-push hook (installed by
 devbox's init hook) runs the same. `vuln` is deliberately not part of
