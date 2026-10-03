@@ -234,7 +234,7 @@ apps:
 // values schema and this parser describe one shape.
 func TestTheChartsCatalogueExampleParses(t *testing.T) {
 	t.Parallel()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "cases", "access-issuer", "catalogue", "values.yaml"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tests", "cases", "access-roster", "catalogue", "values.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
