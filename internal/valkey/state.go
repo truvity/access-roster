@@ -297,3 +297,68 @@ func (s *State) Keys(ctx context.Context, prefix string) ([]string, error) {
 func globEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`).Replace(s)
 }
+
+// Entry is one key as [State.Dump] reads it: a string value or a set of
+// members, with what is left of its lifetime.
+type Entry struct {
+	Key string
+	// Set is true for a set; Members is then its members and Value is nil.
+	Set     bool
+	Value   []byte
+	Members []string
+	// TTL is the remaining lifetime; 0 is none.
+	TTL time.Duration
+}
+
+// Dump reads every key that starts with prefix, strings and sets, with the
+// lifetime each has left, sorted by key. A key of another type is skipped, and
+// one that expires between the scan and the read is gone. It is a SCAN, for an
+// operator and not a request: it is what `access-roster migrate` copies a login
+// state with.
+func (s *State) Dump(ctx context.Context, prefix string) ([]Entry, error) {
+	keys, err := s.Keys(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	var out []Entry
+	for _, key := range keys {
+		full := s.key(key)
+		kind, err := s.client.Type(ctx, full).Result()
+		if err != nil {
+			return nil, fmt.Errorf("valkey: type of %s: %w", key, err)
+		}
+		e := Entry{Key: key}
+		switch kind {
+		case "string":
+			if e.Value, err = s.client.Get(ctx, full).Bytes(); err != nil {
+				if errors.Is(err, redis.Nil) {
+					continue
+				}
+				return nil, fmt.Errorf("valkey: read %s: %w", key, err)
+			}
+		case "set":
+			e.Set = true
+			if e.Members, err = s.client.SMembers(ctx, full).Result(); err != nil {
+				return nil, fmt.Errorf("valkey: read %s: %w", key, err)
+			}
+			if len(e.Members) == 0 {
+				continue
+			}
+			slices.Sort(e.Members)
+		default:
+			continue
+		}
+		ttl, err := s.client.PTTL(ctx, full).Result()
+		if err != nil {
+			return nil, fmt.Errorf("valkey: lifetime of %s: %w", key, err)
+		}
+		switch {
+		case ttl == -2: // expired since the scan
+			continue
+		case ttl > 0:
+			e.TTL = ttl
+		}
+		out = append(out, e)
+	}
+	return out, nil
+}

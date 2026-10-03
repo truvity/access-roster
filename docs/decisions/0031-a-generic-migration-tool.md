@@ -55,3 +55,42 @@ silent.
 
 **Move the data and the runtime together.** Rejected: a failure cannot then be
 attributed or reverted separately.
+
+## Implementation note (B3-4)
+
+`access-roster migrate --from <config> --to <config>` is built
+([the runbook](../operations/migrate.md)). Where this note and the text above
+differ, this is what exists.
+
+- **Each end is a `serve` configuration file**, the one the Deployment reads, not
+  an adapter name. `store.Open` builds both port sets, and the domain stores come
+  from the switch the service makes (`internal/migrate.OpenDomains`): `legacy`
+  keeps the ConfigMap and Secret stores, any other adapter the stores on the
+  ports.
+- **Domain records are copied through the business interfaces**, so a secret is
+  opened with the source's Sealer and sealed again with the destination's, the
+  item's own key as the binding. This is not "copied as ciphertext": ciphertext
+  bound to one store's key cannot be moved to another's key, and the legacy side
+  holds none. A copy between two sealed stores is therefore also the rewrap.
+- **The issuer's state is copied with the lifetime each record has left.** The
+  port's `Get` does not say it, so State and Index have an optional capability,
+  `port.StateExporter` and `port.IndexExporter` (memory, NATS and legacy
+  implement them; the observed ports keep them). It is what makes "copy Valkey
+  sessions in B3" true: a session expires when it would have.
+- **A plan, then the copy, then a verification.** The plan writes nothing and
+  fails on any destination value that differs, naming the key, unless
+  `--overwrite`; `--dry-run` stops after it. A link is the one record no store
+  interface can write as it was (every write moves its revision), so the two link
+  stores have a `Restore`, and the console's session key a `PutSessionKey`, which
+  only a migration calls.
+- **The window is the operator's statement, not a switch.** A run that writes
+  needs `--i-have-stopped-writers`; the issuer, the console and both controllers
+  are scaled to 0. A maintenance flag would have to stop four writers, one of
+  which (the issuer) writes on every sign-in; see the runbook.
+- **The way back is the same command** with the files swapped
+  (`--from new --to old --overwrite`); the legacy adapter, as a destination,
+  creates the objects it needs.
+- **Not built:** `--backup <file>` and a file adapter (a backup is a copy to a
+  second bucket for now), `--from nats --to dynamodb` (it needs the DynamoDB
+  adapter; the command is generic and takes it as it comes), and a delta run: the
+  copy is a snapshot taken with the writers stopped, as the Consequences allow.

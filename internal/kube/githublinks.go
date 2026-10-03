@@ -160,6 +160,21 @@ func (s *GitHubLinks) Invalidate(ctx context.Context, reason string, now time.Ti
 	return changed, err
 }
 
+// Restore writes one link exactly as given, its Revision and tokens included,
+// replacing the account's link if there is one. It is what `access-roster
+// migrate` writes a copied link with: every other write moves the revision,
+// which a copy must not.
+func (s *GitHubLinks) Restore(ctx context.Context, l link.Link) error {
+	raw, err := link.Encode(l)
+	if err != nil {
+		return err
+	}
+	return s.edit(ctx, func(data map[string][]byte) error {
+		data[link.Key(l.ID)] = raw
+		return nil
+	})
+}
+
 func decodeLinks(data map[string][]byte) []link.Link {
 	var out []link.Link
 	for _, key := range slices.Sorted(maps.Keys(data)) {

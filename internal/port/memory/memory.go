@@ -68,15 +68,17 @@ type grant struct {
 }
 
 var (
-	_ port.State     = (*Store)(nil)
-	_ port.Index     = (*Store)(nil)
-	_ port.Blob      = (*Blobs)(nil)
-	_ port.Replacer  = (*Blobs)(nil)
-	_ port.ReaderAll = (*Blobs)(nil)
-	_ port.Trigger   = (*Trigger)(nil)
-	_ port.Trigger   = (*Store)(nil)
-	_ port.Sealer    = (*Store)(nil)
-	_ port.Identity  = (*Store)(nil)
+	_ port.State         = (*Store)(nil)
+	_ port.Index         = (*Store)(nil)
+	_ port.Blob          = (*Blobs)(nil)
+	_ port.Replacer      = (*Blobs)(nil)
+	_ port.ReaderAll     = (*Blobs)(nil)
+	_ port.Trigger       = (*Trigger)(nil)
+	_ port.Trigger       = (*Store)(nil)
+	_ port.StateExporter = (*Store)(nil)
+	_ port.IndexExporter = (*Store)(nil)
+	_ port.Sealer        = (*Store)(nil)
+	_ port.Identity      = (*Store)(nil)
 )
 
 // Option configures [New].
@@ -496,4 +498,56 @@ func (b *Blobs) ReadAll(_ context.Context, prefix string) (map[string][]byte, er
 		}
 	}
 	return out, nil
+}
+
+// ExportState implements [port.StateExporter].
+func (s *Store) ExportState(_ context.Context, prefix string, fn func(port.Exported) error) error {
+	s.mu.Lock()
+	var out []port.Exported
+	for key, e := range s.records {
+		if strings.HasPrefix(key, prefix) && s.live(e) {
+			out = append(out, port.Exported{Key: key, Value: slices.Clone(e.value), TTL: s.remaining(e.expires)})
+		}
+	}
+	s.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	for _, x := range out {
+		if err := fn(x); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ExportIndex implements [port.IndexExporter].
+func (s *Store) ExportIndex(_ context.Context, prefix string, fn func(port.Exported) error) error {
+	s.mu.Lock()
+	var out []port.Exported
+	for key, st := range s.sets {
+		if !strings.HasPrefix(key, prefix) || (!st.expires.IsZero() && !s.clock().Before(st.expires)) || len(st.members) == 0 {
+			continue
+		}
+		members := make([]string, 0, len(st.members))
+		for m := range st.members {
+			members = append(members, m)
+		}
+		sort.Strings(members)
+		out = append(out, port.Exported{Key: key, Members: members, TTL: s.remaining(st.expires)})
+	}
+	s.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	for _, x := range out {
+		if err := fn(x); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// remaining is what is left until expires; 0 for none.
+func (s *Store) remaining(expires time.Time) time.Duration {
+	if expires.IsZero() {
+		return 0
+	}
+	return expires.Sub(s.clock())
 }

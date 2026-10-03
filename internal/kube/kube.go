@@ -232,6 +232,34 @@ func (c *Client) SessionKey(ctx context.Context, generate func() ([]byte, error)
 	return c.keep(ctx, c.SessionKeyName(), sessionKeyKey, generate)
 }
 
+// PutSessionKey replaces the key, creating the Secret if it is not there: what
+// `access-roster migrate` does to carry a key over. Every other writer creates
+// it only if absent.
+func (c *Client) PutSessionKey(ctx context.Context, key []byte) error {
+	api := c.api.CoreV1().Secrets(c.namespace)
+	secret, err := api.Get(ctx, c.SessionKeyName(), metav1.GetOptions{})
+	switch {
+	case apierrors.IsNotFound(err):
+		_, err = api.Create(ctx, &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: c.SessionKeyName(), Namespace: c.namespace, Labels: c.labels(kindSettings)},
+			Type:       corev1.SecretTypeOpaque,
+			Data:       map[string][]byte{sessionKeyKey: key},
+		}, metav1.CreateOptions{})
+	case err != nil:
+		return fmt.Errorf("kube: read %s: %w", c.SessionKeyName(), err)
+	default:
+		if secret.Data == nil {
+			secret.Data = map[string][]byte{}
+		}
+		secret.Data[sessionKeyKey] = key
+		_, err = api.Update(ctx, secret, metav1.UpdateOptions{})
+	}
+	if err != nil {
+		return fmt.Errorf("kube: store %s: %w", c.SessionKeyName(), err)
+	}
+	return nil
+}
+
 // SessionKeyName is the Secret holding it, so that a runbook can name it
 // and a log line can point at it.
 func (c *Client) SessionKeyName() string { return c.prefix + "-session-key" }

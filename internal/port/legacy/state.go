@@ -21,7 +21,11 @@ type State struct {
 	every time.Duration
 }
 
-var _ port.State = (*State)(nil)
+var (
+	_ port.State         = (*State)(nil)
+	_ port.StateExporter = (*State)(nil)
+	_ port.IndexExporter = Index{}
+)
 
 func (s *State) orgs() (*kube.Entries, error) {
 	if s.b.Kube == nil {
@@ -447,4 +451,68 @@ func (i Index) Members(ctx context.Context, key string) ([]string, error) {
 	}
 	members, err := cache.Members(ctx, key)
 	return members, unavailable(err)
+}
+
+// valkeyPrefix is the Valkey key prefix a port prefix names, for an export.
+func valkeyPrefix(prefix string) (string, error) {
+	t, err := route(prefix)
+	if err != nil {
+		return "", err
+	}
+	if t.valkey == "" {
+		return "", unsupported("%q is not in Valkey: an export reads only the logins' state there", prefix)
+	}
+	return t.valkey, nil
+}
+
+// ExportState implements [port.StateExporter] over the Valkey strings under
+// the prefix, each with the lifetime Valkey says it has left.
+func (s *State) ExportState(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	want, err := valkeyPrefix(prefix)
+	if err != nil {
+		return err
+	}
+	cache, err := s.cache()
+	if err != nil {
+		return err
+	}
+	entries, err := cache.Dump(ctx, want)
+	if err != nil {
+		return unavailable(err)
+	}
+	for _, e := range entries {
+		if e.Set {
+			continue
+		}
+		if err = fn(port.Exported{Key: e.Key, Value: e.Value, TTL: e.TTL}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ExportIndex implements [port.IndexExporter] over the Valkey sets under the
+// prefix.
+func (i Index) ExportIndex(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	want, err := valkeyPrefix(prefix)
+	if err != nil {
+		return err
+	}
+	cache, err := i.cache()
+	if err != nil {
+		return err
+	}
+	entries, err := cache.Dump(ctx, want)
+	if err != nil {
+		return unavailable(err)
+	}
+	for _, e := range entries {
+		if !e.Set {
+			continue
+		}
+		if err = fn(port.Exported{Key: e.Key, Members: e.Members, TTL: e.TTL}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

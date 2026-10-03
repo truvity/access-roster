@@ -61,7 +61,7 @@ release and what has landed since.
 | Controllers reading the console's records from the State instead of mounted files (`ports.adapter` other than `legacy`) | 🧪 | 📄 |
 | HTTP function behind the Lambda Web Adapter and an API Gateway HTTP API | — | 📄 |
 | Tick function on EventBridge Scheduler | — | 📄 |
-| One binary `access-roster` (`serve`, `controller github`, `controller slack`; `tick <github|slack> <target>` runs one tick once; `migrate` is a stub) | 🧪 | 📄 |
+| One binary `access-roster` (`serve`, `controller github`, `controller slack`; `tick <github|slack> <target>` runs one tick once; `migrate --from <config> --to <config>` copies the State between storages) | 🧪 | 📄 |
 | One chart `access-roster` (`serve`, `controller-github`, `controller-slack`) | 🧪 | — |
 | One configuration file validated against a schema (per subcommand) | 🧪 | 📄 |
 
@@ -81,9 +81,10 @@ is the part of the runtime that is built; the Lambda runtime itself is not.
 
 | Piece | Kubernetes | AWS Lambda |
 |---|---|---|
-| `access-roster migrate --from <adapter> --to <adapter>` | 📄 | 📄 |
-| Backup and export through the same command | 📄 | 📄 |
-| Copy of Valkey sessions and refresh tokens into the new store | 📄 | — |
+| `access-roster migrate --from <config> --to <config>`: every domain store through its business interface, with `--dry-run`, create-if-absent and `--overwrite`, a plan before any write, and a read-back verification reported as JSON ([operations/migrate.md](operations/migrate.md)) | 🧪 | 📄 |
+| Backup and export through the same command (a file as one end) | 📄 (a follow-up: there is no file adapter yet) | 📄 |
+| Copy of Valkey sessions, refresh tokens and the keyring schedule into the new store, each with its remaining lifetime | 🧪 | — |
+| Rollback by the same command in the other direction (`--from nats --to legacy`) | 🧪 | — |
 | Existing backup: a copy of named Secrets | ✅ | — |
 
 ## Telemetry

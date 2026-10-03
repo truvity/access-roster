@@ -82,6 +82,9 @@ var (
 	_ port.State   = (*Store)(nil)
 	_ port.Index   = (*Store)(nil)
 	_ port.Trigger = (*Store)(nil)
+
+	_ port.StateExporter = (*Store)(nil)
+	_ port.IndexExporter = (*Store)(nil)
 )
 
 // DefaultBucket is the bucket the layout names (docs/design/ports.md).
@@ -689,3 +692,91 @@ func (s *Store) List(ctx context.Context, prefix, page string, limit int) (port.
 }
 
 func readFile(name string) ([]byte, error) { return os.ReadFile(name) }
+
+// remaining is what is left of a record's lifetime; 0 is none.
+func (s *Store) remaining(expires time.Time) time.Duration {
+	if expires.IsZero() {
+		return 0
+	}
+	return expires.Sub(s.clock())
+}
+
+// ExportState implements [port.StateExporter]: the live records under the
+// prefix with the lifetime each carries in its header.
+func (s *Store) ExportState(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	keys, err := s.keysUnder(ctx, prefix)
+	if err != nil {
+		return err
+	}
+	for _, key := range keys {
+		e, value, err := s.live(ctx, key)
+		switch {
+		case errors.Is(err, port.ErrNotFound):
+			continue
+		case err != nil:
+			return err
+		}
+		_, expires, _ := open(e.Value())
+		if err = fn(port.Exported{Key: key, Value: slices.Clone(value), TTL: s.remaining(expires)}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ExportIndex implements [port.IndexExporter]. A member is a key of its own
+// with the lifetime of the Add that wrote it, so a set's lifetime is its
+// longest-lived member's.
+func (s *Store) ExportIndex(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+	keys, err := s.keysUnder(ctx, indexPrefix+encode(prefix))
+	if err != nil {
+		return err
+	}
+	sets := map[string]*port.Exported{}
+	forever := map[string]bool{}
+	var order []string
+	for _, k := range keys {
+		rest := strings.TrimPrefix(k, indexPrefix)
+		dot := strings.LastIndexByte(rest, '.') // a member holds no dot; a set's name may
+		if dot < 0 {
+			continue
+		}
+		e, _, err := s.live(ctx, k)
+		switch {
+		case errors.Is(err, port.ErrNotFound):
+			continue
+		case err != nil:
+			return err
+		}
+		_, expires, _ := open(e.Value())
+		set, member := decode(rest[:dot]), decode(rest[dot+1:])
+		x, ok := sets[set]
+		if !ok {
+			x = &port.Exported{Key: set}
+			sets[set] = x
+			order = append(order, set)
+		}
+		x.Members = append(x.Members, member)
+		// A member with no lifetime makes the set permanent.
+		if ttl := s.remaining(expires); ttl == 0 {
+			forever[set] = true
+		} else if ttl > x.TTL {
+			x.TTL = ttl
+		}
+	}
+	for set := range forever {
+		sets[set].TTL = 0
+	}
+	slices.Sort(order)
+	for _, set := range order {
+		slices.Sort(sets[set].Members)
+		if err = fn(*sets[set]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
