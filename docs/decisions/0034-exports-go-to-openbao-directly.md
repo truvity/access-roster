@@ -69,7 +69,7 @@ version 2 mount over the HTTP API with no SDK:
 | `slack-app` (`app`) | a catalogue Slack App's bot token | `bot_token` | patch |
 | `github-app` (`app`) | a catalogue GitHub App | `app_id`, `installation_id`, `private_key` | patch |
 | `runner-app` (`tier`, `org`) | a runner App | `github-app-id`, `github-installation-id`, `github-private-key` | patch |
-| `bundle` (`bundle`) | one of `workspace-credentials`, `github-apps`, `github-links`, `github-runner-apps`, `github-catalogue-apps`, whole | the Secret's entries, one JSON document each | replace |
+| `bundle` (`bundle`) | one of `workspace-credentials`, `github-apps`, `github-links`, `github-runner-apps`, `github-catalogue-apps`, `slack-credentials`, `slack-records`, whole | the Secret's entries, one JSON document each | replace |
 
 The property names are the ones the PushSecrets wrote, so a consumer sees no change.
 An optional `properties` map writes only some of an App's properties, under names of
@@ -124,9 +124,11 @@ dashboard row. Its `push` values (`slackApps[].push`, `directory.push`,
 and are **deprecated**: they render only with `config.store: kubernetes`, and fail
 the render otherwise, so a State-backed deployment could never use them.
 
-**What stays outside.** The Slack state recovery copy (`slackState.push`) has no
-export yet: its Secrets are `ws.slack.*` and `rec.slack.*`, and an owner who wants
-them copied adds sources the same way.
+**The Slack state** (`slackState.push`) is two more bundles: `slack-credentials`
+(each connected workspace's client id and secret and bot token, with its record) and
+`slack-records` (the workspaces' records, the Slack Connect channel definitions and the
+console channels' records: the mirror of the records ConfigMap, never the
+confirmations or pass markers). Both are the legacy Secrets' entries byte for byte.
 
 ## Consequences
 
@@ -153,7 +155,7 @@ them copied adds sources the same way.
   last-success series, which is why the failing rule exists.
 - **Not covered:** a key written by a PushSecret that is still running at the same
   time is not detected; an OpenBao policy that is wrong shows as a failure and not at
-  start (nothing is contacted at start); and the Slack state recovery copy, above.
+  start (nothing is contacted at start).
 
 ## Alternatives considered
 

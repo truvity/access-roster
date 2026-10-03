@@ -36,7 +36,7 @@ Secrets `PushSecret` for the ones nothing upstream can re-deliver. Copying the
 rest is the deployment's job.
 
 `config.exports` copies the secrets the console keeps (a Slack App's bot token, the
-runner and catalogue Apps, the five recovery bundles) into OpenBao, written by the
+runner and catalogue Apps, the seven recovery bundles) into OpenBao, written by the
 service itself and never a dependency
 ([0034](../../docs/decisions/0034-exports-go-to-openbao-directly.md)); `config.ports.export`
 says which OpenBao and how to log in, and `exports.openbao.caBundle` and

@@ -452,7 +452,7 @@ them.
 | `slack-app` | `app` | a catalogue Slack App's bot token, once it is installed | `bot_token` | patch |
 | `github-app` | `app` | a catalogue GitHub App, once it is installed | `app_id`, `installation_id`, `private_key` | patch |
 | `runner-app` | `tier`, `org` | a runner App, once it is installed | `github-app-id`, `github-installation-id`, `github-private-key` | patch |
-| `bundle` | `bundle` | `workspace-credentials`, `github-apps`, `github-links`, `github-runner-apps` or `github-catalogue-apps`, whole | one JSON document per entry, as the Secret of that name held them | replace |
+| `bundle` | `bundle` | `workspace-credentials`, `github-apps`, `github-links`, `github-runner-apps`, `github-catalogue-apps`, `slack-credentials` or `slack-records`, whole | one JSON document per entry, as the Secret of that name held them | replace |
 
 `path` is the key under the KV mount and `namespace` the OpenBao namespace (a
 runner App of the preview tier goes to `devel`, the rest to `kernel`). `properties`
@@ -492,6 +492,8 @@ exports:
   - {source: bundle, bundle: github-links, path: access-roster-backup/github-links}
   - {source: bundle, bundle: github-runner-apps, path: access-roster-backup/github-runner-apps}
   - {source: bundle, bundle: github-catalogue-apps, path: access-roster-backup/github-catalogue-apps}
+  - {source: bundle, bundle: slack-credentials, path: slack-state/credentials}
+  - {source: bundle, bundle: slack-records, path: slack-state/records}
 ```
 
 What the service does, and does not do:

@@ -25,7 +25,14 @@ func kernel() []config.Export {
 		{Source: "runner-app", Tier: "stable", Org: "truvity", Namespace: "kernel", Path: "arc/truvity"},
 	}
 	for _, b := range exports.Bundles {
-		out = append(out, config.Export{Source: "bundle", Bundle: b, Namespace: "kernel", Path: "access-roster-backup/" + b})
+		path := "access-roster-backup/" + b
+		switch b {
+		case exports.BundleSlackCredentials:
+			path = "slack-state/credentials"
+		case exports.BundleSlackRecords:
+			path = "slack-state/records"
+		}
+		out = append(out, config.Export{Source: "bundle", Bundle: b, Namespace: "kernel", Path: path})
 	}
 	return out
 }
@@ -43,8 +50,8 @@ func TestTheKernelBlockValidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(specs) != 12 {
-		t.Fatalf("%d specs, want 12", len(specs))
+	if len(specs) != 14 {
+		t.Fatalf("%d specs, want 14", len(specs))
 	}
 	by := map[string]exports.Spec{}
 	for _, s := range specs {

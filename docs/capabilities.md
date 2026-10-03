@@ -35,7 +35,7 @@ release and what has landed since.
 | Sealing: KMS (`internal/port/kmsseal`, `ports.sealer`) | 🧪 | 🧪 |
 | Sealing: OpenBao Transit | 📄 | — |
 | Sealing: mounted key | 📄 | — |
-| Export: copies of the secrets the console keeps (a Slack App's bot token, the runner and catalogue Apps, five recovery bundles) written into OpenBao KV by the service itself, asynchronously, per-export lease, retried with backoff (`internal/port/openbao`, `internal/exports`, `ports.export` and `exports`, [0034](decisions/0034-exports-go-to-openbao-directly.md); needs a `ports.adapter` other than `legacy`) | 🧪 | 📄 |
+| Export: copies of the secrets the console keeps (a Slack App's bot token, the runner and catalogue Apps, seven recovery bundles) written into OpenBao KV by the service itself, asynchronously, per-export lease, retried with backoff (`internal/port/openbao`, `internal/exports`, `ports.export` and `exports`, [0034](decisions/0034-exports-go-to-openbao-directly.md); needs a `ports.adapter` other than `legacy`) | 🧪 | 📄 |
 | Export: the `jwt` login with the web identity token of AWS outbound federation, for a function in the VPC reaching OpenBao through its internal load balancer (the adapter takes a `TokenSource`; no Lambda wiring yet) | — | 📄 |
 | Export: the External Secrets `PushSecret`s of the chart (`slackApps[].push`, `directory.push`, `githubApps.push`, `githubApps.catalogue[].push`, `slackState.push`; need `config.store: kubernetes`) | deprecated, replaced by the above | — |
 | Inputs: mounted ConfigMaps and Secrets | ✅ | — |

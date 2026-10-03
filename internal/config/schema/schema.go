@@ -335,7 +335,7 @@ func exportsSchema() m {
 		"app":        str("The catalogue id, for `slack-app` and `github-app`. It must be declared in the catalogue."),
 		"tier":       str("A runner tier, for `runner-app`. It must be one of `github.runnerTiers`."),
 		"org":        str("The organisation, for `runner-app`."),
-		"bundle":     enum("The bundle, for `bundle`: each is what the Kubernetes Secret of that name held, one JSON document per entry. Written with `replace`: the key holds exactly the bundle.", "", "workspace-credentials", "github-apps", "github-links", "github-runner-apps", "github-catalogue-apps"),
+		"bundle":     enum("The bundle, for `bundle`: each is what the Kubernetes Secret of that name held, one JSON document per entry. Written with `replace`: the key holds exactly the bundle.", "", "workspace-credentials", "github-apps", "github-links", "github-runner-apps", "github-catalogue-apps", "slack-credentials", "slack-records"),
 		"namespace":  str("The OpenBao namespace. Absent, `ports.export.openbao.namespace`."),
 		"path":       str("The key under the KV mount: `slack-apps/alerts`. No leading or trailing slash."),
 		"properties": m{"type": "object", "additionalProperties": m{"type": "string", "minLength": 1}, "description": "Which properties of the App are written and under what names: `{private_key: github-private-key}`. Absent, all of the source's, under the names the External Secrets PushSecrets wrote: `bot_token`; `app_id`, `installation_id`, `private_key`; `github-app-id`, `github-installation-id`, `github-private-key` for a runner App. A property export is a PATCH: other properties of the key are left as they are. Not for `bundle`."},

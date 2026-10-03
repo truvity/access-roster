@@ -14,6 +14,7 @@ import (
 	"github.com/truvity/access-roster/internal/githubroster/runnerapp"
 	"github.com/truvity/access-roster/internal/hub"
 	slackcatalogueapp "github.com/truvity/access-roster/internal/slackapp/catalogueapp"
+	slackconnection "github.com/truvity/access-roster/internal/slackroster/connection"
 )
 
 // The stores an export reads. Each is the read half of the interface the
@@ -50,6 +51,19 @@ type (
 		List(ctx context.Context) ([]catalogueapp.Record, error)
 		Get(ctx context.Context, id string) (catalogueapp.Record, string, bool, error)
 	}
+	// SlackWorkspaces reads the connected Slack workspaces.
+	SlackWorkspaces interface {
+		List(ctx context.Context) ([]slackconnection.Record, error)
+		Get(ctx context.Context, workspace string) (slackconnection.Record, slackconnection.Credential, bool, error)
+	}
+	// SlackShared lists the Slack Connect channel definitions.
+	SlackShared interface {
+		List(ctx context.Context) ([]slackconnection.SharedRecord, error)
+	}
+	// SlackChannels lists the console channels' records.
+	SlackChannels interface {
+		List(ctx context.Context) ([]slackconnection.ChannelRecord, error)
+	}
 	// SlackCatalogueApps reads the catalogue Slack Apps.
 	SlackCatalogueApps interface {
 		Get(ctx context.Context, id string) (slackcatalogueapp.Record, slackcatalogueapp.Credentials, bool, error)
@@ -67,6 +81,9 @@ type Sources struct {
 	RunnerApps          RunnerApps
 	GitHubCatalogueApps GitHubCatalogueApps
 	SlackCatalogueApps  SlackCatalogueApps
+	SlackWorkspaces     SlackWorkspaces
+	SlackShared         SlackShared
+	SlackChannels       SlackChannels
 }
 
 // Check refuses an export whose store this deployment does not have.
@@ -103,6 +120,10 @@ func (s Sources) has(bundle string) bool {
 		return s.RunnerApps != nil
 	case BundleGitHubCatalogueApps:
 		return s.GitHubCatalogueApps != nil
+	case BundleSlackCredentials:
+		return s.SlackWorkspaces != nil
+	case BundleSlackRecords:
+		return s.SlackWorkspaces != nil && s.SlackShared != nil && s.SlackChannels != nil
 	}
 	return false
 }
@@ -129,6 +150,10 @@ func (s Spec) Prefixes() []string {
 		return []string{"app.gh.runner."}
 	case BundleGitHubCatalogueApps:
 		return []string{"app.gh.cat."}
+	case BundleSlackCredentials:
+		return []string{"ws.slack."}
+	case BundleSlackRecords:
+		return []string{"ws.slack.", "rec.slack."}
 	}
 	return nil
 }
@@ -229,6 +254,10 @@ func (s Sources) bundle(ctx context.Context, name string) (map[string][]byte, er
 		return s.runnerApps(ctx)
 	case BundleGitHubCatalogueApps:
 		return s.catalogueApps(ctx)
+	case BundleSlackCredentials:
+		return s.slackCredentials(ctx)
+	case BundleSlackRecords:
+		return s.slackRecords(ctx)
 	}
 	return nil, fmt.Errorf("bundle %q", name)
 }
