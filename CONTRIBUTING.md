@@ -147,6 +147,19 @@ Screenshots for review: headless Chrome with a fresh `--user-data-dir`
 every time (it caches the previous bundle otherwise), and read the DOM
 rather than the pixels for anything animated.
 
+## While the store and runtime move
+
+The store and runtime are being refactored to use stable ports (see
+[0026](docs/decisions/0026-two-platforms-permanently-kubernetes-and-aws-lambda.md)–[0032](docs/decisions/0032-one-configuration-file-one-binary-one-chart.md)
+and [docs/design/ports.md](docs/design/ports.md)). During this migration:
+
+- New features must read and write state only through the ports in
+  [docs/design/ports.md](docs/design/ports.md), never through new
+  ConfigMap/Secret writes or new Valkey keys.
+- New configuration goes into the configuration file (ADR 0032), not new
+  environment variables.
+- A change that cannot follow this needs an ADR first.
+
 ## Start here, for the next phase
 
 The documents are the authority, and decisions and their dates are
