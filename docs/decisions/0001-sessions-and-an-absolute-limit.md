@@ -1,6 +1,6 @@
 # 0001 — Sessions and an absolute limit
 
-**Status:** Accepted
+**Status:** Accepted; amended by [0033](0033-a-longer-absolute-limit-for-read-only-resources.md)
 **Date:** 2026-09-25
 
 ## Context
