@@ -1,4 +1,63 @@
-## v1.53.0
+## Unreleased
+
+- **Traces, issuer and controller metrics, and the chart's `alerts` and
+  `dashboards` modes.** Telemetry is still only `OTEL_*`, exported only when a
+  collector is named; the contract and every signal are in
+  [docs/operations/telemetry.md](docs/operations/telemetry.md).
+
+  - **Traces.** A server span per request on the issuer's listener, named for a
+    fixed route and never the path; Connect spans on the console's and the
+    session service's handlers and on the controllers' clients of the console
+    (the trace continues across); a span per tick (target kind and target) and
+    per storage port call, the latter only inside a trace already recorded.
+    Every span leaves through an allowlist exporter: attributes outside the list
+    (the client's address, the raw path, the user agent), every event, link
+    attribute and status text are dropped, and a test plants personal data in
+    each place and asserts none leaves. **The sampler default, when
+    `OTEL_TRACES_SAMPLER` is unset, is parent based `always_on`**; truvity/audit
+    keeps a tenth. Which is right is not decided: it is one function, and the
+    environment overrides it.
+  - **Metrics.** `access_issuer.http.requests` and `.request.duration` by route
+    and status class, `access_issuer.tokens.issued` by declared client and grant,
+    `access_issuer.login.failures` by reason and `.login.successes` by method,
+    `access_issuer.reuse_detected` by kind,
+    `access_issuer.signing_key.active_since_timestamp`, and
+    `access_issuer.signing_keys_published` now **by algorithm** (it was one
+    unlabelled gauge written by every ring). For the controllers,
+    `access_roster.ticks`, `.tick.duration` and `.tick.last_success_timestamp`
+    by kind and target, `access_roster.leases.{acquired,contended,lost,held}`,
+    and `access_roster.port.operation.duration` by port, operation and outcome
+    (its `conflict` count is the compare-and-swap conflicts). The rate-limit
+    metrics are kept. Nothing is labelled by person or group; a client id is
+    bounded by the policy (an undeclared one is `other`) and a target by the
+    policy's own declaration.
+  - **Chart: `renders: app|alerts|dashboards`.** `app`, the default, renders
+    byte for byte what it did. `alerts` renders only a VMRule (or, with
+    `alerts.format: prometheusrule`, a PrometheusRule) of ten rules, each with
+    its threshold's reason in a comment and a runbook entry, with
+    `alerts.ruleLabels` on every rule; `dashboards` renders only the sidecar
+    ConfigMaps of an "access-roster overview - $cluster" dashboard. Both are
+    installed as a release of their own and validate nothing of the service.
+  - **Held by CI.** `just telemetry` (a new job, and part of `check`) regenerates
+    the dashboard and runs truvity/observability's `dashboardlint` over it, and
+    unit-tests every rule with `vmalert-tool`, each with a case that fires it
+    and one that must not. Goldens cover both modes.
+
+- **A flaky Slack controller test.** `TestAChangedCredentialRunsAPassWithoutWaitingForTheInterval`
+  read the second workspace's report before its own tick had published it; it
+  now waits for it.
+
+## v1.52.4
+
+- **Breaking (released automatically as a patch):** this release replaces the three
+  binaries (`access-issuer`, `github-roster`, `slack-roster`) and the
+  `access-issuer` chart with one `access-roster` binary, image and chart, and
+  moves configuration from environment variables and chart values to one
+  validated file per binary. It is a breaking change shipped as a patch release;
+  the migration steps are in
+  [docs/reference/configuration.md](docs/reference/configuration.md#migrating-from-environment-variables)
+  and
+  [the chart migration](docs/reference/configuration.md#migrating-from-the-access-issuer-chart).
 
 - **Breaking: each binary is configured by one validated file, in place of
   environment variables, and the chart passes it through.**
@@ -238,49 +297,6 @@
     version, which takes no lease, would run beside the new one. Two replicas
     wait for B3's key-value State, which both pods share. Nothing in the chart
     changes.
-
-- **Traces, issuer and controller metrics, and the chart's `alerts` and
-  `dashboards` modes.** Telemetry is still only `OTEL_*`, exported only when a
-  collector is named; the contract and every signal are in
-  [docs/operations/telemetry.md](docs/operations/telemetry.md).
-
-  - **Traces.** A server span per request on the issuer's listener, named for a
-    fixed route and never the path; Connect spans on the console's and the
-    session service's handlers and on the controllers' clients of the console
-    (the trace continues across); a span per tick (target kind and target) and
-    per storage port call, the latter only inside a trace already recorded.
-    Every span leaves through an allowlist exporter: attributes outside the list
-    (the client's address, the raw path, the user agent), every event, link
-    attribute and status text are dropped, and a test plants personal data in
-    each place and asserts none leaves. **The sampler default, when
-    `OTEL_TRACES_SAMPLER` is unset, is parent based `always_on`**; truvity/audit
-    keeps a tenth. Which is right is not decided: it is one function, and the
-    environment overrides it.
-  - **Metrics.** `access_issuer.http.requests` and `.request.duration` by route
-    and status class, `access_issuer.tokens.issued` by declared client and grant,
-    `access_issuer.login.failures` by reason and `.login.successes` by method,
-    `access_issuer.reuse_detected` by kind,
-    `access_issuer.signing_key.active_since_timestamp`, and
-    `access_issuer.signing_keys_published` now **by algorithm** (it was one
-    unlabelled gauge written by every ring). For the controllers,
-    `access_roster.ticks`, `.tick.duration` and `.tick.last_success_timestamp`
-    by kind and target, `access_roster.leases.{acquired,contended,lost,held}`,
-    and `access_roster.port.operation.duration` by port, operation and outcome
-    (its `conflict` count is the compare-and-swap conflicts). The rate-limit
-    metrics are kept. Nothing is labelled by person or group; a client id is
-    bounded by the policy (an undeclared one is `other`) and a target by the
-    policy's own declaration.
-  - **Chart: `renders: app|alerts|dashboards`.** `app`, the default, renders
-    byte for byte what it did. `alerts` renders only a VMRule (or, with
-    `alerts.format: prometheusrule`, a PrometheusRule) of ten rules, each with
-    its threshold's reason in a comment and a runbook entry, with
-    `alerts.ruleLabels` on every rule; `dashboards` renders only the sidecar
-    ConfigMaps of an "access-roster overview - $cluster" dashboard. Both are
-    installed as a release of their own and validate nothing of the service.
-  - **Held by CI.** `just telemetry` (a new job, and part of `check`) regenerates
-    the dashboard and runs truvity/observability's `dashboardlint` over it, and
-    unit-tests every rule with `vmalert-tool`, each with a case that fires it
-    and one that must not. Goldens cover both modes.
 
 ## v1.52.3
 

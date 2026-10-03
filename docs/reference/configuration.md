@@ -534,7 +534,7 @@ a dashboard that selects on them still does.
 **Steps, for an installation.**
 
 1. Be on the configuration-file form first ([below](#migrating-from-environment-variables)):
-   the environment variables went in v1.53.0, and the binaries refuse them.
+   the environment variables went in v1.52.4, and the binaries refuse them.
 2. In your values, rename `githubRoster` to `controllerGithub` and `slackRoster`
    to `controllerSlack`, and delete `githubRoster.image` and `slackRoster.image`.
    Move nothing else: `config` stays where it is.
