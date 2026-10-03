@@ -7,13 +7,14 @@ to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); thi
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: the ports and five adapters are built, the domain stores are on them;
-DynamoDB is designed.** The interfaces, an in-memory adapter, a temporary
-`legacy` adapter, a NATS JetStream adapter for State, Index and Trigger, an S3
-Blob and a KMS Sealer exist, and every domain store (workspaces and their
+**Status: the ports and six adapters are built, the domain stores are on them;
+DynamoDB has run on LocalStack and not yet on AWS.** The interfaces, an in-memory
+adapter, a temporary `legacy` adapter, a NATS JetStream adapter and a DynamoDB
+adapter for State, Index and Trigger, an S3 Blob and a KMS Sealer exist, and
+every domain store (workspaces and their
 credentials, GitHub organisations and Apps, a person's GitHub link, the Slack
 records) has an implementation on State and the Sealer
-([The domain stores](#the-domain-stores)); DynamoDB does not. With `ports.adapter`
+([The domain stores](#the-domain-stores)). With `ports.adapter`
 `legacy`, the default, the running service still keeps its state as described in
 [access-roster.md](access-roster.md#the-store) and
 [../operations/high-availability.md](../operations/high-availability.md); with any
@@ -110,12 +111,21 @@ current store does.
 
 One layout, two renderings. NATS uses the dotted key as written, in a bucket
 `access-roster`. DynamoDB uses one table with a partition key `pk` and a sort
-key `sk`; the dotted key is split at the first `.` into a partition and a sort
-value so that a prefix listing is a `Query` on one partition, with the first
-segment's upper-case form (`SES`, `SID`) written as `<KIND>#<value>`. An
-`expires` attribute (epoch seconds) holds the expiry, the table's TTL attribute
-points at it, and a revision attribute `rev` is a counter that conditional writes
-compare.
+key `sk`: **`pk` is the key's first segment (`ses`, `rt`, `lease`) and `sk` is the
+whole key**, so a prefix listing that holds a dot (`ses.<person>.`, `ws.dir.`) is a
+`Query` on one partition with `begins_with` on `sk`, in key order and paged by
+`LastEvaluatedKey`, and the partition is the key family that ADR 0027's IAM
+condition `dynamodb:LeadingKeys` grants a role. The adapter knows no more of the
+layout than that, so a family needs no code of its own. (The first draft of this
+page split some families finer, `SES#<person>` for a person's sessions; that
+needs the adapter to know each family's shape, buys nothing at this scale, where a
+hot partition is not a concern, and is dropped. A person's sessions are still one
+`Query`.) A prefix with **no dot** (`ses`, the empty prefix, a legacy
+`issuer:code:`) names no partition and is a `Scan` sorted in memory: an operator's
+listing and what `access-roster migrate` does. An `expires` attribute (epoch
+seconds) holds the expiry, the table's TTL attribute points at it, and a revision
+attribute `rev` is what conditional writes compare ([The DynamoDB
+adapter](#the-dynamodb-adapter)).
 
 No access pattern needs a secondary index: everything a caller looks up is a key
 or a prefix. Sessions are listed per person under `ses.<person>.`, a session id
@@ -123,35 +133,35 @@ is resolved to its person through the pointer `sid.<sid>`, and "every session"
 is a listing over all `ses.` partitions, which is an operator action and not a
 hot path.
 
-| Prefix (NATS key) | DynamoDB `pk` / `sk` | Content | Writer | TTL |
+| Key | Content | Writer | TTL |
 |---|---|---|---|---|
-| `req.<id>` | `REQ#<id>` | a pending authorization request, also backing a device-code poll | issuer | 30 min |
-| `code.<id>` | `CODE#<id>` | an authorization code | issuer | 5 min |
-| `codesess.<id>` | `CODESESS#<id>` | the session a redeemed code opened, for a replayed redemption | issuer | 5 min |
-| `ses.<person>.<sid>` | `SES#<person>` / `<sid>` | a per-client session: identity, client, how it began, scopes, SSO session, refresh token (hashed), authentication time | issuer | the session lifetime |
-| `sid.<sid>` | `SID#<sid>` | pointer from a session id to `<person>`; written with the session, deleted with it | issuer | the session lifetime |
-| `rt.<hash>` | `RT#<hash>` | live refresh token to `<person>.<sid>` | issuer | the session lifetime |
-| `rtrot.<hash>` | `RTROT#<hash>` | a spent refresh token's successor, for the 30-second retry grace | issuer | 30 s |
-| `sso.<id>` | `SSO#<id>` | the browser-wide SSO session and the clients it covers | issuer | the session lifetime |
-| `tok.<jti>` | `TOK#<jti>` | a minted token's own record, for userinfo and revocation | issuer | until the token expires |
-| `keyring.<kid>` | `KEYRING#<kid>` | a signing key's schedule: first seen, activation | issuer replicas | 30 days, renewed on each poll |
-| `ws.dir.<id>` | `WS#dir` / `<id>` | a connected directory workspace: its record **and its sealed credential, one item** | console | permanent |
-| `ws.slack.<workspace>` | `WS#slack` / `<workspace>` | a connected Slack workspace: its record and its sealed client secret and bot token, one item | console | permanent |
-| `gh.org.<org>` | `GHORG#<org>` | a connected GitHub organisation: its record and its sealed App key, one item | console | permanent |
-| `gh.link.<account>` | `GHLINK#<account>` | a GitHub account's link, keyed by the **account id**; the token pair is sealed inside the one item, the rest of the link, `RefreshingSince` and the `Revision` counter included, is plain | link flow, GitHub tick | permanent |
-| `app.gh.link` | `APP#gh` / `link` | the link App: record and sealed client secret | console | permanent |
-| `app.gh.runner.<tier>.<org>` | `APP#gh` / `runner.<tier>.<org>` | a runner App: record and sealed key | console | permanent |
-| `app.gh.cat.<id>` | `APP#gh` / `cat.<id>` | a catalogue GitHub App: record and sealed key | console | permanent |
-| `app.slack.cat.<id>` | `APP#slack` / `cat.<id>` | a catalogue Slack App: record and sealed client secret and bot token | console | permanent |
-| `rec.slack.shared.<name>` | `REC#slack` / `shared.<name>` | a Slack Connect channel's definition | console | permanent |
-| `rec.slack.channel.<workspace>.<name>` | `REC#slack` / `channel.<workspace>.<name>` | a console channel's record | console | permanent |
-| `rec.console.session-key` | `REC#console` / `session-key` | the key the console signs its sessions with, sealed; created by the first replica that starts | console | permanent |
-| `lease.<target>` | `LEASE#<target>` | the holder of a target's tick, by id | ticks | seconds, renewed |
-| `gate.<target>.<name>` | `GATE#<target>` / `<name>` | a held-once ledger entry, a breaker, a fingerprint. Written today: `gate.github.<org>.confirm` and `.pass`, `gate.slack.<workspace>.confirm[.<channel>]` and `.pass` (an operator's confirmation of a removal set, 24 h; a request for a pass now, 24 h), `gate.github-claim.<account>` (the marker of a link claim, below) | ticks, console | by gate |
-| `share.<host>.<channel>` | `SHARE#<host>` / `<channel>` | a Slack Connect share: the guests that were invited and each side's state; written by the host's tick, its write enqueues the guest's tick, and the guest's tick marks its own side accepted | host tick, guest tick | 14 days while a guest is pending, then 7 days once every guest has accepted |
-| `cache.slack.user.<workspace>.<id>` | `CACHE#slack` / `user.<workspace>.<id>` | who a Slack member is (address, team, bot, guest): `users.info` once a day, not once a pass. A deactivated account is never cached | slack tick | 24 h |
-| `cache.<digest>.<name>` | `CACHE#<digest>` / `<name>` | a shared input (a group's holders, an address's state), keyed by the policy digest. **Not written yet**: the Slack controller's shared inputs stay in memory ([why](#the-domain-stores)) | ticks | the digest's lifetime |
-| `dedupe.<id>` | `DEDUPE#<id>` | an idempotency marker for an external write | ticks | by use |
+| `req.<id>` | a pending authorization request, also backing a device-code poll | issuer | 30 min |
+| `code.<id>` | an authorization code | issuer | 5 min |
+| `codesess.<id>` | the session a redeemed code opened, for a replayed redemption | issuer | 5 min |
+| `ses.<person>.<sid>` | a per-client session: identity, client, how it began, scopes, SSO session, refresh token (hashed), authentication time | issuer | the session lifetime |
+| `sid.<sid>` | pointer from a session id to `<person>`; written with the session, deleted with it | issuer | the session lifetime |
+| `rt.<hash>` | live refresh token to `<person>.<sid>` | issuer | the session lifetime |
+| `rtrot.<hash>` | a spent refresh token's successor, for the 30-second retry grace | issuer | 30 s |
+| `sso.<id>` | the browser-wide SSO session and the clients it covers | issuer | the session lifetime |
+| `tok.<jti>` | a minted token's own record, for userinfo and revocation | issuer | until the token expires |
+| `keyring.<kid>` | a signing key's schedule: first seen, activation | issuer replicas | 30 days, renewed on each poll |
+| `ws.dir.<id>` | a connected directory workspace: its record **and its sealed credential, one item** | console | permanent |
+| `ws.slack.<workspace>` | a connected Slack workspace: its record and its sealed client secret and bot token, one item | console | permanent |
+| `gh.org.<org>` | a connected GitHub organisation: its record and its sealed App key, one item | console | permanent |
+| `gh.link.<account>` | a GitHub account's link, keyed by the **account id**; the token pair is sealed inside the one item, the rest of the link, `RefreshingSince` and the `Revision` counter included, is plain | link flow, GitHub tick | permanent |
+| `app.gh.link` | the link App: record and sealed client secret | console | permanent |
+| `app.gh.runner.<tier>.<org>` | a runner App: record and sealed key | console | permanent |
+| `app.gh.cat.<id>` | a catalogue GitHub App: record and sealed key | console | permanent |
+| `app.slack.cat.<id>` | a catalogue Slack App: record and sealed client secret and bot token | console | permanent |
+| `rec.slack.shared.<name>` | a Slack Connect channel's definition | console | permanent |
+| `rec.slack.channel.<workspace>.<name>` | a console channel's record | console | permanent |
+| `rec.console.session-key` | the key the console signs its sessions with, sealed; created by the first replica that starts | console | permanent |
+| `lease.<target>` | the holder of a target's tick, by id | ticks | seconds, renewed |
+| `gate.<target>.<name>` | a held-once ledger entry, a breaker, a fingerprint. Written today: `gate.github.<org>.confirm` and `.pass`, `gate.slack.<workspace>.confirm[.<channel>]` and `.pass` (an operator's confirmation of a removal set, 24 h; a request for a pass now, 24 h), `gate.github-claim.<account>` (the marker of a link claim, below) | ticks, console | by gate |
+| `share.<host>.<channel>` | a Slack Connect share: the guests that were invited and each side's state; written by the host's tick, its write enqueues the guest's tick, and the guest's tick marks its own side accepted | host tick, guest tick | 14 days while a guest is pending, then 7 days once every guest has accepted |
+| `cache.slack.user.<workspace>.<id>` | who a Slack member is (address, team, bot, guest): `users.info` once a day, not once a pass. A deactivated account is never cached | slack tick | 24 h |
+| `cache.<digest>.<name>` | a shared input (a group's holders, an address's state), keyed by the policy digest. **Not written yet**: the Slack controller's shared inputs stay in memory ([why](#the-domain-stores)) | ticks | the digest's lifetime |
+| `dedupe.<id>` | an idempotency marker for an external write | ticks | by use |
 
 The records marked permanent are the only ones with no TTL (`ws.`, `gh.org.`,
 `gh.link.`, `app.` and `rec.`: the layout was first drawn with a lifetime on a
@@ -255,7 +265,8 @@ refuses the action it describes where the action is a sign-in, as today
 One suite, written once against the port, runs against every adapter: **the
 in-memory one, NATS JetStream and DynamoDB** (a local emulator is not enough:
 the suite also runs against the real engine in CI for the adapter that has one
-available, and the emulator-only case is named as such). It is the gate for
+available, and the emulator-only case is named as such: DynamoDB runs on
+LocalStack, an emulator, and has not yet run against AWS). It is the gate for
 adding or changing an adapter, and for the migration tool, where each adapter is
 a source and a destination.
 
@@ -438,6 +449,92 @@ mapping; in short:
   assertion. The Blob, Sealer and Identity assertions are skipped by name, as they
   are other adapters' ports. A test with the real clock covers the server's own
   TTL reaping.
+
+### The DynamoDB adapter
+
+`internal/port/dynamodb` implements State, the transitional Index and Trigger over
+one DynamoDB table (`ports.adapter: dynamodb`, `ports.dynamodb`:
+[configuration](../reference/configuration.md)), with `aws-sdk-go-v2` and the
+platform's credentials (Pod Identity, IRSA, a Lambda role: none is configured).
+Like NATS it is shared by every replica and process, and Blob, Sealer and Identity
+are not its: with it `internal/store` takes them from the legacy adapter, unless
+`ports.blob` and `ports.sealer` name the S3 and KMS adapters. It is marked 🧪: it
+passes the suite on LocalStack, and has not yet run against AWS.
+
+| Item attribute | Type | Meaning |
+|---|---|---|
+| `pk` | S | partition key: the key's first segment (`ses`), or `idx#<set>` for an Index member |
+| `sk` | S | sort key: the whole key (at most 1 KiB), or the member |
+| `v` | B | the value (State) |
+| `rev` | N | the revision: a random 64-bit number drawn on every write |
+| `expires` | N | epoch seconds the item is dead from; absent when permanent. The table's TTL attribute |
+| `k` | S | `i` for an Index member; absent for a State record, so no State listing returns a member |
+
+| Operation | DynamoDB |
+|---|---|
+| `Get` | `GetItem` with `ConsistentRead`; an expired item is `ErrNotFound` |
+| `Put` | `PutItem`, unconditional |
+| `Create` | `PutItem` with `attribute_not_exists(pk) OR (attribute_exists(expires) AND expires <= :now)`; a failed condition is `ErrExists`, and of several takers of an expired record exactly one wins |
+| `Update(rev)` | `PutItem` with `rev = :rev AND (attribute_not_exists(expires) OR expires > :now)` |
+| `DeleteIfRevision` | `DeleteItem` with the same condition |
+| `Delete` | `DeleteItem` |
+| `List` | `Query` on the prefix's partition with `begins_with(sk, :p)`, consistent, filtered for expiry here, paged by a token naming the last key (`port.PageToken`); a dotless prefix is a `Scan` |
+| `Watch`, Trigger | polling, below |
+| Index `Add`/`Remove`/`Members` | an item in the partition `idx#<set>` with the member as sort key and the lifetime of the `Add`, so the lifetime is the member's (as on NATS); `Members` is one `Query` |
+
+- **Conditional failures need no second call.** `Update` and `DeleteIfRevision`
+  ask for `ReturnValuesOnConditionCheckFailure: ALL_OLD`: no old item, or an
+  expired one, is `ErrNotFound`; an item with another revision is `ErrConflict`.
+- **A revision is random, not a counter.** A counter that a delete resets would
+  give a record that went A, deleted, A the revision it had the first time, and a
+  stale `Update` would succeed. A fresh 64-bit number changes on every write, an
+  identical rewrite included, and a stale one is `ErrConflict` whatever happened
+  to the key in between: no assertion is skipped for State, Index or Trigger.
+- **Expiry is judged by the adapter's clock**, to the second, on every read and in
+  every condition, so the engine's lazy TTL (an expired item may stay a day or
+  more) is not relied on. A lifetime is rounded up to the second: a record lives
+  up to a second longer than asked, never shorter. `expires` is also what the
+  engine's TTL deletes by, so storage is reclaimed in the end.
+- **`Watch` polls.** DynamoDB has no cheap change feed (a stream needs a consumer,
+  a second IAM surface and shard handling), so a watch lists its prefix once before
+  it returns, then every poll interval (one second; `WithPollInterval`) and reports
+  what differs: a key whose revision moved is a put, a key that is gone (deleted, or
+  expired by the clock) is a delete. Two changes to one key between polls are one
+  event, and a record written and removed between two polls is none, which the
+  port's contract (at-least-once, no completeness, reconcile by listing) allows. A
+  watch costs one `Query` per interval on its prefix, and ends with its error
+  after three failed polls in a row.
+- **The Trigger is a polling watch too.** `Notify` writes `notify.<target>` with a
+  one-minute lifetime and `Subscribe` watches that prefix, so a notification crosses
+  processes and kernel pods on DynamoDB tick across replicas, with up to one poll
+  interval of delay. This is the decision for the Kubernetes deployment on AWS. The
+  asynchronous `lambda:Invoke` of [0029](../decisions/0029-ticks-per-target-under-a-lease.md)
+  (the table at the top of this page) is the Lambda platform's Trigger and a
+  different adapter (`lambda`), where the invocation is the delivery and there is no
+  process to subscribe; it is not part of this one.
+- **Exporters.** `StateExporter` and `IndexExporter` read the live items with their
+  lifetime left from `expires`, so `access-roster migrate` can read from, and write
+  to, a DynamoDB side (the way back is the rollback). The index export is a `Scan`.
+- **The table.** `ports.dynamodb.create: false` (the default) binds to the table the
+  infrastructure code made, which needs a string `pk`, a string `sk` and TTL on
+  `expires`; `true` makes it (on-demand billing, TTL on) for a test or a
+  development installation. Start checks the table with `DescribeTable`, which is
+  also the readiness probe, so a missing table stops the start naming the key.
+- **IAM.** `dynamodb:GetItem`, `PutItem`, `DeleteItem` and `Query` on the table,
+  `Scan` for migration and a dotless listing, `DescribeTable`; `dynamodb:LeadingKeys`
+  may restrict a role to the families it writes (`notify` and `lease` belong to
+  every role that ticks).
+- **Limits.** A key over 1 KiB, and a key with no first segment (`.x`), are
+  `ErrUnsupported`; a value over 256 KiB is `ErrTooLarge` as everywhere (an item may
+  hold 400 KiB). A table that is not there, throttling and the network are
+  `ErrUnavailable`.
+- **Conformance.** The suite runs over an in-memory fake of the DynamoDB API in
+  `go test ./...` (the fake understands only the expressions the adapter sends) and
+  over LocalStack in CI, each assertion on a table of its own, with only the other
+  ports' assertions (`blob/`, `sealing/`, `identity/`) skipped, each with its
+  reason. `hack/dynamodb-conformance.sh`, which `just test-s3` and the `s3` job run,
+  fails if any other test skipped or did not run, and also runs a migration from
+  memory into DynamoDB and back.
 
 ### The domain stores
 

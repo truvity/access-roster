@@ -28,7 +28,7 @@ release and what has landed since.
 | State: the ports' `legacy` adapter over that store (temporary, until the migration of [0031](decisions/0031-a-generic-migration-tool.md) has run) | 🧪 | — |
 | State, session index and Trigger: NATS JetStream KV (`internal/port/nats`, `ports.adapter: nats`; per-key TTL needs nats-server 2.11 or later) | 🧪 | — |
 | Domain stores on the ports: workspaces and credentials, GitHub organisations and Apps, a person's GitHub link (one item, token pair sealed, compare-and-swap refresh), runner and catalogue Apps, the Slack records, the console's session key (`internal/portstore`; any `ports.adapter` but `legacy`, which needs a Sealer) | 🧪 | 📄 |
-| State: DynamoDB | — | 📄 |
+| State, session index and Trigger: DynamoDB (`internal/port/dynamodb`, `ports.adapter: dynamodb`; one table, polling Watch and Trigger; run on LocalStack, not yet on AWS) | 🧪 | 🧪 |
 | Blob: S3 (reports, snapshots; `internal/port/s3blob`, `ports.blob`) | 🧪 | 🧪 |
 | Trigger: KV watch (across processes) | 🧪 | — |
 | Trigger: asynchronous invoke | — | 📄 |
@@ -43,7 +43,7 @@ release and what has landed since.
 | Ports as Go interfaces (`internal/port`) and the apps depending on them | 🧪 | 📄 |
 | Port conformance suite: in-memory and legacy | 🧪 | — |
 | Port conformance suite: NATS (embedded nats-server, one node and a three-node cluster) | 🧪 | — |
-| Port conformance suite: DynamoDB | — | 📄 |
+| Port conformance suite: DynamoDB (LocalStack and an in-memory fake of the API; `migrate` into and out of it) | 🧪 | 🧪 |
 
 ## Runtime
 

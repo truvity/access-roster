@@ -107,7 +107,7 @@ func TestTheMemoryAdapterKeepsNothingAndRefusesWhatWouldContradictIt(t *testing.
 			t.Errorf("the memory adapter was combined with %s", name)
 		}
 	}
-	if _, err = store.Open(context.Background(), store.Config{Adapter: "dynamodb"}, quiet); err == nil {
+	if _, err = store.Open(context.Background(), store.Config{Adapter: "cassandra"}, quiet); err == nil {
 		t.Error("an adapter that does not exist opened")
 	}
 }

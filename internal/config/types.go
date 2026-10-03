@@ -163,6 +163,18 @@ type (
 		Blob    *PortsBlob   `json:"blob,omitempty"`
 		Sealer  *PortsSealer `json:"sealer,omitempty"`
 		NATS    *NATS        `json:"nats,omitempty"`
+		// DynamoDB is the table of the `dynamodb` adapter.
+		DynamoDB *DynamoDB `json:"dynamodb,omitempty"`
+	}
+
+	// DynamoDB is where the `dynamodb` adapter keeps State, the transitional
+	// Index and the Trigger: one table. Credentials are the platform's (Pod
+	// Identity, IRSA, a Lambda role), never configured.
+	DynamoDB struct {
+		Table    string `json:"table,omitempty"`
+		Region   string `json:"region,omitempty"`
+		Endpoint string `json:"endpoint,omitempty"`
+		Create   bool   `json:"create,omitempty"`
 	}
 
 	// NATS is where the `nats` adapter keeps State, the transitional Index and

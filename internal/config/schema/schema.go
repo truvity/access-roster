@@ -284,14 +284,16 @@ func serveSchema() m {
 // portsSchema is the `ports` section both kinds of file share.
 func portsSchema() m {
 	o := obj("The adapters behind the storage ports (docs/design/ports.md).", m{
-		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`. `nats` keeps State, the session index and the trigger in a NATS JetStream KV bucket (`ports.nats`), shared by every replica and process; its Blob and Sealer are `legacy`'s unless `ports.blob` and `ports.sealer` name their own.", "legacy",
-			"legacy", "memory", "nats"),
-		"blob":   portsBlobSchema(),
-		"sealer": portsSealerSchema(),
-		"nats":   portsNATSSchema(),
+		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`. `nats` keeps State, the session index and the trigger in a NATS JetStream KV bucket (`ports.nats`), shared by every replica and process; its Blob and Sealer are `legacy`'s unless `ports.blob` and `ports.sealer` name their own. `dynamodb` keeps the same in one DynamoDB table (`ports.dynamodb`), with the platform's credentials, and takes its Blob and Sealer from `legacy` in the same way.", "legacy",
+			"legacy", "memory", "nats", "dynamodb"),
+		"blob":     portsBlobSchema(),
+		"sealer":   portsSealerSchema(),
+		"nats":     portsNATSSchema(),
+		"dynamodb": portsDynamoDBSchema(),
 	})
 	o["allOf"] = []any{
 		m{"if": m{"properties": m{"adapter": m{"const": "nats"}}, "required": []string{"adapter"}}, "then": m{"required": []string{"nats"}}},
+		m{"if": m{"properties": m{"adapter": m{"const": "dynamodb"}}, "required": []string{"adapter"}}, "then": m{"required": []string{"dynamodb"}}},
 	}
 	return o
 }
@@ -307,6 +309,16 @@ func portsNATSSchema() m {
 		"caFile":    str("A PEM bundle of the authorities that sign the server's certificate, when the system's do not."),
 		"create":    boolDefault("Create or update the bucket at start. Off binds to a bucket that exists, for an identity that may not manage streams.", true),
 	}, "url")
+}
+
+// portsDynamoDBSchema is `ports.dynamodb`: the table of the `dynamodb` adapter.
+func portsDynamoDBSchema() m {
+	return obj("The DynamoDB table of the `dynamodb` adapter: one table with a string partition key `pk`, a string sort key `sk` and the TTL attribute `expires`. Credentials are the platform's (EKS Pod Identity, IRSA, a Lambda role) and are never configured here.", m{
+		"table":    str("The table's name."),
+		"region":   str("The table's region. Absent, the SDK's own resolution (`AWS_REGION`)."),
+		"endpoint": url("Overrides the DynamoDB address: LocalStack or DynamoDB Local."),
+		"create":   boolDefault("Create the table (on-demand, TTL on `expires`) at start when it is not there, for a test or a development installation. Off, the table must exist: production uses the one the infrastructure code made, and the role needs `dynamodb:DescribeTable` on it.", false),
+	}, "table")
 }
 
 // portsBlobSchema is `ports.blob`: the Blob port's own adapter, which

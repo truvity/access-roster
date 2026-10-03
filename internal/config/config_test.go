@@ -361,9 +361,24 @@ func TestThePortsAdapterIsOneOfTheTwo(t *testing.T) {
 		t.Error("a nats password in the file was accepted")
 	}
 	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: dynamodb}\n")); err == nil {
+		t.Error("the dynamodb adapter was accepted with no table named")
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: dynamodb, dynamodb: {region: eu-west-1}}\n")); err == nil {
+		t.Error("a dynamodb section with no table was accepted")
+	}
+	ddbFile := "ports:\n  adapter: dynamodb\n  dynamodb: {table: access-roster, region: eu-west-1, endpoint: 'http://localstack:4566', create: true}\n"
+	if f, err := config.LoadServe(write(t, minimalIssuer+ddbFile)); err != nil {
+		t.Errorf("the dynamodb adapter was refused: %v", err)
+	} else if d := f.Ports.DynamoDB; d == nil || d.Table != "access-roster" || d.Region != "eu-west-1" || !d.Create || d.Endpoint == "" {
+		t.Errorf("ports.dynamodb = %+v", d)
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: dynamodb, dynamodb: {table: t, accessKey: x}}\n")); err == nil {
+		t.Error("a dynamodb credential in the file was accepted")
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: cassandra}\n")); err == nil {
 		t.Error("an adapter that does not exist was accepted")
 	}
-	if _, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: dynamodb}\n")); err == nil {
+	if _, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: cassandra}\n")); err == nil {
 		t.Error("a controller accepted an adapter that does not exist")
 	}
 	if _, err := config.LoadControllerSlack(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: memory}\n")); err != nil {
