@@ -19,6 +19,12 @@ cmd/resource-proxy        the sidecar that fronts a stock MCP server
 cmd/accessctl             the CLI, for laptops and CI jobs
 cmd/acceptance            the acceptance runner against a kind cluster
 charts/access-roster      the chart: the service and both controllers
+deploy/pulumi             the AWS infrastructure as a Pulumi Go library, a
+                          Go module of its own
+                          (github.com/truvity/sluis/deploy/pulumi,
+                          tagged `deploy/pulumi/vX.Y.Z` by the release):
+                          storage, the DynamoDB State table and the Pod
+                          Identity roles; `just pulumi-test`
 action.yml                the GitHub Action, at the root so
                           `uses: truvity/access-roster@<tag>` works
 identity/ tokens/ policy/ backend/
@@ -209,8 +215,10 @@ Push a `v*` tag. The release workflow builds the binaries, the images
 the chart (`oci://ghcr.io/truvity/charts/access-roster`), `accessctl`'s
 archives and its Nix flake, and publishes the TypeScript package to GitHub
 Packages, all stamped with the tag.
-The Go module and the GitHub Action are the same tag. One tag, every
-artifact: a consumer pins one version of this repository.
+The Go module and the GitHub Action are the same tag; the Pulumi library, a
+module of its own, is tagged `deploy/pulumi/vX.Y.Z` at the same commit by the
+release's `pulumi-tag` job. One tag, every artifact: a consumer pins one
+version of this repository.
 
 Auto-release is armed (`vars.AUTO_RELEASE`) and cuts **patch** tags when
 changes merge: at once for a merged `security`-labelled pull request, weekly

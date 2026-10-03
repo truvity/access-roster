@@ -1,5 +1,18 @@
 ## v1.56.0
 
+- **A Pulumi library for the AWS part of an installation:
+  `github.com/truvity/sluis/deploy/pulumi`.** A Go module of its own (Pulumi is
+  not in the root's dependency graph; the release tags it
+  `deploy/pulumi/vX.Y.Z`) with three components: `Storage` (the blob bucket, the
+  Sealer's KMS key and alias), `State` (the DynamoDB table of the DynamoDB
+  adapter) and `KubernetesIdentity` (one EKS Pod Identity role per process:
+  serve, the GitHub controller, the Slack controller, each with the storage and
+  table grants and nothing else), and `RenderPorts` for the `ports:` block,
+  validated in its tests against the binaries' schemas. The KMS grant admits the
+  encryption-context key `sluis:binding` only, so it needs a service release
+  whose Sealer sends that key. Tested with Pulumi's mocks (`just pulumi-test`).
+  [docs/deployment/aws.md](docs/deployment/aws.md).
+
 - **A longer absolute session for a read-only resource: `absolute_cap` and
   `read_only` on a policy resource.** The 24-hour absolute limit of
   [ADR 0001](docs/decisions/0001-sessions-and-an-absolute-limit.md) made every
