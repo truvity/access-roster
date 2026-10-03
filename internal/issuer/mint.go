@@ -32,7 +32,7 @@ var ErrNoPerson = errors.New("a token is minted here only for a person")
 // [Sessions.Record]). It is bounded all the same, twice over: `lifetime`
 // is a few minutes in every caller today, and the console session that
 // authorizes the call in the first place is itself capped at the limit
-// (see internal/app's use of ABSOLUTE_LIFETIME) -- so a person who could
+// (see internal/app's use of lifetimes.absolute) -- so a person who could
 // no longer reach the console at all cannot reach this either.
 func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime time.Duration) (string, time.Time, error) {
 	email = strings.ToLower(strings.TrimSpace(email))

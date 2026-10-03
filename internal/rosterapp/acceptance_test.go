@@ -14,12 +14,24 @@ import (
 	"github.com/truvity/access-roster/internal/rosterapp"
 )
 
-// boot assembles the whole service from the environment, which is what
-// the chart sets. It cannot run in parallel: t.Setenv and t.Parallel are
-// mutually exclusive, and reading the environment is part of what is
-// under test.
+// load writes a configuration file and reads it the way the binary does, which
+// is the contract the chart renders to.
+func load(t *testing.T, body string) rosterapp.Config {
+	t.Helper()
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+		t.Fatalf("write the configuration: %v", err)
+	}
+	cfg, err := rosterapp.Load(file)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	return cfg
+}
+
+// boot assembles the whole service from a configuration file.
 //
-// Nothing here is configured to reach a network: STORE defaults to
+// Nothing here is configured to reach a network: store defaults to
 // memory, there is no Valkey and no OAuth client, and the point is the
 // SHAPE of one process — what answers at which path, and what a login
 // would have to dial. Which is nothing.
@@ -37,21 +49,13 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	for k, v := range map[string]string{
-		"ISSUER_URL":  "https://access.example",
-		"PUBLIC_URL":  "https://access.example/console",
-		"POLICY_DIR":  dir,
-		"PORT":        "0",
-		"HEALTH_PORT": "0",
-		// HUB_ADDRESS is deliberately unset: there is no hub to dial.
-		"HUB_ADDRESS": "",
-	} {
-		t.Setenv(k, v)
-	}
-	cfg, err := rosterapp.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	cfg := load(t, `
+issuerURL: https://access.example
+publicURL: https://access.example/console
+policyDir: `+dir+`
+listen: {address: ":0"}
+probes: {address: ":0"}
+`)
 	app, err := rosterapp.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -125,32 +129,23 @@ func TestTheConsoleIsMountedUnderTheIssuersOrigin(t *testing.T) {
 
 // Both halves act on ONE policy, loaded once.
 //
-// Found by running the thing: with DEMO=1 the directory half built a
+// Found by running the thing: with `demo` the directory half built a
 // demonstration policy and the issuer half refused to start on an empty
-// POLICY_DIR, because each loaded its own. They read the same file in a
+// policyDir, because each loaded its own. They read the same file in a
 // real deployment, so the disagreement stayed hidden — but two halves
 // that CAN disagree about the policy is exactly the class of failure the
 // merge existed to end.
 func TestBothHalvesActOnOnePolicy(t *testing.T) {
-	for k, v := range map[string]string{
-		"ISSUER_URL":  "https://access.example",
-		"PUBLIC_URL":  "https://access.example/console",
-		"PORT":        "0",
-		"HEALTH_PORT": "0",
-		"HUB_ADDRESS": "",
-		"STORE":       "memory",
-		// No POLICY_DIR at all, and a directory half with something to
-		// fall back on. Before the fix this combination could not start.
-		"POLICY_DIR": "",
-		"DEMO":       "1",
-	} {
-		t.Setenv(k, v)
-	}
-
-	cfg, err := rosterapp.Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
+	// No policyDir at all, and a directory half with something to fall back
+	// on. Before the fix this combination could not start.
+	cfg := load(t, `
+issuerURL: https://access.example
+publicURL: https://access.example/console
+listen: {address: ":0"}
+probes: {address: ":0"}
+store: memory
+demo: true
+`)
 	app, err := rosterapp.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -187,7 +182,6 @@ func TestOneHealthEndpointAnswersForBothHalves(t *testing.T) {
 // Found in production, after the cutover, by somebody noticing the page
 // was gone. Nothing failed and nothing was logged.
 func TestTheConsoleIsToldWhereTheIssuerIs(t *testing.T) {
-	// Not parallel: boot reads the environment, and t.Setenv forbids it.
 	app := boot(t)
 
 	code, body := get(t, app.Handler(), "/console/.access/whoami")
@@ -220,7 +214,6 @@ func TestTheConsoleIsToldWhereTheIssuerIs(t *testing.T) {
 // which makes that request, so it is the address that actually reaches
 // a working sign-in.
 func TestSigningOutLeadsBackToSigningIn(t *testing.T) {
-	// Not parallel: boot reads the environment, and t.Setenv forbids it.
 	app := boot(t)
 
 	if to := where(t, app.Handler(), "/logout"); to != "/console/" {

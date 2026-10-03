@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/issuerapp"
 )
 
@@ -30,14 +31,12 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	for k, v := range map[string]string{
-		"ISSUER_URL": "https://issuer.example", "POLICY_DIR": policyDir, "PORT": "0", "HEALTH_PORT": "0",
-	} {
-		t.Setenv(k, v)
-	}
-	cfg, err := issuerapp.Load()
+	cfg, err := issuerapp.FromConfig(&config.Issuer{
+		IssuerURL: "https://issuer.example", PolicyDir: policyDir,
+		Listen: &config.Address{Address: ":0"}, Probes: &config.Address{Address: ":0"},
+	})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("FromConfig: %v", err)
 	}
 	wrapped := 0
 	app, err := issuerapp.New(context.Background(), cfg, issuerapp.Deps{

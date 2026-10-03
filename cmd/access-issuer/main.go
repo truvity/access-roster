@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/rosterapp"
 	"github.com/truvity/access-roster/internal/telemetry"
 )
@@ -29,7 +30,16 @@ func main() {
 }
 
 func run() error {
-	cfg, err := rosterapp.Load()
+	file, done, err := config.Command("access-issuer", os.Args[1:], os.Stderr)
+	if err != nil || done {
+		return err
+	}
+	// A retired variable that is still set is a deployment that believes it is
+	// configuring something: refuse it, naming what replaces it.
+	if err := config.RefuseRetired("access-issuer", os.Environ()); err != nil {
+		return err
+	}
+	cfg, err := rosterapp.Load(file)
 	if err != nil {
 		return err
 	}

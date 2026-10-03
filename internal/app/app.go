@@ -12,7 +12,7 @@
 // The API listener carries DirectoryService for consumers on the cluster
 // network. The console listener carries the operator services, the login
 // routes and the consent callback, behind an authenticating gateway or
-// behind the hub's own sign-in. DEMO=1 gives two tenants held in memory,
+// behind the hub's own sign-in. `demo` gives two tenants held in memory,
 // which need no credential and no network.
 package app
 
@@ -29,7 +29,6 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -41,6 +40,7 @@ import (
 	"github.com/truvity/access-roster/gen/directory/v1/directoryv1connect"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/connector"
 	"github.com/truvity/access-roster/internal/demo"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
@@ -64,9 +64,7 @@ import (
 // Config is the whole of the hub's configuration. The chart sets it from
 // the values; the defaults are what a laptop needs.
 //
-// Read from the environment, and that is the contract worth testing: four
-// of these were being read here and set nowhere, which is invisible until
-// a deployment behaves differently from every local run.
+// Built from the service's configuration file (see [FromConfig]).
 type Config struct {
 	apiPort     int
 	consolePort int
@@ -92,8 +90,8 @@ type Config struct {
 	adminPassword    string
 	sessionLifetime  time.Duration
 	// absoluteLifetime caps the console's own session the same way it caps
-	// a per-client one in the issuer: read from the SAME environment
-	// variable the issuer's config reads (ABSOLUTE_LIFETIME), because the
+	// a per-client one in the issuer: read from the SAME key
+	// the issuer's config reads (lifetimes.absolute), because the
 	// two run in one process and one pod sets it once. See
 	// issuer.DefaultAbsoluteLifetime for why 24h.
 	absoluteLifetime  time.Duration
@@ -122,138 +120,181 @@ type Config struct {
 	holdWindow                   time.Duration
 	logLevel                     slog.Level
 	// githubRunnerTiers are the tiers an operator may create a runner App
-	// for, from GITHUB_RUNNER_TIERS, comma-separated. Empty keeps none.
+	// for, from github.runnerTiers. Empty keeps none.
 	githubRunnerTiers []string
 	// githubCatalogue is every GitHub App the deployment declares, from
-	// the file GITHUB_APPS_CATALOGUE_FILE names. Empty declares none.
+	// the file github.catalogueFile names. Empty declares none.
 	githubCatalogue *catalogue.Catalogue
 	// slackCatalogue is every Slack App the deployment declares, from the
-	// file SLACK_APPS_CATALOGUE_FILE names. Empty declares none.
+	// file slack.catalogueFile names. Empty declares none.
 	slackCatalogue *slackcatalogue.Catalogue
 }
 
-// Load reads the configuration from the environment.
-func Load() (Config, error) {
+// The listeners the hub's own Run serves. The merged service serves none of
+// them (it runs the loops and mounts the console on the issuer's listener), so
+// they are not configuration.
+const (
+	defaultAPIPort     = 8080
+	defaultConsolePort = 8081
+	defaultHealthPort  = 7070
+)
+
+// FromConfig builds the hub's settings from the service's configuration file,
+// which the caller has already held to its schema. What a schema cannot say is
+// checked here, before anything starts.
+func FromConfig(f *config.Issuer) (Config, error) {
 	c := Config{
-		apiPort:           envInt("API_PORT", 8080),
-		consolePort:       envInt("CONSOLE_PORT", 8081),
-		healthPort:        envInt("HEALTH_PORT", 7070),
-		demo:              envBool("DEMO", false),
-		publicURL:         strings.TrimSuffix(envString("PUBLIC_URL", ""), "/"),
-		publicRootURL:     strings.TrimSuffix(envString("PUBLIC_ROOT_URL", ""), "/"),
-		recoveryEnabled:   envBool("RECOVERY_ENABLED", true),
-		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", "directory-roster-recovery"),
-		recoveryAudience:  envString("RECOVERY_AUDIENCE", "directory-roster-recovery"),
-		apiAudience:       envString("API_AUDIENCE", "directory-roster"),
-		consumersPath:     envString("CONSUMERS_FILE", ""),
-		loginDirectory:    envBool("LOGIN_DIRECTORY", true),
-		adminPassword:     envString("ADMIN_PASSWORD", ""),
-		forwardedHeader:   envString("FORWARDED_EMAIL_HEADER", ""),
-		forwardedIssuer:   envString("FORWARDED_ISSUER", ""),
-		signOutURL:        envString("SIGN_OUT_URL", ""),
-		forwardedAudience: envString("FORWARDED_AUDIENCE", ""),
-		policyPath:        envString("POLICY_DIR", ""),
-		overlayPath:       envString("OVERLAY_FILE", ""),
-		store:             envString("STORE", "memory"),
-		release:           envString("RELEASE_NAME", "directory-roster"),
-		oauthSecretName:   envString("OAUTH_CLIENT_SECRET_NAME", ""),
-		oauthIDKey:        envString("OAUTH_CLIENT_ID_KEY", ""),
-		oauthSecretKey:    envString("OAUTH_CLIENT_SECRET_KEY", ""),
+		apiPort:       defaultAPIPort,
+		consolePort:   defaultConsolePort,
+		healthPort:    defaultHealthPort,
+		demo:          f.Demo,
+		publicURL:     strings.TrimSuffix(f.PublicURL, "/"),
+		publicRootURL: strings.TrimSuffix(f.PublicRootURL, "/"),
+		// The hub's own defaults, which differ from the issuer's: recovery is
+		// on, as a local run needs it.
+		recoveryEnabled:  true,
+		recoveryAccount:  "directory-roster-recovery",
+		recoveryAudience: "directory-roster-recovery",
+		apiAudience:      "directory-roster",
+		loginDirectory:   true,
+		policyPath:       f.PolicyDir,
+		overlayPath:      f.OverlayFile,
+		store:            orDefault(f.Store, storeMemory),
+		release:          orDefault(f.Release, "access-issuer"),
 	}
-	c.audit = audit.Config{
-		Writer:    envString("AUDIT_WRITER_URL", ""),
-		TokenFile: envString("AUDIT_TOKEN_FILE", ""),
-		Instance:  envString("POD_NAME", ""),
-		Version:   version.String(),
+	if r := f.Recovery; r != nil {
+		if r.Enabled != nil {
+			c.recoveryEnabled = *r.Enabled
+		}
+		c.recoveryAccount = orDefault(r.ServiceAccount, c.recoveryAccount)
+		c.recoveryAudience = orDefault(r.Audience, c.recoveryAudience)
 	}
-	c.auditQuery = envString("AUDIT_QUERY_URL", "")
-	c.auditAudience = envString("AUDIT_AUDIENCE", "audit")
-	c.auditForwardedForTrustedHops = envInt("AUDIT_FORWARDED_FOR_TRUSTED_HOPS", 0)
-	if c.auditForwardedForTrustedHops < 0 {
-		c.auditForwardedForTrustedHops = 0
+	if a := f.API; a != nil {
+		c.apiAudience = orDefault(a.Audience, c.apiAudience)
+		c.consumersPath = a.ConsumersFile
 	}
-	c.valkey = valkey.Config{
-		Address:  envString("VALKEY_ADDRESS", ""),
-		Password: envString("VALKEY_PASSWORD", ""),
-		TLS:      envBool("VALKEY_TLS", false),
-		Cluster:  envBool("VALKEY_CLUSTER", true),
-		Prefix:   envString("RELEASE_NAME", "directory-roster"),
+	if l := f.Login; l != nil {
+		if l.Directory != nil {
+			c.loginDirectory = *l.Directory
+		}
+		c.signOutURL = l.SignOutURL
+		if fw := l.Forwarded; fw != nil {
+			c.forwardedHeader = fw.EmailHeader
+			c.forwardedIssuer = fw.Issuer
+			c.forwardedAudience = fw.Audience
+		}
+	}
+	var err error
+	if f.AdminPasswordEnv != "" {
+		if c.adminPassword, err = config.Secret(f.AdminPasswordEnv); err != nil {
+			return Config{}, fmt.Errorf("adminPasswordEnv: %w", err)
+		}
+	}
+	if o := f.OAuthClient; o != nil {
+		c.oauthSecretName = o.SecretName
+		c.oauthIDKey = o.IDKey
+		c.oauthSecretKey = o.SecretKey
+	}
+	// The instance is the pod, which is its hostname in a cluster: it names
+	// this replica on every audit record.
+	instance, _ := os.Hostname()
+	c.audit = audit.Config{Instance: instance, Version: version.String()}
+	if a := f.Audit; a != nil {
+		c.audit.Writer = a.Writer
+		c.audit.TokenFile = a.TokenFile
+		c.auditQuery = a.QueryURL
+		c.auditAudience = orDefault(a.Audience, "audit")
+		c.auditForwardedForTrustedHops = max(a.ForwardedForTrustedHops, 0)
+	} else {
+		c.auditAudience = "audit"
+	}
+	c.valkey = valkey.Config{Cluster: true, Prefix: c.release}
+	if v := f.Valkey; v != nil {
+		c.valkey.Address = v.Address
+		c.valkey.TLS = v.TLS
+		if v.Cluster != nil {
+			c.valkey.Cluster = *v.Cluster
+		}
+		if v.PasswordEnv != "" {
+			if c.valkey.Password, err = config.Secret(v.PasswordEnv); err != nil {
+				return Config{}, fmt.Errorf("valkey.passwordEnv: %w", err)
+			}
+		}
 	}
 	// Secure follows the scheme the BROWSER will use, which the service
 	// knows because it is told its own public URL. Defaulting to false
 	// meant an installation that merely forgot to say so served session
 	// cookies a proxy could strip onto a plain-http hop, and the alert
 	// CodeQL raised was about that default rather than about this line.
-	// SECURE_COOKIES still overrides, in either direction, for the local
+	// secureCookies still overrides, in either direction, for the local
 	// http listener and for a TLS terminator that is not in the URL.
-	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.publicRootURL, "https://"))
+	c.secureCookies = strings.HasPrefix(c.publicRootURL, "https://")
+	if f.SecureCookies != nil {
+		c.secureCookies = *f.SecureCookies
+	}
 
-	var err error
-	if c.freshness.RefreshInterval, err = envDuration("REFRESH_INTERVAL", hub.DefaultRefreshInterval); err != nil {
-		return Config{}, err
+	fr := f.Freshness
+	if fr == nil {
+		fr = &config.Freshness{}
 	}
-	if c.freshness.FreshnessWindow, err = envDuration("FRESHNESS_WINDOW", hub.DefaultFreshnessWindow); err != nil {
-		return Config{}, err
+	c.freshness.RefreshInterval = dur(fr.RefreshInterval, hub.DefaultRefreshInterval)
+	c.freshness.FreshnessWindow = dur(fr.FreshnessWindow, hub.DefaultFreshnessWindow)
+	c.freshness.ProbeInterval = dur(fr.ProbeInterval, hub.DefaultProbeInterval)
+	l := f.Lifetimes
+	if l == nil {
+		l = &config.Lifetimes{}
 	}
-	if c.freshness.ProbeInterval, err = envDuration("PROBE_INTERVAL", hub.DefaultProbeInterval); err != nil {
-		return Config{}, err
-	}
-	if c.sessionLifetime, err = envDuration("SESSION_LIFETIME", 12*time.Hour); err != nil {
-		return Config{}, err
-	}
-	// Defaulted and never refused here: ABSOLUTE_LIFETIME's own validation
-	// (positive, at least TOKEN_LIFETIME) runs once, in issuerapp.Load,
+	c.sessionLifetime = dur(l.Session, 12*time.Hour)
+	// Defaulted and never refused here: lifetimes.absolute's own validation
+	// (positive, at least lifetimes.token) runs once, in issuerapp.FromConfig,
 	// which the same pod always loads beside this. A value that failed it
 	// never reaches here in a real deployment; a test building [Config]
 	// directly gets the ordinary 24h default rather than a second copy of
 	// a check it may not care about.
-	if c.absoluteLifetime, err = envDuration("ABSOLUTE_LIFETIME", 24*time.Hour); err != nil {
-		return Config{}, err
-	}
-	if c.holdWindow, err = envDuration("HOLD_WINDOW", 4*time.Hour); err != nil {
-		return Config{}, err
-	}
+	c.absoluteLifetime = dur(l.Absolute, 24*time.Hour)
+	c.holdWindow = dur(l.Hold, 4*time.Hour)
 	if c.publicURL == "" {
 		c.publicURL = fmt.Sprintf("http://localhost:%d", c.consolePort)
 	}
-	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
-		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
+	level := "info"
+	if f.Log != nil && f.Log.Level != "" {
+		level = f.Log.Level
+	}
+	if err = c.logLevel.UnmarshalText([]byte(level)); err != nil {
+		return Config{}, fmt.Errorf("log.level: %w", err)
 	}
 	switch c.store {
 	case storeMemory, storeKubernetes:
 	default:
-		return Config{}, fmt.Errorf("STORE: %q is neither %q nor %q", c.store, storeMemory, storeKubernetes)
+		return Config{}, fmt.Errorf("store: %q is neither %q nor %q", c.store, storeMemory, storeKubernetes)
 	}
-	for _, tier := range strings.Split(envString("GITHUB_RUNNER_TIERS", ""), ",") {
-		tier = strings.TrimSpace(tier)
-		switch {
-		case tier == "" || slices.Contains(c.githubRunnerTiers, tier):
-		case !runnerapp.ValidTier(tier):
-			return Config{}, fmt.Errorf("GITHUB_RUNNER_TIERS: %q is not a tier: lower-case letters, digits and dashes, at most 16", tier)
-		default:
-			c.githubRunnerTiers = append(c.githubRunnerTiers, tier)
+	var catalogueFile, slackFile string
+	if g := f.GitHub; g != nil {
+		catalogueFile = g.CatalogueFile
+		for _, tier := range g.RunnerTiers {
+			tier = strings.TrimSpace(tier)
+			switch {
+			case tier == "" || slices.Contains(c.githubRunnerTiers, tier):
+			case !runnerapp.ValidTier(tier):
+				return Config{}, fmt.Errorf("github.runnerTiers: %q is not a tier: lower-case letters, digits and dashes, at most 16", tier)
+			default:
+				c.githubRunnerTiers = append(c.githubRunnerTiers, tier)
+			}
 		}
+	}
+	if f.Slack != nil {
+		slackFile = f.Slack.CatalogueFile
 	}
 	// A malformed catalogue stops the service: an App created from a wrong
 	// declaration holds the wrong permissions, and nothing here can change
 	// them afterwards.
-	if c.githubCatalogue, err = catalogue.Load(envString("GITHUB_APPS_CATALOGUE_FILE", "")); err != nil {
-		return Config{}, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: %w", err)
+	if c.githubCatalogue, err = catalogue.Load(catalogueFile); err != nil {
+		return Config{}, fmt.Errorf("github.catalogueFile: %w", err)
 	}
 	// The same for the Slack catalogue: a wrong scope list creates an App
 	// only a reinstall by the workspace's owner can change.
-	if c.slackCatalogue, err = slackcatalogue.Load(envString("SLACK_APPS_CATALOGUE_FILE", "")); err != nil {
-		return Config{}, fmt.Errorf("SLACK_APPS_CATALOGUE_FILE: %w", err)
-	}
-	// The console's secret-store view was removed in v1.30.0. Refuse start-up
-	// if an old configuration tries to activate it, with a message pointing
-	// to the decision and the migration.
-	if smf := envString("SECRET_MANAGERS_FILE", ""); smf != "" {
-		return Config{}, errors.New(
-			"SECRET_MANAGERS_FILE is no longer read: the console's secret-store " +
-				"view was removed in v1.30.0 — see " +
-				"docs/decisions/0002-mission-boundary-tokens-and-memberships.md",
-		)
+	if c.slackCatalogue, err = slackcatalogue.Load(slackFile); err != nil {
+		return Config{}, fmt.Errorf("slack.catalogueFile: %w", err)
 	}
 	// A demonstration run declares its own tiers and catalogue, unless the
 	// run declares some: the Apps page is otherwise the two Apps this
@@ -267,6 +308,21 @@ func Load() (Config, error) {
 		}
 	}
 	return c, nil
+}
+
+func orDefault(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
+// dur reads a duration the file may leave unset.
+func dur(d *config.Duration, fallback time.Duration) time.Duration {
+	if d == nil {
+		return fallback
+	}
+	return d.D()
 }
 
 // The two places the hub can keep what a console changed.
@@ -789,14 +845,14 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	// A grant naming a group the policy does not declare would read as
 	// though somebody may ask for a token, and nobody could.
 	if undeclared := cfg.githubCatalogue.UndeclaredGroups(set.HasGroup); len(undeclared) > 0 {
-		return nil, fmt.Errorf("GITHUB_APPS_CATALOGUE_FILE: grants name groups the policy does not declare: %s",
+		return nil, fmt.Errorf("github.catalogueFile: grants name groups the policy does not declare: %s",
 			strings.Join(undeclared, "; "))
 	}
 
 	// An App declared for a workspace the policy does not name could never
 	// be installed: there is no connected workspace to install it into.
 	if err := cfg.slackCatalogue.CheckWorkspaces(set.SlackWorkspaceDeclared); err != nil {
-		return nil, fmt.Errorf("SLACK_APPS_CATALOGUE_FILE: %w", err)
+		return nil, fmt.Errorf("slack.catalogueFile: %w", err)
 	}
 
 	authorizer := access.NewAuthorizer(set, directory, cfg.holdWindow)
@@ -1297,41 +1353,8 @@ func announceRecoveryPassword(password string) {
 		password)
 }
 
-func envString(name, fallback string) string {
-	if v, ok := os.LookupEnv(name); ok && v != "" {
-		return v
-	}
-	return fallback
-}
-
-func envInt(name string, fallback int) int {
-	if v, err := strconv.Atoi(envString(name, "")); err == nil {
-		return v
-	}
-	return fallback
-}
-
-func envBool(name string, fallback bool) bool {
-	if v, err := strconv.ParseBool(envString(name, "")); err == nil {
-		return v
-	}
-	return fallback
-}
-
-func envDuration(name string, fallback time.Duration) (time.Duration, error) {
-	raw := envString(name, "")
-	if raw == "" {
-		return fallback, nil
-	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", name, err)
-	}
-	return d, nil
-}
-
 // cappedSessionLifetime is how long the console's OWN session cookie is
-// issued for: SESSION_LIFETIME, or the absolute session limit, whichever
+// issued for: lifetimes.session, or the absolute session limit, whichever
 // is shorter.
 //
 // This cookie is issued once, at sign-in, with a fixed expiry -- unlike a

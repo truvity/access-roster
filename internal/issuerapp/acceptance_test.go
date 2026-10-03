@@ -17,21 +17,22 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
 )
 
-// Each of these assembles a whole issuer from the environment, so none
-// can run in parallel: t.Setenv and t.Parallel are mutually exclusive,
-// and reading the environment is what is being tested.
-func boot(t *testing.T, env map[string]string) *issuerapp.App {
-	return bootWith(t, env, nobody{})
+// Each of these assembles a whole issuer from the configuration the chart
+// would render, built here as the struct the file decodes into.
+func boot(t *testing.T, change ...func(*config.Issuer)) *issuerapp.App {
+	return bootWith(t, nobody{}, change...)
 }
 
 // bootWith is the same with a directory of the caller's choosing, which
 // the sign-in tests need: they are about what the DIRECTORY says.
-func bootWith(t *testing.T, env map[string]string, directory issuer.Directory) *issuerapp.App {
+func bootWith(t *testing.T, directory issuer.Directory, change ...func(*config.Issuer)) *issuerapp.App {
 	t.Helper()
 	policyDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(policyDir, "policy.yaml"), []byte(`
@@ -46,21 +47,18 @@ clients:
 `), 0o600); err != nil {
 		t.Fatalf("write the policy: %v", err)
 	}
-	base := map[string]string{
-		"ISSUER_URL":  "https://issuer.example",
-		"POLICY_DIR":  policyDir,
-		"PORT":        "0",
-		"HEALTH_PORT": "0",
+	f := &config.Issuer{
+		IssuerURL: "https://issuer.example",
+		PolicyDir: policyDir,
+		Listen:    &config.Address{Address: ":0"},
+		Probes:    &config.Address{Address: ":0"},
 	}
-	for k, v := range env {
-		base[k] = v
+	for _, c := range change {
+		c(f)
 	}
-	for k, v := range base {
-		t.Setenv(k, v)
-	}
-	cfg, err := issuerapp.Load()
+	cfg, err := issuerapp.FromConfig(f)
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("FromConfig: %v", err)
 	}
 	app, err := issuerapp.New(context.Background(), cfg,
 		issuerapp.Deps{Directory: directory}, slog.New(slog.NewTextHandler(io.Discard, nil)))
@@ -68,6 +66,18 @@ clients:
 		t.Fatalf("New: %v", err)
 	}
 	return app
+}
+
+// signingKeys names the key files, and how fast they rotate, for the tests
+// that watch a rotation happen.
+func signingKeys(file string, additional []string, poll, activation, overlap time.Duration) func(*config.Issuer) {
+	d := func(v time.Duration) *config.Duration { c := config.Duration(v); return &c }
+	return func(f *config.Issuer) {
+		f.SigningKey = &config.SigningKey{
+			File: file, AdditionalFiles: additional,
+			PollInterval: d(poll), ActivationDelay: d(activation), Overlap: d(overlap),
+		}
+	}
 }
 
 // nobody is a directory that knows no one. These tests are about the
@@ -91,7 +101,7 @@ func get(t *testing.T, handler http.Handler, path string) (int, string) {
 // anything, and every value in it has to be true: an endpoint advertised
 // and not served is a client that fails at the worst moment.
 func TestDiscoveryDescribesWhatIsActuallyServed(t *testing.T) {
-	app := boot(t, nil)
+	app := boot(t)
 
 	code, body := get(t, app.Handler(), "/.well-known/openid-configuration")
 	if code != http.StatusOK {
@@ -138,7 +148,7 @@ func TestDiscoveryDescribesWhatIsActuallyServed(t *testing.T) {
 // The JWKS is what every verifier fetches. An empty one, or one whose key
 // id does not match the tokens, verifies nothing.
 func TestTheKeysAreServedAndCarryAnId(t *testing.T) {
-	app := boot(t, nil)
+	app := boot(t)
 
 	code, body := get(t, app.Handler(), "/keys")
 	if code != http.StatusOK {
@@ -197,21 +207,26 @@ func TestTheKeysAreServedAndCarryAnId(t *testing.T) {
 // relying party's trust, so a default would be a value nobody chose
 // spread across an estate.
 func TestImpossibleConfigurationIsRefused(t *testing.T) {
-	for _, tc := range []struct{ name, key, value string }{
-		{"no issuer URL", "ISSUER_URL", ""},
-		{"a lifetime that is not a duration", "TOKEN_LIFETIME", "a while"},
-		{"a log level that is not one", "LOG_LEVEL", "chatty"},
-		{"activation delay less than poll interval", "SIGNING_KEY_ACTIVATION_DELAY", "10s"},
+	d := func(v time.Duration) *config.Duration { c := config.Duration(v); return &c }
+	for _, tc := range []struct {
+		name   string
+		change func(*config.Issuer)
+	}{
+		{"no issuer URL", func(f *config.Issuer) { f.IssuerURL = "" }},
+		{"a log level that is not one", func(f *config.Issuer) { f.Log = &config.Log{Level: "chatty"} }},
+		{"activation delay less than poll interval", func(f *config.Issuer) {
+			f.SigningKey = &config.SigningKey{PollInterval: d(30 * time.Second), ActivationDelay: d(10 * time.Second)}
+		}},
+		{"a valkey password variable that is not set", func(f *config.Issuer) {
+			f.Valkey = &config.Valkey{Address: "valkey:6379", PasswordEnv: "ACCESS_TEST_NOT_SET"}
+		}},
+		{"an OAuth secret variable that is not set", func(f *config.Issuer) {
+			f.OAuthClient = &config.OAuthClient{ID: "id", SecretEnv: "ACCESS_TEST_NOT_SET"}
+		}},
 	} {
-		t.Setenv("ISSUER_URL", "https://issuer.example")
-		t.Setenv("TOKEN_LIFETIME", "")
-		t.Setenv("LOG_LEVEL", "")
-		// Only set poll interval for the activation delay test case.
-		if tc.name == "activation delay less than poll interval" {
-			t.Setenv("SIGNING_KEY_POLL_INTERVAL", "30s")
-		}
-		t.Setenv(tc.key, tc.value)
-		if _, err := issuerapp.Load(); err == nil {
+		f := &config.Issuer{IssuerURL: "https://issuer.example"}
+		tc.change(f)
+		if _, err := issuerapp.FromConfig(f); err == nil {
 			t.Errorf("%s was accepted", tc.name)
 		}
 	}
@@ -220,14 +235,9 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 	// not at load, because there are now two ways to supply it: an
 	// address to dial, or a directory in this process. Neither
 	// is a failure on its own; having neither is.
-	t.Setenv("ISSUER_URL", "https://issuer.example")
-	t.Setenv("TOKEN_LIFETIME", "")
-	t.Setenv("LOG_LEVEL", "")
-	t.Setenv("SIGNING_KEY_ACTIVATION_DELAY", "")
-	t.Setenv("SIGNING_KEY_POLL_INTERVAL", "")
-	cfg, err := issuerapp.Load()
+	cfg, err := issuerapp.FromConfig(&config.Issuer{IssuerURL: "https://issuer.example"})
 	if err != nil {
-		t.Fatalf("Load: %v", err)
+		t.Fatalf("FromConfig: %v", err)
 	}
 	if _, err = issuerapp.New(context.Background(), cfg, issuerapp.Deps{},
 		slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
@@ -238,7 +248,7 @@ func TestImpossibleConfigurationIsRefused(t *testing.T) {
 // Health answers before anything else does, because that is what decides
 // whether a rollout proceeds.
 func TestHealthAnswers(t *testing.T) {
-	app := boot(t, nil)
+	app := boot(t)
 	for _, path := range []string{"/healthz", "/readyz"} {
 		if code, body := get(t, app.HealthHandler(), path); code != http.StatusOK {
 			t.Errorf("%s = %d, %q", path, code, body)
@@ -271,7 +281,7 @@ func TestTheSigningKeyIsTheOneItWasGiven(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	app := boot(t, map[string]string{"SIGNING_KEY_FILE": path})
+	app := boot(t, func(f *config.Issuer) { f.SigningKey = &config.SigningKey{File: path} })
 	code, body := get(t, app.Handler(), "/keys")
 	if code != http.StatusOK {
 		t.Fatalf("keys = %d, %q", code, body)
@@ -312,15 +322,12 @@ func TestAMissingSigningKeyStopsTheService(t *testing.T) {
 		"a path that is not there": filepath.Join(policyDir, "absent.key"),
 		"a file that is not a key": mustWrite(t, policyDir, "junk.key", "hello"),
 	} {
-		for k, v := range map[string]string{
-			"ISSUER_URL": "https://issuer.example", "HUB_ADDRESS": "http://hub.invalid:8080",
-			"POLICY_DIR": policyDir, "SIGNING_KEY_FILE": value,
-		} {
-			t.Setenv(k, v)
-		}
-		cfg, err := issuerapp.Load()
+		cfg, err := issuerapp.FromConfig(&config.Issuer{
+			IssuerURL: "https://issuer.example", PolicyDir: policyDir,
+			SigningKey: &config.SigningKey{File: value},
+		})
 		if err != nil {
-			t.Fatalf("Load: %v", err)
+			t.Fatalf("FromConfig: %v", err)
 		}
 		if _, err = issuerapp.New(context.Background(), cfg, issuerapp.Deps{},
 			slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {

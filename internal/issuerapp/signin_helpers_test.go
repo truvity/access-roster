@@ -69,7 +69,7 @@ func stubHub(_ *testing.T, found, suspended bool) issuer.Directory {
 // the only way to drive the flow without a real provider.
 func bootWithSignIn(t *testing.T, hub issuer.Directory, provider *stubProvider, issuerURL *string) *appWithSignIn {
 	t.Helper()
-	app := bootWith(t, nil, hub)
+	app := bootWith(t, hub)
 	key, err := issuer.NewSigningKey()
 	if err != nil {
 		t.Fatalf("key: %v", err)
@@ -124,4 +124,4 @@ func follow(t *testing.T, client *http.Client, url string) (int, string) {
 	return response.StatusCode, string(body)
 }
 
-var _ = issuerapp.Load
+var _ = issuerapp.FromConfig

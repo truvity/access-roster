@@ -71,17 +71,13 @@ const (
 	adminPasswordKey = "password"
 )
 
-// Namespace returns the namespace the hub runs in, which the chart passes
-// down from the pod's own metadata.
+// Namespace returns the namespace the hub runs in: the pod's own, which the
+// kubelet projects beside its ServiceAccount token. It is read from there, not
+// from the environment, so nothing has to pass it down.
 func Namespace() (string, error) {
-	if ns := strings.TrimSpace(os.Getenv("NAMESPACE")); ns != "" {
-		return ns, nil
-	}
-	// The projected service-account volume, for a pod whose chart predates
-	// the NAMESPACE variable.
 	data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
 	if err != nil {
-		return "", errors.New("kube: no namespace: set NAMESPACE from the pod's own metadata")
+		return "", errors.New("kube: no namespace: this process is not in a cluster with a ServiceAccount mounted")
 	}
 	return strings.TrimSpace(string(data)), nil
 }

@@ -16,7 +16,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/truvity/access-roster/backend/google"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
@@ -34,11 +34,11 @@ import (
 	"github.com/truvity/access-roster/policy"
 )
 
-// Config is what a deployment decides. It is read from the environment,
-// which is what the chart sets.
+// Config is what a deployment decides. It is built from the configuration
+// file, which is what the chart renders.
 type Config struct {
-	port       int
-	healthPort int
+	port       string
+	healthPort string
 
 	issuerURL     string
 	allowInsecure bool
@@ -95,84 +95,107 @@ type Config struct {
 // LogLevel is the level the process should log at.
 func (c Config) LogLevel() slog.Level { return c.logLevel }
 
-// Load reads the configuration from the environment.
-func Load() (Config, error) {
+// FromConfig builds the process's settings from its configuration file,
+// which the caller has already held to its schema. What a schema cannot say
+// is checked here, before anything starts: lifetimes that contradict each
+// other, a rotation schedule that cannot work, a scoping mode this build does
+// not know.
+func FromConfig(f *config.Issuer) (Config, error) {
 	c := Config{
-		port:              envInt("PORT", 8080),
-		healthPort:        envInt("HEALTH_PORT", 7070),
-		issuerURL:         strings.TrimSuffix(envString("ISSUER_URL", ""), "/"),
-		allowInsecure:     envBool("ALLOW_INSECURE", false),
-		policyPath:        envString("POLICY_DIR", ""),
-		inCluster:         envBool("IN_CLUSTER", false),
-		oauthClientID:     envString("OAUTH_CLIENT_ID", ""),
-		oauthClientSecret: envString("OAUTH_CLIENT_SECRET", ""),
-		oauthSecretFile:   envString("OAUTH_CLIENT_SECRET_FILE", ""),
-		oauthIDFile:       envString("OAUTH_CLIENT_ID_FILE", ""),
-		recoveryEnabled:   envBool("RECOVERY_ENABLED", false),
-		githubOwners:      envList("GITHUB_OWNERS"),
-		consoleOrigin:     envString("CONSOLE_ORIGIN", ""),
-		recoveryAccount:   envString("RECOVERY_SERVICE_ACCOUNT", ""),
+		port:       listenOr(f.Listen, ":8080"),
+		healthPort: listenOr(f.Probes, ":7070"),
+		issuerURL:  strings.TrimSuffix(f.IssuerURL, "/"),
+
+		allowInsecure:    f.AllowInsecure,
+		policyPath:       f.PolicyDir,
+		inCluster:        f.InCluster,
+		release:          orDefault(f.Release, "access-issuer"),
+		consoleOrigin:    "",
+		clientSecretsDir: f.ClientSecretsDir,
 		// Names this cluster in a ServiceAccount's subject. A pod cannot
 		// discover it, and the same namespace and name exist on every
 		// cluster, so an installation that leaves it empty keeps the older
 		// unqualified subject rather than an invented one.
-		cluster:          envString("CLUSTER", ""),
-		recoveryAudience: envString("RECOVERY_AUDIENCE", ""),
-		clientSecretsDir: envString("CLIENT_SECRETS_DIR", ""),
-		clustersPath:     envString("CLUSTERS_FILE", ""),
-		awsPath:          envString("AWS_FEDERATION_FILE", ""),
-		consoleClientID:  envString("CONSOLE_CLIENT_ID", ""),
-		valkey: valkey.Config{
-			Address:  envString("VALKEY_ADDRESS", ""),
-			Password: envString("VALKEY_PASSWORD", ""),
-			TLS:      envBool("VALKEY_TLS", false),
-			Cluster:  envBool("VALKEY_CLUSTER", true),
-			Prefix:   envString("RELEASE_NAME", "access-issuer"),
-		},
-		signingKeyFile: envString("SIGNING_KEY_FILE", ""),
-		// A comma list, matching every other multi-value setting this
-		// package reads (see envList) rather than a directory: the chart
-		// mounts one Secret per additional algorithm, at a path of its
-		// own, and a deployment naming the exact files it expects is a
-		// deployment a missing mount fails LOUDLY for, at start, rather
-		// than one that silently signs with fewer algorithms than its
-		// policy assumes.
-		additionalSigningKeyFiles: envList("SIGNING_KEY_FILES"),
-		release:                   envString("RELEASE_NAME", "access-issuer"),
-		audience:                  envString("EXCHANGE_AUDIENCE", ""),
+		cluster: f.Cluster,
+	}
+	if f.GitHub != nil {
+		c.githubOwners = f.GitHub.Owners
+	}
+	if f.Console != nil {
+		c.consoleOrigin = f.Console.Origin
+		c.consoleClientID = f.Console.Client
+	}
+	if f.Exchange != nil {
+		c.clustersPath = f.Exchange.ClustersFile
+		c.awsPath = f.Exchange.AWSFile
+		c.audience = f.Exchange.Audience
+	}
+	if r := f.Recovery; r != nil {
+		c.recoveryEnabled = r.Enabled != nil && *r.Enabled
+		c.recoveryAccount = r.ServiceAccount
+		c.recoveryAudience = r.Audience
+	}
+	var err error
+	if o := f.OAuthClient; o != nil {
+		c.oauthClientID = o.ID
+		c.oauthIDFile = o.IDFile
+		c.oauthSecretFile = o.SecretFile
+		if o.SecretEnv != "" {
+			if c.oauthClientSecret, err = config.Secret(o.SecretEnv); err != nil {
+				return Config{}, fmt.Errorf("oauthClient.secretEnv: %w", err)
+			}
+		}
+	}
+	c.valkey = valkey.Config{Cluster: true, Prefix: c.release}
+	if v := f.Valkey; v != nil {
+		c.valkey.Address = v.Address
+		c.valkey.TLS = v.TLS
+		if v.Cluster != nil {
+			c.valkey.Cluster = *v.Cluster
+		}
+		if v.PasswordEnv != "" {
+			if c.valkey.Password, err = config.Secret(v.PasswordEnv); err != nil {
+				return Config{}, fmt.Errorf("valkey.passwordEnv: %w", err)
+			}
+		}
+	}
+	if k := f.SigningKey; k != nil {
+		c.signingKeyFile = k.File
+		// The files the deployment expects, named exactly: a deployment
+		// naming them is a deployment a missing mount fails LOUDLY for, at
+		// start, rather than one that silently signs with fewer algorithms
+		// than its policy assumes.
+		c.additionalSigningKeyFiles = k.AdditionalFiles
 	}
 	// Secure follows the scheme the BROWSER will use, which the service
 	// knows because it is told its own public URL. Defaulting to false
 	// meant an installation that merely forgot to say so served session
 	// cookies a proxy could strip onto a plain-http hop, and the alert
 	// CodeQL raised was about that default rather than about this line.
-	// SECURE_COOKIES still overrides, in either direction, for the local
+	// secureCookies still overrides, in either direction, for the local
 	// http listener and for a TLS terminator that is not in the URL.
-	c.secureCookies = envBool("SECURE_COOKIES", strings.HasPrefix(c.issuerURL, "https://"))
+	c.secureCookies = strings.HasPrefix(c.issuerURL, "https://")
+	if f.SecureCookies != nil {
+		c.secureCookies = *f.SecureCookies
+	}
 
-	var err error
-	if c.tokenLifetime, err = envDuration("TOKEN_LIFETIME", issuer.DefaultTokenLifetime); err != nil {
-		return Config{}, err
+	l := f.Lifetimes
+	if l == nil {
+		l = &config.Lifetimes{}
 	}
-	if c.refreshLifetime, err = envDuration("REFRESH_LIFETIME", issuer.DefaultRefreshLifetime); err != nil {
-		return Config{}, err
-	}
-	if c.absoluteLifetime, err = envDuration("ABSOLUTE_LIFETIME", issuer.DefaultAbsoluteLifetime); err != nil {
-		return Config{}, err
-	}
-	if c.holdWindow, err = envDuration("HOLD_WINDOW", issuer.DefaultHoldWindow); err != nil {
-		return Config{}, err
-	}
-	// Refused here rather than defaulted, unlike an unset TOKEN_LIFETIME or
-	// REFRESH_LIFETIME: those treat zero as "not configured, use the
-	// default", but a deployment that sets ABSOLUTE_LIFETIME to zero or a
-	// negative value has said something specific and wrong -- a session
-	// that ends before or the instant it begins is not a limit, it is a
-	// login that can never complete -- and defaulting past that would hide
-	// the mistake instead of refusing it.
+	c.tokenLifetime = dur(l.Token, issuer.DefaultTokenLifetime)
+	c.refreshLifetime = dur(l.Refresh, issuer.DefaultRefreshLifetime)
+	c.absoluteLifetime = dur(l.Absolute, issuer.DefaultAbsoluteLifetime)
+	c.holdWindow = dur(l.Hold, issuer.DefaultHoldWindow)
+	// Refused here rather than defaulted, unlike an unset lifetimes.token or
+	// lifetimes.refresh: those treat unset as "use the default", but a
+	// deployment that sets lifetimes.absolute to zero has said something
+	// specific and wrong -- a session that ends before or the instant it
+	// begins is not a limit, it is a login that can never complete -- and
+	// defaulting past that would hide the mistake instead of refusing it.
 	if c.absoluteLifetime <= 0 {
 		return Config{}, errors.New(
-			"ABSOLUTE_LIFETIME must be positive: a session has to end SOMETIME after sign-in, not before it")
+			"lifetimes.absolute must be positive: a session has to end SOMETIME after sign-in, not before it")
 	}
 	// And it must be able to outlive at least one access token, or a token
 	// minted at the very start of a session would already be past the
@@ -180,56 +203,80 @@ func Load() (Config, error) {
 	// token.
 	if c.absoluteLifetime < c.tokenLifetime {
 		return Config{}, fmt.Errorf(
-			"ABSOLUTE_LIFETIME (%s) must be at least TOKEN_LIFETIME (%s): "+
+			"lifetimes.absolute (%s) must be at least lifetimes.token (%s): "+
 				"an access token cannot outlive the session that grants it",
 			c.absoluteLifetime, c.tokenLifetime)
 	}
-	if c.keyActivationDelay, err = envDuration("SIGNING_KEY_ACTIVATION_DELAY", issuer.DefaultKeyActivationDelay); err != nil {
-		return Config{}, err
+	k := f.SigningKey
+	if k == nil {
+		k = &config.SigningKey{}
 	}
+	c.keyActivationDelay = dur(k.ActivationDelay, issuer.DefaultKeyActivationDelay)
 	// Overlap defaults to this deployment's OWN token lifetime plus a margin
 	// for clock skew, rather than the package's constant: the whole point of
 	// the setting is that it must cover whatever this installation actually
-	// mints, and a fixed default cannot know TOKEN_LIFETIME was raised. The
-	// clock-skew margin accounts for differences between the issuer and
+	// mints, and a fixed default cannot know the token lifetime was raised.
+	// The clock-skew margin accounts for differences between the issuer and
 	// verifiers' clocks.
-	if c.keyOverlap, err = envDuration("SIGNING_KEY_OVERLAP", 0); err != nil {
-		return Config{}, err
-	}
+	c.keyOverlap = dur(k.Overlap, 0)
 	if c.keyOverlap <= 0 {
 		c.keyOverlap = c.tokenLifetime + issuer.KeyOverlapSkew
 	}
-	if c.keyPollInterval, err = envDuration("SIGNING_KEY_POLL_INTERVAL", issuer.DefaultKeyPollInterval); err != nil {
-		return Config{}, err
-	}
+	c.keyPollInterval = dur(k.PollInterval, issuer.DefaultKeyPollInterval)
 	// The activation delay must be longer than the poll interval so that a
 	// newly published key has at least one complete poll cycle to be seen
 	// and re-read before any replica signs with it.
 	if c.keyActivationDelay < c.keyPollInterval {
-		return Config{}, fmt.Errorf("SIGNING_KEY_ACTIVATION_DELAY (%v) must be at least SIGNING_KEY_POLL_INTERVAL (%v)", c.keyActivationDelay, c.keyPollInterval)
+		return Config{}, fmt.Errorf("signingKey.activationDelay (%v) must be at least signingKey.pollInterval (%v)", c.keyActivationDelay, c.keyPollInterval)
 	}
-	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
-		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
+	level := "info"
+	if f.Log != nil && f.Log.Level != "" {
+		level = f.Log.Level
+	}
+	if err = c.logLevel.UnmarshalText([]byte(level)); err != nil {
+		return Config{}, fmt.Errorf("log.level: %w", err)
 	}
 	// Checked here, at load, rather than left to [issuer.Config.withDefaults]
 	// to default quietly: an installation that asks for something this
 	// build does not recognise must be told so, not silently downgraded
 	// to report. See [issuer.CheckGroupsScopingMode].
-	c.groupsScoping = issuer.GroupsScopingMode(envString("GROUPS_SCOPING", string(issuer.GroupsScopingReport)))
+	c.groupsScoping = issuer.GroupsScopingMode(orDefault(f.GroupsScoping, string(issuer.GroupsScopingReport)))
 	if err = issuer.CheckGroupsScopingMode(c.groupsScoping); err != nil {
-		return Config{}, fmt.Errorf("GROUPS_SCOPING: %w", err)
+		return Config{}, fmt.Errorf("groupsScoping: %w", err)
 	}
 
 	// Every relying party's trust is anchored on this string, and it goes
 	// into every token. A default would be a value nobody chose baked
 	// into an installation's whole estate.
 	if c.issuerURL == "" {
-		return Config{}, errors.New("ISSUER_URL is required: it is baked into every token and every relying party")
+		return Config{}, errors.New("issuerURL is required: it is baked into every token and every relying party")
 	}
 	if c.audience == "" {
 		c.audience = c.release
 	}
 	return c, nil
+}
+
+func orDefault(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
+
+func listenOr(a *config.Address, fallback string) string {
+	if a != nil && a.Address != "" {
+		return a.Address
+	}
+	return fallback
+}
+
+// dur reads a duration the file may leave unset.
+func dur(d *config.Duration, fallback time.Duration) time.Duration {
+	if d == nil {
+		return fallback
+	}
+	return d.D()
 }
 
 // Deps are the things a caller supplies instead of letting this package
@@ -251,7 +298,7 @@ type Deps struct {
 	// service guarantees both halves act on the SAME one: they read the
 	// same file, but their fallbacks differ, and two halves that can
 	// disagree about the policy is the class of failure the merge existed
-	// to end. Nil loads it from POLICY_DIR, which is the split shape.
+	// to end. Nil loads it from policyDir, which is the split shape.
 	Policy *policy.Set
 	// UseSignInEntry is called with a function saying where to send a
 	// browser that has NO session. Together with UseSignedIn it is the
@@ -716,7 +763,7 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 	if cfg.signingKeyFile == "" {
 		log.WarnContext(ctx, "generating a signing key for this process: every restart invalidates "+
 			"every token it signed, and two replicas would sign with two keys. "+
-			"A deployment sets SIGNING_KEY_FILE")
+			"A deployment sets signingKey.file")
 		return issuer.NewSigningKey()
 	}
 	encoded, err := os.ReadFile(cfg.signingKeyFile) //nolint:gosec // the path is deployment configuration
@@ -738,7 +785,7 @@ func signingKey(ctx context.Context, cfg Config, log *slog.Logger) (*issuer.Sign
 
 // additionalSigningKeys reads every OTHER algorithm this installation
 // signs with at once, beside the primary [signingKey] — one file per
-// algorithm, named in SIGNING_KEY_FILES, matching the chart's
+// algorithm, named in signingKey.additionalFiles, matching the chart's
 // `signingKey.additional`.
 //
 // Read eagerly, at start, and not lazily on first use: [issuer.NewStorage]
@@ -973,7 +1020,7 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (all, clus
 			Audience: cfg.issuerURL,
 		})
 	} else {
-		log.InfoContext(ctx, "no CI token can be verified: GITHUB_OWNERS names no organisation")
+		log.InfoContext(ctx, "no CI token can be verified: github.owners names no organisation")
 	}
 
 	// An exchange endpoint that refuses everything with "unverified" is
@@ -987,9 +1034,9 @@ func openVerifiers(ctx context.Context, cfg Config, log *slog.Logger) (all, clus
 }
 
 // serve runs one listener until the context is done, then drains it.
-func serve(ctx context.Context, port int, handler http.Handler, name string, log *slog.Logger) error {
+func serve(ctx context.Context, addr string, handler http.Handler, name string, log *slog.Logger) error {
 	srv := &http.Server{
-		Addr:              ":" + strconv.Itoa(port),
+		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -1001,56 +1048,9 @@ func serve(ctx context.Context, port int, handler http.Handler, name string, log
 			log.WarnContext(ctx, "listener did not drain", "listener", name, "error", err)
 		}
 	}()
-	log.InfoContext(ctx, "listening", "listener", name, "port", port)
+	log.InfoContext(ctx, "listening", "listener", name, "address", addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("%s listener: %w", name, err)
 	}
 	return nil
-}
-
-func envString(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-	return fallback
-}
-
-// envList reads a comma-separated setting, dropping the empty entries a
-// templated values file leaves behind.
-func envList(name string) []string {
-	var out []string
-
-	for _, item := range strings.Split(os.Getenv(name), ",") {
-		if item = strings.TrimSpace(item); item != "" {
-			out = append(out, item)
-		}
-	}
-
-	return out
-}
-
-func envInt(name string, fallback int) int {
-	if value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil {
-		return value
-	}
-	return fallback
-}
-
-func envBool(name string, fallback bool) bool {
-	if value, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(name))); err == nil {
-		return value
-	}
-	return fallback
-}
-
-func envDuration(name string, fallback time.Duration) (time.Duration, error) {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback, nil
-	}
-	value, err := time.ParseDuration(raw)
-	if err != nil {
-		return 0, fmt.Errorf("%s: %w", name, err)
-	}
-	return value, nil
 }

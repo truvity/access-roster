@@ -21,6 +21,7 @@ import (
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
+	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/controller"
 	"github.com/truvity/access-roster/internal/kube"
@@ -28,8 +29,8 @@ import (
 	"github.com/truvity/access-roster/policy"
 )
 
-// Config is what a deployment decides. It is read from the environment,
-// which is what the chart sets.
+// Config is what a deployment decides. It is built from the configuration
+// file, which is what the chart renders.
 type Config struct {
 	release    string
 	policyDir  string
@@ -59,47 +60,72 @@ type Config struct {
 // LogLevel is the level the process should log at.
 func (c Config) LogLevel() slog.Level { return c.logLevel }
 
-// Load reads the configuration from the environment.
-func Load() (Config, error) {
+// Load reads the configuration file, holds it to its schema, and builds the
+// settings from it.
+func Load(file string) (Config, error) {
+	f, err := config.LoadGitHubRoster(file)
+	if err != nil {
+		return Config{}, err
+	}
+	return FromConfig(f)
+}
+
+// FromConfig builds the settings from a configuration already read. What a
+// schema cannot say is checked here, before anything starts.
+func FromConfig(f *config.GitHubRoster) (Config, error) {
 	c := Config{
-		release:    envString("RELEASE_NAME", "access-issuer"),
-		policyDir:  envString("POLICY_DIR", ""),
-		console:    strings.TrimSuffix(envString("CONSOLE_URL", ""), "/"),
-		tokenFile:  envString("TOKEN_FILE", "/var/run/secrets/github-roster/token"),
-		appsDir:    envString("APPS_DIR", "/var/run/github-roster/apps"),
-		recordsDir: envString("RECORDS_DIR", "/var/run/github-roster/records"),
+		release:    orDefault(f.Release, "access-issuer"),
+		policyDir:  f.PolicyDir,
+		console:    strings.TrimSuffix(f.ConsoleURL, "/"),
+		tokenFile:  orDefault(f.TokenFile, "/var/run/secrets/github-roster/token"),
+		appsDir:    orDefault(f.AppsDir, "/var/run/github-roster/apps"),
+		recordsDir: orDefault(f.RecordsDir, "/var/run/github-roster/records"),
 		enabled:    map[string]bool{},
-		audit: audit.Config{
-			Writer:    envString("AUDIT_WRITER_URL", ""),
-			TokenFile: envString("AUDIT_TOKEN_FILE", ""),
-			Instance:  envString("POD_NAME", ""),
-			Version:   version.String(),
-		},
+		// The instance is the pod, which is its hostname in a cluster.
+		audit: audit.Config{Version: version.String()},
 		// Named exactly as the merged deployment's own is (internal/app),
 		// so the two never disagree about where the same catalogue file
 		// is mounted from.
-		catalogueFile: envString("GITHUB_APPS_CATALOGUE_FILE", ""),
+		catalogueFile: f.CatalogueFile,
 	}
-	for _, org := range strings.Split(envString("ENABLED_ORGS", ""), ",") {
+	c.audit.Instance, _ = os.Hostname()
+	if a := f.Audit; a != nil {
+		c.audit.Writer = a.Writer
+		c.audit.TokenFile = a.TokenFile
+	}
+	for _, org := range f.EnabledOrgs {
 		if org = strings.TrimSpace(org); org != "" {
 			c.enabled[org] = true
 		}
 	}
-	interval, err := time.ParseDuration(envString("INTERVAL", "15m"))
-	if err != nil || interval <= 0 {
-		return Config{}, fmt.Errorf("INTERVAL %q is not a positive duration", os.Getenv("INTERVAL"))
+	c.interval = 15 * time.Minute
+	if f.Interval != nil {
+		c.interval = f.Interval.D()
 	}
-	c.interval = interval
-	if err = c.logLevel.UnmarshalText([]byte(envString("LOG_LEVEL", "info"))); err != nil {
-		return Config{}, fmt.Errorf("LOG_LEVEL: %w", err)
+	if c.interval <= 0 {
+		return Config{}, fmt.Errorf("interval %q is not a positive duration", c.interval)
+	}
+	level := "info"
+	if f.Log != nil && f.Log.Level != "" {
+		level = f.Log.Level
+	}
+	if err := c.logLevel.UnmarshalText([]byte(level)); err != nil {
+		return Config{}, fmt.Errorf("log.level: %w", err)
 	}
 	switch {
 	case c.policyDir == "":
-		return Config{}, errors.New("POLICY_DIR is required: the bindings are the policy's github table")
+		return Config{}, errors.New("policyDir is required: the bindings are the policy's github table")
 	case c.console == "":
-		return Config{}, errors.New("CONSOLE_URL is required: who holds a group is the console's to answer")
+		return Config{}, errors.New("consoleURL is required: who holds a group is the console's to answer")
 	}
 	return c, nil
+}
+
+func orDefault(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }
 
 // App is an assembled controller.
@@ -155,7 +181,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	for org := range cfg.enabled {
 		if _, bound := declared.GitHub[org]; !bound {
-			return nil, fmt.Errorf("ENABLED_ORGS names %s, which the policy does not bind", org)
+			return nil, fmt.Errorf("enabledOrgs names %s, which the policy does not bind", org)
 		}
 	}
 
@@ -237,11 +263,4 @@ func keys(m map[string]bool) []string {
 		out = append(out, key)
 	}
 	return out
-}
-
-func envString(name, fallback string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-	return fallback
 }
