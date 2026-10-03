@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **The NATS JetStream adapter of the State port.** `ports.adapter: nats`
+  (with `ports.nats`: `url`, `bucket`, `replicas`, `tokenFile` or `credsFile`,
+  `caFile`, `create`) keeps State, the transitional session Index and the
+  Trigger in one JetStream KV bucket, so a lease is exclusive across replicas
+  and a notification crosses processes. Revisions are the stream sequence, so a
+  rewrite of identical bytes changes it and a record that went A, B, A is
+  detected. Expiry is judged on read; with nats-server 2.11 or later the bucket
+  also reaps each record by its own TTL. Blob, Sealer and Identity are the legacy
+  adapter's unless `ports.blob` and `ports.sealer` name the S3 and KMS adapters. The conformance suite passes against an
+  embedded nats-server, a single node and a three-node cluster. Additive: the
+  default adapter is unchanged. See
+  [docs/design/ports.md](docs/design/ports.md#the-nats-adapter).
+
 - **S3 Blob and KMS Sealer adapters.** `ports.blob: {adapter: s3, s3: {bucket,
   prefix, region, kmsKey, endpoint, pathStyle}}` keeps the status reports and
   directory snapshots in S3 (`WriteIfVersion` is an `If-Match` on the ETag), and

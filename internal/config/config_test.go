@@ -345,6 +345,22 @@ func TestThePortsAdapterIsOneOfTheTwo(t *testing.T) {
 		}
 	}
 	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: nats}\n")); err == nil {
+		t.Error("the nats adapter was accepted with no server named")
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: nats, nats: {bucket: b}}\n")); err == nil {
+		t.Error("a nats section with no url was accepted")
+	}
+	full := "ports:\n  adapter: nats\n  nats: {url: 'nats://n:4222', replicas: 3, tokenFile: /var/run/secrets/nats/token}\n"
+	if f, err := config.LoadServe(write(t, minimalIssuer+full)); err != nil {
+		t.Errorf("the nats adapter was refused: %v", err)
+	} else if f.Ports.NATS == nil || f.Ports.NATS.URL != "nats://n:4222" || f.Ports.NATS.TokenFile == "" {
+		t.Errorf("ports.nats = %+v", f.Ports.NATS)
+	}
+	withPassword := "ports: {adapter: nats, nats: {url: 'nats://n:4222', password: x}}\n"
+	if _, err := config.LoadServe(write(t, minimalIssuer+withPassword)); err == nil {
+		t.Error("a nats password in the file was accepted")
+	}
+	if _, err := config.LoadServe(write(t, minimalIssuer+"ports: {adapter: dynamodb}\n")); err == nil {
 		t.Error("an adapter that does not exist was accepted")
 	}
 	if _, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {adapter: dynamodb}\n")); err == nil {

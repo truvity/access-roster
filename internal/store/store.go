@@ -19,6 +19,7 @@ import (
 	"github.com/truvity/access-roster/internal/port/kmsseal"
 	"github.com/truvity/access-roster/internal/port/legacy"
 	"github.com/truvity/access-roster/internal/port/memory"
+	natsport "github.com/truvity/access-roster/internal/port/nats"
 	"github.com/truvity/access-roster/internal/port/observe"
 	"github.com/truvity/access-roster/internal/port/s3blob"
 	"github.com/truvity/access-roster/internal/valkey"
@@ -28,6 +29,7 @@ import (
 const (
 	AdapterLegacy = "legacy"
 	AdapterMemory = "memory"
+	AdapterNATS   = "nats"
 )
 
 // The adapters `ports.blob.adapter` and `ports.sealer.adapter` name. Each
@@ -63,6 +65,8 @@ type Config struct {
 	// Adapter brings.
 	Blob   *config.PortsBlob
 	Sealer *config.PortsSealer
+	// NATS is the bucket of the `nats` adapter.
+	NATS natsport.Config
 }
 
 // validatePorts refuses a Blob or Sealer the file names but this build has no
@@ -125,8 +129,12 @@ func FromServe(f *config.Serve) (Config, error) {
 		Valkey:  valkeyOf(f.Release, f.Valkey),
 		Blob:    blobOf(f.Ports),
 		Sealer:  sealerOf(f.Ports),
+		NATS:    natsOf(f.Ports),
 	}
 	var err error
+	if c.Adapter == AdapterNATS && f.Valkey != nil && f.Valkey.Address != "" {
+		return Config{}, errors.New("ports.adapter: nats holds the shared state, so it cannot be combined with valkey.address")
+	}
 	if c.Valkey.Password, err = secretOf(f.Valkey); err != nil {
 		return Config{}, err
 	}
@@ -153,12 +161,26 @@ func FromServe(f *config.Serve) (Config, error) {
 func FromRoster(f *config.Roster) Config {
 	c := Config{
 		Adapter: adapterOf(f.Ports), Release: orDefault(f.Release, "access-roster"), Kube: KubeRequired,
-		Blob: blobOf(f.Ports), Sealer: sealerOf(f.Ports),
+		Blob: blobOf(f.Ports), Sealer: sealerOf(f.Ports), NATS: natsOf(f.Ports),
 	}
 	if c.Adapter == AdapterMemory {
 		c.Kube = KubeNone
 	}
 	return c
+}
+
+// natsOf reads the bucket's settings; natsport.Open refuses an incomplete or
+// contradictory set, naming it, when the adapter is the chosen one.
+func natsOf(p *config.Ports) natsport.Config {
+	if p == nil || p.NATS == nil {
+		return natsport.Config{}
+	}
+	n := p.NATS
+	return natsport.Config{
+		URL: n.URL, Bucket: n.Bucket, Replicas: n.Replicas,
+		TokenFile: n.TokenFile, CredsFile: n.CredsFile, CAFile: n.CAFile,
+		NoCreate: n.Create != nil && !*n.Create,
+	}
 }
 
 func adapterOf(p *config.Ports) string {
@@ -237,6 +259,8 @@ type Stores struct {
 // Name says where state lives, for a log line and the console's page.
 func (s *Stores) Name() string {
 	switch {
+	case s.Adapter == AdapterNATS:
+		return "nats"
 	case s.Shared:
 		return "valkey"
 	default:
@@ -298,8 +322,49 @@ func Open(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
 		return &Stores{Ports: observe.Set(set), Adapter: AdapterMemory, Usable: true}, nil
 	case AdapterLegacy:
 		return openLegacy(ctx, cfg, log)
+	case AdapterNATS:
+		return openNATS(ctx, cfg, log)
 	}
-	return nil, fmt.Errorf("ports.adapter: %q is neither %q nor %q", cfg.Adapter, AdapterLegacy, AdapterMemory)
+	return nil, fmt.Errorf("ports.adapter: %q is none of %q, %q, %q", cfg.Adapter, AdapterLegacy, AdapterMemory, AdapterNATS)
+}
+
+// openNATS holds State, the session index and the trigger in the bucket.
+// Blob, Sealer and Identity are the legacy adapter's over the namespace's
+// objects (so reports and snapshots are what they are today, and a sealed
+// value is refused, not sealed under a key no restart could open), unless
+// `ports.blob` and `ports.sealer` name adapters of their own.
+func openNATS(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
+	backend := &legacy.Backend{}
+	st := &Stores{Backend: backend, Adapter: AdapterNATS, Shared: true, Usable: true}
+	if cfg.Kube != KubeNone {
+		client, err := kube.InCluster(cfg.Release)
+		switch {
+		case err == nil:
+			backend.Kube = client
+			backend.ReviewToken = client.ReviewToken
+		case cfg.Kube == KubeRequired:
+			return nil, err
+		default:
+			log.WarnContext(ctx, "the namespace's objects are not available", "error", err)
+		}
+	}
+	bucket, err := natsport.Open(ctx, cfg.NATS)
+	if err != nil {
+		return nil, fmt.Errorf("ports.nats: %w", err)
+	}
+	st.pinger = bucket
+	st.close = bucket.Close
+	rest := backend.Ports(legacy.Options{})
+	set := bucket.Set()
+	set.Blob, set.Sealer, set.Identity = rest.Blob, rest.Sealer, rest.Identity
+	if set, err = cfg.compose(ctx, set, log); err != nil {
+		st.Close()
+		return nil, err
+	}
+	st.Ports = observe.Set(set)
+	log.InfoContext(ctx, "keeping state in NATS JetStream", "adapter", AdapterNATS,
+		"bucket", cfg.NATS.Bucket, "serverTTL", bucket.ServerTTL())
+	return st, nil
 }
 
 func openLegacy(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {

@@ -6,7 +6,7 @@
 // business rule (ADR 0024: a port, not a framework). The adapters are
 // internal/port/memory (tests, the demonstration) and internal/port/legacy
 // (today's ConfigMaps, Secrets and Valkey, until the migration of ADR 0031
-// has run). internal/port/porttest is the conformance suite every adapter
+// has run) and internal/port/nats (State, Index and Trigger on JetStream KV). internal/port/porttest is the conformance suite every adapter
 // passes.
 package port
 

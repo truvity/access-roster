@@ -162,6 +162,20 @@ type (
 		Adapter string       `json:"adapter,omitempty"`
 		Blob    *PortsBlob   `json:"blob,omitempty"`
 		Sealer  *PortsSealer `json:"sealer,omitempty"`
+		NATS    *NATS        `json:"nats,omitempty"`
+	}
+
+	// NATS is where the `nats` adapter keeps State, the transitional Index and
+	// the Trigger: one JetStream KV bucket. The credential is a file, never a
+	// value.
+	NATS struct {
+		URL       string `json:"url,omitempty"`
+		Bucket    string `json:"bucket,omitempty"`
+		Replicas  int    `json:"replicas,omitempty"`
+		TokenFile string `json:"tokenFile,omitempty"`
+		CredsFile string `json:"credsFile,omitempty"`
+		CAFile    string `json:"caFile,omitempty"`
+		Create    *bool  `json:"create,omitempty"`
 	}
 
 	// PortsBlob names the adapter behind the Blob port.
