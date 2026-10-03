@@ -1,4 +1,6 @@
-## Unreleased
+## v1.53.0
+
+This release adds traces and metrics through an exporter allowlist, the chart's `alerts` and `dashboards` render modes, per-target ticks with the `tick` command (which builds on v1.52.4's single-binary, single-chart, and configuration-file consolidation), and preparation for the audit SDK module bump that will land in a later commit before the tag.
 
 - **Traces, issuer and controller metrics, and the chart's `alerts` and
   `dashboards` modes.** Telemetry is still only `OTEL_*`, exported only when a
