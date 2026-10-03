@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/truvity/audit/record"
+	"github.com/truvity/audit/sdk/record"
 
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/access"

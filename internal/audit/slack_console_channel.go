@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/truvity/audit/record"
+	"github.com/truvity/audit/sdk/record"
 )
 
 // SlackConsoleChannel is an ordinary channel managed from the console as the

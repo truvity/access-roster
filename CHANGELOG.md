@@ -49,6 +49,11 @@ This release adds traces and metrics through an exporter allowlist, the chart's 
   read the second workspace's report before its own tick had published it; it
   now waits for it.
 
+- **Audit SDK module upgrade.** Migrate from `github.com/truvity/audit v0.3.1`
+  to `github.com/truvity/audit/sdk v0.6.0`, updating all imports to the new
+  module path. The audit catalogue and API remain compatible with the new
+  version.
+
 ## v1.52.4
 
 - **Breaking (released automatically as a patch):** this release replaces the three

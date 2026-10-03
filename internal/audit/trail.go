@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/truvity/audit/auth"
-	"github.com/truvity/audit/catalogue"
-	"github.com/truvity/audit/emit"
-	"github.com/truvity/audit/record"
-	"github.com/truvity/audit/sink"
+	"github.com/truvity/audit/sdk/auth"
+	"github.com/truvity/audit/sdk/catalogue"
+	"github.com/truvity/audit/sdk/emit"
+	"github.com/truvity/audit/sdk/record"
+	"github.com/truvity/audit/sdk/sink"
 	"go.opentelemetry.io/otel"
 
 	"github.com/truvity/access-roster/internal/logsafe"

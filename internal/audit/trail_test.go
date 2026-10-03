@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	auditv1 "github.com/truvity/audit/gen/audit/v1"
-	"github.com/truvity/audit/gen/audit/v1/auditv1connect"
+	auditv1 "github.com/truvity/audit/sdk/gen/audit/v1"
+	"github.com/truvity/audit/sdk/gen/audit/v1/auditv1connect"
 
 	"github.com/truvity/access-roster/internal/audit"
 )

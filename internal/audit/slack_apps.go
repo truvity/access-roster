@@ -3,7 +3,7 @@ package audit
 import (
 	"strings"
 
-	"github.com/truvity/audit/record"
+	"github.com/truvity/audit/sdk/record"
 )
 
 // SlackCatalogueApp is a catalogue Slack App as the records name it: by

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/truvity/audit/record"
+	"github.com/truvity/audit/sdk/record"
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"

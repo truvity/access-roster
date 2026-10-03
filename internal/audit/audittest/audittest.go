@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/truvity/audit/emit"
-	"github.com/truvity/audit/record"
-	"github.com/truvity/audit/sink"
+	"github.com/truvity/audit/sdk/emit"
+	"github.com/truvity/audit/sdk/record"
+	"github.com/truvity/audit/sdk/sink"
 
 	"github.com/truvity/access-roster/internal/audit"
 )
