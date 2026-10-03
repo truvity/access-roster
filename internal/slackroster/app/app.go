@@ -124,6 +124,9 @@ type App struct {
 	controller *controller.Controller
 	trail      *audit.Trail
 	log        *slog.Logger
+	// sharedLease is whether the tick leases are held in a State shared with
+	// every other runner.
+	sharedLease bool
 	// fatal carries the one error that ends the process from outside a
 	// pass: the audit installation refusing the catalogue after the start.
 	fatal chan error
@@ -133,7 +136,10 @@ type App struct {
 // workspace's key. It is what `access-roster tick slack` runs, and the shape
 // of a function that lives for one invocation. A workspace another runner
 // holds is left to it.
-func (a *App) Tick(ctx context.Context, target string) error {
+func (a *App) Tick(ctx context.Context, target string, unsafeLocal bool) error {
+	if err := store.RequireSharedLease(a.sharedLease, unsafeLocal); err != nil {
+		return err
+	}
 	ran, _, err := a.controller.RunTarget(ctx, target)
 	if err == nil && !ran {
 		a.log.InfoContext(ctx, "the workspace is leased to another runner: nothing to do", "workspace", target)
@@ -212,9 +218,10 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			"adapter", stores.Adapter)
 	}
 	return &App{
-		log:   log,
-		trail: trail,
-		fatal: fatal,
+		log:         log,
+		sharedLease: shared,
+		trail:       trail,
+		fatal:       fatal,
 		controller: controller.New(controller.Config{
 			Interval: cfg.interval, Enabled: cfg.enabled, CredentialsDir: cfg.credentialsDir, RecordsDir: cfg.recordsDir,
 		}, controller.Deps{

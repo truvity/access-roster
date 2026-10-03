@@ -95,6 +95,13 @@ and the legacy adapter, with nothing stored that today's storage cannot hold:
   guests' reports from the Blob port and publishing what it finds in the host's
   report (`guest_sides`).
 
+**The one-shot `tick` refuses without a shared State.** With the legacy adapter
+the controllers' leases are in the process's own memory, so `access-roster tick`
+would not be excluded by the running controller and both could act on one
+target. It refuses, saying so, unless `--unsafe-local-lease` is given (for an
+operator who has scaled the controller to 0); with a shared State it behaves as
+described. It becomes safe by default once the State is shared (B3).
+
 **What waits for B3**, because it needs key families the legacy adapter cannot
 hold: the **pending-share record** (`share.`) as the hand-off, so the guest is
 notified through the store and not through a process-local notification (until

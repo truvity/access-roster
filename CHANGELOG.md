@@ -199,6 +199,10 @@
   runs one target's tick once under its lease and exits (an organisation's
   login, `github:links`, or a workspace's key), which is the shape of a
   function that lives for one invocation and is useful to an operator now.
+  **It refuses to run while the leases are in-process only** (no shared State,
+  which is every installation until B3): a running controller would not be kept
+  off the same target. Scale the controller to 0 and pass
+  `--unsafe-local-lease` to run it anyway.
 
   - **Nothing moves and nothing new is stored.** The leases are the
     `lease.<kind>:<target>` keys the legacy adapter already maps to the hub's

@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -58,6 +59,10 @@ func main() {
 	}
 }
 
+// unsafeLocalLease is the opt-in of `tick` when its lease State is this
+// process's own memory.
+const unsafeLocalLease = "--unsafe-local-lease"
+
 // errUsage is a command line that names no subcommand, or one that does not
 // exist: reported as usage, not as a crash.
 var errUsage = errors.New("usage error")
@@ -77,6 +82,10 @@ Each command takes --config <file> and nothing else but --version and --help (a 
 target, first). The file is validated against schemas/config/<command>.schema.json (serve,
 controller-github, controller-slack; a tick reads its controller's) before anything starts. A tick
 runs under the target's lease and exits 0 when another runner holds it.
+
+A tick REFUSES to run while the leases are held in this process only (no shared State, which is the
+case until B3): a running controller would not be kept off the same target. After scaling the
+controller to 0, --unsafe-local-lease runs the tick anyway.
 `)
 }
 
@@ -148,7 +157,7 @@ func start(out io.Writer, command, schema string, args []string, body runner) er
 
 // ticker is a tick's body: it reads the file it is given, assembles the same
 // controller the loop runs, ticks one target once and returns.
-type ticker func(ctx context.Context, file, target string) error
+type ticker func(ctx context.Context, file, target string, unsafeLocal bool) error
 
 // startTick is [start] for `tick <kind> <target>`: the target comes first, then
 // the flags.
@@ -157,11 +166,20 @@ func startTick(out io.Writer, command, schema string, args []string, body ticker
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		target, args = args[0], args[1:]
 	}
+	// The one flag a tick adds to --config: taken out here, since the
+	// configuration command line refuses any other.
+	unsafeLocal := false
+	args = slices.DeleteFunc(slices.Clone(args), func(a string) bool {
+		if a == unsafeLocalLease {
+			unsafeLocal = true
+		}
+		return a == unsafeLocalLease
+	})
 	return start(out, command, schema, args, func(ctx context.Context, file string) error {
 		if target == "" {
 			return fmt.Errorf("%w: %s needs the target to tick, before the flags", errUsage, command)
 		}
-		return body(ctx, file, target)
+		return body(ctx, file, target, unsafeLocal)
 	})
 }
 
@@ -245,7 +263,7 @@ func controllerSlack(ctx context.Context, file string) error {
 	return controller.Run(ctx)
 }
 
-func tickGitHub(ctx context.Context, file, target string) error {
+func tickGitHub(ctx context.Context, file, target string, unsafeLocal bool) error {
 	cfg, err := githubapp.Load(file)
 	if err != nil {
 		return err
@@ -261,10 +279,10 @@ func tickGitHub(ctx context.Context, file, target string) error {
 		return err
 	}
 	defer closeEmitter(log, controller)
-	return controller.Tick(ctx, target)
+	return controller.Tick(ctx, target, unsafeLocal)
 }
 
-func tickSlack(ctx context.Context, file, target string) error {
+func tickSlack(ctx context.Context, file, target string, unsafeLocal bool) error {
 	cfg, err := slackapp.Load(file)
 	if err != nil {
 		return err
@@ -280,7 +298,7 @@ func tickSlack(ctx context.Context, file, target string) error {
 		return err
 	}
 	defer closeEmitter(log, controller)
-	return controller.Tick(ctx, target)
+	return controller.Tick(ctx, target, unsafeLocal)
 }
 
 func closeEmitter(log *slog.Logger, c interface{ Close() error }) {
