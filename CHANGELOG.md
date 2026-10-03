@@ -1,5 +1,17 @@
 ## Unreleased
 
+- **The chart sets the OpenTelemetry environment: `telemetry.otlp`.** With
+  `telemetry.otlp.endpoint` set, every pod of `renders: app` gets
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL` (`protocol`,
+  `http/protobuf` by default), an `OTEL_SERVICE_NAME` of its own (`access-issuer`
+  for `serve`, `github-roster`, `slack-roster`, the names the binary already
+  uses) and each `extraEnv` entry. Without an endpoint nothing is rendered, so the
+  installed objects are unchanged (policy ADR 0006). The chart refuses an endpoint
+  that is not an http(s) URL, an `extraEnv` name not starting with `OTEL_`, and
+  `OTEL_EXPORTER_OTLP_ENDPOINT` in `extraEnv`. Without it the alerts and the
+  dashboard had no data. See
+  [docs/operations/telemetry.md](docs/operations/telemetry.md#wiring-it-with-the-chart).
+
 - **`access-roster migrate --from <config> --to <config>`** copies the State from
   one storage to another (ADR 0031): the first step of the move, ConfigMaps,
   Secrets and Valkey to NATS, and the rollback the other way round. Each end is a

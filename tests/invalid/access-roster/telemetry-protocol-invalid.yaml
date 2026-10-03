@@ -1,0 +1,8 @@
+# protocol is one of http/protobuf, http/json, grpc.
+# error: at '/telemetry/otlp/protocol'
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    protocol: carrier-pigeon

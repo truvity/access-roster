@@ -368,3 +368,27 @@ rule, then the rule's own severity, then anything the rule's `labels` adds. */ -
 runbook_url: {{ printf "%s#%s" . (lower $.alert) | quote }}
 {{- end -}}
 {{- end -}}
+
+{{/*
+access-roster.otelEnv: the OpenTelemetry SDK environment of one pod, as list
+items, or nothing when no endpoint is set (ADR 0006: a service exports only
+when an endpoint is named). Takes (dict "root" $ "service" "<service.name>").
+extraEnv comes last, sorted, so the file is stable; it cannot carry the
+endpoint (access-roster.validateTelemetry).
+*/}}
+{{- define "access-roster.otelEnv" -}}
+{{- $t := .root.Values.telemetry | default dict -}}
+{{- $o := $t.otlp | default dict -}}
+{{- if $o.endpoint }}
+- name: OTEL_EXPORTER_OTLP_ENDPOINT
+  value: {{ $o.endpoint | quote }}
+- name: OTEL_EXPORTER_OTLP_PROTOCOL
+  value: {{ $o.protocol | default "http/protobuf" | quote }}
+- name: OTEL_SERVICE_NAME
+  value: {{ .service | quote }}
+{{- range $name := keys ($o.extraEnv | default dict) | sortAlpha }}
+- name: {{ $name }}
+  value: {{ get $o.extraEnv $name | toString | quote }}
+{{- end }}
+{{- end }}
+{{- end -}}

@@ -1,0 +1,9 @@
+# The endpoint has its own value; extraEnv must not carry it.
+# error: telemetry.otlp.extraEnv must not carry OTEL_EXPORTER_OTLP_ENDPOINT
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    extraEnv:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://other.example:4318

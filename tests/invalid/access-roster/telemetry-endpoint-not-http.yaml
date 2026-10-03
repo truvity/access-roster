@@ -1,0 +1,7 @@
+# The endpoint must be an http(s) URL.
+# error: telemetry.otlp.endpoint must be an http(s) URL
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlp:
+    endpoint: gateway.observability.svc:4318
