@@ -1,6 +1,6 @@
 # 0028 — Nothing writes ConfigMaps or Secrets; written secrets are sealed
 
-**Status:** Accepted
+**Status:** Accepted; extended by [0034](0034-exports-go-to-openbao-directly.md)
 **Date:** 2026-10-02
 
 ## Context

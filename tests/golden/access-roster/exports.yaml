@@ -109,7 +109,7 @@ data:
 ---
 # Source: access-roster/templates/openbao-ca-configmap.yaml
 # The authorities that sign OpenBao's certificate, for the service's exports
-# (docs/decisions/0033). A certificate, never a secret: it is mounted where
+# (docs/decisions/0034). A certificate, never a secret: it is mounted where
 # config.ports.export.openbao.caFile says.
 apiVersion: v1
 kind: ConfigMap

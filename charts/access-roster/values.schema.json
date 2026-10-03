@@ -2618,7 +2618,7 @@
     },
     "exports": {
       "additionalProperties": false,
-      "description": "What the chart mounts for the service's exports (docs/decisions/0033): the CA that signs OpenBao's certificate and the projected token the login presents. What is copied and where (`config.exports`), and the OpenBao it is copied to and how the service logs in to it (`config.ports.export`), are the `config`'s.",
+      "description": "What the chart mounts for the service's exports (docs/decisions/0034): the CA that signs OpenBao's certificate and the projected token the login presents. What is copied and where (`config.exports`), and the OpenBao it is copied to and how the service logs in to it (`config.ports.export`), are the `config`'s.",
       "properties": {
         "openbao": {
           "additionalProperties": false,
