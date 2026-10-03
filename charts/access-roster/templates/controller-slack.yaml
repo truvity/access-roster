@@ -10,11 +10,13 @@
   render time, before the rollout stops the running controller. Skipped when
   the values carry no policy at all.
 */ -}}
-{{- if .Values.policy }}
-{{- $bound := dig "slack" "workspaces" dict .Values.policy }}
+{{- if or .Values.policy .Values.access }}
+{{- $bound := dict }}
+{{- range $workspace, $_ := dig "slack" "workspaces" dict .Values.policy }}{{ $_ := set $bound $workspace true }}{{ end }}
+{{- range dig "slack" list (.Values.access | default dict) }}{{ $_ := set $bound .workspace true }}{{ end }}
 {{- range $cfg.enabledWorkspaces }}
 {{- if not (hasKey $bound .) }}
-{{- fail (printf "controllerSlack.config.enabledWorkspaces names %q, which policy.slack.workspaces does not declare: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
+{{- fail (printf "controllerSlack.config.enabledWorkspaces names %q, which policy.slack.workspaces and access.slack do not declare: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}

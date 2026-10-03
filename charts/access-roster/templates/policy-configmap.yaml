@@ -16,4 +16,14 @@ data:
     {{- if .Values.policy }}
     {{- toYaml (omit .Values.policy "version") | nindent 4 }}
     {{- end }}
+  {{- /* The access document: the list-shaped sections an installation derives
+         from its access matrix, and the rows that are its own. The service
+         and the controllers reshape it into the policy they load, beside
+         policy.yaml (docs/reference/policy.md#the-access-document). The chart
+         does not interpret it. */}}
+  {{- if .Values.access }}
+  access.yaml: |
+    version: 1
+    {{- toYaml (dict "access" .Values.access "overlay" (.Values.overlay | default dict)) | nindent 4 }}
+  {{- end }}
 {{ end -}}

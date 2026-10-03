@@ -276,7 +276,8 @@ func (s *Set) membersLocked(group string) []Member {
 // LoadDeclared reads the declared layer from a file or a directory. Every
 // YAML file in a directory is one layer and they merge, so a deployment
 // can render one file per source — clusters, cloud accounts, static apps
-// — instead of one document nobody can review.
+// — instead of one document nobody can review. A file with an `access`
+// key is an [AccessDocument] and is reshaped into a layer first.
 func LoadDeclared(path string) (Policy, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -316,7 +317,11 @@ func readOne(name string) (Policy, error) {
 	if err != nil {
 		return Policy{}, fmt.Errorf("read %s: %w", name, err)
 	}
-	p, err := Parse(data)
+	parse := Parse
+	if IsAccessDocument(data) {
+		parse = ParseAccess
+	}
+	p, err := parse(data)
 	if err != nil {
 		return Policy{}, fmt.Errorf("%s: %w", name, err)
 	}

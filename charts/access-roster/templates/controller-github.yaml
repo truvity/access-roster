@@ -11,11 +11,13 @@
   render time, before the rollout stops the running controller. Skipped when
   the values carry no policy at all.
 */ -}}
-{{- if .Values.policy }}
-{{- $bound := dig "github" dict .Values.policy }}
+{{- if or .Values.policy .Values.access }}
+{{- $bound := dict }}
+{{- range $org, $_ := dig "github" dict .Values.policy }}{{ $_ := set $bound $org true }}{{ end }}
+{{- range dig "github" list (.Values.access | default dict) }}{{ $_ := set $bound .org true }}{{ end }}
 {{- range $cfg.enabledOrgs }}
 {{- if not (hasKey $bound .) }}
-{{- fail (printf "controllerGithub.config.enabledOrgs names %q, which policy.github does not bind: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
+{{- fail (printf "controllerGithub.config.enabledOrgs names %q, which policy.github and access.github do not bind: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}

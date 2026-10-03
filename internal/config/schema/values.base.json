@@ -246,6 +246,12 @@
     "policy": {
       "type": "object"
     },
+    "access": {
+      "type": "object"
+    },
+    "overlay": {
+      "type": "object"
+    },
     "route": {
       "type": "object",
       "additionalProperties": false,

@@ -90,12 +90,24 @@ render: the binary would start on a port nothing can reach.
 {{- end -}}
 
 {{/*
+Every declared client by id: the policy's own `clients` and the access
+document's, one table, because a client declared either way is projected its
+secret the same way. Returned as YAML, since a template returns a string.
+*/}}
+{{- define "access-roster.declaredClients" -}}
+{{- $out := dict }}
+{{- range $id, $client := (.Values.policy.clients | default dict) }}{{ $_ := set $out $id $client }}{{ end }}
+{{- range $client := (dig "clients" list (.Values.access | default dict)) }}{{ $_ := set $out $client.name $client }}{{ end }}
+{{- toYaml $out }}
+{{- end }}
+
+{{/*
 Non-empty when any declared client carries a secret, which is what decides
 whether the client-secrets volume is rendered at all. A deployment whose
 clients are all public or exchange-only mounts nothing.
 */}}
 {{- define "access-roster.confidentialClients" -}}
-{{- range $id, $client := (.Values.policy.clients | default dict) }}
+{{- range $id, $client := (include "access-roster.declaredClients" . | fromYaml) }}
 {{- if $client.secret }}yes{{ end }}
 {{- end }}
 {{- end }}

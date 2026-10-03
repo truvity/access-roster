@@ -926,6 +926,9 @@
     }
   },
   "properties": {
+    "access": {
+      "type": "object"
+    },
     "alerts": {
       "additionalProperties": false,
       "description": "Alert rules, rendered with `renders: alerts`.",
@@ -1821,6 +1824,9 @@
       "type": "object"
     },
     "nodeSelector": {
+      "type": "object"
+    },
+    "overlay": {
       "type": "object"
     },
     "podAnnotations": {

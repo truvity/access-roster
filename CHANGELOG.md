@@ -1,3 +1,15 @@
+## Unreleased
+
+- **The access document.** A policy layer may be written as the lists an
+  installation derives from its access matrix (`access`) plus the rows that are
+  its own (`overlay`); `policy.ParseAccess` reshapes it into the layer, and
+  `LoadDeclared` reads such a file beside ordinary layers. The chart takes the
+  same two values (`access`, `overlay`), renders them to `access.yaml` in the
+  policy ConfigMap, checks `enabledOrgs` and `enabledWorkspaces` against them
+  and projects the secrets of the clients they declare. Additive: `policy` is
+  unchanged, and an installation that sets neither value renders what it did.
+  See [docs/reference/policy.md](docs/reference/policy.md#the-access-document).
+
 ## v1.53.0
 
 This release adds traces and metrics through an exporter allowlist, the chart's `alerts` and `dashboards` render modes, per-target ticks with the `tick` command (which builds on v1.52.4's single-binary, single-chart, and configuration-file consolidation), and preparation for the audit SDK module bump that will land in a later commit before the tag.
