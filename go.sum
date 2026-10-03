@@ -201,8 +201,8 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/truvity/audit/sdk v0.6.1 h1:85A+VChOihOVlHbSiSi1l3UrB4mVCUsJwads8G/ZPfM=
 github.com/truvity/audit/sdk v0.6.1/go.mod h1:jZxW78L/6GqoQNQyhBTBxcDaZ3DNjq+p2FcsZKkPdm8=
-github.com/truvity/observability v0.46.1-0.20261003205555-132cf75adac2 h1:L/ocpgtBg1J58d5VI0TV4qbN9YmdTuEM68QHatiM8pg=
-github.com/truvity/observability v0.46.1-0.20261003205555-132cf75adac2/go.mod h1:vwYIRyfWf78ZS1i6Aafg3MJo/G+VyOBtCFUbAcvQ7js=
+github.com/truvity/observability v0.47.0 h1:WekH7/uH4k9/2DMHLl5+3/Yl5DjquwKabPRe53KXEUA=
+github.com/truvity/observability v0.47.0/go.mod h1:vwYIRyfWf78ZS1i6Aafg3MJo/G+VyOBtCFUbAcvQ7js=
 github.com/truvity/policy v1.37.0 h1:fOHopBkTf3acFlvDtpmUHJhDQibpyqkkwLT5wBm9CBA=
 github.com/truvity/policy v1.37.0/go.mod h1:tS3msaabpq9ONQAXMKy7j5k+aVFVoGFysHisLJXR0ak=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
