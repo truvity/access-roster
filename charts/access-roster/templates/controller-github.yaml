@@ -17,7 +17,7 @@
 {{- range dig "github" list (.Values.access | default dict) }}{{ $_ := set $bound .org true }}{{ end }}
 {{- range $cfg.enabledOrgs }}
 {{- if not (hasKey $bound .) }}
-{{- fail (printf "controllerGithub.config.enabledOrgs names %q, which policy.github and access.github do not bind: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
+{{- fail (printf "controllerGithub.config.enabledOrgs names %q, which policy.github does not bind, and nor does access.github: remove it from enabledOrgs, or bind the organisation in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}
