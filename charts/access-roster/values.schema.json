@@ -956,7 +956,9 @@
                   "github-apps",
                   "github-links",
                   "github-runner-apps",
-                  "github-catalogue-apps"
+                  "github-catalogue-apps",
+                  "slack-credentials",
+                  "slack-records"
                 ]
               },
               "interval": {

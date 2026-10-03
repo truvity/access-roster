@@ -1730,5 +1730,14 @@ func exportSources(kept stores) exports.Sources {
 	if kept.slackCatalogueApps != nil {
 		s.SlackCatalogueApps = kept.slackCatalogueApps
 	}
+	if kept.slackWorkspaces != nil {
+		s.SlackWorkspaces = kept.slackWorkspaces
+	}
+	if kept.slackShared != nil {
+		s.SlackShared = kept.slackShared
+	}
+	if kept.slackChannels != nil {
+		s.SlackChannels = kept.slackChannels
+	}
 	return s
 }

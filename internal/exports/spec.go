@@ -55,11 +55,19 @@ const (
 	BundleGitHubLinks          = "github-links"
 	BundleGitHubRunnerApps     = "github-runner-apps"
 	BundleGitHubCatalogueApps  = "github-catalogue-apps"
+	// BundleSlackCredentials is `<release>-slack-credentials`: every connected
+	// workspace's client id and secret and bot token, each with its record.
+	BundleSlackCredentials = "slack-credentials"
+	// BundleSlackRecords is `<release>-slack-records`, the mirror of the records
+	// ConfigMap: the workspaces' records, the Slack Connect channels'
+	// definitions and the console channels' records.
+	BundleSlackRecords = "slack-records"
 )
 
 // Bundles lists every bundle name.
 var Bundles = []string{
 	BundleWorkspaceCredentials, BundleGitHubApps, BundleGitHubLinks, BundleGitHubRunnerApps, BundleGitHubCatalogueApps,
+	BundleSlackCredentials, BundleSlackRecords,
 }
 
 // The properties a source offers, under the names the Kubernetes Secret keys

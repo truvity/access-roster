@@ -20,6 +20,8 @@ import (
 	"github.com/truvity/access-roster/internal/port/memory"
 	"github.com/truvity/access-roster/internal/portstore"
 	slackcatalogueapp "github.com/truvity/access-roster/internal/slackapp/catalogueapp"
+	slackconnection "github.com/truvity/access-roster/internal/slackroster/connection"
+	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 )
 
 // The bundles are what the Kubernetes Secrets held, byte for byte: they are
@@ -48,6 +50,10 @@ type fixtures struct {
 	cat     catalogueapp.Record
 	slack   slackcatalogueapp.Record
 	slackCr slackcatalogueapp.Credentials
+	slackWs slackconnection.Record
+	slackWc slackconnection.Credential
+	shared  reconcile.SharedChannel
+	console reconcile.ConsoleChannel
 }
 
 func data() fixtures {
@@ -75,6 +81,10 @@ func data() fixtures {
 		},
 		slack:   slackcatalogueapp.Record{ID: "alerts", Workspace: "acme", AppID: "A1", ClientID: "c1", TeamID: "T1", CreatedAt: at, CreatedBy: "ada@acme.example"},
 		slackCr: slackcatalogueapp.Credentials{ClientSecret: "SLACK-CLIENT-SECRET", BotToken: "xoxb-BOT"},
+		slackWs: slackconnection.Record{Workspace: "acme", TeamID: "T1", AppID: "A1", BotUserID: "U1", ConnectedAt: at, ConnectedBy: "ada@acme.example"},
+		slackWc: slackconnection.Credential{Workspace: "acme", AppID: "A1", ClientID: "c1", ClientSecret: "CLIENT-SECRET", BotToken: "xoxb-WS"},
+		shared:  reconcile.SharedChannel{Name: "partners", Host: "acme", With: []string{"globex"}, Sources: []string{"all@acme.example"}},
+		console: reconcile.ConsoleChannel{Workspace: "acme", Name: "ops", Sources: []string{"ops@acme.example"}},
 	}
 }
 
@@ -122,6 +132,11 @@ func build(t *testing.T) (*kube.Client, exports.Sources) {
 	must(t, kube.NewGitHubRunnerApps(client).Put(ctx, d.runner, "RUNNER-KEY"))
 	must(t, kube.NewGitHubCatalogueApps(client).Put(ctx, d.cat, "CAT-KEY"))
 	must(t, kube.NewSlackCatalogueApps(client).Put(ctx, d.slack, d.slackCr))
+	ksw := kube.NewSlackWorkspaces(client)
+	must(t, ksw.Put(ctx, d.slackWs, d.slackWc))
+	ksh, ksc := kube.NewSlackShared(client), kube.NewSlackChannels(client)
+	must(t, ksh.Apply(ctx, d.shared.Name, func(*reconcile.SharedChannel) (*reconcile.SharedChannel, error) { return &d.shared, nil }))
+	must(t, ksc.Apply(ctx, d.console.Workspace, d.console.Name, keepConsole(&d.console)))
 
 	base := portstore.New(memory.New().Set())
 	sw, sc := portstore.NewWorkspaces(base), portstore.NewCredentials(base)
@@ -138,10 +153,16 @@ func build(t *testing.T) (*kube.Client, exports.Sources) {
 	must(t, cats.Put(ctx, d.cat, "CAT-KEY"))
 	slacks := portstore.NewSlackCatalogueApps(base)
 	must(t, slacks.Put(ctx, d.slack, d.slackCr))
+	ssw := portstore.NewSlackWorkspaces(base)
+	must(t, ssw.Put(ctx, d.slackWs, d.slackWc))
+	ssh, ssc := portstore.NewSlackShared(base), portstore.NewSlackChannels(base)
+	must(t, ssh.Apply(ctx, d.shared.Name, func(*reconcile.SharedChannel) (*reconcile.SharedChannel, error) { return &d.shared, nil }))
+	must(t, ssc.Apply(ctx, d.console.Workspace, d.console.Name, keepConsole(&d.console)))
 
 	return client, exports.Sources{
 		Workspaces: sw, Credentials: sc, GitHubOrgs: so, GitHubLinks: sl,
 		RunnerApps: runners, GitHubCatalogueApps: cats, SlackCatalogueApps: slacks,
+		SlackWorkspaces: ssw, SlackShared: ssh, SlackChannels: ssc,
 	}
 }
 
@@ -162,6 +183,8 @@ func TestEachBundleIsWhatTheKubernetesSecretHeld(t *testing.T) {
 		exports.BundleGitHubLinks:          release + "-github-links",
 		exports.BundleGitHubRunnerApps:     release + "-github-runner-apps",
 		exports.BundleGitHubCatalogueApps:  release + "-github-catalogue-apps",
+		exports.BundleSlackCredentials:     release + "-slack-credentials",
+		exports.BundleSlackRecords:         release + "-slack-records",
 	} {
 		t.Run(bundle, func(t *testing.T) {
 			want := secretData(t, client, secret)
@@ -276,5 +299,11 @@ func TestSourcesRefuseAnExportWhoseStoreIsNotKept(t *testing.T) {
 	}
 	if err := (exports.Sources{GitHubLinks: portstore.NewGitHubLinks(portstore.New(memory.New().Set()))}).Check(specs); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func keepConsole(c *reconcile.ConsoleChannel) func(*reconcile.ConsoleChannel, []slackconnection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	return func(*reconcile.ConsoleChannel, []slackconnection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+		return c, nil
 	}
 }

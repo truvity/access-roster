@@ -19,15 +19,15 @@
 - **Exports: the service copies the secrets it keeps into OpenBao itself.** With
   `ports.adapter` other than `legacy` the service writes no Kubernetes Secret, so the
   External Secrets `PushSecret`s that copied them into OpenBao (a Slack App's bot
-  token for Alertmanager, the runner Apps for ARC, five recovery bundles) had
+  token for Alertmanager, the runner Apps for ARC, seven recovery bundles) had
   nothing to read. A new port, `port.Export` (`Put` in `replace` or `patch` mode,
   and `Delete`), with a memory adapter and an OpenBao KV version 2 adapter
   (`internal/port/openbao`: Kubernetes or JWT login inside each namespace, a JSON
   merge patch for per-property copies, nothing written when the key already holds
   the data), and `internal/exports`, which runs the copies. `ports.export` names
   the OpenBao and how to log in; `exports:` lists what is copied (`slack-app`,
-  `github-app`, `runner-app`, or one of the five `bundle`s) and where, under the
-  property names the PushSecrets wrote, and the five bundles are the Secrets'
+  `github-app`, `runner-app`, or one of the seven `bundle`s) and where, under the
+  property names the PushSecrets wrote, and the seven bundles are the Secrets'
   entries byte for byte. Validated at start: an unknown source, an App or tier the
   deployment does not declare, and two exports that would write one key stop the
   service. Each export is made once at start, again on a change to its source and
