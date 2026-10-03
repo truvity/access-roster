@@ -7,11 +7,11 @@ to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); thi
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: the ports and four adapters are built; the rest of the target adapters
-are designed.** The interfaces, an in-memory adapter, a temporary `legacy`
-adapter, an S3 Blob and a KMS Sealer exist
-([Implementation status](#implementation-status)); NATS JetStream and DynamoDB
-do not. The running service still keeps its state as
+**Status: the ports and five adapters are built; DynamoDB is designed.** The
+interfaces, an in-memory adapter, a temporary `legacy` adapter, a NATS JetStream
+adapter for State, Index and Trigger, an S3 Blob and a KMS Sealer exist
+([Implementation status](#implementation-status)); DynamoDB does not, and
+nothing runs on the NATS adapter yet. The running service still keeps its state as
 described in [access-roster.md](access-roster.md#the-store) and
 [../operations/high-availability.md](../operations/high-availability.md). This
 page is what an adapter is built and tested against; the current layout stays
@@ -265,7 +265,7 @@ Business code uses the lease and the trigger as `rails.Leases` (`Acquire`,
 the lease is lost) and `port.Trigger`; a report of a target is one blob written
 alone (`rails.BlobReports.Put`).
 
-The Go interfaces are in `internal/port` (`State`, `Blob`, `Trigger`, `Sealer`,
+The Go interfaces are in `internal/port` (`State`, `Index`, `Blob`, `Trigger`, `Sealer`,
 `Identity`; the audit sink is `audit.Recorder`, unchanged), the conformance
 suite is `internal/port/porttest`, and `internal/store` builds one set of ports
 from the `ports.adapter` key of the configuration file and hands it to the
@@ -353,6 +353,63 @@ semantics above (revisions are a counter, expiry is judged by an injectable
 clock, `Watch` delivers put, delete and expiry, `Trigger` coalesces, `Sealer` is
 AES-GCM under a key that lives and dies with the store). It is what tests and the
 demonstration use, and what `ports.adapter: memory` selects.
+
+### The NATS adapter
+
+`internal/port/nats` implements State, the transitional Index and Trigger over
+one JetStream KV bucket (`ports.adapter: nats`, `ports.nats`:
+[configuration](../reference/configuration.md)). Blob, Sealer and Identity
+are not NATS's: with this adapter `internal/store` takes them from the legacy
+adapter, unless `ports.blob` and `ports.sealer` name the S3 and KMS adapters
+(which compose with any State). The package documentation holds the whole
+mapping; in short:
+
+| Operation | JetStream |
+|---|---|
+| `Get` | `kv.Get` |
+| `Create` | `kv.Create` (with the per-key TTL); over an expired record that the server has not reaped, a publish against its revision, so exactly one taker wins |
+| `Put`, `Update(rev)` | a publish to the key's subject with the expected-last-sequence header (what `kv.Put` and `kv.Update` send, with the TTL they cannot carry) |
+| `DeleteIfRevision` | `kv.Delete` with `LastRevision` (`kv.Purge` with a marker TTL when the bucket has limit markers) |
+| `List` | the stream's own subject listing under the prefix, sorted, a page token naming the last key, then a `kv.Get` per key |
+| `Watch` | a KV watch on the prefix, from now |
+| Index `Add`/`Remove`/`Members` | the key `idx.<set>.<member>` with an empty value and the lifetime; `Members` is a prefix listing |
+| Trigger `Notify`/`Subscribe` | `notify.<target>` written with a one-minute lifetime; `Subscribe` watches the prefix, so a notification crosses processes |
+
+- **Revisions are the stream sequence.** A rewrite of identical bytes changes
+  it, and a record that went A, B, A is not mistaken for one that never moved:
+  the legacy adapter's two skips do not apply, and no assertion is skipped for
+  State, Index or Trigger.
+- **Expiry is in the value and judged by the reader's clock**, nine bytes in front
+  of it, so `Get` and `List` never return an expired record whether or not the
+  server has reaped it, `Create` succeeds over one and `Update` finds it gone.
+  **On nats-server 2.11 or later** (JetStream API level 1) the bucket is also
+  created with message TTLs and limit markers, each write carries its TTL
+  (rounded up to the second) and the server reaps the record and a watcher sees
+  the expiry. **On an older server** the bucket is created without them, nothing
+  is reaped (a record is filtered, not removed, until it is written or deleted),
+  and a `Watch` reports an expiry from its own clock for records it saw written.
+- **Reads are the leader's.** A KV bucket answers `Get` from any replica by
+  default, which can be behind a write the caller was just acknowledged for; the
+  adapter turns direct gets off on its bucket, so a revoked session reads as
+  revoked, and lists from the stream's state, which the leader answers.
+- **A key is a subject.** Bytes a subject or the KV client does not allow (a `:`
+  of the legacy names) are written as `=XX`; the dots stay, so the layout is the
+  subject hierarchy.
+- **`List` scans the prefix's subjects on every page**: it is for the operator,
+  the watcher and the small per-person prefixes, not for a request over a large
+  one.
+- **The Index's expiry is per member.** An `Add` gives its member the lifetime
+  and does not extend the others'; the layout's `ses.<person>.` listing replaces
+  the Index.
+- **Credentials** are the pod's projected ServiceAccount token, presented as the
+  NATS token for the auth callout to validate (`ports.nats.tokenFile`, read afresh
+  on every connect), or a credentials file; never a value in the file.
+- **Conformance** runs against an embedded nats-server (a single node, a
+  single node without per-message TTL, and a three-node cluster with a
+  replicated bucket), with no container; State, Index and Trigger pass every
+  assertion. The Blob, Sealer and Identity assertions are skipped by name, as they
+  are other adapters' ports. A test with the real clock covers the server's own
+  TTL reaping.
 
 ### The legacy adapter
 

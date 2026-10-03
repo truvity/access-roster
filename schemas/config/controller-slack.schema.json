@@ -75,14 +75,34 @@
     },
     "ports": {
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "adapter": {
+                "const": "nats"
+              }
+            },
+            "required": [
+              "adapter"
+            ]
+          },
+          "then": {
+            "required": [
+              "nats"
+            ]
+          }
+        }
+      ],
       "description": "The adapters behind the storage ports (docs/design/ports.md).",
       "properties": {
         "adapter": {
           "default": "legacy",
-          "description": "`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.",
+          "description": "`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`. `nats` keeps State, the session index and the trigger in a NATS JetStream KV bucket (`ports.nats`), shared by every replica and process; its Blob and Sealer are `legacy`'s unless `ports.blob` and `ports.sealer` name their own.",
           "enum": [
             "legacy",
-            "memory"
+            "memory",
+            "nats"
           ]
         },
         "blob": {
@@ -152,6 +172,54 @@
           },
           "required": [
             "adapter"
+          ],
+          "type": "object"
+        },
+        "nats": {
+          "additionalProperties": false,
+          "description": "The JetStream bucket of the `nats` adapter. Requires nats-server 2.11 or later for per-key TTL; an older server works with expiry judged on read only.",
+          "properties": {
+            "bucket": {
+              "default": "access-roster",
+              "description": "The KV bucket.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "caFile": {
+              "description": "A PEM bundle of the authorities that sign the server's certificate, when the system's do not.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "create": {
+              "default": true,
+              "description": "Create or update the bucket at start. Off binds to a bucket that exists, for an identity that may not manage streams.",
+              "type": "boolean"
+            },
+            "credsFile": {
+              "description": "A NATS credentials file. Alternative to `tokenFile`.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "replicas": {
+              "default": 3,
+              "description": "The bucket's replica count, applied when the bucket is created.",
+              "maximum": 5,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "tokenFile": {
+              "description": "This pod's projected ServiceAccount token, presented as the NATS token for the auth callout to validate, and read afresh on every connect. Alternative to `credsFile`.",
+              "minLength": 1,
+              "type": "string"
+            },
+            "url": {
+              "description": "The server list, comma separated: `nats://host:4222`, or `tls://` for TLS.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
           ],
           "type": "object"
         },

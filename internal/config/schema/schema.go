@@ -283,12 +283,30 @@ func serveSchema() m {
 
 // portsSchema is the `ports` section both kinds of file share.
 func portsSchema() m {
-	return obj("The adapters behind the storage ports (docs/design/ports.md).", m{
-		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.", "legacy",
-			"legacy", "memory"),
+	o := obj("The adapters behind the storage ports (docs/design/ports.md).", m{
+		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`. `nats` keeps State, the session index and the trigger in a NATS JetStream KV bucket (`ports.nats`), shared by every replica and process; its Blob and Sealer are `legacy`'s unless `ports.blob` and `ports.sealer` name their own.", "legacy",
+			"legacy", "memory", "nats"),
 		"blob":   portsBlobSchema(),
 		"sealer": portsSealerSchema(),
+		"nats":   portsNATSSchema(),
 	})
+	o["allOf"] = []any{
+		m{"if": m{"properties": m{"adapter": m{"const": "nats"}}, "required": []string{"adapter"}}, "then": m{"required": []string{"nats"}}},
+	}
+	return o
+}
+
+// portsNATSSchema is `ports.nats`: the bucket of the `nats` adapter.
+func portsNATSSchema() m {
+	return obj("The JetStream bucket of the `nats` adapter. Requires nats-server 2.11 or later for per-key TTL; an older server works with expiry judged on read only.", m{
+		"url":       str("The server list, comma separated: `nats://host:4222`, or `tls://` for TLS."),
+		"bucket":    strDefault("The KV bucket.", "access-roster"),
+		"replicas":  m{"type": "integer", "minimum": 1, "maximum": 5, "default": 3, "description": "The bucket's replica count, applied when the bucket is created."},
+		"tokenFile": str("This pod's projected ServiceAccount token, presented as the NATS token for the auth callout to validate, and read afresh on every connect. Alternative to `credsFile`."),
+		"credsFile": str("A NATS credentials file. Alternative to `tokenFile`."),
+		"caFile":    str("A PEM bundle of the authorities that sign the server's certificate, when the system's do not."),
+		"create":    boolDefault("Create or update the bucket at start. Off binds to a bucket that exists, for an identity that may not manage streams.", true),
+	}, "url")
 }
 
 // portsBlobSchema is `ports.blob`: the Blob port's own adapter, which

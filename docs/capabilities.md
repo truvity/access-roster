@@ -26,10 +26,10 @@ release and what has landed since.
 | State, Blob, Trigger, Sealing, Identity: the ports' in-memory adapter (`internal/port/memory`) | 🧪 | — |
 | State: Kubernetes objects and Valkey (the current store) | ✅ | — |
 | State: the ports' `legacy` adapter over that store (temporary, until the migration of [0031](decisions/0031-a-generic-migration-tool.md) has run) | 🧪 | — |
-| State: NATS JetStream KV | 📄 | — |
+| State, session index and Trigger: NATS JetStream KV (`internal/port/nats`, `ports.adapter: nats`; per-key TTL needs nats-server 2.11 or later) | 🧪 | — |
 | State: DynamoDB | — | 📄 |
 | Blob: S3 (reports, snapshots; `internal/port/s3blob`, `ports.blob`) | 🧪 | 🧪 |
-| Trigger: KV watch | 📄 | — |
+| Trigger: KV watch (across processes) | 🧪 | — |
 | Trigger: asynchronous invoke | — | 📄 |
 | Sealing: KMS (`internal/port/kmsseal`, `ports.sealer`) | 🧪 | 🧪 |
 | Sealing: OpenBao Transit | 📄 | — |
@@ -41,7 +41,8 @@ release and what has landed since.
 | Audit sink: `sqs` | — | 📄 |
 | Ports as Go interfaces (`internal/port`) and the apps depending on them | 🧪 | 📄 |
 | Port conformance suite: in-memory and legacy | 🧪 | — |
-| Port conformance suite: NATS, DynamoDB | 📄 | 📄 |
+| Port conformance suite: NATS (embedded nats-server, one node and a three-node cluster) | 🧪 | — |
+| Port conformance suite: DynamoDB | — | 📄 |
 
 ## Runtime
 

@@ -364,7 +364,7 @@ The issuer, the console and the directory hub, one process.
 | `release` | `access-roster` | the name this installation's objects carry (`<release>-github-orgs`, the prefix of its keys in Valkey). **The chart requires it to be the release's full name**, and says what to write |
 | `cluster` | unset | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. Empty keeps the older unqualified form |
 | `store` | `memory` (the chart: `kubernetes`) | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
-| `ports.adapter` | `legacy` | the adapter behind the storage ports ([design/ports.md](../design/ports.md)): `legacy` keeps state where it has always been kept (the namespace's ConfigMaps and Secrets, and Valkey when `valkey.address` is set); `memory` keeps all of it in the process, so a restart loses every login in progress, and is refused with `store: kubernetes` or `valkey.address` |
+| `ports.adapter` | `legacy` | the adapter behind the storage ports ([design/ports.md](../design/ports.md)): `legacy` keeps state where it has always been kept (the namespace's ConfigMaps and Secrets, and Valkey when `valkey.address` is set); `nats` keeps State, the session index and the trigger in a JetStream KV bucket shared by every replica ([design/ports.md](../design/ports.md#the-nats-adapter)); `memory` keeps all of it in the process, so a restart loses every login in progress, and is refused with `store: kubernetes` or `valkey.address` |
 | `ports.blob.adapter` | (the Blob of `ports.adapter`) | `s3` replaces the Blob port (status reports, directory snapshots) with an S3 bucket, whatever `ports.adapter` is; `ports.blob.s3` is then required |
 | `ports.blob.s3.bucket` | (required) | the bucket, which must exist with public access blocked |
 | `ports.blob.s3.prefix` | (none) | a key prefix inside the bucket: objects are `<prefix>/reports/<target>` and `<prefix>/snapshots/<directory>` |
@@ -374,6 +374,9 @@ The issuer, the console and the directory hub, one process.
 | `ports.sealer.adapter` | (the Sealer of `ports.adapter`) | `kms` replaces the Sealer port with AWS KMS; `ports.sealer.kms` is then required |
 | `ports.sealer.kms.keyId` | (required) | a key id, ARN or alias the data keys are wrapped under; the role needs `kms:Encrypt` and `kms:Decrypt` on it |
 | `ports.sealer.kms.region`, `ports.sealer.kms.endpoint` | the SDK's, AWS | the key's region; LocalStack's address |
+| `ports.nats.url` | **required with `nats`** | the NATS servers, comma separated (`nats://host:4222`, `tls://` for TLS) |
+| `ports.nats.bucket` / `.replicas` / `.create` | `access-roster` / `3` / `true` | the JetStream KV bucket, its replica count when created, and whether to create or update it (off binds to one that exists, for an identity that may not manage streams) |
+| `ports.nats.tokenFile` / `.credsFile` / `.caFile` | unset | the projected ServiceAccount token presented as the NATS token (the auth callout validates it), read on every connect; or a NATS credentials file (one of the two); and a CA bundle for a server the system's authorities do not cover |
 | `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
 | `probes.address` | `:7070` | `/healthz`, `/readyz` |
 | `log.level` | `info` | `debug`, `info`, `warn`, `error` |
