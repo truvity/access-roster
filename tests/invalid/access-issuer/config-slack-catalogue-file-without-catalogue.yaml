@@ -1,0 +1,6 @@
+# A catalogueFile with no slackApps names a file nothing mounts.
+# error: config.slack.catalogueFile is "/var/run/access-issuer/slack-apps-catalogue.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  slack:
+    catalogueFile: /var/run/access-issuer/slack-apps-catalogue.yaml

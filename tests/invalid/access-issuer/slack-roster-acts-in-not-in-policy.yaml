@@ -1,13 +1,18 @@
 # slackRoster.actsIn names a workspace the inline policy does not declare.
-# error: slackRoster.actsIn names "old", which policy.slack.workspaces does not declare
-issuerURL: https://issuer.example
+# error: slackRoster.config.enabledWorkspaces names "old", which policy.slack.workspaces does not declare
+config:
+  issuerURL: https://issuer.example
 slackRoster:
   enabled: true
-  actsIn: [acme, old]
+  config:
+    enabledWorkspaces:
+    - acme
+    - old
+    consoleURL: http://access-issuer.default.svc:8080/console
 exchange:
   clusters:
-    - name: example
-      issuer: https://oidc.example
+  - name: example
+    issuer: https://oidc.example
 console:
   mount: /console
 policy:

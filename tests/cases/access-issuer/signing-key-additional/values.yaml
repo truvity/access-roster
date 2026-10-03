@@ -2,7 +2,12 @@
 # ES384 certificate, unchanged, plus one additional RS256 key for
 # relying parties that lag it -- EKS, Kargo -- see
 # reference/policy.md's "Signing algorithm per audience".
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
+  # One file per `signingKey.additional` entry, in the order they are declared.
+  signingKey:
+    additionalFiles:
+      - /var/run/access-issuer/signing-key-rs256/tls.key
 signingKey:
   additional:
     - algorithm: RSA

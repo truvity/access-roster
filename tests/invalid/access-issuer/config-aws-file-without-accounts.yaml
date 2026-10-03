@@ -1,0 +1,6 @@
+# An awsFile with no exchange.aws.accounts names a file nothing mounts.
+# error: config.exchange.awsFile is "/var/run/access-issuer/aws.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    awsFile: /var/run/access-issuer/aws.yaml

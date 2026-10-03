@@ -1,0 +1,5 @@
+# Recovery proves access to the cluster the pod runs in.
+# error: config.recovery.enabled needs config.inCluster: true
+config:
+  issuerURL: https://issuer.example
+  inCluster: false

@@ -1,6 +1,7 @@
 # A Slack App with no bot scopes could do nothing.
 # error: at '/slackApps/0': missing property 'botScopes'
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 slackApps:
-  - id: sync
-    workspace: acme
+- id: sync
+  workspace: acme

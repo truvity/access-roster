@@ -1,5 +1,6 @@
 # A key under lifetimes does not know must fail the render, not be ignored.
-# error: at '/lifetimes': additional properties
-issuerURL: https://issuer.example
-lifetimes:
-  session: 1h
+# error: at '/config/lifetimes': additional properties
+config:
+  issuerURL: https://issuer.example
+  lifetimes:
+    bogus: 1

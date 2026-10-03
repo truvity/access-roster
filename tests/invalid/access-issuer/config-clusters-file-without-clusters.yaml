@@ -1,0 +1,6 @@
+# A clustersFile with no exchange.clusters names a file nothing mounts.
+# error: config.exchange.clustersFile is "/var/run/access-issuer/clusters.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml

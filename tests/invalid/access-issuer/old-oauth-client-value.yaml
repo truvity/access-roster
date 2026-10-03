@@ -1,0 +1,7 @@
+# The old value `oauthClient` is removed, not aliased: it is `config.oauthClient`, with the Secret in `secretMounts`.
+# error: additional properties 'oauthClient' not allowed
+config:
+  issuerURL: https://issuer.example
+oauthClient:
+  secret:
+    name: sign-in-client

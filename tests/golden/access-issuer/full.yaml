@@ -186,6 +186,94 @@ data:
         issuer: "https://edge.example"
 
 ---
+# Source: access-issuer/templates/configmap.yaml
+# What `access-issuer --config` reads: `config`, as the values give it, with
+# nothing added, renamed or dropped. The binary validates it against
+# schemas/config/access-issuer.schema.json at start, and values.schema.json
+# holds the values to the same schema before this renders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-issuer
+data:
+  config.yaml: |
+    audit:
+      audience: audit
+      forwardedForTrustedHops: 1
+      queryURL: http://audit-query.access-issuer.svc:8080
+      tokenFile: /var/run/audit/token
+      writer: http://audit.access-issuer.svc:8080
+    clientSecretsDir: /var/run/access-issuer/clients
+    cluster: example-cluster
+    console:
+      client: access-console
+      origin: https://access.example
+    exchange:
+      audience: access-exchange
+      awsFile: /var/run/access-issuer/aws.yaml
+      clustersFile: /var/run/access-issuer/clusters.yaml
+    freshness:
+      freshnessWindow: 20m
+      probeInterval: 2m
+      refreshInterval: 10m
+    github:
+      catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml
+      owners:
+      - acme
+      - globex
+      runnerTiers:
+      - preview
+      - stable
+    inCluster: true
+    issuerURL: https://access.example
+    lifetimes:
+      absolute: 24h
+      hold: 2h
+      refresh: 6h
+      session: 8h
+      token: 30m
+    listen:
+      address: :8443
+    log:
+      level: debug
+    login:
+      directory: false
+    oauthClient:
+      idFile: /var/run/access-issuer/oauth-client/id
+      idKey: id
+      secretFile: /var/run/access-issuer/oauth-client/secret
+      secretKey: secret
+      secretName: sign-in-client
+    overlayFile: /var/run/access-issuer/directory/overlay.yaml
+    policyDir: /var/run/access-issuer/policy
+    probes:
+      address: :9090
+    publicRootURL: https://access.example
+    publicURL: https://access.example/console
+    recovery:
+      audience: break-glass-audience
+      enabled: true
+      serviceAccount: break-glass
+    release: access-issuer
+    secureCookies: true
+    signingKey:
+      activationDelay: 15m
+      file: /var/run/access-issuer/signing-key/tls.key
+      pollInterval: 30s
+    store: kubernetes
+    valkey:
+      address: valkey.example.svc:6379
+      cluster: true
+      passwordEnv: VALKEY_PASSWORD
+      tls: true
+
+---
 # Source: access-issuer/templates/github-apps-catalogue-configmap.yaml
 # The GitHub Apps this deployment declares, created and installed by an
 # operator from the console. Nothing here is a secret: names, permissions
@@ -220,6 +308,36 @@ data:
         contents: write
         pull_requests: write
       public: false
+
+---
+# Source: access-issuer/templates/github-roster.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-github-roster-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: github-roster
+data:
+  # What `github-roster --config` reads: `githubRoster.config`, as the values give
+  # it. The binary validates it against schemas/config/github-roster.schema.json.
+  config.yaml: |
+    appsDir: /var/run/github-roster/apps
+    audit:
+      tokenFile: /var/run/audit/token
+      writer: http://audit.access-issuer.svc:8080
+    catalogueFile: /var/run/github-roster/github-apps-catalogue.yaml
+    consoleURL: http://access-issuer.identity.svc:8443/console
+    enabledOrgs:
+    - acme
+    - globex
+    interval: 5m
+    policyDir: /var/run/github-roster/policy
+    recordsDir: /var/run/github-roster/records
+    tokenFile: /var/run/secrets/github-roster/token
 
 ---
 # Source: access-issuer/templates/overlay-configmap.yaml
@@ -306,6 +424,34 @@ data:
       workspaces:
         acme: {}
         globex-eu: {}
+
+---
+# Source: access-issuer/templates/slack-roster.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-slack-roster-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: slack-roster
+data:
+  # What `slack-roster --config` reads: `slackRoster.config`, as the values give
+  # it. The binary validates it against schemas/config/slack-roster.schema.json.
+  config.yaml: |
+    audit:
+      tokenFile: /var/run/audit/token
+    consoleURL: http://access-issuer.identity.svc:8443/console
+    credentialsDir: /var/run/slack-roster/credentials
+    enabledWorkspaces:
+    - acme
+    - globex-eu
+    interval: 5m
+    policyDir: /var/run/slack-roster/policy
+    recordsDir: /var/run/slack-roster/workspaces
+    tokenFile: /var/run/secrets/slack-roster/token
 
 ---
 # Source: access-issuer/templates/serviceaccount.yaml
@@ -527,6 +673,8 @@ spec:
         app.kubernetes.io/name: access-issuer
         app.kubernetes.io/instance: access-issuer
       annotations:
+        # A configuration change is a rollout: the file is read at start.
+        checksum/config: 7cd1a26483637234d389db97bc98c72c4766d25f3141cac898f66c480384e26b
         # A policy change is a rollout: the file is read at start.
         checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
         # A federated cluster is read once at start. A row added without a
@@ -563,161 +711,21 @@ spec:
               containerPort: 8443
             - name: health
               containerPort: 9090
+          # The whole of the configuration is the file: `config`, rendered as it
+          # stands. The environment carries only the secrets that file names.
+          args:
+            - --config=/etc/access-issuer/config.yaml
           env:
-            - name: ISSUER_URL
-              value: "https://access.example"
-            - name: PORT
-              value: "8443"
-            - name: HEALTH_PORT
-              value: "9090"
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            # Names this replica on every audit record, as the instance
-            # that emitted it.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # What an operator connected — the workspaces and their
-            # credentials, the memberships, the OAuth client it was
-            # given, the session key — kept as ConfigMaps and Secrets in
-            # this namespace. Anything else and a restart is a fresh
-            # installation.
-            - name: STORE
-              value: "kubernetes"
-            - name: REFRESH_INTERVAL
-              value: "10m"
-            - name: FRESHNESS_WINDOW
-              value: "20m"
-            - name: PROBE_INTERVAL
-              value: "2m"
-            - name: AUDIT_WRITER_URL
-              value: "http://audit.access-issuer.svc:8080"
-            - name: AUDIT_TOKEN_FILE
-              value: /var/run/audit/token
-            - name: AUDIT_QUERY_URL
-              value: "http://audit-query.access-issuer.svc:8080"
-            - name: AUDIT_AUDIENCE
-              value: "audit"
-            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
-              value: "1"
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability.svc:4318"
-            - name: SESSION_LIFETIME
-              value: "8h"
-            - name: LOGIN_DIRECTORY
-              value: "false"
-            - name: OVERLAY_FILE
-              value: /var/run/access-issuer/directory/overlay.yaml
-            # Where a browser reaches the console, and where this origin's
-            # root is. Everything that has to name itself to somebody else
-            # is built from the first: the admin-consent redirect URI, and
-            # the values the setup steps tell an operator to paste into a
-            # cloud console.
-            - name: PUBLIC_URL
-              value: https://access.example/console
-            # The admin-consent callback stays at the origin ROOT. It is
-            # the one flow that runs before anybody can be signed in, and
-            # its redirect URI is registered with every corporate tenant —
-            # so moving it under the console's path would mean
-            # re-registering it in each of them.
-            - name: PUBLIC_ROOT_URL
-              value: https://access.example
-            # Provisioned, never minted here — see values.yaml.
-            - name: SIGNING_KEY_FILE
-              value: /var/run/access-issuer/signing-key/tls.key
-            # Live rotation: how often this replica re-reads the file
-            # above, and the schedule it keeps once it sees a new key —
-            # see `signingKey.rotation` in values.yaml.
-            - name: SIGNING_KEY_POLL_INTERVAL
-              value: "30s"
-            - name: SIGNING_KEY_ACTIVATION_DELAY
-              value: "15m"
-            - name: VALKEY_ADDRESS
-              value: "valkey.example.svc:6379"
-            - name: VALKEY_TLS
-              value: "true"
-            - name: VALKEY_CLUSTER
-              value: "true"
             - name: VALKEY_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: valkey-password
                   key: secret
-            - name: RELEASE_NAME
-              value: access-issuer
-            - name: GITHUB_RUNNER_TIERS
-              value: "preview,stable"
-            - name: GITHUB_APPS_CATALOGUE_FILE
-              value: /var/run/access-issuer/github-apps-catalogue.yaml
-            - name: POLICY_DIR
-              value: /var/run/access-issuer/policy
-            - name: TOKEN_LIFETIME
-              value: "30m"
-            - name: REFRESH_LIFETIME
-              value: "6h"
-            - name: ABSOLUTE_LIFETIME
-              value: "24h"
-            - name: HOLD_WINDOW
-              value: "2h"
-            - name: CLUSTER
-              value: "example-cluster"
-            - name: EXCHANGE_AUDIENCE
-              value: "access-exchange"
-            - name: CLUSTERS_FILE
-              value: /var/run/access-issuer/clusters.yaml
-            - name: AWS_FEDERATION_FILE
-              value: /var/run/access-issuer/aws.yaml
-            # Recovery is the one thing left that asks the API server, and
-            # deliberately so: on the day everything else is broken it
-            # should depend on nothing but the cluster.
-            - name: IN_CLUSTER
-              value: "true"
-            - name: CLIENT_SECRETS_DIR
-              value: /var/run/access-issuer/clients
-            - name: CONSOLE_ORIGIN
-              value: "https://access.example"
-            - name: CONSOLE_CLIENT_ID
-              value: "access-console"
-            - name: GITHUB_OWNERS
-              value: "acme,globex"
-            - name: RECOVERY_ENABLED
-              value: "true"
-            - name: RECOVERY_SERVICE_ACCOUNT
-              value: "break-glass"
-            - name: RECOVERY_AUDIENCE
-              value: "break-glass-audience"
-            # ONE credential, read two ways, because the two halves want
-            # different things of it. Signing a person in reads it from a
-            # FILE, so this service holds no RBAC to read Secrets and a
-            # compromise of it cannot become a read of every credential in
-            # the namespace. Connecting a directory reads it through the
-            # API, because that one the console can also WRITE: an
-            # installation with no client yet is bootstrapped by pasting
-            # one into Settings.
-            - name: OAUTH_CLIENT_ID_FILE
-              value: /var/run/access-issuer/oauth-client/id
-            - name: OAUTH_CLIENT_SECRET_FILE
-              value: /var/run/access-issuer/oauth-client/secret
-            - name: OAUTH_CLIENT_SECRET_NAME
-              value: "sign-in-client"
-            - name: OAUTH_CLIENT_ID_KEY
-              value: "id"
-            - name: OAUTH_CLIENT_SECRET_KEY
-              value: "secret"
-            # Served over TLS, so its cookies say so. Stated rather
-            # than left to the binary's default, which reads the same
-            # scheme off the issuer url above: a chart that says it
-            # out loud is a chart a reader can check against the route.
-            - name: SECURE_COOKIES
-              value: "true"
-            - name: LOG_LEVEL
-              value: "debug"
-            - name: GROUPS_SCOPING
-              value: "report"
           volumeMounts:
+            - name: config
+              mountPath: /etc/access-issuer/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
               readOnly: true
@@ -755,7 +763,7 @@ spec:
             - name: client-secrets
               mountPath: /var/run/access-issuer/clients
               readOnly: true
-            - name: oauth-client
+            - name: secret-sign-in-client
               mountPath: /var/run/access-issuer/oauth-client
               readOnly: true
           livenessProbe:
@@ -782,6 +790,9 @@ spec:
               cpu: 50m
               memory: 64Mi
       volumes:
+        - name: config
+          configMap:
+            name: access-issuer-config
         - name: signing-key
           secret:
             secretName: access-issuer-signing-key
@@ -798,7 +809,7 @@ spec:
             sources:
               - serviceAccountToken:
                   audience: "audit"
-                  expirationSeconds: 3600
+                  expirationSeconds: 1800
                   path: token
         - name: clusters
           configMap:
@@ -835,7 +846,7 @@ spec:
                   items:
                     - key: oidc-secret
                       path: reports
-        - name: oauth-client
+        - name: secret-sign-in-client
           secret:
             secretName: sign-in-client
       nodeSelector:
@@ -874,6 +885,7 @@ spec:
         app.kubernetes.io/name: access-issuer-github-roster
         app.kubernetes.io/instance: access-issuer
       annotations:
+        checksum/config: b308566559e3186cb9cd194d5444cac188b31a59d5ae557b3a96d03f4507649a
         # The bindings are read at start, like the service's policy.
         checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
         # The catalogue is read once at start, like the service's own copy
@@ -898,51 +910,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          env:
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: RELEASE_NAME
-              value: access-issuer
-            - name: POLICY_DIR
-              value: /var/run/github-roster/policy
-            - name: CONSOLE_URL
-              value: "http://access-issuer.identity.svc:8443/console"
-            - name: TOKEN_FILE
-              value: /var/run/secrets/github-roster/token
-            - name: APPS_DIR
-              value: /var/run/github-roster/apps
-            - name: RECORDS_DIR
-              value: /var/run/github-roster/records
-            # Read-only, and for one reason only: so the "internal groups
-            # are declared but nothing consumes them" warning does not name
-            # a GitHub-derived group a catalogue grant actually consumes.
-            # This controller mints no installation tokens itself and keeps
-            # no App key, so an absent or malformed catalogue here is never
-            # fatal — see app.go.
-            - name: GITHUB_APPS_CATALOGUE_FILE
-              value: /var/run/github-roster/github-apps-catalogue.yaml
-            - name: INTERVAL
-              value: "5m"
-            - name: ENABLED_ORGS
-              value: "acme,globex"
-            - name: LOG_LEVEL
-              value: "debug"
-            # The controller records what it did to the audit installation
-            # itself, as its own workload, which the writer stamps as the
-            # records' observer.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: AUDIT_WRITER_URL
-              value: "http://audit.access-issuer.svc:8080"
-            - name: AUDIT_TOKEN_FILE
-              value: /var/run/audit/token
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability.svc:4318"
+          args:
+            - --config=/etc/github-roster/config.yaml
           volumeMounts:
+            - name: config
+              mountPath: /etc/github-roster/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: policy
               mountPath: /var/run/github-roster/policy
               readOnly: true
@@ -968,6 +942,9 @@ spec:
               cpu: 10m
               memory: 32Mi
       volumes:
+        - name: config
+          configMap:
+            name: access-issuer-github-roster-config
         - name: policy
           configMap:
             name: access-issuer-policy
@@ -1005,7 +982,7 @@ spec:
             sources:
               - serviceAccountToken:
                   audience: "audit"
-                  expirationSeconds: 3600
+                  expirationSeconds: 1800
                   path: token
       nodeSelector:
         kubernetes.io/os: linux
@@ -1043,6 +1020,7 @@ spec:
         app.kubernetes.io/name: access-issuer-slack-roster
         app.kubernetes.io/instance: access-issuer
       annotations:
+        checksum/config: 4a8cf1c46f202e1a8e153b509e33cefd32ecf5e321a3cce31089143ab6c0dad1
         # The bindings are read at start, like the service's policy.
         checksum/policy: 4a7c38384d5824d0198422ed37f2e7e0c25530ca6d66342c31bcf2d90822b7b5
     spec:
@@ -1060,43 +1038,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          env:
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: RELEASE_NAME
-              value: access-issuer
-            - name: POLICY_DIR
-              value: /var/run/slack-roster/policy
-            - name: CONSOLE_URL
-              value: "http://access-issuer.identity.svc:8443/console"
-            - name: TOKEN_FILE
-              value: /var/run/secrets/slack-roster/token
-            - name: CREDENTIALS_DIR
-              value: /var/run/slack-roster/credentials
-            - name: RECORDS_DIR
-              value: /var/run/slack-roster/workspaces
-            - name: INTERVAL
-              value: "5m"
-            - name: ENABLED_WORKSPACES
-              value: "acme,globex-eu"
-            - name: LOG_LEVEL
-              value: "debug"
-            # The controller records what it did to the audit installation
-            # itself, as its own workload, which the writer stamps as the
-            # records' observer.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: AUDIT_WRITER_URL
-              value: "http://audit.access-issuer.svc:8080"
-            - name: AUDIT_TOKEN_FILE
-              value: /var/run/audit/token
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability.svc:4318"
+          args:
+            - --config=/etc/slack-roster/config.yaml
           volumeMounts:
+            - name: config
+              mountPath: /etc/slack-roster/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: policy
               mountPath: /var/run/slack-roster/policy
               readOnly: true
@@ -1110,14 +1058,14 @@ spec:
               mountPath: /var/run/slack-roster/workspaces
               readOnly: true
             
-            - name: audit-token
-              mountPath: /var/run/audit
-              readOnly: true
           resources:
             requests:
               cpu: 10m
               memory: 32Mi
       volumes:
+        - name: config
+          configMap:
+            name: access-issuer-slack-roster-config
         - name: policy
           configMap:
             name: access-issuer-policy
@@ -1147,13 +1095,6 @@ spec:
             name: access-issuer-slack-workspaces
             optional: true
         
-        - name: audit-token
-          projected:
-            sources:
-              - serviceAccountToken:
-                  audience: "audit"
-                  expirationSeconds: 3600
-                  path: token
       nodeSelector:
         kubernetes.io/os: linux
       tolerations:

@@ -1,5 +1,6 @@
 # lifetimes.token is a Go duration.
-# error: at '/lifetimes/token': '1 hour' does not match pattern
-issuerURL: https://issuer.example
-lifetimes:
-  token: "1 hour"
+# error: at '/config/lifetimes/token': '1 hour' does not match pattern
+config:
+  issuerURL: https://issuer.example
+  lifetimes:
+    token: 1 hour

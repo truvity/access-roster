@@ -69,8 +69,8 @@ carries the argument in full.
 {{- end }}
 {{- $seen := dict }}
 {{- range $pushes }}
-{{- if ne $root.Values.directory.store "kubernetes" }}
-{{- fail (printf "%s.push needs directory.store: kubernetes: with any other store this service keeps no Secret, so there is nothing to copy" .name) }}
+{{- if ne (dig "store" "memory" $root.Values.config) "kubernetes" }}
+{{- fail (printf "%s.push needs config.store: kubernetes: with any other store this service keeps no Secret, so there is nothing to copy" .name) }}
 {{- end }}
 {{- if not .push.secretStore }}
 {{- fail (printf "%s.push needs a secretStore: this chart does not invent where a credential is written" .name) }}

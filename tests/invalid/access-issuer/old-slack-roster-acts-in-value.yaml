@@ -1,0 +1,7 @@
+# The old value slackRoster.actsIn is `slackRoster.config.enabledWorkspaces`: removed, not aliased.
+# error: at '/slackRoster': additional properties 'actsIn' not allowed
+config:
+  issuerURL: https://issuer.example
+slackRoster:
+  actsIn:
+  - acme

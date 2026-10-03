@@ -1,0 +1,17 @@
+# A receiver is named and the token it is presented is not where the chart mounts it.
+# error: githubRoster.config.audit.tokenFile must be /var/run/audit/token
+config:
+  issuerURL: https://issuer.example
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+githubRoster:
+  enabled: true
+  config:
+    consoleURL: http://access-issuer.default.svc:8080/console
+    audit:
+      writer: http://audit.access-issuer.svc:8080
+      tokenFile: /etc/token

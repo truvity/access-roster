@@ -1,0 +1,6 @@
+# The old value `recovery` is removed, not aliased: it is `config.recovery` and `config.inCluster`.
+# error: additional properties 'recovery' not allowed
+config:
+  issuerURL: https://issuer.example
+recovery:
+  enabled: true

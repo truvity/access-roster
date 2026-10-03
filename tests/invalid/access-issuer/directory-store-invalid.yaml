@@ -1,5 +1,5 @@
 # directory.store is kubernetes or memory.
-# error: at '/directory/store': value must be one of
-issuerURL: https://issuer.example
-directory:
+# error: at '/config/store': value must be one of
+config:
+  issuerURL: https://issuer.example
   store: configmap

@@ -1,0 +1,7 @@
+# The old value `github.owners` is removed, not aliased: it is `config.github.owners`.
+# error: additional properties 'github' not allowed
+config:
+  issuerURL: https://issuer.example
+github:
+  owners:
+  - acme

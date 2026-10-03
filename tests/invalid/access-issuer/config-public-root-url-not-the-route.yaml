@@ -1,0 +1,7 @@
+# The admin-consent callback stays at the origin root route.host serves.
+# error: config.publicRootURL must be https://issuer.example
+config:
+  issuerURL: https://issuer.example
+  publicURL: https://issuer.example/console
+route:
+  host: issuer.example

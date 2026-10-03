@@ -1,6 +1,7 @@
 # signingKey.certificate.duration is a Go duration.
 # error: at '/signingKey/certificate/duration': '1y' does not match pattern
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 signingKey:
   certificate:
     duration: 1y

@@ -131,7 +131,7 @@ spec:
         - group: ""
           kind: Service
           name: {{ include "access-issuer.fullname" . }}
-          port: {{ .Values.listeners.port }}
+          port: {{ include "access-issuer.port" . }}
           weight: 1
 {{- if .Values.console.mount }}
 ---
@@ -186,7 +186,7 @@ spec:
         - group: ""
           kind: Service
           name: {{ include "access-issuer.fullname" . }}
-          port: {{ .Values.listeners.port }}
+          port: {{ include "access-issuer.port" . }}
           weight: 1
 {{- end }}
 {{- end }}

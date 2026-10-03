@@ -1,0 +1,7 @@
+# The Audit page's tokens are minted for a client, which must be named.
+# error: at '/config/audit/audience': minLength
+config:
+  issuerURL: https://issuer.example
+  audit:
+    writer: http://audit.access-issuer.svc:8080
+    audience: ''

@@ -1,12 +1,14 @@
 # Pushing a token the service keeps nowhere must fail the render rather than render a PushSecret over a Secret that does not exist.
-# error: needs directory.store: kubernetes
-issuerURL: https://issuer.example
-directory:
+# error: needs config.store: kubernetes
+config:
+  issuerURL: https://issuer.example
   store: memory
 slackApps:
-  - id: sync
-    workspace: acme
-    botScopes: [channels:read]
-    push:
-      secretStore: {name: example-store}
-      remoteKey: platform/slack-apps/sync
+- id: sync
+  workspace: acme
+  botScopes:
+  - channels:read
+  push:
+    secretStore:
+      name: example-store
+    remoteKey: platform/slack-apps/sync

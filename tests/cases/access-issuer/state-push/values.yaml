@@ -6,7 +6,8 @@
 #
 # deletionPolicy is NOT settable here and the golden shows None on both:
 # the case these exist for is the Secret going away.
-issuerURL: https://access.example
+config:
+  issuerURL: https://access.example
 directory:
   push:
     secretStore:

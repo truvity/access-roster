@@ -1,0 +1,6 @@
+# The old value `telemetry` is removed, not aliased: telemetry is the OTEL_* environment, set by the platform.
+# error: additional properties 'telemetry' not allowed
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlpEndpoint: http://otel-collector:4318

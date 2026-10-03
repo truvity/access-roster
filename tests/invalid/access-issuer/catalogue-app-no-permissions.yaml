@@ -1,7 +1,8 @@
 # A catalogue App needs permissions.
 # error: at '/githubApps/catalogue/0': missing property 'permissions'
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 githubApps:
   catalogue:
-    - id: releases
-      org: acme
+  - id: releases
+    org: acme

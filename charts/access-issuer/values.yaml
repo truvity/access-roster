@@ -19,19 +19,103 @@ image:
   tag: ""
   pullPolicy: IfNotPresent
 
-# The public issuer URL. **It is baked into every token this service signs
-# and into every relying party's trust**, so it must be stable for the
-# life of the installation: changing it invalidates every token and every
-# configured client at once. The service refuses to start without it.
-issuerURL: ""
+# The service's configuration: the file `access-issuer --config` reads,
+# rendered as it stands into a ConfigMap and mounted. Everything the
+# service decides is here and nothing is rendered into it: what you write is
+# what the binary is given, and `values.schema.json` holds it to the same
+# schema the binary validates it against (schemas/config/access-issuer.schema.json),
+# so a misspelt or misplaced key fails `helm install` and not a container.
+# docs/reference/configuration.md describes every key.
+#
+# Platform concerns are values, below: images, replicas, the signing key's
+# Certificate, the route, the files the chart renders from `policy`,
+# `exchange`, `directory.workspaces`, `githubApps` and `slackApps`. The
+# config names those files by path, and the chart refuses a path that is not
+# where it mounts them.
+#
+# Secrets are never here. A key ending in `Env` names an environment
+# variable, and `secretEnv` (below) puts a Secret's key in it.
+#
+# `issuerURL` is baked into every token this service signs and into every
+# relying party's trust, so it must be stable for the life of the
+# installation, and there is no default: set it.
+config:
+  # issuerURL: https://access.example
+  #
+  # The name this installation's objects carry. It must be this release's
+  # full name (`access-issuer` when the release is called that, which is
+  # the default); the chart refuses anything else and says what to write.
+  # release: access-issuer
+  #
+  # Where what an operator connected is kept: the workspaces and their
+  # credentials, the memberships, the OAuth client, the session key, as
+  # ConfigMaps and Secrets in this namespace. `memory` makes a restart a
+  # fresh installation, which is right for a laptop and nothing else.
+  store: kubernetes
+  listen:
+    # OIDC, the exchange, and this service's own pages.
+    address: ":8080"
+  probes:
+    # liveness/readiness only.
+    address: ":7070"
+  # Where the chart mounts what it renders. Change one and the chart
+  # refuses until the mount agrees.
+  policyDir: /var/run/access-issuer/policy
+  signingKey:
+    file: /var/run/access-issuer/signing-key/tls.key
+    pollInterval: 30s
+    activationDelay: 15m
+  lifetimes:
+    token: 1h
+    refresh: 12h
+    absolute: 24h
+    hold: 4h
+  # The way in when no directory can vouch for anybody: a token for this
+  # ServiceAccount, proven against the cluster. The chart creates the
+  # account and nobody is bound to it.
+  inCluster: true
+  recovery:
+    enabled: true
+    serviceAccount: access-issuer-recovery
+    audience: access-issuer-recovery
+  audit:
+    # The projected token the chart mounts when `audit.writer` is set.
+    tokenFile: /var/run/audit/token
+  # Everything else the schema has is unset, which is the binary's default.
+  # The commonest, as an example:
+  #
+  #   exchange:
+  #     clustersFile: /var/run/access-issuer/clusters.yaml   # with `exchange.clusters`
+  #   valkey:
+  #     address: valkey.example.svc:6379
+  #     passwordEnv: VALKEY_PASSWORD                          # with `secretEnv`
+  #   github:
+  #     owners: [example-org]
 
-listeners:
-  # OIDC, the exchange, and this service's own three pages.
-  port: 8080
-  # liveness/readiness only.
-  healthPort: 7070
+# Environment variables the config names, each from a Secret's key. This is
+# the only way a secret reaches the process: `valkey.passwordEnv`,
+# `oauthClient.secretEnv` and `adminPasswordEnv` name the variable, and a
+# secret is never in `config`.
+#
+#   secretEnv:
+#     - name: VALKEY_PASSWORD
+#       secretName: valkey
+#       key: password
+secretEnv: []
 
-# The corporate directories this service reads.
+# Secrets mounted read-only as directories, for a file the config names by
+# path: `oauthClient.idFile` and `oauthClient.secretFile`. Each key of the
+# Secret is a file under `mountPath`.
+#
+#   secretMounts:
+#     - secretName: google-oauth-client
+#       mountPath: /var/run/access-issuer/oauth-client
+secretMounts: []
+
+# The corporate directories this service reads. How they are kept current
+# (`freshness`), whether the console offers a sign-in of its own
+# (`login.directory`) and where what an operator connected lives (`store`)
+# are the config's.
 #
 # It reads them ITSELF. There is no second deployment to ask:
 # the answer about a person is a function call, so a login makes no
@@ -39,12 +123,6 @@ listeners:
 # only a hop — it is the end of a class of failure where two services
 # disagreed about the same person.
 directory:
-  # Where what an operator connected is kept: the workspaces and their
-  # credentials, the memberships, the OAuth client, the session key, as
-  # ConfigMaps and Secrets in this namespace. `memory` makes a restart a
-  # fresh installation, which is right for a laptop and nothing else.
-  store: kubernetes
-
   # THESE OBJECTS ARE A PROJECTION, NOT A LIVE SOURCE. Writing a new value
   # into one does not rotate anything on a running pod, and nothing here
   # watches them. Which ones need a restart differs, so the rule is per
@@ -80,20 +158,6 @@ directory:
   # value was read ("opened a workspace this replica had not seen" for a
   # workspace). RESTORING FROM A BACKUP IS A ROTATION and needs the same
   # restart -- writing the good value back is not enough on its own.
-
-  freshness:
-    # how often the background refresher takes a new snapshot per
-    # workspace.
-    refreshInterval: 15m
-    # how old a snapshot may be before its domains stop being
-    # authoritative.
-    freshnessWindow: 30m
-    # how often a workspace's credential is probed and its domains are
-    # re-read.
-    probeInterval: 5m
-
-  # How long the console's own session lasts.
-  sessionLifetime: 12h
 
   # A SECOND COPY OF THE WORKSPACE CREDENTIAL, for recovery. Off unless
   # written out.
@@ -131,13 +195,11 @@ directory:
   # stale while still reporting healthy.
   # (absent by default — the block above is the shape)
 
-  # Whether the console offers a sign-in of its own, under /console/login.
-  # The issuer's page at the origin root is the one people use; this is
-  # the door for an installation reached without it.
-  login: true
-
   # Declared (overlay) workspaces: how an existing installation moves
-  # without a Connect step. Each names a Secret in this namespace holding
+  # (rendered into a file the config names as `overlayFile`: set it to
+  # /var/run/access-issuer/directory/overlay.yaml with this list)
+  #
+  # See below:   # without a Connect step. Each names a Secret in this namespace holding
   # a service-account key with domain-wide delegation and the admin to
   # impersonate. Domains are discovered from the backend like any other
   # workspace's. Declared workspaces are read-only in the console and win
@@ -229,83 +291,19 @@ signingKey:
   #   issuerKind: ClusterIssuer
   #   renewBefore: 720h
   #   duration: 8760h
-  # Live rotation: how a REPLICA notices the key file changed underneath
-  # it and moves to the new key with no restart.
-  #
-  # The mounted file is POLLED rather than watched for filesystem events.
-  # Kubernetes updates a projected Secret by renaming a `..data` symlink
-  # to a freshly written directory, which is atomic on the node's
-  # filesystem — a reader following the stable path always sees either
-  # the whole old key or the whole new one, never a half-written file.
-  # That is what makes polling the content on an interval sufficient, and
-  # an inotify watch unneeded complexity for a file that changes a
-  # handful of times a year.
-  rotation:
-    # How often the mounted file is re-read.
-    pollInterval: 30s
-    # How long a newly seen key is published in the JWKS before this
-    # replica will SIGN with it. It must be longer than the longest
-    # JWKS cache among your verifiers — Envoy's default is 10 minutes —
-    # plus the slowest a kubelet anywhere in the cluster takes to project
-    # the same Secret update to every other replica — Kubernetes documents
-    # that as roughly a minute — so a verifier can never fetch a JWKS
-    # missing a `kid` some replica already signs with.
-    activationDelay: 15m
-    # How long a key that stopped signing stays in the JWKS after being
-    # superseded. It has to cover the longest a token minted with it can
-    # still be presented, which is `lifetimes.token` — a client's own
-    # `ttl_cap` only ever shortens a token's life, never lengthens it, so
-    # the deployment-wide lifetime is the true ceiling. It also includes
-    # 5 minutes for clock skew between the issuer and verifiers, since
-    # verifiers accept tokens with some leeway and clocks differ. Empty
-    # uses `lifetimes.token` plus that 5-minute margin, which is the right
-    # answer unless this installation mints longer-lived tokens some other
-    # way `lifetimes.token` does not capture.
-    overlap: ""
-
-# The OAuth client people sign in with. The same client the hub uses,
-# with this service's own redirect URI added to it — one project, one
-# client — or a client of this service's own, if revoking sign-in and
-# revoking directory access should be separate acts.
-#
-# Empty means nobody can sign in and this service issues tokens to
-# machines only, which is a real posture and is said out loud at start.
-oauthClient:
-  # The same shape the hub uses, for the same credential: name a Secret
-  # and say what its keys are called. Both halves come from that one
-  # Secret so they travel together -- a client whose id and secret are
-  # configured in two places is a client that can be half rotated.
-  #
-  # The id is not itself a secret; every browser sent to the provider
-  # carries it. It lives here anyway because it belongs to the same
-  # credential.
-  #
-  # Empty name means nobody can sign in and this service issues tokens to
-  # machines only, which is a real posture and is said out loud at start.
-  secret:
-    name: ""
-    keys:
-      clientId: client-id
-      clientSecret: client-secret
-# What this cluster is called, which becomes part of a ServiceAccount's
-# subject: `<cluster>:k8s:<namespace>:<name>`.
-#
-# A pod cannot discover the name of the cluster it runs in, and the same
-# namespace and name exist on every cluster in an estate — so without this
-# two different machines are one `sub`, and an audit log cannot tell them
-# apart. Use the name the estate already uses for the cluster (`dev`,
-# `prod`), the same word that is the scope of a group name.
-#
-# Empty keeps the older unqualified subject, `k8s:<namespace>:<name>`,
-# which is right for a single-cluster installation and is what every
-# subject minted before this value looked like.
-cluster: ""
+  # Live rotation (how often the mounted file is re-read, how long a new key
+  # is published before this replica signs with it, how long a superseded
+  # key stays published) is the config's: `config.signingKey.pollInterval`,
+  # `activationDelay` and `overlap`. The file is `config.signingKey.file`,
+  # and the chart refuses one that is not where it mounts `key`.
 
 exchange:
-  # The audience a ServiceAccount token must be minted for. Without one,
-  # every mounted token in every federated cluster would be an exchange
-  # proof. Empty means the release name.
-  audience: ""
+  # The audience a ServiceAccount token must be minted for is the config's
+  # (`config.exchange.audience`; unset is the release name).
+  #
+  # Each list below is rendered into a file the config names:
+  # `config.exchange.clustersFile` /var/run/access-issuer/clusters.yaml and
+  # `awsFile` /var/run/access-issuer/aws.yaml.
 
   # The clusters whose workloads may exchange, each verified against the
   # key set that cluster publishes for its own ServiceAccount tokens.
@@ -362,96 +360,6 @@ exchange:
     #    orgId: ""                 # optional: require this AWS Organizations id
     #    algs: [ES384, RS256]      # default both; narrow, never widen
 
-# The way in when no directory can vouch for anybody.
-#
-# It exists because of a deadlock that is otherwise complete: a console
-# behind this issuer asks it for a token, this issuer asks the hub who the
-# caller is, the hub cannot say because no directory is connected yet, and
-# the directory is connected FROM that console. Every installation starts
-# there.
-#
-# The proof is a ServiceAccount token minted for the audience below and a
-# few minutes, checked by the API server -- the same proof this issuer
-# already takes from workloads. So the authority is the cluster's RBAC:
-# who may mint a token for that account, which is revocable by removing a
-# binding and lands in the audit log.
-#
-# It grants NOTHING by itself. A recovered sign-in completes as the
-# ServiceAccount subject, and the policy's `service_account` matchers
-# decide what that is in -- so an installation that turns this on and
-# names no matcher has an account that can sign in and is admitted
-# nowhere, which is the correct default.
-recovery:
-  enabled: true
-  # Left empty, `<release>-recovery`, created by this chart. Nobody is
-  # bound to it: granting `create` on `serviceaccounts/token` for this
-  # account is how an installation says who may recover.
-  serviceAccountName: ""
-  # The audience the token must be minted for. Without one, every mounted
-  # ServiceAccount token in the cluster would be a proof.
-  audience: ""
-
-# Lifetimes. The policy may ask for shorter; these are the caps.
-lifetimes:
-  token: 1h
-  refresh: 12h
-  # The global timeout: no per-client session, and no access or ID token,
-  # outlives auth_time (when the person actually authenticated) by more
-  # than this -- no matter how often it is refreshed. Without it a client
-  # that refreshes forever stays signed in forever, because `refresh`
-  # above only bounds the gap BETWEEN refreshes, not the sign-in itself.
-  #
-  # It may be shorter OR longer than `refresh`; a session's actual end is
-  # always the EARLIER of the two. Set it shorter than `refresh` for a
-  # hard daily sign-in regardless of activity; leave it generously longer
-  # to make `refresh` the only limit that matters in practice.
-  #
-  # Refused at render and at start if it is zero, negative, or shorter
-  # than `token`: a session cannot be limited to less time than its own
-  # first access token needs to live.
-  #
-  # BEHAVIOUR CHANGE: before this existed, a session refreshed often
-  # enough never ended on its own. Now every session ends 24 hours after
-  # its person signed in, at the latest -- including one already open at
-  # the time this rolls out, since it is measured from auth_time rather
-  # than from when this setting took effect.
-  absolute: 24h
-  # How long an identity keeps its last-known groups while the hub cannot
-  # be reached. Zero means no hold, and an unreachable hub then refuses
-  # every login.
-  hold: 4h
-
-# Where a login in progress lives: the authorization request a browser is
-# part-way through, the code it comes back with, the tokens that follow,
-# the device flow a CLI is polling.
-#
-# **More than one replica needs this.** A browser starts at /authorize on
-# one replica, comes back from the provider at another, and the client
-# redeems the code at a third; a CLI polls whichever answers. Kept in one
-# process, each of those is a coin toss that looks like an intermittent
-# failure. Empty keeps it in memory, which the service says at start.
-valkey:
-  address: ""
-  passwordSecret:
-    name: ""
-    key: password
-  tls: false
-  # Cluster protocol. **Off by default, and the default is the answer
-  # for a single-node Valkey.**
-  #
-  # In cluster mode the client runs CLUSTER SLOTS, learns the NODE
-  # addresses, and talks to those from then on. The Kubernetes Service --
-  # the one mechanism whose entire job is to survive a pod moving -- is
-  # used once as a seed and then bypassed, so a Valkey that moves takes
-  # the client with it and it never comes back. That happened on
-  # 2026-09-10: two services dialled a dead pod address for half an hour
-  # and a human had to restart them.
-  #
-  # Turn it on only for a Valkey with more than one shard, where the
-  # protocol earns its keep. A mismatch is refused at start rather than
-  # surfacing later as a puzzling command error.
-  cluster: false
-
 # The declared policy: groups, claims, lifetimes, clients. One file,
 # shared with the hub. See docs/reference/policy.md.
 #
@@ -486,29 +394,6 @@ valkey:
 # client declared confidential whose Secret is missing cannot
 # authenticate, and says so in the log rather than at the token endpoint.
 policy: {}
-
-# How far this installation has moved toward per-audience `groups`
-# scoping (docs/decisions/0006-groups-claim-scoped-per-audience.md in the
-# policy package, refined by 0010): "off" computes and logs nothing;
-# "report" computes what a client's or a resource's own `requires` (plus
-# any `groups` override) would keep, and logs one line per minted token
-# when it would have dropped something -- WITHOUT changing the token,
-# which mints exactly as it does today either way. "enforce" actually
-# narrows a token's `groups` claim, and `/userinfo`'s answer, to that same
-# computation, and logs the same finding at DEBUG instead of INFO.
-#
-# Opt-in: this default stays "report". Run it first, read what it logs
-# (docs/operations/runbook.md#reading-the-groups-scoping-report), add a
-# `groups` override to any client or resource the log names, and only
-# then set this to "enforce" -- see
-# docs/reference/policy.md#groups-in-a-token-scoping for what changes and
-# how to find a role a token stopped carrying once it does.
-#
-# Quote "off" if you set it: unquoted, YAML reads a bare `off` as the
-# boolean false rather than the string this schema wants, and the render
-# refuses it -- loudly, never silently, but a stranger to the trap will
-# spend a minute on the error either way.
-groupsScoping: report
 
 # The issuer's hostname on the gateway. Empty renders no route, which is
 # right for a hub reached by port-forward while it is being tried.
@@ -612,15 +497,28 @@ githubRoster:
     # always come from one release.
     tag: ""
     pullPolicy: IfNotPresent
-  # How long between passes.
-  interval: 15m
-  # The organisations it CHANGES. Every other organisation the policy
-  # binds is derived every pass and shown on the GitHub page with what
-  # would happen, and nothing is done to it: an organisation is born
-  # disabled, and enabling one is a reviewed change to this list.
-  actsIn: []
+  # The controller's configuration: the file `github-roster --config` reads,
+  # rendered as it stands (schemas/config/github-roster.schema.json).
+  #
+  # `consoleURL` is where the controller reads the console: this release's
+  # Service, `http://<full name>.<namespace>.svc:<port><console.mount>`,
+  # which the chart requires and prints when it is wrong. `enabledOrgs` is
+  # the organisations it CHANGES: every other organisation the policy binds
+  # is derived every pass and shown on the GitHub page with what would
+  # happen, and nothing is done to it. An organisation is born disabled, and
+  # enabling one is a reviewed change to this list. Each must be bound by
+  # the policy.
+  config:
+    policyDir: /var/run/github-roster/policy
+    tokenFile: /var/run/secrets/github-roster/token
+    appsDir: /var/run/github-roster/apps
+    recordsDir: /var/run/github-roster/records
+    interval: 15m
+    audit:
+      tokenFile: /var/run/audit/token
+    # consoleURL: http://access-issuer.access.svc:8080/console
+    # enabledOrgs: []
   resources: {}
-
 # The Slack controller: makes each Slack workspace's channels match the
 # policy's `slack` table, and reports on the console's Slack page.
 #
@@ -642,27 +540,36 @@ slackRoster:
     # always come from one release.
     tag: ""
     pullPolicy: IfNotPresent
-  # How long between passes.
-  interval: 15m
-  # The workspaces it CHANGES, by the policy's key. Every other workspace
-  # the policy declares is derived every pass and shown on the Slack page
-  # with what would happen, and nothing is done to it: a workspace is born
-  # disabled, and enabling one is a reviewed change to this list.
-  actsIn: []
+  # The controller's configuration: the file `slack-roster --config` reads,
+  # rendered as it stands (schemas/config/slack-roster.schema.json).
+  #
+  # `consoleURL` is where the controller reads the console, as for
+  # `githubRoster`. `enabledWorkspaces` is the workspaces it CHANGES, by the
+  # policy's key: every other workspace the policy declares is derived every
+  # pass and shown on the Slack page with what would happen, and nothing is
+  # done to it. A workspace is born disabled, and enabling one is a reviewed
+  # change to this list. Each must be declared by the policy.
+  config:
+    policyDir: /var/run/slack-roster/policy
+    tokenFile: /var/run/secrets/slack-roster/token
+    credentialsDir: /var/run/slack-roster/credentials
+    recordsDir: /var/run/slack-roster/workspaces
+    interval: 15m
+    audit:
+      tokenFile: /var/run/audit/token
+    # consoleURL: http://access-issuer.access.svc:8080/console
+    # enabledWorkspaces: []
   resources: {}
-
 # Runner Apps: the GitHub App a self-hosted runner scale set in one tier
 # registers with, one per organisation per tier, created by an operator on
-# the console's GitHub page (Apps). The service keeps every App in the
-# Secret `<release>-github-runner-apps`, an installed App as three keys
-# named as gha-runner-scale-set's githubConfigSecret names them —
+# the console's GitHub page (Apps). The tiers an operator may create one for
+# are the config's (`config.github.runnerTiers`, e.g. [preview, stable]);
+# empty creates none. The service keeps every App in the Secret
+# `<release>-github-runner-apps`, an installed App as three keys named as
+# gha-runner-scale-set's githubConfigSecret names them --
 # `<tier>.<org>.github_app_id`, `.github_app_installation_id`,
-# `.github_app_private_key` — for the deployment to hand to its runners.
-# Nothing here acts with them. Needs `directory.store: kubernetes`.
-githubRunnerApps:
-  # The tiers an operator may create an App for, e.g. [preview, stable].
-  # Empty creates none.
-  tiers: []
+# `.github_app_private_key` -- for the deployment to hand to its runners.
+# Nothing here acts with them. Needs `config.store: kubernetes`.
 
 # A catalogue of GitHub Apps, declared as data and created by an operator
 # on the console's GitHub page (Apps, then Catalogue) with two clicks each:
@@ -810,101 +717,30 @@ slackApps: []
 # So there is no `session.push`. If a later installation asks for one, the
 # answer is this paragraph rather than a knob.
 
-# The audit trail: sign-ins, refusals, exchanges, revokes, connects, and
-# what the GitHub controller did. It is kept by an audit installation
-# (github.com/truvity/audit) of this service's own, rendered beside it in
-# the same namespace: the receiver takes the records and registers the
-# catalogue, the writer locks and indexes them and its digest job signs each
-# hour, and the query service serves the Audit page as the person signed in. This service holds no bucket and no keys — that is what
-# having the installation next to it rather than inside it is for.
+# The audit installation this service and the controllers record to: its
+# receiver (`config.audit.writer`), its query service (`queryURL`), the
+# client the Audit page's tokens carry (`audience`) and how many proxies sit
+# in front (`forwardedForTrustedHops`) are each component's config. What the
+# chart owns is the projected token each presents to the receiver, mounted
+# where `config.audit.tokenFile` says (the chart refuses another path).
 #
-# With nothing set, nothing is kept: every record is still validated
-# against the catalogue and written as a log line (`audit=true`), and the
-# console has no Audit page. Every record is a log line either way.
+# The service account's projected token is how the installation knows this
+# workload: its `workloadIdentity.workloads` must map
+# system:serviceaccount:<namespace>:<this release's service account> -- and
+# the controller's, when it runs -- to the source `roster`.
 audit:
-  # The installation's receiver: one address, which takes the records and
-  # answers RegisterCatalogue on the same port. Empty keeps no trail beyond
-  # the log line every record also is.
-  #
-  # The service account's projected token (below) is how the installation
-  # knows this workload: its `workloadIdentity.workloads` must map
-  # system:serviceaccount:<namespace>:<this release's service account> — and
-  # the controller's, when it runs — to the source `roster`.
-  writer: ""    # e.g. http://audit.access-issuer.svc:8080
-  # The installation's query service, for the console's Audit page. Empty
-  # shows no page. The page's tokens are minted by this issuer for the
-  # client named `audience`, which the policy must declare with the groups
-  # that may read the trail (`<scope>:audit:<role>`), and which the query
-  # service's grants trust.
-  query: ""     # e.g. http://audit-query.access-issuer.svc:8080 -- the same namespace as the writer
-  audience: audit
   # The projected token presented to the receiver.
   token:
     audience: audit
     expirationSeconds: 3600
-  # How many of the deployment's own proxies sit in front of the service,
-  # counted the way the audit emitter counts them: X-Forwarded-For read
-  # left to right with the connection's peer as the last entry, so THE PEER
-  # COUNTS AS ONE. A gateway alone in front of the service is 1; an edge
-  # that appends the client and a gateway that appends the edge's connector
-  # is 2. The client is the entry just left of those; the left end is
-  # whatever a caller sent and is never taken on its own. 0 records the peer.
-  forwardedForTrustedHops: 0
-
-# Metrics, pushed over OTLP by the service and the GitHub controller.
-# Empty publishes nothing: no listener is opened for them either way.
-telemetry:
-  # the collector's OTLP/HTTP endpoint, e.g. http://otel-collector.observability.svc:4318
-  otlpEndpoint: ""
-
-logLevel: info
 
 resources: {}
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 
-# GitHub Actions as a source of CI identity. A workflow trades its
-# workflow identity token for one of this issuer's, and a `github:` matcher
-# in the policy decides what that job may reach.
-github:
-  # Whose repositories this installation runs jobs for: the GitHub
-  # organisations (or users) whose `repository_owner` is admitted.
-  #
-  # There is no default and there cannot be one. Anybody may run a
-  # workflow in their own repository and get a perfectly valid token from
-  # GitHub's issuer, so a signature and an expiry prove only that the job
-  # ran somewhere -- this list is the whole of what makes one of them
-  # ours. Empty means CI tokens are not verified at all, which is the
-  # right posture for an installation with no CI rather than a gap.
-  #
-  # The audience a workflow must request is this issuer's URL, and it is
-  # not configurable: one audience per relying party is what stops a token
-  # minted for a cloud provider being replayed here.
-  owners: []
-
 # The console that shows this issuer's sessions.
 console:
-  # The ONE origin allowed to call SessionService from a browser — the
-  # hub's console, which renders the sessions sections on a person's page
-  # and a client's.
-  #
-  # The browser calls this issuer directly rather than the hub calling it
-  # for them, so that the hub's code stays independent of this service:
-  # the hub answers "is this account live" for consumers, and that has to
-  # keep working when this issuer is down.
-  #
-  # Empty serves SessionService not at all, which is right for an
-  # installation with no console: an endpoint nobody calls is surface with
-  # no consumer. A wildcard is not offered — the alternative to one origin
-  # is every page on the internet being able to list and end a signed-in
-  # person's sessions through their own browser.
-  #
-  # Since the merge the console is served by this process on
-  # this origin, so nothing cross-origin is involved and this can stay
-  # empty. It remains for a console served from somewhere else.
-  origin: ""
-
   # Where the console is mounted on this issuer's origin.
   #
   # It is a PATH and not a host because discovery must sit at the root of
@@ -917,20 +753,6 @@ console:
   # a browser, because "/login" resolves against the origin — where the
   # issuer's own page is, not the console's. Empty serves no console.
   mount: /console
-
-  # The client id the console signs people in as.
-  #
-  # The console is a client of this issuer like any other application:
-  # somebody with no session is sent to /authorize, signs in once, and
-  # comes back with the issuer's session set — which the console then
-  # reads. One door, and nothing special held by the console.
-  #
-  # It must name a declared client in the policy whose `redirects`
-  # include this origin plus the mount with a trailing slash, and whose
-  # `requires` admits whoever should reach the console.
-  #
-  # Empty keeps the console's own sign-in page, which is the shape for a
-  # deployment with no issuer beside it — and, in one with an issuer, a
-  # second door.
-  client: ""
-
+  # Which origin may call SessionService (`config.console.origin`) and the
+  # client id the console signs people in as (`config.console.client`) are
+  # the config's.

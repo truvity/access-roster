@@ -1,7 +1,9 @@
 # A misspelt key must not be ignored: botScope would create an App with no scopes.
 # error: at '/slackApps/0': additional properties 'botScope' not allowed
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 slackApps:
-  - id: sync
-    workspace: acme
-    botScope: [channels:read]
+- id: sync
+  workspace: acme
+  botScope:
+  - channels:read

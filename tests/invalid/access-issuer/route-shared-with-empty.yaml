@@ -1,6 +1,8 @@
 # A route.sharedWith entry may not be empty.
 # error: at '/route/sharedWith/0': minLength
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 route:
   host: issuer.example
-  sharedWith: [""]
+  sharedWith:
+  - ''

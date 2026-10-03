@@ -1,12 +1,16 @@
 # A catalogue grant's permission level is read, write or admin.
 # error: at '/githubApps/catalogue/0/grants/0/permissions/contents': value must be one of
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 githubApps:
   catalogue:
-    - id: releases
-      org: acme
-      permissions: {contents: write}
-      grants:
-        - group: all:platform:engineer
-          repositories: ["*"]
-          permissions: {contents: none}
+  - id: releases
+    org: acme
+    permissions:
+      contents: write
+    grants:
+    - group: all:platform:engineer
+      repositories:
+      - '*'
+      permissions:
+        contents: none

@@ -1,13 +1,18 @@
 # githubRoster.actsIn names an organisation the inline policy does not bind.
-# error: githubRoster.actsIn names "old", which policy.github does not bind
-issuerURL: https://issuer.example
+# error: githubRoster.config.enabledOrgs names "old", which policy.github does not bind
+config:
+  issuerURL: https://issuer.example
 githubRoster:
   enabled: true
-  actsIn: [acme, old]
+  config:
+    enabledOrgs:
+    - acme
+    - old
+    consoleURL: http://access-issuer.default.svc:8080/console
 exchange:
   clusters:
-    - name: example
-      issuer: https://oidc.example
+  - name: example
+    issuer: https://oidc.example
 console:
   mount: /console
 policy:

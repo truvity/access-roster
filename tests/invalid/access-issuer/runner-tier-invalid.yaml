@@ -1,5 +1,7 @@
 # A githubRunnerApps tier is a short lowercase name.
-# error: at '/githubRunnerApps/tiers/0': 'Stable' does not match pattern
-issuerURL: https://issuer.example
-githubRunnerApps:
-  tiers: [Stable]
+# error: at '/config/github/runnerTiers/0': 'Stable' does not match pattern
+config:
+  issuerURL: https://issuer.example
+  github:
+    runnerTiers:
+    - Stable

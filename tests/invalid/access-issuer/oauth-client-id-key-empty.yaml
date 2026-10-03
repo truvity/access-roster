@@ -1,8 +1,12 @@
 # oauthClient.secret.keys.clientId may not be empty.
-# error: at '/oauthClient/secret/keys/clientId': minLength
-issuerURL: https://issuer.example
-oauthClient:
-  secret:
-    name: sign-in-client
-    keys:
-      clientId: ""
+# error: at '/config/oauthClient/idKey': minLength
+config:
+  issuerURL: https://issuer.example
+  oauthClient:
+    secretName: sign-in-client
+    idFile: /var/run/access-issuer/oauth-client/client-id
+    secretFile: /var/run/access-issuer/oauth-client/client-secret
+    idKey: ''
+secretMounts:
+- secretName: sign-in-client
+  mountPath: /var/run/access-issuer/oauth-client

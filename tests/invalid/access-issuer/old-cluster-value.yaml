@@ -1,0 +1,5 @@
+# The old value `cluster` is removed, not aliased: it is `config.cluster`.
+# error: additional properties 'cluster' not allowed
+config:
+  issuerURL: https://issuer.example
+cluster: dev

@@ -1,5 +1,8 @@
 # githubRunnerApps.tiers are unique.
-# error: at '/githubRunnerApps/tiers': items at
-issuerURL: https://issuer.example
-githubRunnerApps:
-  tiers: [stable, stable]
+# error: at '/config/github/runnerTiers': items at
+config:
+  issuerURL: https://issuer.example
+  github:
+    runnerTiers:
+    - stable
+    - stable

@@ -1,0 +1,14 @@
+# The console is this release's own Service, and the chart prints the address.
+# error: githubRoster.config.consoleURL must be http://access-issuer.default.svc:8080/console
+config:
+  issuerURL: https://issuer.example
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+githubRoster:
+  enabled: true
+  config:
+    consoleURL: http://elsewhere.example/console

@@ -1,8 +1,9 @@
 # An additional signing key follows the same schema as any other object.
 # error: additional properties 'bogus' not allowed
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 signingKey:
   additional:
-    - algorithm: RSA
-      size: 2048
-      bogus: true
+  - algorithm: RSA
+    size: 2048
+    bogus: true

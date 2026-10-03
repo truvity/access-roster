@@ -1,0 +1,7 @@
+# The old value directory.freshness is `config.freshness`: removed, not aliased.
+# error: at '/directory': additional properties 'freshness' not allowed
+config:
+  issuerURL: https://issuer.example
+directory:
+  freshness:
+    refreshInterval: 10m

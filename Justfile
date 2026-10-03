@@ -118,7 +118,7 @@ tidy:
 clean:
     rm -rf dist/ frontend/dist/ ts/dist/ coverage.out
 
-# Lint both charts, compare their golden renders, and render every
+# Lint the chart, compare its golden renders, and render every
 # negative fixture.
 #
 # The schema is part of the lint: an unknown key must fail the render,
@@ -144,12 +144,12 @@ chart-lint:
       helm lint "charts/$chart" -f "tests/cases/$chart/minimal/values.yaml"
       # `if`, not `!`: under `set -e` a negated command that fails does
       # not stop the script, so `! cmd` would check nothing.
-      if helm template x "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
+      if helm template access-issuer "charts/$chart" --set bogusKey=1 >/dev/null 2>&1; then
         echo "$chart: an unknown key rendered" >&2
         exit 1
       fi
       for values in tests/invalid/"$chart"/*.yaml; do
-        if err="$(helm template invalid "charts/$chart" -f "$values" 2>&1 >/dev/null)"; then
+        if err="$(helm template access-issuer "charts/$chart" -f "$values" 2>&1 >/dev/null)"; then
           echo "RENDERED BUT SHOULD HAVE FAILED: $values" >&2
           exit 1
         fi
@@ -169,12 +169,21 @@ chart-lint:
       # stranger; nothing else in this repository reads these files.
       for example in charts/"$chart"/examples/*.yaml; do
         [ -e "$example" ] || continue
-        helm template x "charts/$chart" \
+        helm template access-issuer "charts/$chart" \
           -f "tests/cases/$chart/minimal/values.yaml" -f "$example" >/dev/null
       done
       echo "$chart: schema and $(ls tests/invalid/"$chart"/*.yaml | wc -l | tr -d ' ') negative fixtures OK"
     done
     hack/golden.sh
+    # The schemas are generated, and the binaries and the chart are held to
+    # the committed files: a diff here is a builder changed without
+    # `just config-schemas`.
+    just config-schemas
+    git diff --exit-code -- schemas/config charts/access-issuer/values.schema.json
+    # What the chart renders for each component's `config` is what the values
+    # say, and is a file that component's binary accepts. Required rather than
+    # skipped: a test that quietly does not run proves nothing.
+    ACCESS_ROSTER_REQUIRE_HELM=1 go test -count=1 ./tests/chart/
     # `push` is a chart-side instruction to External Secrets and not part
     # of an App's declaration: the service's loader refuses a key it does
     # not know, so an entry's push block reaching the rendered catalogue
@@ -203,6 +212,14 @@ chart-lint:
     for golden in tests/golden/*/*.yaml; do
       test "$(yq ea '[.. | select(tag == "!!map" and has("dataTo")) | .dataTo[] | select(has("storeRef") | not)] | length' "$golden")" = "0"
     done
+
+# The JSON Schema of each binary's configuration file, written into
+# schemas/config/ from internal/config/schema, and the chart's values schema,
+# which embeds them under each component's `config`. The binaries embed the
+# committed files, so a change to the builder that is not followed by this
+# fails `go test` and the drift check in chart-lint.
+config-schemas:
+    go run ./internal/config/gen
 
 # Regenerate the golden renders -- review the diff before committing.
 golden:

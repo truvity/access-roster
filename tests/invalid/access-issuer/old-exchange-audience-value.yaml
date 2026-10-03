@@ -1,0 +1,6 @@
+# The old value exchange.audience is `config.exchange.audience`: removed, not aliased.
+# error: at '/exchange': additional properties 'audience' not allowed
+config:
+  issuerURL: https://issuer.example
+exchange:
+  audience: x

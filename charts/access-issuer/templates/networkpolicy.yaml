@@ -34,7 +34,7 @@ spec:
               kubernetes.io/metadata.name: {{ . }}
         {{- end }}
       ports:
-        - port: {{ .Values.listeners.port }}
+        - port: {{ include "access-issuer.port" . }}
     {{- if .Values.githubRoster.enabled }}
     # The GitHub controller beside it, reading the console's API with its
     # own ServiceAccount token.
@@ -43,7 +43,7 @@ spec:
             matchLabels:
               {{- include "access-issuer.githubRosterSelectorLabels" . | nindent 14 }}
       ports:
-        - port: {{ .Values.listeners.port }}
+        - port: {{ include "access-issuer.port" . }}
     {{- end }}
     {{- if .Values.slackRoster.enabled }}
     # The Slack controller beside it, reading the console's API with its
@@ -55,6 +55,6 @@ spec:
             matchLabels:
               {{- include "access-issuer.slackRosterSelectorLabels" . | nindent 14 }}
       ports:
-        - port: {{ .Values.listeners.port }}
+        - port: {{ include "access-issuer.port" . }}
     {{- end }}
 {{- end }}

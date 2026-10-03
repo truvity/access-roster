@@ -1,5 +1,7 @@
 # A github.owners entry may not be empty.
-# error: at '/github/owners/0': minLength
-issuerURL: https://issuer.example
-github:
-  owners: [""]
+# error: at '/config/github/owners/0': minLength
+config:
+  issuerURL: https://issuer.example
+  github:
+    owners:
+    - ''

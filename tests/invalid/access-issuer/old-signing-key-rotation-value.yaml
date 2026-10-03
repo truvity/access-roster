@@ -1,0 +1,7 @@
+# The old value signingKey.rotation is `config.signingKey`: removed, not aliased.
+# error: at '/signingKey': additional properties 'rotation' not allowed
+config:
+  issuerURL: https://issuer.example
+signingKey:
+  rotation:
+    pollInterval: 30s

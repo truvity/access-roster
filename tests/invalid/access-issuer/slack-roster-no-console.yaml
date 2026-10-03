@@ -1,11 +1,12 @@
 # slackRoster.enabled needs console.mount (template `fail`).
 # error: slackRoster.enabled needs console.mount
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 slackRoster:
   enabled: true
 exchange:
   clusters:
-    - name: example
-      issuer: https://oidc.example
+  - name: example
+    issuer: https://oidc.example
 console:
-  mount: ""
+  mount: ''

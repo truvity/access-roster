@@ -28,6 +28,48 @@ metadata:
     app.kubernetes.io/managed-by: Helm
 
 ---
+# Source: access-issuer/templates/configmap.yaml
+# What `access-issuer --config` reads: `config`, as the values give it, with
+# nothing added, renamed or dropped. The binary validates it against
+# schemas/config/access-issuer.schema.json at start, and values.schema.json
+# holds the values to the same schema before this renders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: access-issuer-config
+  labels:
+    app.kubernetes.io/name: access-issuer
+    app.kubernetes.io/instance: access-issuer
+    app.kubernetes.io/version: "0.0.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: access-issuer
+data:
+  config.yaml: |
+    audit:
+      tokenFile: /var/run/audit/token
+    inCluster: true
+    issuerURL: https://issuer.example
+    lifetimes:
+      absolute: 24h
+      hold: 4h
+      refresh: 12h
+      token: 1h
+    listen:
+      address: :8080
+    policyDir: /var/run/access-issuer/policy
+    probes:
+      address: :7070
+    recovery:
+      audience: access-issuer-recovery
+      enabled: true
+      serviceAccount: access-issuer-recovery
+    signingKey:
+      activationDelay: 15m
+      file: /var/run/access-issuer/signing-key/tls.key
+      pollInterval: 30s
+    store: kubernetes
+
+---
 # Source: access-issuer/templates/policy-configmap.yaml
 # The declared layer of the policy — the same file the hub reads, and the
 # same schema. See docs/reference/policy.md.
@@ -176,6 +218,8 @@ spec:
         app.kubernetes.io/name: access-issuer
         app.kubernetes.io/instance: access-issuer
       annotations:
+        # A configuration change is a rollout: the file is read at start.
+        checksum/config: 86b0f4501e7e36fd0c20c933b81b9ac22335d44fab0ef667ec335dca59c141f4
         # A policy change is a rollout: the file is read at start.
         checksum/policy: f5c82283eed74b86b5e454b26352ac8643e60badea3b25b6ec910431fa4c1a0c
     spec:
@@ -198,90 +242,15 @@ spec:
               containerPort: 8080
             - name: health
               containerPort: 7070
-          env:
-            - name: ISSUER_URL
-              value: "https://issuer.example"
-            - name: PORT
-              value: "8080"
-            - name: HEALTH_PORT
-              value: "7070"
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            # Names this replica on every audit record, as the instance
-            # that emitted it.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            # What an operator connected — the workspaces and their
-            # credentials, the memberships, the OAuth client it was
-            # given, the session key — kept as ConfigMaps and Secrets in
-            # this namespace. Anything else and a restart is a fresh
-            # installation.
-            - name: STORE
-              value: "kubernetes"
-            - name: REFRESH_INTERVAL
-              value: "15m"
-            - name: FRESHNESS_WINDOW
-              value: "30m"
-            - name: PROBE_INTERVAL
-              value: "5m"
-            - name: AUDIT_WRITER_URL
-              value: ""
-            - name: AUDIT_TOKEN_FILE
-              value: ""
-            - name: AUDIT_QUERY_URL
-              value: ""
-            - name: AUDIT_AUDIENCE
-              value: "audit"
-            - name: AUDIT_FORWARDED_FOR_TRUSTED_HOPS
-              value: "0"
-            - name: SESSION_LIFETIME
-              value: "12h"
-            - name: LOGIN_DIRECTORY
-              value: "true"
-            # Provisioned, never minted here — see values.yaml.
-            - name: SIGNING_KEY_FILE
-              value: /var/run/access-issuer/signing-key/tls.key
-            # Live rotation: how often this replica re-reads the file
-            # above, and the schedule it keeps once it sees a new key —
-            # see `signingKey.rotation` in values.yaml.
-            - name: SIGNING_KEY_POLL_INTERVAL
-              value: "30s"
-            - name: SIGNING_KEY_ACTIVATION_DELAY
-              value: "15m"
-            - name: RELEASE_NAME
-              value: access-issuer
-            - name: POLICY_DIR
-              value: /var/run/access-issuer/policy
-            - name: TOKEN_LIFETIME
-              value: "1h"
-            - name: REFRESH_LIFETIME
-              value: "12h"
-            - name: ABSOLUTE_LIFETIME
-              value: "24h"
-            - name: HOLD_WINDOW
-              value: "4h"
-            - name: EXCHANGE_AUDIENCE
-              value: "access-issuer"
-            # Recovery is the one thing left that asks the API server, and
-            # deliberately so: on the day everything else is broken it
-            # should depend on nothing but the cluster.
-            - name: IN_CLUSTER
-              value: "true"
-            - name: RECOVERY_ENABLED
-              value: "true"
-            - name: RECOVERY_SERVICE_ACCOUNT
-              value: "access-issuer-recovery"
-            - name: RECOVERY_AUDIENCE
-              value: "access-issuer-recovery"
-            - name: LOG_LEVEL
-              value: "info"
-            - name: GROUPS_SCOPING
-              value: "report"
+          # The whole of the configuration is the file: `config`, rendered as it
+          # stands. The environment carries only the secrets that file names.
+          args:
+            - --config=/etc/access-issuer/config.yaml
           volumeMounts:
+            - name: config
+              mountPath: /etc/access-issuer/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: signing-key
               mountPath: /var/run/access-issuer/signing-key
               readOnly: true
@@ -309,6 +278,9 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
       volumes:
+        - name: config
+          configMap:
+            name: access-issuer-config
         - name: signing-key
           secret:
             secretName: access-issuer-signing-key

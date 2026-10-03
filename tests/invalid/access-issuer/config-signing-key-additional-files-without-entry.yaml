@@ -1,0 +1,7 @@
+# A file named with no signingKey.additional entry mounts nothing.
+# error: config.signingKey.additionalFiles must be []
+config:
+  issuerURL: https://issuer.example
+  signingKey:
+    additionalFiles:
+    - /var/run/access-issuer/signing-key-rs256/tls.key

@@ -1,21 +1,19 @@
 {{- if .Values.slackRoster.enabled }}
-{{- if not .Values.exchange.clusters }}
-{{- fail "slackRoster.enabled needs exchange.clusters to name this cluster: the service verifies the controller's ServiceAccount token against that key set, and with no row it verifies nothing" }}
-{{- end }}
-{{- if not (include "access-issuer.consoleMount" .) }}
-{{- fail "slackRoster.enabled needs console.mount: the controller reads the console's API, and with no mount there is none" }}
-{{- end }}
+{{- $cfg := .Values.slackRoster.config }}
+{{- include "access-issuer.rosterChecks" (dict "root" . "name" "slackRoster" "cfg" $cfg "dir" "slack-roster") }}
+{{- include "access-issuer.expectPath" (dict "key" "slackRoster.config.credentialsDir" "got" $cfg.credentialsDir "want" "/var/run/slack-roster/credentials" "source" "the credentials Secret" "present" true) }}
+{{- include "access-issuer.expectPath" (dict "key" "slackRoster.config.recordsDir" "got" $cfg.recordsDir "want" "/var/run/slack-roster/workspaces" "source" "the records ConfigMap" "present" true) }}
 {{- /*
-  The controller refuses to start when ENABLED_WORKSPACES names a key the
+  The controller refuses to start when enabledWorkspaces names a key the
   policy does not declare. The policy is inline in values, so say so here, at
   render time, before the rollout stops the running controller. Skipped when
   the values carry no policy at all.
 */ -}}
 {{- if .Values.policy }}
-{{- $declared := dig "slack" "workspaces" dict .Values.policy }}
-{{- range .Values.slackRoster.actsIn }}
-{{- if not (hasKey $declared .) }}
-{{- fail (printf "slackRoster.actsIn names %q, which policy.slack.workspaces does not declare: remove it from actsIn, or declare the workspace in the policy" .) }}
+{{- $bound := dig "slack" "workspaces" dict .Values.policy }}
+{{- range $cfg.enabledWorkspaces }}
+{{- if not (hasKey $bound .) }}
+{{- fail (printf "slackRoster.config.enabledWorkspaces names %q, which policy.slack.workspaces does not declare: remove it from enabledWorkspaces, or declare the workspace in the policy" .) }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -66,6 +64,19 @@ subjects:
     name: {{ $name }}
     namespace: {{ .Release.Namespace }}
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels:
+    {{- include "access-issuer.labels" . | nindent 4 }}
+    app.kubernetes.io/component: slack-roster
+data:
+  # What `slack-roster --config` reads: `slackRoster.config`, as the values give
+  # it. The binary validates it against schemas/config/slack-roster.schema.json.
+  config.yaml: |
+    {{- toYaml $cfg | nindent 4 }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -87,6 +98,7 @@ spec:
       labels:
         {{- include "access-issuer.slackRosterSelectorLabels" . | nindent 8 }}
       annotations:
+        checksum/config: {{ toYaml $cfg | sha256sum }}
         # The bindings are read at start, like the service's policy.
         checksum/policy: {{ include (print $.Template.BasePath "/policy-configmap.yaml") . | sha256sum }}
     spec:
@@ -104,42 +116,13 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
-          env:
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: RELEASE_NAME
-              value: {{ include "access-issuer.fullname" . }}
-            - name: POLICY_DIR
-              value: /var/run/slack-roster/policy
-            - name: CONSOLE_URL
-              value: {{ printf "http://%s.%s.svc:%v%s" (include "access-issuer.fullname" .) .Release.Namespace .Values.listeners.port (include "access-issuer.consoleMount" .) | quote }}
-            - name: TOKEN_FILE
-              value: /var/run/secrets/slack-roster/token
-            - name: CREDENTIALS_DIR
-              value: /var/run/slack-roster/credentials
-            - name: RECORDS_DIR
-              value: /var/run/slack-roster/workspaces
-            - name: INTERVAL
-              value: {{ .Values.slackRoster.interval | quote }}
-            - name: ENABLED_WORKSPACES
-              value: {{ join "," .Values.slackRoster.actsIn | quote }}
-            - name: LOG_LEVEL
-              value: {{ .Values.logLevel | quote }}
-            # The controller records what it did to the audit installation
-            # itself, as its own workload, which the writer stamps as the
-            # records' observer.
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            {{- include "access-issuer.auditEnv" . | nindent 12 }}
-{{- with .Values.telemetry.otlpEndpoint }}
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: {{ . | quote }}
-{{- end }}
+          args:
+            - --config=/etc/slack-roster/config.yaml
           volumeMounts:
+            - name: config
+              mountPath: /etc/slack-roster/config.yaml
+              subPath: config.yaml
+              readOnly: true
             - name: policy
               mountPath: /var/run/slack-roster/policy
               readOnly: true
@@ -152,12 +135,15 @@ spec:
             - name: workspaces
               mountPath: /var/run/slack-roster/workspaces
               readOnly: true
-            {{- include "access-issuer.auditMounts" . | nindent 12 }}
+            {{- include "access-issuer.auditMounts" (dict "root" . "cfg" $cfg) | nindent 12 }}
           {{- with .Values.slackRoster.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
       volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}-config
         - name: policy
           configMap:
             name: {{ include "access-issuer.fullname" . }}-policy
@@ -186,7 +172,7 @@ spec:
           configMap:
             name: {{ include "access-issuer.fullname" . }}-slack-workspaces
             optional: true
-        {{- include "access-issuer.auditVolumes" . | nindent 8 }}
+        {{- include "access-issuer.auditVolumes" (dict "root" . "cfg" $cfg) | nindent 8 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

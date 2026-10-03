@@ -12,7 +12,7 @@ metadata:
     {{- include "access-issuer.labels" . | nindent 4 }}
 data:
   aws.yaml: |
-    audience: {{ .Values.exchange.aws.audience | default (required "issuerURL is required" .Values.issuerURL | trimSuffix "/") | quote }}
+    audience: {{ .Values.exchange.aws.audience | default (required "config.issuerURL is required" .Values.config.issuerURL | trimSuffix "/") | quote }}
     maxAge: {{ .Values.exchange.aws.maxAge | default "5m" | quote }}
     accounts:
     {{- range .Values.exchange.aws.accounts }}

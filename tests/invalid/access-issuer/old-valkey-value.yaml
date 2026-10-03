@@ -1,0 +1,6 @@
+# The old value `valkey` is removed, not aliased: it is `config.valkey`, with the password in `secretEnv`.
+# error: additional properties 'valkey' not allowed
+config:
+  issuerURL: https://issuer.example
+valkey:
+  address: valkey.example.svc:6379

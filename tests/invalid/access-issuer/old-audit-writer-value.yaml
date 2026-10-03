@@ -1,0 +1,6 @@
+# The old value audit.writer is `config.audit.writer`: removed, not aliased.
+# error: at '/audit': additional properties 'writer' not allowed
+config:
+  issuerURL: https://issuer.example
+audit:
+  writer: http://audit:8080

@@ -1,9 +1,11 @@
 # A catalogue App name is at most 34 characters.
 # error: at '/githubApps/catalogue/0/name': maxLength
-issuerURL: https://issuer.example
+config:
+  issuerURL: https://issuer.example
 githubApps:
   catalogue:
-    - id: releases
-      org: acme
-      permissions: {contents: write}
-      name: acme-releases-with-a-name-far-too-long
+  - id: releases
+    org: acme
+    permissions:
+      contents: write
+    name: acme-releases-with-a-name-far-too-long

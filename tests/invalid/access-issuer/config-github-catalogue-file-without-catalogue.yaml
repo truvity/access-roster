@@ -1,0 +1,6 @@
+# A catalogueFile with no githubApps.catalogue names a file nothing mounts.
+# error: config.github.catalogueFile is "/var/run/access-issuer/github-apps-catalogue.yaml" and the chart renders nothing there
+config:
+  issuerURL: https://issuer.example
+  github:
+    catalogueFile: /var/run/access-issuer/github-apps-catalogue.yaml

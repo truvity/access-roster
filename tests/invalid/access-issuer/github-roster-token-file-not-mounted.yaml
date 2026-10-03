@@ -1,0 +1,15 @@
+# The projected token is mounted at one path.
+# error: githubRoster.config.tokenFile must be /var/run/secrets/github-roster/token
+config:
+  issuerURL: https://issuer.example
+console:
+  mount: /console
+exchange:
+  clusters:
+  - issuer: https://oidc.example
+    name: example
+githubRoster:
+  enabled: true
+  config:
+    consoleURL: http://access-issuer.default.svc:8080/console
+    tokenFile: /etc/token
