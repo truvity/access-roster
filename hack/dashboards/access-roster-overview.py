@@ -225,6 +225,21 @@ series("Compare-and-swap conflicts per second, by operation",
        12, y, 12, "ops")
 y += 8
 
+row("Exports: copies into OpenBao", y)
+y += 1
+series("Export attempts per second, by export and outcome",
+       "Copies of the secrets the service keeps (a Slack App's bot token, the runner Apps, the recovery bundles) into OpenBao. ok is a copy that is in "
+       "the store (written, or already as it should be); failed is retried with backoff and leaves the copy stale; skipped is an App with "
+       "nothing to copy yet. AccessRosterExportFailing fires on three failures in 30 minutes.",
+       [('sum by (export, outcome) (rate(access_roster_export_attempts_total{%s}[%s]))' % (W, R), "{{export}} {{outcome}}")],
+       0, y, 12, "ops", stack=True)
+series("Seconds since the last copy, by export",
+       "For every export, how long since its copy was last in the store. A copy is made again every hour with nothing changed, so a line that "
+       "climbs past three hours is an export nobody is making: AccessRosterExportStale.",
+       [('time() - max by (export) (last_over_time(access_roster_export_last_success_timestamp_seconds{%s}[1d]))' % W, "{{export}}")],
+       12, y, 12, "s")
+y += 8
+
 row("GitHub rate limits and seats", y)
 y += 1
 series("Rate limit remaining, by resource",

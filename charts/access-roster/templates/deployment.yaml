@@ -123,6 +123,9 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- include "access-roster.auditMounts" (dict "root" . "cfg" .Values.config) | nindent 12 }}
+            {{- with include "access-roster.exportsMounts" . }}
+            {{- . | nindent 12 }}
+            {{- end }}
             {{- if .Values.githubApps.catalogue }}
             - name: github-apps-catalogue
               mountPath: /var/run/access-issuer/github-apps-catalogue.yaml
@@ -198,6 +201,9 @@ spec:
         - name: tmp
           emptyDir: {}
         {{- include "access-roster.auditVolumes" (dict "root" . "cfg" .Values.config) | nindent 8 }}
+        {{- with include "access-roster.exportsVolumes" . }}
+        {{- . | nindent 8 }}
+        {{- end }}
         {{- if .Values.exchange.clusters }}
         - name: clusters
           configMap:

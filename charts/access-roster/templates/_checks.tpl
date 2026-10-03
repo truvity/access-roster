@@ -88,6 +88,12 @@ access-roster.checks: everything the service's config must agree with.
 {{- include "access-roster.expectPath" (dict "key" "config.slack.catalogueFile" "got" (dig "slack" "catalogueFile" "" $c) "want" "/var/run/access-issuer/slack-apps-catalogue.yaml" "source" "slackApps" "present" (not (empty .Values.slackApps))) -}}
 {{- include "access-roster.expectPath" (dict "key" "config.clientSecretsDir" "got" $c.clientSecretsDir "want" "/var/run/access-issuer/clients" "source" "policy.clients[].secret" "present" (not (empty (include "access-roster.confidentialClients" .)))) -}}
 {{- include "access-roster.expectAudit" (dict "key" "config.audit.tokenFile" "cfg" $c) -}}
+{{- $openbao := dig "ports" "export" "openbao" dict $c -}}
+{{- include "access-roster.expectPath" (dict "key" "config.ports.export.openbao.caFile" "got" $openbao.caFile "want" "/var/run/access-issuer/openbao-ca/ca.pem" "source" "exports.openbao.caBundle" "present" (not (empty .Values.exports.openbao.caBundle))) -}}
+{{- include "access-roster.expectPath" (dict "key" "config.ports.export.openbao.auth.tokenFile" "got" (dig "auth" "tokenFile" "" $openbao) "want" "/var/run/openbao/token" "source" "exports.openbao.token.audience" "present" (not (empty .Values.exports.openbao.token.audience))) -}}
+{{- if and $c.exports (not (dig "ports" "export" "adapter" "" $c)) -}}
+{{- fail "config.exports names secrets to copy and config.ports.export names nowhere to copy them to: set config.ports.export (adapter: openbao, and its address and auth), or remove config.exports" -}}
+{{- end -}}
 {{- /*
   Recovery is the one thing left that asks the API server, and deliberately
   so: on the day everything else is broken it should depend on nothing but

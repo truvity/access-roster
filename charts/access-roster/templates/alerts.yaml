@@ -279,4 +279,51 @@ spec:
               the NetworkPolicy to it.
             {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterPortErrors") | nindent 12 }}
         {{- end }}
+        {{- if $r.exportFailing.enabled }}
+        # An export retries a failed copy with backoff, from five seconds to five
+        # minutes, so a store that is down shows as a failure every few minutes and a
+        # store that was down for one retry shows as one. The copy is stale for as long as
+        # it fails and nothing live changes, which is why this is a warning and not a page:
+        # `failures` (3) within `window` (30m), held for `for` (15m), is an OpenBao or a
+        # login that has not come back, and not a leader election. The counter is per
+        # export, because one key's policy being wrong is not another's outage.
+        - alert: AccessRosterExportFailing
+          expr: >-
+            sum by ({{ $c }}, namespace, export) (increase(access_roster_export_attempts_total{ {{- $w -}},outcome="failed"}[{{ $r.exportFailing.window }}])) >= {{ $r.exportFailing.failures }}
+          for: {{ $r.exportFailing.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.exportFailing) | nindent 12 }}
+          annotations:
+            summary: 'The export {{ "{{ $labels.export }}" }} of access-roster in {{ "{{ $labels.namespace }}" }} has failed {{ "{{ $value | printf \"%.0f\" }}" }} times'
+            description: >-
+              The copy of this secret into OpenBao failed {{ $r.exportFailing.failures }} or more
+              times within {{ $r.exportFailing.window }}, so what a consumer reads there is stale.
+              Nothing live is affected. The log line "an export failed" names the target and
+              the error: a login the role refuses, a policy that lacks a capability on the
+              path, or OpenBao being down.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterExportFailing") | nindent 12 }}
+        {{- end }}
+        {{- if $r.exportStale.enabled }}
+        # The time since an export last had its copy in the store, from a gauge each ok
+        # attempt stamps (a copy that was already as it should be counts). The default
+        # interval is an hour, so three hours is two missed refreshes and the one that
+        # should have followed. It catches what the failure counter cannot: a service that
+        # is not running its exports, a lease nobody can take, a loop that hangs.
+        # `last_over_time` over a day keeps the series visible after the service is gone,
+        # so a dead one fires and is not mistaken for an absent one. An export that has
+        # never succeeded has no series: AccessRosterExportFailing is the rule for that.
+        - alert: AccessRosterExportStale
+          expr: >-
+            time() - max by ({{ $c }}, namespace, export) (last_over_time(access_roster_export_last_success_timestamp_seconds{ {{- $w -}} }[1d])) > {{ $r.exportStale.maxAgeSeconds | int64 }}
+          for: {{ $r.exportStale.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.exportStale) | nindent 12 }}
+          annotations:
+            summary: 'No successful copy of {{ "{{ $labels.export }}" }} for {{ "{{ $value | humanizeDuration }}" }}'
+            description: >-
+              This export has not had its copy in the store for longer than {{ $r.exportStale.maxAgeSeconds | int64 }}s.
+              Check that the service is running with its exports configured, that its
+              leases are not held by a runner that is gone, and the log for failures.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterExportStale") | nindent 12 }}
+        {{- end }}
 {{- end }}

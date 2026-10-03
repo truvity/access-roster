@@ -435,3 +435,79 @@ tests:
       - eval_time: 25m
         alertname: AccessRosterPortErrors
         exp_alerts: []
+
+  # ---------------------------------------------------------------- export failing
+  - name: an export that fails every minute for half an hour fires
+    interval: 1m
+    input_series:
+      - series: 'access_roster_export_attempts_total{namespace="access-roster",k8s_cluster_name="example",export="slack-app.alerts",outcome="failed"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AccessRosterExportFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: platform
+              k8s_cluster_name: example
+              namespace: access-roster
+              export: slack-app.alerts
+            exp_annotations:
+              summary: 'The export slack-app.alerts of access-roster in access-roster has failed 30 times'
+              description: >-
+                The copy of this secret into OpenBao failed 3 or more
+                times within 30m, so what a consumer reads there is stale.
+                Nothing live is affected. The log line "an export failed" names the target and
+                the error: a login the role refuses, a policy that lacks a capability on the
+                path, or OpenBao being down.
+              runbook_url: https://github.com/truvity/access-roster/blob/master/docs/operations/telemetry.md#accessrosterexportfailing
+
+  - name: two failures, ok copies and skipped attempts do not fire
+    interval: 1m
+    input_series:
+      - series: 'access_roster_export_attempts_total{namespace="access-roster",k8s_cluster_name="example",export="slack-app.alerts",outcome="failed"}'
+        values: '0x10 1x15 2x30'
+      - series: 'access_roster_export_attempts_total{namespace="access-roster",k8s_cluster_name="example",export="bundle.github-apps",outcome="ok"}'
+        values: '0+1x60'
+      - series: 'access_roster_export_attempts_total{namespace="access-roster",k8s_cluster_name="example",export="slack-app.deadman",outcome="skipped"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: AccessRosterExportFailing
+        exp_alerts: []
+
+  # ---------------------------------------------------------------- export stale (absence)
+  - name: an export whose last copy is four hours old fires
+    interval: 1m
+    input_series:
+      - series: 'access_roster_export_last_success_timestamp_seconds{namespace="access-roster",k8s_cluster_name="example",export="runner-app.stable.truvity"}'
+        values: '946684800 _x400'
+    alert_rule_test:
+      - eval_time: 4h
+        alertname: AccessRosterExportStale
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: platform
+              k8s_cluster_name: example
+              namespace: access-roster
+              export: runner-app.stable.truvity
+            exp_annotations:
+              summary: 'No successful copy of runner-app.stable.truvity for 4h 0m 0s'
+              description: >-
+                This export has not had its copy in the store for longer than 10800s.
+                Check that the service is running with its exports configured, that its
+                leases are not held by a runner that is gone, and the log for failures.
+              runbook_url: https://github.com/truvity/access-roster/blob/master/docs/operations/telemetry.md#accessrosterexportstale
+
+  - name: exports that copy every hour, and one that copies every minute, do not fire
+    interval: 1m
+    input_series:
+      - series: 'access_roster_export_last_success_timestamp_seconds{namespace="access-roster",k8s_cluster_name="example",export="bundle.github-apps"}'
+        values: '946684800x60 946688400x60 946692000x60 946695600x60'
+      - series: 'access_roster_export_last_success_timestamp_seconds{namespace="access-roster",k8s_cluster_name="example",export="slack-app.alerts"}'
+        values: '946684800+60x400'
+    alert_rule_test:
+      - eval_time: 4h
+        alertname: AccessRosterExportStale
+        exp_alerts: []
