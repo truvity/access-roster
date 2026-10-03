@@ -15,7 +15,7 @@ part against it, and is updated in the change that moves a cell.
 | — | not applicable on this platform |
 
 Two platforms are supported permanently, so a blank is a gap and not a choice.
-A cell reads for the **installation as shipped today**; "today" is the 1.52
+A cell reads for the **installation as shipped today**; "today" is the 1.53
 series.
 
 ## Ports and adapters
