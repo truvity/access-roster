@@ -9,6 +9,8 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // ErrNoPerson is a mint asked for somebody with no address: only a person
@@ -93,5 +95,9 @@ func (s *Storage) MintFor(ctx context.Context, email, audience string, lifetime 
 		return "", time.Time{}, err
 	}
 	token, err := signed.CompactSerialize()
+	if err == nil {
+		issuerMetrics.tokens.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("client_id", "none"), attribute.String("grant_type", "console_mint")))
+	}
 	return token, expires, err
 }

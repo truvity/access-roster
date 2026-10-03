@@ -27,6 +27,7 @@ import (
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/store"
+	"github.com/truvity/access-roster/internal/telemetry"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
 )
@@ -216,6 +217,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			return next(ctx, req)
 		}
 	}))
+	// And one client span per call, with the traceparent carried to the
+	// console, so a tick's trace continues into the console's own spans.
+	console := append([]connect.ClientOption{bearer}, telemetry.ConnectClientOptions()...)
 	web := &http.Client{Timeout: 30 * time.Second}
 
 	log.InfoContext(ctx, "the GitHub controller is assembled",
@@ -248,9 +252,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		controller: controller.New(controller.Config{Interval: cfg.interval, Enabled: cfg.enabled, AppsDir: cfg.appsDir, RecordsDir: cfg.recordsDir}, controller.Deps{
 			Log:      log,
 			GitHub:   web,
-			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
+			Access:   directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, console...),
 			Audit:    trail,
-			Console:  directoryrosterv1connect.NewGitHubServiceClient(web, cfg.console, bearer),
+			Console:  directoryrosterv1connect.NewGitHubServiceClient(web, cfg.console, console...),
 			Policy:   set.Digest(),
 			Status:   rails.NewBlobReports(stores.Ports.Blob, "reports/github/"),
 			Leases:   &rails.Leases{State: leaseState, Holder: rails.NewHolder(), Log: log},

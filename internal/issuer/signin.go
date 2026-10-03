@@ -393,11 +393,13 @@ func (s *signIn) startURL(kind, request string) string {
 func (s *signIn) start(w http.ResponseWriter, r *http.Request) {
 	provider, ok := s.providers[r.PathValue("provider")]
 	if !ok {
+		recordLoginFailure(r.Context(), LoginUnknownProvider)
 		http.Error(w, "this issuer cannot sign in with that directory", http.StatusNotFound)
 		return
 	}
 	request := r.URL.Query().Get("auth")
 	if request == "" {
+		recordLoginFailure(r.Context(), LoginBadRequest)
 		http.Error(w, "this sign-in is not part of an application's request", http.StatusBadRequest)
 		return
 	}
@@ -406,11 +408,13 @@ func (s *signIn) start(w http.ResponseWriter, r *http.Request) {
 	// this person.
 	state, err := s.deps.State.Issue(request)
 	if err != nil {
+		recordLoginFailure(r.Context(), LoginBadState)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	where, err := provider.URL(state)
 	if err != nil {
+		recordLoginFailure(r.Context(), LoginProviderFailed)
 		http.Error(w, err.Error(), http.StatusFailedDependency)
 		return
 	}
@@ -500,11 +504,13 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
+		recordLoginFailure(r.Context(), LoginBadRequest)
 		http.Error(w, "that form could not be read", http.StatusBadRequest)
 		return
 	}
 	request, err := s.deps.State.Verify(r.PostFormValue("state"))
 	if err != nil || request == "" {
+		recordLoginFailure(r.Context(), LoginBadState)
 		http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
 		return
 	}
@@ -515,6 +521,7 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 		// caller told which part of its proof failed is a caller helped
 		// to produce a better one.
 		s.deps.Log.WarnContext(r.Context(), "recovery refused", "error", logsafe.Error(err))
+		recordLoginFailure(r.Context(), LoginRecoveryRefused)
 		http.Error(w, "that proof was not accepted", http.StatusForbidden)
 		return
 	}
@@ -531,10 +538,12 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		recordLoginFailure(r.Context(), LoginNotWaiting)
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
 
 		return
 	}
+	recordLoginSuccess(r.Context(), "recovery")
 	// WARN, not INFO: this is the way in that bypasses the directory, and
 	// it should be as loud in a log as it is rare.
 	s.deps.Log.WarnContext(r.Context(), "recovery sign-in", "subject", logsafe.Value(subject))
@@ -546,6 +555,7 @@ func (s *signIn) recover(w http.ResponseWriter, r *http.Request) {
 func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	provider, ok := s.providers[r.PathValue("provider")]
 	if !ok {
+		recordLoginFailure(r.Context(), LoginUnknownProvider)
 		http.Error(w, "this issuer cannot sign in with that directory", http.StatusNotFound)
 		return
 	}
@@ -553,11 +563,13 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	if err != nil || cookie.Value == "" ||
 		subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+		recordLoginFailure(r.Context(), LoginBadState)
 		http.Error(w, "this sign-in did not start in this browser", http.StatusBadRequest)
 		return
 	}
 	request, err := s.deps.State.Verify(state)
 	if err != nil || request == "" {
+		recordLoginFailure(r.Context(), LoginBadState)
 		http.Error(w, "this sign-in is not valid any more; start again", http.StatusBadRequest)
 		return
 	}
@@ -567,6 +579,7 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.deps.Log.WarnContext(r.Context(), "sign-in exchange failed",
 			"provider", provider.Kind(), "error", logsafe.Error(err))
+		recordLoginFailure(r.Context(), LoginProviderFailed)
 		http.Error(w, "the sign-in could not be completed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
@@ -583,10 +596,12 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 		// the only place a person will read it: everywhere downstream
 		// they would simply find themselves admitted nowhere.
 		s.deps.Log.WarnContext(r.Context(), "sign-in refused", "email", logsafe.Value(email), "reason", logsafe.Value(refused.Reason))
+		recordLoginFailure(r.Context(), LoginDirectoryRefused)
 		http.Error(w, "signed in as "+email+", but "+refused.Reason, http.StatusForbidden)
 		return
 	case err != nil:
 		s.deps.Log.ErrorContext(r.Context(), "the hub could not be asked", "email", logsafe.Value(email), "error", logsafe.Error(err))
+		recordLoginFailure(r.Context(), LoginDirectoryUnreachable)
 		http.Error(w, "signed in as "+email+", but the directory could not be reached",
 			http.StatusServiceUnavailable)
 		return
@@ -597,10 +612,12 @@ func (s *signIn) callback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		recordLoginFailure(r.Context(), LoginNotWaiting)
 		http.Error(w, "that sign-in is no longer waiting to be completed", http.StatusBadRequest)
 
 		return
 	}
+	recordLoginSuccess(r.Context(), provider.Kind())
 	s.deps.Log.InfoContext(r.Context(), "signed in",
 		"email", logsafe.Value(email), "provider", provider.Kind(), "groups", len(standing.Groups))
 	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
@@ -875,6 +892,7 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 		return s.refuseUnentitled(w, r, err, request) || s.refuseUnaudited(w, r, err)
 	}
 
+	recordLoginSuccess(r.Context(), "browser_session")
 	s.deps.Log.InfoContext(r.Context(), "signed in from an existing browser session",
 		"identity", logsafe.Value(session.Identity), "how", session.How)
 	http.Redirect(w, r, s.deps.Return(r.Context(), request), http.StatusFound)
@@ -899,6 +917,7 @@ func (s *signIn) refuseUnentitled(w http.ResponseWriter, r *http.Request, err er
 	if !errors.Is(err, ErrNotEntitled) {
 		return false
 	}
+	recordLoginFailure(r.Context(), LoginNotEntitled)
 
 	// The detail names the identity and the groups, which belongs in a
 	// log an operator reads and not on a page: telling somebody which
@@ -928,6 +947,7 @@ func (s *signIn) refuseUnaudited(w http.ResponseWriter, r *http.Request, err err
 	if !errors.Is(err, ErrUnaudited) {
 		return false
 	}
+	recordLoginFailure(r.Context(), LoginUnaudited)
 	s.deps.log().ErrorContext(r.Context(), "recovery refused: the audit trail could not be written",
 		"error", logsafe.Error(err))
 	_ = writePage(w, http.StatusServiceUnavailable, "Recovery is refused: the audit trail could not be written",

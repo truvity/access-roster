@@ -280,17 +280,30 @@ func (c *Controller) known(target string) bool {
 // from a console under another policy.
 func (c *Controller) Tick(ctx context.Context, target string) (otherPolicy bool, err error) {
 	if target == LinksTarget {
-		return false, c.checkLinks(ctx)
+		ctx, done := rails.StartTick(ctx, leaseLinks, target)
+		err = c.checkLinks(ctx)
+		done(outcomeOf(err == nil))
+		return false, err
 	}
 	binding, bound := c.deps.Bindings[target]
 	if !bound {
 		return false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
 	}
+	ctx, done := rails.StartTick(ctx, leaseOrg, target)
 	links, linksErr := c.storedLinks(ctx)
 	report, differs := c.organisation(ctx, target, binding, links, linksErr, c.confirmations(ctx)[target])
 	c.metrics.recordPass(ctx, &report)
 	c.journal.PublishOne(ctx, target, report)
+	done(outcomeOf(report.Tick.Outcome != status.OutcomeFailed))
 	return differs, nil
+}
+
+// outcomeOf is a tick's outcome for the rails' metrics and span.
+func outcomeOf(ok bool) string {
+	if ok {
+		return rails.OutcomeOK
+	}
+	return rails.OutcomeFailed
 }
 
 // organisation is one organisation's pass, ending in its report whatever

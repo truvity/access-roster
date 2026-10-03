@@ -25,8 +25,12 @@
 // in kind between systems, and a shape guessed to cover them would bend
 // the first to fit the second. Those stay in each system's own package
 // (internal/githubroster). Nothing here imports generated clients; a
-// reconciler adapts its own to the funcs and interfaces taken. Metrics
-// are deliberately not here: the instruments are exported telemetry with a
-// system's own names, and a second copy of forty lines is cheaper than a
-// shared one that has to stay identical to both.
+// reconciler adapts its own to the funcs and interfaces taken. A system's
+// own metrics (what its pass found) are not here: they carry that system's
+// names, and a second copy of forty lines is cheaper than a shared one that
+// has to stay identical to both. What is the same for every system is here
+// and only that: the tick's span and its duration and outcome ([StartTick]),
+// and the leases taken, lost and held ([Leases]), because "this target has
+// stopped" and "two runners fought over it" mean the same thing whatever the
+// target is.
 package rails

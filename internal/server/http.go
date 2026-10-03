@@ -25,6 +25,7 @@ import (
 	"github.com/truvity/access-roster/internal/emailaddr"
 	"github.com/truvity/access-roster/internal/hub"
 	"github.com/truvity/access-roster/internal/logsafe"
+	"github.com/truvity/access-roster/internal/telemetry"
 	"github.com/truvity/access-roster/internal/version"
 )
 
@@ -278,14 +279,14 @@ func (s *ConsoleServer) wayIn() string {
 func (s *ConsoleServer) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle(directoryrosterv1connect.NewWorkspaceServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewSlackAppServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewSlackSharedChannelServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewSlackChannelServiceHandler(s.console))
-	mux.Handle(directoryrosterv1connect.NewSlackServiceHandler(s.console))
+	mux.Handle(directoryrosterv1connect.NewWorkspaceServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewSettingsServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewAccessServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewGitHubServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewSlackAppServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewSlackSharedChannelServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewSlackChannelServiceHandler(s.console, telemetry.ConnectOptions()...))
+	mux.Handle(directoryrosterv1connect.NewSlackServiceHandler(s.console, telemetry.ConnectOptions()...))
 
 	if s.consoleUI != nil {
 		mux.Handle("GET /assets/", http.FileServerFS(s.consoleUI))
