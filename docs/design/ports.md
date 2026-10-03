@@ -259,6 +259,11 @@ suite.
 
 ## Implementation status
 
+Business code uses the lease and the trigger as `rails.Leases` (`Acquire`,
+`Renew`, `Release`, and `Do`, which runs a tick under a lease and cancels it if
+the lease is lost) and `port.Trigger`; a report of a target is one blob written
+alone (`rails.BlobReports.Put`).
+
 The Go interfaces are in `internal/port` (`State`, `Blob`, `Trigger`, `Sealer`,
 `Identity`; the audit sink is `audit.Recorder`, unchanged), the conformance
 suite is `internal/port/porttest`, and `internal/store` builds one set of ports
@@ -299,7 +304,7 @@ documentation holds the whole mapping; in short:
 | Port key or name | Where it lives today |
 |---|---|
 | `req.<id>`, `code.<id>`, `codesess.<id>`, `tok.<jti>`, `sso.<id>`, `rt.<hash>`, `rtrot.<hash>`, `keyring.<alg>:<kid>` | the Valkey key the issuer writes (`issuer:request:<id>`, `issuer:code:<id>`, ...), under the installation's prefix |
-| `lease.<kind>:<workspace>` | `{<workspace>}:lease:<kind>`, the hub's refresh lease; `lease.<name>` is `lease:<name>` |
+| `lease.<kind>:<workspace>` | `{<workspace>}:lease:<kind>`, the hub's refresh lease; `lease.<name>` is `lease:<name>`. The controllers' tick leases are `lease.github-tick:<org>`, `lease.github-links:all` and `lease.slack-tick:<workspace>` (0029) |
 | a key containing `:` | itself: the legacy namespace the issuer's own state is written in |
 | `gh.org.<org>` | the `<org>.json` entry of the `<release>-github-orgs` ConfigMap (the record; the credential is a separate Secret) |
 | `snapshots/<workspace>` | `{<workspace>}:snapshot`, the same gzip bytes, for the cache's lifetime |
@@ -307,7 +312,10 @@ documentation holds the whole mapping; in short:
 
 Every other key of the layout (`ses.`, `sid.`, `ws.`, `gh.link.`, `app.`,
 `gate.`, `share.`, `cache.`, `dedupe.`, `notify.`) has no object of its own
-today, and is `ErrUnsupported`: a session is one Valkey value that does not carry
+today, and is `ErrUnsupported` (which is why the pending-share hand-off, the
+State-backed input cache and the gates of 0029 wait for an adapter that can hold
+them; the controllers keep the first as a notification between ticks, the
+second in memory and the third in the report): a session is one Valkey value that does not carry
 its person, a link is a Secret entry keyed by account id, and presenting either
 under the layout's key would write different bytes.
 
@@ -328,8 +336,15 @@ thing, and the conformance suite names the exception:
   writes the layout allows. Report entries are text: a blob of invalid UTF-8 under
   `reports/` is `ErrUnsupported`.
 - **`Trigger` is in-process.** A notification reaches this process's
-  subscribers; a controller's tick is still its interval and its 30-second look
-  at the mounted records.
+  subscribers. A controller subscribes and ticks the target it names, but the
+  console that calls `Notify` is another process, so a controller still learns
+  of a console write from the records it mounts, looked at every 30 seconds (an
+  operator's request for a pass names its target and ticks only it; any other
+  change runs a sweep), and its sweep is still its interval. The key-value watch
+  of the layout replaces the poll.
+- **Tick leases are exclusive across processes only with a Valkey.** The
+  controllers are configured with none, so with this adapter a controller's
+  leases are held in its own memory and the chart keeps one replica.
 - **`Sealer` is `ErrUnsupported`** (`sealing/context` is skipped): nothing is
   sealed today, and a process-local key would produce envelopes no restart could
   open.
