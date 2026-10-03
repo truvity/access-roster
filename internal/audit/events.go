@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	auditv1 "github.com/truvity/audit/gen/audit/v1"
-	"github.com/truvity/audit/record"
+	auditv1 "github.com/truvity/audit/sdk/gen/audit/v1"
+	"github.com/truvity/audit/sdk/record"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 

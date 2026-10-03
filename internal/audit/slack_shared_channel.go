@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/truvity/audit/record"
+	"github.com/truvity/audit/sdk/record"
 )
 
 // SlackSharedChannel is a Slack Connect channel's definition as the trail

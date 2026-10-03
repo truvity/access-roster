@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	auditv1 "github.com/truvity/audit/gen/audit/v1"
-	"github.com/truvity/audit/record"
+	auditv1 "github.com/truvity/audit/sdk/gen/audit/v1"
+	"github.com/truvity/audit/sdk/record"
 	"github.com/zitadel/oidc/v3/pkg/oidc"
 
 	"github.com/truvity/access-roster/internal/audit/audittest"
