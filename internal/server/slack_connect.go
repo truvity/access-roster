@@ -13,7 +13,6 @@ import (
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
-	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/slackroster/status"
@@ -23,7 +22,7 @@ import (
 // SlackSharedRecords is where Slack Connect channel definitions are kept:
 // the records the Slack controller reads.
 type SlackSharedRecords interface {
-	List(ctx context.Context) ([]kube.SharedRecord, error)
+	List(ctx context.Context) ([]connection.SharedRecord, error)
 	// Apply reads one record (nil when there is none), asks decide what it
 	// becomes (nil deletes it) and writes that under the object's version.
 	Apply(ctx context.Context, name string, decide func(current *reconcile.SharedChannel) (*reconcile.SharedChannel, error)) error
@@ -273,7 +272,7 @@ func sharedError(err error) error {
 		return nil
 	case errors.As(err, &connectErr):
 		return err
-	case errors.Is(err, kube.ErrSharedConflict):
+	case errors.Is(err, connection.ErrSharedConflict):
 		return connect.NewError(connect.CodeAborted,
 			errors.New("the shared channel records were changed by someone else while this was written: reload and try again"))
 	default:

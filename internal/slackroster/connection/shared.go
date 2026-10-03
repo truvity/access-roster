@@ -69,3 +69,16 @@ func DecodeShared(raw string) (reconcile.SharedChannel, error) {
 	}
 	return s.SharedChannel, nil
 }
+
+// ErrSharedConflict is a write that lost its race: the ConfigMap changed
+// under every attempt.
+var ErrSharedConflict = errors.New("the shared channel records changed while this was being written")
+
+// SharedRecord is one key read back: the definition, or why it is not one.
+type SharedRecord struct {
+	Name    string
+	Channel reconcile.SharedChannel
+	// Err is set when the document does not decode, or names another
+	// channel than its key does.
+	Err error
+}

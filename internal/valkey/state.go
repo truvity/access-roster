@@ -2,8 +2,13 @@ package valkey
 
 import (
 	"context"
+	"crypto/sha1" //nolint:gosec // see Revision
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -177,4 +182,118 @@ func (s *State) Members(ctx context.Context, key string) ([]string, error) {
 // this is readiness and never liveness.
 func (s *State) Ping(ctx context.Context) error {
 	return s.client.Ping(ctx).Err()
+}
+
+// Revision is what [State] calls a value's version: the SHA-1 of its bytes,
+// as Valkey's own Lua computes it. It is a content tag, not a counter, and
+// not a security measure -- Valkey keeps no version of a key, and adding one
+// would change what is written.
+func Revision(value []byte) string {
+	sum := sha1.Sum(value) //nolint:gosec // a content tag compared by equality, not a hash anyone trusts
+	return hex.EncodeToString(sum[:])
+}
+
+// The two compare-and-swap scripts. Both answer -1 when the key is gone
+// (absent or expired), 0 when its bytes are not the ones expected and 1
+// when they acted.
+var (
+	swapScript = redis.NewScript(`
+local cur = redis.call("get", KEYS[1])
+if not cur then return -1 end
+if redis.sha1hex(cur) ~= ARGV[1] then return 0 end
+redis.call("set", KEYS[1], ARGV[2], "PX", ARGV[3])
+return 1`)
+	dropScript = redis.NewScript(`
+local cur = redis.call("get", KEYS[1])
+if not cur then return -1 end
+if redis.sha1hex(cur) ~= ARGV[1] then return 0 end
+redis.call("del", KEYS[1])
+return 1`)
+)
+
+// Outcome is what a conditional write did.
+type Outcome int
+
+// The outcomes of [State.Swap] and [State.DropIf].
+const (
+	// Gone: there was no live value to compare.
+	Gone Outcome = -1
+	// Moved: the value's revision was not the one expected.
+	Moved Outcome = 0
+	// Done: the condition held and the command ran.
+	Done Outcome = 1
+)
+
+// Swap replaces the value at key with a new one for ttl, only if the
+// current value's [Revision] is expected. It is one script, so two replicas
+// swapping from one revision cannot both win.
+func (s *State) Swap(ctx context.Context, key, expected string, value []byte, ttl time.Duration) (Outcome, error) {
+	if ttl <= 0 {
+		return Moved, fmt.Errorf("valkey: %s was stored with no lifetime", key)
+	}
+	var out int64
+	err := s.retry(ctx, "swap", key, false, func() (err error) {
+		out, err = swapScript.Run(ctx, s.client, []string{s.key(key)}, expected, value, ttl.Milliseconds()).Int64()
+		return err
+	})
+	if err != nil {
+		return Moved, fmt.Errorf("valkey: swap %s: %w", key, err)
+	}
+	return Outcome(out), nil
+}
+
+// DropIf deletes the value at key only if its [Revision] is expected.
+func (s *State) DropIf(ctx context.Context, key, expected string) (Outcome, error) {
+	var out int64
+	err := s.retry(ctx, "dropif", key, false, func() (err error) {
+		out, err = dropScript.Run(ctx, s.client, []string{s.key(key)}, expected).Int64()
+		return err
+	})
+	if err != nil {
+		return Moved, fmt.Errorf("valkey: delete %s if unchanged: %w", key, err)
+	}
+	return Outcome(out), nil
+}
+
+// Keys lists the keys that start with prefix, sorted, without this State's
+// own namespace. It is a SCAN of every primary: right for a listing an
+// operator or a watcher asks for, and not a path a request takes.
+func (s *State) Keys(ctx context.Context, prefix string) ([]string, error) {
+	match := globEscape(s.key(prefix)) + "*"
+	var (
+		mu  sync.Mutex
+		out []string
+	)
+	scan := func(ctx context.Context, c redis.Cmdable) error {
+		var cursor uint64
+		for {
+			keys, next, err := c.Scan(ctx, cursor, match, 512).Result()
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			for _, k := range keys {
+				out = append(out, strings.TrimPrefix(k, s.prefix+":"))
+			}
+			mu.Unlock()
+			if cursor = next; cursor == 0 {
+				return nil
+			}
+		}
+	}
+	var err error
+	if cluster, ok := s.client.(*redis.ClusterClient); ok {
+		err = cluster.ForEachMaster(ctx, func(ctx context.Context, node *redis.Client) error { return scan(ctx, node) })
+	} else {
+		err = scan(ctx, s.client)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("valkey: list %s: %w", prefix, err)
+	}
+	slices.Sort(out)
+	return slices.Compact(out), nil
+}
+
+func globEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `?`, `\?`, `[`, `\[`, `]`, `\]`).Replace(s)
 }

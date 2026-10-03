@@ -2,6 +2,7 @@ package connection
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -63,4 +64,17 @@ func DecodeConsole(raw string) (reconcile.ConsoleChannel, error) {
 		return reconcile.ConsoleChannel{}, fmt.Errorf("%w: %d", ErrVersion, c.Version)
 	}
 	return c.ConsoleChannel, nil
+}
+
+// ErrChannelConflict is a write that lost its race: the ConfigMap changed
+// under every attempt.
+var ErrChannelConflict = errors.New("the console channel records changed while this was being written")
+
+// ChannelRecord is one key read back: the record, or why it is not one.
+type ChannelRecord struct {
+	Workspace, Name string
+	Channel         reconcile.ConsoleChannel
+	// Err is set when the document does not decode, or names another
+	// workspace or channel than its key does.
+	Err error
 }
