@@ -1,0 +1,33 @@
+# Telemetry wired (ADR 0006): every pod of the app gets the SDK environment,
+# a service name of its own, and the extra OTEL_* entries; secretEnv still
+# renders beside it on the service.
+exchange:
+  clusters:
+    - name: example
+      issuer: https://oidc.example
+
+config:
+  issuerURL: https://issuer.example
+  exchange:
+    clustersFile: /var/run/access-issuer/clusters.yaml
+  valkey:
+    address: valkey.example.svc:6379
+    passwordEnv: VALKEY_PASSWORD
+secretEnv:
+  - name: VALKEY_PASSWORD
+    secretName: valkey
+    key: password
+controllerGithub:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+controllerSlack:
+  enabled: true
+  config:
+    consoleURL: http://access-roster.default.svc:8080/console
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    extraEnv:
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"

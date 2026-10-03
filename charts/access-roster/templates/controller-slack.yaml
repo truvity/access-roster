@@ -123,6 +123,10 @@ spec:
             - controller
             - slack
             - --config=/etc/access-roster/controller-slack.yaml
+          {{- with include "access-roster.otelEnv" (dict "root" . "service" "slack-roster") }}
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/access-roster/controller-slack.yaml

@@ -35,6 +35,13 @@ named in
 Secrets `PushSecret` for the ones nothing upstream can re-deliver. Copying the
 rest is the deployment's job.
 
+`telemetry.otlp.endpoint` sets the OpenTelemetry SDK environment on every pod:
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL` (`protocol`,
+`http/protobuf` by default), an `OTEL_SERVICE_NAME` per component
+(`access-issuer`, `github-roster`, `slack-roster`) and every `extraEnv` entry
+(other `OTEL_*` variables only). Empty, nothing is rendered and nothing is
+exported. See [docs/operations/telemetry.md](../../docs/operations/telemetry.md#wiring-it-with-the-chart).
+
 Without `audit.s3.bucket` the audit trail stays in one replica's memory,
 which is not a record; the service says so at start. A bucket needs an
 identity to write with, and the chart carries no credential of its own:

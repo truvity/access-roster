@@ -73,9 +73,11 @@ spec:
           args:
             - serve
             - --config=/etc/access-roster/config.yaml
-          {{- with .Values.secretEnv }}
+          {{- /* Beside the secrets, the SDK variables telemetry.otlp names (ADR 0006). */}}
+          {{- $otel := include "access-roster.otelEnv" (dict "root" . "service" "access-issuer") }}
+          {{- if or .Values.secretEnv $otel }}
           env:
-            {{- range . }}
+            {{- range .Values.secretEnv }}
             - name: {{ .name }}
               valueFrom:
                 secretKeyRef:
@@ -84,6 +86,9 @@ spec:
                   {{- if hasKey . "optional" }}
                   optional: {{ .optional }}
                   {{- end }}
+            {{- end }}
+            {{- with $otel }}
+            {{- . | nindent 12 }}
             {{- end }}
           {{- end }}
           volumeMounts:

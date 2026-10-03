@@ -1,0 +1,9 @@
+# extraEnv holds OTEL_* variables only.
+# error: does not start with OTEL_
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    extraEnv:
+      HTTPS_PROXY: http://proxy.example:3128

@@ -854,6 +854,43 @@
     "secretMounts": {
       "$ref": "#/definitions/secretMounts"
     },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The OpenTelemetry SDK environment on every pod of `renders: app` (ADR 0006). Nothing is rendered without `otlp.endpoint`.",
+      "properties": {
+        "otlp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "type": "string",
+              "description": "OTEL_EXPORTER_OTLP_ENDPOINT: an http(s) URL naming the collector or gateway. Empty: nothing is exported and nothing is rendered."
+            },
+            "protocol": {
+              "enum": [
+                "http/protobuf",
+                "http/json",
+                "grpc"
+              ],
+              "default": "http/protobuf",
+              "description": "OTEL_EXPORTER_OTLP_PROTOCOL."
+            },
+            "extraEnv": {
+              "type": "object",
+              "description": "Other OpenTelemetry SDK variables, name to value. Every name starts with OTEL_ and none is OTEL_EXPORTER_OTLP_ENDPOINT (checked at render).",
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "renders": {
       "enum": [
         "app",

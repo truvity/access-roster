@@ -1,0 +1,8 @@
+# An unknown key under telemetry.otlp fails the schema.
+# error: at '/telemetry/otlp'
+config:
+  issuerURL: https://issuer.example
+telemetry:
+  otlp:
+    endpoint: http://gateway.observability.svc:4318
+    insecure: true

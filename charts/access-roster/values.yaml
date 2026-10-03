@@ -268,6 +268,23 @@ config:
 #       key: password
 secretEnv: []
 
+# Telemetry is the OpenTelemetry SDK's own environment (ADR 0006), never the
+# config file (ADR 0032). With `otlp.endpoint` set, every pod of `renders: app`
+# gets OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_PROTOCOL and an
+# OTEL_SERVICE_NAME of its own (`access-issuer`, `github-roster`, `slack-roster`,
+# the names the binary uses), then each `extraEnv` entry. Unset, nothing is
+# rendered and the pods export nothing. How to wire it: docs/operations/telemetry.md.
+telemetry:
+  otlp:
+    # The collector or metrics gateway, an http(s) URL, e.g.
+    # http://<gateway>.<namespace>.svc:4318. Empty: no export.
+    endpoint: ""
+    # `http/protobuf` (the estate's convention), `http/json` or `grpc`.
+    protocol: http/protobuf
+    # Any other OTEL_* variable, e.g. OTEL_TRACES_SAMPLER. Names must start
+    # with OTEL_; the endpoint has its own value above.
+    extraEnv: {}
+
 # Secrets mounted read-only as directories, for a file the config names by
 # path: `oauthClient.idFile` and `oauthClient.secretFile`. Each key of the
 # Secret is a file under `mountPath`.

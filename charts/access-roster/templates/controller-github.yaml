@@ -141,6 +141,10 @@ spec:
             - controller
             - github
             - --config=/etc/access-roster/controller-github.yaml
+          {{- with include "access-roster.otelEnv" (dict "root" . "service" "github-roster") }}
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/access-roster/controller-github.yaml

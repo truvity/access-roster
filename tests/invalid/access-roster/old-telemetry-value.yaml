@@ -1,5 +1,5 @@
-# The old value `telemetry` is removed, not aliased: telemetry is the OTEL_* environment, set by the platform.
-# error: additional properties 'telemetry' not allowed
+# The old value `telemetry.otlpEndpoint` is removed, not aliased: the endpoint is `telemetry.otlp.endpoint`, and telemetry is otherwise the OTEL_* environment.
+# error: additional properties 'otlpEndpoint' not allowed
 config:
   issuerURL: https://issuer.example
 telemetry:

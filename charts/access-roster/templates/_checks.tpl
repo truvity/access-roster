@@ -69,6 +69,7 @@ access-roster.checks: everything the service's config must agree with.
 {{- $_ := required "config.issuerURL is required: it is baked into every token and every relying party's trust" $c.issuerURL -}}
 {{- include "access-roster.validateLifetimes" . -}}
 {{- include "access-roster.validateSecretManagers" . -}}
+{{- include "access-roster.validateTelemetry" . -}}
 {{- $_ := include "access-roster.port" . -}}
 {{- $_ := include "access-roster.healthPort" . -}}
 {{- include "access-roster.expectRelease" (dict "key" "config.release" "root" . "got" $c.release) -}}
@@ -153,4 +154,26 @@ access-roster.rosterChecks: what a controller's config must agree with. Takes
 {{- include "access-roster.expectPath" (dict "key" (printf "%s.config.policyDir" .name) "got" $c.policyDir "want" (printf "/var/run/%s/policy" $dir) "source" "policy" "present" true) -}}
 {{- include "access-roster.expectPath" (dict "key" (printf "%s.config.tokenFile" .name) "got" $c.tokenFile "want" (printf "/var/run/secrets/%s/token" $dir) "source" "the projected ServiceAccount token" "present" true) -}}
 {{- include "access-roster.expectAudit" (dict "key" (printf "%s.config.audit.tokenFile" .name) "cfg" $c) -}}
+{{- end -}}
+
+{{/*
+access-roster.validateTelemetry: what `telemetry.otlp` may say. The endpoint is
+an http(s) URL with a host; `extraEnv` holds other OTEL_* variables only, and
+never the endpoint, which has a value of its own so that one place sets it.
+*/}}
+{{- define "access-roster.validateTelemetry" -}}
+{{- $t := .Values.telemetry | default dict -}}
+{{- $o := $t.otlp | default dict -}}
+{{- $endpoint := $o.endpoint | default "" -}}
+{{- if and $endpoint (not (regexMatch "^https?://[^/?#[:space:]]+" $endpoint)) -}}
+{{- fail (printf "telemetry.otlp.endpoint must be an http(s) URL naming the collector or gateway, such as http://gateway.observability.svc:4318 (got %q)" $endpoint) -}}
+{{- end -}}
+{{- range $name, $_ := ($o.extraEnv | default dict) -}}
+{{- if eq $name "OTEL_EXPORTER_OTLP_ENDPOINT" -}}
+{{- fail "telemetry.otlp.extraEnv must not carry OTEL_EXPORTER_OTLP_ENDPOINT: set telemetry.otlp.endpoint, which is where the chart takes it from" -}}
+{{- end -}}
+{{- if not (hasPrefix "OTEL_" $name) -}}
+{{- fail (printf "telemetry.otlp.extraEnv holds OpenTelemetry SDK variables only: %q does not start with OTEL_ (a secret reaches a pod through secretEnv, the rest through config)" $name) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}

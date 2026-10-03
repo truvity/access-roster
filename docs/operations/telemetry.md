@@ -30,6 +30,56 @@ this service should ship is not decided. It is one function
 `OTEL_TRACES_SAMPLER=parentbased_traceidratio` with `OTEL_TRACES_SAMPLER_ARG=0.1`
 on the pods gives audit's behaviour without a release.
 
+## Wiring it with the chart
+
+The chart sets those variables on every pod of `renders: app` from one value
+block, so an installation does not hand-write them into each Deployment:
+
+```yaml
+telemetry:
+  otlp:
+    endpoint: http://<gateway>.<namespace>.svc:4318   # empty: no export, nothing rendered
+    protocol: http/protobuf                            # the default
+    extraEnv: {}                                       # any other OTEL_* variable
+```
+
+With `endpoint` set, the service and each controller get
+`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, an
+`OTEL_SERVICE_NAME` of their own, and the `extraEnv` entries:
+
+| Pod | `OTEL_SERVICE_NAME` |
+|---|---|
+| `serve` | `access-issuer` |
+| `controller github` | `github-roster` |
+| `controller slack` | `slack-roster` |
+
+These are the names the binary uses when the variable is unset, so a dashboard
+or alert that selects on them keeps finding the process. With `endpoint` empty
+the chart renders nothing and the pods export nothing
+([policy ADR 0006](https://github.com/truvity/policy/blob/master/docs/decisions/0006-telemetry-is-the-sdk-environment.md)).
+
+An installation on a cluster with the estate's metrics gateway, and a trace
+sampler of a tenth of root traces:
+
+```yaml
+telemetry:
+  otlp:
+    endpoint: http://otlp-gateway.observability.svc:4318
+    extraEnv:
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
+```
+
+The estate's convention is `http://<gateway>:4318` over `http/protobuf`; the
+cluster, namespace and tier become labels at the gateway, so none is set here
+(see truvity/observability `docs/emitting.md`). The chart refuses an endpoint
+that is not an http(s) URL, an `extraEnv` name that does not start with `OTEL_`,
+and `OTEL_EXPORTER_OTLP_ENDPOINT` in `extraEnv`, which belongs in `endpoint`.
+Anything secret (`OTEL_EXPORTER_OTLP_HEADERS` with a token) is not for
+`extraEnv`, which is rendered as plain values: put it in a Secret and reach the
+pod through `secretEnv`. The `renders: alerts` and `renders: dashboards` modes
+ignore the block.
+
 ## Traces
 
 A tracer exists only when a collector is named for traces.

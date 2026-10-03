@@ -92,6 +92,7 @@ is the part of the runtime that is built; the Lambda runtime itself is not.
 | Piece | Kubernetes | AWS Lambda |
 |---|---|---|
 | Metrics over OTLP, configured by `OTEL_*` | ✅ | ✅ |
+| The chart sets the `OTEL_*` environment on every pod from `telemetry.otlp` (endpoint, protocol, a service name per component, extra `OTEL_*`); unset renders nothing | 🧪 | — |
 | Platform logs over OTLP (the extension layer) | — | ✅ |
 | Traces: HTTP and Connect spans, a span per tick and per port call, the trace continued into the console (trace context across queues waits for the queues) | 🧪 | 📄 |
 | Metrics: the issuer's requests, tokens, sign-ins and keys; ticks and leases; port calls; rate limits ([operations/telemetry.md](operations/telemetry.md)) | 🧪 | 📄 |

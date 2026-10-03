@@ -2778,6 +2778,43 @@
       },
       "type": "object"
     },
+    "telemetry": {
+      "additionalProperties": false,
+      "description": "The OpenTelemetry SDK environment on every pod of `renders: app` (ADR 0006). Nothing is rendered without `otlp.endpoint`.",
+      "properties": {
+        "otlp": {
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "description": "OTEL_EXPORTER_OTLP_ENDPOINT: an http(s) URL naming the collector or gateway. Empty: nothing is exported and nothing is rendered.",
+              "type": "string"
+            },
+            "extraEnv": {
+              "additionalProperties": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              },
+              "description": "Other OpenTelemetry SDK variables, name to value. Every name starts with OTEL_ and none is OTEL_EXPORTER_OTLP_ENDPOINT (checked at render).",
+              "type": "object"
+            },
+            "protocol": {
+              "default": "http/protobuf",
+              "description": "OTEL_EXPORTER_OTLP_PROTOCOL.",
+              "enum": [
+                "http/protobuf",
+                "http/json",
+                "grpc"
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "tolerations": {
       "type": "array"
     }
