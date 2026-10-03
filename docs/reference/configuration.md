@@ -365,6 +365,15 @@ The issuer, the console and the directory hub, one process.
 | `cluster` | unset | what this cluster is called, which becomes part of a ServiceAccount's subject: `<cluster>:k8s:<namespace>:<name>`. Empty keeps the older unqualified form |
 | `store` | `memory` (the chart: `kubernetes`) | where connected workspaces and their credentials are kept. `memory` makes a restart a fresh installation, which is right for a laptop and nothing else |
 | `ports.adapter` | `legacy` | the adapter behind the storage ports ([design/ports.md](../design/ports.md)): `legacy` keeps state where it has always been kept (the namespace's ConfigMaps and Secrets, and Valkey when `valkey.address` is set); `memory` keeps all of it in the process, so a restart loses every login in progress, and is refused with `store: kubernetes` or `valkey.address` |
+| `ports.blob.adapter` | (the Blob of `ports.adapter`) | `s3` replaces the Blob port (status reports, directory snapshots) with an S3 bucket, whatever `ports.adapter` is; `ports.blob.s3` is then required |
+| `ports.blob.s3.bucket` | (required) | the bucket, which must exist with public access blocked |
+| `ports.blob.s3.prefix` | (none) | a key prefix inside the bucket: objects are `<prefix>/reports/<target>` and `<prefix>/snapshots/<directory>` |
+| `ports.blob.s3.region` | the SDK's (`AWS_REGION`) | the bucket's region |
+| `ports.blob.s3.kmsKey` | (the bucket's default encryption) | a KMS key id, ARN or alias: every write asks for SSE-KMS under it |
+| `ports.blob.s3.endpoint`, `ports.blob.s3.pathStyle` | (AWS) | LocalStack or an S3-compatible store: its address, and path-style addressing |
+| `ports.sealer.adapter` | (the Sealer of `ports.adapter`) | `kms` replaces the Sealer port with AWS KMS; `ports.sealer.kms` is then required |
+| `ports.sealer.kms.keyId` | (required) | a key id, ARN or alias the data keys are wrapped under; the role needs `kms:Encrypt` and `kms:Decrypt` on it |
+| `ports.sealer.kms.region`, `ports.sealer.kms.endpoint` | the SDK's, AWS | the key's region; LocalStack's address |
 | `listen.address` | `:8080` | everything a browser and a relying party reach: discovery, the key set, the flows, the login page, and the console under `console.mount`. The chart takes the Service's and the routes' port from it, and refuses one outside 1-65535 |
 | `probes.address` | `:7070` | `/healthz`, `/readyz` |
 | `log.level` | `info` | `debug`, `info`, `warn`, `error` |

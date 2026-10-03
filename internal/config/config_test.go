@@ -354,3 +354,37 @@ func TestThePortsAdapterIsOneOfTheTwo(t *testing.T) {
 		t.Errorf("a controller refused the memory adapter: %v", err)
 	}
 }
+
+// `ports.blob` and `ports.sealer` each name one adapter and its settings, and
+// compose with any `ports.adapter`.
+func TestThePortsBlobAndSealerAreChecked(t *testing.T) {
+	good := minimalIssuer + `ports:
+  adapter: legacy
+  blob: {adapter: s3, s3: {bucket: b, prefix: ar, region: eu-west-1, kmsKey: alias/ar, endpoint: "http://localhost:4566", pathStyle: true}}
+  sealer: {adapter: kms, kms: {keyId: alias/ar, region: eu-west-1}}
+`
+	c, err := config.LoadServe(write(t, good))
+	if err != nil {
+		t.Fatalf("a Blob and a Sealer over the legacy State were refused: %v", err)
+	}
+	if c.Ports.Blob.S3.Bucket != "b" || !c.Ports.Blob.S3.PathStyle || c.Ports.Sealer.KMS.KeyID != "alias/ar" {
+		t.Errorf("decoded %+v %+v", c.Ports.Blob, c.Ports.Sealer)
+	}
+	for name, bad := range map[string]string{
+		"an unknown blob adapter":   "ports: {blob: {adapter: gcs}}\n",
+		"s3 with no settings":       "ports: {blob: {adapter: s3}}\n",
+		"s3 with no bucket":         "ports: {blob: {adapter: s3, s3: {prefix: x}}}\n",
+		"an unknown s3 key":         "ports: {blob: {adapter: s3, s3: {bucket: b, accessKey: x}}}\n",
+		"an unknown sealer adapter": "ports: {sealer: {adapter: vault}}\n",
+		"kms with no settings":      "ports: {sealer: {adapter: kms}}\n",
+		"kms with no key":           "ports: {sealer: {adapter: kms, kms: {region: eu-west-1}}}\n",
+		"a blob with no adapter":    "ports: {blob: {s3: {bucket: b}}}\n",
+	} {
+		if _, err := config.LoadServe(write(t, minimalIssuer+bad)); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := config.LoadControllerGitHub(write(t, "policyDir: /p\nconsoleURL: http://c:8080\nports: {blob: {adapter: s3, s3: {bucket: b}}}\n")); err != nil {
+		t.Errorf("a controller refused ports.blob: %v", err)
+	}
+}

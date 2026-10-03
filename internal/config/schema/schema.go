@@ -283,10 +283,44 @@ func serveSchema() m {
 
 // portsSchema is the `ports` section both kinds of file share.
 func portsSchema() m {
-	return obj("The adapter behind the storage ports (docs/design/ports.md).", m{
+	return obj("The adapters behind the storage ports (docs/design/ports.md).", m{
 		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.", "legacy",
 			"legacy", "memory"),
+		"blob":   portsBlobSchema(),
+		"sealer": portsSealerSchema(),
 	})
+}
+
+// portsBlobSchema is `ports.blob`: the Blob port's own adapter, which
+// replaces the one `ports.adapter` brings and composes with any of them.
+func portsBlobSchema() m {
+	s := obj("Replaces the Blob port (status reports, directory snapshots) with an adapter of its own, whatever `ports.adapter` is. Absent, the Blob is `ports.adapter`'s.", m{
+		"adapter": enum("`s3` keeps the blobs in an S3 bucket.", "", "s3"),
+		"s3": obj("Where the S3 adapter keeps its objects. Credentials are the platform's (EKS Pod Identity, IRSA, a Lambda role) and are never configured here.", m{
+			"bucket":    str("The bucket. It must exist, with public access blocked."),
+			"prefix":    str("A key prefix inside the bucket, for an installation that shares it. Names are `<prefix>/reports/<target>` and `<prefix>/snapshots/<directory>`."),
+			"region":    str("The bucket's region. Absent, the SDK's own resolution (`AWS_REGION`)."),
+			"kmsKey":    str("A KMS key id, ARN or alias for server-side encryption (SSE-KMS) of every write. Absent, the bucket's default encryption applies."),
+			"endpoint":  url("Overrides the S3 address: LocalStack or an S3-compatible store."),
+			"pathStyle": boolean("Addresses the bucket in the path and not the host name, which LocalStack and most S3-compatible stores need."),
+		}, "bucket"),
+	}, "adapter")
+	s["allOf"] = []any{m{"if": m{"properties": m{"adapter": m{"const": "s3"}}}, "then": m{"required": []string{"s3"}}}}
+	return s
+}
+
+// portsSealerSchema is `ports.sealer`.
+func portsSealerSchema() m {
+	s := obj("Replaces the Sealer port (wraps the data key of a sealed secret) with an adapter of its own, whatever `ports.adapter` is. Absent, the Sealer is `ports.adapter`'s.", m{
+		"adapter": enum("`kms` wraps data keys with AWS KMS.", "", "kms"),
+		"kms": obj("The key the KMS adapter wraps under. Credentials are the platform's and are never configured here. The role needs `kms:Encrypt` and `kms:Decrypt` on the key; every unwrap is a `kms:Decrypt` that CloudTrail records.", m{
+			"keyId":    str("A key id, key ARN or alias (`alias/name`)."),
+			"region":   str("The key's region. Absent, the SDK's own resolution (`AWS_REGION`)."),
+			"endpoint": url("Overrides the KMS address: LocalStack."),
+		}, "keyId"),
+	}, "adapter")
+	s["allOf"] = []any{m{"if": m{"properties": m{"adapter": m{"const": "kms"}}}, "then": m{"required": []string{"kms"}}}}
+	return s
 }
 
 func rosterProps(kind, mountDefault, recordsDefault string) m {

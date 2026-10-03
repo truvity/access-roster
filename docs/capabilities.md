@@ -28,10 +28,10 @@ release and what has landed since.
 | State: the ports' `legacy` adapter over that store (temporary, until the migration of [0031](decisions/0031-a-generic-migration-tool.md) has run) | 🧪 | — |
 | State: NATS JetStream KV | 📄 | — |
 | State: DynamoDB | — | 📄 |
-| Blob: S3 (reports, snapshots) | 📄 | 📄 |
+| Blob: S3 (reports, snapshots; `internal/port/s3blob`, `ports.blob`) | 🧪 | 🧪 |
 | Trigger: KV watch | 📄 | — |
 | Trigger: asynchronous invoke | — | 📄 |
-| Sealing: KMS | 📄 | 📄 |
+| Sealing: KMS (`internal/port/kmsseal`, `ports.sealer`) | 🧪 | 🧪 |
 | Sealing: OpenBao Transit | 📄 | — |
 | Sealing: mounted key | 📄 | — |
 | Inputs: mounted ConfigMaps and Secrets | ✅ | — |

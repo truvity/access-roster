@@ -153,8 +153,45 @@ type (
 
 	// Ports chooses the adapter behind the storage ports of
 	// docs/design/ports.md.
+	//
+	// Adapter picks the State, Index and Trigger (and, unless overridden below,
+	// the Blob and Sealer). Blob and Sealer each replace one port with an
+	// adapter that composes with any of them: State legacy with Blob s3 is
+	// valid.
 	Ports struct {
-		Adapter string `json:"adapter,omitempty"`
+		Adapter string       `json:"adapter,omitempty"`
+		Blob    *PortsBlob   `json:"blob,omitempty"`
+		Sealer  *PortsSealer `json:"sealer,omitempty"`
+	}
+
+	// PortsBlob names the adapter behind the Blob port.
+	PortsBlob struct {
+		Adapter string       `json:"adapter,omitempty"`
+		S3      *PortsBlobS3 `json:"s3,omitempty"`
+	}
+
+	// PortsBlobS3 is where the S3 Blob adapter keeps its objects. Credentials
+	// are the platform's (Pod Identity, IRSA, a Lambda role), never configured.
+	PortsBlobS3 struct {
+		Bucket    string `json:"bucket,omitempty"`
+		Prefix    string `json:"prefix,omitempty"`
+		Region    string `json:"region,omitempty"`
+		KMSKey    string `json:"kmsKey,omitempty"`
+		Endpoint  string `json:"endpoint,omitempty"`
+		PathStyle bool   `json:"pathStyle,omitempty"`
+	}
+
+	// PortsSealer names the adapter behind the Sealer port.
+	PortsSealer struct {
+		Adapter string          `json:"adapter,omitempty"`
+		KMS     *PortsSealerKMS `json:"kms,omitempty"`
+	}
+
+	// PortsSealerKMS is the key the KMS Sealer wraps data keys under.
+	PortsSealerKMS struct {
+		KeyID    string `json:"keyId,omitempty"`
+		Region   string `json:"region,omitempty"`
+		Endpoint string `json:"endpoint,omitempty"`
 	}
 
 	// GitHub is what the service knows of GitHub: whose CI it verifies and which

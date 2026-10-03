@@ -7,10 +7,11 @@ to [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md); thi
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
-**Status: the ports and two adapters are built; the target adapters are
-designed.** The interfaces, an in-memory adapter and a temporary `legacy` adapter
-exist ([Implementation status](#implementation-status)); NATS JetStream and
-DynamoDB do not. The running service still keeps its state as
+**Status: the ports and four adapters are built; the rest of the target adapters
+are designed.** The interfaces, an in-memory adapter, a temporary `legacy`
+adapter, an S3 Blob and a KMS Sealer exist
+([Implementation status](#implementation-status)); NATS JetStream and DynamoDB
+do not. The running service still keeps its state as
 described in [access-roster.md](access-roster.md#the-store) and
 [../operations/high-availability.md](../operations/high-availability.md). This
 page is what an adapter is built and tested against; the current layout stays
@@ -284,6 +285,66 @@ above in three ways, all small:
   it.
 - `Identity` is `Verify(token, audiences) (subject, error)`, the seam over the
   existing verifiers; the legacy adapter is the cluster's `TokenReview`.
+
+### The S3 Blob and the KMS Sealer
+
+Two adapters of one port each, in `internal/port/s3blob` and
+`internal/port/kmsseal`. They are chosen by `ports.blob` and `ports.sealer`,
+which replace the Blob and the Sealer of whatever `ports.adapter` brings, so
+State `legacy` with Blob `s3` is a valid pair and so is, later, State NATS with
+Blob S3 and Sealer KMS. Both take their credentials from the platform (Pod
+Identity, IRSA, a Lambda role): no key is configured. They are marked 🧪 in
+[../capabilities.md](../capabilities.md): they pass the conformance suite on
+LocalStack, and have not yet run against AWS.
+
+**S3 Blob.** One bucket and one key prefix; a name `reports/<target>` is the
+object `<prefix>/reports/<target>`.
+
+| Port operation | S3 | Maps to |
+|---|---|---|
+| `Read` | `GetObject`; the version is the ETag | `ErrNotFound` for `NoSuchKey`; a missing bucket is **not** `ErrNotFound` but `ErrUnavailable` |
+| `Write` | `PutObject`; the version is the new ETag | |
+| `WriteIfVersion` | `PutObject` with `If-Match: "<etag>"`, atomic in S3 | 412 (the ETag moved) and 409 (`ConditionalRequestConflict`, a concurrent conditional write) are `ErrConflict`; an absent object is `ErrNotFound` (a store that answers 412 for an absent key is told apart by a `HeadObject`) |
+| `Delete` | `DeleteObject`, which succeeds for an absent key | |
+| `List` | `ListObjectsV2` under the prefix, every page, sorted | |
+
+Without SSE-KMS an ETag is the MD5 of the body, so rewriting identical bytes
+keeps the version; as with the legacy adapter, a compare-and-swap cannot tell
+A, B, A from a blob that never moved, and nothing depends on it. `Replacer` is
+**not implemented**: S3 has no multi-object write, so replacing a family is not
+atomic, and the port's fallback (`Write` and `Delete`) is what a caller uses.
+`ReaderAll` is not implemented either: on S3 it is a listing and a `GET` per
+object, no cheaper than the caller doing it. The port has no create-if-absent
+for a blob, so `If-None-Match: *` is not used. `ports.blob.s3.kmsKey` asks for
+SSE-KMS on every write; the request checksum is sent only where an operation
+requires it, which keeps S3-compatible stores working.
+
+**KMS Sealer.** `port.Seal` generates the 32-byte data key itself and hands it to
+the Sealer, so the adapter uses `Encrypt`, not `GenerateDataKey`.
+
+- `Wrap(dataKey, binding)` is `kms:Encrypt` under the configured key with the
+  `EncryptionContext` `{"access-roster:binding": <binding>}`; `Wrapped.KeyID` is
+  the key ARN KMS reports and `Wrapped.Blob` the ciphertext.
+- `Unwrap` is `kms:Decrypt` with the same context and the configured key as
+  `KeyId`. A different binding, a ciphertext another key made, a disabled,
+  deleted-pending or unknown key, and an envelope whose key id is not the key
+  KMS used are `ErrUnwrap`; throttling, a missing permission and the network are
+  `ErrUnavailable`.
+- **There is no cache of unwrapped keys.** Every `Unwrap` is one `kms:Decrypt`
+  in CloudTrail, which is the audit of who opened which secret, and the port
+  allows no data key to outlive the call. A path that reads a sealed value per
+  request pays a KMS call for it.
+- Rotation of the key's material is KMS's own and transparent. Moving to another
+  key is a rewrap with the old key to read and the new to write, which this
+  adapter, holding one key, does not do on its own.
+
+**Conformance.** `porttest.RunGroups` runs the `blob/` and `sealing/` groups
+against each adapter: against a fake in `go test ./...`, and against LocalStack
+(S3, KMS) when `ACCESS_ROSTER_S3_URL` is set. `just test-s3` starts the pinned
+LocalStack with `docker run`; CI runs the same script
+(`hack/s3-conformance.sh`) as the `s3` job, which **fails if a test skipped or
+did not run**. It also runs the Blob suite with SSE-KMS on, and checks that KMS
+itself refuses a wrong binding and a foreign key.
 
 ### The in-memory adapter
 

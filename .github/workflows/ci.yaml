@@ -35,13 +35,40 @@ jobs:
       policy-conformance-strict: true
       recipes: '["build","test","lint","chart-lint","telemetry","archive-check","docs-check","leak-canary","audit-catalogue","ts","console"]'
 
+  # The S3 Blob and KMS Sealer adapters against a real S3 and KMS API. The image
+  # is pinned by digest (see `s3_image` in the Justfile, which `just test-s3`
+  # uses locally: keep the two equal). The script fails when a conformance test
+  # skipped or did not run, so an endpoint that stopped reaching the tests cannot
+  # turn this green.
+  s3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      s3:
+        image: localstack/localstack@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a
+        env:
+          SERVICES: s3,kms,sqs
+        ports: ["4566:4566"]
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      ACCESS_ROSTER_S3_URL: http://localhost:4566
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
+        with:
+          go-version-file: go.mod
+      - name: the adapters against LocalStack, and no skips
+        run: hack/s3-conformance.sh
+
   # Stable name for branch protection: the matrix reports as
   # "recipes / build" and so on, so a required context called "check"
   # would never arrive and every PR would hang waiting for it.
   check:
-    needs: recipes
+    needs: [recipes, s3]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: '[ "${{ needs.recipes.result }}" = "success" ]'
+      - run: '[ "${{ needs.recipes.result }}" = "success" ] && [ "${{ needs.s3.result }}" = "success" ]'

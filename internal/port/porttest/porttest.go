@@ -18,6 +18,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -94,6 +95,25 @@ var Assertions = []string{
 // Run runs every assertion against a fresh adapter each.
 func Run(t *testing.T, factory func(t *testing.T) Env) {
 	t.Helper()
+	run(t, factory, nil)
+}
+
+// RunGroups runs only the assertions whose name starts with one of the
+// prefixes (`blob/`, `sealing/`), for an adapter of one port. The adapter's
+// Env carries only that port; an assertion of another group is not run, and
+// nothing is skipped silently: a prefix that matches no assertion fails.
+func RunGroups(t *testing.T, factory func(t *testing.T) Env, prefixes ...string) {
+	t.Helper()
+	for _, prefix := range prefixes {
+		if !slices.ContainsFunc(Assertions, func(a string) bool { return strings.HasPrefix(a, prefix) }) {
+			t.Fatalf("RunGroups: no assertion starts with %q", prefix)
+		}
+	}
+	run(t, factory, prefixes)
+}
+
+func run(t *testing.T, factory func(t *testing.T) Env, groups []string) {
+	t.Helper()
 	known := map[string]bool{}
 	for _, name := range Assertions {
 		known[name] = true
@@ -135,16 +155,19 @@ func Run(t *testing.T, factory func(t *testing.T) Env) {
 		"identity/verify":                       identityVerify,
 	}
 	for _, name := range Assertions {
-		run, ok := tests[name]
+		test, ok := tests[name]
 		if !ok {
 			t.Fatalf("assertion %q has no test", name)
+		}
+		if groups != nil && !slices.ContainsFunc(groups, func(g string) bool { return strings.HasPrefix(name, g) }) {
+			continue
 		}
 		t.Run(name, func(t *testing.T) {
 			env := factory(t)
 			if reason, skip := env.Skips[name]; skip {
 				t.Skipf("SKIPPED by the adapter, not passed: %s", reason)
 			}
-			run(t, env)
+			test(t, env)
 		})
 	}
 }
