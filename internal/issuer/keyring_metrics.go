@@ -2,6 +2,7 @@ package issuer
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -18,6 +19,7 @@ const keyRingMeterName = "github.com/truvity/access-roster/issuer"
 type keyRingInstruments struct {
 	transitions metric.Int64Counter
 	published   metric.Int64Gauge
+	activeSince metric.Int64Gauge
 }
 
 func newKeyRingInstruments() keyRingInstruments {
@@ -27,8 +29,12 @@ func newKeyRingInstruments() keyRingInstruments {
 	transitions, _ := meter.Int64Counter("access_issuer.signing_key_transitions",
 		metric.WithDescription("Signing keys, by what just happened to them and their algorithm: seen, activated, retired."))
 	published, _ := meter.Int64Gauge("access_issuer.signing_keys_published",
-		metric.WithDescription("Keys currently published in the JWKS by this replica, signing or retiring."))
-	return keyRingInstruments{transitions: transitions, published: published}
+		metric.WithDescription("Keys currently published in the JWKS by this replica, signing or retiring, by algorithm."))
+	activeSince, _ := meter.Int64Gauge("access_issuer.signing_key.active_since_timestamp",
+		metric.WithUnit("s"),
+		metric.WithDescription("When the active signing key became active, as seconds since the Unix epoch, by algorithm. "+
+			"The first replica to see a key decides it, so it is the key's age in the installation, not its certificate's."))
+	return keyRingInstruments{transitions: transitions, published: published, activeSince: activeSince}
 }
 
 // recordTransition records one key crossing into seen, activated or
@@ -40,7 +46,14 @@ func (m keyRingInstruments) recordTransition(ctx context.Context, event, algorit
 		attribute.String("event", event), attribute.String("algorithm", algorithm)))
 }
 
-// recordPublished records how many keys are in the JWKS right now.
-func (m keyRingInstruments) recordPublished(ctx context.Context, count int64) {
-	m.published.Record(ctx, count)
+// recordPublished records how many keys of an algorithm are in the JWKS right
+// now. Per algorithm: every ring records, and an unlabelled gauge would be
+// whichever ring wrote last.
+func (m keyRingInstruments) recordPublished(ctx context.Context, algorithm string, count int64) {
+	m.published.Record(ctx, count, metric.WithAttributes(attribute.String("algorithm", algorithm)))
+}
+
+// recordActive records when the active key of an algorithm became active.
+func (m keyRingInstruments) recordActive(ctx context.Context, algorithm string, since time.Time) {
+	m.activeSince.Record(ctx, since.Unix(), metric.WithAttributes(attribute.String("algorithm", algorithm)))
 }

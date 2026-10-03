@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if .Values.controllerSlack.enabled }}
 {{- $cfg := .Values.controllerSlack.config }}
 {{- include "access-roster.rosterChecks" (dict "root" . "name" "controllerSlack" "cfg" $cfg "dir" "slack-roster") }}
@@ -184,3 +185,4 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
+{{ end -}}

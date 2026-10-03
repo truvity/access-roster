@@ -926,6 +926,380 @@
     }
   },
   "properties": {
+    "alerts": {
+      "additionalProperties": false,
+      "description": "Alert rules, rendered with `renders: alerts`.",
+      "properties": {
+        "clusterLabel": {
+          "description": "The label that names the cluster on a store that holds several.",
+          "type": "string"
+        },
+        "format": {
+          "description": "The kind of object.",
+          "enum": [
+            "vmrule",
+            "prometheusrule"
+          ]
+        },
+        "interval": {
+          "description": "How often the ruler evaluates the group.",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels on the rule object.",
+          "type": "object"
+        },
+        "name": {
+          "description": "The object's name. Empty: <release>-alerts.",
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The namespace access-roster runs in, whose series the rules read. Empty: the release's.",
+          "type": "string"
+        },
+        "objectNamespace": {
+          "description": "Where the rule object goes. Empty: the release's namespace.",
+          "type": "string"
+        },
+        "ruleLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Labels added to every rule, for Alertmanager routing, such as `k8s_cluster_name`.",
+          "type": "object"
+        },
+        "rules": {
+          "additionalProperties": false,
+          "description": "The rules.",
+          "properties": {
+            "issuer5xx": {
+              "additionalProperties": false,
+              "description": "The listener answers a share of its requests 5xx.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "minErrors": {
+                  "description": "The fewest 5xx in the window that count.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "ratio": {
+                  "description": "The share.",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "leaseLost": {
+              "additionalProperties": false,
+              "description": "Tick leases are lost repeatedly.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "losses": {
+                  "description": "Leases lost within `window` by one kind of target.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                },
+                "window": {
+                  "description": "The window, as a duration.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "noSigningKey": {
+              "additionalProperties": false,
+              "description": "No signing key is published.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "portErrors": {
+              "additionalProperties": false,
+              "description": "Storage port calls are failing.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "minErrors": {
+                  "description": "The fewest failures in the window that count.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "ratio": {
+                  "description": "The share of calls that failed.",
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "rateLimitLow": {
+              "additionalProperties": false,
+              "description": "GitHub's rate-limit budget is nearly spent.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "remaining": {
+                  "description": "Requests left under which the alert fires.",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "seatsShort": {
+              "additionalProperties": false,
+              "description": "An organisation has fewer free seats than invitations.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "signingKeyRotationStalled": {
+              "additionalProperties": false,
+              "description": "The active signing key is older than `maxAgeSeconds`.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "maxAgeSeconds": {
+                  "description": "The age, in seconds.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "tickFailing": {
+              "additionalProperties": false,
+              "description": "A target's ticks keep failing.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "failures": {
+                  "description": "Failed ticks of one target within `window`.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                },
+                "window": {
+                  "description": "The window, as a duration.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "tickStale": {
+              "additionalProperties": false,
+              "description": "A target has had no ok tick for `maxAgeSeconds`.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "maxAgeSeconds": {
+                  "description": "The age, in seconds.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "tokenLatency": {
+              "additionalProperties": false,
+              "description": "The token endpoint's p99 is over `thresholdSeconds`.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                },
+                "thresholdSeconds": {
+                  "description": "The p99, in seconds.",
+                  "maximum": 3600,
+                  "minimum": 0.001,
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "runbookBaseUrl": {
+          "description": "Where the runbook is; the alert's name, lower-cased, is the anchor. Empty renders no link.",
+          "type": "string"
+        },
+        "selector": {
+          "description": "Extra matchers for every series.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "audit": {
       "additionalProperties": false,
       "description": "The projected service-account token this service and the controllers present to the audit installation. The installation itself (`audit.writer` and the rest) is the `config`'s.",
@@ -995,6 +1369,36 @@
         },
         "resources": {
           "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "dashboards": {
+      "additionalProperties": false,
+      "description": "Grafana dashboards, rendered with `renders: dashboards`.",
+      "properties": {
+        "folder": {
+          "description": "The Grafana folder, for a sidecar that reads the folder annotation.",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra labels on each ConfigMap.",
+          "type": "object"
+        },
+        "namespace": {
+          "description": "Grafana's namespace. Empty: the release's.",
+          "type": "string"
+        },
+        "sidecarLabel": {
+          "description": "The label Grafana's sidecar selects ConfigMaps by.",
+          "type": "string"
+        },
+        "sidecarLabelValue": {
+          "description": "Its value.",
+          "type": "string"
         }
       },
       "type": "object"
@@ -1424,6 +1828,14 @@
     },
     "policy": {
       "type": "object"
+    },
+    "renders": {
+      "description": "What this release renders: `app`, the service and the controllers (the default); `alerts`, only the alert rules; `dashboards`, only the Grafana dashboard ConfigMaps. In the last two nothing else is rendered.",
+      "enum": [
+        "app",
+        "alerts",
+        "dashboards"
+      ]
     },
     "replicaCount": {
       "minimum": 1,

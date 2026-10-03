@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- /*
 One PushSecret per catalogue Slack App that carries `push`: the supported
 way one App's bot token leaves this service.
@@ -68,3 +69,4 @@ spec:
           property: bot_token
 {{- end }}
 {{- end }}
+{{ end -}}

@@ -344,3 +344,15 @@ migration.
 {{- define "access-roster.validateSecretManagers" -}}
 {{- if .Values.secretManagers }}{{ fail "secretManagers was removed in v1.30.0: delete this key from your values. To sign in to OpenBAO, use its own OIDC login (see docs/connect/openbao.md)." }}{{ end -}}
 {{- end -}}
+
+{{- /* Alert mode. A rule's labels: the routing labels the caller sets for every
+rule, then the rule's own severity, then anything the rule's `labels` adds. */ -}}
+{{- define "access-roster.ruleLabels" -}}
+{{- $l := mergeOverwrite (deepCopy (.root.Values.alerts.ruleLabels | default dict)) (dict "severity" .cfg.severity) (deepCopy (.cfg.labels | default dict)) -}}
+{{- toYaml $l -}}
+{{- end -}}
+{{- define "access-roster.runbook" -}}
+{{- with .root.Values.alerts.runbookBaseUrl -}}
+runbook_url: {{ printf "%s#%s" . (lower $.alert) | quote }}
+{{- end -}}
+{{- end -}}

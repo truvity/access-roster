@@ -1,0 +1,3 @@
+# `renders` names what the release is: app, alerts or dashboards.
+# error: at '/renders': value must be one of 'app', 'alerts', 'dashboards'
+renders: everything

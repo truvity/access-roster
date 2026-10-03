@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if .Values.githubApps.catalogue }}
 {{- /*
 `push` is dropped from every entry: it is a chart-side instruction to
@@ -22,3 +23,4 @@ data:
   catalogue.yaml: |
     {{- toYaml (dict "apps" $apps) | nindent 4 }}
 {{- end }}
+{{ end -}}

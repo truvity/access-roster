@@ -1,0 +1,5 @@
+# An unknown key under `dashboards` is refused, not ignored.
+# error: additional properties 'bogus' not allowed
+renders: dashboards
+dashboards:
+  bogus: 1

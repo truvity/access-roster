@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if .Values.networkPolicy.enabled }}
 # Ingress only. Everything with a browser arrives through the gateway;
 # these are the in-cluster callers — the proxies verifying tokens and the
@@ -58,3 +59,4 @@ spec:
         - port: {{ include "access-roster.port" . }}
     {{- end }}
 {{- end }}
+{{ end -}}

@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if not .Values.signingKey.existingSecret }}
 {{- include "access-roster.privateKey" (dict "spec" .Values.signingKey.certificate "path" "signingKey.certificate") }}
 # The signing key, issued by cert-manager.
@@ -79,3 +80,4 @@ spec:
     kind: {{ $extra.issuerKind | default "ClusterIssuer" | quote }}
     group: cert-manager.io
 {{- end }}
+{{ end -}}
