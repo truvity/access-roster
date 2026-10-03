@@ -365,7 +365,7 @@ what exists at each version, and releases are on the
 
 ```sh
 devbox shell        # or direnv: Go, buf, golangci-lint, helm, just, lefthook
-just check          # build, test, lint, chart-lint, archive-check, docs-check, leak-canary, audit-catalogue, ts
+just check          # build, test, lint, chart-lint, telemetry, archive-check, docs-check, leak-canary, audit-catalogue, ts
 just vuln           # govulncheck; separate from check — a new CVE must not turn it red
 just generate       # proto → gen/ after a contract change; the generated code is committed
 ```

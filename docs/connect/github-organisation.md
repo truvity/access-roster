@@ -168,7 +168,9 @@ on the previous policy has gone.
 
 The controller pushes metrics over OTLP when the platform sets
 `OTEL_EXPORTER_OTLP_ENDPOINT` on its pod: passes, changes, rows by state, seats, breaker trips, links by
-state and source. Nothing is exported without it.
+state and source, and the tick, lease and rate-limit series; traces carry a span per tick.
+Nothing is exported without it. The signals and their alerts are in
+[operations/telemetry.md](../operations/telemetry.md).
 
 **It needs to reach `api.github.com`**, and a default-deny egress policy
 has to allow it.

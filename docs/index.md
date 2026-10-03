@@ -33,6 +33,7 @@ yet know which of those you want.
 | deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md) (and [the configuration file](reference/configuration.md#the-configuration-file), with the [migration from environment variables](reference/configuration.md#migrating-from-environment-variables)), then [operations/connect-runbook.md](operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
 | run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
+| see what it publishes, alert on it, put it on a dashboard | [operations/telemetry.md](operations/telemetry.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |
 | put a console behind the gateway | [connect/console-app.md](connect/console-app.md) |
 | decide whether a console signs itself in or lets the gateway do it, then build the gateway shape | [connect/choosing-native-or-gateway-oidc.md](connect/choosing-native-or-gateway-oidc.md) |
