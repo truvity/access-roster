@@ -16,9 +16,11 @@ import (
 	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/port"
+	"github.com/truvity/access-roster/internal/port/kmsseal"
 	"github.com/truvity/access-roster/internal/port/legacy"
 	"github.com/truvity/access-roster/internal/port/memory"
 	"github.com/truvity/access-roster/internal/port/observe"
+	"github.com/truvity/access-roster/internal/port/s3blob"
 	"github.com/truvity/access-roster/internal/valkey"
 )
 
@@ -26,6 +28,13 @@ import (
 const (
 	AdapterLegacy = "legacy"
 	AdapterMemory = "memory"
+)
+
+// The adapters `ports.blob.adapter` and `ports.sealer.adapter` name. Each
+// replaces one port and composes with any `ports.adapter`.
+const (
+	BlobS3    = "s3"
+	SealerKMS = "kms"
 )
 
 // KubeNeed says how much a process needs the namespace's objects.
@@ -50,6 +59,62 @@ type Config struct {
 	// Valkey is where the shared cache is; an empty address is none.
 	Valkey valkey.Config
 	Kube   KubeNeed
+	// Blob and Sealer replace the port of the same name; nil keeps what
+	// Adapter brings.
+	Blob   *config.PortsBlob
+	Sealer *config.PortsSealer
+}
+
+// validatePorts refuses a Blob or Sealer the file names but this build has no
+// adapter for, or names without its settings. The schema says the same; this is
+// the check for a Config that was not read from a file.
+func (c Config) validatePorts() error {
+	if b := c.Blob; b != nil {
+		if b.Adapter != BlobS3 {
+			return fmt.Errorf("ports.blob.adapter: %q is not %q", b.Adapter, BlobS3)
+		}
+		if b.S3 == nil || b.S3.Bucket == "" {
+			return errors.New("ports.blob.s3.bucket: required with ports.blob.adapter: s3")
+		}
+	}
+	if s := c.Sealer; s != nil {
+		if s.Adapter != SealerKMS {
+			return fmt.Errorf("ports.sealer.adapter: %q is not %q", s.Adapter, SealerKMS)
+		}
+		if s.KMS == nil || s.KMS.KeyID == "" {
+			return errors.New("ports.sealer.kms.keyId: required with ports.sealer.adapter: kms")
+		}
+	}
+	return nil
+}
+
+// compose replaces the Blob and the Sealer the base adapter brought with the
+// ones configured. It runs before the set is observed, so the replacements are
+// timed and counted like every other port.
+func (c Config) compose(ctx context.Context, set port.Set, log *slog.Logger) (port.Set, error) {
+	if err := c.validatePorts(); err != nil {
+		return port.Set{}, err
+	}
+	if b := c.Blob; b != nil {
+		blob, err := s3blob.New(ctx, s3blob.Config{
+			Bucket: b.S3.Bucket, Prefix: b.S3.Prefix, Region: b.S3.Region, KMSKey: b.S3.KMSKey,
+			Endpoint: b.S3.Endpoint, PathStyle: b.S3.PathStyle,
+		})
+		if err != nil {
+			return port.Set{}, fmt.Errorf("ports.blob: %w", err)
+		}
+		set.Blob = blob
+		log.InfoContext(ctx, "blobs are kept in S3", "adapter", BlobS3, "bucket", b.S3.Bucket, "prefix", b.S3.Prefix)
+	}
+	if s := c.Sealer; s != nil {
+		sealer, err := kmsseal.New(ctx, kmsseal.Config{KeyID: s.KMS.KeyID, Region: s.KMS.Region, Endpoint: s.KMS.Endpoint})
+		if err != nil {
+			return port.Set{}, fmt.Errorf("ports.sealer: %w", err)
+		}
+		set.Sealer = sealer
+		log.InfoContext(ctx, "secrets are sealed by KMS", "adapter", SealerKMS)
+	}
+	return set, nil
 }
 
 // FromServe reads the configuration of `access-roster serve`.
@@ -58,6 +123,8 @@ func FromServe(f *config.Serve) (Config, error) {
 		Adapter: adapterOf(f.Ports),
 		Release: orDefault(f.Release, "access-roster"),
 		Valkey:  valkeyOf(f.Release, f.Valkey),
+		Blob:    blobOf(f.Ports),
+		Sealer:  sealerOf(f.Ports),
 	}
 	var err error
 	if c.Valkey.Password, err = secretOf(f.Valkey); err != nil {
@@ -84,7 +151,10 @@ func FromServe(f *config.Serve) (Config, error) {
 // FromRoster reads what the two controllers share. A controller's reports
 // and links are objects in its namespace, so it requires the cluster.
 func FromRoster(f *config.Roster) Config {
-	c := Config{Adapter: adapterOf(f.Ports), Release: orDefault(f.Release, "access-roster"), Kube: KubeRequired}
+	c := Config{
+		Adapter: adapterOf(f.Ports), Release: orDefault(f.Release, "access-roster"), Kube: KubeRequired,
+		Blob: blobOf(f.Ports), Sealer: sealerOf(f.Ports),
+	}
 	if c.Adapter == AdapterMemory {
 		c.Kube = KubeNone
 	}
@@ -96,6 +166,20 @@ func adapterOf(p *config.Ports) string {
 		return AdapterLegacy
 	}
 	return p.Adapter
+}
+
+func blobOf(p *config.Ports) *config.PortsBlob {
+	if p == nil {
+		return nil
+	}
+	return p.Blob
+}
+
+func sealerOf(p *config.Ports) *config.PortsSealer {
+	if p == nil {
+		return nil
+	}
+	return p.Sealer
 }
 
 func orDefault(value, fallback string) string {
@@ -207,7 +291,11 @@ func Open(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
 	case AdapterMemory:
 		log.WarnContext(ctx, "the storage ports are in memory: a restart loses every login in progress, "+
 			"snapshot and report", "adapter", AdapterMemory)
-		return &Stores{Ports: observe.Set(memory.New().Set()), Adapter: AdapterMemory, Usable: true}, nil
+		set, err := cfg.compose(ctx, memory.New().Set(), log)
+		if err != nil {
+			return nil, err
+		}
+		return &Stores{Ports: observe.Set(set), Adapter: AdapterMemory, Usable: true}, nil
 	case AdapterLegacy:
 		return openLegacy(ctx, cfg, log)
 	}
@@ -245,6 +333,11 @@ func openLegacy(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, err
 	// Observed once, here, where the adapter is chosen: every caller crosses
 	// the same seam, so every call is timed and counted without each of them
 	// knowing.
-	st.Ports = observe.Set(backend.Ports(legacy.Options{}))
+	set, err := cfg.compose(ctx, backend.Ports(legacy.Options{}), log)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
+	st.Ports = observe.Set(set)
 	return st, nil
 }

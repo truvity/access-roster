@@ -1,5 +1,17 @@
 ## Unreleased
 
+- **S3 Blob and KMS Sealer adapters.** `ports.blob: {adapter: s3, s3: {bucket,
+  prefix, region, kmsKey, endpoint, pathStyle}}` keeps the status reports and
+  directory snapshots in S3 (`WriteIfVersion` is an `If-Match` on the ETag), and
+  `ports.sealer: {adapter: kms, kms: {keyId, region, endpoint}}` wraps the data
+  keys of sealed secrets with AWS KMS (the binding is the EncryptionContext; no
+  unwrapped key is cached). Each replaces one port of whatever `ports.adapter`
+  brings, so the legacy State with an S3 Blob is valid. Credentials are the
+  platform's; no key is configured. Additive: an installation that sets neither
+  runs what it did. Both are experimental: they pass the conformance suite on
+  LocalStack (`just test-s3`, and the `s3` CI job, which fails on a skipped
+  test). See [docs/design/ports.md](docs/design/ports.md#the-s3-blob-and-the-kms-sealer).
+
 - **The access document.** A policy layer may be written as the lists an
   installation derives from its access matrix (`access`) plus the rows that are
   its own (`overlay`); `policy.ParseAccess` reshapes it into the layer, and

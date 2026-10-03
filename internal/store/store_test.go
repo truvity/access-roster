@@ -12,6 +12,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 
 	"github.com/truvity/access-roster/internal/config"
+	"github.com/truvity/access-roster/internal/port"
 	"github.com/truvity/access-roster/internal/store"
 )
 
@@ -130,6 +131,53 @@ func TestRequireSharedLease(t *testing.T) {
 		}
 		if c.refused && (!errors.Is(err, store.ErrLocalLease) || !strings.Contains(err.Error(), "B3")) {
 			t.Errorf("%s: the refusal does not say why: %v", name, err)
+		}
+	}
+}
+
+// A Blob or a Sealer composes with any State adapter: the legacy one with
+// no Valkey keeps what it had, and the two ports are the configured ones.
+func TestABlobAndASealerComposeWithTheLegacyState(t *testing.T) {
+	t.Setenv("AWS_ACCESS_KEY_ID", "test")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "test")
+	t.Setenv("AWS_REGION", "eu-west-1")
+	f := &config.Serve{IssuerURL: "https://i.example", Ports: &config.Ports{
+		Blob:   &config.PortsBlob{Adapter: "s3", S3: &config.PortsBlobS3{Bucket: "b", Endpoint: "http://127.0.0.1:1", PathStyle: true}},
+		Sealer: &config.PortsSealer{Adapter: "kms", KMS: &config.PortsSealerKMS{KeyID: "alias/ar", Endpoint: "http://127.0.0.1:1"}},
+	}}
+	cfg, err := store.FromServe(f)
+	if err != nil || cfg.Adapter != store.AdapterLegacy || cfg.Blob == nil || cfg.Sealer == nil {
+		t.Fatalf("FromServe = %+v, %v", cfg, err)
+	}
+	st, err := store.Open(context.Background(), cfg, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if st.Adapter != store.AdapterLegacy || st.Backend == nil {
+		t.Errorf("the State is no longer the legacy one: %+v", st)
+	}
+	// The port answers from S3, not from the legacy Blob: an unreachable
+	// endpoint is the store being down, where the legacy one has no Valkey
+	// and would answer ErrUnsupported or ErrNotFound.
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err = st.Ports.Blob.Read(ctx, "reports/x"); !errors.Is(err, port.ErrUnavailable) {
+		t.Errorf("Blob.Read = %v, want the S3 adapter's ErrUnavailable", err)
+	}
+	if _, err = st.Ports.Sealer.Wrap(ctx, []byte("k"), "b"); !errors.Is(err, port.ErrUnavailable) {
+		t.Errorf("Sealer.Wrap = %v, want the KMS adapter's ErrUnavailable", err)
+	}
+}
+
+func TestABlobOrSealerWithoutSettingsIsRefused(t *testing.T) {
+	for name, cfg := range map[string]store.Config{
+		"s3 with no bucket": {Adapter: store.AdapterMemory, Blob: &config.PortsBlob{Adapter: "s3"}},
+		"an unknown blob":   {Adapter: store.AdapterMemory, Blob: &config.PortsBlob{Adapter: "gcs"}},
+		"kms with no key":   {Adapter: store.AdapterMemory, Sealer: &config.PortsSealer{Adapter: "kms"}},
+	} {
+		if _, err := store.Open(context.Background(), cfg, quiet); err == nil {
+			t.Errorf("%s was accepted", name)
 		}
 	}
 }

@@ -75,7 +75,7 @@
     },
     "ports": {
       "additionalProperties": false,
-      "description": "The adapter behind the storage ports (docs/design/ports.md).",
+      "description": "The adapters behind the storage ports (docs/design/ports.md).",
       "properties": {
         "adapter": {
           "default": "legacy",
@@ -84,6 +84,132 @@
             "legacy",
             "memory"
           ]
+        },
+        "blob": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "adapter": {
+                    "const": "s3"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "s3"
+                ]
+              }
+            }
+          ],
+          "description": "Replaces the Blob port (status reports, directory snapshots) with an adapter of its own, whatever `ports.adapter` is. Absent, the Blob is `ports.adapter`'s.",
+          "properties": {
+            "adapter": {
+              "description": "`s3` keeps the blobs in an S3 bucket.",
+              "enum": [
+                "s3"
+              ]
+            },
+            "s3": {
+              "additionalProperties": false,
+              "description": "Where the S3 adapter keeps its objects. Credentials are the platform's (EKS Pod Identity, IRSA, a Lambda role) and are never configured here.",
+              "properties": {
+                "bucket": {
+                  "description": "The bucket. It must exist, with public access blocked.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "endpoint": {
+                  "$ref": "#/$defs/url",
+                  "description": "Overrides the S3 address: LocalStack or an S3-compatible store."
+                },
+                "kmsKey": {
+                  "description": "A KMS key id, ARN or alias for server-side encryption (SSE-KMS) of every write. Absent, the bucket's default encryption applies.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "pathStyle": {
+                  "description": "Addresses the bucket in the path and not the host name, which LocalStack and most S3-compatible stores need.",
+                  "type": "boolean"
+                },
+                "prefix": {
+                  "description": "A key prefix inside the bucket, for an installation that shares it. Names are `<prefix>/reports/<target>` and `<prefix>/snapshots/<directory>`.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "region": {
+                  "description": "The bucket's region. Absent, the SDK's own resolution (`AWS_REGION`).",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "bucket"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "adapter"
+          ],
+          "type": "object"
+        },
+        "sealer": {
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "adapter": {
+                    "const": "kms"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "kms"
+                ]
+              }
+            }
+          ],
+          "description": "Replaces the Sealer port (wraps the data key of a sealed secret) with an adapter of its own, whatever `ports.adapter` is. Absent, the Sealer is `ports.adapter`'s.",
+          "properties": {
+            "adapter": {
+              "description": "`kms` wraps data keys with AWS KMS.",
+              "enum": [
+                "kms"
+              ]
+            },
+            "kms": {
+              "additionalProperties": false,
+              "description": "The key the KMS adapter wraps under. Credentials are the platform's and are never configured here. The role needs `kms:Encrypt` and `kms:Decrypt` on the key; every unwrap is a `kms:Decrypt` that CloudTrail records.",
+              "properties": {
+                "endpoint": {
+                  "$ref": "#/$defs/url",
+                  "description": "Overrides the KMS address: LocalStack."
+                },
+                "keyId": {
+                  "description": "A key id, key ARN or alias (`alias/name`).",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "region": {
+                  "description": "The key's region. Absent, the SDK's own resolution (`AWS_REGION`).",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "keyId"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "adapter"
+          ],
+          "type": "object"
         }
       },
       "type": "object"
