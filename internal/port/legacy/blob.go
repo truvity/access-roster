@@ -28,8 +28,9 @@ type Blob struct {
 }
 
 var (
-	_ port.Blob     = (*Blob)(nil)
-	_ port.Replacer = (*Blob)(nil)
+	_ port.Blob      = (*Blob)(nil)
+	_ port.Replacer  = (*Blob)(nil)
+	_ port.ReaderAll = (*Blob)(nil)
 )
 
 // where is the object a blob name lives in: a Valkey key, or one entry of a
@@ -257,4 +258,27 @@ func (b *Blob) Replace(ctx context.Context, prefix string, objects map[string][]
 			data[strings.TrimPrefix(prefix, w.root)+name] = doc
 		}
 	}))
+}
+
+// ReadAll implements [port.ReaderAll]: a report family is one ConfigMap, so
+// every document is the one read the console's store makes today.
+func (b *Blob) ReadAll(ctx context.Context, prefix string) (map[string][]byte, error) {
+	w, err := b.locate(prefix)
+	if err != nil {
+		return nil, err
+	}
+	if w.entries == nil {
+		return nil, unsupported("only a report family is read whole")
+	}
+	all, err := w.entries.All(ctx)
+	if err != nil {
+		return nil, unavailable(err)
+	}
+	out := make(map[string][]byte, len(all))
+	for entry, doc := range all {
+		if name := w.root + entry; strings.HasPrefix(name, prefix) {
+			out[strings.TrimPrefix(name, prefix)] = []byte(doc)
+		}
+	}
+	return out, nil
 }

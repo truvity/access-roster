@@ -474,20 +474,6 @@ func revisionsStaleUpdate(t *testing.T, e Env) {
 	}
 }
 
-func next(t *testing.T, ch <-chan port.Event, what string) port.Event {
-	t.Helper()
-	select {
-	case ev, ok := <-ch:
-		if !ok {
-			t.Fatalf("the watch closed while waiting for %s", what)
-		}
-		return ev
-	case <-time.After(10 * time.Second):
-		t.Fatalf("no event for %s", what)
-	}
-	return port.Event{}
-}
-
 // expect reads events until one for key with the wanted kind arrives:
 // at-least-once, unordered across keys, so others are tolerated.
 func expect(t *testing.T, ch <-chan port.Event, key string, deleted bool, what string) {

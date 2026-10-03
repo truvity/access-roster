@@ -56,3 +56,4 @@ audit:
   queryURL: http://audit-query.access-issuer.svc:8080
   audience: audit
   forwardedForTrustedHops: 1
+ports: {adapter: legacy}

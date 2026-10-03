@@ -28,7 +28,7 @@ import (
 	"github.com/truvity/access-roster/internal/health"
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
-	"github.com/truvity/access-roster/internal/valkey"
+	"github.com/truvity/access-roster/internal/store"
 	"github.com/truvity/access-roster/internal/verify"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
@@ -60,7 +60,6 @@ type Config struct {
 	clustersPath      string
 	awsPath           string
 	consoleClientID   string
-	valkey            valkey.Config
 	audience          string
 	githubOwners      []string
 	consoleOrigin     string
@@ -146,18 +145,11 @@ func FromConfig(f *config.Serve) (Config, error) {
 			}
 		}
 	}
-	c.valkey = valkey.Config{Cluster: true, Prefix: c.release}
-	if v := f.Valkey; v != nil {
-		c.valkey.Address = v.Address
-		c.valkey.TLS = v.TLS
-		if v.Cluster != nil {
-			c.valkey.Cluster = *v.Cluster
-		}
-		if v.PasswordEnv != "" {
-			if c.valkey.Password, err = config.Secret(v.PasswordEnv); err != nil {
-				return Config{}, fmt.Errorf("valkey.passwordEnv: %w", err)
-			}
-		}
+	// What the storage ports need is read from the same file by [store.FromServe]
+	// at start; read here too so a bad value (an unset password variable)
+	// is refused with the rest of the configuration.
+	if _, err = store.FromServe(f); err != nil {
+		return Config{}, err
 	}
 	if k := f.SigningKey; k != nil {
 		c.signingKeyFile = k.File
@@ -292,6 +284,11 @@ func dur(d *config.Duration, fallback time.Duration) time.Duration {
 // client with no caller -- config that reads as a supported deployment
 // and is not one.
 type Deps struct {
+	// Stores is the storage ports, built once from configuration and shared
+	// with the directory half. Nil is a process with no shared state and no
+	// cluster: logins in progress are kept in this process, and recovery is
+	// off.
+	Stores *store.Stores
 	// Directory answers "who is this address", in this process.
 	Directory issuer.Directory
 	// Policy is the policy in force. Supplying it is how the merged
@@ -426,10 +423,11 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 
 	// The shared store first: the issuer's session index lives in it, so
 	// there is no issuer to build until it is open.
-	shared, err := openState(ctx, cfg, log)
-	if err != nil {
-		return nil, err
+	stores := deps.Stores
+	if stores == nil {
+		stores = &store.Stores{}
 	}
+	shared := openState(ctx, stores, log)
 
 	core := issuer.New(issuer.Config{
 		URL:              cfg.issuerURL,
@@ -492,7 +490,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	}
 	handler, err := issuer.HandlerWithSignIn(core, storage, issuer.SignInDeps{
 		Providers:     signIn,
-		Recovery:      openRecovery(ctx, cfg, log),
+		Recovery:      openRecovery(ctx, cfg, stores, log),
 		State:         access.NewStateCodec(key.Derive("access-roster/sign-in-state"), signInWindow),
 		ConsoleOrigin: cfg.consoleOrigin,
 		// Where an old /account bookmark is sent. Empty when this
@@ -549,7 +547,7 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	// reporting ready through that is how a moved Valkey became a
 	// fifteen-second hang at every callback on 2026-09-10.
 	healthMux := health.Mux(0, append([]health.Dependency{
-		health.Follow("the session store", shared),
+		health.Follow("the session store", stores.Readiness()),
 	}, deps.Ready...)...)
 
 	log.InfoContext(ctx, "access-roster assembled",
@@ -682,7 +680,7 @@ func clientSecrets(cfg Config, log *slog.Logger) func(string) (string, bool) {
 // nothing to build: unlike the hub, this service has no password shape to
 // fall back on, and inventing one would be inventing a standing
 // credential for a service whose whole point is not to hold any.
-func openRecovery(ctx context.Context, cfg Config, log *slog.Logger) issuer.Recovery {
+func openRecovery(ctx context.Context, cfg Config, st *store.Stores, log *slog.Logger) issuer.Recovery {
 	if !cfg.recoveryEnabled {
 		return nil
 	}
@@ -691,17 +689,16 @@ func openRecovery(ctx context.Context, cfg Config, log *slog.Logger) issuer.Reco
 			"a cluster, and this service is not running in one with an account and audience named")
 		return nil
 	}
-	client, err := kube.InCluster(cfg.release)
-	if err != nil {
-		log.WarnContext(ctx, "recovery could not be built", "error", err)
+	if st.Backend == nil || st.Backend.Kube == nil {
+		log.WarnContext(ctx, "recovery could not be built: the namespace's objects are not available")
 		return nil
 	}
-	namespace := client.Namespace()
+	namespace := st.Backend.Kube.Namespace()
 	log.InfoContext(ctx, "recovery sign-in is available: a token for this account signs in "+
 		"without a directory, and the policy's service_account matchers decide what it gets",
 		"namespace", namespace, "account", cfg.recoveryAccount, "audience", cfg.recoveryAudience)
 	return &issuer.TokenRecovery{
-		Review:    client.ReviewToken,
+		Review:    st.Ports.Identity.Verify,
 		Namespace: namespace,
 		Account:   cfg.recoveryAccount,
 		Audience:  cfg.recoveryAudience,
@@ -930,20 +927,16 @@ func readClient(cfg *Config) error {
 // redeems the code at a third. Each of those is a coin toss that looks
 // like an intermittent failure, so a deployment running more than one
 // replica without a Valkey is a mistake worth saying out loud.
-func openState(ctx context.Context, cfg Config, log *slog.Logger) (issuer.State, error) {
-	if cfg.valkey.Address == "" {
+func openState(ctx context.Context, st *store.Stores, log *slog.Logger) issuer.State {
+	if !st.Usable {
 		log.WarnContext(ctx, "keeping logins in progress in memory: correct for one replica, "+
 			"and at more than one a browser that comes back to a different pod finds nothing",
 			"state", "memory")
-		return issuer.NewMemoryState(), nil
+		return issuer.NewMemoryState()
 	}
-	shared, err := valkey.OpenState(ctx, cfg.valkey)
-	if err != nil {
-		return nil, err
-	}
-	log.InfoContext(ctx, "sharing logins in progress",
-		"state", "valkey", "address", cfg.valkey.Address, "cluster", cfg.valkey.Cluster)
-	return shared, nil
+	log.InfoContext(ctx, "keeping logins in progress in the state ports",
+		"state", st.Name(), "adapter", st.Adapter)
+	return issuer.NewPortState(st.Ports.State, st.Ports.Index)
 }
 
 // openVerifiers builds what can turn somebody else's token into a proof.

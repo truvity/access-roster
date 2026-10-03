@@ -152,6 +152,13 @@ type Replacer interface {
 	Replace(ctx context.Context, prefix string, objects map[string][]byte) error
 }
 
+// ReaderAll is an optional Blob capability: every object under a prefix
+// (name relative to the prefix) in one read, for an adapter where that is one
+// request instead of one per object.
+type ReaderAll interface {
+	ReadAll(ctx context.Context, prefix string) (map[string][]byte, error)
+}
+
 // Trigger turns "this target has work" into a tick without a poll. A
 // notification is a hint and may be duplicated or lost; the lease and the
 // periodic backstop make both harmless.

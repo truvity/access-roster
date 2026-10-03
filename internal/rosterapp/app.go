@@ -35,6 +35,7 @@ import (
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/issuerapp"
 	"github.com/truvity/access-roster/internal/server"
+	"github.com/truvity/access-roster/internal/store"
 )
 
 // Config is both halves' configuration. Both are built from the one file the
@@ -43,6 +44,8 @@ import (
 type Config struct {
 	Directory app.Config
 	Issuer    issuerapp.Config
+	// Stores says which adapter backs the storage ports and how to reach it.
+	Stores store.Config
 }
 
 // LogLevel is the level the process should log at. It is the issuer's,
@@ -70,13 +73,18 @@ func FromConfig(f *config.Serve) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{Directory: directory, Issuer: issuer}, nil
+	stores, err := store.FromServe(f)
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{Directory: directory, Issuer: issuer, Stores: stores}, nil
 }
 
 // App is the assembled service.
 type App struct {
 	directory *app.App
 	issuer    *issuerapp.App
+	stores    *store.Stores
 	log       *slog.Logger
 }
 
@@ -94,6 +102,7 @@ func (a *App) Close() {
 	if a.directory != nil {
 		a.directory.Close()
 	}
+	a.stores.Close()
 }
 
 // New assembles the service. The directory half is built first: the
@@ -103,14 +112,21 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	directory, err := app.New(ctx, cfg.Directory, log)
+	// The storage ports are built once, here, and handed to both halves.
+	stores, err := store.Open(ctx, cfg.Stores, log)
 	if err != nil {
+		return nil, err
+	}
+	directory, err := app.New(ctx, cfg.Directory, stores, log)
+	if err != nil {
+		stores.Close()
 		return nil, err
 	}
 	// Freshness stays the hub's own decision, which is why no maximum age
 	// is passed: a login that forced a live read on every sign-in would
 	// turn one corporate directory's slowness into everybody's.
 	deps := issuerapp.Deps{
+		Stores:    stores,
 		Directory: hublocal.New(directory.Hub(), 0),
 		Console:   directory.ConsoleHandler(),
 		Ready:     []health.Dependency{directory.Readiness()},
@@ -157,6 +173,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	assembled, err := issuerapp.New(ctx, cfg.Issuer, deps, log)
 	if err != nil {
 		directory.Close()
+		stores.Close()
 		return nil, err
 	}
 	// The console's Audit page reads the audit installation's query
@@ -167,6 +184,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 		target, err := url.Parse(queryURL)
 		if err != nil || target.Scheme == "" || target.Host == "" {
 			directory.Close()
+			stores.Close()
 			return nil, fmt.Errorf("access-roster: audit.queryURL %q is not a URL", queryURL)
 		}
 		directory.ConsoleServer().UseAuditQuery(&server.AuditQuery{
@@ -176,7 +194,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	}
 	log.InfoContext(ctx, "access-roster assembled as one service: a login makes no network "+
 		"call except to the corporate directory")
-	return &App{directory: directory, issuer: assembled, log: log}, nil
+	return &App{directory: directory, issuer: assembled, stores: stores, log: log}, nil
 }
 
 // Run serves the listeners and drives the directory's loops until the

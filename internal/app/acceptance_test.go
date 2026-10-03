@@ -15,6 +15,7 @@ import (
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/app"
 	"github.com/truvity/access-roster/internal/config"
+	"github.com/truvity/access-roster/internal/store"
 )
 
 // issuerFile is the service's configuration file as a test states it: the
@@ -37,15 +38,31 @@ func issuerFile(t *testing.T, change ...func(*config.Serve)) *config.Serve {
 	return f
 }
 
+// openStores builds the storage ports the way the service does, from the file.
+func openStores(t *testing.T, f *config.Serve) *store.Stores {
+	t.Helper()
+	sc, err := store.FromServe(f)
+	if err != nil {
+		t.Fatalf("store.FromServe: %v", err)
+	}
+	st, err := store.Open(context.Background(), sc, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(st.Close)
+	return st
+}
+
 // boot assembles a hub the way a deployment would: from the configuration
 // file's settings, which is the contract the chart writes to.
 func boot(t *testing.T, change ...func(*config.Serve)) *app.App {
 	t.Helper()
-	cfg, err := app.FromConfig(issuerFile(t, change...))
+	f := issuerFile(t, change...)
+	cfg, err := app.FromConfig(f)
 	if err != nil {
 		t.Fatalf("FromConfig: %v", err)
 	}
-	assembled, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	assembled, err := app.New(context.Background(), cfg, openStores(t, f), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -319,11 +336,12 @@ apps:
         repositories: ["*"]
         permissions: {contents: read}
 `)
-	cfg, err := app.FromConfig(issuerFile(t, withCatalogue(grant)))
+	f := issuerFile(t, withCatalogue(grant))
+	cfg, err := app.FromConfig(f)
 	if err != nil {
 		t.Fatalf("FromConfig: %v", err)
 	}
-	if assembled, err := app.New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
+	if assembled, err := app.New(context.Background(), cfg, openStores(t, f), slog.New(slog.NewTextHandler(io.Discard, nil))); err == nil {
 		assembled.Close()
 		t.Error("a grant to a group the policy does not declare was accepted")
 	} else if !strings.Contains(err.Error(), "nobody:declares:this") {

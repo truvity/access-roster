@@ -183,6 +183,7 @@ func serveSchema() m {
 		"log":           logLevel(),
 		"store": enum("Where what an operator connected is kept: `memory` keeps nothing (a restart is a fresh installation), `kubernetes` keeps it in this namespace.", "memory",
 			"memory", "kubernetes"),
+		"ports":            portsSchema(),
 		"policyDir":        str("The directory the policy is mounted at. Unset is the built-in two groups, or the demonstration policy under `demo`."),
 		"overlayFile":      str("The file of declared workspaces, mounted."),
 		"publicURL":        m{"$ref": "#/$defs/url", "description": "Where a browser reaches the console, including its mount. The admin-consent redirect URI and the values the setup steps show are built from it. Default http://localhost:8081."},
@@ -280,6 +281,14 @@ func serveSchema() m {
 		})
 }
 
+// portsSchema is the `ports` section both kinds of file share.
+func portsSchema() m {
+	return obj("The adapter behind the storage ports (docs/design/ports.md).", m{
+		"adapter": enum("`legacy` keeps state where it has always been kept: the namespace's ConfigMaps and Secrets and, when `valkey` is set, Valkey. `memory` keeps all of it in this process, which a restart loses: for a local run and the demonstration, and not with `store: kubernetes` or `valkey`.", "legacy",
+			"legacy", "memory"),
+	})
+}
+
 func rosterProps(kind, mountDefault, recordsDefault string) m {
 	return m{
 		"release":    strDefault("The name the installation's objects carry. It must be the release's full name: the controller reads the report and the records the service writes under it.", "access-roster"),
@@ -289,6 +298,7 @@ func rosterProps(kind, mountDefault, recordsDefault string) m {
 		"recordsDir": strDefault("The console's records, mounted.", recordsDefault),
 		"interval":   duration("How long between passes. Positive.", "15m"),
 		"log":        logLevel(),
+		"ports":      portsSchema(),
 		"audit": obj("The audit installation the controller records to, as its own workload. Unset only logs what it did.", m{
 			"writer":    url("The installation's receiver."),
 			"tokenFile": str("This workload's projected service-account token."),

@@ -154,6 +154,35 @@
   object names (`<full name>-github-roster`, `-slack-roster`), every path the
   chart mounts under `/var/run/...`, and the telemetry service names.
 
+- **The storage ports of `docs/design/ports.md` exist in the code, behind
+  today's storage, and the apps depend on them.** No data moves, the same
+  objects and keys are written, and nothing behaves differently. A new package,
+  `internal/port`, defines `State`, `Blob`, `Trigger`, `Sealer` and `Identity`
+  (the audit sink stays `audit.Recorder`); `internal/port/memory` implements
+  all of them for tests and the demonstration; and `internal/port/legacy` is a
+  temporary adapter that implements them by reaching the ConfigMaps, Secrets and
+  Valkey keys the service writes today, byte for byte (`gh.org.<org>` is the
+  `<release>-github-orgs` entry, `snapshots/<workspace>` and `lease.<kind>:<workspace>`
+  are the Valkey keys the hub has always used, `reports/github/` and
+  `reports/slack/` are the two status ConfigMaps). A key of the layout that has
+  no object of its own today (`ses.`, `sid.`, `ws.`, `gh.link.`, ...) is refused
+  as unsupported rather than written somewhere else. The gaps are listed in
+  [design/ports.md](docs/design/ports.md#implementation-status): a revision is
+  a digest of the stored bytes, `Watch` polls, and the legacy `Sealer` refuses.
+  The issuer's logins in progress, the hub's snapshots and refresh lease, the
+  controllers' reports and the cluster `TokenReview` now go through the ports;
+  the ConfigMap and Secret domain stores of a connected workspace, an
+  organisation's credential and a person's link stay behind their own
+  interfaces until the data moves. A new `ports.adapter` key (`legacy`, the
+  default, or `memory`) in the `serve` and controller files chooses the adapter;
+  `memory` keeps all state in the process and is refused with `store: kubernetes`
+  or `valkey.address`. `internal/port/porttest` is the conformance suite (CAS
+  races, TTL visibility, lease takeover, prefix paging, revisions, watch, limits,
+  blobs, sealing, identity) that both adapters pass, with each assertion the
+  legacy adapter cannot meet skipped by name and reason. A test fails the build
+  if a business package imports `internal/kube`, `internal/valkey` or the legacy
+  adapter. `valkey.Snapshots` is gone: its encoding moved to the hub, unchanged.
+
 ## v1.52.3
 
 - **The GitHub controller waits out a rate limit instead of failing the
