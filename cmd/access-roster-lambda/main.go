@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/truvity/access-roster/internal/lambdaext"
+	"github.com/truvity/observability/lambdaext"
 )
 
 func main() { os.Exit(run()) }
