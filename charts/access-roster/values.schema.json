@@ -1945,6 +1945,70 @@
           "additionalProperties": false,
           "description": "The rules.",
           "properties": {
+            "exportFailing": {
+              "additionalProperties": false,
+              "description": "An export's copy keeps failing.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "failures": {
+                  "description": "Failed attempts of one export within `window`.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                },
+                "window": {
+                  "description": "The window, as a duration.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "exportStale": {
+              "additionalProperties": false,
+              "description": "An export has not had its copy in the store for `maxAgeSeconds`.",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "for": {
+                  "description": "How long the condition holds before the alert fires, as a duration.",
+                  "type": "string"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Labels added to this rule only.",
+                  "type": "object"
+                },
+                "maxAgeSeconds": {
+                  "description": "The age, in seconds.",
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "severity": {
+                  "description": "The severity label.",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
             "issuer5xx": {
               "additionalProperties": false,
               "description": "The listener answers a share of its requests 5xx.",
@@ -2548,6 +2612,37 @@
             "type": "object"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "exports": {
+      "additionalProperties": false,
+      "description": "What the chart mounts for the service's exports (docs/decisions/0033): the CA that signs OpenBao's certificate and the projected token the login presents. What is copied and where (`config.exports`), and the OpenBao it is copied to and how the service logs in to it (`config.ports.export`), are the `config`'s.",
+      "properties": {
+        "openbao": {
+          "additionalProperties": false,
+          "properties": {
+            "caBundle": {
+              "description": "PEM of the authorities that sign OpenBao's certificate. Rendered into a ConfigMap and mounted at /var/run/access-issuer/openbao-ca/ca.pem, which `config.ports.export.openbao.caFile` must then be. Empty mounts nothing, and the system's authorities are trusted.",
+              "type": "string"
+            },
+            "token": {
+              "additionalProperties": false,
+              "properties": {
+                "audience": {
+                  "description": "The audience of a ServiceAccount token the chart projects at /var/run/openbao/token, for the `jwt` auth method (`config.ports.export.openbao.auth.tokenFile` must then be that path). Empty projects nothing: the `kubernetes` method reads the pod's own ServiceAccount token.",
+                  "type": "string"
+                },
+                "expirationSeconds": {
+                  "minimum": 600,
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"

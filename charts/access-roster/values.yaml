@@ -159,6 +159,25 @@ alerts:
       minErrors: 5
       for: 10m
       labels: {}
+    exportFailing:
+      enabled: true
+      severity: warning
+      # This many failed attempts of ONE export within `window`, held for `for`.
+      # A failed copy is retried with backoff (5s up to 5m), so a store that is
+      # down shows as a failure every few minutes. A warning, not a page: the
+      # copy is stale and nothing live changes.
+      failures: 3
+      window: 30m
+      for: 15m
+      labels: {}
+    exportStale:
+      enabled: true
+      severity: warning
+      # No ok attempt of an export for this long: 3h is two missed hourly
+      # refreshes and the one that should have followed.
+      maxAgeSeconds: 10800
+      for: 10m
+      labels: {}
 
 # Grafana dashboards, rendered only with `renders: dashboards`: one ConfigMap
 # per file in dashboards/, labelled for Grafana's sidecar. Install it into the
@@ -342,7 +361,10 @@ directory:
   # restart -- writing the good value back is not enough on its own.
 
   # A SECOND COPY OF THE WORKSPACE CREDENTIAL, for recovery. Off unless
-  # written out.
+  # written out. DEPRECATED, with every `push` below: it needs
+  # `config.store: kubernetes`. On a State adapter the service copies it
+  # itself, into OpenBao: `config.exports` with `source: bundle` (see `exports`
+  # below and docs/decisions/0033).
   #
   #   push:
   #     secretStore: {name: openbao, kind: ClusterSecretStore}
@@ -788,7 +810,8 @@ githubApps:
   #       secretStore: {name: example-store, kind: SecretStore}
   #       remoteKey: platform/github-apps/iac
   #
-  # `push` is the one way a credential leaves this service. External
+  # `push` is DEPRECATED (a State adapter uses `config.exports`, source
+  # `github-app`). It is the one way a credential leaves this service. External
   # Secrets copies exactly the App's three property keys -- the id, the
   # installation id and the private key, never the whole Secret -- to the
   # store and path the entry names, for a consumer that cannot ask the
@@ -825,7 +848,8 @@ githubApps:
   # adds a key, and a per-key mapping written today would not carry it.
   # (absent by default — the block above is the shape)
 
-# A SECOND COPY OF THE SLACK STATE, for recovery. Off unless written out,
+# A SECOND COPY OF THE SLACK STATE, for recovery. DEPRECATED with the other
+# `push` values: it needs `config.store: kubernetes`. Off unless written out,
 # same shape as `directory.push` and `githubApps.push`, with one more key:
 #
 #   slackState:
@@ -887,7 +911,8 @@ slackState: {}
 #       secretStore: {name: example-store, kind: SecretStore}
 #       remoteKey: platform/slack-apps/sync
 #
-# `push` copies exactly the App's bot token -- one key, never the client
+# `push` is DEPRECATED (a State adapter uses `config.exports`, source
+# `slack-app`). It copies exactly the App's bot token -- one key, never the client
 # secret, never the record -- to the store and path the entry names, for a
 # program that acts in the workspace as the bot and cannot ask the service
 # at the moment it runs. What it writes is a REAL credential: a second
@@ -924,6 +949,34 @@ audit:
   token:
     audience: audit
     expirationSeconds: 3600
+
+# What the chart mounts for the service's exports: copies of the secrets the
+# console keeps (a Slack App's bot token, the runner Apps, the recovery
+# bundles), made into OpenBao by the service itself, asynchronously and never
+# as a dependency (docs/decisions/0033). WHAT is copied is `config.exports`;
+# WHERE, and how the service logs in, is `config.ports.export`. This is the
+# part that is not config: a CA bundle and a projected token, mounted where
+# the config's `caFile` and `auth.tokenFile` must say (the chart refuses
+# another path).
+#
+# These replace `slackApps[].push`, `directory.push`, `githubApps.push` and
+# `githubApps.catalogue[].push` for a deployment that keeps its state in a
+# State adapter (`config.ports.adapter`), which is the only one that has no
+# Kubernetes Secrets for a PushSecret to read. The `push` values stay for the
+# `legacy` storage and are deprecated.
+exports:
+  openbao:
+    # PEM of the authorities that sign OpenBao's certificate. Empty mounts
+    # nothing, and the system's are trusted. Mounted at
+    # /var/run/access-issuer/openbao-ca/ca.pem.
+    caBundle: ""
+    # A ServiceAccount token projected at /var/run/openbao/token, for the
+    # `jwt` auth method: its audience is the one the role's `bound_audiences`
+    # names. Empty projects nothing, which is what the `kubernetes` method
+    # wants (it reads the pod's own token).
+    token:
+      audience: ""
+      expirationSeconds: 3600
 
 resources: {}
 podAnnotations: {}
