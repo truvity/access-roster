@@ -54,21 +54,24 @@ test: console
 # test. Keep it equal to the image in .github/workflows/ci.yaml.
 s3_image := "localstack/localstack@sha256:3ebc37595918b8accb852f8048fef2aff047d465167edd655528065b07bc364a"
 
-# The S3 Blob and KMS Sealer adapters against LocalStack, started with `docker
-# run` (no testcontainers) and removed afterwards. Not part of `check`, which
-# needs nothing but the checkout; CI runs it as its own job. It fails if the
-# conformance tests skipped (hack/s3-conformance.sh).
+# The S3 Blob, KMS Sealer and DynamoDB State adapters against LocalStack, started
+# with `docker run` (no testcontainers) and removed afterwards. Not part of
+# `check`, which needs nothing but the checkout; CI runs it as its own job. It
+# fails if the conformance tests skipped (hack/s3-conformance.sh,
+# hack/dynamodb-conformance.sh).
 test-s3:
     #!/usr/bin/env bash
     set -euo pipefail
-    docker rm -f access-roster-s3 >/dev/null 2>&1 || true
-    docker run -d --name access-roster-s3 -p 4566:4566 -e SERVICES=s3,kms,sqs {{s3_image}} >/dev/null
-    trap 'docker rm -f access-roster-s3 >/dev/null 2>&1 || true' EXIT
+    # A name of its own: other checkouts run LocalStack too.
+    docker rm -f access-roster-s3-dynamodb >/dev/null 2>&1 || true
+    docker run -d --name access-roster-s3-dynamodb -p 4566:4566 -e SERVICES=s3,kms,sqs,dynamodb {{s3_image}} >/dev/null
+    trap 'docker rm -f access-roster-s3-dynamodb >/dev/null 2>&1 || true' EXIT
     for i in $(seq 1 40); do
         curl -sf -m 3 http://localhost:4566/_localstack/health >/dev/null 2>&1 && break
         sleep 3
     done
     ACCESS_ROSTER_S3_URL=http://localhost:4566 hack/s3-conformance.sh
+    ACCESS_ROSTER_DYNAMODB_URL=http://localhost:4566 hack/dynamodb-conformance.sh
 
 # Run linters. `config verify` first: `run` accepts unknown top-level keys
 # silently, so a settings block in the wrong place is otherwise invisible.

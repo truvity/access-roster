@@ -8,6 +8,11 @@ runtime never move in the same step**. This page is the first step: today's
 ConfigMaps, Secrets and Valkey to a NATS JetStream bucket, with every login kept
 alive. The same command, with the two files the other way round, is the rollback.
 
+A side may also be a DynamoDB table (`ports.adapter: dynamodb`), as a destination
+or a source: the exporters read its sessions with their lifetimes left, so NATS to
+DynamoDB, the third step of the order, is the same command with the two files, and
+so is its rollback.
+
 ## What it does
 
 ```

@@ -3,8 +3,8 @@
 //
 // Everything else names the interfaces of internal/port. The adapter is
 // chosen by the `ports.adapter` key of the configuration file: `legacy`
-// (the default, today's ConfigMaps, Secrets and Valkey, unchanged) or
-// `memory`.
+// (the default, today's ConfigMaps, Secrets and Valkey, unchanged), `memory`,
+// `nats` or `dynamodb`.
 package store
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/truvity/access-roster/internal/config"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/port"
+	dynamoport "github.com/truvity/access-roster/internal/port/dynamodb"
 	"github.com/truvity/access-roster/internal/port/kmsseal"
 	"github.com/truvity/access-roster/internal/port/legacy"
 	"github.com/truvity/access-roster/internal/port/memory"
@@ -30,6 +31,9 @@ const (
 	AdapterLegacy = "legacy"
 	AdapterMemory = "memory"
 	AdapterNATS   = "nats"
+	// AdapterDynamoDB keeps State, the session index and the trigger in one
+	// DynamoDB table.
+	AdapterDynamoDB = "dynamodb"
 )
 
 // The adapters `ports.blob.adapter` and `ports.sealer.adapter` name. Each
@@ -67,6 +71,8 @@ type Config struct {
 	Sealer *config.PortsSealer
 	// NATS is the bucket of the `nats` adapter.
 	NATS natsport.Config
+	// DynamoDB is the table of the `dynamodb` adapter.
+	DynamoDB dynamoport.Config
 }
 
 // validatePorts refuses a Blob or Sealer the file names but this build has no
@@ -130,10 +136,12 @@ func FromServe(f *config.Serve) (Config, error) {
 		Blob:    blobOf(f.Ports),
 		Sealer:  sealerOf(f.Ports),
 		NATS:    natsOf(f.Ports),
+
+		DynamoDB: dynamoOf(f.Ports),
 	}
 	var err error
-	if c.Adapter == AdapterNATS && f.Valkey != nil && f.Valkey.Address != "" {
-		return Config{}, errors.New("ports.adapter: nats holds the shared state, so it cannot be combined with valkey.address")
+	if (c.Adapter == AdapterNATS || c.Adapter == AdapterDynamoDB) && f.Valkey != nil && f.Valkey.Address != "" {
+		return Config{}, fmt.Errorf("ports.adapter: %s holds the shared state, so it cannot be combined with valkey.address", c.Adapter)
 	}
 	if c.Valkey.Password, err = secretOf(f.Valkey); err != nil {
 		return Config{}, err
@@ -161,7 +169,7 @@ func FromServe(f *config.Serve) (Config, error) {
 func FromRoster(f *config.Roster) Config {
 	c := Config{
 		Adapter: adapterOf(f.Ports), Release: orDefault(f.Release, "access-roster"), Kube: KubeRequired,
-		Blob: blobOf(f.Ports), Sealer: sealerOf(f.Ports), NATS: natsOf(f.Ports),
+		Blob: blobOf(f.Ports), Sealer: sealerOf(f.Ports), NATS: natsOf(f.Ports), DynamoDB: dynamoOf(f.Ports),
 	}
 	if c.Adapter == AdapterMemory {
 		c.Kube = KubeNone
@@ -181,6 +189,16 @@ func natsOf(p *config.Ports) natsport.Config {
 		TokenFile: n.TokenFile, CredsFile: n.CredsFile, CAFile: n.CAFile,
 		NoCreate: n.Create != nil && !*n.Create,
 	}
+}
+
+// dynamoOf reads the table's settings; dynamoport.Open refuses an incomplete
+// set, naming it, when the adapter is the chosen one.
+func dynamoOf(p *config.Ports) dynamoport.Config {
+	if p == nil || p.DynamoDB == nil {
+		return dynamoport.Config{}
+	}
+	d := p.DynamoDB
+	return dynamoport.Config{Table: d.Table, Region: d.Region, Endpoint: d.Endpoint, Create: d.Create}
 }
 
 func adapterOf(p *config.Ports) string {
@@ -264,6 +282,8 @@ func (s *Stores) Name() string {
 	switch {
 	case s.Adapter == AdapterNATS:
 		return "nats"
+	case s.Adapter == AdapterDynamoDB:
+		return "dynamodb"
 	case s.Shared:
 		return "valkey"
 	default:
@@ -327,8 +347,10 @@ func Open(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
 		return openLegacy(ctx, cfg, log)
 	case AdapterNATS:
 		return openNATS(ctx, cfg, log)
+	case AdapterDynamoDB:
+		return openDynamoDB(ctx, cfg, log)
 	}
-	return nil, fmt.Errorf("ports.adapter: %q is none of %q, %q, %q", cfg.Adapter, AdapterLegacy, AdapterMemory, AdapterNATS)
+	return nil, fmt.Errorf("ports.adapter: %q is none of %q, %q, %q, %q", cfg.Adapter, AdapterLegacy, AdapterMemory, AdapterNATS, AdapterDynamoDB)
 }
 
 // openNATS holds State, the session index and the trigger in the bucket.
@@ -367,6 +389,43 @@ func openNATS(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error
 	st.Ports = observe.Set(set)
 	log.InfoContext(ctx, "keeping state in NATS JetStream", "adapter", AdapterNATS,
 		"bucket", cfg.NATS.Bucket, "serverTTL", bucket.ServerTTL())
+	return st, nil
+}
+
+// openDynamoDB holds State, the session index and the trigger in the table,
+// and takes Blob, Sealer and Identity from the legacy adapter exactly as the
+// NATS adapter does.
+func openDynamoDB(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
+	backend := &legacy.Backend{}
+	st := &Stores{Backend: backend, Adapter: AdapterDynamoDB, Shared: true, Usable: true}
+	if cfg.Kube != KubeNone {
+		client, err := kube.InCluster(cfg.Release)
+		switch {
+		case err == nil:
+			backend.Kube = client
+			backend.ReviewToken = client.ReviewToken
+		case cfg.Kube == KubeRequired:
+			return nil, err
+		default:
+			log.WarnContext(ctx, "the namespace's objects are not available", "error", err)
+		}
+	}
+	table, err := dynamoport.Open(ctx, cfg.DynamoDB)
+	if err != nil {
+		return nil, fmt.Errorf("ports.dynamodb: %w", err)
+	}
+	st.pinger = table
+	st.close = table.Close
+	rest := backend.Ports(legacy.Options{})
+	set := table.Set()
+	set.Blob, set.Sealer, set.Identity = rest.Blob, rest.Sealer, rest.Identity
+	if set, err = cfg.compose(ctx, set, log); err != nil {
+		st.Close()
+		return nil, err
+	}
+	st.Ports = observe.Set(set)
+	log.InfoContext(ctx, "keeping state in DynamoDB", "adapter", AdapterDynamoDB,
+		"table", cfg.DynamoDB.Table, "region", cfg.DynamoDB.Region, "create", cfg.DynamoDB.Create)
 	return st, nil
 }
 

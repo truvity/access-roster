@@ -1,3 +1,23 @@
+## Unreleased
+
+- **A DynamoDB adapter for State, the session index and the Trigger:
+  `ports.adapter: dynamodb`.** `internal/port/dynamodb` keeps them in one table
+  (`pk` the key's first segment, `sk` the whole key, TTL on `expires`) with the
+  platform's credentials, so a Kubernetes deployment on AWS, or a Lambda one, shares
+  State across replicas as the NATS adapter does. Writes are conditional on a
+  random 64-bit revision (an identical rewrite changes it and a delete-and-recreate
+  cannot be mistaken for no change), reads are consistent and filter expiry
+  themselves, and a `Create` takes an expired record at once. `Watch` and the
+  Trigger poll (one second); the lambda-invoke Trigger of ADR 0029 stays a separate
+  adapter. `ports.dynamodb.{table,region,endpoint,create}`: `create` is off by
+  default so production binds to the table the infrastructure code made. It passes
+  the whole conformance suite, with the other ports' assertions skipped and named,
+  over a fake in `go test ./...` and over LocalStack in the `s3` CI job, which fails
+  on any other skip, and `access-roster migrate` copies memory into it and back.
+  Marked 🧪 in the capabilities: not yet run against AWS. Installations on any other
+  adapter see no change. See
+  [docs/design/ports.md](docs/design/ports.md#the-dynamodb-adapter).
+
 ## v1.54.0
 
 This release adds the NATS JetStream KV, S3 Blob and KMS Sealer port adapters; the domain stores on the ports, with secrets sealed per key; GitHub link refresh as one compare-and-swap; the Slack Connect hand-off and the `users.info` cache; the `access-roster migrate` tool, with sessions copied and lifetimes kept; and the chart's `telemetry.otlp` value. Installations on `ports.adapter: legacy` see no change.
