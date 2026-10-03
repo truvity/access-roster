@@ -44,6 +44,17 @@ func (b *Base) SessionKey(ctx context.Context, generate func() ([]byte, error)) 
 	return nil, ErrBusy
 }
 
+// PutSessionKey replaces the key the console signs its sessions with, which a
+// migration does when it carries the source's key over a different one.
+func (b *Base) PutSessionKey(ctx context.Context, key []byte) error {
+	sealed, err := b.seal(ctx, sessionKeyKey, key)
+	if err != nil {
+		return err
+	}
+	_, err = b.State.Put(ctx, sessionKeyKey, sealed, 0)
+	return err
+}
+
 // CheckSealer proves the Sealer can seal and open, so that a deployment whose
 // adapter has none (the legacy one, whose Sealer is refused on purpose) stops
 // at start naming the setting, instead of failing on the first credential an

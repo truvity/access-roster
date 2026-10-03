@@ -1,5 +1,24 @@
 ## Unreleased
 
+- **`access-roster migrate --from <config> --to <config>`** copies the State from
+  one storage to another (ADR 0031): the first step of the move, ConfigMaps,
+  Secrets and Valkey to NATS, and the rollback the other way round. Each end is a
+  `serve` configuration file. Every domain store (workspaces and credentials,
+  GitHub organisations, Apps and links, Slack workspaces, Apps and channel
+  records, confirmations and requests for a pass, the console's session key) is
+  copied through its business interface, so a secret is sealed under the
+  destination's Sealer; the issuer's sessions, refresh tokens, SSO and keyring
+  schedule are copied with the lifetime each has left, so nobody signs in again.
+  A plan runs first and writes nothing: a destination value that differs fails
+  the run naming the key unless `--overwrite`; `--dry-run` stops there. A run that
+  writes needs `--i-have-stopped-writers`. It then reads both sides again and
+  compares every item, and prints a JSON report of counts and keys (never a
+  value), also to a Blob with `--report-blob`. Re-running completes a partial
+  copy. See [docs/operations/migrate.md](docs/operations/migrate.md). Adds the
+  optional `port.StateExporter` and `port.IndexExporter`, a `Restore` on the two
+  GitHub link stores and `PutSessionKey`, used only by the migration. `--backup`
+  to a file is a follow-up.
+
 - **The domain stores on the ports.** With `ports.adapter` set to `nats` or
   `memory`, the directory workspaces and their credentials, the GitHub
   organisations, the link App, runner and catalogue Apps, people's GitHub links,

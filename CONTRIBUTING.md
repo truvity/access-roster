@@ -12,7 +12,8 @@ cmd/access-roster         the one binary and image: `serve` (the
                           records to the audit trail), `controller
                           github` and `controller slack` (the two
                           controllers, a second and third process from
-                          the same chart), and `migrate` (reserved)
+                          the same chart), and `migrate` (copies the State
+                          between storages, ADR 0031)
 cmd/resource-proxy        the sidecar that fronts a stock MCP server
                           with a resource server's front door
 cmd/accessctl             the CLI, for laptops and CI jobs

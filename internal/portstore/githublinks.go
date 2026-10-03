@@ -333,6 +333,15 @@ func (s *GitHubLinks) Update(ctx context.Context, changed []link.Link) ([]link.L
 	return written, nil
 }
 
+// Restore writes one link exactly as given, its Revision included, replacing the
+// account's link if there is one: the write of `access-roster migrate`, since
+// every other write moves the revision a copy must keep.
+func (s *GitHubLinks) Restore(ctx context.Context, l link.Link) error {
+	return s.b.editItem(ctx, ghLinkKey(l.ID), 0, func(*item) (*item, error) {
+		return s.encode(ctx, l)
+	})
+}
+
 // Invalidate makes every linked account unverifiable, forgetting its tokens,
 // and returns how many it changed. Each link is its own compare-and-swap.
 func (s *GitHubLinks) Invalidate(ctx context.Context, reason string, now time.Time) (int, error) {

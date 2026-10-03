@@ -131,7 +131,13 @@ func Set(s port.Set) port.Set {
 
 // State observes a [port.State]. Watch is passed through: it lives as long as
 // its caller and a duration of it means nothing.
-func State(inner port.State) port.State { return state{inner} }
+func State(inner port.State) port.State {
+	// The export capability is kept, and only when the adapter has it.
+	if e, ok := inner.(port.StateExporter); ok {
+		return stateExport{state{inner}, e}
+	}
+	return state{inner}
+}
 
 type state struct{ port.State }
 
@@ -185,7 +191,12 @@ func (s state) List(ctx context.Context, prefix, page string, limit int) (port.P
 }
 
 // Index observes a [port.Index].
-func Index(inner port.Index) port.Index { return index{inner} }
+func Index(inner port.Index) port.Index {
+	if e, ok := inner.(port.IndexExporter); ok {
+		return indexExport{index{inner}, e}
+	}
+	return index{inner}
+}
 
 type index struct{ port.Index }
 
@@ -301,4 +312,28 @@ func (b blobBoth) Replace(ctx context.Context, prefix string, objects map[string
 
 func (b blobBoth) ReadAll(ctx context.Context, prefix string) (map[string][]byte, error) {
 	return b.readAll.ReadAll(ctx, prefix)
+}
+
+type stateExport struct {
+	state
+	e port.StateExporter
+}
+
+func (s stateExport) ExportState(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	ctx, done := call(ctx, PortState, "export")
+	err := s.e.ExportState(ctx, prefix, fn)
+	done(err)
+	return err
+}
+
+type indexExport struct {
+	index
+	e port.IndexExporter
+}
+
+func (i indexExport) ExportIndex(ctx context.Context, prefix string, fn func(port.Exported) error) error {
+	ctx, done := call(ctx, PortIndex, "export")
+	err := i.e.ExportIndex(ctx, prefix, fn)
+	done(err)
+	return err
 }

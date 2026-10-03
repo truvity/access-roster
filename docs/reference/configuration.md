@@ -491,8 +491,10 @@ in one release; nothing is kept as an alias.
 | values `githubRoster.image`, `slackRoster.image` | removed: a controller runs the chart's one `image` |
 | `config.release` and each controller's `config.release`, unset: `access-issuer` | unset: `access-roster` |
 
-`access-roster migrate` is reserved by [0031](../decisions/0031-a-generic-migration-tool.md)
-and prints that it is not yet available. `access-roster tick` (one reconciler
+`access-roster migrate --from <config> --to <config>`
+([0031](../decisions/0031-a-generic-migration-tool.md),
+[operations/migrate.md](../operations/migrate.md)) reads two `serve` files, one
+per storage, and takes its own flags beside them. `access-roster tick` (one reconciler
 pass, [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md))
 is a later change; the controllers' loops are `controller github` and
 `controller slack`.

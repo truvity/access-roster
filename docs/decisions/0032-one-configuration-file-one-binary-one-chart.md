@@ -59,7 +59,7 @@ of [0029](0029-ticks-per-target-under-a-lease.md).
 access-roster serve --config <file>               the issuer, the hub and the console
 access-roster controller github --config <file>   the GitHub reconciler's loop
 access-roster controller slack --config <file>    the Slack reconciler's loop
-access-roster migrate                             reserved for 0031: prints "not yet available", exits non-zero
+access-roster migrate --from <file> --to <file>   0031: copy the State between storages (two `serve` files)
 access-roster --version | --help
 ```
 

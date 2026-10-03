@@ -6,7 +6,7 @@
 //	access-roster controller slack --config <file>   the Slack controller's loop
 //	access-roster tick github <target> --config <file>  one GitHub target's tick, once
 //	access-roster tick slack <target> --config <file>   one Slack workspace's tick, once
-//	access-roster migrate                            reserved (docs/decisions/0031)
+//	access-roster migrate --from <config> --to <config>  copy the State between storages (docs/decisions/0031)
 //
 // Each subcommand is configured by one file and reads nothing else (see
 // internal/config). Everything a subcommand decides is assembled in its own
@@ -42,10 +42,6 @@ import (
 	"github.com/truvity/access-roster/internal/version"
 )
 
-// errNotAvailable is what `migrate` says until 0031 is built: the command
-// surface is fixed now so a deployment can be written against it.
-var errNotAvailable = errors.New("access-roster migrate: not yet available (docs/decisions/0031-a-generic-migration-tool.md)")
-
 func main() {
 	err := run(os.Args[1:], os.Stderr)
 	switch {
@@ -76,12 +72,14 @@ Commands:
   controller slack      the Slack controller: keeps each workspace's channels as the policy says
   tick github <target>  one GitHub tick, once: an organisation's login, or github:links for the link check
   tick slack <target>   one Slack tick, once: a workspace's key
-  migrate               reserved: not yet available
+  migrate               copy the State from one storage to another: --from <config> --to <config>
 
-Each command takes --config <file> and nothing else but --version and --help (a tick also takes its
-target, first). The file is validated against schemas/config/<command>.schema.json (serve,
-controller-github, controller-slack; a tick reads its controller's) before anything starts. A tick
-runs under the target's lease and exits 0 when another runner holds it.
+Each command but migrate takes --config <file> and nothing else but --version and --help (a tick also
+takes its target, first); migrate takes --from and --to, each a configuration file, and its own flags
+(--dry-run, --overwrite, --i-have-stopped-writers: see 'access-roster migrate --help'). A file is
+validated against schemas/config/<command>.schema.json (serve, controller-github, controller-slack; a
+tick reads its controller's, migrate reads serve's) before anything starts. A tick runs under the
+target's lease and exits 0 when another runner holds it.
 
 A tick REFUSES to run while the leases are held in this process only (no shared State, which is the
 case until B3): a running controller would not be kept off the same target. After scaling the
@@ -128,7 +126,7 @@ func run(args []string, out io.Writer) error {
 		}
 		return fmt.Errorf("%w: access-roster tick %q: the kinds are github and slack", errUsage, args[1])
 	case "migrate":
-		return errNotAvailable
+		return migrateCmd(out, args[1:])
 	}
 	usage(out)
 	return fmt.Errorf("%w: %q is not a command", errUsage, args[0])

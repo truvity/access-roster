@@ -89,6 +89,16 @@ renewed by `Update` with the revision it holds, and released by
 renew treats the lease as lost and stops before its next external write. Clock
 skew is bounded by the TTL being many times the renewal interval.
 
+### Export (optional)
+
+`Get` does not say how long a record has left, and the Index cannot list its sets.
+A State or Index that can says so with two optional capabilities,
+`StateExporter` and `IndexExporter`: every live record or set under a prefix with
+its remaining lifetime. Nothing on a request path uses them. `access-roster
+migrate` ([operations/migrate.md](../operations/migrate.md)) reads the issuer's
+state through them so a copied session keeps the lifetime it had; memory, NATS and
+the legacy adapter have them.
+
 ### Error mapping
 
 An adapter maps its engine's errors to the six above. Everything else is an
