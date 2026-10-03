@@ -180,13 +180,34 @@ func (i *Issuer) recordDurable(ctx context.Context, r *record.Record) error {
 func New(cfg Config, set *policy.Set, dir Directory, state State) *Issuer {
 	cfg = cfg.withDefaults()
 
-	return &Issuer{
+	i := &Issuer{
 		cfg:      cfg,
 		set:      set,
 		resolver: NewResolver(dir, cfg.HoldWindow),
 		sessions: NewSessions(state, cfg.RefreshLifetime, cfg.AbsoluteLifetime),
 		sso:      NewSSO(state, cfg.RefreshLifetime),
 	}
+	// The sessions index asks the policy, per session, for the limit its
+	// resources allow: it is read at every open and every refresh, so a
+	// cap removed from the policy shortens a chain at its next refresh.
+	if set != nil {
+		i.sessions.SetAbsoluteResolver(i.absoluteForResources)
+	}
+
+	return i
+}
+
+// absoluteForResources is the absolute session limit of a chain that has
+// been used for these resources: the installation's, or the shortest limit
+// any of them carries. See [policy.EffectiveAbsolute].
+func (i *Issuer) absoluteForResources(touched []string) time.Duration {
+	return i.set.EffectiveAbsolute(i.cfg.AbsoluteLifetime, touched)
+}
+
+// AbsoluteFor is the absolute session limit for a sign-in that asks for a
+// token FOR resource, or for the client itself when it is empty.
+func (i *Issuer) AbsoluteFor(resource string) time.Duration {
+	return i.absoluteForResources([]string{resource})
 }
 
 // Sessions is the index of what this issuer has outstanding: what the

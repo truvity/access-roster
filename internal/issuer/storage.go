@@ -801,7 +801,10 @@ func (s *Storage) Pending(id string) (Pending, error) {
 		return Pending{}, err
 	}
 
-	out := Pending{RedirectURI: req.Req.RedirectURI, State: req.Req.State, ClientID: req.Req.ClientID}
+	out := Pending{
+		RedirectURI: req.Req.RedirectURI, State: req.Req.State, ClientID: req.Req.ClientID,
+		Resource: req.Resource,
+	}
 
 	// The declared row, for the page to name the application by. Looked
 	// up here rather than carried in the request so that a name changed
@@ -1121,9 +1124,16 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	// which opens no session (see [Sessions.Record]) -- has nothing to
 	// cap against, and none applies: the token lives out its ordinary
 	// lifetime, exactly as it did before this limit existed.
-	if authTime := authTimeOf(request); !authTime.IsZero() && s.iss.Config().AbsoluteLifetime > 0 {
-		if limit := authTime.Add(s.iss.Config().AbsoluteLifetime); limit.Before(expires) {
-			expires = limit
+	//
+	// The limit is the one the request's resource allows -- longer than
+	// the installation's only for a read-only resource that says so (see
+	// [policy.EffectiveAbsolute]) -- so a token never outlives the chain
+	// it belongs to, nor is cut short of a chain that was given more.
+	if authTime := authTimeOf(request); !authTime.IsZero() {
+		if absolute := s.iss.AbsoluteFor(resourceOf(request)); absolute > 0 {
+			if limit := authTime.Add(absolute); limit.Before(expires) {
+				expires = limit
+			}
 		}
 	}
 
@@ -1186,6 +1196,24 @@ func (s *Storage) claimsFor(
 	return s.identityOf(ctx, request.GetSubject())
 }
 
+// refuseAtAbsoluteLimit ends a session that has reached its absolute limit
+// and answers the refresh that found out, with the reason in the log and
+// the audit record rather than the generic "not live".
+func (s *Storage) refuseAtAbsoluteLimit(ctx context.Context, ended Session) error {
+	if revokeErr := s.iss.Sessions().deleteSession(ctx, ended); revokeErr != nil {
+		s.logger().WarnContext(ctx, "a session past the absolute limit could not be revoked",
+			"error", revokeErr)
+	}
+
+	s.logger().InfoContext(ctx, "refused a refresh past the absolute session limit",
+		"client_id", logsafe.Value(ended.ClientID))
+	s.iss.record(ctx, audit.SessionRefreshRefused(ended.Identity, ended.ClientID,
+		"the absolute session limit was reached"))
+
+	return oidc.ErrInvalidGrant().WithDescription(
+		"this session has reached its absolute limit and must sign in again")
+}
+
 // TokenRequestByRefreshToken implements [op.AuthStorage].
 func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken string) (op.RefreshTokenRequest, error) {
 	// ByRefreshToken, not ByToken: this is the library's FIRST reading of
@@ -1206,18 +1234,7 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 		// is, below. See [Sessions.endedByAbsoluteLimit] for why the two
 		// are tellable apart at all.
 		if ended, hit, endErr := s.iss.Sessions().endedByAbsoluteLimit(ctx, refreshToken); endErr == nil && hit {
-			if revokeErr := s.iss.Sessions().deleteSession(ctx, ended); revokeErr != nil {
-				s.logger().WarnContext(ctx, "a session past the absolute limit could not be revoked",
-					"error", revokeErr)
-			}
-
-			s.logger().InfoContext(ctx, "refused a refresh past the absolute session limit",
-				"client_id", logsafe.Value(ended.ClientID))
-			s.iss.record(ctx, audit.SessionRefreshRefused(ended.Identity, ended.ClientID,
-				"the absolute session limit was reached"))
-
-			return nil, oidc.ErrInvalidGrant().WithDescription(
-				"this session has reached its absolute limit and must sign in again")
+			return nil, s.refuseAtAbsoluteLimit(ctx, ended)
 		}
 
 		// A token that is neither live nor inside the grace window: spent, or
@@ -1227,6 +1244,13 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 		recordReuse(ctx, "refresh_token")
 
 		return nil, op.ErrInvalidRefreshToken
+	}
+
+	// The limit as the policy states it NOW. A record carries the end it
+	// was given when last written; a policy that has since withdrawn an
+	// extension must end the chain here, not at the longer end it holds.
+	if s.iss.Sessions().pastLimit(session) {
+		return nil, s.refuseAtAbsoluteLimit(ctx, session)
 	}
 
 	// The client's `requires`, again. Checking it only at sign-in would

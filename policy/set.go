@@ -126,6 +126,13 @@ func (s *Set) Resource(id string) (Resource, bool) {
 	return r, ok
 }
 
+// EffectiveAbsolute is the absolute session limit for a refresh chain that
+// has been used for the given resources, against the installation's own
+// `lifetimes.absolute`. See [EffectiveAbsolute].
+func (s *Set) EffectiveAbsolute(global time.Duration, touched []string) time.Duration {
+	return EffectiveAbsolute(global, touched, s.Resource)
+}
+
 // ClientDocuments returns the document-client policy in force.
 func (s *Set) ClientDocuments() ClientDocuments {
 	s.mu.RLock()

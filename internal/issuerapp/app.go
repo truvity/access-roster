@@ -415,6 +415,17 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 		}
 	}
 
+	// A resource's absolute_cap against this installation's own limit: a
+	// longer one needs the resource to say it is read-only. Refused here
+	// because policy alone cannot know lifetimes.absolute, and a row that
+	// could never be honoured should stop the service, not be clamped.
+	rows := set.Resources()
+	for i := range rows {
+		if err = rows[i].CheckAbsoluteCap(rows[i].ID, cfg.absoluteLifetime); err != nil {
+			return nil, err
+		}
+	}
+
 	directory := deps.Directory
 	if directory == nil {
 		return nil, errors.New(
