@@ -207,6 +207,8 @@ type AccessResource struct {
 	Description     string         `yaml:"description,omitempty"`
 	Requires        []string       `yaml:"requires,omitempty"`
 	TTLCap          Duration       `yaml:"ttlCap,omitempty"`
+	AbsoluteCap     Duration       `yaml:"absoluteCap,omitempty"`
+	ReadOnly        bool           `yaml:"readOnly,omitempty"`
 	SigningAlg      string         `yaml:"signingAlg,omitempty"`
 	GroupsDelimiter string         `yaml:"groupsDelimiter,omitempty"`
 	Groups          GroupsOverride `yaml:"groups,omitempty"`
@@ -324,7 +326,8 @@ func (a Access) policy() (Policy, error) {
 			}
 			out.Resources[r.ID] = Resource{
 				DisplayName: r.DisplayName, Description: r.Description, Requires: r.Requires,
-				TTLCap: r.TTLCap, SigningAlg: r.SigningAlg, Groups: r.Groups, GroupsDelimiter: r.GroupsDelimiter,
+				TTLCap: r.TTLCap, AbsoluteCap: r.AbsoluteCap, ReadOnly: r.ReadOnly,
+				SigningAlg: r.SigningAlg, Groups: r.Groups, GroupsDelimiter: r.GroupsDelimiter,
 			}
 		}
 	}
