@@ -15,8 +15,8 @@ import (
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
 	"github.com/truvity/access-roster/internal/audit"
-	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/slackapp"
+	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 	"github.com/truvity/access-roster/policy"
@@ -25,12 +25,12 @@ import (
 // SlackChannelRecords is where console channels' records are kept: the
 // records the Slack controller reads.
 type SlackChannelRecords interface {
-	List(ctx context.Context) ([]kube.ChannelRecord, error)
+	List(ctx context.Context) ([]connection.ChannelRecord, error)
 	// Apply reads one record (nil when there is none), asks decide what it
 	// becomes (nil deletes it) and writes that under the object's version.
 	// decide is given every record as read, for a check across records.
 	Apply(ctx context.Context, workspace, name string,
-		decide func(current *reconcile.ConsoleChannel, all []kube.ChannelRecord) (*reconcile.ConsoleChannel, error)) error
+		decide func(current *reconcile.ConsoleChannel, all []connection.ChannelRecord) (*reconcile.ConsoleChannel, error)) error
 }
 
 func (c *Console) slackChannelStore() (SlackChannelRecords, error) {
@@ -49,7 +49,7 @@ func channelError(err error) error {
 		return nil
 	case errors.As(err, &connectErr):
 		return err
-	case errors.Is(err, kube.ErrChannelConflict):
+	case errors.Is(err, connection.ErrChannelConflict):
 		return connect.NewError(connect.CodeAborted,
 			errors.New("the console channel records were changed by someone else while this was written: reload and try again"))
 	default:
@@ -161,7 +161,7 @@ func (c *Console) ListSlackChannels(
 	if len(owners) > 0 {
 		out.SourceDirectories, out.SourceDirectoriesError = c.sourceDirectories(ctx, owners...)
 	}
-	var records []kube.ChannelRecord
+	var records []connection.ChannelRecord
 	if c.deps.SlackChannels != nil {
 		if records, err = c.deps.SlackChannels.List(ctx); err != nil {
 			return nil, connect.NewError(connect.CodeUnavailable, err)
@@ -207,7 +207,7 @@ func (c *Console) ListSlackChannels(
 
 // managedOrdinary reports whether a record already covers a discovered
 // channel: a report can be a pass behind a record just written.
-func managedOrdinary(records []kube.ChannelRecord, workspace string, d status.Discovered) bool {
+func managedOrdinary(records []connection.ChannelRecord, workspace string, d status.Discovered) bool {
 	for i := range records {
 		rec := &records[i]
 		if rec.Err != nil || rec.Workspace != workspace {
@@ -319,7 +319,7 @@ func (c *Console) CreateSlackChannel(
 	actor := identityName(ctx)
 	now := time.Now().UTC()
 	want.CreatedBy, want.CreatedAt, want.UpdatedBy, want.UpdatedAt = actor, now, actor, now
-	err = store.Apply(ctx, want.Workspace, want.Name, func(current *reconcile.ConsoleChannel, all []kube.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, want.Workspace, want.Name, func(current *reconcile.ConsoleChannel, all []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if current != nil {
 			return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf(
 				"a console channel named %s already exists in %s: edit it, or pick another name", want.Name, want.Workspace))
@@ -402,7 +402,7 @@ func (c *Console) UpdateSlackChannel(
 	}
 	var changes string
 	var written reconcile.ConsoleChannel
-	err = store.Apply(ctx, want.Workspace, want.Name, func(current *reconcile.ConsoleChannel, _ []kube.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, want.Workspace, want.Name, func(current *reconcile.ConsoleChannel, _ []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if current == nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("there is no console channel named %s in %s", want.Name, want.Workspace))
 		}
@@ -489,7 +489,7 @@ func (c *Console) DeleteSlackChannel(
 		}
 	}
 	var gone reconcile.ConsoleChannel
-	err = store.Apply(ctx, workspace, name, func(current *reconcile.ConsoleChannel, _ []kube.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, workspace, name, func(current *reconcile.ConsoleChannel, _ []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if current == nil {
 			return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("there is no console channel named %s in %s", name, workspace))
 		}

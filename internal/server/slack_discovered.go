@@ -6,7 +6,7 @@ import (
 
 	directoryrosterv1 "github.com/truvity/access-roster/gen/directoryroster/v1"
 	"github.com/truvity/access-roster/internal/access"
-	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 	"github.com/truvity/access-roster/policy"
 )
@@ -38,7 +38,7 @@ type discoveredRow struct {
 // may view. A team that is not a connected workspace is counted, never
 // named, and a channel it hosts cannot be managed.
 func discoveredChannels(
-	id access.Identity, book slackBook, p policy.Policy, reports map[string]status.Workspace, records []kube.SharedRecord, available bool,
+	id access.Identity, book slackBook, p policy.Policy, reports map[string]status.Workspace, records []connection.SharedRecord, available bool,
 ) []*directoryrosterv1.SlackDiscoveredChannel {
 	// Which connected workspace a team id is: what was recorded at its first
 	// install, else what its own report says.
@@ -165,7 +165,7 @@ func hostName(view *directoryrosterv1.SlackDiscoveredChannel, host string) strin
 
 // managedAs is the record that manages a channel: the one that names its id,
 // else the one hosted by the same workspace under the host side's name.
-func managedAs(records []kube.SharedRecord, channelID, host, name string) string {
+func managedAs(records []connection.SharedRecord, channelID, host, name string) string {
 	for i := range records {
 		if records[i].Err == nil && records[i].Channel.ChannelID == channelID {
 			return records[i].Name

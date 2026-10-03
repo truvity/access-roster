@@ -54,7 +54,7 @@ func TestSlackRecordsMirrorFollowsEveryWrite(t *testing.T) {
 	}
 	// An ordinary console channel's record is mirrored too.
 	channels := NewSlackChannels(client)
-	if err := channels.Apply(ctx, "acme", "ops", func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	if err := channels.Apply(ctx, "acme", "ops", func(*reconcile.ConsoleChannel, []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		return &reconcile.ConsoleChannel{Workspace: "acme", Name: "ops", Sources: []string{"ops@acme.example"}}, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,9 @@ func TestSlackRecordsMirrorFollowsEveryWrite(t *testing.T) {
 	if err := shared.Apply(ctx, "eng", func(*reconcile.SharedChannel) (*reconcile.SharedChannel, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
-	remove := func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) { return nil, nil }
+	remove := func(*reconcile.ConsoleChannel, []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+		return nil, nil
+	}
 	if err := channels.Apply(ctx, "acme", "ops", remove); err != nil {
 		t.Fatal(err)
 	}

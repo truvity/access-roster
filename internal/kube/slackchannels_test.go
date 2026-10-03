@@ -24,7 +24,7 @@ func TestSlackChannelsKeepOnlyTheirOwnKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := reconcile.ConsoleChannel{Workspace: "acme", Name: "eng", Sources: []string{"eng@acme.example"}}
-	err := store.Apply(ctx, "acme", "eng", func(current *reconcile.ConsoleChannel, all []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err := store.Apply(ctx, "acme", "eng", func(current *reconcile.ConsoleChannel, all []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if current != nil || len(all) != 0 {
 			t.Errorf("a record that does not exist was found: %+v %+v", current, all)
 		}
@@ -39,7 +39,7 @@ func TestSlackChannelsKeepOnlyTheirOwnKeys(t *testing.T) {
 		t.Fatalf("List = %+v, %v", listed, err)
 	}
 	// A second record is shown to decide, so a check can span records.
-	err = store.Apply(ctx, "acme", "ops", func(_ *reconcile.ConsoleChannel, all []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, "acme", "ops", func(_ *reconcile.ConsoleChannel, all []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		if len(all) != 1 {
 			t.Errorf("decide saw %d records, want the one already kept", len(all))
 		}
@@ -50,14 +50,16 @@ func TestSlackChannelsKeepOnlyTheirOwnKeys(t *testing.T) {
 	}
 	// decide's own error writes nothing and comes back as it is.
 	refusal := errors.New("no")
-	err = store.Apply(ctx, "acme", "eng", func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, "acme", "eng", func(*reconcile.ConsoleChannel, []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		return nil, refusal
 	})
 	if !errors.Is(err, refusal) {
 		t.Errorf("Apply = %v, want decide's error", err)
 	}
 	for _, name := range []string{"eng", "ops"} {
-		if err = store.Apply(ctx, "acme", name, func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) { return nil, nil }); err != nil {
+		if err = store.Apply(ctx, "acme", name, func(*reconcile.ConsoleChannel, []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
+			return nil, nil
+		}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,7 +107,7 @@ func TestAnUnreadableChannelRecordIsListedWithItsError(t *testing.T) {
 		}
 	}
 	// Writing over one refuses to, naming it.
-	err = store.Apply(ctx, "acme", "garbled", func(*reconcile.ConsoleChannel, []ChannelRecord) (*reconcile.ConsoleChannel, error) {
+	err = store.Apply(ctx, "acme", "garbled", func(*reconcile.ConsoleChannel, []connection.ChannelRecord) (*reconcile.ConsoleChannel, error) {
 		t.Error("decide ran against a record that cannot be read")
 		return nil, nil
 	})

@@ -19,10 +19,6 @@ import (
 // its workspaces' records, and the shared channels' definitions, from.
 const kindSlackSharedRecords = "slack-workspaces"
 
-// ErrSharedConflict is a write that lost its race: the ConfigMap changed
-// under every attempt.
-var ErrSharedConflict = errors.New("the shared channel records changed while this was being written")
-
 // SlackShared keeps Slack Connect channel definitions, one `_shared.<name>`
 // document each, in the ConfigMap the controller mounts beside the
 // workspaces' own records. It touches no key but those.
@@ -45,19 +41,10 @@ func (s *SlackShared) Ensure(ctx context.Context) error {
 	return nil
 }
 
-// SharedRecord is one key read back: the definition, or why it is not one.
-type SharedRecord struct {
-	Name    string
-	Channel reconcile.SharedChannel
-	// Err is set when the document does not decode, or names another
-	// channel than its key does.
-	Err error
-}
-
 // List returns every shared channel record, sorted by name. A record that
 // does not decode is returned with its error, so a page can say so instead
 // of the record being absent.
-func (s *SlackShared) List(ctx context.Context) ([]SharedRecord, error) {
+func (s *SlackShared) List(ctx context.Context) ([]connection.SharedRecord, error) {
 	cm, err := s.c.api.CoreV1().ConfigMaps(s.c.namespace).Get(ctx, s.ConfigMapName(), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil, nil
@@ -65,7 +52,7 @@ func (s *SlackShared) List(ctx context.Context) ([]SharedRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", s.ConfigMapName(), err)
 	}
-	var out []SharedRecord
+	var out []connection.SharedRecord
 	for _, key := range slices.Sorted(maps.Keys(cm.Data)) {
 		name, ok := connection.ParseSharedKey(key)
 		if !ok {
@@ -76,19 +63,19 @@ func (s *SlackShared) List(ctx context.Context) ([]SharedRecord, error) {
 	return out, nil
 }
 
-func decodeShared(name, raw string) SharedRecord {
+func decodeShared(name, raw string) connection.SharedRecord {
 	channel, err := connection.DecodeShared(raw)
 	if err == nil && channel.Name != name {
 		err = fmt.Errorf("the record is kept as %s and names the channel %s", name, channel.Name)
 	}
-	return SharedRecord{Name: name, Channel: channel, Err: err}
+	return connection.SharedRecord{Name: name, Channel: channel, Err: err}
 }
 
 // Apply reads one record, hands it (nil when there is none) to decide, and
 // writes what decide returns under the object's version: a new definition,
 // or nil to delete the record. decide is run again on every retry against
 // the freshly read record, so what it checks is what is written over; a
-// conflict that outlasts the retries is [ErrSharedConflict]. An error from
+// conflict that outlasts the retries is [connection.ErrSharedConflict]. An error from
 // decide writes nothing and is returned as it is.
 func (s *SlackShared) Apply(
 	ctx context.Context, name string,
@@ -148,7 +135,7 @@ func (s *SlackShared) Apply(
 	case errors.As(err, &d):
 		return d.err
 	case apierrors.IsConflict(err):
-		return ErrSharedConflict
+		return connection.ErrSharedConflict
 	}
 	return err
 }
