@@ -1,4 +1,6 @@
-## Unreleased
+## v1.54.0
+
+This release adds the NATS JetStream KV, S3 Blob and KMS Sealer port adapters; the domain stores on the ports, with secrets sealed per key; GitHub link refresh as one compare-and-swap; the Slack Connect hand-off and the `users.info` cache; the `access-roster migrate` tool, with sessions copied and lifetimes kept; and the chart's `telemetry.otlp` value. Installations on `ports.adapter: legacy` see no change.
 
 - **The chart sets the OpenTelemetry environment: `telemetry.otlp`.** With
   `telemetry.otlp.endpoint` set, every pod of `renders: app` gets
