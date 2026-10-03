@@ -29,6 +29,7 @@ import (
 	"github.com/truvity/access-roster/internal/issuer"
 	"github.com/truvity/access-roster/internal/kube"
 	"github.com/truvity/access-roster/internal/store"
+	"github.com/truvity/access-roster/internal/telemetry"
 	"github.com/truvity/access-roster/internal/verify"
 	"github.com/truvity/access-roster/internal/version"
 	"github.com/truvity/access-roster/policy"
@@ -562,6 +563,10 @@ func New(ctx context.Context, cfg Config, deps Deps, log *slog.Logger) (*App, er
 	if deps.Around != nil {
 		handler = deps.Around(handler)
 	}
+	// Outermost, so that the span covers everything the listener answers and
+	// the request metrics see the status the client got. The route is a fixed
+	// set of names (issuer.Route), never the path.
+	handler = telemetry.HTTPHandler(handler, "access-issuer", issuer.Route)
 	return &App{handler: handler, health: healthMux, issuer: core, storage: storage, cfg: cfg, log: log}, nil
 }
 

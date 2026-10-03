@@ -17,6 +17,7 @@ import (
 	"github.com/zitadel/oidc/v3/pkg/op"
 
 	"github.com/truvity/access-roster/gen/accessissuer/v1/accessissuerv1connect"
+	"github.com/truvity/access-roster/internal/telemetry"
 )
 
 // Provider assembles the OpenID surface over the storage: discovery, the
@@ -215,7 +216,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 		keySetOf(storage),
 		op.WithSupportedAccessTokenSigningAlgorithms(signingAlgorithmStrings()...),
 	)
-	path, sessions := accessissuerv1connect.NewSessionServiceHandler(NewSessionsService(iss, verifier))
+	path, sessions := accessissuerv1connect.NewSessionServiceHandler(NewSessionsService(iss, verifier), telemetry.ConnectOptions()...)
 	if signIn.ConsoleOrigin != "" {
 		sessions = browserAllowed(signIn.ConsoleOrigin, sessions)
 	}

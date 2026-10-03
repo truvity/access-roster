@@ -677,6 +677,7 @@ func (s *Storage) AuthRequestByCode(ctx context.Context, code string) (op.AuthRe
 // that is being refused anyway, and a failure here must not turn a
 // refusal into a server error.
 func (s *Storage) revokeCodeSession(ctx context.Context, request string) {
+	recordReuse(ctx, "authorization_code")
 	raw, found, err := s.state.Get(ctx, codeSessionKey(request))
 	if err != nil || !found {
 		return
@@ -1142,6 +1143,7 @@ func (s *Storage) issue(ctx context.Context, request op.TokenRequest) (*token, e
 	if err = setJSON(ctx, s.state, tokenKey(issued.ID), issued, time.Until(issued.Expires)); err != nil {
 		return nil, err
 	}
+	s.recordToken(ctx, request)
 	return issued, nil
 }
 
@@ -1217,6 +1219,12 @@ func (s *Storage) TokenRequestByRefreshToken(ctx context.Context, refreshToken s
 			return nil, oidc.ErrInvalidGrant().WithDescription(
 				"this session has reached its absolute limit and must sign in again")
 		}
+
+		// A token that is neither live nor inside the grace window: spent, or
+		// never issued. The two are not told apart (a spent token is not kept
+		// past the window), so this counts both, and a burst of it is the
+		// signal either way.
+		recordReuse(ctx, "refresh_token")
 
 		return nil, op.ErrInvalidRefreshToken
 	}

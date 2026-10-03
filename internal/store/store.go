@@ -18,6 +18,7 @@ import (
 	"github.com/truvity/access-roster/internal/port"
 	"github.com/truvity/access-roster/internal/port/legacy"
 	"github.com/truvity/access-roster/internal/port/memory"
+	"github.com/truvity/access-roster/internal/port/observe"
 	"github.com/truvity/access-roster/internal/valkey"
 )
 
@@ -206,7 +207,7 @@ func Open(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, error) {
 	case AdapterMemory:
 		log.WarnContext(ctx, "the storage ports are in memory: a restart loses every login in progress, "+
 			"snapshot and report", "adapter", AdapterMemory)
-		return &Stores{Ports: memory.New().Set(), Adapter: AdapterMemory, Usable: true}, nil
+		return &Stores{Ports: observe.Set(memory.New().Set()), Adapter: AdapterMemory, Usable: true}, nil
 	case AdapterLegacy:
 		return openLegacy(ctx, cfg, log)
 	}
@@ -241,6 +242,9 @@ func openLegacy(ctx context.Context, cfg Config, log *slog.Logger) (*Stores, err
 		log.InfoContext(ctx, "sharing state in Valkey",
 			"cache", "valkey", "address", cfg.Valkey.Address, "cluster", cfg.Valkey.Cluster)
 	}
-	st.Ports = backend.Ports(legacy.Options{})
+	// Observed once, here, where the adapter is chosen: every caller crosses
+	// the same seam, so every call is timed and counted without each of them
+	// knowing.
+	st.Ports = observe.Set(backend.Ports(legacy.Options{}))
 	return st, nil
 }

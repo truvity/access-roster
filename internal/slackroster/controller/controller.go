@@ -286,11 +286,17 @@ func (c *Controller) Tick(ctx context.Context, target string) (otherPolicy bool,
 	if _, declared := c.deps.Policy.Slack.Workspaces[target]; !declared {
 		return false, fmt.Errorf("%w: %q", ErrUnknownTarget, target)
 	}
+	ctx, done := rails.StartTick(ctx, leaseKind, target)
 	p := c.inputs(ctx, false)
 	report, differs := c.workspace(ctx, p, target)
 	c.probeGuestSides(ctx, p, target, &report)
 	c.metrics.recordPass(ctx, &report)
 	c.journal.PublishOne(ctx, target, report)
+	outcome := rails.OutcomeOK
+	if report.Tick.Outcome == status.OutcomeFailed {
+		outcome = rails.OutcomeFailed
+	}
+	done(outcome)
 	return differs, nil
 }
 

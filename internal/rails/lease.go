@@ -134,16 +134,20 @@ func (x *Lease) Release(ctx context.Context) error {
 func (l *Leases) Do(ctx context.Context, kind, target string, fn func(ctx context.Context)) (ran bool, err error) {
 	lease, err := l.Acquire(ctx, kind, target)
 	if errors.Is(err, ErrHeld) {
+		meters.contended.Add(ctx, 1, leaseAttr(kind))
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
+	meters.acquired.Add(ctx, 1, leaseAttr(kind))
+	meters.held.Add(ctx, 1, leaseAttr(kind))
+	defer meters.held.Add(context.WithoutCancel(ctx), -1, leaseAttr(kind))
 	held, cancel := context.WithCancelCause(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		l.keep(held, cancel, lease, target)
+		l.keep(held, cancel, lease, kind, target)
 	}()
 	fn(held)
 	cancel(nil)
@@ -160,7 +164,7 @@ func (l *Leases) Do(ctx context.Context, kind, target string, fn func(ctx contex
 // keep renews the lease every third of its lifetime until ctx ends. A lease
 // that is lost, or that could not be renewed for a whole lifetime, cancels
 // the tick.
-func (l *Leases) keep(ctx context.Context, cancel context.CancelCauseFunc, lease *Lease, target string) {
+func (l *Leases) keep(ctx context.Context, cancel context.CancelCauseFunc, lease *Lease, kind, target string) {
 	every := l.ttl() / 3
 	timer := time.NewTicker(every)
 	defer timer.Stop()
@@ -177,12 +181,14 @@ func (l *Leases) keep(ctx context.Context, cancel context.CancelCauseFunc, lease
 			lastGood = time.Now()
 		case errors.Is(err, ErrLost):
 			l.log().WarnContext(ctx, "a lease was lost; the tick stops before its next write", "target", target)
+			meters.lost.Add(ctx, 1, leaseAttr(kind))
 			cancel(ErrLost)
 			return
 		case ctx.Err() != nil:
 			return
 		case time.Since(lastGood) >= l.ttl():
 			l.log().WarnContext(ctx, "a lease could not be renewed for its whole lifetime; the tick stops", "target", target, "error", err)
+			meters.lost.Add(ctx, 1, leaseAttr(kind))
 			cancel(ErrLost)
 			return
 		default:
