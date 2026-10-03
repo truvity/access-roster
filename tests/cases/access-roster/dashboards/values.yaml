@@ -1,0 +1,5 @@
+# Dashboards-only mode: the service's own values are absent, and the
+# ConfigMaps go to Grafana's namespace.
+renders: dashboards
+dashboards:
+  namespace: monitoring

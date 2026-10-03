@@ -1,0 +1,5 @@
+# An unknown key under `alerts` is refused, not ignored.
+# error: additional properties 'bogus' not allowed
+renders: alerts
+alerts:
+  bogus: 1

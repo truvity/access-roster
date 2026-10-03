@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if .Values.controllerGithub.enabled }}
 {{- $cfg := .Values.controllerGithub.config }}
 {{- include "access-roster.rosterChecks" (dict "root" . "name" "controllerGithub" "cfg" $cfg "dir" "github-roster") }}
@@ -213,3 +214,4 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
+{{ end -}}

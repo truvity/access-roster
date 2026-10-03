@@ -1,0 +1,8 @@
+# Alert-only mode, the way a second install beside the service runs it: the
+# service's own values are absent, and the routing labels are the cluster's.
+renders: alerts
+alerts:
+  namespace: access-roster
+  ruleLabels:
+    k8s_cluster_name: example
+    team: platform

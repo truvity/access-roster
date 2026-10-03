@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 # What `access-roster serve --config` reads: `config`, as the values give it, with
 # nothing added, renamed or dropped. The binary validates it against
 # schemas/config/serve.schema.json at start, and values.schema.json
@@ -12,3 +13,4 @@ metadata:
 data:
   config.yaml: |
     {{- toYaml .Values.config | nindent 4 }}
+{{ end -}}

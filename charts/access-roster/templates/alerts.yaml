@@ -1,0 +1,282 @@
+{{- if eq .Values.renders "alerts" }}
+{{- /*
+Alert-only mode: this release renders the rules and nothing else, so it can be
+installed a second time, where the metrics store's ruler looks for rule
+objects, beside the release that runs the service. The precedent is
+truvity/audit's `renders: alerts` and truvity/openbao's openbao-ops chart.
+
+The series are the ones the service and the controllers publish over OTLP,
+named as the metrics gateway names them: dots become underscores, a counter
+gains `_total`, a unit becomes a suffix. Only the cluster, namespace and tier
+become labels from the resource, so every other label below (`route`,
+`kind`, `target`, `port`, `outcome`) is a metric attribute. A target is a
+GitHub organisation or a Slack workspace the policy declares, which is why it
+may be a label; a person, a group or an address never is.
+
+Every threshold carries its reason in a comment above the rule, and every
+`by (...)` keeps the cluster label: one store holds many clusters and an
+aggregation that drops it pairs series across them.
+*/ -}}
+{{- $a := .Values.alerts -}}
+{{- $r := $a.rules -}}
+{{- $ns := default .Release.Namespace $a.namespace -}}
+{{- $c := $a.clusterLabel -}}
+{{- $w := printf "namespace=%s" ($ns | toJson) -}}
+{{- if $a.selector }}{{- $w = printf "%s,%s" $w $a.selector -}}{{- end -}}
+{{- if not (has $a.format (list "vmrule" "prometheusrule")) -}}
+{{- fail (printf "access-roster: alerts.format is `vmrule` or `prometheusrule`, not %q." $a.format) -}}
+{{- end -}}
+{{- $name := default (printf "%s-alerts" (include "access-roster.fullname" .)) $a.name -}}
+{{- $any := false -}}
+{{- range $k, $v := $r }}{{- if $v.enabled }}{{- $any = true -}}{{- end }}{{- end -}}
+{{- if not $any -}}
+{{- fail "access-roster: alerts.rules has every rule disabled, so this release would render an empty rule group, which the rulers refuse. Enable one, or do not install in alerts mode." -}}
+{{- end }}
+apiVersion: {{ ternary "operator.victoriametrics.com/v1beta1" "monitoring.coreos.com/v1" (eq $a.format "vmrule") }}
+kind: {{ ternary "VMRule" "PrometheusRule" (eq $a.format "vmrule") }}
+metadata:
+  name: {{ $name }}
+  namespace: {{ default .Release.Namespace $a.objectNamespace }}
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alerts
+    {{- with $a.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: access-roster
+      interval: {{ $a.interval }}
+      rules:
+        {{- if $r.noSigningKey.enabled }}
+        # Zero published keys is an issuer that cannot be verified against: the JWKS is
+        # empty, so every relying party refuses every token, and a new one cannot be
+        # signed. There is no healthy zero. Five minutes rides out a rollout, in which a
+        # new replica has read the key file but not yet published the key. A
+        # series that is absent (no issuer running) is not this alert's to say.
+        - alert: AccessRosterNoSigningKeyPublished
+          expr: >-
+            min by ({{ $c }}, namespace, algorithm) (access_issuer_signing_keys_published{ {{- $w -}} }) < 1
+          for: {{ $r.noSigningKey.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.noSigningKey) | nindent 12 }}
+          annotations:
+            summary: 'The access-roster issuer in {{ "{{ $labels.namespace }}" }} publishes no {{ "{{ $labels.algorithm }}" }} signing key'
+            description: >-
+              The issuer's key ring holds no key to publish for this algorithm, so its JWKS
+              is empty and no relying party can verify a token. Look at the signing key
+              Secret the chart mounts (cert-manager's Certificate, or the existing Secret
+              named in signingKey.existingSecret) and the issuer's log for why it could not
+              be read.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterNoSigningKeyPublished") | nindent 12 }}
+        {{- end }}
+        {{- if $r.signingKeyRotationStalled.enabled }}
+        # The age of the active key is the time since the first replica saw it become
+        # active. cert-manager replaces the certificate `renewBefore` ahead of its end
+        # (default 720h before 8760h), so a healthy key is at most about 335 days old and
+        # `maxAgeSeconds` allows two weeks more. A key that is older has not been
+        # replaced: the Certificate is not renewing, or the issuer is not picking the new
+        # key up, and the day the certificate expires every token stops verifying. The
+        # newest timestamp across replicas is used, so a lagging replica does not fire it.
+        - alert: AccessRosterSigningKeyRotationStalled
+          expr: >-
+            time() - max by ({{ $c }}, namespace, algorithm) (access_issuer_signing_key_active_since_timestamp_seconds{ {{- $w -}} }) > {{ $r.signingKeyRotationStalled.maxAgeSeconds | int64 }}
+          for: {{ $r.signingKeyRotationStalled.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.signingKeyRotationStalled) | nindent 12 }}
+          annotations:
+            summary: 'The {{ "{{ $labels.algorithm }}" }} signing key in {{ "{{ $labels.namespace }}" }} has been active for {{ "{{ $value | humanizeDuration }}" }}'
+            description: >-
+              The active signing key is older than {{ $r.signingKeyRotationStalled.maxAgeSeconds | int64 }}s
+              and has not rotated. Check the cert-manager Certificate for the key
+              (kubectl describe certificate), its issuer, and whether the issuer's
+              signingKey.pollInterval is reading the mounted file.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterSigningKeyRotationStalled") | nindent 12 }}
+        {{- end }}
+        {{- if $r.issuer5xx.enabled }}
+        # The share of the issuer listener's requests answered 5xx over 10 minutes. A
+        # healthy issuer answers none: its refusals are 4xx. A floor of `minErrors` in
+        # the window keeps one failed request in a quiet hour from being a page, and the
+        # share (5% by default) keeps a handful among thousands from being one either.
+        # Every route is counted together: the sign-in and the token endpoint failing are
+        # the same outage to the people behind them.
+        - alert: AccessRosterIssuer5xx
+          expr: >-
+            (
+              sum by ({{ $c }}, namespace) (increase(access_issuer_http_requests_total{ {{- $w -}},status_class="5xx"}[10m]))
+              /
+              sum by ({{ $c }}, namespace) (increase(access_issuer_http_requests_total{ {{- $w -}} }[10m]))
+            ) > {{ $r.issuer5xx.ratio }}
+            and
+            sum by ({{ $c }}, namespace) (increase(access_issuer_http_requests_total{ {{- $w -}},status_class="5xx"}[10m])) >= {{ $r.issuer5xx.minErrors }}
+          for: {{ $r.issuer5xx.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.issuer5xx) | nindent 12 }}
+          annotations:
+            summary: 'The access-roster issuer in {{ "{{ $labels.namespace }}" }} answers {{ "{{ $value | humanizePercentage }}" }} of requests with a 5xx'
+            description: >-
+              More than {{ printf "%.0f%%" (mulf $r.issuer5xx.ratio 100) }} of the requests in the last 10 minutes
+              failed on the server side. The dashboard's request panel names the route; the
+              issuer's log has the error. A store that is down (see AccessRosterPortErrors)
+              and a directory that cannot be reached are the usual causes.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterIssuer5xx") | nindent 12 }}
+        {{- end }}
+        {{- if $r.tokenLatency.enabled }}
+        # A token is signed in memory and costs one store write, so the p99 of the token
+        # endpoint is milliseconds when healthy. Two seconds is two orders of magnitude
+        # over that and still short of the clients' timeouts, which is where a slow
+        # issuer starts to look like a down one. Ten minutes of rate smooths a single slow
+        # request; the quantile over `le` buckets of every replica together is the one a
+        # client sees.
+        - alert: AccessRosterTokenEndpointSlow
+          expr: >-
+            histogram_quantile(0.99, sum by ({{ $c }}, namespace, le) (rate(access_issuer_http_request_duration_seconds_bucket{ {{- $w -}},route="token"}[10m]))) > {{ $r.tokenLatency.thresholdSeconds }}
+          for: {{ $r.tokenLatency.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.tokenLatency) | nindent 12 }}
+          annotations:
+            summary: 'The access-roster token endpoint in {{ "{{ $labels.namespace }}" }} has a p99 of {{ "{{ $value | humanizeDuration }}" }}'
+            description: >-
+              Token requests are taking longer than {{ $r.tokenLatency.thresholdSeconds }}s at the
+              99th percentile. The store (see the port latency panel), the policy's size and
+              the directory are what a token waits on.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterTokenEndpointSlow") | nindent 12 }}
+        {{- end }}
+        {{- if $r.tickFailing.enabled }}
+        # A tick that fails once is a console mid-rollout or GitHub having a moment, and
+        # the next pass repairs it. The default interval is 15 minutes, so
+        # `failures` (3) failed ticks of ONE target within `window` (45m) is three in a
+        # row: the target is not being reconciled and the cause is not going away. The
+        # counter is per kind and target, because one organisation failing (its App was
+        # uninstalled) is not another's outage.
+        - alert: AccessRosterTickFailing
+          expr: >-
+            sum by ({{ $c }}, namespace, kind, target) (increase(access_roster_ticks_total{ {{- $w -}},outcome="failed"}[{{ $r.tickFailing.window }}])) >= {{ $r.tickFailing.failures }}
+          for: {{ $r.tickFailing.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.tickFailing) | nindent 12 }}
+          annotations:
+            summary: 'The {{ "{{ $labels.kind }}" }} of {{ "{{ $labels.target }}" }} has failed {{ "{{ $value | printf \"%.0f\" }}" }} times'
+            description: >-
+              The controller's tick of this target failed {{ $r.tickFailing.failures }} or more
+              times within {{ $r.tickFailing.window }}. Its report (the controller's page in the
+              console, and the log's "a pass over an organisation failed" or the Slack
+              equivalent) names the error.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterTickFailing") | nindent 12 }}
+        {{- end }}
+        {{- if $r.tickStale.enabled }}
+        # The time since a target's last ok tick, from a gauge each ok tick stamps. It
+        # catches what a failure counter cannot: a controller that is not running, a
+        # lease nobody can take, a loop that hangs. One hour is four default intervals
+        # (15m), which tolerates three missed passes; `last_over_time` over a day keeps
+        # the series visible after the controller is gone, so a dead controller fires and
+        # is not mistaken for an absent one. A target the policy no longer declares fires
+        # for at most a day and then leaves.
+        - alert: AccessRosterTickStale
+          expr: >-
+            time() - max by ({{ $c }}, namespace, kind, target) (last_over_time(access_roster_tick_last_success_timestamp_seconds{ {{- $w -}} }[1d])) > {{ $r.tickStale.maxAgeSeconds | int64 }}
+          for: {{ $r.tickStale.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.tickStale) | nindent 12 }}
+          annotations:
+            summary: 'No successful {{ "{{ $labels.kind }}" }} of {{ "{{ $labels.target }}" }} for {{ "{{ $value | humanizeDuration }}" }}'
+            description: >-
+              This target has not completed a tick for longer than {{ $r.tickStale.maxAgeSeconds | int64 }}s.
+              Check that the controller's Deployment is running, that its leases are not held
+              by a runner that is gone (AccessRosterLeaseLost), and the log for the failures.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterTickStale") | nindent 12 }}
+        {{- end }}
+        {{- if $r.leaseLost.enabled }}
+        # A lease is lost when another runner takes it over or when it could not be
+        # renewed for a whole lifetime; the tick stops before its next write, which is
+        # what the lease is for, so one loss is the design working. Repeated losses are
+        # two runners fighting over one target, or a State that cannot be reached to
+        # renew. `losses` (3) within `window` (1h) separates that from a node being
+        # drained.
+        - alert: AccessRosterLeaseLost
+          expr: >-
+            sum by ({{ $c }}, namespace, kind) (increase(access_roster_leases_lost_total{ {{- $w -}} }[{{ $r.leaseLost.window }}])) >= {{ $r.leaseLost.losses }}
+          for: {{ $r.leaseLost.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.leaseLost) | nindent 12 }}
+          annotations:
+            summary: 'Tick leases of {{ "{{ $labels.kind }}" }} in {{ "{{ $labels.namespace }}" }} were lost {{ "{{ $value | printf \"%.0f\" }}" }} times'
+            description: >-
+              Controllers lost their lease on a target {{ $r.leaseLost.losses }} or more times
+              within {{ $r.leaseLost.window }}. Look for a second runner (a tick Job beside the
+              Deployment, a replica count over one on a State that is not shared) and for
+              port errors on the State.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterLeaseLost") | nindent 12 }}
+        {{- end }}
+        {{- if $r.rateLimitLow.enabled }}
+        # GitHub's budget left, as last reported on a response. An App's core budget is
+        # thousands of requests an hour, and the controller waits out a limit itself, so
+        # a low reading is not an outage; sustained is. Under `remaining` (100) for
+        # thirty minutes means the budget is being spent as fast as it refills and the
+        # next pass will be made to wait or be refused. The reading is of the last
+        # response, so a quiet controller keeps its last value: a pass runs every
+        # interval, which is what keeps it fresh.
+        - alert: AccessRosterGitHubRateLimitLow
+          expr: >-
+            min by ({{ $c }}, namespace, resource) (github_roster_rate_limit_remaining{ {{- $w -}} }) < {{ $r.rateLimitLow.remaining }}
+          for: {{ $r.rateLimitLow.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.rateLimitLow) | nindent 12 }}
+          annotations:
+            summary: 'GitHub rate limit ({{ "{{ $labels.resource }}" }}) is down to {{ "{{ $value | printf \"%.0f\" }}" }} requests'
+            description: >-
+              The GitHub budget for this resource has been under {{ $r.rateLimitLow.remaining }}
+              requests for {{ $r.rateLimitLow.for }}. github_roster_rate_limited_total says how
+              often a call already waited. Lengthen the controller's interval, or look for
+              a caller spending the App's budget outside this controller.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterGitHubRateLimitLow") | nindent 12 }}
+        {{- end }}
+        {{- if $r.seatsShort.enabled }}
+        # The invitations the last pass could not send for want of a free seat. There is
+        # no healthy non-zero: each is a person the policy admits who cannot be invited
+        # until the organisation buys a seat or removes one. Not a page (the controller is
+        # well), but it does not clear on its own, so thirty minutes only keeps a seat
+        # that frees up between two passes from alerting.
+        - alert: AccessRosterSeatsShort
+          expr: >-
+            max by ({{ $c }}, namespace, org) (github_roster_seats_short{ {{- $w -}} }) > 0
+          for: {{ $r.seatsShort.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.seatsShort) | nindent 12 }}
+          annotations:
+            summary: 'GitHub organisation {{ "{{ $labels.org }}" }} is {{ "{{ $value | printf \"%.0f\" }}" }} seat(s) short'
+            description: >-
+              The controller could not invite everyone the policy admits to this organisation
+              because it has no free seats. Buy seats, or remove members that no longer
+              belong, and the next pass sends the invitations.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterSeatsShort") | nindent 12 }}
+        {{- end }}
+        {{- if $r.portErrors.enabled }}
+        # The share of storage port calls (state, index, blob) that ended `unavailable`
+        # or `error` over five minutes. A lost compare-and-swap (`conflict`), a create
+        # over a live key (`exists`) and a missing key (`not_found`) are the ports
+        # working and are not counted. A healthy store fails none; the sign-in path
+        # refuses a request when it is down, so this is the alert that explains the 5xx.
+        # `minErrors` keeps a single failed call from being a page.
+        - alert: AccessRosterPortErrors
+          expr: >-
+            (
+              sum by ({{ $c }}, namespace, port) (increase(access_roster_port_operation_duration_seconds_count{ {{- $w -}},outcome=~"unavailable|error"}[5m]))
+              /
+              sum by ({{ $c }}, namespace, port) (increase(access_roster_port_operation_duration_seconds_count{ {{- $w -}} }[5m]))
+            ) > {{ $r.portErrors.ratio }}
+            and
+            sum by ({{ $c }}, namespace, port) (increase(access_roster_port_operation_duration_seconds_count{ {{- $w -}},outcome=~"unavailable|error"}[5m])) >= {{ $r.portErrors.minErrors }}
+          for: {{ $r.portErrors.for }}
+          labels:
+            {{- include "access-roster.ruleLabels" (dict "root" $ "cfg" $r.portErrors) | nindent 12 }}
+          annotations:
+            summary: 'The {{ "{{ $labels.port }}" }} store of access-roster in {{ "{{ $labels.namespace }}" }} is failing {{ "{{ $value | humanizePercentage }}" }} of calls'
+            description: >-
+              More than {{ printf "%.0f%%" (mulf $r.portErrors.ratio 100) }} of the calls to this storage port failed in the
+              last 5 minutes. State and index are Valkey (or the namespace's ConfigMaps and
+              Secrets); blobs are the reports' ConfigMaps. Check that store's own health and
+              the NetworkPolicy to it.
+            {{- include "access-roster.runbook" (dict "root" $ "alert" "AccessRosterPortErrors") | nindent 12 }}
+        {{- end }}
+{{- end }}

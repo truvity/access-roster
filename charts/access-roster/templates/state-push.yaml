@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- /*
 Second copies of the Secrets this service writes and nothing else can
 re-deliver: the workspace credential an operator connected, the Apps the
@@ -138,3 +139,4 @@ spec:
         name: {{ .push.secretStore.name }}
         kind: {{ $kind }}
 {{- end }}
+{{ end -}}

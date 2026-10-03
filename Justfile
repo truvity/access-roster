@@ -6,6 +6,12 @@ export GOWORK := "off"
 
 charts := "access-roster"
 
+# The tools `telemetry` fetches, pinned: dashboardlint is truvity/observability's
+# own lint of its dashboard contract, vmalert-tool is VictoriaMetrics' rule
+# unit-tester, the engine of the estate's own ruler.
+observability_version := "v0.43.3"
+vmutils_version := "v1.152.0"
+
 # Format all Go files
 fmt:
     golangci-lint fmt ./...
@@ -213,6 +219,48 @@ chart-lint:
       test "$(yq ea '[.. | select(tag == "!!map" and has("dataTo")) | .dataTo[] | select(has("storeRef") | not)] | length' "$golden")" = "0"
     done
 
+# The chart's alert rules and dashboard, held to what the estate holds them to.
+#
+# The dashboard is generated (hack/dashboards/access-roster-overview.py) and the
+# committed JSON is held to the generator. `dashboardlint`, from
+# truvity/observability at the version pinned above, judges it against that
+# repository's dashboard contract (docs/dashboards.md): a datasource variable
+# every panel uses, a cluster variable, `$cluster` in the title and every
+# query. The refusal is proved to be real, too: the same dashboard with a
+# literal datasource must fail.
+#
+# The rules are unit-tested with vmalert-tool (a pinned, checksum-verified
+# release) through tests/chart: every rule has a test that fires it and one
+# that must not, and the test refuses a rule without both.
+telemetry:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 hack/dashboards/access-roster-overview.py | diff - charts/access-roster/dashboards/access-roster-overview.json
+
+    tools=$(mktemp -d); trap 'rm -rf "$tools"' EXIT
+    GOBIN="$tools" go install github.com/truvity/observability/cmd/dashboardlint@{{observability_version}}
+    "$tools/dashboardlint" charts/access-roster/dashboards/*.json
+    # The refusal is real: the same dashboard with a literal datasource must fail.
+    sed 's/"uid": "${datasource}"/"uid": "a-literal-uid"/' charts/access-roster/dashboards/access-roster-overview.json > "$tools/pinned.json"
+    if "$tools/dashboardlint" "$tools/pinned.json" 2>"$tools/pinned.err"; then
+        echo "dashboardlint accepted a dashboard pinned to one datasource" >&2; exit 1
+    fi
+    grep -q "literal datasource" "$tools/pinned.err"
+
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo "no vmutils for $(uname -m)" >&2; exit 1 ;; esac
+    tarball="vmutils-$os-$arch-{{vmutils_version}}.tar.gz"
+    base="https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/{{vmutils_version}}"
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/access-roster/vmutils-{{vmutils_version}}-$os-$arch"
+    if [ ! -x "$cache/vmalert-tool-prod" ]; then
+        mkdir -p "$cache"
+        curl -fsSL "$base/$tarball" -o "$tools/$tarball"
+        curl -fsSL "$base/${tarball%.tar.gz}_checksums.txt" -o "$tools/sums.txt"
+        (cd "$tools" && grep " $tarball\$" sums.txt | sha256sum -c -)
+        tar -xzf "$tools/$tarball" -C "$cache" vmalert-tool-prod
+    fi
+    ACCESS_ROSTER_REQUIRE_HELM=1 ACCESS_ROSTER_REQUIRE_VMALERT=1 ACCESS_ROSTER_VMALERT_TOOL="$cache/vmalert-tool-prod" go test -count=1 ./tests/chart/
+
 # The JSON Schema of each binary's configuration file, written into
 # schemas/config/ from internal/config/schema, and the chart's values schema,
 # which embeds them under each component's `config`. The binaries embed the
@@ -305,7 +353,7 @@ audit-sentences:
         go run "github.com/truvity/audit/cmd/audit@${version}" messages internal/audit/catalogue/roster.yaml
     } > frontend/src/auditSentences.ts
 
-# Run all checks (build + test + lint + chart-lint + leak-canary)
+# Run all checks (build + test + lint + chart-lint + telemetry + leak-canary)
 # Everything CI runs, so that the pre-push hook catches what CI would.
 # `vuln` is deliberately not here: run it on its own with `just vuln`,
 # the same way `.github/workflows/security.yaml` does.
@@ -313,4 +361,4 @@ audit-sentences:
 # `ts` is in here despite being slow: it typechecks and tests the
 # published package, which nothing else does. `console` arrives through
 # `build`, which needs it.
-check: build test lint chart-lint archive-check docs-check leak-canary audit-catalogue ts
+check: build test lint chart-lint telemetry archive-check docs-check leak-canary audit-catalogue ts

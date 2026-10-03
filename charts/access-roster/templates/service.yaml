@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -11,3 +12,4 @@ spec:
     - name: issuer
       port: {{ include "access-roster.port" . }}
       targetPort: issuer
+{{ end -}}

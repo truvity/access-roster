@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
+	jose "github.com/go-jose/go-jose/v4"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -46,11 +48,17 @@ func counted(t *testing.T, name string, want ...attribute.KeyValue) int64 {
 	set := attribute.NewSet(want...)
 	for _, scope := range rm.ScopeMetrics {
 		for _, m := range scope.Metrics {
-			sum, ok := m.Data.(metricdata.Sum[int64])
-			if m.Name != name || !ok {
+			if m.Name != name {
 				continue
 			}
-			for _, point := range sum.DataPoints {
+			var points []metricdata.DataPoint[int64]
+			switch data := m.Data.(type) {
+			case metricdata.Sum[int64]:
+				points = data.DataPoints
+			case metricdata.Gauge[int64]:
+				points = data.DataPoints
+			}
+			for _, point := range points {
 				if point.Attributes.Equals(&set) {
 					return point.Value
 				}
@@ -164,5 +172,31 @@ func TestRouteIsAFixedSet(t *testing.T) {
 		if got != c.want {
 			t.Errorf("%s %s = %q, want %q", c.method, c.path, got, c.want)
 		}
+	}
+}
+
+// The ring says how many keys it publishes and since when the active one has
+// been active, by algorithm: what the "no key" and "rotation stalled" alerts
+// read.
+func TestTheKeyRingReportsWhatItPublishesAndSinceWhen(t *testing.T) {
+	metricsReader()
+	ctx := context.Background()
+	at := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	ring := issuer.NewKeyRing(jose.ES384, issuer.NewMemoryState(), issuer.KeyRingConfig{}, nil)
+	ring.SetClock(func() time.Time { return at })
+
+	key, err := issuer.NewSigningKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = ring.Observe(ctx, key); err != nil {
+		t.Fatal(err)
+	}
+	algorithm := attribute.String("algorithm", string(jose.ES384))
+	if got := counted(t, "access_issuer.signing_keys_published", algorithm); got != 1 {
+		t.Errorf("published = %d, want 1", got)
+	}
+	if got := counted(t, "access_issuer.signing_key.active_since_timestamp", algorithm); got != at.Unix() {
+		t.Errorf("active since = %d, want %d", got, at.Unix())
 	}
 }

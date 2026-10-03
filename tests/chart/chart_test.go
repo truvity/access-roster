@@ -130,6 +130,18 @@ func TestTheRenderedConfigurationIsTheValuesConfiguration(t *testing.T) {
 			}
 			values := merge(defaults, load(t, shape))
 
+			// `renders: alerts` and `renders: dashboards` release no service:
+			// their cases are held by alerts_test.go, and what matters here is
+			// that none of them renders a configuration.
+			if mode, _ := values["renders"].(string); mode != "app" {
+				for _, doc := range render(t, shape, namespace) {
+					if data, _ := dig(doc, "data", "config.yaml"); data != nil {
+						t.Errorf("renders %q and a %v carries a config.yaml", mode, doc["kind"])
+					}
+				}
+				return
+			}
+
 			rendered := map[string]bool{}
 			for _, doc := range render(t, shape, namespace) {
 				if doc["kind"] != "ConfigMap" {

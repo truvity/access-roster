@@ -1,0 +1,41 @@
+{{- if eq .Values.renders "dashboards" }}
+{{- /*
+Dashboards-only mode: the Grafana dashboard ConfigMaps and nothing else, for
+the cluster Grafana's sidecar reads. A Grafana on one cluster and an install on
+another is the usual shape, so the dashboards are shipped as their own release
+into Grafana's namespace (`dashboards.namespace`), labelled for the sidecar.
+
+The dashboard holds to truvity/observability's contract, docs/dashboards.md,
+and `just telemetry` runs that repository's own `dashboardlint` over it:
+a `datasource` variable that every panel uses, a `cluster` variable chained
+off it and filled by label_values(), `$cluster` in the title and in every
+query. No datasource UID is written into it, so there is nothing to configure.
+*/ -}}
+{{- $d := .Values.dashboards -}}
+{{- range $path, $_ := .Files.Glob "dashboards/*.json" }}
+{{- $name := trimSuffix ".json" (base $path) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-%s" (include "access-roster.fullname" $) $name | trunc 63 | trimSuffix "-" }}
+  namespace: {{ default $.Release.Namespace $d.namespace }}
+  labels:
+    {{- include "access-roster.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: dashboards
+    # The k8s-sidecar convention: Grafana's sidecar collects any ConfigMap
+    # carrying this label (its `sidecar.dashboards.label`).
+    {{ $d.sidecarLabel }}: {{ $d.sidecarLabelValue | quote }}
+    {{- with $d.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    # Files the dashboard in a Grafana folder, when the sidecar is set to read
+    # it (`sidecar.dashboards.folderAnnotation` and
+    # `provider.foldersFromFilesStructure`); inert otherwise.
+    k8s-sidecar-target-directory: {{ $d.folder | quote }}
+data:
+  {{ $name }}.json: |
+    {{- $.Files.Get $path | nindent 4 }}
+---
+{{- end }}
+{{- end }}

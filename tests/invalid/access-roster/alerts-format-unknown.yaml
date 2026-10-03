@@ -1,0 +1,5 @@
+# The rule object is a VMRule or a PrometheusRule.
+# error: at '/alerts/format': value must be one of 'vmrule', 'prometheusrule'
+renders: alerts
+alerts:
+  format: alertmanagerconfig

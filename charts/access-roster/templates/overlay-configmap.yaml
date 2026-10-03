@@ -1,3 +1,4 @@
+{{- if eq .Values.renders "app" -}}
 {{- if .Values.directory.workspaces }}
 # Declared workspaces (the overlay). This service reads the file at start
 # and on change; the credential of each is the named Secret, mounted
@@ -34,3 +35,4 @@ data:
       {{- end }}
     {{- end }}
 {{- end }}
+{{ end -}}

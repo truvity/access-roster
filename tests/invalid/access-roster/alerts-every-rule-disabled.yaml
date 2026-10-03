@@ -1,0 +1,15 @@
+# Every rule off would render an empty group, which the rulers refuse.
+# error: alerts.rules has every rule disabled
+renders: alerts
+alerts:
+  rules:
+    noSigningKey: {enabled: false}
+    signingKeyRotationStalled: {enabled: false}
+    issuer5xx: {enabled: false}
+    tokenLatency: {enabled: false}
+    tickFailing: {enabled: false}
+    tickStale: {enabled: false}
+    leaseLost: {enabled: false}
+    rateLimitLow: {enabled: false}
+    seatsShort: {enabled: false}
+    portErrors: {enabled: false}

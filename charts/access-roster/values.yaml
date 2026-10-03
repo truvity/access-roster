@@ -22,6 +22,158 @@ replicaCount: 2
 nameOverride: ""
 fullnameOverride: ""
 
+# What this release renders.
+#
+#   app         the service and the controllers (the default: everything
+#               above and below renders as it always has).
+#   alerts      ONLY the alert rules (`alerts`), as a VMRule or a
+#               PrometheusRule. Nothing else is rendered and nothing else is
+#               validated: install it a second time, where the metrics
+#               store's ruler looks for rule objects, beside the release that
+#               runs the service.
+#   dashboards  ONLY the Grafana dashboard ConfigMaps (`dashboards`), for the
+#               cluster Grafana runs on.
+#
+# Not to be confused with `route` (the Gateway API route), `exchange.clusters`
+# (workloads' home clusters) or `controllerGithub`/`controllerSlack` (which
+# controllers run): this chooses which of three kinds of object this release
+# is. The signals the rules and the dashboard read, and the install, are in
+# docs/operations/telemetry.md.
+renders: app
+
+# Alert rules, rendered only with `renders: alerts`. Every threshold and the
+# reason for it is in docs/operations/telemetry.md and in the rule's comment in
+# templates/alerts.yaml. The series are what the service and the controllers
+# publish over OTLP (OTEL_EXPORTER_OTLP_ENDPOINT on the pods), named as the
+# metrics gateway names them.
+alerts:
+  # The object's name. Empty: <release>-alerts.
+  name: ""
+  # Where the rule object goes: the namespace the ruler selects rules from.
+  # Empty: the release's.
+  objectNamespace: ""
+  # `vmrule` (operator.victoriametrics.com) or `prometheusrule`.
+  format: vmrule
+  # Labels on the rule object, for a ruler that selects objects by label.
+  labels: {}
+  # Labels added to EVERY rule, for the Alertmanager routing tree: set the
+  # cluster once here.
+  #   ruleLabels:
+  #     k8s_cluster_name: prod
+  ruleLabels: {}
+  interval: 1m
+  # The label that names the cluster on a store that holds several. Every
+  # aggregation keeps it.
+  clusterLabel: k8s_cluster_name
+  # The namespace access-roster runs in, whose series the rules read. Empty:
+  # the release's namespace. In an alerts-only release in another namespace,
+  # set it.
+  namespace: ""
+  # Extra matchers for every series, e.g. `k8s_cluster_name="prod"`.
+  selector: ""
+  # Where an alert's runbook entry is. The alert's name, lower-cased, is the
+  # anchor. Empty renders no link.
+  runbookBaseUrl: https://github.com/truvity/access-roster/blob/master/docs/operations/telemetry.md
+  rules:
+    noSigningKey:
+      enabled: true
+      severity: critical
+      for: 5m
+      labels: {}
+    signingKeyRotationStalled:
+      enabled: true
+      severity: warning
+      # 350 days. The default certificate lives 8760h (365d) and cert-manager
+      # replaces it 720h (30d) before the end, so a healthy key is at most
+      # about 335 days old; 350 tolerates two weeks of a late renewal and
+      # fires while the old key still has days to run. Set it to
+      # (duration - renewBefore) + 14d if you changed either, or disable the
+      # rule when `signingKey.existingSecret` is rotated by hand.
+      maxAgeSeconds: 30240000
+      for: 1h
+      labels: {}
+    issuer5xx:
+      enabled: true
+      severity: critical
+      # The share of the listener's requests that were answered 5xx over
+      # 10m, and the fewest 5xx that count: one error in a quiet hour is not
+      # a page.
+      ratio: 0.05
+      minErrors: 5
+      for: 10m
+      labels: {}
+    tokenLatency:
+      enabled: true
+      severity: warning
+      # p99 of the token endpoint, over 10m. A token is signed in memory and
+      # one store write: milliseconds when healthy.
+      thresholdSeconds: 2
+      for: 15m
+      labels: {}
+    tickFailing:
+      enabled: true
+      severity: warning
+      # This many failed ticks of one target within `window`. The default
+      # interval is 15m, so 3 in 45m is three in a row.
+      failures: 3
+      window: 45m
+      for: 0m
+      labels: {}
+    tickStale:
+      enabled: true
+      severity: critical
+      # No ok tick of a target for this long: 1h is four default intervals
+      # (15m), which tolerates three missed passes.
+      maxAgeSeconds: 3600
+      for: 10m
+      labels: {}
+    leaseLost:
+      enabled: true
+      severity: warning
+      # A lease lost this many times in `window` by one kind of target.
+      losses: 3
+      window: 1h
+      for: 0m
+      labels: {}
+    rateLimitLow:
+      enabled: true
+      severity: warning
+      # GitHub's budget left, per resource. The App's core budget is
+      # thousands an hour, so under 100 for 30m is a controller about to be
+      # refused, not a quiet hour.
+      remaining: 100
+      for: 30m
+      labels: {}
+    seatsShort:
+      enabled: true
+      severity: warning
+      for: 30m
+      labels: {}
+    portErrors:
+      enabled: true
+      severity: critical
+      # The share of storage port calls that failed (store unavailable or
+      # another error: not a lost compare-and-swap, not a missing key) over
+      # 5m, and the fewest failures that count.
+      ratio: 0.05
+      minErrors: 5
+      for: 10m
+      labels: {}
+
+# Grafana dashboards, rendered only with `renders: dashboards`: one ConfigMap
+# per file in dashboards/, labelled for Grafana's sidecar. Install it into the
+# cluster Grafana runs on.
+dashboards:
+  # Grafana's namespace. Empty: the release's.
+  namespace: ""
+  # The Grafana folder, when the sidecar is set to read the folder annotation.
+  folder: Access
+  # The label Grafana's sidecar selects ConfigMaps by (its
+  # `sidecar.dashboards.label`, and `labelValue`).
+  sidecarLabel: grafana_dashboard
+  sidecarLabelValue: "1"
+  labels: {}
+
 image:
   # The one image: `serve` and both controllers are subcommands of it.
   repository: ghcr.io/truvity/access-roster/access-roster

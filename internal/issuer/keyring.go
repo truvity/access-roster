@@ -472,7 +472,10 @@ func (r *KeyRing) recompute(ctx context.Context, now time.Time) {
 
 	r.activeID = activeID
 	r.published = published
-	r.metrics.recordPublished(ctx, int64(len(published)))
+	r.metrics.recordPublished(ctx, string(r.alg), int64(len(published)))
+	if e, ok := r.entries[activeID]; ok {
+		r.metrics.recordActive(ctx, string(r.alg), e.ActivateAt)
+	}
 }
 
 // Active is the key this replica currently signs with.
