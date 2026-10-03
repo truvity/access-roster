@@ -52,7 +52,7 @@ fails every pass against a console older than the `ListServedDomains` RPC.
   [the corporate directory](connect/corporate-directory.md)
 - [operations/runbook.md](operations/runbook.md#enabling-a-slack-workspace) —
   enabling a Slack workspace: connect it, read its dry run, then list it in
-  `slackRoster.actsIn`; and
+  `slackRoster.config.enabledWorkspaces`; and
   [operations/runbook.md](operations/runbook.md#slack-state) — backing up and
   restoring Slack state
 - [connect/slack-workspace.md](connect/slack-workspace.md#moving-a-policy-channel-to-the-console)

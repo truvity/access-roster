@@ -50,7 +50,26 @@ gateway, run upstream oauth2-proxy yourself (step 4).
    ```
 
    ```yaml
-   issuerURL: https://access.example.com      # stable for the life of the installation
+   config:                                    # access-issuer's configuration file, as it stands
+     issuerURL: https://access.example.com    # stable for the life of the installation
+     release: access-issuer                   # the release's full name
+     publicRootURL: https://access.example.com
+     publicURL: https://access.example.com/console
+     valkey:
+       address: valkey.access-issuer.svc:6379 # two replicas share sessions here
+     oauthClient:                             # keys client-id and client-secret
+       secretName: access-issuer-google-client
+       idFile: /var/run/access-issuer/oauth-client/client-id
+       secretFile: /var/run/access-issuer/oauth-client/client-secret
+     console:
+       client: access-console
+     audit:                                   # optional; see the prerequisites
+       writer: http://audit.example-ns.svc:8080        # the installation's receiver
+       queryURL: http://audit-query.example-ns.svc:8080 # its query service, for the Audit page
+
+   secretMounts:
+     - secretName: access-issuer-google-client
+       mountPath: /var/run/access-issuer/oauth-client
 
    route:
      host: access.example.com
@@ -59,20 +78,6 @@ gateway, run upstream oauth2-proxy yourself (step 4).
      certificate:
        issuerName: example-ca                 # a cert-manager issuer you own
        issuerKind: ClusterIssuer
-
-   valkey:
-     address: valkey.access-issuer.svc:6379   # two replicas share sessions here
-
-   oauthClient:
-     secret:
-       name: access-issuer-google-client      # keys client-id and client-secret
-
-   console:
-     client: access-console
-
-   audit:                                     # optional; see the prerequisites
-     writer: http://audit.example-ns.svc:8080        # the installation's receiver
-     query: http://audit-query.example-ns.svc:8080   # its query service, for the Audit page
 
    policy:
      groups:
@@ -144,7 +149,7 @@ RBAC on `serviceaccounts/token` for that one account
 
 **Controllers.** `githubRoster.enabled` and `slackRoster.enabled` are both off by
 default, and a GitHub organisation or Slack workspace they know is a dry run
-until listed in `actsIn`; see
+until listed in `config.enabledOrgs` / `config.enabledWorkspaces`; see
 [the runbook](runbook.md#enabling-a-slack-workspace).
 
 From there each connection is one guide: a

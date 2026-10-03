@@ -61,8 +61,9 @@ installation, never per company. About fifteen minutes.
      runs behind its real host.
 5. **Hand the client to the service**: create a Secret with keys
    `client-id` and `client-secret` in the service's namespace and set
-   `oauthClient.secret.name` (and `oauthClient.secret.keys.*` if the keys
-   are called something else). The console shows the client read-only; it
+   `config.oauthClient.secretName` (with `idKey` and `secretKey` if the keys
+   are called something else, and `idFile` and `secretFile` where the Secret
+   is mounted with `secretMounts`). The console shows the client read-only; it
    cannot write one, because a credential a console can change is one
    somebody can change from a browser.
 

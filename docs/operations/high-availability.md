@@ -44,8 +44,7 @@ at a second, and redeems the code at a third, works exactly as if there
 were one process. So does a CLI polling a device code, and so does the
 signing-key schedule (below).
 
-**Without Valkey** (`valkey.address` empty in the chart, or no
-`VALKEY_ADDRESS`), the issuer keeps this table in the memory of one
+**Without Valkey** (`config.valkey.address` unset), the issuer keeps this table in the memory of one
 process, and says so at start:
 
 > keeping logins in progress in memory: correct for one replica, and at
@@ -136,7 +135,7 @@ directory, and every one of them expires on its own.
 Every replica mounts the **same** Secret (`signingKey.existingSecret`, or
 the one the chart's own `Certificate` produces) at the same path, and
 polls it on an interval (`SIGNING_KEY_POLL_INTERVAL`, chart default `30s`
-via `signingKey.rotation.pollInterval`). Rotation is live: cert-manager (or
+via `config.signingKey.pollInterval`). Rotation is live: cert-manager (or
 whatever manages the Secret) replaces the key, the kubelet projects the
 change to each pod on its own schedule, and every replica notices on its
 next poll — no restart.
@@ -148,7 +147,7 @@ rotated key is the schedule in `internal/issuer/keyring.go`
 - **Publish before sign.** A newly observed key is published in the JWKS
   immediately, but a replica will not *sign* with it until
   `ActivationDelay` has passed (chart default `15m`,
-  `signingKey.rotation.activationDelay`). This covers the slowest kubelet
+  `config.signingKey.activationDelay`). This covers the slowest kubelet
   anywhere in the cluster projecting the same Secret update (documented as
   roughly a minute) plus the longest JWKS cache among verifiers (Envoy's
   `jwt_authn` default is 10 minutes and does not refetch on an unknown
@@ -157,7 +156,7 @@ rotated key is the schedule in `internal/issuer/keyring.go`
 - **Overlap on retirement.** A key that stopped signing stays published
   for `Overlap` past being superseded (chart default: the deployment's own
   token lifetime plus 5 minutes of clock-skew margin,
-  `signingKey.rotation.overlap`) — long enough that a token minted a
+  `config.signingKey.overlap`) — long enough that a token minted a
   moment before rotation still verifies for its whole life.
 - **First-writer-wins.** Whichever replica records a given key id *first*
   in the shared store decides its `ActivateAt`, once

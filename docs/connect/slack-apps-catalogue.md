@@ -53,7 +53,7 @@ area: the policy never carries its team, owner or domains (see
 Until the workspace is connected, and has recorded its team at its first
 install, Create and Install are refused with *connect the workspace first*.
 
-Needs `directory.store: kubernetes`: with any other store a bot token would
+Needs `config.store: kubernetes`: with any other store a bot token would
 not survive a restart, and the console says so instead of creating an App.
 
 ## The app configuration token
@@ -168,7 +168,7 @@ A consumer reads the property `bot_token` from `remoteKey`; the name is the
 contract. Only that one key is copied: never the record, never the client
 id or secret, never another App's keys. Two entries may not push to one
 `remoteKey` in one store (the chart refuses), and `push` needs
-`directory.store: kubernetes`. `push` is a chart-side instruction: it is
+`config.store: kubernetes`. `push` is a chart-side instruction: it is
 stripped from the rendered catalogue the service reads.
 
 ## Leaving

@@ -29,7 +29,7 @@ yet know which of those you want.
 | name a grant, or declare a vocabulary that checks it | [taxonomy.md](taxonomy.md) |
 | connect the corporate directory people sign in with | [connect/corporate-directory.md](connect/corporate-directory.md), and [operations/connect-runbook.md](operations/connect-runbook.md) |
 | give a CI job an identity with no stored secret | [connect/github-actions.md](connect/github-actions.md) |
-| deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md) (and [the Slack controller's environment](reference/configuration.md#the-slack-controllers-environment)), then [operations/connect-runbook.md](operations/connect-runbook.md) |
+| deploy it | [operations/adoption-plain-helm.md](operations/adoption-plain-helm.md), [reference/configuration.md](reference/configuration.md) (and [the configuration file](reference/configuration.md#the-configuration-file), with the [migration from environment variables](reference/configuration.md#migrating-from-environment-variables)), then [operations/connect-runbook.md](operations/connect-runbook.md) |
 | run it: what to check, what to back up, how to restore | [operations/runbook.md](operations/runbook.md), [configuration.md — restoring from the Secrets alone](reference/configuration.md#restoring-from-the-secrets-alone) |
 | run more than one replica of the issuer | [operations/high-availability.md](operations/high-availability.md) |
 | use it from a laptop or a CI job | [reference/accessctl.md](reference/accessctl.md) |

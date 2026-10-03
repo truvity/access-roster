@@ -47,7 +47,7 @@ For every workspace the policy declares:
    pass, however many channels or workspaces name the person. An address the
    directory could not answer for, or answered for under another policy, is not
    vouched for, and its removal waits (row state `retrying`).
-5. **Decides**, then acts if the workspace is listed in `slackRoster.actsIn`;
+5. **Decides**, then acts if the workspace is listed in `slackRoster.config.enabledWorkspaces`;
    otherwise it only reports.
 6. **Publishes every workspace's report together** into the ConfigMap
    `<release>-slack-status`, one key per workspace.
@@ -224,7 +224,7 @@ the mode. The tab also lists Slack Connect channels, and its filters (`kind`,
 [Slack Connect channels](slack-connect-channels.md#adopting-a-channel-that-is-already-shared).
 
 **Archiving.** Deleting a record leaves the channel in Slack. When the
-workspace's controller reports that it acts (it is in `slackRoster.actsIn`), the
+workspace's controller reports that it acts (it is in `slackRoster.config.enabledWorkspaces`), the
 delete dialog has an opt-in, *Also archive #name in Slack* (off by default);
 for a dry-run workspace the dialog says to archive in Slack by hand instead.
 Before anything is changed the console checks, in order: the latest report says
@@ -297,16 +297,16 @@ Slack Connect tab: see [slack-connect-channels.md](slack-connect-channels.md),
 including how a guest workspace's side is found
 ([Guest sides and the probe](slack-connect-channels.md#guest-sides-and-the-probe)).
 
-### Dry run until `actsIn`
+### Dry run until `enabledWorkspaces`
 
 A workspace is born disabled. Every pass derives it, publishes what WOULD
 change, and calls Slack for nothing that changes it and records nothing in the
-audit trail. Enabling one is a reviewed change to `slackRoster.actsIn`; removing
+audit trail. Enabling one is a reviewed change to `slackRoster.config.enabledWorkspaces`; removing
 it again stops the controller acting in it, and undoes nothing. The console's
 own Slack calls (connect, disconnect, revoke) are not part of a pass and are not
-gated by `actsIn`. Archiving on delete follows the switch: it is offered, and
+gated by `enabledWorkspaces`. Archiving on delete follows the switch: it is offered, and
 accepted, only for a workspace whose controller reports that it acts. Remove a
-workspace from `actsIn` before removing it from the policy: the controller
+workspace from `enabledWorkspaces` before removing it from the policy: the controller
 refuses to start naming a key the policy does not declare, and the chart refuses
 to render it.
 
@@ -541,7 +541,9 @@ purposes; this page's App is the roster's own.
 ```yaml
 slackRoster:
   enabled: true
-  actsIn: []            # born disabled: nothing is changed until a workspace is listed
+  config:
+    consoleURL: http://access-issuer.access.svc:8080/console   # this release's own Service
+    enabledWorkspaces: []   # born disabled: nothing is changed until a workspace is listed
 exchange:
   clusters:
     - name: prod        # this cluster: the service verifies the controller's token against its key set
@@ -549,9 +551,9 @@ exchange:
       jwksUri: https://oidc.eks.eu-central-1.amazonaws.com/id/EXAMPLE/keys
 ```
 
-The other values are `slackRoster.interval` (the pass interval, default 15m),
+The other values are `slackRoster.config.interval` (the pass interval, default 15m),
 `slackRoster.image` and `slackRoster.resources`. The controller refuses to start
-when `slackRoster.actsIn` names a workspace the policy does not declare.
+when `enabledWorkspaces` names a workspace the policy does not declare.
 
 The policy puts its account in the group that reads who holds a group:
 
@@ -602,12 +604,12 @@ another policy changes nothing and is tried again within seconds.
 ### Enabling a workspace
 
 1. The workspace is declared in the policy, connected, installed, and the
-   controller runs with it *not* in `slackRoster.actsIn`. After an install, a
+   controller runs with it *not* in `slackRoster.config.enabledWorkspaces`. After an install, a
    pass runs within a couple of minutes; **Refresh** asks for another.
 2. Read its report after a pass. `tick.outcome` says `dry-run`; the rows say
    exactly what enabling would do. Look for anybody you did not expect to be
    removed, and for held rows: each carries its reason.
-3. Add the key to `slackRoster.actsIn` and roll out. The next pass acts; its
+3. Add the key to `slackRoster.config.enabledWorkspaces` and roll out. The next pass acts; its
    changes appear in the audit trail as `roster.slack_*`.
 
 ### Metrics

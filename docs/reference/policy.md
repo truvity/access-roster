@@ -750,8 +750,7 @@ still shortens that token's life exactly as it does today — scoping
 narrows what a token SAYS, never what the issuer computes from what a
 caller holds.
 
-**`off`, `report`, `enforce`.** `groupsScoping` (a chart value,
-`GROUPS_SCOPING` in the environment — see
+**`off`, `report`, `enforce`.** `groupsScoping` (a key of the service's `config` — see
 [configuration.md](configuration.md)) is one of the three. `off` computes
 and logs nothing. `report`, the default since 1.32.0, computes the rule
 above for every minted token and logs one line when it would have dropped
@@ -1178,7 +1177,7 @@ console.
 
 > **The Slack controller, `slack-roster`, reads this table.** It is a second
 > process from the `access-issuer` chart and changes only the workspaces listed
-> in `slackRoster.actsIn`; every other declared workspace is a dry run. What it
+> in `slackRoster.config.enabledWorkspaces`; every other declared workspace is a dry run. What it
 > does with the keys is on
 > [Connect a Slack workspace](../connect/slack-workspace.md) and in
 > [the Slack reconciler](../design/access-roster.md#the-slack-reconciler).

@@ -33,7 +33,7 @@ repository.
 |---|---|---|---|
 | `access-issuer` chart and image | `oci://ghcr.io/truvity/charts/access-issuer`, `ghcr.io/truvity/access-roster/access-issuer` | the installation, once. One process: the directory, the policy, the OpenID provider, the login page, the console and the audit trail | shipped |
 | `github-roster` image, in the same chart | `ghcr.io/truvity/access-roster/github-roster` | a second process: one loop that keeps every connected GitHub organisation's teams as the policy says, reporting to the console | shipped |
-| `slack-roster` image, in the same chart | `ghcr.io/truvity/access-roster/slack-roster` | a second process: one loop that keeps every connected Slack workspace's channels as the policy says, and the console's channel records; a dry run until a workspace is in `slackRoster.actsIn` | shipped |
+| `slack-roster` image, in the same chart | `ghcr.io/truvity/access-roster/slack-roster` | a second process: one loop that keeps every connected Slack workspace's channels as the policy says, and the console's channel records; a dry run until a workspace is in `slackRoster.config.enabledWorkspaces` | shipped |
 | `access-proxy` chart | removed in v1.32.0 | the chart was Envoy Gateway's external authorization backend; gateway-native OIDC replaces it there. For a gateway that is not Envoy Gateway, run upstream oauth2-proxy yourself — see [docs/design/access-proxy.md](docs/design/access-proxy.md), [ADR 0003](docs/decisions/0003-deprecate-access-proxy.md). Versions already published stay available. | removed |
 | Go module | `github.com/truvity/access-roster` | services and consoles in Go: verify a bearer, read the caller's groups | shipped |
 | TypeScript package | `@truvity/access-roster` on GitHub Packages | console UIs: `useIdentity()` over `/.access/whoami`; Node services: verify a bearer | shipped |
@@ -198,7 +198,7 @@ holds, so nothing server-side, Back-Channel Logout included, can end one
 controller and the Slack controller are second processes from the same chart,
 asking the issuer who holds which group and acting on GitHub with an App, or on
 Slack with a bot, that an owner created from the console; each acts only in the
-organisations or workspaces listed in its `actsIn`, and a removal rests on a
+organisations or workspaces listed in its `enabledOrgs` / `enabledWorkspaces`, and a removal rests on a
 vouched directory answer and never exceeds half a target without an operator's
 confirmation.
 
@@ -233,7 +233,21 @@ helm install access-issuer oci://ghcr.io/truvity/charts/access-issuer \
 ```
 
 ```yaml
-issuerURL: https://access.example.com      # stable for the life of the installation
+config:                                    # access-issuer's configuration file, as it stands
+  issuerURL: https://access.example.com    # stable for the life of the installation
+  release: access-issuer                   # the release's full name
+  publicRootURL: https://access.example.com
+  publicURL: https://access.example.com/console
+  valkey:
+    address: valkey.access-issuer.svc:6379
+  oauthClient:                             # keys client-id and client-secret
+    secretName: access-issuer-google-client
+    idFile: /var/run/access-issuer/oauth-client/client-id
+    secretFile: /var/run/access-issuer/oauth-client/client-secret
+  console:
+    client: access-console
+secretMounts:
+  - { secretName: access-issuer-google-client, mountPath: /var/run/access-issuer/oauth-client }
 # signingKey.certificate is left at its default: a P-384 key, so every token is ES384.
 # A relying party that accepts only RS256 (Kargo; kube-apiserver flags left at their
 # default) needs {algorithm: RSA, size: 2048, encoding: PKCS1} there instead.
@@ -242,12 +256,6 @@ route:
   rootRedirect: /console/
   gatewayClassName: example-gateway-class
   certificate: { issuerName: example-ca, issuerKind: ClusterIssuer }
-valkey:
-  address: valkey.access-issuer.svc:6379
-oauthClient:
-  secret: { name: access-issuer-google-client }   # keys client-id and client-secret
-console:
-  client: access-console
 policy:
   groups:
     all:access-roster:operator:

@@ -126,7 +126,7 @@ in the login path, so it runs in its own Deployment with no listener. It
 reads the console's API with its own ServiceAccount token, the way any
 workload would, and reports into a ConfigMap the console shows. Every
 organisation is a dry run until the chart lists it in
-`githubRoster.actsIn`; removing one from the list is the emergency stop. A pass
+`githubRoster.config.enabledOrgs`; removing one from the list is the emergency stop. A pass
 runs every `githubRoster.interval` (15 minutes) and also, without waiting, when
 the mounted credentials or records change (a new installation) or an operator
 presses **Refresh** (looked at every 30 seconds, and as quick as the kubelet
@@ -145,7 +145,7 @@ when the mounted credentials or records (including the console's channel and
 Slack Connect records) change or an operator presses **Refresh** (looked at every
 30 seconds, and as quick as the kubelet refreshes the mounted files: within a
 couple of minutes). Every Slack workspace is a dry run until the chart lists it
-in `slackRoster.actsIn`; removing one from the list is the emergency stop. The
+in `slackRoster.config.enabledWorkspaces`; removing one from the list is the emergency stop. The
 two controllers share one set of rails (`internal/rails`): the pass loop and its
 policy-retry backoff, the two questions put to the console (who holds a group,
 and does the directory vouch for this address) gated by the policy digest, the
@@ -198,7 +198,7 @@ expressed in configuration and whether it is built.
 | clusters, for workloads | one row per cluster naming its ServiceAccount-token key set; token exchange | **built**. The issuer's own cluster is a row like any other, and the issuer holds access to none of them |
 | AWS accounts | the issuer registered once per account as an IAM OIDC provider; a `requires` list per role client; `accessctl aws` as the credential process, one `aws.ini` for a laptop and a job | **built** |
 | GitHub organisations | one controller App per organisation, created and installed by its owner from the console; `github` bindings in the policy naming internal groups, with an `ignore` list per organisation; an account becomes a person's by their own link, a public-profile match or an import, and a link is checked every pass; one runner App per organisation per tier for self-hosted runners | **built and acting**: joiners, movers and leavers with nobody in the loop, and the controller stops itself where somebody is needed — seats, removals over half an organisation, owners |
-| Slack workspaces | one bot per workspace, connected from the console by pasting a configuration token once (the owning directory is chosen there); channels as **policy** (`slack.workspaces.<key>.channels`, internal groups) or as **console records** (directory groups and individual addresses, ordinary or Slack Connect); strict channels (private only) also remove; a person with no Slack account is waited for, never created | **built; acting only where listed in `slackRoster.actsIn`**: adds people, removes only from strict private channels and only on a directory-vouched answer under the breakers; never creates accounts, never touches user groups, never removes from a public channel |
+| Slack workspaces | one bot per workspace, connected from the console by pasting a configuration token once (the owning directory is chosen there); channels as **policy** (`slack.workspaces.<key>.channels`, internal groups) or as **console records** (directory groups and individual addresses, ordinary or Slack Connect); strict channels (private only) also remove; a person with no Slack account is waited for, never created | **built; acting only where listed in `slackRoster.config.enabledWorkspaces`**: adds people, removes only from strict private channels and only on a directory-vouched answer under the breakers; never creates accounts, never touches user groups, never removes from a public channel |
 | CI platforms | one federated issuer row; `ci` rules on repository, ref and visibility | **built**: the verifier, `accessctl` inside a job, and the GitHub Action at the repository root — `curl` and `jq`, so nothing of ours is downloaded into a job |
 | consoles and applications | one client row each, with a display name and description the sign-in page shows; for consoles with no OpenID flow of their own, use gateway-native OIDC (Envoy Gateway) or run upstream oauth2-proxy yourself (other gateways); back-channel logout for applications that opt in | **built**: the directory console (it signs in as a client of the issuer it shares an origin with), Kargo and its CLI, `accessctl` as a public client |
 

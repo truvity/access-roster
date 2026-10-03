@@ -85,7 +85,7 @@ an App an operator created and stopped at.
 
 Two entries pushing to one path in one store is refused at render: one
 would overwrite the other, and whoever read that path could not tell
-which App's key they held. `push` also needs `directory.store:
+which App's key they held. `push` also needs `config.store:
 kubernetes`, because with any other store there is no Secret to push
 from.
 

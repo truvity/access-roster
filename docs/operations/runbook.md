@@ -59,7 +59,7 @@ sign-in is what is broken:
 - **recovery enabled (the default):** mint a token as in day one, sign in
   at `/login` under *Recovery sign-in*, fix the membership. Who did it is
   in the service's log and in the cluster's audit log, by name.
-- **recovery disabled:** set `recovery.enabled: true` in the values,
+- **recovery disabled:** set `config.recovery.enabled: true` (with `config.inCluster: true`) in the values,
   roll the deployment, then as above. There is no password to recover,
   only RBAC to hold.
 - **`503 recovery could not be checked`:** the check did not run — the API
@@ -289,7 +289,7 @@ The export contains credentials. Treat it as one.
 
 Two replicas are the default; the shared Valkey makes them answer from
 the same snapshot and lets one refresher run for both. A single replica
-may run without Valkey (`valkey.address` empty), at the cost of a cold
+may run without Valkey (`config.valkey.address` unset), at the cost of a cold
 cache on every restart. Memory in Valkey is the size of the directories.
 Every replica serves every workspace: one connected through the console
 on the other replica is opened from its stored credential on first use
@@ -303,7 +303,7 @@ domains, counts, durations and errors.
 
 ### Reading the groups-scoping report
 
-With `groupsScoping: report` (the default since 1.32.0), every minted
+With `config.groupsScoping: report` (the default since 1.32.0), every minted
 token that would have dropped a group under
 [per-audience scoping](../reference/policy.md#groups-in-a-token-scoping)
 logs one INFO line naming the audience, the client, the subject and the
@@ -337,7 +337,7 @@ exchange — before treating its silence as complete.
 
 ### Turning enforce on
 
-`groupsScoping: enforce` narrows a token's `groups` claim, and
+`config.groupsScoping: enforce` narrows a token's `groups` claim, and
 `/userinfo`'s answer, to exactly what the report above described —
 nothing about how `requires` gates entry, or how a `rung:` group shortens
 a token's life, changes: both still read the FULL set a caller holds,
@@ -387,10 +387,10 @@ workspace](../connect/slack-workspace.md).
 `all:access-roster:viewer`, `slackRoster.enabled` is true, and the console is
 rolled out before the controller (it needs `ListServedDomains`, 1.42.0).
 
-1. Connect and install the workspace, list nothing in `slackRoster.actsIn`,
+1. Connect and install the workspace, list nothing in `slackRoster.config.enabledWorkspaces`,
    and let a pass run. The report's `tick.outcome` is `dry-run` and its rows are
    what enabling would do; read the held and retrying rows and the leavers.
-2. Add the workspace's key to `slackRoster.actsIn` and roll out. Its changes
+2. Add the workspace's key to `slackRoster.config.enabledWorkspaces` and roll out. Its changes
    appear in the audit trail as `roster.slack_*`.
 3. To stop, remove the key. Nothing is undone. That is also the emergency stop.
 
@@ -468,7 +468,7 @@ The controller needs egress to `slack.com:443`, which the chart does not open.
 
 1. The organisation is bound in the policy, **connected** on the GitHub
    page, and the controller runs with the organisation *not* in
-   `githubRoster.actsIn`. The **link App** is created, and the people
+   `githubRoster.config.enabledOrgs`. The **link App** is created, and the people
    who belong in it have linked their accounts — send them the link page
    the GitHub page shows. Until somebody links, their rows say
    `not linked` and their accounts are left alone.
@@ -478,7 +478,7 @@ The controller needs egress to `slack.com:443`, which the chart does not open.
    held rows: each carries its reason. *Controller* says `waiting on
    links` when the only thing left is people who have not linked — that
    is not in sync, and enabling changes nothing for them.
-3. Add the login to `githubRoster.actsIn` and roll out. The next pass
+3. Add the login to `githubRoster.config.enabledOrgs` and roll out. The next pass
    acts; its changes appear in the audit trail as `roster.github_member.*`.
 4. To stop acting in it, remove the login again. Nothing is undone: the
    organisation is simply left as it is.
@@ -530,7 +530,7 @@ left the organisation (`roster.github_link.lost`, then
 
 ## Runner Apps
 
-The chart declares the tiers (`githubRunnerApps.tiers: [preview, stable]`)
+The chart declares the tiers (`config.github.runnerTiers: [preview, stable]`)
 and the GitHub page's Runners tab then shows a row per bound organisation
 per tier. *Create* is the same two clicks as an organisation's App:
 GitHub's create page, then its install page, by an owner of the
@@ -684,7 +684,7 @@ the queue fills and, past its bound, drops.
 | `no audit installation is connected: records are validated and logged, and kept nowhere else` (Warn, at start) | the deployment keeps no trail |
 
 and as metrics, from the emitter, pushed over OTLP when
-`telemetry.otlpEndpoint` is set: **`audit.emit.records.dropped` is the one to
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set on the pod: **`audit.emit.records.dropped` is the one to
 alert on** — the queue gave up and those records are gone.
 `audit.emit.queue.pending` climbing and not falling is a writer gone too
 long; `audit.emit.batches.failed`, `audit.emit.records.refused` (a bug) and
