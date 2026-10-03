@@ -51,7 +51,7 @@ reason 0007 gives: a warning that no pipeline surfaces is silence.
 
 ## Implementation note: the command surface
 
-Shipped in two changes. The configuration file came first (v1.53.0); the one
+Shipped in two changes. The configuration file came first (v1.52.4); the one
 binary and the one chart came second, and `tick` is a third, with the leases
 of [0029](0029-ticks-per-target-under-a-lease.md).
 
