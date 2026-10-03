@@ -183,6 +183,58 @@
   if a business package imports `internal/kube`, `internal/valkey` or the legacy
   adapter. `valkey.Snapshots` is gone: its encoding moved to the hub, unchanged.
 
+- **Each reconciler works in ticks of one target under a lease, and there is an
+  `access-roster tick` command.**
+  [0029](docs/decisions/0029-ticks-per-target-under-a-lease.md), on the ports
+  above. A GitHub organisation, a Slack workspace and (for GitHub) the people's
+  link check, `github:links`, are targets; `controller.Tick(ctx, target)` is
+  one target's pass and publishes **its own report only**, so the report
+  ConfigMap entry of a target nobody ticked is not read, written or rewritten.
+  `access-roster controller github|slack` is still the Kubernetes runner: it
+  sweeps every target on the interval (links first), each under a lease taken
+  from the State port (a create with a lifetime, renewed by compare-and-swap,
+  released only if still the holder's, and the tick's context ends if the lease
+  is lost), and the sweep prunes the reports of targets the policy no longer
+  has. **New:** `access-roster tick <github|slack> <target> --config <file>`
+  runs one target's tick once under its lease and exits (an organisation's
+  login, `github:links`, or a workspace's key), which is the shape of a
+  function that lives for one invocation and is useful to an operator now.
+
+  - **Nothing moves and nothing new is stored.** The leases are the
+    `lease.<kind>:<target>` keys the legacy adapter already maps to the hub's
+    Valkey lease slot (`{target}:lease:github-tick`, `github-links`,
+    `slack-tick`); reports stay the two status ConfigMaps. Keys the legacy
+    adapter cannot hold (`share.`, `cache.`, `gate.`, `gh.link.`) are not used:
+    the shared inputs are cached in memory per policy digest (five minutes,
+    and read again when anything mounted changes, such as an operator's
+    request), and the Slack Connect hand-off keeps working without a
+    pending-share record, as below. All of that is B3.
+  - **A request ticks its target.** An operator's Refresh now ticks only its
+    organisation or workspace (the controller's mounted-records watch notifies
+    its in-process trigger with that target) instead of the whole pass, and the
+    console calls `Trigger.Notify(target)` on a Refresh, a confirmation and a
+    save of a channel or Slack Connect record. With the legacy adapter the
+    console and the controllers are different processes, so the controllers
+    still learn of a console write from the records they mount, polled every 30
+    seconds, and a change of a credential or record runs a sweep; B3's
+    key-value watch replaces the poll.
+  - **Slack Connect.** The host's tick, having invited a guest (or seeing an
+    invitation still waiting), notifies the guest's tick, which accepts; the
+    sweep is the fallback when the notification cannot reach the guest's runner.
+    `probeGuestSides` is now the host's: it reads the guests' last reports from
+    the blob, asks only for the sides a guest's own report does not list, and
+    publishes what it found in the host's report as the new additive
+    `guest_sides` (the console merges them into the guest's side as before; an
+    older console shows no probed side and nothing else changes).
+  - **Replicas stay at one, strategy `Recreate`.** The leases are only
+    exclusive across pods when the State is shared, and a controller has no
+    Valkey configured and the chart gives it no way to name one, so with the
+    legacy adapter its leases are in its own process (it logs that); a second
+    replica or a rolling update would not be kept off, and the previous
+    version, which takes no lease, would run beside the new one. Two replicas
+    wait for B3's key-value State, which both pods share. Nothing in the chart
+    changes.
+
 ## v1.52.3
 
 - **The GitHub controller waits out a rate limit instead of failing the

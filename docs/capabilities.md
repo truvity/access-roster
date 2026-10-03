@@ -48,14 +48,15 @@ series.
 | Piece | Kubernetes | AWS Lambda |
 |---|---|---|
 | Issuer, console and directory hub | ✅ | 📄 |
-| GitHub reconciler | ✅ (one replica, no lease) | 📄 |
-| Slack reconciler | ✅ (one replica, no lease) | 📄 |
-| `Tick(target)` with a lease per target | 📄 | 📄 |
-| Two replicas of a reconciler | 📄 | — |
+| GitHub reconciler | ✅ (one replica) | 📄 |
+| Slack reconciler | ✅ (one replica) | 📄 |
+| `Tick(target)` with a lease per target, a report per target, and a trigger that ticks only its target (on the legacy adapter: the lease is exclusive across pods only with a shared State, and a controller has none; the console reaches a controller through the mounted records, polled) | 🧪 | 📄 |
+| Two replicas of a reconciler | 📄 (needs the NATS State) | — |
+| Slack Connect handoff: the host's tick notifies the guest's; the guest-side probe is the host's tick's | 🧪 | 📄 |
 | Slack Connect handoff by pending-share record | 📄 | 📄 |
 | HTTP function behind the Lambda Web Adapter and an API Gateway HTTP API | — | 📄 |
 | Tick function on EventBridge Scheduler | — | 📄 |
-| One binary `access-roster` (`serve`, `controller github`, `controller slack`; `migrate` is a stub; `tick` is to come) | 🧪 | 📄 |
+| One binary `access-roster` (`serve`, `controller github`, `controller slack`; `tick <github|slack> <target>` runs one tick once; `migrate` is a stub) | 🧪 | 📄 |
 | One chart `access-roster` (`serve`, `controller-github`, `controller-slack`) | 🧪 | — |
 | One configuration file validated against a schema (per subcommand) | 🧪 | 📄 |
 

@@ -215,7 +215,15 @@ when I retried" as a fluke.
 
 `controllerGithub` and `controllerSlack` each run one pod with `strategy: Recreate`: two
 controllers would make every change twice, and Slack's answer to the second is
-an error that reads as a failure. A rollout or a node loss pauses reconciling
+an error that reads as a failure. Each target (an organisation, a workspace, the
+GitHub link check) is ticked under a lease taken from the State port
+([0029](../decisions/0029-ticks-per-target-under-a-lease.md)), which is what will
+let two replicas divide the targets; but the leases keep another pod off only
+when the State is shared, and a controller is configured with no Valkey, so on
+today's storage its leases are in its own process and the chart stays at one
+replica. Two replicas wait for the NATS State. `access-roster tick <github|slack>
+<target> --config <file>` runs one target's tick once under its lease, for an
+operator. A rollout or a node loss pauses reconciling
 for the time the pod needs to start; every pass recomputes from the console and
 the target system, so nothing is missed, and a pass that meets a console on
 another policy is retried within seconds (5s doubling to a minute, six times).

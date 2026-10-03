@@ -318,7 +318,9 @@ first line, naming what a restart would lose.
 ## The configuration file
 
 Each subcommand of `access-roster` (`serve`, `controller github`, `controller slack`) is configured by **one YAML file**, given with `--config <file>`,
-and by nothing else: `--version` and `--help` are the only other flags.
+and by nothing else: `--version` and `--help` are the only other flags. `access-roster tick github|slack <target>`
+runs one target's tick once and reads the same file as its controller (`controller-github`, `controller-slack`); the target
+comes first: an organisation's login or `github:links` for GitHub, a workspace's key for Slack.
 [0032](../decisions/0032-one-configuration-file-one-binary-one-chart.md) is the
 decision, and truvity/policy's
 [configuration contract](https://github.com/truvity/policy/blob/master/docs/contracts/config.md)

@@ -65,3 +65,42 @@ shape guessed from two systems.
 
 **Keep polling directory digests.** Rejected: a Lambda has no mounted directory,
 and the digest was a stand-in for a change notification.
+
+## Implementation note (2026-10-03)
+
+**What landed**, on the ports of [0027](0027-the-state-port-nats-jetstream-and-dynamodb.md)
+and the legacy adapter, with nothing stored that today's storage cannot hold:
+
+- `Tick(ctx, target)` on each controller: an organisation or a workspace, and
+  for GitHub the people's link check as a target of its own, `github:links`. A
+  tick publishes its own report only (`rails.Journal.PublishOne`, a one-entry
+  write through the Blob port), and a sweep prunes the reports of targets the
+  policy no longer has. `access-roster tick <github|slack> <target>` runs one
+  tick once.
+- A lease per target from the State port (`rails.Leases`): `Create` with a
+  lifetime, renewed by `Update` with the revision it holds, released by
+  `DeleteIfRevision`; the tick's context ends when the lease is lost or cannot
+  be renewed for a lifetime. The keys are `lease.github-tick:<org>`,
+  `lease.github-links:all` and `lease.slack-tick:<workspace>`, which the legacy
+  adapter maps to the hub's `{target}:lease:<kind>` slot. `controller github|slack`
+  is the loop that sweeps the targets under their leases.
+- A notification ticks its target: the controller subscribes to the Trigger and
+  an operator's request (read from the mounted records) notifies only its target.
+  The 30-second look at the mounted records remains the fallback, since the
+  legacy trigger is in-process and the console and the controllers are not.
+- The shared once-per-pass inputs of the Slack controller are computed in one
+  place and cached in memory by the policy digest and what is mounted.
+- Slack Connect: the host's tick notifies the guest's when it invited, or sees
+  an invitation waiting; `probeGuestSides` is the host's tick's, reading the
+  guests' reports from the Blob port and publishing what it finds in the host's
+  report (`guest_sides`).
+
+**What waits for B3**, because it needs key families the legacy adapter cannot
+hold: the **pending-share record** (`share.`) as the hand-off, so the guest is
+notified through the store and not through a process-local notification (until
+then the notification is a hint, and the sweep every interval is the backstop);
+the **State-backed shared-input cache** (`cache.`) and the breaker and held-once
+ledger in the store (`gate.`); a **key-value watch** that replaces the polled
+look at the mounted records; and **two replicas**, which need a State both pods
+share (a controller has no Valkey to name today, so its leases are held in its
+own process and the chart stays at one replica with `Recreate`).
