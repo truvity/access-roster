@@ -25,7 +25,9 @@ import (
 	"github.com/truvity/access-roster/gen/directoryroster/v1/directoryrosterv1connect"
 	"github.com/truvity/access-roster/internal/audit"
 	"github.com/truvity/access-roster/internal/config"
+	"github.com/truvity/access-roster/internal/portstore"
 	"github.com/truvity/access-roster/internal/rails"
+	"github.com/truvity/access-roster/internal/slackroster/apply"
 	"github.com/truvity/access-roster/internal/slackroster/controller"
 	"github.com/truvity/access-roster/internal/store"
 	"github.com/truvity/access-roster/internal/telemetry"
@@ -181,6 +183,25 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Any adapter but `legacy` keeps the console's records and the workspaces'
+	// credentials on the State port (sealed), and the controller reads them
+	// there, not from mounted files; the hand-off of a Slack Connect share and
+	// the cache of who a member is live there too.
+	var (
+		records controller.RecordSource
+		handoff controller.Handoff
+		members apply.MemberCache
+	)
+	if stores.Adapter != store.AdapterLegacy {
+		base := portstore.New(stores.Ports)
+		if err = base.CheckSealer(ctx); err != nil {
+			stores.Close()
+			return nil, fmt.Errorf("ports.adapter %s: %w", stores.Adapter, err)
+		}
+		records = portstore.NewSlackSource(base)
+		handoff = portstore.NewHandoff(base, stores.Ports.Trigger)
+		members = portstore.NewUserCache(base)
+	}
 
 	// Every call to the console carries this pod's own projected token,
 	// read fresh each time: the kubelet rotates it under the pod.
@@ -237,6 +258,9 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Trigger: stores.Ports.Trigger,
 			Policy:  declared,
 			Digest:  set.Digest(),
+			Records: records,
+			Handoff: handoff,
+			Members: members,
 		}),
 	}, nil
 }

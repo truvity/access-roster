@@ -52,6 +52,40 @@ func (c *Controller) passRequests() map[string]time.Time {
 // which workspace changed; an operator's request names its workspace, and only
 // that workspace ticks, through the trigger.
 func (c *Controller) watchCredentials(ctx context.Context, wake chan<- struct{}) {
+	if src := c.deps.Records; src != nil {
+		var lastDigest [32]byte
+		rails.Watch{
+			Poll: c.cfg.CredentialPoll,
+			Digest: func() [32]byte {
+				digest, err := src.Digest(ctx)
+				if err != nil {
+					// Not read: unchanged, and the next poll asks again.
+					c.deps.Log.WarnContext(ctx, "the records could not be read for the change check", "error", logsafe.Error(err))
+					return lastDigest
+				}
+				lastDigest = digest
+				return digest
+			},
+			Requests: func() map[string]time.Time {
+				out := map[string]time.Time{}
+				requests, err := src.PassRequests(ctx)
+				if err != nil {
+					return out
+				}
+				for workspace, r := range requests {
+					out[workspace] = r.At
+				}
+				return out
+			},
+			Changed: "a workspace's credentials changed",
+			OnRequest: func(workspace string) {
+				if err := c.deps.Trigger.Notify(ctx, workspace); err != nil {
+					c.deps.Log.WarnContext(ctx, "a requested pass could not be handed to the trigger", "workspace", logsafe.Value(workspace), "error", logsafe.Error(err))
+				}
+			},
+		}.Run(ctx, c.deps.Log, wake)
+		return
+	}
 	rails.Watch{
 		Poll: c.cfg.CredentialPoll,
 		Digest: func() [32]byte {

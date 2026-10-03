@@ -27,6 +27,7 @@ release and what has landed since.
 | State: Kubernetes objects and Valkey (the current store) | ✅ | — |
 | State: the ports' `legacy` adapter over that store (temporary, until the migration of [0031](decisions/0031-a-generic-migration-tool.md) has run) | 🧪 | — |
 | State, session index and Trigger: NATS JetStream KV (`internal/port/nats`, `ports.adapter: nats`; per-key TTL needs nats-server 2.11 or later) | 🧪 | — |
+| Domain stores on the ports: workspaces and credentials, GitHub organisations and Apps, a person's GitHub link (one item, token pair sealed, compare-and-swap refresh), runner and catalogue Apps, the Slack records, the console's session key (`internal/portstore`; any `ports.adapter` but `legacy`, which needs a Sealer) | 🧪 | 📄 |
 | State: DynamoDB | — | 📄 |
 | Blob: S3 (reports, snapshots; `internal/port/s3blob`, `ports.blob`) | 🧪 | 🧪 |
 | Trigger: KV watch (across processes) | 🧪 | — |
@@ -54,7 +55,10 @@ release and what has landed since.
 | `Tick(target)` with a lease per target, a report per target, and a trigger that ticks only its target (on the legacy adapter: the lease is exclusive across pods only with a shared State, and a controller has none; the console reaches a controller through the mounted records, polled) | 🧪 | 📄 |
 | Two replicas of a reconciler | 📄 (needs the NATS State) | — |
 | Slack Connect handoff: the host's tick notifies the guest's; the guest-side probe is the host's tick's | 🧪 | 📄 |
-| Slack Connect handoff by pending-share record | 📄 | 📄 |
+| Slack Connect handoff by pending-share record (`share.<host>.<channel>`: 14 days while pending, 7 days once accepted; needs a State both runners share) | 🧪 | 📄 |
+| Slack `users.info` cache on the State (`cache.slack.user.<workspace>.<id>`, 24 h; `slack_roster.user_cache` counts hits and misses) | 🧪 | 📄 |
+| Shared inputs of the Slack controller in the State (`cache.<digest>.<name>`) | 📄 (stays in memory) | 📄 |
+| Controllers reading the console's records from the State instead of mounted files (`ports.adapter` other than `legacy`) | 🧪 | 📄 |
 | HTTP function behind the Lambda Web Adapter and an API Gateway HTTP API | — | 📄 |
 | Tick function on EventBridge Scheduler | — | 📄 |
 | One binary `access-roster` (`serve`, `controller github`, `controller slack`; `tick <github|slack> <target>` runs one tick once; `migrate` is a stub) | 🧪 | 📄 |

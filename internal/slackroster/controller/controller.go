@@ -68,6 +68,7 @@ import (
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/slackapp"
 	"github.com/truvity/access-roster/internal/slackroster/apply"
+	"github.com/truvity/access-roster/internal/slackroster/connection"
 	"github.com/truvity/access-roster/internal/slackroster/reconcile"
 	"github.com/truvity/access-roster/internal/slackroster/status"
 	"github.com/truvity/access-roster/policy"
@@ -137,7 +138,31 @@ type Deps struct {
 	// Trigger says that a workspace has work: a notification runs that
 	// workspace's tick. Nil is an in-process trigger.
 	Trigger port.Trigger
+	// Records is where the workspaces' records and credentials are read from
+	// when they are kept on the State port. Nil reads the mounted
+	// directories of [Config].
+	Records RecordSource
+	// Handoff carries a Slack Connect share from the host's tick to the guest's
+	// (see [Handoff]). Nil keeps the hint alone: the host asks the guest to
+	// tick, and a lost hint is answered at the guest's next sweep.
+	Handoff Handoff
+	// Members remembers who a channel's member is across passes (see
+	// [apply.MemberCache]). Nil asks Slack every pass.
+	Members apply.MemberCache
 	Now     func() time.Time
+}
+
+// Handoff is where a Slack Connect share is handed from the workspace that
+// hosts the channel to the one it is shared with (internal/portstore.Handoff,
+// on `share.<host>.<channel>`).
+type Handoff interface {
+	// Offer records that host invited guest to the channel, and asks the
+	// guest to tick.
+	Offer(ctx context.Context, host, channel, channelID, guest, inviteID string, at time.Time) error
+	// Accepted records that guest accepted the host's share.
+	Accepted(ctx context.Context, host, channel, channelID, guest string, at time.Time) error
+	// Waiting are the shares offered to guest that it has not accepted.
+	Waiting(ctx context.Context, guest string) ([]connection.PendingShare, error)
 }
 
 // Controller is the loop and what it remembers between passes.
@@ -471,7 +496,7 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		DirHolders: p.dir.holders, DirUsers: p.dir.holdersOf(), DirNested: p.dir.nestedOf(allSources(p.console, p.shared)),
 		DefinedTwice: definedTwice(c.deps.Policy.Slack.Workspaces[key], p.consoleRefused[key]),
 	}
-	if in.Observed, err = apply.Observe(ctx, client, in); err != nil {
+	if in.Observed, err = apply.ObserveCached(ctx, client, in, c.members()); err != nil {
 		return fail(err)
 	}
 	in.Bots[key] = in.Observed.BotUserID
@@ -495,7 +520,9 @@ func (c *Controller) workspace(ctx context.Context, p *pass, key string) (status
 		found := c.fold(ctx, key, &report, result)
 		c.recordNew(ctx, key, decision, found, &report)
 		c.inviteGuests(ctx, key, result)
+		c.acceptedShares(ctx, key, result)
 	})
+	c.noteWaitingShares(ctx, key, in)
 	c.wakePendingGuests(ctx, key, in)
 	report.Tick.Waiting = countWaiting(report)
 	report.Tick.Outcome = status.OutcomeOf(rails.Switch(enabled).Decide(rails.Tick{

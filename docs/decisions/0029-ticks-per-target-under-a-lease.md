@@ -111,3 +111,40 @@ ledger in the store (`gate.`); a **key-value watch** that replaces the polled
 look at the mounted records; and **two replicas**, which need a State both pods
 share (a controller has no Valkey to name today, so its leases are held in its
 own process and the chart stays at one replica with `Recreate`).
+
+## Implementation note (B3-3)
+
+**The hand-off landed**, with the domain stores on the ports
+([ports.md](../design/ports.md#the-domain-stores)), for any adapter but
+`legacy`:
+
+- **The pending-share record** `share.<host>.<channel>` is the hand-off. The host's
+  tick writes the guest's side `pending` after Slack accepted the invitation, and
+  the write asks the guest's runner to tick through the Trigger (on NATS that
+  crosses processes); the guest's tick accepts and marks its side `accepted`; the
+  host reads it. 14 days while pending, 7 once every guest has accepted. The
+  process-local notification stays as the hint and as the fallback when the write
+  fails, and the sweep stays the backstop. Tested with the host and the guest as
+  separate controllers over separate connections to one NATS bucket.
+- **The `users.info` lookup** of `Observe` is cached on the State for 24 hours
+  (`cache.slack.user.<workspace>.<id>`), shared by every runner and counted.
+  What a decision rests on (who the token is, the account of each address, the
+  channels and their members) is still read from Slack every pass.
+- **The controllers read the records from the State**, not the mounted files: the
+  GitHub controller its organisations' credentials, the link App and the
+  operators' requests; the Slack controller its workspaces, shared and console
+  channel records, confirmations and requests. A poll of the records' revisions
+  replaces the poll of the mounted files' content, so a changed record still runs
+  a pass and a request still ticks only its target; a key-value watch is the
+  remaining step.
+- **A link's refresh is one compare-and-swap of one key.** The marker write
+  that precedes the exchange is the claim on the single-use refresh token, so two
+  replicas never spend it twice; the loser re-reads and uses the winner's pair.
+
+**Still waiting:** the gates of the breaker and the held-once ledger in the
+store (`gate.` is used for confirmations, requests and the link claim's marker,
+not yet for the ledgers, which stay in the report), and the **shared inputs
+cache** (`cache.<digest>.<name>`), which stays in memory: it is a graph of the
+controller's own types that one round of calls to the console rebuilds, and
+serialising it is not cheap. Two replicas of a controller now need only the NATS
+State, the S3 Blob and the KMS Sealer in `ports`; the chart still ships one.

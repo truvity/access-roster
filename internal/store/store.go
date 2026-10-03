@@ -238,10 +238,13 @@ func secretOf(v *config.Valkey) (string, error) {
 type Stores struct {
 	// Ports is every port, over the chosen adapter.
 	Ports port.Set
-	// Backend is today's storage as it was opened, for the domain stores that
-	// have not moved onto the ports yet (the ConfigMaps and Secrets of a
-	// connected workspace, an organisation's credential, a person's link).
-	// It is nil with the memory adapter, which has none.
+	// Backend is today's storage as it was opened: what the `legacy` adapter
+	// is made of, and, with any adapter, the cluster's own objects that stay the
+	// cluster's (the token review, the declared OAuth client). The domain stores
+	// (a connected workspace and its credential, an organisation, a person's
+	// link, the Slack records) are on Ports for every adapter but `legacy`
+	// (internal/portstore), and in the ConfigMaps and Secrets this reaches for
+	// `legacy`. It is nil with the memory adapter, which has none.
 	Backend *legacy.Backend
 	// Adapter is the adapter's name.
 	Adapter string

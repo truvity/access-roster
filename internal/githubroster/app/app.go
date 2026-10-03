@@ -25,6 +25,7 @@ import (
 	"github.com/truvity/access-roster/internal/githubapp/catalogue"
 	"github.com/truvity/access-roster/internal/githubroster/controller"
 	"github.com/truvity/access-roster/internal/kube"
+	"github.com/truvity/access-roster/internal/portstore"
 	"github.com/truvity/access-roster/internal/rails"
 	"github.com/truvity/access-roster/internal/store"
 	"github.com/truvity/access-roster/internal/telemetry"
@@ -201,7 +202,19 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	// A person's link is still a Secret entry the domain store keeps; the
 	// memory adapter has none, and the controller checks no link then.
 	var links controller.LinkStore
-	if stores.Backend != nil && stores.Backend.Kube != nil {
+	var appSource controller.AppSource
+	switch {
+	case stores.Adapter != store.AdapterLegacy:
+		// Any adapter but `legacy` keeps the links, the organisations'
+		// credentials and the operators' requests on the State port, sealed,
+		// and the controller reads them there.
+		base := portstore.New(stores.Ports)
+		if err = base.CheckSealer(ctx); err != nil {
+			stores.Close()
+			return nil, fmt.Errorf("ports.adapter %s: %w", stores.Adapter, err)
+		}
+		links, appSource = portstore.NewGitHubLinks(base), portstore.NewGitHubOrgs(base)
+	case stores.Backend != nil && stores.Backend.Kube != nil:
 		links = kube.NewGitHubLinks(stores.Backend.Kube)
 	}
 
@@ -260,6 +273,7 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 			Leases:   &rails.Leases{State: leaseState, Holder: rails.NewHolder(), Log: log},
 			Trigger:  stores.Ports.Trigger,
 			Links:    links,
+			Apps:     appSource,
 			Bindings: declared.GitHub,
 		}),
 	}, nil
