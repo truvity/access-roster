@@ -351,6 +351,15 @@ worth nothing if the things that use it do not check:
   time forever, which is exactly what a live SSO session with no other
   check would let it do.
 
+A read-only resource may carry a longer limit of its own, up to seven days
+([ADR 0033](../decisions/0033-a-longer-absolute-limit-for-read-only-resources.md)).
+Each of the three checks above then uses the limit of the resource the session
+was opened for: the shortest `absolute_cap` among a chain's resources, the
+global limit for the client's own audience or any resource without a cap. A
+silent `/authorize` past the global limit ends the browser sign-in for a
+request that is not extended, but spares the extended chains the browser
+still holds, which end by sign-out, revocation or their own limit.
+
 A session with no `auth_time` has nothing to measure the limit against,
 and none applies: it lives out its ordinary refresh window, exactly as
 before. That is true of a workload or a machine trading a proof through
