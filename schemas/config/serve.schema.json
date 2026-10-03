@@ -187,7 +187,7 @@
       "type": "object"
     },
     "exports": {
-      "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0033): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves.",
+      "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0034): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves.",
       "items": {
         "additionalProperties": false,
         "allOf": [
@@ -700,7 +700,7 @@
               }
             }
           ],
-          "description": "The store the copies of `exports` are written to (docs/decisions/0033). Absent, nothing is copied out of the service, and `exports` must be empty.",
+          "description": "The store the copies of `exports` are written to (docs/decisions/0034). Absent, nothing is copied out of the service, and `exports` must be empty.",
           "properties": {
             "adapter": {
               "description": "`openbao` writes to a KV version 2 mount of an OpenBao. `memory` keeps the copies in this process and is for a test or the demonstration.",

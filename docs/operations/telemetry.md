@@ -200,7 +200,7 @@ working, and is not an error.
 
 | Metric | Type | Labels | What it says |
 |---|---|---|---|
-| `access_roster.export.attempts` | counter | `export`, `outcome` | Export attempts ([0033](../decisions/0033-exports-go-to-openbao-directly.md)). `outcome` is `ok` (the copy is in the store: written, or already as it should be), `failed` (retried with backoff; the copy is stale) or `skipped` (the source has nothing to copy yet: an App created and not installed, an empty bundle). |
+| `access_roster.export.attempts` | counter | `export`, `outcome` | Export attempts ([0034](../decisions/0034-exports-go-to-openbao-directly.md)). `outcome` is `ok` (the copy is in the store: written, or already as it should be), `failed` (retried with backoff; the copy is stale) or `skipped` (the source has nothing to copy yet: an App created and not installed, an empty bundle). |
 | `access_roster.export.duration` | histogram, `s` | `outcome` | How long an attempt took. |
 | `access_roster.export.last_success_timestamp` | gauge, `s` | `export` | When the export last had its copy in the store (Unix seconds). |
 | `access_roster.export.contended` | counter | `export` | Attempts another replica held the lease for. The normal answer of the replica that did not win. |

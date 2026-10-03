@@ -108,6 +108,11 @@ type Sessions struct {
 	// produces (see [DefaultAbsoluteLifetime]) but a caller that builds a
 	// [Sessions] directly, as every existing test does, still can.
 	absolute time.Duration
+	// resolve narrows or lengthens absolute for the resources a session
+	// has been used for. Nil means every session gets absolute, which is
+	// what a caller that never declares a resource wants and what every
+	// existing test builds.
+	resolve func(touched []string) time.Duration
 }
 
 // NewSessions returns the index over a shared store. lifetime is how long
@@ -121,6 +126,40 @@ func NewSessions(state State, lifetime, absolute time.Duration) *Sessions {
 		lifetime: lifetime,
 		absolute: absolute,
 	}
+}
+
+// SetAbsoluteResolver sets how a session's absolute limit is decided from
+// the resources it has been used for, in place of the one global limit.
+// The issuer sets it from the policy, so a read-only resource that
+// declares a longer limit can have one ([policy.EffectiveAbsolute]).
+func (s *Sessions) SetAbsoluteResolver(resolve func(touched []string) time.Duration) {
+	s.resolve = resolve
+}
+
+// absoluteOf is the absolute limit of a chain that has touched these
+// resources. A chain is bound to the resource it was opened for -- a
+// refresh never changes it -- so this is a set of one today; it is a set
+// because the rule is stated over everything a chain has been used for.
+func (s *Sessions) absoluteOf(touched ...string) time.Duration {
+	if s.resolve == nil {
+		return s.absolute
+	}
+
+	return s.resolve(touched)
+}
+
+// pastLimit reports whether a session has outlived the absolute limit its
+// resources allow as the policy stands NOW. A record's own ExpiresAt was
+// decided when it was last written; if the policy has since withdrawn an
+// extension, the chain must end at its next refresh rather than keep the
+// longer end it was given.
+func (s *Sessions) pastLimit(session Session) bool {
+	absolute := s.absoluteOf(session.Resource)
+	if session.AuthTime.IsZero() || absolute <= 0 {
+		return false
+	}
+
+	return !s.now().Before(session.AuthTime.Add(absolute))
 }
 
 // SetClock replaces the clock, for tests.
@@ -226,7 +265,7 @@ func (s *Sessions) Record(ctx context.Context, o Opened) (Session, error) {
 		// OPENED, not only from its first refresh: a browser session
 		// carried down from hours-old SSO (a new client added to an
 		// existing sign-in) must not get a fresh 24 hours of its own.
-		ExpiresAt: capEnd(now, o.AuthTime, s.lifetime, s.absolute),
+		ExpiresAt: capEnd(now, o.AuthTime, s.lifetime, s.absoluteOf(o.Resource)),
 	}
 
 	if err := s.put(ctx, session); err != nil {
@@ -280,7 +319,18 @@ func (s *Sessions) Refreshed(ctx context.Context, oldToken, newToken string) (Se
 	// Capped exactly as at open: a sliding refresher plateaus at
 	// auth_time+absolute rather than sliding forever, because every
 	// rotation recomputes the SAME limit from the SAME auth_time.
-	session.ExpiresAt = capEnd(now, session.AuthTime, s.lifetime, s.absolute)
+	session.ExpiresAt = capEnd(now, session.AuthTime, s.lifetime, s.absoluteOf(session.Resource))
+
+	// The policy may have withdrawn the extension this chain was opened
+	// under. The token is already spent; the chain ends here, as it would
+	// at any other limit, rather than being written back already expired.
+	if !session.ExpiresAt.After(now) {
+		if err = s.deleteSession(ctx, session); err != nil {
+			return Session{}, "", false, err
+		}
+
+		return Session{}, "", false, nil
+	}
 
 	if err = s.put(ctx, session); err != nil {
 		return Session{}, "", false, err

@@ -71,6 +71,10 @@ type Pending struct {
 	// ClientID is the client that made the request, as the library
 	// accepted it at /authorize.
 	ClientID string
+	// Resource is what the request asks a token FOR (RFC 8707), empty for
+	// a token for the client itself. It decides which absolute session
+	// limit a silent sign-in is held to.
+	Resource string
 	// Client is what the policy declares about that client, read when the
 	// request is looked up. The sign-in page names the application from
 	// it -- its `display_name` and `description` -- and from nothing the
@@ -669,6 +673,16 @@ func (s *signIn) logout(w http.ResponseWriter, r *http.Request) {
 // the sign-in record carries: an SSO-only query reads every session in
 // the installation and filters, and this runs on an ordinary sign-out.
 func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
+	signOut(deps, w, r, false)
+}
+
+// signOut is [SignOut]. sparingLive leaves the per-client sessions that
+// are still live alone and ends the browser session and tells the clients
+// without a refresh token: the sign-in expiring at the installation's
+// absolute limit, as opposed to a person signing out. Everything else a
+// browser opened has already ended at its own limit, so what is live then
+// is exactly a chain a resource extended.
+func signOut(deps SignInDeps, w http.ResponseWriter, r *http.Request, sparingLive bool) {
 	if deps.SSO == nil {
 		return
 	}
@@ -681,6 +695,13 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 			// asked to be told are told by name.
 			held, _ := deps.Issuer.Sessions().List(r.Context(),
 				Query{Identity: record.Identity, SSO: id})
+			// Sparing the live ones means not telling them either: a
+			// Back-Channel Logout would end a session that is still
+			// inside its limit, at the relying party's end.
+			announce := held
+			if sparingLive {
+				announce = nil
+			}
 
 			// And the clients that were signed in under this browser
 			// WITHOUT a refresh token -- `openid` alone -- which the
@@ -695,20 +716,24 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 				}
 				for _, clientID := range involved {
 					if !seen[clientID] {
-						held = append(held, Session{ClientID: clientID, Identity: record.Identity, SSO: id})
+						announce = append(announce, Session{ClientID: clientID, Identity: record.Identity, SSO: id})
 					}
 				}
 			}
 
-			ended, err := deps.Issuer.Sessions().Revoke(r.Context(),
-				Query{Identity: record.Identity, SSO: id})
+			ended := 0
+			var err error
+			if !sparingLive {
+				ended, err = deps.Issuer.Sessions().Revoke(r.Context(),
+					Query{Identity: record.Identity, SSO: id})
+			}
 
 			// After revoking, not before: a client told its session ended
 			// and then finding it alive is worse than one told a moment
 			// late. Best effort, because the sign-out has happened either
 			// way (OIDC Back-Channel Logout 1.0).
 			if deps.Announce != nil {
-				deps.Announce(r.Context(), held)
+				deps.Announce(r.Context(), announce)
 			}
 			switch {
 			case err != nil:
@@ -718,7 +743,7 @@ func SignOut(deps SignInDeps, w http.ResponseWriter, r *http.Request) {
 				deps.log().InfoContext(r.Context(), "sign-out ended the sessions this browser opened",
 					"ended", ended)
 			}
-			if err == nil {
+			if err == nil && !sparingLive {
 				deps.Issuer.record(r.Context(), audit.SessionEnded(audit.Identified(record.Identity), ended))
 			}
 		}
@@ -849,8 +874,20 @@ func (s *signIn) silent(w http.ResponseWriter, r *http.Request, request string, 
 	// Back-Channel Logout to the clients that held them -- so a relying
 	// party finds out the way it would if the person had clicked sign
 	// out, and the browser falls through to an interactive sign-in below.
-	if absolute := s.deps.Issuer.Config().AbsoluteLifetime; absolute > 0 && !time.Now().Before(session.AuthTime.Add(absolute)) {
-		SignOut(s.deps, w, r)
+	//
+	// The limit is the one THIS request's resource allows: a read-only
+	// resource may carry a longer absolute session than the installation's
+	// (ADR 0033), and a browser session older than the installation's
+	// limit may still complete for it, since the chain it opens is held to
+	// the resource's own end. A request for anything else is held to the
+	// installation's, as before.
+	if absolute := s.deps.Issuer.AbsoluteFor(pending.Resource); absolute > 0 && !time.Now().Before(session.AuthTime.Add(absolute)) {
+		// Sparing what is still live: past the installation's limit the
+		// only sessions this browser still holds are chains a resource
+		// extended, which are inside their own limit and are ended by
+		// sign-out, revocation or their own end -- never by an unrelated
+		// console's silent request finding the browser session old.
+		signOut(s.deps, w, r, true)
 		return false
 	}
 

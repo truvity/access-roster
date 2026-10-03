@@ -1,4 +1,4 @@
-# 0033 — Exports: the service copies its secrets into OpenBao itself
+# 0034 — Exports: the service copies its secrets into OpenBao itself
 
 **Status:** Accepted; extends [0028](0028-nothing-writes-configmaps-or-secrets.md)
 and supersedes the part of truvity/gitops ADR-034 §9 that says the issuer never

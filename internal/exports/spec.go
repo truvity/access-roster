@@ -1,5 +1,5 @@
 // Package exports copies secrets the console keeps OUT of the service, into
-// the secret store a consumer reads (docs/decisions/0033).
+// the secret store a consumer reads (docs/decisions/0034).
 //
 // The service keeps a Slack App's bot token, a runner App's key, a connected
 // workspace's credential in State, sealed. A program that must act as the App

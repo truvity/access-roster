@@ -152,7 +152,7 @@ type (
 	}
 
 	// Export is one copy of a secret the console keeps, made out of the service
-	// into a secret store a consumer reads (docs/decisions/0033). Source names
+	// into a secret store a consumer reads (docs/decisions/0034). Source names
 	// what is copied, Path where, and the fields beside them say which.
 	Export struct {
 		// Name identifies the export in the log, the metrics and its lease.
@@ -346,7 +346,7 @@ type Serve struct {
 	Slack       *Slack       `json:"slack,omitempty"`
 	Audit       *Audit       `json:"audit,omitempty"`
 	// Exports are the copies of secrets this service makes out of itself, into
-	// the secret store named by ports.export (docs/decisions/0033).
+	// the secret store named by ports.export (docs/decisions/0034).
 	Exports []Export `json:"exports,omitempty"`
 }
 

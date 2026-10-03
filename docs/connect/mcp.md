@@ -111,6 +111,38 @@ service; a caller must satisfy both, and the shorter of the two
 `ttl_cap`s wins. Checking only the client would let anybody who may use
 an editor reach every service that editor knows how to name.
 
+**Signing in less often.** The 24-hour absolute limit
+([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)) would
+make a person sign in to a connector every day. A resource that only
+reads may say so and carry a longer absolute limit, up to seven days
+([ADR 0033](../decisions/0033-a-longer-absolute-limit-for-read-only-resources.md)):
+
+```yaml
+resources:
+  https://observability-mcp.example/:
+    requires: [all:observability:user]
+    ttl_cap: 15m
+    read_only: true
+    absolute_cap: 168h
+```
+
+It applies to every client that asks for that resource, a self-described
+client included, because the question is what the token can reach and not
+who holds it. Three things to know:
+
+- **Only for reads.** A resource without `read_only: true` cannot carry a cap
+  above `lifetimes.absolute`; the issuer refuses to start. Declare it only for
+  a server that cannot change anything.
+- **The idle window still applies.** A chain also ends once it has gone unused
+  for `lifetimes.refresh` (default `12h`). To keep the seven days across a
+  weekend or a closed laptop, set `lifetimes.refresh` to `168h`; that raises the
+  idle window for every client but does not extend any other client past
+  `lifetimes.absolute`.
+- **Revocation is unchanged.** Signing out, removal or suspension in the roster,
+  and a replayed refresh token end the chain exactly as they do for any
+  session. A client's chain that also touches a resource without the cap is
+  held to the global limit.
+
 A request naming a resource this installation has not declared, or more
 than one resource, is refused with `invalid_target` at the moment of the
 mistake — never silently narrowed or silently minted for the client

@@ -407,8 +407,8 @@ The issuer, the console and the directory hub, one process.
 | `inCluster` | `false` | recovery proves access to the cluster the pod runs in. Required with `recovery.enabled` |
 | `clientSecretsDir` | unset | one file per confidential client, named after the client id, each the client's secret; read per call, so a rotated Secret takes effect without a restart. The chart requires `/var/run/access-issuer/clients` when a policy client names a `secret` |
 | `adminPasswordEnv` | unset | the *name* of the variable holding the hub's recovery password, for a run outside a cluster. Unset generates one and prints it once |
-| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives, and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
-| `lifetimes.absolute` | `24h` | the global timeout: no per-client session, and no access or ID token, outlives `auth_time` by more than this, no matter how often it is refreshed. Refused when zero, negative, or shorter than `lifetimes.token`: at render, and at start |
+| `lifetimes.token` / `.refresh` / `.hold` | `1h` / `12h` / `4h` | how long a token lives, how long a refresh lives (the sliding window: a session idle longer than this ends, whatever its absolute limit, so a resource's seven-day `absolute_cap` needs `refresh` raised to match; it is also how long a browser sign-in lasts), and how long a signed-in identity keeps its last granted role while the directory cannot vouch. Caps: the policy may ask for shorter |
+| `lifetimes.absolute` | `24h` | the global timeout: no per-client session, and no access or ID token, outlives `auth_time` by more than this, no matter how often it is refreshed. Refused when zero, negative, or shorter than `lifetimes.token`: at render, and at start. A resource in the policy may carry its own `absolute_cap`, longer than this only when it says `read_only: true` and never beyond `168h` ([policy.md](policy.md#a-longer-absolute-session-for-a-read-only-resource)); the shortest cap among a chain's resources applies, and a chain that touches any other resource falls back to this value |
 | `lifetimes.session` | `12h` | how long the console's own session lasts, capped at `lifetimes.absolute` |
 | `freshness.refreshInterval` / `.freshnessWindow` / `.probeInterval` | `15m` / `30m` / `5m` | how often the refresher takes a new snapshot per workspace, how old a snapshot may be before its domains stop being authoritative, and how often a credential is probed and the domain list re-read |
 | `exchange.audience` | `release` | the audience a workload's ServiceAccount token must be minted for. Without one, every mounted token in every federated cluster would be a proof. The controllers' projected tokens are minted for it |
@@ -442,7 +442,7 @@ The issuer, the console and the directory hub, one process.
 `exports` copies the secrets the console keeps (they are sealed in State, and no
 Kubernetes Secret holds them) into OpenBao, where the programs that act as an App
 and cannot ask the service read them, and where the recovery bundles are kept
-([0033](../decisions/0033-exports-go-to-openbao-directly.md)). `ports.export` says
+([0034](../decisions/0034-exports-go-to-openbao-directly.md)). `ports.export` says
 which OpenBao and how to log in. It needs a `ports.adapter` other than `legacy`: on
 `legacy` the Secrets still exist and the chart's `push` values (deprecated) copy
 them.

@@ -3,7 +3,7 @@
 The target shape of access-roster's storage, signalling and identity edges, and
 the contract each adapter must meet. The reasoning is in the records
 [0026](../decisions/0026-two-platforms-permanently-kubernetes-and-aws-lambda.md)
-to [0033](../decisions/0033-exports-go-to-openbao-directly.md); this
+to [0034](../decisions/0034-exports-go-to-openbao-directly.md); this
 page is the specification. Which adapter exists today is in
 [../capabilities.md](../capabilities.md).
 
@@ -240,7 +240,7 @@ The reverse of State: a copy of a secret the service keeps, put where a program 
 cannot ask the service reads it (Alertmanager posting as a Slack bot, a runner scale
 set with its GitHub App), and the disaster-recovery bundles. Nothing is read back,
 and nothing depends on it
-([0033](../decisions/0033-exports-go-to-openbao-directly.md)).
+([0034](../decisions/0034-exports-go-to-openbao-directly.md)).
 
 ```go
 type Export interface {

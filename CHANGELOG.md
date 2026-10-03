@@ -1,5 +1,21 @@
 ## Unreleased
 
+- **A longer absolute session for a read-only resource: `absolute_cap` and
+  `read_only` on a policy resource.** The 24-hour absolute limit of
+  [ADR 0001](docs/decisions/0001-sessions-and-an-absolute-limit.md) made every
+  connector sign in again daily. A resource that declares `read_only: true` may
+  now carry `absolute_cap` up to `168h`
+  ([ADR 0033](docs/decisions/0033-a-longer-absolute-limit-for-read-only-resources.md)).
+  A refresh chain's limit is the shortest among the resources it was used for,
+  the client's own audience and an uncapped resource counting as
+  `lifetimes.absolute`; it is enforced at refresh, at a silent `/authorize` and
+  in the access token's `exp`. Refused: a cap above 168h, zero or negative, and
+  (at start) one above `lifetimes.absolute` without `read_only`. Sign-out,
+  removal and refresh-token reuse end the chain as before, and a cap withdrawn
+  from the policy shortens it at its next refresh. `lifetimes.refresh` (default
+  `12h`) still bounds a chain's idle time, so the seven days need it raised to
+  match. Nothing changes for a resource that sets neither field.
+
 - **Exports: the service copies the secrets it keeps into OpenBao itself.** With
   `ports.adapter` other than `legacy` the service writes no Kubernetes Secret, so the
   External Secrets `PushSecret`s that copied them into OpenBao (a Slack App's bot
@@ -26,7 +42,7 @@
   OpenBao role needs `read`, `create`, `update` and `patch` on
   `kv/data/<prefix>/*`. Marked 🧪 in the capabilities. Installations without
   `exports` see no change. See
-  [docs/decisions/0033](docs/decisions/0033-exports-go-to-openbao-directly.md) and
+  [docs/decisions/0034](docs/decisions/0034-exports-go-to-openbao-directly.md) and
   [docs/reference/configuration.md](docs/reference/configuration.md#exports-and-the-export-port).
 
 ## v1.55.0

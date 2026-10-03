@@ -62,7 +62,7 @@ client_documents:              # clients that describe themselves; empty means t
 | `lifetimes` | internal group name, or `default` | a duration | declared |
 | `clients` | client id | kind, secret ref, `redirects`, `signed_out`, `requires`, `ttl_cap`, `sign_in_exchange`, `display_name`, `description`, `backchannel_logout_uri` | declared |
 | `github` | organisation login | the organisation's own `members`, and `teams` keyed by slug, each with `members` and `maintainers` | declared |
-| `resources` | resource indicator (an absolute URI) | `requires`, `ttl_cap`, `display_name`, `description` — the gate on a service a token may be minted *for* | declared |
+| `resources` | resource indicator (an absolute URI) | `requires`, `ttl_cap`, `read_only`, `absolute_cap`, `display_name`, `description` — the gate on a service a token may be minted *for* | declared |
 | `client_documents` | — | `origins`, `requires`, `ttl_cap`: which hosts may serve a client's own description, and who may use such a client | declared |
 | `people` | a name you choose | the addresses that are the same person, across domains ([People](#people)) | declared |
 | `slack` | workspace key | the channels bound in that workspace, by name, each fed by internal groups ([Slack channels](#slack-channels)) | declared |
@@ -614,6 +614,49 @@ editor reach every service that editor can name.
 **Both caps apply, and the shorter wins.** Each was written by somebody
 saying *not longer than this*, and honouring the longer would answer
 neither.
+
+### A longer absolute session for a read-only resource
+
+`lifetimes.absolute` ends every session 24 hours after `auth_time`
+([ADR 0001](../decisions/0001-sessions-and-an-absolute-limit.md)). A
+resource that only **reads** may ask for longer, up to seven days
+([ADR 0033](../decisions/0033-a-longer-absolute-limit-for-read-only-resources.md)):
+
+```yaml
+resources:
+  https://mcp.example/:
+    requires: [prod:k8s:admin]
+    ttl_cap: 15m
+    read_only: true       # what lets the cap below exceed lifetimes.absolute
+    absolute_cap: 168h
+```
+
+| Field | Meaning |
+|---|---|
+| `absolute_cap` | this resource's absolute session limit, in place of `lifetimes.absolute` |
+| `read_only` | the declarer's claim that a token for this resource cannot change anything. The issuer cannot verify it |
+
+Refused at load: an `absolute_cap` above 168h; zero or a negative value;
+and, at start, an `absolute_cap` above `lifetimes.absolute` without
+`read_only: true`. A cap *below* `lifetimes.absolute` needs no `read_only`.
+
+A refresh chain's limit is the **shortest** among the resources it has been
+used for. The client's own audience, and a resource without an
+`absolute_cap`, count as `lifetimes.absolute`, so a chain that ever touches
+anything not extended falls back to the global limit. A chain is bound to the
+resource it was opened for, and the resource is recorded on the session. The
+limit is enforced at refresh, at a silent `/authorize` (for the resource
+that request names) and in the access token's `exp`. Sign-out, roster
+removal or suspension, and refresh-token reuse end an extended chain exactly
+as they end any other; a cap removed from the policy shortens the chain at
+its next refresh.
+
+The sliding window still applies: a chain ends at the earlier of
+`now + lifetimes.refresh` and `auth_time + limit`. `lifetimes.refresh`
+defaults to `12h`, so a chain idle for longer than that ends before its seven
+days do; raise `lifetimes.refresh` (to `168h`) for the cap to be usable across
+a closed laptop. In the access document the fields are `readOnly` and
+`absoluteCap`.
 
 ### What a client asking for a resource gets, and what it does not
 

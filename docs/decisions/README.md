@@ -48,7 +48,8 @@ timeline and nothing is silently rewritten under an old date.
 | [0030](0030-workload-identity-on-both-platforms.md) | Workload identity: both mechanisms on both platforms |
 | [0031](0031-a-generic-migration-tool.md) | A generic migration tool, and the order of the move |
 | [0032](0032-one-configuration-file-one-binary-one-chart.md) | One configuration file, one binary, one chart |
-| [0033](0033-exports-go-to-openbao-directly.md) | Exports: the service copies its secrets into OpenBao itself |
+| [0033](0033-a-longer-absolute-limit-for-read-only-resources.md) | A longer absolute limit for read-only resources, up to seven days |
+| [0034](0034-exports-go-to-openbao-directly.md) | Exports: the service copies its secrets into OpenBao itself |
 
 ## Template
 

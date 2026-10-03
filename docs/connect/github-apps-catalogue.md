@@ -451,7 +451,7 @@ it is deliberately a different object.
 > mount, written as `app_id`, `installation_id` and `private_key`, the properties
 > `push` wrote
 > ([configuration reference](../reference/configuration.md#exports-and-the-export-port),
-> [0033](../decisions/0033-exports-go-to-openbao-directly.md)).
+> [0034](../decisions/0034-exports-go-to-openbao-directly.md)).
 
 Some consumers cannot ask the issuer at the moment they run. The one this
 was built for is the program that manages the estate — a Pulumi or

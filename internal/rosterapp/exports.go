@@ -14,7 +14,7 @@ import (
 // openExports builds the runner of the deployment's exports, or nil when it
 // declares none. It connects to nothing: the store the copies go to being down
 // at start is not a reason to refuse to start, since a copy is never a
-// dependency (docs/decisions/0033).
+// dependency (docs/decisions/0034).
 func openExports(cfg Config, stores *store.Stores, directory *app.App, log *slog.Logger) (*exports.Runner, error) {
 	specs := cfg.Directory.Exports()
 	if len(specs) == 0 {

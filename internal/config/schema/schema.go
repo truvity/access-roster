@@ -305,7 +305,7 @@ func portsSchema(export bool) m {
 
 // portsExportSchema is `ports.export`: where the copies of `exports` go.
 func portsExportSchema() m {
-	s := obj("The store the copies of `exports` are written to (docs/decisions/0033). Absent, nothing is copied out of the service, and `exports` must be empty.", m{
+	s := obj("The store the copies of `exports` are written to (docs/decisions/0034). Absent, nothing is copied out of the service, and `exports` must be empty.", m{
 		"adapter": enum("`openbao` writes to a KV version 2 mount of an OpenBao. `memory` keeps the copies in this process and is for a test or the demonstration.", "", "openbao", "memory"),
 		"openbao": obj("The OpenBao the copies are written to. Nothing is contacted at start: an OpenBao that is down must not stop the service, since a copy is never a dependency.", m{
 			"address":   url("The server, with no path: `https://openbao.example`."),
@@ -346,7 +346,7 @@ func exportsSchema() m {
 		m{"if": m{"properties": m{"source": m{"const": "runner-app"}}}, "then": m{"required": []string{"tier", "org"}}},
 		m{"if": m{"properties": m{"source": m{"const": "bundle"}}}, "then": m{"required": []string{"bundle"}}},
 	}
-	return m{"type": "array", "items": item, "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0033): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves."}
+	return m{"type": "array", "items": item, "description": "The secrets this service copies out of itself into the store `ports.export` names (docs/decisions/0034): a copy is asynchronous, retried with backoff and never a dependency. Validated at start; an unknown source, a source this deployment does not declare and two exports that would write one key stop the service before it serves."}
 }
 
 // portsNATSSchema is `ports.nats`: the bucket of the `nats` adapter.
