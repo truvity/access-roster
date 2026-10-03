@@ -55,7 +55,7 @@ func rulesOf(t *testing.T, doc map[string]any) []map[string]any {
 
 // The number of rules the chart ships. A guard that sweeps nothing proves
 // nothing, so each check below counts what it saw against this.
-const ruleCount = 10
+const ruleCount = 12
 
 // `renders: alerts` renders the rule object and nothing else, and none of the
 // service's own validation applies: the values here name no issuer URL.

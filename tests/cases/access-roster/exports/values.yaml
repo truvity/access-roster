@@ -1,0 +1,54 @@
+# The copies of the secrets the console keeps, made into OpenBao by the
+# service itself (docs/decisions/0033): what reproduces, on kernel, the External
+# Secrets PushSecrets the deployment ran before. The chart mounts the CA and
+# projects the token the jwt login presents; WHAT is copied and where is the
+# config's, and the chart renders it as it stands.
+config:
+  issuerURL: https://access.example
+  ports:
+    adapter: nats
+    nats:
+      url: nats://nats.nats.svc:4222
+      tokenFile: /var/run/nats/token
+    export:
+      adapter: openbao
+      openbao:
+        address: https://openbao.kernel.truvity.private
+        caFile: /var/run/access-issuer/openbao-ca/ca.pem
+        mount: kv
+        namespace: kernel
+        auth:
+          method: jwt
+          mount: jwt-kernel
+          role: access-roster-writer
+          tokenFile: /var/run/openbao/token
+  slack:
+    catalogueFile: /var/run/access-issuer/slack-apps-catalogue.yaml
+  github:
+    runnerTiers: [preview, stable]
+  exports:
+    - source: slack-app
+      app: alerts
+      namespace: kernel
+      path: slack-apps/alerts
+    - source: runner-app
+      tier: preview
+      org: truvity
+      namespace: devel
+      path: arc/truvity
+    - source: bundle
+      bundle: github-apps
+      namespace: kernel
+      path: access-roster-backup/github-apps
+slackApps:
+  - id: alerts
+    workspace: truvity
+    botScopes: [chat:write, chat:write.public]
+exports:
+  openbao:
+    caBundle: |
+      -----BEGIN CERTIFICATE-----
+      MIIBexample
+      -----END CERTIFICATE-----
+    token:
+      audience: access-roster

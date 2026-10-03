@@ -1,0 +1,14 @@
+# A tokenFile the chart does not project fails the render, naming the value that projects it.
+# error: config.ports.export.openbao.auth.tokenFile must be /var/run/openbao/token, where the chart mounts what exports.openbao.token.audience renders
+config:
+  issuerURL: https://issuer.example
+  ports:
+    export:
+      adapter: openbao
+      openbao:
+        address: https://openbao.example
+        auth: {method: jwt, role: r, tokenFile: /tmp/token}
+exports:
+  openbao:
+    token:
+      audience: access-roster

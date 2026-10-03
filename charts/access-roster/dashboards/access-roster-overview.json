@@ -1968,7 +1968,7 @@
     {
       "id": 32,
       "type": "row",
-      "title": "GitHub rate limits and seats",
+      "title": "Exports: copies into OpenBao",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1981,6 +1981,155 @@
     {
       "id": 33,
       "type": "timeseries",
+      "title": "Export attempts per second, by export and outcome",
+      "description": "Copies of the secrets the service keeps (a Slack App's bot token, the runner Apps, the recovery bundles) into OpenBao. ok is a copy that is in the store (written, or already as it should be); failed is retried with backoff and leaves the copy stale; skipped is an App with nothing to copy yet. AccessRosterExportFailing fires on three failures in 30 minutes.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 90
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (export, outcome) (rate(access_roster_export_attempts_total{k8s_cluster_name=~\"$cluster\",namespace=~\"$namespace\"}[$__rate_interval]))",
+          "legendFormat": "{{export}} {{outcome}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "no data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 25,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Seconds since the last copy, by export",
+      "description": "For every export, how long since its copy was last in the store. A copy is made again every hour with nothing changed, so a line that climbs past three hours is an export nobody is making: AccessRosterExportStale.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 90
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "editorMode": "code",
+          "expr": "time() - max by (export) (last_over_time(access_roster_export_last_success_timestamp_seconds{k8s_cluster_name=~\"$cluster\",namespace=~\"$namespace\"}[1d]))",
+          "legendFormat": "{{export}}",
+          "range": true,
+          "instant": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "no data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 35,
+      "type": "row",
+      "title": "GitHub rate limits and seats",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 98
+      },
+      "panels": []
+    },
+    {
+      "id": 36,
+      "type": "timeseries",
       "title": "Rate limit remaining, by resource",
       "description": "Requests left in GitHub's budget as last reported on a response. AccessRosterGitHubRateLimitLow fires under 100 for 30 minutes.",
       "datasource": {
@@ -1991,7 +2140,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 99
       },
       "targets": [
         {
@@ -2047,7 +2196,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 37,
       "type": "timeseries",
       "title": "Rate-limit waits per second, by kind",
       "description": "Calls that waited out a GitHub rate limit, by kind of limit (primary or secondary).",
@@ -2059,7 +2208,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 99
       },
       "targets": [
         {
@@ -2115,7 +2264,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 38,
       "type": "timeseries",
       "title": "Seats short, by organisation",
       "description": "Invitations the last pass could not send for want of a free seat. Healthy is zero: AccessRosterSeatsShort.",
@@ -2127,7 +2276,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 98
+        "y": 107
       },
       "targets": [
         {
@@ -2183,7 +2332,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 39,
       "type": "timeseries",
       "title": "Seats free, by organisation",
       "description": "Free seats as last read; absent while the seats cannot be read.",
@@ -2195,7 +2344,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 98
+        "y": 107
       },
       "targets": [
         {

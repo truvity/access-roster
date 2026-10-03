@@ -349,6 +349,41 @@ holds none of the trail. Both take (dict "root" $ "cfg" <the component's config>
 {{- end -}}
 
 {{/*
+What the exports need on the pod (docs/decisions/0033): the CA that signs
+OpenBao's certificate, and the projected token the `jwt` login presents. Both
+are optional and independent. Takes the root.
+*/}}
+{{- define "access-roster.exportsMounts" -}}
+{{- if .Values.exports.openbao.caBundle }}
+- name: openbao-ca
+  mountPath: /var/run/access-issuer/openbao-ca
+  readOnly: true
+{{- end }}
+{{- if .Values.exports.openbao.token.audience }}
+- name: openbao-token
+  mountPath: /var/run/openbao
+  readOnly: true
+{{- end }}
+{{- end -}}
+
+{{- define "access-roster.exportsVolumes" -}}
+{{- if .Values.exports.openbao.caBundle }}
+- name: openbao-ca
+  configMap:
+    name: {{ include "access-roster.fullname" . }}-openbao-ca
+{{- end }}
+{{- if .Values.exports.openbao.token.audience }}
+- name: openbao-token
+  projected:
+    sources:
+      - serviceAccountToken:
+          audience: {{ .Values.exports.openbao.token.audience | quote }}
+          expirationSeconds: {{ .Values.exports.openbao.token.expirationSeconds }}
+          path: token
+{{- end }}
+{{- end -}}
+
+{{/*
 The console's secret-store view was removed in v1.30.0. Refuse render if an
 old configuration tries to activate it, with a message pointing to the
 migration.

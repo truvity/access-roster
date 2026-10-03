@@ -1,0 +1,9 @@
+# An export of a source this build does not know is refused by the schema, at install.
+# error: at '/config/exports/0/source': value must be one of
+config:
+  issuerURL: https://issuer.example
+  ports:
+    export: {adapter: memory}
+  exports:
+    - source: ssh-key
+      path: a/b

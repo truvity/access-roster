@@ -1,0 +1,16 @@
+{{- if eq .Values.renders "app" -}}
+{{- if .Values.exports.openbao.caBundle }}
+# The authorities that sign OpenBao's certificate, for the service's exports
+# (docs/decisions/0033). A certificate, never a secret: it is mounted where
+# config.ports.export.openbao.caFile says.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "access-roster.fullname" . }}-openbao-ca
+  labels:
+    {{- include "access-roster.labels" . | nindent 4 }}
+data:
+  ca.pem: |
+    {{- .Values.exports.openbao.caBundle | trim | nindent 4 }}
+{{- end }}
+{{ end -}}

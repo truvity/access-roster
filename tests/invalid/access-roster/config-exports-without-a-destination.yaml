@@ -1,0 +1,8 @@
+# Exports name secrets to copy; with no ports.export there is nowhere to copy them.
+# error: config.exports names secrets to copy and config.ports.export names nowhere to copy them to
+config:
+  issuerURL: https://issuer.example
+  exports:
+    - source: bundle
+      bundle: github-apps
+      path: access-roster-backup/github-apps
