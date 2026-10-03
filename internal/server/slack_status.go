@@ -255,6 +255,7 @@ func (c *Console) ConfirmSlackRemovals(
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
 	c.record(ctx, audit.SlackRemovalsConfirmed(identityActor(id), workspace, channel, fingerprint, gate.Affected))
+	c.notify(ctx, workspace)
 	return connect.NewResponse(&directoryrosterv1.ConfirmSlackRemovalsResponse{}), nil
 }
 

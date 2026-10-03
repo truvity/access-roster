@@ -17,6 +17,13 @@ type plainStore struct {
 }
 
 func (s *plainStore) Replace(_ context.Context, d map[string]string) error { s.got = d; return s.err }
+func (s *plainStore) Put(_ context.Context, k, d string) error {
+	if s.got == nil {
+		s.got = map[string]string{}
+	}
+	s.got[k] = d
+	return s.err
+}
 
 type readableStore struct {
 	plainStore

@@ -55,12 +55,28 @@ func discoveredChannels(
 			}
 		}
 	}
-	rows := map[string]*discoveredRow{}
+	// Each workspace's sightings: what its own report lists, and the sides a
+	// host's tick probed with this workspace's bot (a tick publishes its own
+	// report only, so the host's carries them). What a workspace lists itself
+	// wins over a probe of it.
+	sightings := map[string][]status.Discovered{}
 	for _, key := range slices.Sorted(maps.Keys(reports)) {
+		sightings[key] = append(sightings[key], reports[key].DiscoveredShared...)
+	}
+	for _, host := range slices.Sorted(maps.Keys(reports)) {
+		for _, side := range reports[host].GuestSides {
+			listed := slices.ContainsFunc(sightings[side.Workspace], func(d status.Discovered) bool { return d.ID == side.ID })
+			if !listed {
+				sightings[side.Workspace] = append(sightings[side.Workspace], side.Discovered)
+			}
+		}
+	}
+	rows := map[string]*discoveredRow{}
+	for _, key := range slices.Sorted(maps.Keys(sightings)) {
 		if _, declared := p.Slack.Workspaces[key]; !declared || !book.may(id, access.RoleViewer, key) {
 			continue
 		}
-		for _, d := range reports[key].DiscoveredShared {
+		for _, d := range sightings[key] {
 			row := rows[d.ID]
 			if row == nil {
 				row = &discoveredRow{teams: map[string]bool{}, reporters: map[string]bool{}, seen: map[string]status.Discovered{}}

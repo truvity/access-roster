@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -81,6 +82,12 @@ type Watch struct {
 	// Changed is the log line's reason when Digest changed, for instance
 	// "an organisation's credentials changed".
 	Changed string
+	// OnRequest, when set, is called with the subject of each request that
+	// is newer than the last acted on, in place of waking the whole loop: a
+	// request names one target, and only that target ticks
+	// (docs/decisions/0029). A change of Digest still wakes the loop. Nil
+	// wakes the loop for a request too.
+	OnRequest func(subject string)
 }
 
 // Run sends on wake whenever the digest differs from the last time it
@@ -113,9 +120,15 @@ func (w Watch) Run(ctx context.Context, log *slog.Logger, wake chan<- struct{}) 
 		if now != last {
 			last, reason = now, w.Changed
 		}
-		for subject, at := range w.Requests() {
-			if at.After(handled[subject]) {
-				handled[subject] = at
+		requests := w.Requests()
+		for _, subject := range slices.Sorted(maps.Keys(requests)) {
+			if requests[subject].After(handled[subject]) {
+				handled[subject] = requests[subject]
+				if w.OnRequest != nil {
+					log.InfoContext(ctx, "a pass was requested for "+logsafe.Value(subject)+": ticking it now instead of at the next interval")
+					w.OnRequest(subject)
+					continue
+				}
 				reason = "a pass was requested for " + logsafe.Value(subject)
 			}
 		}

@@ -42,9 +42,9 @@ func (c *Controller) passRequests() map[string]time.Time {
 // watchCredentials wakes the loop when an organisation's mounted credential
 // or record changed (a hash of both directories: what connecting, installing
 // or disconnecting an organisation changes), or an operator asked for a pass
-// (see [rails.Watch]). The pass is the full one: the reports are published as
-// one document set, so a pass over a single organisation would blank the
-// others'.
+// (see [rails.Watch]). A changed credential runs a sweep, since the digest
+// does not say which organisation changed; an operator's request names its
+// organisation, and only that organisation ticks, through the trigger.
 func (c *Controller) watchCredentials(ctx context.Context, wake chan<- struct{}) {
 	rails.Watch{
 		Poll: c.cfg.CredentialPoll,
@@ -53,5 +53,10 @@ func (c *Controller) watchCredentials(ctx context.Context, wake chan<- struct{})
 		},
 		Requests: c.passRequests,
 		Changed:  "an organisation's credentials changed",
+		OnRequest: func(org string) {
+			if err := c.deps.Trigger.Notify(ctx, org); err != nil {
+				c.deps.Log.WarnContext(ctx, "a requested pass could not be handed to the trigger", "org", org, "error", err)
+			}
+		},
 	}.Run(ctx, c.deps.Log, wake)
 }

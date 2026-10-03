@@ -334,6 +334,7 @@ func (c *Console) CreateSlackSharedChannel(
 		return nil, sharedError(err)
 	}
 	c.record(ctx, audit.SlackSharedChannelCreated(actorOf(ctx), auditShared(want)))
+	c.notifyShared(ctx, want)
 	view := sharedView(want)
 	view.State, view.Reason = sharedState(want, c.deps.Authorizer.Policy().Declared(), c.slackReports(ctx))
 	view.CanOperate = true
@@ -379,6 +380,7 @@ func (c *Console) UpdateSlackSharedChannel(
 	}
 	if changes != "" {
 		c.record(ctx, audit.SlackSharedChannelUpdated(actorOf(ctx), auditShared(want), changes))
+		c.notifyShared(ctx, want)
 	}
 	view := sharedView(want)
 	view.State, view.Reason = sharedState(want, c.deps.Authorizer.Policy().Declared(), c.slackReports(ctx))
@@ -507,6 +509,7 @@ func (c *Console) DeleteSlackSharedChannel(
 		return nil, sharedError(err)
 	}
 	c.record(ctx, audit.SlackSharedChannelDeleted(actorOf(ctx), auditShared(gone)))
+	c.notifyShared(ctx, gone)
 	return connect.NewResponse(&directoryrosterv1.DeleteSlackSharedChannelResponse{Note: fmt.Sprintf(
 		"The record of %s is deleted. The channel itself stays in Slack, archived by nobody, and the reconciler no longer manages its members: "+
 			"people who were added stay until someone removes them in Slack.", name)}), nil

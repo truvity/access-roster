@@ -8,10 +8,18 @@ import (
 	"sync"
 )
 
-// Store replaces a reconciler's reports: one document per target, all at
-// once.
+// Store keeps a reconciler's reports: one document per target.
 type Store interface {
+	// Replace writes exactly these documents and removes every other.
 	Replace(ctx context.Context, documents map[string]string) error
+	// Put writes one target's document and touches no other: a tick
+	// publishes its own report (docs/decisions/0029).
+	Put(ctx context.Context, key, document string) error
+}
+
+// Remover is a [Store] that can remove one target's document.
+type Remover interface {
+	Remove(ctx context.Context, key string) error
 }
 
 // Reader is a [Store] that can give back what the last pass wrote. With
@@ -95,6 +103,48 @@ func (j *Journal[R]) Publish(ctx context.Context, reports map[string]R) {
 	}
 	if err := j.Store.Replace(ctx, documents); err != nil {
 		j.log().ErrorContext(ctx, "the report could not be replaced", "error", err)
+	}
+}
+
+// PublishOne encodes one target's report and writes it, and no other. A
+// report that cannot be encoded or a store that cannot be written is logged:
+// the next tick publishes again.
+func (j *Journal[R]) PublishOne(ctx context.Context, target string, report R) {
+	document, err := j.Encode(report)
+	if err != nil {
+		j.log().ErrorContext(ctx, "a report could not be written", j.label(), target, "error", err)
+		return
+	}
+	if err := j.Store.Put(ctx, j.Key(target), document); err != nil {
+		j.log().ErrorContext(ctx, "the report could not be written", j.label(), target, "error", err)
+	}
+}
+
+// Prune removes the reports of targets that are no longer targets, so one
+// removed from the policy leaves the page rather than lingering with its last
+// state. A store that cannot list or remove is left as it is.
+func (j *Journal[R]) Prune(ctx context.Context, targets []string) {
+	reader, ok := j.Store.(Reader)
+	remover, can := j.Store.(Remover)
+	if !ok || !can {
+		return
+	}
+	keep := map[string]bool{}
+	for _, target := range targets {
+		keep[j.Key(target)] = true
+	}
+	documents, err := reader.Reports(ctx)
+	if err != nil {
+		j.log().WarnContext(ctx, "the reports could not be listed to prune them", "error", err)
+		return
+	}
+	for _, key := range slices.Sorted(maps.Keys(documents)) {
+		if keep[key] {
+			continue
+		}
+		if err := remover.Remove(ctx, key); err != nil {
+			j.log().WarnContext(ctx, "a report of a retired target could not be removed", "key", key, "error", err)
+		}
 	}
 }
 

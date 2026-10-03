@@ -19,8 +19,9 @@ type BlobReports struct {
 }
 
 var (
-	_ Store  = (*BlobReports)(nil)
-	_ Reader = (*BlobReports)(nil)
+	_ Store   = (*BlobReports)(nil)
+	_ Reader  = (*BlobReports)(nil)
+	_ Remover = (*BlobReports)(nil)
 )
 
 // NewBlobReports returns the reports under prefix, which ends in a slash.
@@ -60,6 +61,24 @@ func (r *BlobReports) Replace(ctx context.Context, documents map[string]string) 
 				return fmt.Errorf("remove the report %s: %w", name, err)
 			}
 		}
+	}
+	return nil
+}
+
+// Put implements [Store]: one target's document, written alone. Another
+// target's object is not read, listed or rewritten, so a tick that finds its
+// own report unchanged leaves every other's bytes exactly as they were.
+func (r *BlobReports) Put(ctx context.Context, name, document string) error {
+	if _, err := r.blob.Write(ctx, r.prefix+name, []byte(document)); err != nil {
+		return fmt.Errorf("write the report %s: %w", name, err)
+	}
+	return nil
+}
+
+// Remove implements [Remover].
+func (r *BlobReports) Remove(ctx context.Context, name string) error {
+	if err := r.blob.Delete(ctx, r.prefix+name); err != nil {
+		return fmt.Errorf("remove the report %s: %w", name, err)
 	}
 	return nil
 }

@@ -102,6 +102,8 @@ type report struct {
 	documents map[string]string
 	// replaced counts the publications.
 	replaced int
+	// puts counts the writes of each organisation's own report.
+	puts map[string]int
 }
 
 func (r *report) Replace(_ context.Context, documents map[string]string) error {
@@ -110,6 +112,34 @@ func (r *report) Replace(_ context.Context, documents map[string]string) error {
 	r.documents = documents
 	r.replaced++
 	return nil
+}
+
+func (r *report) Put(_ context.Context, key, document string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.documents == nil {
+		r.documents = map[string]string{}
+	}
+	r.documents[key] = document
+	r.replaced++
+	if r.puts == nil {
+		r.puts = map[string]int{}
+	}
+	r.puts[key]++
+	return nil
+}
+
+func (r *report) Remove(_ context.Context, key string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.documents, key)
+	return nil
+}
+
+func (r *report) putsOf(login string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.puts[status.Key(login)]
 }
 
 func (r *report) published() int {

@@ -159,6 +159,21 @@ func (s *Stores) Name() string {
 	}
 }
 
+// LeaseState is the State the controllers take their tick leases from, and
+// whether it is shared by every replica. A lease is only exclusive across
+// processes when the State is: the legacy adapter keeps leases in Valkey, so
+// without one a controller holds its leases in its own memory and a second
+// replica would not be kept off (docs/design/ports.md, "The legacy adapter").
+func (s *Stores) LeaseState() (state port.State, shared bool) {
+	if s.Shared {
+		return s.Ports.State, true
+	}
+	if s.Adapter == AdapterMemory {
+		return s.Ports.State, false
+	}
+	return memory.New().Set().State, false
+}
+
 // Readiness is what readiness should ask: the Valkey, or nothing.
 func (s *Stores) Readiness() any { return s.pinger }
 

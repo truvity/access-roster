@@ -123,9 +123,22 @@ func orDefault(value, fallback string) string {
 type App struct {
 	controller *controller.Controller
 	trail      *audit.Trail
+	log        *slog.Logger
 	// fatal carries the one error that ends the process from outside a
 	// pass: the audit installation refusing the catalogue after the start.
 	fatal chan error
+}
+
+// Tick runs one workspace's tick once, under its lease, and returns: the
+// workspace's key. It is what `access-roster tick slack` runs, and the shape
+// of a function that lives for one invocation. A workspace another runner
+// holds is left to it.
+func (a *App) Tick(ctx context.Context, target string) error {
+	ran, _, err := a.controller.RunTarget(ctx, target)
+	if err == nil && !ran {
+		a.log.InfoContext(ctx, "the workspace is leased to another runner: nothing to do", "workspace", target)
+	}
+	return err
 }
 
 // Close closes the audit emitter, which delivers what its queue holds within
@@ -193,18 +206,26 @@ func New(ctx context.Context, cfg Config, log *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	leaseState, shared := stores.LeaseState()
+	if !shared {
+		log.InfoContext(ctx, "no shared state backs the tick leases, so they are held in this process: run one replica",
+			"adapter", stores.Adapter)
+	}
 	return &App{
+		log:   log,
 		trail: trail,
 		fatal: fatal,
 		controller: controller.New(controller.Config{
 			Interval: cfg.interval, Enabled: cfg.enabled, CredentialsDir: cfg.credentialsDir, RecordsDir: cfg.recordsDir,
 		}, controller.Deps{
-			Log:    log,
-			Access: directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
-			Audit:  trail,
-			Status: rails.NewBlobReports(stores.Ports.Blob, "reports/slack/"),
-			Policy: declared,
-			Digest: set.Digest(),
+			Log:     log,
+			Access:  directoryrosterv1connect.NewAccessServiceClient(web, cfg.console, bearer),
+			Audit:   trail,
+			Status:  rails.NewBlobReports(stores.Ports.Blob, "reports/slack/"),
+			Leases:  &rails.Leases{State: leaseState, Holder: rails.NewHolder(), Log: log},
+			Trigger: stores.Ports.Trigger,
+			Policy:  declared,
+			Digest:  set.Digest(),
 		}),
 	}, nil
 }

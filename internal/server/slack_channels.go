@@ -336,6 +336,7 @@ func (c *Console) CreateSlackChannel(
 		return nil, channelError(err)
 	}
 	c.record(ctx, audit.SlackConsoleChannelCreated(actorOf(ctx), auditConsole(want)))
+	c.notify(ctx, want.Workspace)
 	view := consoleView(want)
 	view.State, view.Reason = consoleState(want, c.deps.Authorizer.Policy().Declared(), reports)
 	view.CanOperate = true
@@ -430,6 +431,7 @@ func (c *Console) UpdateSlackChannel(
 	}
 	if changes != "" {
 		c.record(ctx, audit.SlackConsoleChannelUpdated(actorOf(ctx), auditConsole(written), changes))
+		c.notify(ctx, written.Workspace)
 	}
 	view := consoleView(written)
 	view.State, view.Reason = consoleState(written, c.deps.Authorizer.Policy().Declared(), c.slackReports(ctx))
@@ -500,6 +502,7 @@ func (c *Console) DeleteSlackChannel(
 		return nil, channelError(err)
 	}
 	c.record(ctx, audit.SlackConsoleChannelDeleted(actorOf(ctx), auditConsole(gone)))
+	c.notify(ctx, gone.Workspace)
 	if req.Msg.GetArchive() {
 		archived, note := c.archiveForgotten(ctx, gone, target)
 		return connect.NewResponse(&directoryrosterv1.DeleteSlackChannelResponse{Note: note, Archived: archived}), nil

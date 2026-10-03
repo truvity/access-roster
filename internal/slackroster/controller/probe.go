@@ -11,23 +11,48 @@ import (
 	"github.com/truvity/access-roster/internal/slackroster/status"
 )
 
-// probeGuestSides adds the sides a workspace's bot does not list. A bot lists
+// probeGuestSides adds, to the report of the workspace that HOSTS a managed
+// Slack Connect channel, the sides the guest's bot does not list. A bot lists
 // a Slack Connect channel that is public on its side only sometimes, and one
 // it has not joined often not at all, so a channel one workspace discovered
 // can look "not listed" on another that has it. Only a channel a console
-// shared-channel record manages is probed; an unmanaged one is never asked
-// about. For such a channel, each connected workspace that did not list it
-// is asked once, by id, with conversations.info: an answer is that side
-// (public or private as it says, bot not joined), and Slack's
-// channel_not_found (a private side the bot is not in) leaves the side
-// unknown, logged at debug. When Slack names a connected workspace other than
-// the host and the reporters among a channel's teams (host, shared, connected,
-// pending, internal), only the named ones are asked. A bot is often told
-// nothing but its own team, though: with no such guest named, exactly the
-// workspaces the record names as sides (host and with) are asked. One call
-// per channel per workspace per pass, the transport's own rate-limit retry,
-// and a failure only logs: it never fails the pass.
-func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[string]status.Workspace) {
+// shared-channel record manages, and whose record names this workspace as the
+// host, is probed; an unmanaged one is never asked about. For such a channel,
+// each connected workspace that did not list it is asked once, by id, with
+// conversations.info: an answer is that side (public or private as it says,
+// bot not joined), and Slack's channel_not_found (a private side the bot is
+// not in) leaves the side unknown, logged at debug. When Slack names a
+// connected workspace other than the host and the reporters among a
+// channel's teams (host, shared, connected, pending, internal), only the
+// named ones are asked. A bot is often told nothing but its own team,
+// though: with no such guest named, exactly the workspaces the record names
+// as sides (host and with) are asked. One call per channel per workspace per
+// tick, the transport's own rate-limit retry, and a failure only logs: it
+// never fails the tick.
+//
+// Which workspaces listed a channel is read from their last published
+// reports, the host's own being the one just derived: a tick publishes its
+// own report only, so a guest's side is recorded in the host's
+// ([status.Workspace.GuestSides]) and the host's own side in its
+// DiscoveredShared.
+func (c *Controller) probeGuestSides(ctx context.Context, p *pass, host string, own *status.Workspace) {
+	if own.Tick.Outcome == status.OutcomeFailed || own.Tick.Outcome == status.OutcomeWaiting {
+		return // nothing was observed: the previous probe stands
+	}
+	own.GuestSides = nil
+	hosts := false
+	for i := range p.shared {
+		hosts = hosts || p.shared[i].Host == host
+	}
+	if !hosts {
+		return
+	}
+	reports := map[string]status.Workspace{host: *own}
+	for key := range c.deps.Policy.Slack.Workspaces {
+		if key != host {
+			reports[key] = c.journal.Previous(ctx, key)
+		}
+	}
 	// channel id -> first sighting (by workspace key order), and who listed it.
 	first := map[string]status.Discovered{}
 	managed := map[string]bool{}
@@ -81,6 +106,7 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 	// channel id -> the workspaces its record names as sides, for a managed
 	// channel: the record matches by channel id, else by host team and name.
 	sides := map[string]map[string]bool{}
+	hosted := map[string]bool{}
 	valid := p.shared
 	for id, d := range first {
 		if !managed[id] {
@@ -101,6 +127,7 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 				sides[id] = map[string]bool{}
 			}
 			sides[id][rec.Host] = true
+			hosted[id] = hosted[id] || rec.Host == host
 			for _, w := range rec.With {
 				sides[id][w] = true
 			}
@@ -114,7 +141,7 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 	}()
 	clients := map[string]*slackapp.Client{}
 	for _, id := range slices.Sorted(maps.Keys(first)) {
-		if !managed[id] {
+		if !managed[id] || !hosted[id] {
 			continue
 		}
 		for _, key := range slices.Sorted(maps.Keys(c.deps.Policy.Slack.Workspaces)) {
@@ -161,16 +188,19 @@ func (c *Controller) probeGuestSides(ctx context.Context, p *pass, reports map[s
 				continue
 			}
 			visible++
-			host := info.ConversationHostID
-			if host == "" {
-				host = first[id].HostTeam
+			hostTeam := info.ConversationHostID
+			if hostTeam == "" {
+				hostTeam = first[id].HostTeam
 			}
-			report := reports[key]
-			report.DiscoveredShared = append(slices.Clone(report.DiscoveredShared), status.Discovered{
-				ID: id, Name: info.Name, Private: info.IsPrivate, Members: info.NumMembers, HostTeam: host,
+			side := status.Discovered{
+				ID: id, Name: info.Name, Private: info.IsPrivate, Members: info.NumMembers, HostTeam: hostTeam,
 				Teams: info.Teams(), Managed: managed[id],
-			})
-			reports[key] = report
+			}
+			if key == host {
+				own.DiscoveredShared = append(own.DiscoveredShared, side)
+			} else {
+				own.GuestSides = append(own.GuestSides, status.GuestSide{Workspace: key, Discovered: side})
+			}
 		}
 	}
 }
