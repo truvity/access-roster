@@ -89,13 +89,17 @@ func TestSlackWritesNotifyTheWorkspacesTheyConcern(t *testing.T) {
 	trigger, n := spyOn(t)
 	h.console.deps.Trigger = trigger
 
-	if _, err := h.console.RequestSlackPass(asSlackIdentity(southOp), connect.NewRequest(&directoryrosterv1.RequestSlackPassRequest{Workspace: "acme"})); err == nil {
+	ask := func(ctx context.Context) error {
+		_, err := h.console.RequestSlackPass(ctx, connect.NewRequest(&directoryrosterv1.RequestSlackPassRequest{Workspace: "acme"}))
+		return err
+	}
+	if err := ask(asSlackIdentity(southOp)); err == nil {
 		t.Fatal("a foreign operator was let through")
 	}
 	if got := n.settle(); len(got) != 0 {
 		t.Fatalf("a refused request notified %v", got)
 	}
-	if _, err := h.console.RequestSlackPass(asSlackIdentity(northOp), connect.NewRequest(&directoryrosterv1.RequestSlackPassRequest{Workspace: "acme"})); err != nil {
+	if err := ask(asSlackIdentity(northOp)); err != nil {
 		t.Fatal(err)
 	}
 	if got := n.seen(t, 1); !slices.Equal(got, []string{"acme"}) {
