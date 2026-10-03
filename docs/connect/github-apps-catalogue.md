@@ -444,6 +444,15 @@ it is deliberately a different object.
 
 ### Projecting one App to a secret store
 
+> **On a State adapter, use an export.** `push` is **deprecated**: it renders a
+> PushSecret over the Kubernetes Secret only the `legacy` storage writes. With
+> `ports.adapter` other than `legacy` the service copies the App itself, with
+> `exports: [{source: github-app, app: <id>, path: <path>}]` into an OpenBao KV
+> mount, written as `app_id`, `installation_id` and `private_key`, the properties
+> `push` wrote
+> ([configuration reference](../reference/configuration.md#exports-and-the-export-port),
+> [0033](../decisions/0033-exports-go-to-openbao-directly.md)).
+
 Some consumers cannot ask the issuer at the moment they run. The one this
 was built for is the program that manages the estate — a Pulumi or
 Terraform apply that must work while this service is being upgraded,

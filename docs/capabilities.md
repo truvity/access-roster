@@ -3,7 +3,7 @@
 What runs where, and how far each piece has got. The target shape is decided in
 [decisions/0026](decisions/0026-two-platforms-permanently-kubernetes-and-aws-lambda.md)
 to
-[0032](decisions/0032-one-configuration-file-one-binary-one-chart.md) and
+[0033](decisions/0033-exports-go-to-openbao-directly.md) and
 specified in [design/ports.md](design/ports.md); this page is the status of each
 part against it, and is updated in the change that moves a cell.
 
@@ -35,6 +35,9 @@ release and what has landed since.
 | Sealing: KMS (`internal/port/kmsseal`, `ports.sealer`) | 🧪 | 🧪 |
 | Sealing: OpenBao Transit | 📄 | — |
 | Sealing: mounted key | 📄 | — |
+| Export: copies of the secrets the console keeps (a Slack App's bot token, the runner and catalogue Apps, five recovery bundles) written into OpenBao KV by the service itself, asynchronously, per-export lease, retried with backoff (`internal/port/openbao`, `internal/exports`, `ports.export` and `exports`, [0033](decisions/0033-exports-go-to-openbao-directly.md); needs a `ports.adapter` other than `legacy`) | 🧪 | 📄 |
+| Export: the `jwt` login with the web identity token of AWS outbound federation, for a function in the VPC reaching OpenBao through its internal load balancer (the adapter takes a `TokenSource`; no Lambda wiring yet) | — | 📄 |
+| Export: the External Secrets `PushSecret`s of the chart (`slackApps[].push`, `directory.push`, `githubApps.push`, `githubApps.catalogue[].push`, `slackState.push`; need `config.store: kubernetes`) | deprecated, replaced by the above | — |
 | Inputs: mounted ConfigMaps and Secrets | ✅ | — |
 | Inputs: file in the image or a parameter store | — | 📄 |
 | Audit sink: `http` | ✅ | — |
@@ -43,6 +46,7 @@ release and what has landed since.
 | Ports as Go interfaces (`internal/port`) and the apps depending on them | 🧪 | 📄 |
 | Port conformance suite: in-memory and legacy | 🧪 | — |
 | Port conformance suite: NATS (embedded nats-server, one node and a three-node cluster) | 🧪 | — |
+| Port conformance suite: Export (in-memory, and OpenBao against a fake KV mount) | 🧪 | 🧪 |
 | Port conformance suite: DynamoDB (LocalStack and an in-memory fake of the API; `migrate` into and out of it) | 🧪 | 🧪 |
 
 ## Runtime
@@ -95,8 +99,8 @@ is the part of the runtime that is built; the Lambda runtime itself is not.
 | The chart sets the `OTEL_*` environment on every pod from `telemetry.otlp` (endpoint, protocol, a service name per component, extra `OTEL_*`); unset renders nothing | 🧪 | — |
 | Platform logs over OTLP (the extension layer) | — | ✅ |
 | Traces: HTTP and Connect spans, a span per tick and per port call, the trace continued into the console (trace context across queues waits for the queues) | 🧪 | 📄 |
-| Metrics: the issuer's requests, tokens, sign-ins and keys; ticks and leases; port calls; rate limits ([operations/telemetry.md](operations/telemetry.md)) | 🧪 | 📄 |
-| Chart modes `renders: alerts` and `renders: dashboards`: ten rules, unit-tested with `vmalert-tool`, and a dashboard held to `dashboardlint` | 🧪 | — |
+| Metrics: the issuer's requests, tokens, sign-ins and keys; ticks and leases; port calls; exports; rate limits ([operations/telemetry.md](operations/telemetry.md)) | 🧪 | 📄 |
+| Chart modes `renders: alerts` and `renders: dashboards`: twelve rules, unit-tested with `vmalert-tool`, and a dashboard held to `dashboardlint` | 🧪 | — |
 | No personal data in a span: an allowlist exporter, tested by planting markers; no person or group in a label | 🧪 | 📄 |
 
 Telemetry is configured by the OpenTelemetry environment variables and nothing
