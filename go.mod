@@ -15,7 +15,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/google/uuid v1.6.0
 	github.com/redis/go-redis/v9 v9.22.0
-	github.com/truvity/audit/sdk v0.6.0
+	github.com/truvity/audit/sdk v0.6.1
 	github.com/truvity/policy v1.37.0
 	github.com/zitadel/oidc/v3 v3.49.6
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.71.0
