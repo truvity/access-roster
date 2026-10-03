@@ -56,7 +56,7 @@ const (
 	DomainBlobs     = "blobs"
 )
 
-// Domains is every name a run accepts to skip.
+// AllDomains is every name a run accepts to skip.
 var AllDomains = []string{DomainDirectory, DomainGitHub, DomainSlack, DomainConsole, DomainIssuer, DomainBlobs}
 
 // BlobMode says whether the controllers' reports are copied.
