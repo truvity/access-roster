@@ -10,7 +10,7 @@ sluis writes a tamper-evident audit trail. This page explains the ideas; the rec
 
 ## What is audited
 
-**Every success is audited.** When an actor does something for a caller, such as issuing a token, minting a credential or changing a record, it appends an audit record, so every actor is a producer. **What was used goes to a usage log beside it**: an action that uses something, such as a metered call or a quota top-up, sends one message with an audit part and a usage part, and the writer puts each part into its own log ([The usage stream](#the-usage-stream)).
+**Every success is audited.** When an actor does something for a caller, such as signing a person in, issuing a token, minting a credential or changing a record, it appends an audit record, so every actor is a producer. **What was used goes to a usage log beside it**: an action that uses something, such as a metered call or a quota top-up, sends one message with an audit part and a usage part, and the writer puts each part into its own log ([The usage stream](#the-usage-stream)).
 
 ## The four pieces
 
