@@ -854,7 +854,7 @@ requirements:
   - id: REQ-ISO-064
     area: ISO
     statement: "sluis trust sync MUST refuse a root list that is not signed by a root in the list the host already holds."
-    rationale: "Any single root may change the root set, but only a root the host already trusts."
+    rationale: "A list is taken only from a root the host already trusts; a list that changes the root set also carries the signature or stored removal authorisation of every root it replaces."
     level: MUST
     source: design-decision
     status: planned

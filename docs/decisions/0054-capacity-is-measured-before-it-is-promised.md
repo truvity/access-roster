@@ -25,7 +25,7 @@ The rule of [0012](/decisions/0012-cryptography-and-authority-keys/#keys-sign-in
 
 ### Measured so far
 
-MEASURED on 2026-11-02, 00:00 to 00:20 UTC, in AWS `eu-central-1`, from AWS Lambda (arm64, 1769 MB, Go) to one `ECC_NIST_P384` key with `ECDSA_SHA_384` over a digest, in the same Region as the key; about 125,000 Sign calls in total. This is part of [#878](https://github.com/truvity/sluis/issues/878); EC2 and pods of the installation are not measured yet.
+MEASURED on 2026-11-02, 00:00 to 00:20 UTC, in one EU region of AWS, from AWS Lambda (arm64, 1769 MB, Go) to one `ECC_NIST_P384` key with `ECDSA_SHA_384` over a digest, in the same Region as the key; about 125,000 Sign calls in total. This is part of [#878](https://github.com/truvity/sluis/issues/878); EC2 and pods of the installation are not measured yet.
 
 | What | Result |
 |---|---|

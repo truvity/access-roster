@@ -97,6 +97,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0038](0038-clients-are-declared-resources-map-to-a-client-and-self-described-clients-are-admitted-only-from-allow-listed-origins.md) | Clients are declared, a resource maps to a registered client, and a self-described client is admitted only from an allow-listed origin | Accepted |
 | [0039](0039-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Accepted |
 | [0040](0040-console-roles-are-declared-grants-and-its-pages-are-organised-by-the-origin-of-what-they-show.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
+| [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Accepted |
 | [0057](0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force.md) | Configuration sources are a port: sources own disjoint paths, authority is signed, and a failing source keeps the version in force | Accepted |
 
 ### CIAM module (later layer)
@@ -113,7 +114,6 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0053](0053-volumetric-abuse-is-stopped-at-the-edge-and-sluis-bounds-what-one-source-can-cost.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state | Accepted |
 | [0054](0054-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
 | [0055](0055-fapi-2-is-a-profile-a-client-declares.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
-| [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Accepted |
 
 ### Quota module (later layer)
 

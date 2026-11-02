@@ -130,7 +130,7 @@ A test vector runs one layer with the others switched off ([REQ-ISO-001](/requir
 
 These are shared by design and are not mitigated by isolation. They are revisited when a boundary is promoted to its own operator.
 
-- **The roots.** The roots are held by [ritueel](https://ritueel.id) and certify every boundary's intermediates. Any single root may change the root list, so whoever holds one root card and its PIN can sign what hosts trust until that root is revoked and the update reaches them; standard tools cannot require two roots to agree. A stolen card without its PIN locks after three wrong tries (T-23). The break-glass SSH CA is ritueel's too ([SSH](/integrations/ssh/)).
+- **The roots.** The roots are held by [ritueel](https://ritueel.id) and certify every boundary's intermediates. Changing the root set requires every current root, or a root's stored removal authorisation; any one root signs the rest. The break-glass SSH CA is ritueel's too ([SSH](/integrations/ssh/)).
 - **The operator who deploys sluis.** Whoever writes the install files and runs the deployment can change any boundary they deploy.
 - **Cluster admins.** An admin of a shared Kubernetes cluster can mint service-account tokens and read mounted secrets of any pod on it.
 - **Production `ca` reaching every company in production.** One environment's `ca` signs for every company in that environment; company boundaries hold no authority key.
