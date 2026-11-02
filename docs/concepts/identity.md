@@ -11,7 +11,7 @@ sluis gives credentials to people and to machines. A person comes from an upstre
 ## A person's subject
 
 - **`sub` is an opaque random id, the same at every issuer.** sluis assigns it when it first sees a person: at a directory read where the upstream has a directory, so it is known before the first sign-in, and otherwise at the first sign-in, which is how the first working version works. An upstream account is tied to the person by the issuer and a configured subject claim (`sub`, or `oid` for Microsoft Entra), never by e-mail ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/)). The subject is never an e-mail address or a directory account name, so it survives a rename and keeps personal data out of log lines.
-- **The directory account and `email` are claims of their own**, beside `acr`, `amr`, `auth_time` and, for a DPoP-bound token, `cnf.jkt`.
+- **The directory account and `email` are claims of their own**, beside `acr`, `amr` and `auth_time`. A token for an audience that declares DPoP also carries `cnf.jkt`; DPoP comes later ([ADR 0055](/decisions/0055-fapi-2-is-a-profile-a-client-declares/)).
 - **A person disabled in the directory, or held by an operator, is refused at once**, whatever the cached state.
 - What happens to a subject over its life, and pairwise subjects per sector for customers, are for the subject-lifecycle decision record (planned, [#1024](https://github.com/truvity/sluis/issues/1024)).
 

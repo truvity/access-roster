@@ -1,7 +1,7 @@
 # 0056 — A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill
 
 **Status:** Accepted
-**Layer:** CIAM module
+**Layer:** core
 **Date:** 2026-11-02
 
 Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).

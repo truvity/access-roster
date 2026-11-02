@@ -158,8 +158,8 @@ A mapping from a client ID to its declaration, for the group issuer; `boundaries
 
 | Field | Required | Meaning |
 |---|---|---|
-| `root_list` | yes | The signed root list that ritueel produced: `root-list.json`, with its signature `root-list.jws` in the same directory ([the format](https://ritueel.id/reference/root-list/)). sluis takes its anchors from it, and `sluis key request` reads the active primaries from it ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). At parity `sluis trust sync` keeps it current |
-| `ca_bundle` | yes | The CA bundle that ritueel produced with the list, `ca-bundle.pem`: the roots' certificates in the list's order, with the list's sequence in its first line. `signer` takes the root certificate for the `x5c` chain of the key set from it, and `sluis config check` refuses a bundle that does not match the list |
+| `root_list` | no | Optional. The signed root list that ritueel produced: `root-list.json`, with its signature `root-list.jws` in the same directory ([the format](https://ritueel.id/reference/root-list/)). When it is present, a certificate of the bundle is an anchor only if its key is on the list, and `sluis key request` reads the active primaries from it ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#root-pins-and-the-root-list)); an OpenPGP subkey request needs it. Without it, anchors come from the bundle alone, with no rollback protection and no trust sequence ([the floor](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-floor)). At parity `sluis trust sync` keeps it current |
+| `ca_bundle` | yes | The anchors: the CA bundle, `ca-bundle.pem`. ritueel's bundle holds the roots' certificates in the list's order, with the list's sequence in its first line; a bundle from another CA is the certificates the operator installed. `signer` takes the root certificate for the `x5c` chain of the key set from it, and `sluis config check` refuses a ritueel bundle that does not match the list |
 
 ## Sources of the install file
 
@@ -217,7 +217,7 @@ Beyond the schema, which checks the shape of each value and not what depends on 
 - the vocabulary file is valid ([Vocabulary](/reference/vocabulary/#what-sluis-config-check-checks)), every client's `requires` names grants that it declares, no grant name outside it appears in a policy file, and every policy file parses and validates against the Cedar schema ([Policy](/reference/policy/#what-sluis-config-check-checks));
 - every `uid_block` is unique, and every `subject_claim` is a claim that does not change for a person;
 - given the previous version with `--against`, each changed path whose class is `restart` is listed, and a source that owns a `restart` path is a warning ([Which keys reload](#which-keys-reload));
-- the drivers fit the runtime and the node count, every enabled key purpose has a key, and the root list verifies and is not older than the one sluis holds, and the CA bundle matches it: its first line names the list's sequence, and its certificates are the keys of the list's roots, in that order.
+- the drivers fit the runtime and the node count, every enabled key purpose has a key, and the root list, when there is one, verifies and is not older than the one sluis holds, and the CA bundle matches it: its first line names the list's sequence, and its certificates are the keys of the list's roots, in that order.
 
 ## The example file for local
 

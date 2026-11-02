@@ -401,7 +401,7 @@ requirements:
       - {kind: test-vectors, ref: "hand-off fixtures: a request and a proof from a test card and from a test KMS key verify"}
   - id: REQ-PKI-029
     area: PKI
-    statement: "The key install command MUST refuse a certificate whose chain does not lead to a root in the root list or whose public key does not match the key."
+    statement: "The key install command MUST refuse a certificate whose chain does not lead to an anchor (a root of the root list, when sluis holds one) or whose public key does not match the key."
     rationale: "A wrong certificate would make sluis serve with a key that no verifier trusts, or with someone else's."
     level: MUST
     source: design-decision

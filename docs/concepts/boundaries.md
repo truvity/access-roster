@@ -102,7 +102,8 @@ Each environment has its own issuer, and so does a customer boundary. Companies 
 | `iss` | The issuer URL |
 | `aud` | **Exactly one registered `client_id`**, never a URL. An RFC 8707 `resource=` selects a registered client and is never copied into `aud`. Between actors of two boundaries, `aud` is the target's SPIFFE ID |
 | `sub` | An opaque random id, the same at every issuer, never an e-mail address ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
-| `acr`, `amr`, `auth_time`, `cnf.jkt` | How and when the person signed in, and the key the token is bound to |
+| `acr`, `amr`, `auth_time` | How and when the person signed in |
+| `cnf.jkt` | Only when the audience declares DPoP, which comes later ([ADR 0055](/decisions/0055-fapi-2-is-a-profile-a-client-declares/)): the key the token is bound to. A bearer token has no `cnf` |
 | grants | Only that boundary's grants |
 | `org` | The person's company |
 
