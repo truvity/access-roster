@@ -96,7 +96,7 @@ A node's YubiKey, or a key file in development, is the one backend left that can
 | cloud | GCP and Azure federation | – | |
 | cloud | `cloud-cloudflare` | R2 temporary credentials | |
 
-A dash means no layer-2 check is named for that driver yet. Each driver is proved by a real installation, as the design principles ask ("One product, many shapes"); where the notes name one, it is that driver's reference installation.
+A dash means no layer-2 check is named for that driver yet. Each driver is added with the installation that needs it ([principle 10](/principles/#10-one-product-many-shapes)); where the notes name one, it is that driver's reference installation.
 
 - **Blob has one driver for object stores, `s3-compatible`,** with credentials from the `cloud` port: STS through web identity on AWS, and on Cloudflare a `cloud-cloudflare@<boundary>` driver that mints R2 temporary credentials scoped to one bucket and prefix, locally, as an HS256 token signed with the parent token's secret. The parent token is per boundary and stored sealed. `cloud-cloudflare@<boundary>` is separate from the company integration `cloudflare@<company>`: they share a library, not a credential. Garage is backlog ([#982](https://github.com/truvity/sluis/issues/982)): it ignores conditional writes.
 

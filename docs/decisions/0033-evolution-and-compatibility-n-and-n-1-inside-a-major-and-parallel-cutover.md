@@ -13,7 +13,7 @@ Three questions about change share one answer.
 - **Cutover from v1.** v1's own cutover froze, copied state and switched one issuer. v2 cannot copy state: it has a new key hierarchy, an opaque `sub` ([0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#subjects)) and an issuer for each boundary host. v1's `sub` appears to be a person's e-mail address, to be confirmed by an inventory, so anything keyed on it changes.
 - **Deliverables.** v1 shipped a Pulumi library that rendered sluis documents. v2 pages say that "infrastructure as code applies" the result and name no deliverable. And the parity milestone's done-when gathers capabilities v1 never had with the ones that replace what v1 does, so it is not clear what has to hold before v1 can be retired.
 
-Principle 6 joins products by a contract with vectors; principle 1 says v1's keys never move; principle 10 asks for one product that many tools can apply; principle 8 asks for a consumer first.
+Principle 6 joins products by a contract with vectors; principle 1 says v1's keys never move; principle 10 builds one product for several installation shapes, a driver at a time; principle 8 asks for a consumer first.
 
 ## Decision
 

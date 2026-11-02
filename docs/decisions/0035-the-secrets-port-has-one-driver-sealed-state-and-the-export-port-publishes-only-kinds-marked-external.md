@@ -11,7 +11,7 @@ sluis holds secrets because it has to: a vendor-issued App key, a bot token, a g
 
 v1 had a secrets port with four stores (a cloud parameter store, OpenBao KV v2, Kubernetes Secrets, memory) and exported typed credential documents to OpenBao (parity row [#798](https://github.com/truvity/sluis/issues/798); v1 ADR 0028 and the v1 secrets reference, on `master`). v2 has no OpenBao driver and writes no Kubernetes objects (principles, "What sluis is, and is not").
 
-The forces: principle 8 (nothing without a consumer) against principle 10 (every port has more than one driver); principle 1 (the sealing key never leaves its store); and the boards, which have no cloud store at all.
+The forces: principle 8 (nothing without a consumer) and principle 10 ("A port has one driver until a second real installation needs another"), which point the same way here; principle 1 (the sealing key never leaves its store); and the boards, which have no cloud store at all.
 
 ## Decision
 
@@ -43,7 +43,7 @@ The forces: principle 8 (nothing without a consumer) against principle 10 (every
 
 - Parity row #798 is delivered by a smaller port: v1's four stores and its export to a vault are not carried. A v1 consumer that read an exported credential from OpenBao is wired differently in the cutover inventory ([#1017](https://github.com/truvity/sluis/issues/1017)).
 - Every installation tests one secrets path, the one that already holds the vendor-issued secrets of the boards. The price is that a secret is readable only through sluis: an operator who wants the AWS console to show it cannot.
-- Principle 10 is met by the port's state drivers underneath (embedded, rqlite, DynamoDB), not by a second secrets driver; the first consumer of a second one will say what it needs.
+- Principle 10 asks for a second driver only when a second installation needs one, and none does: the state drivers underneath (embedded, rqlite, DynamoDB) already serve every installation. The first consumer of a second secrets driver will say what it needs.
 - A new external kind needs a schema marker, a consumer and a grant, in that order, and the checks that generate the deny matrix follow.
 - Requirements: REQ-SECRETS-013 and REQ-EXPORT-007 are added. The explanation page loses its proposed note.
 

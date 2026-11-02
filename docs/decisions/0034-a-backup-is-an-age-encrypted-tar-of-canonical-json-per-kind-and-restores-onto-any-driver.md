@@ -60,6 +60,6 @@ The forces:
 
 ## Follow-ups
 
-- Recovery time and recovery point targets per installation shape: [#1142](https://github.com/truvity/sluis/issues/1142).
+- The first recovery drill and the targets it replaces: [ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery).
 - Build of the backup and restore actors: [#834](https://github.com/truvity/sluis/issues/834), [#835](https://github.com/truvity/sluis/issues/835).
 - The `secrets` and `export` ports: [0035](/decisions/0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external/).
