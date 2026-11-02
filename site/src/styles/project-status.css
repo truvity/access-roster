@@ -17,11 +17,27 @@
 .ps .ps-card p { margin: 0; }
 .ps-card-k { font-family: var(--sl-font-mono); font-size: var(--sl-text-xs); color: var(--sl-color-gray-3); }
 .ps-card-n { font-weight: 600; }
-.ps-bars { margin: .5rem 0 0; display: grid; gap: .3rem; }
-.ps-bars > div { display: grid; grid-template-columns: 1fr auto; gap: 0 .5rem; align-items: center; font-size: var(--sl-text-xs); }
+.ps .ps-card .ps-bargroup { margin: .7rem 0 0; }
+.ps .ps-card .ps-bars-k { font-size: var(--sl-text-xs); font-weight: 600; color: var(--sl-color-white); text-transform: uppercase; letter-spacing: .04em; }
+.ps-bars-s { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--sl-color-gray-3); }
+.ps-bars { margin: .25rem 0 0; display: grid; gap: .3rem; }
+.ps .ps-bars > div { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 0 .5rem; align-items: center; font-size: var(--sl-text-xs); }
 .ps .ps-bars dt { color: var(--sl-color-gray-2); font-weight: 400; margin: 0; }
 .ps .ps-bars dd { margin: 0; display: contents; }
-.ps-meter { grid-column: 1 / -1; width: 100%; height: .4rem; }
+/* Design and build bars differ in colour and in fill (stripes for design), so that neither
+   relies on colour alone. Only Starlight's variables, so both themes work. */
+.ps-meter { grid-column: 1 / -1; width: 100%; height: .5rem; -webkit-appearance: none; appearance: none; border: 0; border-radius: .25rem;
+  background: var(--sl-color-gray-5); overflow: hidden; }
+.ps-meter::-webkit-meter-bar { background: var(--sl-color-gray-5); border: 0; border-radius: .25rem; height: .5rem; }
+.ps-bargroup-build .ps-meter::-webkit-meter-optimum-value,
+.ps-bargroup-build .ps-meter::-webkit-meter-suboptimum-value,
+.ps-bargroup-build .ps-meter::-webkit-meter-even-less-good-value { background: var(--sl-color-green); }
+.ps-bargroup-build .ps-meter::-moz-meter-bar { background: var(--sl-color-green); }
+.ps-bargroup-design .ps-meter::-webkit-meter-optimum-value,
+.ps-bargroup-design .ps-meter::-webkit-meter-suboptimum-value,
+.ps-bargroup-design .ps-meter::-webkit-meter-even-less-good-value {
+  background: repeating-linear-gradient(135deg, var(--sl-color-blue) 0 .3rem, var(--sl-color-blue-high) .3rem .45rem); }
+.ps-bargroup-design .ps-meter::-moz-meter-bar { background: repeating-linear-gradient(135deg, var(--sl-color-blue) 0 .3rem, var(--sl-color-blue-high) .3rem .45rem); }
 .ps-v { grid-row: 1; grid-column: 2; font-family: var(--sl-font-mono); font-variant-numeric: tabular-nums; color: var(--sl-color-white); }
 
 /* the ledger */

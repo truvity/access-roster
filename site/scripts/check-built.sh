@@ -90,6 +90,14 @@ fi
 grep -q 'What runs today is sluis v1' "$dist/index.html" || bad "the landing page lacks the v1 and v2 status paragraph"
 grep -q 'Code: [0-9]* lines\?\.' "$dist/index.html" || bad "the landing page lacks the design and code line"
 grep -q 'Code: [0-9]* lines\?\.' "$dist/status/index.html" || bad "the status page lacks the design and code line"
+# With the board read, each milestone card on the status page has a Design bar and a Build bar, named apart.
+if grep -q 'data-project="available"' "$dist/status/index.html"; then
+  cards=$( (grep -o '<article class="ps-card' "$dist/status/index.html" || true) | wc -l)
+  design=$( (grep -o 'class="ps-bargroup ps-bargroup-design"' "$dist/status/index.html" || true) | wc -l)
+  build=$( (grep -o 'class="ps-bargroup ps-bargroup-build"' "$dist/status/index.html" || true) | wc -l)
+  [ "$cards" -gt 0 ] && [ "$design" -eq "$cards" ] && [ "$build" -eq "$cards" ] \
+    || bad "the status page has $cards milestone cards, $design Design bars and $build Build bars"
+fi
 grep -q 'a pluggable identity and access broker' "$dist/index.html" || bad "the landing page lacks the tagline"
 
 # The v1 documentation, when it was built in.
