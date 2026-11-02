@@ -58,6 +58,10 @@ The **effective configuration** is declared overlaid with operator-set. Learned 
 
 A secret in configuration is a reference such as `{ credential: idp-client-secret }`, resolved at run time from a read-only source, and later also through the `secrets` port ([Install file](/reference/install-file/#format), [Secrets and export](/concepts/data/#secrets-and-export)). The value never appears in a file, in `explain` output, in logs or in a crash dump.
 
+## Sources
+
+Declared configuration can come from more than the install file. A **source** is a file, a Lambda layer, a mounted ConfigMap or AWS AppConfig, read through the `config-source` port ([ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/)). The install file is the base and lists the others in `sources`. Each source owns paths that no other owns, so the merged document is a union and nothing overrides anything; each document is checked before it is merged, and the result once after. Authority delivered through a service is a signed document, verified before it is parsed. The rules and the vectors are [Configuration sources](/reference/config-sources/); which drivers an installation offers is on [Installations](/runtimes/installations/#configuration-sources).
+
 ## Issued instances
 
 Authority says who may do what, and it is written once, in git, and reviewed. What a tenant or a customer creates is an **instance**: an issued record made at run time by a declared client or an operator under a declared template, bounded by a declared delegation policy, and audited with the template, the slot values and the delegation that permitted it ([ADR 0031](/decisions/0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/)). An instance holds no authority its template did not carry.
@@ -67,7 +71,7 @@ Authority says who may do what, and it is written once, in git, and reviewed. Wh
 
 ## Live reload
 
-Declared configuration may **live-reload as whole versioned snapshots**, from a file, a ConfigMap, a Lambda layer or AWS AppConfig. A new snapshot is validated as `sluis config check` validates it, swapped atomically and audited with its digest; a snapshot that fails is refused and the version in force stays. A field that a running instance cannot change in place, such as a driver choice, is marked in the schema and applied at the next start. Operator-set values are read live through the `state` port, with a short cache whose lifetime is part of the field's schema.
+Declared configuration may **live-reload as whole versioned snapshots**, from a file, a ConfigMap, a Lambda layer or AWS AppConfig. A new snapshot is validated as `sluis config check` validates it, swapped atomically and audited with its digest; a snapshot that fails is refused and the version in force stays. A snapshot is the whole composition of the sources, never one source alone, and each driver signals a change in its own way: a file by notify, AppConfig by poll ([Configuration sources](/reference/config-sources/#what-a-driver-returns)). A field that a running instance cannot change in place, such as a driver choice, is marked in the schema and applied at the next start. Operator-set values are read live through the `state` port, with a short cache whose lifetime is part of the field's schema.
 
 ## Checking and explaining
 

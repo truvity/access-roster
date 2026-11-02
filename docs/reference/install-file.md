@@ -161,6 +161,10 @@ A mapping from a client ID to its declaration, for the group issuer; `boundaries
 | `root_list` | yes | The signed root list that ritueel produced: `root-list.json`, with its signature `root-list.jws` in the same directory ([the format](https://ritueel.id/reference/root-list/)). sluis takes its anchors from it, and `sluis key request` reads the active primaries from it ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). At parity `sluis trust sync` keeps it current |
 | `ca_bundle` | yes | The CA bundle that ritueel produced with the list, `ca-bundle.pem`: the roots' certificates in the list's order, with the list's sequence in its first line. `signer` takes the root certificate for the `x5c` chain of the key set from it, and `sluis config check` refuses a bundle that does not match the list |
 
+## Sources of the install file
+
+The install file can list more sources of declared configuration in an optional `sources` key: a second file, a Lambda layer, a mounted ConfigMap or AWS AppConfig. Schema v1 does not have it, because the first working version reads this one file; it joins the schema with the pull request that reads it ([principle 8](/principles/#8-nothing-without-a-consumer)). The shape of the list, the rule that puts the documents together and the keys a source can never own are on [Configuration sources](/reference/config-sources/).
+
 ## Which keys a file enables
 
 A key purpose that an installation does not enable gets no key ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#the-card-slot-map)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.

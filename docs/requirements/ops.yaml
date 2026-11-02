@@ -509,3 +509,198 @@ requirements:
     manual_reason: "A drill is a procedure whose record is checked by reading it."
     verification:
       - {kind: manual, ref: "drill record review"}
+  - id: REQ-OPS-041
+    area: OPS
+    statement: "`sluis config check` MUST refuse a configuration source whose driver the installation does not offer."
+    rationale: "An installation without AWS has no AppConfig, and the refusal names the missing dependency (ADR 0057)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "source driver offer tests on each tested installation"}
+  - id: REQ-OPS-042
+    area: OPS
+    statement: "`sluis config check` MUST refuse two configuration sources whose owned paths are equal or one inside the other."
+    rationale: "Two owners of one key would make the effective value depend on an order."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: equal and nested pointers"}
+  - id: REQ-OPS-043
+    area: OPS
+    statement: "`sluis config check` MUST refuse a source that owns a key of the install file that names where to read or whom to trust."
+    rationale: "A source that could rewrite the list of sources or the roots would choose its own authority."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: base keys"}
+  - id: REQ-OPS-044
+    area: OPS
+    statement: "The configuration loader MUST refuse an install file that holds a key under a path that a source owns, even with the same value."
+    rationale: "A copy in the install file would hide a source that fails or changes."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: base holds an owned key"}
+  - id: REQ-OPS-045
+    area: OPS
+    statement: "The configuration loader MUST refuse a source document that holds a key outside the paths its source owns."
+    rationale: "A publisher writes only its own scope (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: key outside scope"}
+  - id: REQ-OPS-046
+    area: OPS
+    statement: "The configuration loader MUST refuse a source document that lacks one of the paths its source owns."
+    rationale: "An absent subtree and an empty one must not mean the same."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: missing owned path"}
+  - id: REQ-OPS-047
+    area: OPS
+    statement: "The configuration loader MUST give the same merged document and the same digest whatever the order of the sources."
+    rationale: "No source wins, so the order of a list is not a way to set a value."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: order independence"}
+  - id: REQ-OPS-048
+    area: OPS
+    statement: "The configuration loader MUST validate each source document against the strict profile and the schema of its owned subtrees before merging, and the merged document once after composition."
+    rationale: "A bad document is named by its source, and a combination that no single document shows is still refused."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards:
+      - {id: ST-96, section: "2020-12", depth: Partial}
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: per-document and merged verdicts"}
+  - id: REQ-OPS-049
+    area: OPS
+    statement: "The configuration loader MUST verify the signature of a signed source over the received bytes before it parses them, and refuse a document without a valid ES384 signature from a key that the install file names."
+    rationale: "An authority document is accepted for its publisher, not for the service that carried it (principle 4)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards:
+      - {id: ST-49, section: "5.2", depth: Partial}
+      - {id: ST-51, section: "3.4", depth: Partial}
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: unsigned, wrong key, other algorithm, forbidden header"}
+  - id: REQ-OPS-050
+    area: OPS
+    statement: "`sluis config check` MUST refuse a source whose paths hold an authority field unless the source is verified as `host` or `signed`."
+    rationale: "The access rules of a configuration service must not be the right to grant."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: service source owning authority"}
+  - id: REQ-OPS-051
+    area: OPS
+    statement: "`sluis config check` MUST refuse a per-customer default from any source that is not a service source."
+    rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0031)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vectors: defaults from a file or a signed source"}
+  - id: REQ-OPS-052
+    area: OPS
+    statement: "sluis MUST refuse to start when a declared configuration source is unreachable, unsigned or invalid."
+    rationale: "A check that cannot run is reported as not run, never as passed."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "start with an unreachable and an invalid source on the lambda installation"}
+  - id: REQ-OPS-053
+    area: OPS
+    statement: "sluis MUST keep the configuration in force and report it when a source is unreachable at reload."
+    rationale: "An outage of a configuration service must not change a running installation."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: integration-test, ref: "unreachable source on reload test"}
+  - id: REQ-OPS-054
+    area: OPS
+    statement: "The configuration loader MUST refuse on reload a signed document whose sequence number is lower than the one in force."
+    rationale: "A running process must not take an older signed document than the one it applies."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: lower sequence"}
+  - id: REQ-OPS-055
+    area: OPS
+    statement: "sluis MUST NOT write to a configuration service."
+    rationale: "Declared configuration is delivered read-only (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "permission manifest and IAM policy tests: no write action on a configuration profile"}
+  - id: REQ-OPS-056
+    area: OPS
+    statement: "The Go and Rust configuration loaders MUST give the same verdict on every composition vector."
+    rationale: "Two languages read the same install file, so they must agree on how its sources are put together (principle 6)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "composition vector set run by both loaders"}

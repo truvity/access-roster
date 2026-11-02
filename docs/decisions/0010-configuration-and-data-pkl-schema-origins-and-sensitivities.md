@@ -80,6 +80,7 @@ Precedence:
 Declared configuration and live reload:
 
 - **Layers apply inside declared only:** defaults, runtime, install file, environment overrides; a later layer overrides an earlier one. Operator-set is an origin, not a layer.
+- **The install layer can come from several sources** (files, a ConfigMap, a Lambda layer, AWS AppConfig), put together and trusted by the rule of [0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/).
 - **Declared configuration may live-reload as whole versioned snapshots**, from a file, a ConfigMap, a Lambda layer or AWS AppConfig. A new snapshot is validated as `sluis config check` does, swapped atomically and audited with its digest; a failing snapshot is refused and the version in force stays. A field that a running instance cannot change in place, such as a driver choice, is marked in the schema and applied at the next start.
 - **Operator-set values are read live**, through `state` with a short cache whose lifetime is part of the field's schema.
 - **Tunables and runtime switches are kept apart.** Tunables (log level, timeout, driver choice) are declared and may come from an environment override. Runtime switches are operator-set, tighten-only where they touch safety. Neither reaches authority.

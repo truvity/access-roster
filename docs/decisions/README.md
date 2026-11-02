@@ -53,7 +53,7 @@ On 2026-11-01, before any code was written, the maintainer had the 32 records ac
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0001](0001-v1-and-v2-lines.md) | v1 and v2 are two lines that coexist until v2 replaces v1 | Accepted |
-| [0002](0002-the-design-model-actors-ports-drivers-and-contracts.md) | The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement | Accepted |
+| [0002](0002-the-design-model-actors-ports-drivers-and-contracts.md) | The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement | Accepted; amended by 0057 |
 | [0003](0003-core-actors-with-one-responsibility-each.md) | Core is a few actors with one responsibility each: a slim entry, session, console, exchange, signer, policy, ca and ssh-ca | Accepted |
 | [0004](0004-drivers-listeners-and-boundary-enforcement.md) | Drivers are platform-started services on Unix sockets, listeners are few and named, and every port is enforced in three layers | Accepted |
 | [0005](0005-boundaries-and-the-isolation-ladder.md) | Boundaries are environments, companies and customer boundaries on an isolation ladder, and a boundary on its own runtime is an installation federated by declared trust | Accepted |
@@ -108,6 +108,7 @@ On 2026-11-01, before any code was written, the maintainer had the 32 records ac
 | [0054](0054-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
 | [0055](0055-fapi-2-is-a-profile-a-client-declares.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
 | [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Accepted |
+| [0057](0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force.md) | Configuration sources are a port: sources own disjoint paths, authority is signed, and a failing source keeps the version in force | Accepted |
 
 ## Where the old records went
 

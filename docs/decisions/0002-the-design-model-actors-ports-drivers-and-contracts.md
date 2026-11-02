@@ -1,6 +1,6 @@
 # 0002 — The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement
 
-**Status:** Accepted
+**Status:** Accepted; amended by 0057
 **Date:** 2026-11-01
 
 Proposal: [issue #901](https://github.com/truvity/sluis/issues/901).
@@ -18,11 +18,12 @@ We need one model that says what a process needs, what an implementation needs, 
 ### Ports and drivers
 
 - **An actor declares the ports it requires.** An actor is a process with one responsibility ([0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-actors)). For each port the actor says required or optional; for example, `signer` requires keys, state and transport.
-- **The ports are keys, state, lease, blob, transport, index, cloud, witness, secrets and export.**
+- **The ports are keys, state, lease, blob, transport, index, cloud, witness, secrets, export and config-source.**
   - `keys`: `sign`, `public-key`, `wrap` and `unwrap`. A key never leaves its store ([0012](/decisions/0012-cryptography-and-authority-keys/#keys-sign-in-place)).
   - `state`: records with a revision and compare-and-set; every value is encrypted in the port library ([0011](/decisions/0011-state-is-one-port-with-compare-and-set/#every-value-is-encrypted)). `lease`: `acquire` and `renew` with a fencing token, on the state store ([0011](/decisions/0011-state-is-one-port-with-compare-and-set/#leases)).
   - `blob`: `put-once`, `get` and `list`, with a lock mode. `transport`: `put`, `receive` and `ack`, or a stream. `index`: `write` and `query`. `witness`: `cosign`. `cloud`: credentials for a cloud role.
   - `secrets` holds sluis's own secrets and its integrations' secrets, sealed as [0011](/decisions/0011-state-is-one-port-with-compare-and-set/#sealed-secrets) says. `export` publishes a small, typed set of documents that something outside sluis may read; its consumer is the export API ([REQ-SECRETS-001](/requirements/secrets/#REQ-SECRETS-001) onwards). sluis is not a general secrets engine, and it never writes into the systems that read an export.
+  - `config-source`: `read` of one configuration document as bytes, with a `watch` flag; an installation has a list of sources, composed by disjoint ownership of paths ([0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/)).
   - Audit uses the same port definitions as the rest of sluis and adds only `witness`. A new port amends this record.
 - **Ports carry capability flags.** `blob` has a lock mode (none, removable, compliance); `state` has compare-and-set. A consumer asks for the flag it needs, and only drivers that offer it qualify.
 - **A driver declares its requirements.** A driver implements one port, or two (rqlite serves state and lease). It says whether it needs a long-running process, a persistent local disk, how many nodes it supports and which outside dependency it needs (a cloud account, a hardware key on each node, a message service). Drivers are platform-started services on Unix sockets ([0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#drivers-are-platform-started-services)).

@@ -13,6 +13,7 @@ These pages fix the shapes a developer needs before writing code for the [first 
 | [Actor registry](/reference/actors/) | Every actor: language, placement, keys and slots, ports, governing ADRs, requirement areas, standards, issue label |
 | [Commands](/reference/cli/) | The `sluis` command tree of the first working version, its flags, its JSON output and its exit codes |
 | [Install file](/reference/install-file/) | The install-file schema v1, and the example file of the local installation |
+| [Configuration sources](/reference/config-sources/) | The `sources` list, the composition rule with its refusals and vectors, the signed document and what a source driver returns |
 | [Contracts and errors](/reference/contracts/) | How `proto/` is written and versioned, which services are public, and the error model |
 | [Storage](/reference/storage/) | The port contracts, the record kinds of the first working version, the state envelope and the on-disk layout of the local drivers |
 | [Policy](/reference/policy/) | The Cedar schema, its entity types and actions, template links, and a worked example with test vectors |
