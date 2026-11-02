@@ -64,7 +64,7 @@ Three actors use an authority key, each a different one: `signer`, `ca` and `ssh
 
 `entry`, which faces the internet, holds nothing. It is the only actor with a listener toward the edge; every other actor listens on Unix sockets only ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#listeners)). It is written in a memory-safe language, parses only closed parameter lists, is fuzzed, loads no plugin and runs on a read-only file system.
 
-**A copied token is useless.** Tokens are sender-constrained (DPoP or mutual TLS) and authorization codes are bound by PKCE, so a token or a code read off the wire cannot be used by anyone else.
+**A copied code is useless.** Authorization codes are bound by PKCE. Tokens are bearer tokens in the first working version; an audience that declares binding gets sender-constrained tokens (DPoP or mutual TLS) with the FAPI 2.0 profile ([ADR 0055](/decisions/0055-fapi-2-is-a-profile-a-client-declares/#binding-is-declared-per-audience)).
 
 **The console.** The browser holds no token: its session is an HttpOnly cookie that `session` seals. `console` routes each operator-set write to the actor that owns the record kind, and the owner's state credentials refuse any other writer ([Data and secrets](/concepts/data/)).
 
