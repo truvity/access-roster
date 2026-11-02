@@ -141,8 +141,8 @@ A mapping from a client ID to its declaration, for the group issuer; `boundaries
 
 | Field | Required | Meaning |
 |---|---|---|
-| `kind` | yes | `public` (PKCE, no secret), `confidential` (a secret) or `exchange` (only an audience of token exchange, with no redirect, such as a boundary's client ID at the group issuer) |
-| `redirects` | `public` and `confidential` | Exact redirect URIs. `https` only, except `http://127.0.0.1` and `http://[::1]` with any port for a public native client (RFC 8252) |
+| `kind` | yes | `public` (PKCE, no secret), `confidential` (a secret; a boundary's client at the group issuer is of this kind, because `entry@<boundary>` signs a browser in there as a relying party, [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#step-up)) or `exchange` (only an audience of token exchange, with no redirect and no secret, such as a machine's client ID) |
+| `redirects` | `public` and `confidential` | Exact redirect URIs. A boundary's client at the group issuer declares one: `https://<boundary host>/callback`. `https` only, except `http://127.0.0.1` and `http://[::1]` with any port for a public native client (RFC 8252) |
 | `secret` | `confidential` only | A reference: `{ credential: NAME }`. Generated client secrets come with [#790](https://github.com/truvity/sluis/issues/790) |
 | `requires` | no | The grants of which a subject needs at least one to get a token for this client, as in v1 |
 | `ttl_cap` | no | The longest lifetime of a token for this client, a duration |
@@ -236,8 +236,10 @@ clients:
   sluis-cli:
     kind: public
     redirects: [http://127.0.0.1/callback]
-  dev:
-    kind: exchange
+  dev:                              # the boundary's client at the group issuer: entry@dev signs a browser in here
+    kind: confidential
+    redirects: [https://sluis.dev.local.test/callback]
+    secret: { credential: client-dev }
 
 policy:
   files: [policy/local.cedar]   # the Cedar schema is embedded; see https://sluis.id/reference/policy/

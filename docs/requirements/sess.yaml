@@ -574,3 +574,17 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "renewal through an internal connection is refused"}
+  - id: REQ-SESS-043
+    area: SESS
+    statement: "A boundary's entry MUST sign a browser in at the group issuer with the authorization code flow and PKCE, using its registered client."
+    rationale: "A boundary trusts a browser sign-in only when the group issuer authenticated the person, at an exact redirect that no other client can claim (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "4.1", depth: Partial}
+      - {id: ST-03, section: "4.2-4.3", depth: Full}
+    issues: [1106]
+    verification:
+      - {kind: integration-test, ref: "a browser sign-in at a boundary reaches the group issuer with a code challenge, at the declared redirect, and no other redirect is accepted for that client"}
