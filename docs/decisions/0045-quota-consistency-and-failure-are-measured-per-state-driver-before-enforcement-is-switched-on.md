@@ -60,7 +60,7 @@ These follow from the principles and the records above, and need no number.
 
 ### What the first measurement shows
 
-A harness measured the balance step alone on 2026-11-02, before the load test above, to see the order of magnitude. One operation, `Admit(account, request id, 1)`, took one unit from a balance with a cap, from many concurrent writers on one hot account; after every run the store was read back and no cap was over and no admitted unit was lost, in more than 100 runs on the three drivers (MEASURED). The target is the one in the table below: 1,000 admits a second for one balance, against a typical 5 to 10 and a generous peak of about 100 (the maintainer's estimate). Three shapes were run on each driver: a **conditional update** (take the unit only if the balance covers it, in one store operation); the same with an **idempotency record written in the same atomic step**; and **read, then compare-and-set** on the version, retried on conflict.
+A harness measured the balance step alone on 2026-11-02, before the load test above, to see the order of magnitude. One operation, `Admit(account, request id, 1)`, took one unit from a balance with a cap, from many concurrent writers on one hot account; after every run the store was read back and no cap was over and no admitted unit was lost, in more than 100 runs on the three drivers (MEASURED). The target is the maintainer's estimate of 2026-11-02, in the table below: a typical 5 to 10 admits a second for one balance, and a peak of about 100. Three shapes were run on each driver: a **conditional update** (take the unit only if the balance covers it, in one store operation); the same with an **idempotency record written in the same atomic step**; and **read, then compare-and-set** on the version, retried on conflict.
 
 | Driver and setup (MEASURED 2026-11-02) | Conditional update | With the idempotency record | Read, then compare-and-set |
 |---|---|---|---|
@@ -71,11 +71,13 @@ A harness measured the balance step alone on 2026-11-02, before the load test ab
 
 What it says:
 
-- **A conditional update reaches the target on every driver, and read-then-compare-and-set reaches it on none.** The conditional update gives 3,800 a second or more on SQLite with group commit and 11,800 or more on one rqlite node, and DynamoDB stops at the target; three rqlite nodes on one host stay under it at 32 writers (780 a second) and pass it at 128. The compare-and-set shape stays below 300 a second on SQLite and DynamoDB and below 170 on rqlite, and its conflicts grow with the writers.
+- **A conditional update clears the peak of about 100 a second on every driver, with wide headroom.** It gives 3,800 a second or more on SQLite with group commit, 11,800 or more on one rqlite node, 780 or more on three rqlite nodes on one host, and about 1,000 to 1,080 on DynamoDB, about ten times the peak. Every shape on every driver clears the typical 5 to 10 a second; the lowest figure is 27.
+- **Read-then-compare-and-set is near or below the peak.** It gives 101 to 281 a second on DynamoDB, about 220 to 230 on SQLite with a single connection, and 27 to 165 on rqlite, so from about a quarter of the peak to about three times it. Its conflicts grow with the writers, and on DynamoDB the p99 reaches 1.3 s.
 - **SQLite needs one committer that batches.** A pool of connections gives 600 to 780 a second with a starvation tail (p99.9 of 8 to 10 s from 8 writers), and a single connection about 250.
-- **DynamoDB is capped at about 1,000 a second per item,** which is the per-partition limit of 1,000 write units (READ above), and the target sits exactly on it. A throttled call is neither an admit nor a refusal: `quota` answers `unavailable` for it, never "over the limit".
-- **A DynamoDB transaction per admit is the trap.** It gives 91 to 149 a second, 7 to 11 times below the plain conditional update, so the idempotent form cannot be a transaction on a hot balance. An idempotency scheme without a transaction was not measured.
-- **The pending line on a conditional adjust has its condition met in this harness:** compare-and-set misses the target while a conditional update meets it, on every driver. The line stays pending, and the record stays `Proposed`, until the load test of this record has run on the reference installations.
+- **DynamoDB is capped at about 1,000 a second per item,** which is the per-partition limit of 1,000 write units (READ above) and ten times the estimated peak. A throttled call is neither an admit nor a refusal: `quota` answers `unavailable` for it, never "over the limit". The cap is far from the estimated load, and it is the limit to watch if the real peak turns out to be higher.
+- **A DynamoDB transaction per admit is the trap.** It gives 91 to 149 a second (76 uncontended), which is around the peak of 100 with no headroom, and 7 to 11 times below the plain conditional update, so the idempotent form cannot be a transaction on a hot balance. An idempotency scheme without a transaction was not measured.
+- **The pending line on a conditional adjust:** against about 100 a second, compare-and-set is marginal or below on some drivers (DynamoDB, rqlite) and the conditional update is clearly above on all of them in this harness. That is the condition the line names, seen in a harness and not on the reference installations. The line stays pending and the record stays `Proposed`; the maintainer decides it after the load test of this record has run on the reference installations.
+- **Soft mode in 2.0 keeps its recommendation, strict only.** Its condition, a driver that misses the peak on a hot balance, is not met by the conditional update on any driver in this harness. The shapes near the peak are compare-and-set and the DynamoDB transaction, and the load test of the real `quota` actor decides whether any of them is the one in use.
 - The setup over- and under-counts. SQLite and rqlite ran on one workstation (x86_64, 32 threads, NVMe under ext4, real `fsync`), not on the reference installations of the table above; the three-node rqlite ran on one host and one disk, with no network. DynamoDB ran from a function with 3.5 GB of memory, SDK retries off, on a table created minutes before, so the many-balances figures there (1,100 to 2,000 a second) are a new table's. Not run: several quota instances on one store, a restart during a run, the real `quota` actor, a sustained run, and the load test of this record.
 
 ### Pending decision lines
@@ -84,8 +86,8 @@ Each line is filled when the measurement exists, with its date and versions, and
 
 | Decision line | Recommendation | Decided by |
 |---|---|---|
-| The target: the admits a second per balance, and the latency budget of `Admit` | Target set on 2026-11-02: 1,000 admits a second for one balance, ten times a generous maximum of about 100 a second; typical load is 5 to 10 admits a second for one balance. These are the maintainer's estimate on 2026-11-02, not a measurement. The latency budget stays open | The measured p99 of `Admit` on each driver, against the target above, then the test |
-| Soft mode in 2.0 | No: strict only | Whether any driver misses the target on a hot balance |
+| The target: the admits a second per balance, and the latency budget of `Admit` | The maintainer's estimate on 2026-11-02, not a measurement: typical load is 5 to 10 admits a second for one balance, and the peak is at most about 100 a second. The load test checks the peak. The latency budget stays open | The measured p99 of `Admit` on each driver, against the peak above, then the test |
+| Soft mode in 2.0 | No: strict only | Whether any driver misses the peak above on a hot balance |
 | A conditional adjust on the state port | Not added | Whether compare-and-set misses the target while a conditional adjust meets it, on one driver or more |
 | The outbox bound, by count and by age, and the warning level | The depth that the longest writer outage the installation tolerates would build at its peak rate, with the state's capacity as a ceiling | The measured relay and drain rates, and the state driver's item and table limits |
 | The quiet window after a restore, or durable reservations instead | The window, as above | The measured cost of a durable reservation on each driver: if it is small, drop the window |
@@ -102,6 +104,7 @@ Each line is filled when the measurement exists, with its date and versions, and
 
 ## Roads not taken
 
+- **A target of 1,000 admits a second for one balance.** Considered and dropped on 2026-11-02: it was ten times the estimated peak, and the maintainer's real peak is about 100 a second.
 - **Soft enforcement in 2.0.** A second guarantee to build and prove before a measurement shows a need.
 - **Persisting reservations from the start.** It removes the window after a restore, but writes a second record on every `Admit`, the hot path; the test measures it so the window can be dropped if it is cheap.
 - **A default of failing open, or of failing closed, when quota is unavailable.** A default silently stops enforcing for everyone, or silently refuses everyone ([0017](/decisions/0017-audit-records-the-usage-stream-and-quota/#quota)).
