@@ -47,17 +47,11 @@ The archive is encrypted with a fresh data key, and the data key is wrapped for 
 - **The backup side holds public material and a wrap permission only**, so a compromised backup job cannot read earlier archives.
 - **An installation declares how long it keeps an archive.** An erasure reaches the copies in archives when they expire, and a restore re-applies every shred and erasure that the audit log records after the archive was taken.
 
-:::note[Proposed]
-The recovery time and recovery point targets of each installation shape are a product fact that the design cannot set; they are tracked in [#1142](https://github.com/truvity/sluis/issues/1142). Until they are set, the schedule, the number of archives kept and the rehearsal period are declared per installation and have no default.
-:::
-
 The format of the archive (an age-encrypted tar with a manifest and canonical JSON per record kind), the escrow records, the recipients and the plan and refusals of a restore are fixed by [ADR 0034](/decisions/0034-a-backup-is-an-age-encrypted-tar-of-canonical-json-per-kind-and-restores-onto-any-driver/). A restore onto another driver replaces v1's `sluis migrate`.
 
 ## Recovery targets
 
-:::note[Proposed]
-Targets for the customer-identity installation before its first recovery drill ([ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery)). For the loss of the state: a recovery point of 5 minutes and a recovery time of 4 hours. For the loss of a bucket: a recovery point of 24 hours (the archive interval) and a recovery time of 8 hours. For the loss of the region there is no failover, and a rebuild in a second region needs new intermediates through the hand-off, so no figure is proposed until a drill has measured the rebuild. Each is replaced by the measured figure after the first drill, which depends on a measured restore and on what the operator accepts; they are tracked with the backup decision record ([#1142](https://github.com/truvity/sluis/issues/1142)). Installations run in one region for now, and a regional outage stops signing there ([ADR 0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run)).
-:::
+An installation states how much issued durable data it may lose (the recovery point) and how long recovery takes (the recovery time) for the loss of the state, of a bucket and of the region, and a recovery drill measures both. The targets, the installations they cover and the drill that replaces each with a measured figure are decided in [ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery); this page does not repeat them. The schedule, the number of archives kept and the rehearsal period are declared per installation and have no default. Installations run in one region for now, and a regional outage stops signing there ([ADR 0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run)).
 
 ## Restoring
 
