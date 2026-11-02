@@ -44,6 +44,8 @@ The keyless method is the target for new installations. It needs the GCP exchang
 
 sluis refuses a sign-in whose e-mail is unverified, and one whose Google `sub` differs from the one first recorded for the person (a deliberate move needs an operator). The person's sluis subject is an opaque id, never the e-mail address ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#subjects)).
 
+Google sends `amr` and `auth_time` only when the sign-in request carries a `claims` parameter that asks for them, and the console settings for them are on. Until the generic upstream can send a configured `claims` parameter ([#1154](https://github.com/truvity/sluis/issues/1154)), a Google sign-in reaches policy with no `amr`, which policy treats as unknown ([Policy](/reference/policy/#context)).
+
 ## What is audited
 
 Each sign-in (client, class of session) and each refusal; a directory connected, changed or disconnected; a failed directory read, as a failure. No Google credential or refresh token is ever recorded.

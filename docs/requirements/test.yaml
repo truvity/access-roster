@@ -130,3 +130,15 @@ requirements:
     issues: [851]
     verification:
       - {kind: conformance-suite, ref: "port conformance suite, concurrent create-if-absent per blob driver"}
+  - id: REQ-TEST-010
+    area: TEST
+    statement: "The identity provider of the local installation MUST send an ID token with an amr that contains mfa to a person who passed its one-time-password step, however long after the sign-in the token is minted."
+    rationale: "Keycloak adds amr only within the second of the authentication unless each execution sets default.reference.maxAge, so a test that mints later would fail at random."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [bare-metal]
+    standards: []
+    issues: [877]
+    verification:
+      - {kind: integration-test, ref: "an ID token minted more than a second after the one-time-password step carries amr with pwd, otp and mfa"}
