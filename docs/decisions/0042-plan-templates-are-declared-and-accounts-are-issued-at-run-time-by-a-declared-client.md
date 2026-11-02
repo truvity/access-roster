@@ -1,6 +1,7 @@
 # 0042 — Plan templates are declared, and an account is an issued record that a declared client creates at run time
 
 **Status:** Accepted
+**Layer:** quota module
 **Date:** 2026-11-02
 
 Proposal: [issue #915](https://github.com/truvity/sluis/issues/915).

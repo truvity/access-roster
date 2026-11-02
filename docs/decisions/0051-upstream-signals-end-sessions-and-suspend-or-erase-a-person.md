@@ -1,6 +1,7 @@
 # 0051 — Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #916](https://github.com/truvity/sluis/issues/916).

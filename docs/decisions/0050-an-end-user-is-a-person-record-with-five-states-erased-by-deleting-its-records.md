@@ -1,6 +1,7 @@
 # 0050 — An end user is the same person record as anyone else, with five states, erased by deleting its records, and pairwise subjects wait for a consumer
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #1024](https://github.com/truvity/sluis/issues/1024).

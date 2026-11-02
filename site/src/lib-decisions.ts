@@ -39,6 +39,11 @@ export const editUrl = (entry: Decision): string =>
 const field = (body: string, name: string): string | undefined =>
   new RegExp(`^\\*\\*${name}:\\*\\*\\s*(.+?)\\s*$`, 'm').exec(body)?.[1];
 
+// The layer of the product a record belongs to (docs/decisions/README.md, "Layer."): the
+// optional `**Layer:**` line, and core when there is none. It is not part of the facts the
+// build publishes as /data/repo.json, which the status page's rules use.
+export const decisionLayer = (entry: Decision): string => field(entry.body ?? '', 'Layer') ?? 'core';
+
 export interface DecisionFacts {
   id: string;
   number: string;

@@ -1,6 +1,7 @@
 # 0043 — A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists
 
 **Status:** Proposed
+**Layer:** quota module
 **Date:** 2026-11-02
 
 Proposal: [issue #1026](https://github.com/truvity/sluis/issues/1026).

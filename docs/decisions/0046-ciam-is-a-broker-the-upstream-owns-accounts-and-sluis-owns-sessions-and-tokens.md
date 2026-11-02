@@ -1,6 +1,7 @@
 # 0046 — CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).

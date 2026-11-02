@@ -1,6 +1,7 @@
 # 0045 — Quota consistency and failure are measured per state driver before enforcement is switched on
 
 **Status:** Proposed
+**Layer:** quota module
 **Date:** 2026-11-02
 
 Proposal: [issue #915](https://github.com/truvity/sluis/issues/915).

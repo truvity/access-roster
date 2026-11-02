@@ -1,6 +1,7 @@
 # 0044 — A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew
 
 **Status:** Accepted
+**Layer:** quota module
 **Date:** 2026-11-02
 
 Proposal: [issue #841](https://github.com/truvity/sluis/issues/841).

@@ -1,6 +1,7 @@
 # 0049 — A domain routes to a connection only after DNS proof, a connection has a trust level and an assurance policy, and `idp_hint` chooses only among allowed connections
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #916](https://github.com/truvity/sluis/issues/916).
