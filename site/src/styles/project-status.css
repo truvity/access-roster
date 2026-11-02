@@ -5,6 +5,9 @@
 .ps-note, .ps-none { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); }
 .ps-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
+/* the one line of design against code (src/lib/repo.ts, designLine) */
+.ps .ps-design { font-family: var(--sl-font-mono); font-size: var(--sl-text-sm); }
+
 /* milestone cards */
 .ps-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin-block: 1rem; }
 /* Starlight's content column spaces every sibling; the grid does its own spacing. */

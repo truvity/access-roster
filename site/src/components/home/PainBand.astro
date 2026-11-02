@@ -1,7 +1,8 @@
 ---
 // The first screen of the home page: the three pains side by side, so a reader sees theirs
 // before anything else. Each column links to the full section below it. The third shows the
-// chain in miniature. The call to action comes straight after, with the honest status.
+// chain in miniature. The mission follows (pages.md: the pain, then the mission, then the
+// answers), then the call to action, with the honest status: v1 runs today, v2 is designed.
 import Mark from './Mark.astro';
 import { band, fragmented, ceremonies } from './data';
 
@@ -37,9 +38,18 @@ const heavy = ceremonies.filter((c) => c.band);
   </div>
 </section>
 
+<div class="mission">
+  <p class="mission-text">
+    sluis is for the team that keeps a dozen systems&rsquo; access settings aligned by hand. It turns one reviewed file
+    into who may reach which system, trades the proofs people and machines already hold for short-lived credentials,
+    and records every decision.
+  </p>
+  <p class="mission-name">A sluis is a canal lock: a vessel passes between two water levels only through a chamber someone controls.</p>
+</div>
+
 <div class="cta">
   <a class="btn btn-primary" href="/overview/">Start here</a>
-  <a class="btn" href="/runtimes/local/">Try the local installation</a>
+  <a class="btn" href="/runtimes/local/">Read about the local installation</a>
   <a class="btn btn-quiet" href="https://github.com/truvity/sluis">View on GitHub</a>
-  <p>v2 is designed, not built: <a href="#where-it-stands">where it stands</a>.</p>
+  <p>v2 is designed, not built; what runs today is sluis v1, documented at <a href="/v1/">/v1/</a>. <a href="#where-it-stands">Where v2 stands</a>.</p>
 </div>

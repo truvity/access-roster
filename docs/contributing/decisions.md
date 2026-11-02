@@ -1,7 +1,7 @@
 ---
 title: Decisions, requirements and research
 description: How a sluis v2 decision becomes a record, how a requirement is written and marked done, and the shape of a spike or research result.
-status: shipped
+status: page
 sidebar:
   order: 4
 ---

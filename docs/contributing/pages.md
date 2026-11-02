@@ -1,7 +1,7 @@
 ---
 title: Pages and writing style
 description: How a page of the sluis site marks what is built and decided, where a page lives, how big its diagrams may be, and how it is written.
-status: shipped
+status: page
 sidebar:
   order: 5
 ---
@@ -36,7 +36,8 @@ Every page has a required `status` in its front matter, shown as a badge next to
 |---|---|---|
 | `target` | Target state | Describes the design; not built yet. |
 | `partial` | Partly built | Describes the design; part of it is built and part is not. |
-| `shipped` | Shipped | Describes what has been built and released. |
+| `page` | Page complete | A page about the project itself. Complete; describes nothing that is built. |
+| `shipped` | Shipped | Describes what has been built and released. Nothing uses it until code ships. |
 
 The status also starts the page in `llms.txt`. Change it in the pull request that builds the thing. When a page and a [decision record](/decisions/) disagree, the record is the reasoning and the page is fixed.
 

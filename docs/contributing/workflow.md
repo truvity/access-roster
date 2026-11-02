@@ -1,7 +1,7 @@
 ---
 title: Branches and pull requests
 description: How a change reaches main in sluis v2, from the worktree and branch name to commits, the CHANGELOG, review and the merge gate.
-status: shipped
+status: page
 sidebar:
   order: 1
 ---

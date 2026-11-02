@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 export const STATUS_TEXT = {
   target: 'Status: target state. This page describes the design of sluis v2; it is not built yet.',
   partial: 'Status: partly built. This page describes the design of sluis v2; some of it is built and some is not yet.',
+  page: 'Status: page complete. This page is about the project itself. It is complete and describes nothing that is built.',
   shipped: 'Status: shipped. This page describes what sluis does today.',
 };
 

@@ -28,6 +28,11 @@
   --badge-fg: var(--sl-color-orange-high);
 }
 
+.sluis-status-badge[data-status='page'] {
+  --badge-bg: var(--sl-color-gray-5);
+  --badge-fg: var(--sl-color-gray-1);
+}
+
 .sluis-status-badge[data-status='shipped'] {
   --badge-bg: var(--sl-color-green-low);
   --badge-fg: var(--sl-color-green-high);

@@ -251,7 +251,7 @@ export default defineConfig({
         starlightLlmsTxt({
           projectName: 'sluis',
           description:
-            'sluis is a pluggable identity and access broker for people, robots and external systems. v2 is being designed in the open; v1 documentation is at /v1/. Each page starts with its status: target state, partly built or shipped.',
+            'sluis is a pluggable identity and access broker for people, robots and external systems. v2 is being designed in the open; v1 documentation is at /v1/. Each page starts with its status: target state, partly built, page complete (a page about the project itself) or shipped.',
           // Keep the Proposed asides (notes) in llms-small.txt as well.
           minify: { note: false },
         }),

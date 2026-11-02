@@ -8,12 +8,13 @@
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 import { Aside, Badge } from '@astrojs/starlight/components';
 import '../styles/project-status.css';
-import { BUILT_AT } from '../lib/repo';
+import { BUILT_AT, designLine } from '../lib/repo';
 import { FIELD, ORG, PROJECT_NUMBER } from '../lib/project';
 import { statusGroups } from '../lib/project-status';
 import { statusBodyHtml } from '../lib/status-html';
 
 const { board, groups } = await statusGroups();
+const line = await designLine();
 const asOf = BUILT_AT.replace('T', ' ').replace(/:\d{2}Z$/, ' UTC');
 const boardUrl = `https://github.com/orgs/${ORG}/projects/${PROJECT_NUMBER}`;
 const ADR = '/decisions/0020-the-site-is-static-on-cloudflare-workers/';
@@ -24,12 +25,13 @@ const ADR = '/decisions/0020-the-site-is-static-on-cloudflare-workers/';
     title: 'Project status',
     description:
       'Where sluis v2 stands, by product milestone: requirements, decision records and live issue figures per milestone and area.',
-    status: 'shipped',
+    status: 'page',
     badge: false,
     tableOfContents: false,
   }}
 >
   <div class="ps" data-project={board.available ? 'available' : 'unavailable'} data-options={board.available ? board.options.length : 0}>
+    <p class="ps-design"><strong>{line}</strong></p>
     <p>
       The work on sluis v2, grouped by the <code>{FIELD}</code> field of the <a href={boardUrl}>project board</a>, in the field's
       order. Each requirement sits under the milestone of the issues that deliver it, and each decision record under the milestone of

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Page-status lint: every page under docs/ must carry `status: target |
-// partial | shipped` in its front matter, and every `:::note[Proposed]` aside
+// partial | page | shipped` in its front matter, and every `:::note[Proposed]` aside
 // must link the open issue that tracks the point
 // (https://github.com/truvity/sluis/issues/N): a decided point is plain prose,
 // and a proposal with no issue has no one to decide it (docs/contributing/pages.md,
@@ -10,7 +10,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const STATUSES = ['target', 'partial', 'shipped'];
+const STATUSES = ['target', 'partial', 'page', 'shipped'];
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const docs = join(root, 'docs');
 const ISSUE = /https:\/\/github\.com\/truvity\/(?:sluis|ritueel)\/issues\/\d+/;
