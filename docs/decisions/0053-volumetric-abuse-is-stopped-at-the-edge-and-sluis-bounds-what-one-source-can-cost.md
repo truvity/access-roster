@@ -1,6 +1,7 @@
 # 0053 — Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #916](https://github.com/truvity/sluis/issues/916).

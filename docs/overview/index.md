@@ -10,7 +10,14 @@ sluis is an open-source identity and access broker for people, robots and extern
 
 ## Who it is for
 
-sluis is for engineers who run the identity layer of a small organisation, a platform team or a self-hosted lab, and want it small, auditable and cheap to run.
+sluis is for engineers who run the identity layer of a small organisation, a platform team or a self-hosted lab, and want it small, auditable and cheap to run. The mission is on the [home page](/).
+
+An installation is one of two kinds, and the two are distinct installations of the same product ([roadmap](/roadmap/#a-core-and-two-later-modules)):
+
+- A **workforce installation** signs in the people of an organisation and reconciles its systems. It runs the core.
+- A **customer installation** adds the CIAM module and brokers an external customer-identity product for the end users of several products. The core is the same in both; the CIAM and quota modules are later layers.
+
+The people who work with either kind are these.
 
 - **Operators** install it on a workstation, on three single-board computers, as AWS Lambda functions or on Kubernetes. The same actors and configuration run on each; these four are the [tested installations](/runtimes/installations/).
 - **Platform and security engineers** write the policy that says who may get which credential, and read the audit trail that says who did.

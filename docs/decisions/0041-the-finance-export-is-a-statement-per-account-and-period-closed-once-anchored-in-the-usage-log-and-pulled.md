@@ -1,6 +1,7 @@
 # 0041 — The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system
 
 **Status:** Proposed
+**Layer:** quota module
 **Date:** 2026-11-02
 
 Proposal: [issue #915](https://github.com/truvity/sluis/issues/915).

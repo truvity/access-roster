@@ -31,7 +31,7 @@
 //     cannot read them, the page must say that the project data was not available (and
 //     hold only "Not in a milestone"), or hold data-options + 1 groups.
 //   - /decisions/ lists every record in docs/decisions and not the template, each with
-//     the status its own **Status:** line gives.
+//     the status its own **Status:** line gives and the layer its own **Layer:** line gives (core when it has none).
 //
 // Needs Chrome or Chromium (CHROME, or google-chrome / chromium on PATH) and
 // Node 22+ (global fetch and WebSocket). No npm dependency.
@@ -122,17 +122,21 @@ function checkDecisionsHtml(dist) {
   const html = readFileSync(f, 'utf8');
   const dir = join(root, 'docs', 'decisions');
   const want = readdirSync(dir).filter((n) => /^\d{4}-.+\.md$/.test(n) && n !== '0000-template.md').sort()
-    .map((n) => ({ id: n.replace(/\.md$/, ''), status: /^\*\*Status:\*\*\s*(.+?)\s*$/m.exec(readFileSync(join(dir, n), 'utf8'))?.[1] }));
+    .map((n) => {
+      const text = readFileSync(join(dir, n), 'utf8');
+      return { id: n.replace(/\.md$/, ''), status: /^\*\*Status:\*\*\s*(.+?)\s*$/m.exec(text)?.[1], layer: /^\*\*Layer:\*\*\s*(.+?)\s*$/m.exec(text)?.[1] ?? 'core' };
+    });
   if (!want.length) return ['no decision records in docs/decisions'];
-  const rows = [...html.matchAll(/<tr\b[^>]*\bdata-record="([^"]+)"[^>]*>[\s\S]*?\bdata-status="([^"]*)"/g)].map((m) => ({ id: m[1], status: unescape(m[2]) }));
+  const rows = [...html.matchAll(/<tr\b[^>]*\bdata-record="([^"]+)"[^>]*>[\s\S]*?\bdata-status="([^"]*)"[\s\S]*?\bdata-layer="([^"]*)"/g)].map((m) => ({ id: m[1], status: unescape(m[2]), layer: unescape(m[3]) }));
   if (html.includes('0000-template')) problems.push('/decisions/ lists the template');
   if (rows.length !== want.length) problems.push(`/decisions/ lists ${rows.length} records, docs/decisions has ${want.length}`);
   for (const w of want) {
     const r = rows.find((x) => x.id === w.id);
     if (!r) problems.push(`/decisions/ does not list ${w.id}`);
     else if (r.status !== w.status) problems.push(`/decisions/ shows ${w.id} as "${r.status}", the record says "${w.status}"`);
+    else if (r.layer !== w.layer) problems.push(`/decisions/ shows ${w.id} in layer "${r.layer}", the record says "${w.layer}"`);
   }
-  console.log(`check-render: /decisions/ lists ${rows.length} records with their status`);
+  console.log(`check-render: /decisions/ lists ${rows.length} records with their status and layer`);
   return problems;
 }
 

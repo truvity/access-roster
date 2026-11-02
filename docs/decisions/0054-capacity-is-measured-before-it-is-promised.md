@@ -1,6 +1,7 @@
 # 0054 — Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile
 
 **Status:** Proposed
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #878](https://github.com/truvity/sluis/issues/878).

@@ -242,9 +242,10 @@ export default defineConfig({
           // would always fail; the pages themselves are still built and checked.
           // The requirements pages are generated in src/pages from the catalogue
           // (custom pages the validator cannot see); lychee checks links to them.
-          // So are the status page and /data/repo.json.
+          // So are the status page and /data/repo.json. The home page is MDX too, so a link to
+          // it ('/') fails the same way.
           exclude: [
-            '/v1/', '/v1/**', '/decisions/', '/decisions/**', '/architecture/explorer/', '/architecture/audit-explorer/',
+            '/', '/v1/', '/v1/**', '/decisions/', '/decisions/**', '/architecture/explorer/', '/architecture/audit-explorer/',
             '/requirements/', '/requirements/**', '/status/', '/data/**',
           ],
         }),

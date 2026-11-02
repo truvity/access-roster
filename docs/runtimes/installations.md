@@ -21,15 +21,17 @@ An installation serves one [boundary](/concepts/boundaries/) at L4, or the front
 
 ## Reference installation shapes
 
-**Every port has more than one driver, each proven by a real installation.** sluis is one product in many shapes, and it is built against these reference shapes ([principle 10](/principles/)). A driver that no reference shape runs is not trusted to be a driver.
+sluis is one product in many shapes, and it is built against these reference shapes. Drivers are added with the installation that needs them ([principle 10](/principles/#10-one-product-many-shapes)). A driver that no reference shape runs is not trusted to be a driver.
 
-| Shape | Runtime and keys | Notes |
-|---|---|---|
-| A **workforce** installation with a few tenants | [serverless](/runtimes/serverless/), AWS KMS | Functions behind the edge, no hosts to operate |
-| A **customer-identity** installation with a few customer boundaries and thousands of key-less tenants | [kubernetes](/runtimes/kubernetes/), AWS KMS | The tenants share one sealing key: each tenant's data keys are wrapped under it with the tenant in the encryption context, and no tenant has a key of its own ([ADR 0047](/decisions/0047-a-customer-identity-installation-is-a-front-a-few-customer-boundaries-and-key-less-tenants/)) |
-| **Audit-with-quota** installations, one for each product | [kubernetes](/runtimes/kubernetes/), AWS KMS | Each holds only its own log key and uses the account's sealing key under its own alias and context |
-| A **self-hosted** installation on small boards | [bare-metal](/runtimes/bare-metal/), a YubiKey in each node | No AWS account; blobs on R2 through the `s3-compatible` driver |
-| **Development** | [bare-metal](/runtimes/bare-metal/), software keys | The code refuses a software key in production ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)) |
+There are two kinds of installation, and they are distinct installations of the same product: a **workforce installation** signs in the people of an organisation and reconciles its systems, and a **customer installation** adds the CIAM module and brokers an external customer-identity product for the end users of several products. Each has its own boundary, keys and state. The shapes below are listed by layer ([roadmap](/roadmap/#a-core-and-two-later-modules)): the core first, then the shapes that need a later module.
+
+| Shape | Layer | Runtime and keys | Notes |
+|---|---|---|---|
+| A **workforce** installation with a few tenants | core | [serverless](/runtimes/serverless/), AWS KMS | Functions behind the edge, no hosts to operate |
+| A **self-hosted** installation on small boards | core | [bare-metal](/runtimes/bare-metal/), a YubiKey in each node | No AWS account; blobs on R2 through the `s3-compatible` driver |
+| **Development** | core | [bare-metal](/runtimes/bare-metal/), software keys | The code refuses a software key in production ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)) |
+| With the CIAM module: a **customer-identity** installation with a few customer boundaries and thousands of key-less tenants | CIAM module | [kubernetes](/runtimes/kubernetes/), AWS KMS | The tenants share one sealing key: each tenant's data keys are wrapped under it with the tenant in the encryption context, and no tenant has a key of its own ([ADR 0047](/decisions/0047-a-customer-identity-installation-is-a-front-a-few-customer-boundaries-and-key-less-tenants/)) |
+| With the quota module: **audit-with-quota** installations, one for each product | quota module | [kubernetes](/runtimes/kubernetes/), AWS KMS | Each holds only its own log key and uses the account's sealing key under its own alias and context |
 
 The four tested installations are the named subset of these shapes. The key layout of each shape is on [Keys](/concepts/keys/).
 

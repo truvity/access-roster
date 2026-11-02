@@ -2,8 +2,9 @@
 // Decision records in docs/decisions/ (the rules of docs/decisions/README.md).
 //
 // The format is read from the repository, not written down here:
-//   - the header fields (`**Status:**`, `**Date:**`) and the sections (`## Context` ...) are the
-//     ones 0000-template.md has, in its order;
+//   - the header fields (`**Status:**`, `**Layer:**`, `**Date:**`) and the sections (`## Context` ...)
+//     are the ones 0000-template.md has, in its order; `**Layer:**` is optional (no line means core)
+//     and its value is one of the backticked values of the README's "Layer." bullet;
 //   - a road not taken is one bullet, `- **Option.** why it lost`, as in the template;
 //   - the allowed statuses are the backticked values of the README's "Status." bullet, and the
 //     template's comment must list the same set; NNNN in a status is a record number that must exist;
@@ -12,8 +13,9 @@
 // Then, for every record:
 //   - the file name is NNNN-kebab-case.md, and no two records share a number;
 //   - the title is `# NNNN — ...` with the number of the file;
-//   - each header field appears once, before the first section, in the template's order;
-//     the status is an allowed value and the date a real YYYY-MM-DD day;
+//   - each header field appears once, before the first section, in the template's order (an
+//     optional one may be absent); the status and the layer are allowed values and the date a real
+//     YYYY-MM-DD day;
 //   - each section appears exactly once, in the template's order, and is not empty;
 //   - "Roads not taken" holds only road bullets (`- **Option.** reason` or `- **Option:** reason`),
 //     at least one, and no `###` option;
@@ -42,6 +44,8 @@ const r = reporter('check-decisions');
 const E = r.error;
 
 const TEMPLATE = '0000-template.md';
+// Header fields a record may leave out.
+const OPTIONAL_FIELDS = new Set(['Layer']);
 const FILE = /^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 const read = (name) => readFileSync(join(dir, name), 'utf8');
 
@@ -100,6 +104,10 @@ const readme = existsSync(join(dir, 'README.md')) ? read('README.md') : '';
 if (!readme) E('docs/decisions/README.md is missing');
 const statusBullet = /^- \*\*Status\.\*\*(.*)$/m.exec(readme)?.[1] ?? '';
 const STATUSES = [...statusBullet.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+// The layers a record may name, from the README's "Layer." bullet.
+const layerBullet = /^- \*\*Layer\.\*\*(.*)$/m.exec(readme)?.[1] ?? '';
+const LAYERS = [...layerBullet.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+if (FIELDS.includes('Layer') && !LAYERS.length) E('README.md: no "- **Layer.** ... `core` ..." bullet with backticked values');
 if (!STATUSES.length) E('README.md: no "- **Status.** One of `...`" bullet with backticked values');
 const tplStatuses = (/^Status:\s*(.+?)\.?\s*$/m.exec(template)?.[1] ?? '')
   .split(/,\s*/).map((s) => s.replace(/^or\s+/, '').trim()).filter(Boolean);
@@ -149,6 +157,7 @@ for (const rec of records.values()) {
   let last = -1;
   for (const f of FIELDS) {
     const hits = fields.filter((l) => l.m[1] === f);
+    if (hits.length === 0 && OPTIONAL_FIELDS.has(f)) continue;
     if (hits.length !== 1) { E(`${where}: **${f}:** appears ${hits.length} times before the first section, expected once`); continue; }
     const at = fields.indexOf(hits[0]);
     if (at < last) E(`${where}:${hits[0].n}: **${f}:** is out of the template's order (${FIELDS.join(', ')})`);
@@ -163,6 +172,7 @@ for (const rec of records.values()) {
       if (n === rec.num) E(`${where}: status "${rec.Status}" names the record itself`);
     }
   }
+  if (rec.Layer !== undefined && !LAYERS.includes(rec.Layer)) E(`${where}: layer "${rec.Layer}" is not one of ${LAYERS.join(', ')}`);
   if (rec.Date !== undefined && !isDay(rec.Date)) E(`${where}: date "${rec.Date}" is not a YYYY-MM-DD day`);
 
   let prev = -1;
