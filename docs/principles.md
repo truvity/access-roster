@@ -48,7 +48,7 @@ Products are generic and are joined by a written contract with test vectors, not
 
 **Shared with ritueel.**
 
-Routine work is automated, and a node signs unattended. A person takes part where a person adds safety, such as a root ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0012-cryptography-and-authority-keys/#touch-and-pin) and [ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
+Routine work is automated, and a node signs unattended. A renewal over the same key is routine and is automated where the store allows it; a person is required to make a root, to change the root set, and to certify a new key. A person takes part where a person adds safety, such as a root ceremony or an unlock after a full power loss. Irreversible steps belong to the operator. See [Touch and PIN](/decisions/0012-cryptography-and-authority-keys/#touch-and-pin) and [ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#lifetimes-and-the-warning).
 
 ## 8. Nothing without a consumer
 
@@ -66,7 +66,7 @@ A design choice that depends on a number rests on a measurement, and the record 
 
 **sluis-only.**
 
-Every port has more than one driver, each proven by a real installation. sluis is built against these reference shapes: a workforce installation on serverless, a customer-identity installation on Kubernetes, audit-with-quota installations, a self-hosted installation on small boards, and development on software keys. See [Reference installation shapes](/runtimes/installations/#reference-installation-shapes), [ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/) and [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/).
+A port has one driver until a second real installation needs another; the second driver is added with that installation. sluis is built against these reference shapes: a workforce installation on serverless, a customer-identity installation on Kubernetes, audit-with-quota installations, a self-hosted installation on small boards, and development on software keys. See [Reference installation shapes](/runtimes/installations/#reference-installation-shapes), [ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/) and [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/).
 
 ## 11. Public by default, private where it protects
 
@@ -79,7 +79,8 @@ The design, the code and the reasons are public. What stays private is what prot
 These product decisions follow from the principles above.
 
 - **sluis has no users of its own.** It hosts no end-user accounts and stores no passwords. People come from upstream directories, and customer identity is broker-only too ([REQ-CIAM-017](/requirements/ciam/#REQ-CIAM-017)). The one exception is the operator's break-glass recovery, with passkeys only: see [Break-glass recovery](/security/break-glass/).
-- **sluis never generates roots.** It holds intermediates only. Roots, root ceremonies and root transitions belong to ritueel, and the two are joined through the hand-off contract. See [ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#sluis-holds-no-root).
+- **sluis never generates roots.** It holds intermediates only. Any certificate authority that signs a PKCS#10 request can certify them; [ritueel](https://ritueel.id) is the root custodian the project builds and tests against, and the two are joined through its hand-off contract. See [ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#sluis-holds-no-root).
 - **sluis never writes Kubernetes objects.** Cluster tools such as cert-manager, trust-manager and External Secrets stay its clients and distributors; sluis serves APIs and exports. See [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#kubernetes) and [Data and secrets](/concepts/data/).
 - **A development or test installation differs by configuration only.** There is no test-only code in the product: "dev is not a build". Tests sign in through a real identity provider run beside the installation, not through accounts in sluis. See [ADR 0019](/decisions/0019-release-train-packaging-and-distribution/) and [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation).
 - **One product, many installations.** Tenants live inside an installation and share its keys; environments never share keys. See [ADR 0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/), [ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/) and [When keys are shared and when separate](/decisions/0012-cryptography-and-authority-keys/#when-keys-are-shared-and-when-separate).
+- **sluis is a young project.** It is maintained by one person with AI agents, has had no independent security review yet, and v2 has no code. v1 runs in the maintainer's production. [GOVERNANCE.md](https://github.com/truvity/sluis/blob/main/GOVERNANCE.md) says how that changes.
