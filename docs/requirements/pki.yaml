@@ -539,8 +539,8 @@ requirements:
       - {kind: integration-test, ref: "a renewal in a test installation: the new certificate or binding carries the public key of the old one"}
   - id: REQ-PKI-040
     area: PKI
-    statement: "sluis MUST replace the key material of an authority signing key other than the log key no later than three years after the key was made, or earlier on an event."
-    rationale: "A signing key is rotated at most every three years, which also keeps the rotation path exercised."
+    statement: "sluis MUST replace a software authority signing key other than the log key no later than three years after the key was made, and a card or cloud KMS authority signing key on an event, or earlier on a compromise."
+    rationale: "A software key is rotated every three years, which also keeps the rotation path exercised; a key that cannot be copied out of its card or KMS is replaced when an event (an advisory, a deprecated algorithm, loss or end of life) makes it necessary, as principle 3 says."
     level: MUST
     source: design-decision
     status: planned
@@ -548,7 +548,7 @@ requirements:
     standards: []
     issues: [914, 1066]
     verification:
-      - {kind: integration-test, ref: "a clock-moving test: a key older than three years is reported as due, and a rotation puts the new key in a free spare slot while the old one still signs"}
+      - {kind: integration-test, ref: "a clock-moving test: a software key older than three years is reported as due, and a rotation puts the new key in a free spare slot while the old one still signs"}
   - id: REQ-PKI-041
     area: PKI
     statement: "sluis MUST NOT use one asymmetric signing key for two purposes, two environments or two installations."
