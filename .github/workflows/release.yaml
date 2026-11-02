@@ -128,7 +128,7 @@ jobs:
           chart-root: charts
           registry: oci://ghcr.io/truvity/charts
           app-version-mode: release
-          helmctl-version: 0.8.0
+          helmctl-version: 0.12.0
           token: ${{ secrets.GITHUB_TOKEN }}
       # The CLI as a Nix flake, so that another repository's devbox pins
       # `audit verify` by hash.
