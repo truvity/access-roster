@@ -1,6 +1,6 @@
 ---
 title: Configuration sources
-description: "The config-source port in detail: the sources list of the install file, the composition rule with its refusals and vectors, the signed document, and what a driver returns."
+description: "The config-source port in detail: the sources list, the composition rule with its refusals and vectors, the signed document, and what a driver returns."
 status: target
 sidebar:
   order: 9
