@@ -646,8 +646,8 @@ requirements:
       - {kind: test-vectors, ref: "composition vectors: defaults from a file or a signed source"}
   - id: REQ-OPS-052
     area: OPS
-    statement: "sluis MUST refuse to start when a declared configuration source is unreachable, unsigned or invalid."
-    rationale: "A check that cannot run is reported as not run, never as passed."
+    statement: "sluis MUST refuse to start when its install file or a declared configuration source is missing, unreadable, unreachable, unsigned or invalid."
+    rationale: "A check that cannot run is reported as not run, never as passed, and no cached copy stands in for a source."
     level: MUST
     source: design-decision
     status: planned
@@ -656,6 +656,7 @@ requirements:
     issues: [1157]
     verification:
       - {kind: integration-test, ref: "start with an unreachable and an invalid source on the lambda installation"}
+      - {kind: integration-test, ref: "start with a missing, an unreadable and an invalid install file or file source on each tested installation"}
   - id: REQ-OPS-053
     area: OPS
     statement: "sluis MUST keep the configuration in force and report it when a source is unreachable at reload."
@@ -704,3 +705,111 @@ requirements:
     issues: [1157]
     verification:
       - {kind: test-vectors, ref: "composition vector set run by both loaders"}
+  - id: REQ-OPS-057
+    area: OPS
+    statement: "The configuration schema MUST give every path of declared configuration a reload class, `live` or `restart`, by an annotation on the path or on its nearest ancestor, with `restart` at the root."
+    rationale: "One rule says what a reload may change, and a key that nobody has classified is the safe one (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: test-vectors, ref: "reload class vectors: annotated, inherited and unannotated paths"}
+  - id: REQ-OPS-058
+    area: OPS
+    statement: "sluis MUST refuse a configuration reload that changes a path of class `restart`, as a whole, while the version in force stays."
+    rationale: "A half-applied snapshot is a document that nobody reviewed or published (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: integration-test, ref: "reload with a restart change and a live change test on each runtime"}
+  - id: REQ-OPS-059
+    area: OPS
+    statement: "A refused reload MUST be audited once for each refused digest, with the paths that need a restart and without their values."
+    rationale: "An operator must see why a change did not apply, and a poll must not repeat the record."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: integration-test, ref: "refused reload audit record test"}
+  - id: REQ-OPS-060
+    area: OPS
+    statement: "`sluis config check` MUST list, given the previous version, every changed path whose reload class is `restart`."
+    rationale: "A pipeline must learn before it publishes that a running installation would refuse the change."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: test-vectors, ref: "reload class vectors: changed paths against a previous version"}
+  - id: REQ-OPS-061
+    area: OPS
+    statement: "`sluis config check` SHOULD warn about a configuration source that owns a path of class `restart`."
+    rationale: "A restart change in a source is refused at reload and holds back every live change in the same snapshot."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: test-vectors, ref: "reload class vectors: a source owning a restart path"}
+  - id: REQ-OPS-062
+    area: OPS
+    statement: "A field marked tighten-only MUST have the reload class `live`."
+    rationale: "A brake must not wait for a restart (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: test-vectors, ref: "reload class vectors: tighten-only fields"}
+  - id: REQ-OPS-063
+    area: OPS
+    statement: "A lambda function MUST apply a changed `live` path from an `appconfig` source at the first invocation after the poll interval, without a new function version."
+    rationale: "A lambda installation gets live policy and clients from the configuration service, because a layer cannot change under a running function (ADR 0057)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: integration-test, ref: "live policy and client change on the lambda installation test"}
+  - id: REQ-OPS-064
+    area: OPS
+    statement: "The loader MUST reload a `file` source when its file is replaced, including the swap of a mounted ConfigMap."
+    rationale: "The `file` driver signals by notify, so a replaced file is seen without a poll (ADR 0057)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal", "kubernetes"]
+    standards: []
+    issues: [977]
+    verification:
+      - {kind: integration-test, ref: "file replace and ConfigMap swap reload test"}
+  - id: REQ-OPS-065
+    area: OPS
+    statement: "The audit record of a start or reload MUST name the SHA-384 of the payload of each source and, for a signed source, its sequence number."
+    rationale: "A reviewer finds an older signed document at a cold start by comparing the digest and the sequence number with the reviewed branch (ADR 0057)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "audit record of a start names digest and sequence number test"}
