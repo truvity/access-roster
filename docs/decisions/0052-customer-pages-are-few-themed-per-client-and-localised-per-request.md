@@ -1,6 +1,7 @@
 # 0052 — sluis serves a short list of customer pages from templates, themed per client and localised per request, on the host of the customer boundary
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #927](https://github.com/truvity/sluis/issues/927).

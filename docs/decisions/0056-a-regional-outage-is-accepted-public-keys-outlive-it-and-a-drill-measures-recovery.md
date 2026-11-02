@@ -1,6 +1,7 @@
 # 0056 — A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
@@ -28,7 +29,15 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 ### Recovery
 
 - **An installation publishes its recovery point and recovery time and proves them.** For the loss of the state, of a bucket and of the region it states how much issued durable data may be lost and how long recovery takes, and a recovery drill measures both: at least once a year and after any change to the backup or restore path. The result is published with its date and versions. The restore follows [Backup](/concepts/backup/) and the order of [0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#backup-and-restore-by-origin).
-- **Targets before the first drill are Proposed.** They are a Proposed note on the [Backup](/concepts/backup/) page, tracked in [#1142](https://github.com/truvity/sluis/issues/1142), and the measured figures replace them after the first drill. No page promises a recovery time that no drill has measured.
+- **The targets before the first drill are decided.** The maintainer decided them on 2026-11-02 ([#1142](https://github.com/truvity/sluis/issues/1142)). Each is a target and not a measurement, and the first drill replaces it with the measured figure. No page promises a recovery time that no drill has measured.
+
+  | Loss of | Recovery point | Recovery time |
+  |---|---|---|
+  | The state | 5 minutes | 4 hours |
+  | A bucket | 24 hours, the interval between archives | 8 hours |
+  | The region | no figure until a drill measures it | no figure until a drill measures it |
+
+  The region has no failover, and a rebuild in a second region needs new intermediates through the hand-off, so a figure waits for a drill that has measured the rebuild.
 
 ## Consequences
 
@@ -47,5 +56,5 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 ## Follow-ups
 
-- The recovery targets, the drill and its published result: [#1142](https://github.com/truvity/sluis/issues/1142).
+- The first recovery drill, its published result and the replacement of each target by the measured figure: [#1142](https://github.com/truvity/sluis/issues/1142).
 - The region guard: [#1061](https://github.com/truvity/sluis/issues/1061).

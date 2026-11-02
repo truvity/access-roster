@@ -1,6 +1,7 @@
 # 0047 — A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).

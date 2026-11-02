@@ -21,6 +21,7 @@ A record is `NNNN-short-title-in-kebab-case.md`. A new record takes the number a
 Every record has these parts, in this order:
 
 - **Status.** One of `Proposed`, `Accepted`, `Rejected`, `Superseded by NNNN`, or `Accepted; amended by NNNN`.
+- **Layer.** Optional. One of `core`, `CIAM module` or `quota module`: the part of the product the decision belongs to ([roadmap](../roadmap.md)). A record with no Layer line is core.
 - **Date.** The day the status last changed.
 - **Context.** The forces at play. What problem, what constraints, what the reader needs to know.
 - **Decision.** What we do, in the active voice.
@@ -49,6 +50,10 @@ v2 is a clean start. During the v2 design phase, before the first v2 release, th
 On 2026-11-01, before any code was written, the maintainer had the 32 records accepted until then merged into the 20 below and renumbered from 0001, so that each rule is stated once and no accepted record holds an open part. The old numbers and slugs are in [renumbered.json](renumbered.json) and in the table at the end; the site redirects each old address to the record that took it over.
 
 ## Index
+
+Records are grouped by the layer of the product they belong to: the core, then the two later modules ([roadmap](../roadmap.md)). Each record's `Layer` line says which.
+
+### Core
 
 | ADR | Decision | Status |
 |-----|----------|--------|
@@ -92,11 +97,11 @@ On 2026-11-01, before any code was written, the maintainer had the 32 records ac
 | [0038](0038-clients-are-declared-resources-map-to-a-client-and-self-described-clients-are-admitted-only-from-allow-listed-origins.md) | Clients are declared, a resource maps to a registered client, and a self-described client is admitted only from an allow-listed origin | Accepted |
 | [0039](0039-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Accepted |
 | [0040](0040-console-roles-are-declared-grants-and-its-pages-are-organised-by-the-origin-of-what-they-show.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
-| [0041](0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Proposed |
-| [0042](0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client.md) | Plan templates are declared, and an account is an issued record that a declared client creates at run time | Accepted |
-| [0043](0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Proposed |
-| [0044](0044-a-meter-has-a-name-a-unit-and-a-kind-and-a-usage-event-belongs-to-the-period-of-its-event-time.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
-| [0045](0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Proposed |
+
+### CIAM module (later layer)
+
+| ADR | Decision | Status |
+|-----|----------|--------|
 | [0046](0046-ciam-is-a-broker-the-upstream-owns-accounts-and-sluis-owns-sessions-and-tokens.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
 | [0047](0047-a-customer-identity-installation-is-a-front-a-few-customer-boundaries-and-key-less-tenants.md) | A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
 | [0048](0048-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Accepted |
@@ -108,6 +113,16 @@ On 2026-11-01, before any code was written, the maintainer had the 32 records ac
 | [0054](0054-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
 | [0055](0055-fapi-2-is-a-profile-a-client-declares.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
 | [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Accepted |
+
+### Quota module (later layer)
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0041](0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Proposed |
+| [0042](0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client.md) | Plan templates are declared, and an account is an issued record that a declared client creates at run time | Accepted |
+| [0043](0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Proposed |
+| [0044](0044-a-meter-has-a-name-a-unit-and-a-kind-and-a-usage-event-belongs-to-the-period-of-its-event-time.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
+| [0045](0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Proposed |
 
 ## Where the old records went
 

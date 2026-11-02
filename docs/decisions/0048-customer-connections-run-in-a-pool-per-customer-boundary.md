@@ -1,6 +1,7 @@
 # 0048 — Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #916](https://github.com/truvity/sluis/issues/916).

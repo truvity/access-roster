@@ -66,9 +66,9 @@ const readme = readFileSync(join(repo, 'docs/decisions/README.md'), 'utf8')
 const row = (n, slug, status) => `| [${n}](${n}-${slug}.md) | A decision | ${status} |\n`;
 const GOOD = ['- **Another way.** It lost, for a reason.'];
 const PROPOSAL = 'Proposal: [issue #1](https://github.com/truvity/sluis/issues/1).';
-const record = ({ num = '0001', status = 'Accepted', date = '2026-10-31', drop = '', roads = GOOD, extra = [], proposal = PROPOSAL, body = 'Text.' } = {}) =>
+const record = ({ num = '0001', status = 'Accepted', layer = '', date = '2026-10-31', drop = '', roads = GOOD, extra = [], proposal = PROPOSAL, body = 'Text.' } = {}) =>
   [
-    `# ${num} — We use the example`, '', `**Status:** ${status}`, `**Date:** ${date}`, '', ...(proposal ? [proposal, ''] : []), ...extra,
+    `# ${num} — We use the example`, '', `**Status:** ${status}`, ...(layer ? [`**Layer:** ${layer}`] : []), `**Date:** ${date}`, '', ...(proposal ? [proposal, ''] : []), ...extra,
     ...['Context', 'Decision', 'Consequences'].filter((s) => s !== drop).flatMap((s) => [`## ${s}`, '', body, '']),
     '## Roads not taken', '', ...roads, '',
     ...(drop === 'Follow-ups' ? [] : ['## Follow-ups', '', 'None.', '']),
@@ -95,6 +95,9 @@ expect('a line of the template comment left in', 'decisions', adr(one({ extra: [
 expect('no records', 'decisions', { ...adr({}, ''), 'docs/decisions/0001-we-use-the-example.md': undefined }, 'fail', { has: ['empty sweep'] });
 expect('a missing section', 'decisions', adr(one({ drop: 'Consequences' })), 'fail', { has: ['## Consequences'] });
 expect('no follow-ups', 'decisions', adr(one({ drop: 'Follow-ups' })), 'fail', { has: ['## Follow-ups'] });
+expect('a layer of a later module', 'decisions', adr(one({ layer: 'CIAM module' })), 'pass');
+expect('an unknown layer', 'decisions', adr(one({ layer: 'billing' })), 'fail', { has: ['layer "billing" is not one of'] });
+expect('the layer line after the date', 'decisions', adr({ 'docs/decisions/0001-we-use-the-example.md': record().replace('**Date:** 2026-10-31', '**Date:** 2026-10-31\n**Layer:** core') }), 'fail', { has: ['out of the template'] });
 expect('an unknown status', 'decisions', adr(one({ status: 'Maybe' })), 'fail', { has: ['not one of'] });
 expect('superseded by a missing record', 'decisions', adr(one({ status: 'Superseded by 0099' }), row('0001', 'we-use-the-example', 'Superseded by 0099')), 'fail', { has: ['0099'] });
 expect('a date that is no day', 'decisions', adr(one({ date: '2026-02-30' })), 'fail', { has: ['YYYY-MM-DD'] });

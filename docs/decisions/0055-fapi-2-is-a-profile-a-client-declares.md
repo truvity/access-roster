@@ -1,6 +1,7 @@
 # 0055 — FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience
 
 **Status:** Accepted
+**Layer:** CIAM module
 **Date:** 2026-11-02
 
 Proposal: [issue #1025](https://github.com/truvity/sluis/issues/1025).
