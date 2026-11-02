@@ -35,7 +35,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | Command | Reads | Writes | Exit codes |
 |---|---|---|---|
 | `sluis version` | Nothing | The version and the commit it was built from | 0 |
-| `sluis config check [FILE] [--live]` | The install file and the files it names; with `--live`, the operator-set records through the console API | Nothing | 0, 1, 2, 3 |
+| `sluis config check [FILE] [--live] [--against OLD]` | The install file and the files it names; with `--live`, the operator-set records through the console API; with `--against`, the previous install file and its files | Nothing | 0, 1, 2, 3 |
 | `sluis config explain [FILE] [--live] [--field PATH]` | As `check` | Nothing | 0, 1, 2, 3 |
 | `sluis doctor` | The host: kernel, randomness, the platform's floor, the keys driver, the intermediates | Nothing | 0, 1, 2, 3, 10, 11, 12 |
 | `sluis key request [--purpose PURPOSE] [--out DIR]` | The install file, the root list | A key in its store if it does not exist; the requests and proofs in `DIR` | 0, 1, 2, 3, 4 |
@@ -47,6 +47,8 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 ### `sluis config check` and `explain`
 
 `check` validates the install file against the schema embedded in the binary, then the installation against what its drivers declare: runtime, node count, dependencies, the fusion rule, an enabled key purpose with no key ([How `sluis config check` validates an installation](/concepts/drivers/#how-sluis-config-check-validates-an-installation)). It prints one line per check, `ok`, `warn` or `fail`. A `fail` exits 3; warnings, such as an audit log with no witness, exit 0. `FILE` defaults to `--config`.
+
+With `--against OLD`, `check` compares the document with the previous version and prints one `warn` line for each changed path whose reload class is `restart`, with the path and never the value, so a pipeline sees before it publishes that a running installation would refuse the change at reload ([Which keys reload](/reference/install-file/#which-keys-reload)). It also warns about a source that owns a `restart` path. A pipeline that must not publish such a change reads the `warn` lines in the JSON output.
 
 `explain` prints each field's effective value, its origin and the layer that set it. A secret is shown as its reference, never resolved. `--field PATH` limits the output to one subtree. With `--live` both read the operator-set records through the console API with the operator's own token, and `check` lists held objects ([Checking and explaining](/concepts/configuration/#checking-and-explaining)).
 

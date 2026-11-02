@@ -165,6 +165,43 @@ A mapping from a client ID to its declaration, for the group issuer; `boundaries
 
 The install file can list more sources of declared configuration in an optional `sources` key: a second file, a Lambda layer, a mounted ConfigMap or AWS AppConfig. Schema v1 does not have it, because the first working version reads this one file; it joins the schema with the pull request that reads it ([principle 8](/principles/#8-nothing-without-a-consumer)). The shape of the list, the rule that puts the documents together and the keys a source can never own are on [Configuration sources](/reference/config-sources/).
 
+## Which keys reload
+
+Every path of the install file, and of every source document, is `live` or `restart` ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#reload-classes)). A `live` path is applied on reload without a restart. A change to a `restart` path is refused at reload, as a whole with every other change in the snapshot, and applied only by a restart. The class is the annotation `x-sluis-reload` in the schema; a path with no annotation of its own has the class of its parent, and the root is `restart`. The question for each path is whether changing it needs a new process, a new key handle or a new connection pool.
+
+| Path | Class | Why |
+|---|---|---|
+| `runtime`, `environment`, `nodes` | `restart` | They decide which processes, images and drivers exist |
+| `front.host`, `front.rp_id` | `restart` | The issuer URL, the listeners and the passkey relying party |
+| `front.token_ttl` | `live` | Read when a token is minted; it can only be shortened |
+| `boundaries.<name>`: an entry added or removed, `kind`, `level`, `host`, `uid_block` | `restart` | An entry is a set of processes with their own unit, socket, uid and host |
+| `boundaries.<name>.token_ttl` | `live` | As `front.token_ttl` |
+| `boundaries.<name>.clients` | `live` | Declared data, read when a client is looked up |
+| `drivers` | `restart` | A driver is a process with a credential and a handle to a key or a store |
+| `actors.<name>.log_level` | `live` | Read by the running actor; no new handle |
+| other `actors` tunables | `restart` | Until the pull request that adds one argues it is `live` |
+| `upstreams.<name>`: an entry added or removed, `kind` | `restart` | An upstream is one integration process |
+| `upstreams.<name>`: `org`, `issuer`, `subject_claim`, `client_id`, `client_secret` | `live` | How an upstream is reached, read at the next sign-in |
+| `clients` | `live` | Declared data, read when a client is looked up |
+| `policy` (`files`, `vocabulary`) | `live` | The `policy` actor validates and swaps it as it does at start |
+| `trust` | `restart` | Whom to trust; a base key that no source can own |
+| `sources` | `restart` | Where to read; a base key that no source can own |
+
+Areas that join the schema later follow the same question, and the pull request that adds a key annotates it:
+
+| Area (planned) | Class | Why |
+|---|---|---|
+| Keys and key stores: purposes, the card slot map, a store's settings | `restart` | A key handle is opened once per process |
+| State, blob, index and transport settings; retention, witness and backup recipients | `restart` | A connection pool or a store handle |
+| Listeners and TLS | `restart` | A socket is bound once |
+| The grant vocabulary, console roles, internal-group bindings, PKI roles, exchange trust | `live` | Declared data that an actor reads when it decides |
+| Quota plans, limits and enforcement rules | `live` | Declared data; a reload that removes a plan an account uses is refused ([REQ-QUOTA-052](/requirements/quota/#REQ-QUOTA-052)) |
+
+- **A change is a difference at a path.** A mapping entry that is added or removed is one change at the entry: a new boundary is `restart`, although its `clients` are `live`, and a new client is `live`. A sequence is one value ([Composition](/reference/config-sources/#composition)).
+- **A tighten-only field is `live`.** A brake does not wait for a restart.
+- **Put `restart` paths in the install file and let the sources own `live` paths.** The base keys that name where to read and whom to trust cannot be owned by a source in any case, and `sluis config check` warns about a source that owns a `restart` path. On Lambda this means the layer carries the `restart` paths and an `appconfig` source owns policy and clients ([Configuration sources](/reference/config-sources/#start-reload-and-failure)).
+- **The annotation joins the schema with the Pkl sources.** Until the schema exists this table is the reference, and the first pull request that builds it checks the annotations against it.
+
 ## Which keys a file enables
 
 A key purpose that an installation does not enable gets no key ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#the-card-slot-map)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.
@@ -179,6 +216,7 @@ Beyond the schema, which checks the shape of each value and not what depends on 
 - every `credential` reference names a source that exists (offline: the file is present; the value is never read by `check`);
 - the vocabulary file is valid ([Vocabulary](/reference/vocabulary/#what-sluis-config-check-checks)), every client's `requires` names grants that it declares, no grant name outside it appears in a policy file, and every policy file parses and validates against the Cedar schema ([Policy](/reference/policy/#what-sluis-config-check-checks));
 - every `uid_block` is unique, and every `subject_claim` is a claim that does not change for a person;
+- given the previous version with `--against`, each changed path whose class is `restart` is listed, and a source that owns a `restart` path is a warning ([Which keys reload](#which-keys-reload));
 - the drivers fit the runtime and the node count, every enabled key purpose has a key, and the root list verifies and is not older than the one sluis holds, and the CA bundle matches it: its first line names the list's sequence, and its certificates are the keys of the list's roots, in that order.
 
 ## The example file for local
