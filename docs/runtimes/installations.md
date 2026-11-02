@@ -47,6 +47,7 @@ The same actors run everywhere; the drivers behind their ports change. Where an 
 | index | `sqlite` | `rqlite` | `postgres` (`aurora` mode, through RDS Proxy) | `postgres` (`cnpg` mode) |
 | witness | none | `peer`, each node witnessing the others | none | none |
 | cloud | web identity through `sluis-node`, where configured | web identity; `cloudflare` for R2 credentials | the function's role | a projected ServiceAccount token per container; EKS Pod Identity for a single-actor pod |
+| config-source | `file` | `file` | `file` (the configuration layer) and `appconfig` | `file` (a mounted ConfigMap) and `appconfig` |
 
 The `direct-mtls` and `nats-jetstream` transports are supported and are the default of no installation. **The witness is optional everywhere**, and `sluis config check` warns when an installation has none ([Audit](/concepts/audit/)).
 
@@ -78,8 +79,16 @@ This table is derived from what each driver requires and from [what each runtime
 | cloud | web identity | ✓, through `sluis-node` | ✓, through `sluis-node` | the token comes from `signer` | ✓, projected token |
 | | platform role | on a cloud VM | on a cloud VM | ✓ | ✓, EKS Pod Identity |
 | | `cloudflare` | ✓ | ✓ | ✓ | ✓ |
+| config-source | `file` | ✓ | ✓ | ✓, a layer or a package file | ✓, a mounted file |
+| | `appconfig` | on a cloud VM or with web identity to AWS | on a cloud VM or with web identity to AWS | ✓ | ✓ |
 
 A lease lives on the state store, with compare-and-set and a fencing token ([Data](/concepts/data/#leases-and-fencing-tokens)); there is no Kubernetes Lease driver.
+
+## Configuration sources
+
+Every installation offers the `file` source driver: it needs nothing, and on Lambda a layer is a file and on Kubernetes a mounted ConfigMap is a file. An installation offers `appconfig` when it has AWS, because the driver needs AWS credentials from the `cloud` port. Of the four tested installations, lambda and kubernetes offer it, because they have an AWS account, and local and boards do not: the boards have a Cloudflare account and no AWS. `sluis config check` refuses a source whose driver the installation does not offer, with the same check as for any other driver ([how it checks](/concepts/drivers/#how-sluis-config-check-validates-an-installation)). A possible installation outside the table follows the same rule: it offers what its dependencies allow.
+
+Which documents may come from which source is [ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#declared-versus-issued): the authority of a workforce installation comes from `file` or from a signed `appconfig` document, and per-customer defaults of a customer-identity installation come from `appconfig` only. The rules and the vectors are [Configuration sources](/reference/config-sources/).
 
 ## Choosing an installation
 

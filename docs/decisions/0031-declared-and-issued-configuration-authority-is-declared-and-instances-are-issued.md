@@ -33,7 +33,7 @@ An upstream or a client that the operator runs for its own relying parties is au
 
 - **Authority is declared in git, reviewed, and delivered at run time through a configuration service:** AWS AppConfig on serverless, or the equivalent for the runtime, which is a ConfigMap on Kubernetes and a file on bare-metal ([0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)).
 - **Live reload applies it** as whole versioned snapshots: validated, swapped atomically and audited with the snapshot's digest, a failing snapshot refused while the version in force stays ([#977](https://github.com/truvity/sluis/issues/977), REQ-OPS-021).
-- **The service holds the published copy of a reviewed commit.** The pipeline that publishes it is the operator's. sluis records the digest it applied, so a reviewer can match it to the commit.
+- **The service holds the published copy of a reviewed commit.** The pipeline that publishes it is the operator's. sluis records the digest it applied, so a reviewer can match it to the commit. How a service is read, composed with the other sources and trusted is [0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/).
 
 ### Customer-identity installations
 

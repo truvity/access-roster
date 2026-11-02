@@ -51,7 +51,7 @@ catalogue:
     proposed-design: "The design is proposed in research and not yet decided."
   glossary:
     "actor": "A process with one responsibility, for example the entry, signer, policy, ca or quota actor."
-    "port": "An abstract interface with capability flags, such as keys, state, lease, blob, transport, index, witness, cloud, secrets or export."
+    "port": "An abstract interface with capability flags, such as keys, state, lease, blob, transport, index, witness, cloud, secrets, export or config-source."
     "driver": "An implementation of a port. A driver declares what it needs: a long-running process, a disk, a node count, a dependency."
     "runtime": "The kind of platform that starts the processes: bare-metal, serverless or kubernetes."
     "installation": "One concrete deployment: a runtime, a node count, available dependencies and one driver per port."

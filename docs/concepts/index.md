@@ -16,7 +16,7 @@ The concept pages explain the model the rest of the documentation relies on. Thi
 | **Grant** | The decision of `policy`, sealed under the sealing key; a minter acts only on a grant it can open | [Actors](/concepts/actors/#why-the-signer-and-the-policy-are-separate) |
 | **Integration actor** | A process for one vendor tenant and one credential; it never decides | [Integrations](/integrations/) |
 | **Permission manifest** | What one actor may touch, generated into every enforcement layer | [Architecture](/architecture/) |
-| **Port** | An abstract interface: keys, state, lease, blob, transport, index, witness, cloud, secrets, export | [Ports and drivers](/concepts/drivers/) |
+| **Port** | An abstract interface: keys, state, lease, blob, transport, index, witness, cloud, secrets, export, config-source | [Ports and drivers](/concepts/drivers/) |
 | **Capability flag** | A property of a port a consumer can require, such as compare-and-set on `state` | [Ports and drivers](/concepts/drivers/) |
 | **Driver** | An implementation of a port, started by the platform beside its actor | [Ports and drivers](/concepts/drivers/) |
 | **`key-holder`** | The one mediating driver, fronting a node's card | [Ports and drivers](/concepts/drivers/) |

@@ -24,6 +24,7 @@ An actor sees one contract per port, whatever sits behind it. `signer` calls "si
 | `cloud` | `credentials(cloud, role)` | Short-lived cloud credentials for the calling actor |
 | `secrets` | values under addresses | `writable`, `encryption`, `versioned`; interface planned ([Secrets and export](/concepts/data/#secrets-and-export)) |
 | `export` | typed documents for outside readers | interface planned ([Secrets and export](/concepts/data/#secrets-and-export)) |
+| `config-source` | `read` one document as bytes, with a version label | `watch`: `none`, `notify` or `poll`. Read-only, and the one port with a list of drivers in an installation: the sources are composed by disjoint ownership of paths ([Configuration sources](/reference/config-sources/), [ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/)) |
 
 ## Capability flags
 
@@ -158,8 +159,12 @@ Every driver declares what it needs from the installation: a long-running proces
 | platform role | cloud | – | – | any | a cloud VM, function or pod identity |
 | gcp / azure federation | cloud | – | – | any | GCP or Azure |
 | cloudflare | cloud | – | – | any | a Cloudflare account and a parent token per boundary, stored sealed |
+| file | config-source | – | – | any | – (a path: a file, a Lambda layer, a mounted ConfigMap) |
+| appconfig | config-source | – | – | any | AWS: the AppConfig data API, with credentials from the `cloud` port |
 
 Nodes and dependencies belong to an installation, not to a [runtime](/runtimes/), except that serverless always comes with its provider ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#runtime-kinds)).
+
+Azure App Configuration, Google Cloud Parameter Manager, Consul and etcd are planned `config-source` drivers with no promise and no issue; each arrives with the first installation that needs it ([ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#a-port-config-source)).
 
 ## Which drivers fit which runtime
 
@@ -202,6 +207,7 @@ An installation is a runtime, nodes, dependencies and one driver per port ([Conf
 - a driver the runtime cannot run (a long-running driver on serverless, a disk where there is none), including a direct transport, which needs a disk for its spool fallback;
 - a node count that does not fit (`embedded` with three nodes, `rqlite` with two);
 - a missing dependency (`aws-kms` without an AWS account, `yubikey-piv` on a node with no card);
+- a configuration source the installation does not offer (`appconfig` without AWS), a source whose paths overlap another's or the base's, and a source that delivers authority or per-customer defaults without the verification they need ([Configuration sources](/reference/config-sources/#refusals));
 - a capability flag too weak, such as a production audit log with neither a `compliance` lock nor a witness;
 - an actor with `instances: exactly 1` and no lease on more than one node;
 - a software key in production;
