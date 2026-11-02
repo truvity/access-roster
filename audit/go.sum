@@ -26,6 +26,8 @@ github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.6 h1:Qmn60RWuk9+bd2ddvJJqwf3Cpac3
 github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.6/go.mod h1:h/YJhe4AVyQxEUMluph10iqV7mjajH7A9L+BHF5ppis=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.72.0 h1:ox/4WX1OiPfu975OLHNBYi0lJ/qOl4WtGEqiSeeePiQ=
 github.com/aws/aws-sdk-go-v2/service/dynamodb v1.72.0/go.mod h1:OYCu7bfkQi8JHCVxkQr0n6e/eL/iiJG0YXFN5fOP3v0=
+github.com/aws/aws-sdk-go-v2/service/ecr v1.66.1 h1:H63vyEXid/tHpv/UlvQUyM1c2QK5WgQRB3MK5gnAo8A=
+github.com/aws/aws-sdk-go-v2/service/ecr v1.66.1/go.mod h1:WglfLchOYcHrYOwNV7jERuy0Xc+7jArLkEnQay93auY=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.21 h1:e6YW5uME30TkrElR+4/xcY7NB6CCj2dcv7vtmGXhfhQ=
 github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.21/go.mod h1:obpHAMP693+f3/A8PkLhIqfK1C+NWWn8zXzqD3OH520=
 github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.7 h1:CwvFlKw0uUScfgOMflXSRZa+ayXgOf6wk7lhyMemQYU=
@@ -128,8 +130,8 @@ github.com/truvity/gateway-auth v0.7.1 h1:jSoeB+u9aergNMeNHW3c7g291RxdCED6TaOflw
 github.com/truvity/gateway-auth v0.7.1/go.mod h1:5ZrYGw0qmVo+Xgpa/Au5BiDVkxSKcz+ZUil4JlQo+eU=
 github.com/truvity/gemaal v0.26.5 h1:nOaUmkvM4rJxcTwdtxEfq7PNlfuuJ/xaizmL1HJAuKI=
 github.com/truvity/gemaal v0.26.5/go.mod h1:Q7X6h3a1MQCWIsrtI5HpaORMpkTRWwEw5UtMMVbzWC4=
-github.com/truvity/ocictl v0.8.0 h1:nTkXvROo/TfWh8pK9XCmu5m+/68lpN+EHF0DBBs5Urk=
-github.com/truvity/ocictl v0.8.0/go.mod h1:VSN3HLSAygBO6rnEXumPr0yerJiffN5A2VSuY+gMwFM=
+github.com/truvity/ocictl v0.12.0 h1:KMxN/XRISWr8dbl2wxuGN8g3yghmxZZseJQlYih8XqM=
+github.com/truvity/ocictl v0.12.0/go.mod h1:r+ttqNz8WOpqNJ8XJGDrD73cEYakOOnaRO8bWoTyx2o=
 github.com/truvity/policy v1.55.0 h1:pI018ZED/QamU9pT9JAh4BkqRi5ufZ7bNs9UBlnTO4c=
 github.com/truvity/policy v1.55.0/go.mod h1:JaP+T7dNeiI+Xb83a41Cnnzeiw+g+9mknaq98bdjwCc=
 github.com/urfave/cli/v3 v3.14.0 h1:a8414NQlHJs0c/iBsulKLzlES0n/lEAskbL2LKpU4/s=
