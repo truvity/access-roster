@@ -53,9 +53,9 @@ An organisation, a group of a customer's users, is not a sluis kind: it is part 
 
 ### Where installations run
 
-- **One region for now: Europe, Frankfurt (AWS `eu-central-1`).** An installation's state, blobs, queues, compute and keys are there. The multi-Region replica of the sealing key ([Keys](/concepts/keys/)) is the one thing that lives in a second region, and it must be in the allowed set of the region guard ([REQ-OPS-007](/requirements/ops/#REQ-OPS-007)).
+- **One region for now: one region of one cloud provider, chosen per installation in its install file.** An installation's state, blobs, queues, compute and keys are there. The multi-Region replica of the sealing key ([Keys](/concepts/keys/)) is the one thing that lives in a second region, and it must be in the allowed set of the region guard ([REQ-OPS-007](/requirements/ops/#REQ-OPS-007)).
 - **Later, one installation per residency region, sharing nothing.** An installation does not span regions, and a region is not an attribute of a tenant: a second region means a second installation with its own keys, state and issuer, as environments never share keys ([0012](/decisions/0012-cryptography-and-authority-keys/#when-keys-are-shared-and-when-separate)).
-- **A regional outage stops signing in that region**, because KMS is regional and the software key fallback is refused in production ([0012](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)). This record accepts that for the one region and sets no recovery time or recovery point; they are tracked in [#1015](https://github.com/truvity/sluis/issues/1015) and shown as a proposal on the [Backup](/concepts/backup/) page.
+- **A regional outage stops signing in that region**, because KMS is regional and the software key fallback is refused in production ([0012](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)). This record accepts that for the one region and sets no recovery time or recovery point; [ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery) records the targets and the drill that measures them.
 
 ## Consequences
 
@@ -64,7 +64,7 @@ An organisation, a group of a customer's users, is not a sluis kind: it is part 
 - Tenants in one customer boundary share its actors, its sealing key and its fate: a flaw in the shared code reaches every tenant of the boundary. That is the accepted L0 risk; an entity that cannot accept it is a customer boundary of its own.
 - Every customer boundary adds a certification item to the yearly cycle of the root custodian, which is why the target is a handful and not a hundred.
 - Past about ten customer boundaries the answer is another installation, which costs an install file, keys, state, an operator runbook and an upgrade to keep in step, in place of a larger file.
-- One region concentrates the risk: a regional outage stops signing, and the design stays honest about it until the recovery targets are set.
+- One region concentrates the risk: a regional outage stops signing, and the design stays honest about it: the recovery targets are in [ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery) and a drill measures them.
 - Requirements: [REQ-ISO-075](/requirements/iso/#REQ-ISO-075).
 
 ## Roads not taken
@@ -82,4 +82,3 @@ An organisation, a group of a customer's users, is not a sluis kind: it is part 
 - Customer boundaries and the customer-identity installation, in the CIAM milestone: [#1023](https://github.com/truvity/sluis/issues/1023).
 - The runbook for promoting a boundary to an installation of its own: [#973](https://github.com/truvity/sluis/issues/973).
 - The region guard: [#1061](https://github.com/truvity/sluis/issues/1061).
-- Recovery time and recovery point objectives, with the backup decision: [#1015](https://github.com/truvity/sluis/issues/1015).

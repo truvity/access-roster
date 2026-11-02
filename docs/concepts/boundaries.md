@@ -36,7 +36,7 @@ A **tenant**, such as an audit, directory or quota tenant, or a customer organis
 
 Keys and isolation belong to a boundary and to nothing smaller ([ADR 0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/)). An installation is designed for about **5 to 10 customer boundaries** and **thousands of tenants** in them. The install file's `uid_block` runs from 0 to 54, so one file declares at most 55 boundaries of all kinds, which is enough. A tenant that needs keys, an issuer or a failure domain of its own is a customer boundary; a cohort that must be separate moves to an installation of its own. A billing account belongs to one installation.
 
-Installations run in one region for now, Europe (Frankfurt, AWS `eu-central-1`), and a later residency region is another installation that shares nothing.
+Installations run in one region of one cloud provider for now, chosen per installation in its install file, and a later residency region is another installation that shares nothing.
 
 ## A federation of installations
 

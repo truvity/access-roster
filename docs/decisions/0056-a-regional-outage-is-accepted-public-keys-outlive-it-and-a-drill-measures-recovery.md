@@ -8,7 +8,7 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 ## Context
 
-[0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run) puts the customer-identity installation in one region, Europe (Frankfurt, AWS `eu-central-1`), makes a later residency region an installation of its own that shares nothing, and accepts that a regional outage stops signing. It sets no recovery time or recovery point and leaves them to the backup record. What is still missing for a customer-facing installation is how residency is checked, what survives a regional outage, and how a recovery promise is earned.
+[0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run) puts the customer-identity installation in one region of one cloud provider, chosen per installation in its install file, makes a later residency region an installation of its own that shares nothing, and accepts that a regional outage stops signing. It sets no recovery time or recovery point and leaves them to the backup record. What is still missing for a customer-facing installation is how residency is checked, what survives a regional outage, and how a recovery promise is earned.
 
 - **Residency needs a check.** The sealing key is multi-Region plus a replica ([Keys](/concepts/keys/#aws-kms-layout)), and a backup archive has a copy; both leave the region unless something refuses it. [REQ-OPS-007](/requirements/ops/#REQ-OPS-007) and the region guard ([#1061](https://github.com/truvity/sluis/issues/1061)) are the check.
 - **A regional outage should not make verification fail.** Relying parties verify tokens against the discovery document and key set, which [0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers) makes static documents in a bucket.
@@ -18,7 +18,7 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 ### Residency
 
-- **The allowed set of regions is declared in the install file,** and the region guard refuses a table, a bucket, a queue, an index or a key replica outside it, at load and at deployment ([REQ-OPS-007](/requirements/ops/#REQ-OPS-007)). The first installation's set is `eu-central-1` and one other European region, which holds the sealing key's replica and the copy of the backup archive.
+- **The allowed set of regions is declared in the install file,** and the region guard refuses a table, a bucket, a queue, an index or a key replica outside it, at load and at deployment ([REQ-OPS-007](/requirements/ops/#REQ-OPS-007)). An installation's set is its declared region and one other region in the same jurisdiction, which holds the sealing key's replica and the copy of the backup archive.
 - **Signing keys are single-region keys.** A multi-Region key copies key material to another region, against [principle 1](/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it); only the sealing key is replicated, for loss protection ([principle 2](/principles/#2-trust-is-layered-and-redundancy-is-not-a-defence-against-compromise)).
 
 ### A regional outage
@@ -30,6 +30,7 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 - **An installation publishes its recovery point and recovery time and proves them.** For the loss of the state, of a bucket and of the region it states how much issued durable data may be lost and how long recovery takes, and a recovery drill measures both: at least once a year and after any change to the backup or restore path. The result is published with its date and versions. The restore follows [Backup](/concepts/backup/) and the order of [0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#backup-and-restore-by-origin).
 - **The targets before the first drill are decided.** The maintainer decided them on 2026-11-02 ([#1142](https://github.com/truvity/sluis/issues/1142)). Each is a target and not a measurement, and the first drill replaces it with the measured figure. No page promises a recovery time that no drill has measured.
+- **The targets cover the customer-identity installation and the serverless workforce installation.** The boards installation is best effort and states no target; it publishes a figure only after a drill has measured one.
 
   | Loss of | Recovery point | Recovery time |
   |---|---|---|
@@ -52,6 +53,7 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 - **A standby region from the start.** Money and operations for an outage no customer has asked to survive.
 - **Public documents served only from the region.** Every relying party would fail verification during an outage that tokens already issued could ride out.
 - **Recovery figures from the provider's documentation.** The restore time of a table is a property of its size and our order of restore, which only a drill measures.
+- **A stated target for the boards installation.** It runs on small computers its operator owns, and a figure would be a promise that nothing measured backs; it is best effort until a drill measures one.
 - **No stated objectives until a customer asks.** A customer-facing installation has customers on the first day, and an unstated objective is a promise nobody can hold.
 
 ## Follow-ups
