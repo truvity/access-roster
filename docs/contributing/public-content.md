@@ -1,7 +1,7 @@
 ---
 title: Public content and secrets
 description: What may appear in the public sluis repository, which example names to use instead of real ones, and how secrets and test hardware are handled.
-status: shipped
+status: page
 sidebar:
   order: 6
 ---

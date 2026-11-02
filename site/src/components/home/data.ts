@@ -42,7 +42,6 @@ export const ceremonies: Chip[] = [
   { name: 'Team wiki', mark: 'page', note: 'No service accounts: the API key belongs to a person.' },
   { name: 'On-call tool', mark: 'bell', note: 'A key that an administrator creates by hand.' },
   { name: 'Service-account keys', mark: 'key', note: 'Long-lived keys to rotate, or forbidden by policy.' },
-  { name: 'The SSO plan', mark: 'tag', note: 'Single sign-on is often sold on a higher plan.' },
   { name: 'Console settings', mark: 'drift', note: 'Set by hand, so they drift from what was reviewed.' },
 ];
 
@@ -123,8 +122,8 @@ export const band = {
   },
   root: {
     target: '#no-root',
-    headline: 'Nothing is secure by design: no root of custody',
-    text: 'Many setups cannot say where the key behind their logins was made, or who could copy it.',
+    headline: 'Where does the root key live?',
+    text: 'For certificates, SSH and release signing, few small setups can say where the root key lives and who can use it.',
     chain: [
       { name: 'ritueel', role: 'the root of custody' },
       { name: 'sluis', role: 'identity, tokens, certificates, audit' },

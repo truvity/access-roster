@@ -5,20 +5,22 @@
 // ones from the site's status API (/api/status, ADR 0020). When the API cannot answer, the
 // build-time figures stay and the note says they are from the build.
 import { listDecisions, decisionFacts, isAccepted } from '../../lib-decisions';
-import { BUILT_AT } from '../../lib/repo';
+import { BUILT_AT, designLine } from '../../lib/repo';
 
 const accepted = (await listDecisions()).map(decisionFacts).filter((d) => isAccepted(d.status)).length;
 const builtOn = BUILT_AT.slice(0, 10);
+const line = await designLine();
 ---
 
 <section class="pain status" aria-labelledby="where-it-stands" data-home-status>
   <h2 id="where-it-stands">Where it stands</h2>
-  <p class="verdict">v2 is designed, not built. There is no v2 code yet.</p>
+  <p class="verdict">What runs today is sluis v1. v2 is designed, not built.</p>
   <p class="lead">
-    This site documents the target state of sluis v2: the design is recorded, the first working version is the
-    current milestone, and every page says how far its content has got. v2 is a rewrite of the sluis that runs
-    today; v1 docs are at <a href="/v1/">/v1/</a>.
+    sluis v1 is an OpenID Connect broker in production use that passed the OpenID conformance plans with no failures; its docs are at
+    <a href="/v1/">/v1/</a>. v2 is a rewrite, designed and not built. This site documents its target state: the design
+    is recorded, the first working version is the current milestone, and every page says how far its content has got.
   </p>
+  <p class="design-line">{line}</p>
   <dl class="figures">
     <div><dt>Current milestone</dt><dd data-f="milestone">First working version</dd></div>
     <div><dt>Issues closed</dt><dd data-f="closed">–</dd></div>

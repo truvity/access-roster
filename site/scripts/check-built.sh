@@ -87,7 +87,9 @@ if [ -s "$dist/decisions/index.html" ]; then
 fi
 
 # The landing page says what v2 is and where v1 went.
-grep -q 'v1 docs are at' "$dist/index.html" || bad "the landing page lacks the v2 status paragraph"
+grep -q 'What runs today is sluis v1' "$dist/index.html" || bad "the landing page lacks the v1 and v2 status paragraph"
+grep -q 'Code: [0-9]* lines\?\.' "$dist/index.html" || bad "the landing page lacks the design and code line"
+grep -q 'Code: [0-9]* lines\?\.' "$dist/status/index.html" || bad "the status page lacks the design and code line"
 grep -q 'a pluggable identity and access broker' "$dist/index.html" || bad "the landing page lacks the tagline"
 
 # The v1 documentation, when it was built in.

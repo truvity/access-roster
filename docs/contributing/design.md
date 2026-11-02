@@ -1,7 +1,7 @@
 ---
 title: How we design
 description: How sluis v2 is designed. Principles first, questions to the maintainer only for real conflicts, generalise before detail, records and issues in step.
-status: shipped
+status: page
 sidebar:
   order: 3
 ---

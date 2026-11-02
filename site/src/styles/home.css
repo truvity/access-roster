@@ -183,6 +183,27 @@ html :is(h1#_top, .sluis-title h1) {
   color: var(--h-ink);
 }
 
+/* The mission, between the pains and the call to action */
+.home .mission {
+  max-width: 64ch;
+  margin-top: 1.25rem;
+}
+.home .mission p {
+  margin: 0;
+}
+.home .mission-text {
+  font-family: var(--h-serif);
+  font-size: clamp(1.05rem, 0.95rem + 0.35vw, 1.2rem);
+  line-height: 1.4;
+  color: var(--h-ink);
+}
+.home .mission-name {
+  margin-top: 0.5rem !important;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--h-mute);
+}
+
 /* The call to action, straight after the pains */
 .home .cta {
   display: flex;
@@ -563,6 +584,13 @@ html :is(h1#_top, .sluis-title h1) {
   font-family: var(--h-serif);
   font-size: clamp(1.4rem, 1rem + 1.4vw, 2rem);
   line-height: 1.2;
+  color: var(--h-ink);
+}
+.home .design-line {
+  max-width: 72ch;
+  margin: 1rem 0 0;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.9375rem;
   color: var(--h-ink);
 }
 .home .figures {

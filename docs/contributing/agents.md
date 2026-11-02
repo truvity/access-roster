@@ -1,7 +1,7 @@
 ---
 title: AI agents
 description: How AI agents contribute to sluis, who answers for their work, how a team of agents splits its roles, and what an agent reports back.
-status: shipped
+status: page
 sidebar:
   order: 7
 ---

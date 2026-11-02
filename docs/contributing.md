@@ -1,7 +1,7 @@
 ---
 title: Contributing
 description: How to take part in sluis v2, for people and AI agents alike. The working rules, one page per task, and the repository files that hold the rest.
-status: shipped
+status: page
 ---
 
 People and AI agents work on sluis by the same rules. The rules are written once, on the pages below; the files in the repository point here instead of repeating them.

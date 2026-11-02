@@ -13,6 +13,12 @@ export const STATUSES = {
     variant: 'caution',
     hint: 'Describes the design; part of it is built and part is not.',
   },
+  page: {
+    label: 'Page complete',
+    sidebar: 'Page',
+    variant: 'default',
+    hint: 'A page about the project itself. Complete; describes nothing that is built.',
+  },
   shipped: {
     label: 'Shipped',
     sidebar: 'Shipped',

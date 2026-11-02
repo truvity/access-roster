@@ -1,7 +1,7 @@
 ---
 title: v1 parity checklist
 description: Every user-visible capability of sluis v1, with its v1 documentation and its parity issue, and where v2 does it differently.
-status: shipped
+status: page
 ---
 
 This page lists what sluis v1 does: the checklist for v2 parity. v2 is a rewrite and matches v1 before it adds anything new; parity means that the workloads that use v1 can be wired to v2, possibly in a different way ([Roadmap](/roadmap/)). It is the one page of the site that describes v1 behaviour. The rows were taken from the v1 documentation at release **v1.79.3**; a feature that a later v1 release adds is added when the page is refreshed.

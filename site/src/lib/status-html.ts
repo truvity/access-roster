@@ -47,14 +47,10 @@ function cards(groups: Group[]): string {
   const milestones = groups.filter((g) => g.milestone && g.issues);
   if (!milestones.length) return '';
   const items = milestones.map((g, i) => {
-    const decided = g.reqs.total - g.reqs.open;
-    const adrTotal = g.adrs.accepted + g.adrs.proposed + (g.adrs.toWrite ?? 0);
+    // Only the issue figures are drawn as a bar: design is not progress toward code, and the
+    // page's line of design against code says where the code stands.
     const iss = g.issues!;
-    const bars: [string, number, number][] = [
-      ['ADRs accepted', g.adrs.accepted, adrTotal],
-      ['Requirements decided', decided, g.reqs.total],
-      ['Issues closed', iss.closed, iss.open + iss.closed],
-    ];
+    const bars: [string, number, number][] = [['Issues closed', iss.closed, iss.open + iss.closed]];
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
       + `<p class="ps-card-k">Milestone ${i + 1}${g.current ? ' · <strong>current</strong>' : ''}</p>`
       + `<p class="ps-card-n" id="card-${esc(g.slug)}"><a href="#${esc(g.slug)}">${esc(g.name)}</a></p>`

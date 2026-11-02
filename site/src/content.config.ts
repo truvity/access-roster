@@ -34,11 +34,12 @@ const decisionsLoader = (): Loader => ({
 });
 
 // Every page says how far its content is from being built: `target` is a
-// design that is not built, `partial` is partly built, `shipped` describes
-// what exists. The badge, the sidebar, llms.txt and the CI check read it.
+// design that is not built, `partial` is partly built, `page` is a page about the
+// project itself (complete, and describing nothing that is built), `shipped` describes
+// what exists (nothing uses it until code ships). The badge, the sidebar, llms.txt and the CI check read it.
 // `badge: false` is for the pages built in src/pages (the 404 page, the ADRs),
 // which are not documentation of a feature and show no badge.
-export const PAGE_STATUSES = ['target', 'partial', 'shipped'] as const;
+export const PAGE_STATUSES = ['target', 'partial', 'page', 'shipped'] as const;
 
 export const collections = {
   docs: defineCollection({
