@@ -68,8 +68,8 @@ A key is shared between two uses only when all of these are equal: **the audienc
 ### Rotation
 
 - **The yearly cycle re-signs.** An X.509 intermediate gets a new certificate over the same key at the yearly ceremony; an OpenPGP subkey gets a new binding that extends its expiry. A renewal makes no new key.
-- **Key material rotates on an event, or at most every three years.** The events are a suspected compromise, a change of algorithm or store, and a change of custody. With no event, a signing key is replaced no later than three years after it was made, within the one to three years that NIST SP 800-57 gives for a signing key; the forced rotation keeps the path exercised.
-- **Log keys are the one exception to the three-year limit: they rotate only on compromise.** This covers the log key of the audit writer and the issuance-log key of `ca`. A log is one continuous history, and its signatures must verify for the life of the log.
+- **Key material rotates by the rule of [principle 3](/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule).** A software key is replaced every three years, within the one to three years that NIST SP 800-57 gives for a signing key, which also keeps the rotation path exercised. A key on a card or in a cloud KMS is replaced on events, with a review of advisories at the yearly ceremony: an advisory affecting the device or firmware, deprecation of its algorithm, loss or end of life, and also a suspected compromise, a change of store and a change of custody. The rule for roots is ritueel's, and the principle links it.
+- **Log keys are the one exception to the rule above: they rotate only on compromise.** This covers the log key of the audit writer and the issuance-log key of `ca`. A log is one continuous history, and its signatures must verify for the life of the log.
 - **Symmetric KMS keys use KMS automatic rotation.**
 - **A rotation makes the new key first and retires the old one after.** On a card the new key goes into a free spare slot while the old one finishes; in KMS it is a new key under the same alias. A new intermediate is requested like the first one ([0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-hand-off)).
 
@@ -150,7 +150,7 @@ A documented, versioned map says which card slot serves which purpose: one slot 
 - **Derived signing keys, a burst key, or a short-lived online key certified by the intermediate.** Three boards sign about 21 signatures a second and a key service more, far above the load; a key in memory can be copied.
 - **The intermediate signs the tokens itself.** One key would both issue certificates and sign every token, so a flaw in token handling would reach the CA.
 - **A pair of slots per signing purpose, used in turn.** The yearly cycle re-signs the same key, so most pairs would stay empty for years; one shared spare range serves the rare event rotation.
-- **Yearly rotation of key material.** A new key and a ceremony per node every year adds exposure and work and exercises the path no better than the three-year limit.
+- **Yearly rotation of key material.** A new key and a ceremony per node every year adds exposure and work and exercises the path no better than the rotation rule of principle 3.
 - **A separate usage-log key, a grant-signing key, or a key per tenant.** Each adds keys, policies and slots for uses that share an audience and writer (usage), have no outside verifier (grants), or are covered by a wrapped data key (tenants).
 - **A key set with no `x5c`.** Custody could then be checked only in the audit log; standard clients ignore the member anyway.
 - **The PIN on disk, automatic PIN retries, or touch always on node cards.** A PIN on disk is open to anyone who reads the disk, three wrong attempts block the card, and touch would stop a node from signing unattended.
