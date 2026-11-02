@@ -274,6 +274,25 @@ await test('the snapshot and the live block come from one renderer', () => {
   assert.equal(none[0].issues, null);
 });
 
+await test('the milestone cards: a Design group and a Build group, named, with their own figures', () => {
+  // M1 holds the open requirement REQ-AA-001, the accepted record 0001-a and one open issue.
+  const groups = groupStatus({ options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] }, REPO);
+  const html = statusBodyHtml({ groups, mode: 'live', asOf: '2026-11-01T10:00:00Z', available: true });
+  const card = /<article class="ps-card[^"]*"[\s\S]*?<\/article>/.exec(html)?.[0] ?? '';
+  assert.ok(card, 'one card for the milestone');
+  assert.ok(card.includes('ps-bargroup-design') && card.includes('ps-bargroup-build'), 'a Design group and a Build group');
+  assert.ok(card.indexOf('ps-bargroup-design') < card.indexOf('ps-bargroup-build'));
+  assert.ok(card.includes('aria-label="Design: 1 of 1 ADRs accepted, 0 of 1 requirements decided"'), card);
+  assert.ok(card.includes('aria-label="Build: 0 of 1 requirements done, 0 of 1 issues closed"'), card);
+  for (const k of ['ADRs accepted', 'Requirements decided', 'Requirements done', 'Issues closed']) assert.ok(card.includes(`<dt>${k}</dt>`), k);
+  assert.equal(card.match(/<meter /g).length, 4);
+  // A decided requirement moves the Design bar and not the Build bar.
+  const decided = { ...REPO, requirements: [{ ...REPO.requirements[0], status: 'planned' }] };
+  const g2 = groupStatus({ options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] }, decided);
+  const card2 = statusBodyHtml({ groups: g2, mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
+  assert.ok(card2.includes('1 of 1 requirements decided') && card2.includes('0 of 1 requirements done'), 'planned counts as decided, not as done');
+});
+
 if (failures.length) {
   for (const f of failures) console.error(`check-worker: FAIL ${f}`);
   console.error(`check-worker: ${failures.length} of ${cases} cases failed`);

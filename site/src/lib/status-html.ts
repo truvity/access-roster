@@ -43,20 +43,39 @@ const label = (g: Group, i: number) => (g.milestone ? `${i + 1}. ${g.name}` : g.
 const runState = (r: Run) => (r.status === 'completed' ? (r.conclusion ?? 'completed') : r.status.replace(/_/g, ' '));
 const runFailed = (r: Run) => r.status === 'completed' && !['success', 'skipped', 'neutral'].includes(r.conclusion ?? '');
 
+// A bar group on a milestone card: a heading that says what the bars measure, and the bars.
+// Design and Build are drawn apart and named, so that a record or a requirement decided on
+// paper is never read as code that runs.
+type Bar = [label: string, value: number, total: number];
+function barGroup(kind: 'design' | 'build', head: string, sub: string, summary: string, bars: Bar[]): string {
+  return `<div class="ps-bargroup ps-bargroup-${kind}" role="group" aria-label="${esc(summary)}">`
+    + `<p class="ps-bars-k">${esc(head)} <span class="ps-bars-s">${esc(sub)}</span></p>`
+    + `<dl class="ps-bars">${bars.map(([k, a, b]) =>
+      `<div><dt>${esc(k)}</dt><dd><meter class="ps-meter" min="0" max="${b || 1}" value="${a}" aria-hidden="true">${frac(a, b)}%</meter>`
+      + `<span class="ps-v">${a} of ${b}</span></dd></div>`).join('')}</dl></div>`;
+}
+
 function cards(groups: Group[]): string {
   const milestones = groups.filter((g) => g.milestone && g.issues);
   if (!milestones.length) return '';
   const items = milestones.map((g, i) => {
-    // Only the issue figures are drawn as a bar: design is not progress toward code, and the
-    // page's line of design against code says where the code stands.
     const iss = g.issues!;
-    const bars: [string, number, number][] = [['Issues closed', iss.closed, iss.open + iss.closed]];
+    // Design: what is decided on paper. A requirement is decided once it is no longer open
+    // (planned, partial or done); an ADR is accepted, out of accepted, proposed and to write.
+    const adrTotal = g.adrs.accepted + g.adrs.proposed + (g.adrs.toWrite ?? 0);
+    const decided = g.reqs.total - g.reqs.open;
+    const design = barGroup('design', 'Design', 'decided on paper, not built',
+      `Design: ${g.adrs.accepted} of ${adrTotal} ADRs accepted, ${decided} of ${g.reqs.total} requirements decided`,
+      [['ADRs accepted', g.adrs.accepted, adrTotal], ['Requirements decided', decided, g.reqs.total]]);
+    // Build: requirements marked done (set by hand in the pull request that adds the passing
+    // tests), and the issues closed, which also count decision issues.
+    const build = barGroup('build', 'Build', 'code and tests',
+      `Build: ${g.reqs.done} of ${g.reqs.total} requirements done, ${iss.closed} of ${iss.open + iss.closed} issues closed`,
+      [['Requirements done', g.reqs.done, g.reqs.total], ['Issues closed', iss.closed, iss.open + iss.closed]]);
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
       + `<p class="ps-card-k">Milestone ${i + 1}${g.current ? ' · <strong>current</strong>' : ''}</p>`
       + `<p class="ps-card-n" id="card-${esc(g.slug)}"><a href="#${esc(g.slug)}">${esc(g.name)}</a></p>`
-      + `<dl class="ps-bars">${bars.map(([k, a, b]) =>
-        `<div><dt>${esc(k)}</dt><dd><meter class="ps-meter" min="0" max="${b || 1}" value="${a}" aria-hidden="true">${frac(a, b)}%</meter>`
-        + `<span class="ps-v">${a} of ${b}</span></dd></div>`).join('')}</dl></article>`;
+      + design + build + '</article>';
   });
   return `<section class="ps-cards" aria-label="Milestones at a glance">${items.join('')}</section>`;
 }

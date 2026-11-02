@@ -100,6 +100,11 @@ async function checkStatusHtml(dist) {
   const groups = [...html.matchAll(/<tbody\b[^>]*\bdata-group="([^"]*)"/g)].map((m) => unescape(m[1]));
   const details = [...html.matchAll(/<details\b[^>]*\bdata-group="([^"]*)"/g)].map((m) => unescape(m[1]));
   if (JSON.stringify(groups) !== JSON.stringify(details)) problems.push(`/status/: the table groups (${groups.join(' | ')}) and the open-work sections (${details.join(' | ')}) differ`);
+  // Whenever the board was read, every milestone card has a Design group and a Build group, named apart.
+  const cards = (html.match(/<article class="ps-card/g) ?? []).length;
+  const design = (html.match(/class="ps-bargroup ps-bargroup-design"/g) ?? []).length;
+  const build = (html.match(/class="ps-bargroup ps-bargroup-build"/g) ?? []).length;
+  if (state === 'available' && (cards === 0 || design !== cards || build !== cards)) problems.push(`/status/: ${cards} milestone cards, but ${design} Design groups and ${build} Build groups`);
   const options = await milestoneOptions();
   if (options) {
     const want = [...options, NO_MILESTONE];
@@ -293,6 +298,7 @@ const STATE = `(() => ({
   explorer: document.documentElement.classList.contains('ex-js'),
   live: document.querySelector('[data-live-src]')?.dataset.live ?? null,
   liveBody: document.querySelector('[data-live-body] .ps-body')?.dataset.mode ?? null,
+  bars: { design: document.querySelectorAll('.ps-card .ps-bargroup-design').length, build: document.querySelectorAll('.ps-card .ps-bargroup-build').length },
   liveNote: document.querySelector('[data-live-note]') ? !document.querySelector('[data-live-note]').hidden : null,
 }))()`;
 
@@ -327,7 +333,10 @@ async function checkPage(cdp, base, page, scheme) {
     } else if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') {
       problems.push(`console.error: ${m.params.args.map((a) => a.value ?? a.description).join(' ')}`);
     } else if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') {
-      if (page.live === 'down' && (m.params.entry.url ?? '').endsWith(LIVE)) return;
+      if (page.live === 'live' && (!st?.bars?.design || st.bars.design !== st.bars.build)) {
+    problems.push(`live block: every milestone card needs a Design group and a Build group, found ${st?.bars?.design} and ${st?.bars?.build}`);
+  }
+  if (page.live === 'down' && (m.params.entry.url ?? '').endsWith(LIVE)) return;
       problems.push(`log: ${m.params.entry.text} ${m.params.entry.url ?? ''}`);
     }
   });
