@@ -4,7 +4,7 @@ area: AUDIT
 requirements:
   - id: REQ-AUDIT-001
     area: AUDIT
-    statement: "Every successful mint, grant, exchange and administrative change MUST produce an audit record."
+    statement: "Every successful sign-in, mint, grant, exchange and administrative change MUST produce an audit record."
     rationale: "An action without a record cannot be reviewed."
     level: MUST
     source: v1-parity
