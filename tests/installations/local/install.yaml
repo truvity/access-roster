@@ -47,8 +47,10 @@ clients:
   sluis-cli:
     kind: public
     redirects: [http://127.0.0.1/callback]
-  dev:
-    kind: exchange
+  dev:                              # the boundary's client at the group issuer: entry@dev signs a browser in here
+    kind: confidential
+    redirects: [https://sluis.dev.local.test/callback]
+    secret: { credential: client-dev }
 
 policy:
   files: [policy/local.cedar]   # the Cedar schema is embedded; see https://sluis.id/reference/policy/
