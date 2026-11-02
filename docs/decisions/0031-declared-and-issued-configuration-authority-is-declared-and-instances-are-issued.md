@@ -66,7 +66,7 @@ A kind of instance arrives with its first real caller, in its own milestone: ten
 - The reviewed surface stays small: templates and delegation policies, not one entry per tenant. The cost is a template and a delegation rule for each kind of thing a tenant may create.
 - A stolen credential of the customer-identity module can create instances inside the templates and bounds it is delegated, and no more. It cannot widen a grant, because no template lets a slot do that.
 - Per-customer defaults have no review in git. The configuration service's own change history and approval are their control, and the bound in the template limits what a wrong default can do.
-- Every runtime needs a configuration source with versions, which 0010 already lists. Live reload becomes necessary for the customer-identity installation, so #977 gates that milestone.
+- Every runtime needs a configuration source with versions, which 0010 already lists. Live reload is needed by every installation that changes policy or clients without a deploy, the workforce installation first, so #977 belongs to the v1 parity milestone and gates the customer-identity installation as well ([reload classes](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#reload-classes)).
 - Requirements: [REQ-OPS-025](/requirements/ops/#REQ-OPS-025) to [REQ-OPS-029](/requirements/ops/#REQ-OPS-029).
 
 ## Roads not taken

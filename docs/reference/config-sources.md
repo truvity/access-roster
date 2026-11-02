@@ -96,9 +96,16 @@ The vectors are a document set beside the profile vectors of the [install file](
 | A `signed` source whose document is unsigned, signed by another key, or signed with `alg` other than ES384 | Refused before the payload is parsed |
 | A `signed` source whose header has `crit`, `jku`, `x5u` or `jwk` | Refused |
 | A `signed` document with a `seq` lower than the one in force | Refused on reload |
+| A `signed` document with a `seq` lower than the newest published, read by a process that is starting | Read: nothing is in force to compare with; the audit record carries the digest and `seq` |
 | A `service` source that owns a field marked `x-sluis-authority` | Refused by `check` |
 | A `file` or `signed` source that owns a field marked `x-sluis-defaults` | Refused by `check` |
 | An `appconfig` source on an installation that has no AWS | Refused by `check`: the driver is not offered |
+| The install file is missing, unreadable or invalid at start | Refused: the process does not start |
+| A `file` source whose file is missing, unreadable or invalid at start | Refused: the process does not start |
+| An `appconfig` source that cannot be reached at start | Refused: the process does not start |
+| A reload whose snapshot changes a `restart` path and a `live` path | Refused as a whole: the version in force stays, the `live` change is not applied |
+| A reload whose snapshot changes only `live` paths | Read: the whole composition is swapped |
+| A source that owns a `restart` path | Read at start; `check` warns, and a reload that changes the path is refused |
 
 ## The signed document
 
@@ -106,8 +113,8 @@ A `signed` source holds a compact JWS (RFC 7515, RFC 7518) whose payload is the 
 
 - **Header.** `alg` is `ES384`. `kid` names a key of the source's `keys`. `seq` is a positive integer that the publishing pipeline increases with every document. Any other `alg`, and a `crit`, `jku`, `x5u` or `jwk` header, are refused.
 - **Order.** The signature is verified over the received bytes first; only then is the payload parsed. A document that fails verification is reported as refused and is never read.
-- **Digest.** The audit record of a start or reload carries the SHA-384 of the payload for each source, and of the merged document. A reviewer matches a source's digest to `sha384sum` of the file at the commit. The signature proves who published these bytes; that the commit was reviewed is the branch protection of the repository.
-- **Freshness.** `seq` stops a running process from accepting an older document than the one in force. A process that starts takes the latest signed document the source gives it; a service that serves an older signed version at a cold start is not detected, and the digest in the audit record is how that is found.
+- **Digest.** The audit record of a start or reload carries the SHA-384 of the payload and the `seq` for each source, and the SHA-384 of the merged document. A reviewer matches a source's digest to `sha384sum` of the file at the commit. The signature proves who published these bytes; that the commit was reviewed is the branch protection of the repository.
+- **Freshness.** `seq` stops a running process from accepting an older document than the one in force. It protects a running process only: a process that starts takes the latest signed document the source gives it, whatever its `seq`. A service that serves an older signed version at a cold start is not detected by the process; the digest and `seq` in the audit record are how it is found afterwards, by comparing them with the head of the reviewed branch. A floor (`min_seq`) and an expiry (`not_after`) were weighed and not taken ([ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#roads-not-taken)). The residual is stated in [ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#freshness-at-a-cold-start).
 - **Size.** The payload is encoded in base64url, a third larger than the file. A service has a size limit of its own; the figure for AppConfig hosted configurations (2 MiB) is UNVERIFIED and is confirmed with the driver ([#1157](https://github.com/truvity/sluis/issues/1157)).
 
 ## What a driver returns
@@ -123,6 +130,8 @@ AppConfig facts, READ 2026-11-02 from the AWS API reference of `GetLatestConfigu
 
 ## Start, reload and failure
 
-- **At start**, the base is read, then every source in the list. A source that is unreachable, unsigned or invalid stops the start; there is no cached copy and no fallback.
+- **At start, every source stops the start when it is unavailable or broken, and so does the base.** The install file and each source, `file` or `appconfig`, must be reachable, readable, signed where `verify` says so and valid. A file that is missing, unreadable or invalid, a service that cannot be reached, an unsigned or invalid document: each is an error that names the source, and the process does not start. There is no cached copy, no signed last-known-good copy in a layer, no default in place of a missing document and no fallback to a weaker source ([ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#failure)).
 - **At reload**, all sources are read again, composed and validated, and the result replaces the version in force as a whole, or not at all. An unreachable source is retried with a back-off and reported, and the version in force stays. A refused document is audited with its digest.
+- **A reload changes `live` paths only.** Every path is `live` or `restart` ([the classes](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#reload-classes), [by area](/reference/install-file/#which-keys-reload)). A snapshot that changes a `restart` path is refused as a whole: the version in force stays, no `live` change in it is applied, and the audit record names the digest and the paths, never their values. A restart applies it. `sluis config check --against` lists these paths before the document is published.
+- **Live configuration on Lambda comes from `appconfig`.** A layer is a file that cannot change under a running function (`watch` is `none`), so the install file in the layer is `restart`. Policy and clients change without a new function version when an `appconfig` source owns them, for example `owns: [/policy, /clients, /boundaries/dev/clients]` with `verify: signed`; each function polls at the first invocation after the interval the service returned. The `file` driver on bare-metal, in Compose and on Kubernetes signals by notify, so a replaced file or a swapped ConfigMap reloads without a poll.
 - **`sluis config explain`** names the source of each field in its layer column, for example `install   source authority`, and `check` lists each source with its verdict.

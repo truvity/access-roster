@@ -81,10 +81,24 @@ Declared configuration and live reload:
 
 - **Layers apply inside declared only:** defaults, runtime, install file, environment overrides; a later layer overrides an earlier one. Operator-set is an origin, not a layer.
 - **The install layer can come from several sources** (files, a ConfigMap, a Lambda layer, AWS AppConfig), put together and trusted by the rule of [0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/).
-- **Declared configuration may live-reload as whole versioned snapshots**, from a file, a ConfigMap, a Lambda layer or AWS AppConfig. A new snapshot is validated as `sluis config check` does, swapped atomically and audited with its digest; a failing snapshot is refused and the version in force stays. A field that a running instance cannot change in place, such as a driver choice, is marked in the schema and applied at the next start.
+- **Declared configuration may live-reload as whole versioned snapshots**, from a file, a ConfigMap, a Lambda layer or AWS AppConfig. A new snapshot is validated as `sluis config check` does, swapped atomically and audited with its digest; a failing snapshot is refused and the version in force stays. Which paths a reload may change is the rule of [reload classes](#reload-classes).
 - **Operator-set values are read live**, through `state` with a short cache whose lifetime is part of the field's schema.
 - **Tunables and runtime switches are kept apart.** Tunables (log level, timeout, driver choice) are declared and may come from an environment override. Runtime switches are operator-set, tighten-only where they touch safety. Neither reaches authority.
 - **`sluis config check` and `explain` are offline by default**, as CI runs them. With `--live` they read operator-set records through the console API, list held objects, and show each field's effective value, origin, layer and, for an operator-set value, who set it and when.
+
+### Reload classes
+
+One rule says what a reload may change, for every runtime and every source:
+
+- **Every path of declared configuration is in one of two classes.** A `live` path is applied on reload, in the running process, without a restart. A `restart` path is applied only by a restart; a reload that changes one is refused.
+- **The class is a property of the path, written in the schema** as `x-sluis-reload: live` or `restart`, beside the other annotations ([below](#sensitivities)). The class of a path is that of its nearest annotated ancestor; the root is `restart`. So a key that no one has argued for is `restart`, and a pull request that adds a key says its class.
+- **Ask one question per path: does changing it need a new process, a new key handle or a new connection pool?** If yes, it is `restart`. If the running process can read the new value on its next use, it is `live`. Wiring is `restart`: what a process is, where it listens, which keys and stores it holds, which drivers it runs, whom it trusts and where it reads from. Declared data is `live`: who a client is, what policy says, which grants and roles exist, how an upstream is reached. Where the answer differs inside one area, the annotation sits on the smaller subtree.
+- **A change is a difference at a path.** The path is the shallowest one that differs: a mapping entry that is added or removed is one change at the entry, so a new boundary is `restart` although its `clients` are `live`. A sequence is one value, as in [composition](/reference/config-sources/#composition). The classes by area are in [the install file](/reference/install-file/#which-keys-reload).
+- **A reload that changes any `restart` path is refused as a whole.** The version in force stays, none of the `live` changes in the same snapshot is applied, and the refusal is audited with the digest of the snapshot and the paths that need a restart, never their values. It is reported once for each refused digest, not at every poll. A restart reads the snapshot at start, where every class applies.
+- **`sluis config check` names the paths of a change that need a restart,** against the previous version it is given ([how](/reference/cli/#sluis-config-check-and-explain)), so a pipeline learns it before it publishes.
+- **A tighten-only field is `live`.** `x-sluis-tighten-only` and `x-sluis-reload: restart` on one field fail the schema check. A brake does not wait for a restart (the tighten-only rule under Precedence, above).
+- **Operator-set values are outside the rule:** they are read live through `state`, as above.
+- **Where the changes go.** Put the `restart` paths in the install file, which a restart or a new function version deploys, and let the sources own paths that are `live`. `sluis config check` warns about a source that owns a `restart` path. How a runtime restarts is its own: a new function version on Lambda, a rollout on Kubernetes, a service restart on bare-metal.
 
 ### Sensitivities
 
@@ -109,6 +123,7 @@ Declared configuration and live reload:
 | `x-sluis-authority` (field) | true | declared only |
 | `x-sluis-accepts` (field) | a list of origins | precedence |
 | `x-sluis-tighten-only` (field) | the safe direction | the one override of declared |
+| `x-sluis-reload` (path) | live, restart | what a reload may change ([reload classes](#reload-classes)) |
 | `x-sluis-external` (kind) | the export kind | `export` port, consumer grants |
 | `x-sluis-restore` (kind) | replace, union, skip | restore merge |
 | `x-sluis-roll-forward` (kind) | true | the audit record of each write carries the full value apart from secrets |
@@ -159,7 +174,9 @@ The full value of a write sits in the OCSF record's own entity data ([0017](/dec
 - The click-to-configure pattern exists, bounded: an operator-set record is audited with its full value, backed up and rolled forward, and can never grant access. A stolen operator session can tighten and configure operational records, not widen authority.
 - Every console page that shows configuration must show the origin, the lock state and the held objects, and `--live` checks need operator credentials.
 - Live reload of whole snapshots replaces "a new value is a deploy" (v1 ADR 0036), and is tested on every runtime.
+- Every path has a reload class, so an operator knows before publishing whether a change lands at once or waits for a restart. A key that nobody has classified is `restart`, which is safe and slow. The cost is one more annotation to review on every key, and a snapshot that mixes the two classes: it holds back its `live` part in every running process until they restart, because it is refused as a whole. The layout above and `sluis config check` against the previous version keep a mixed snapshot from being published by accident. While a restart rolls out, a process that has restarted and one that has not disagree on a `restart` path, which is the overlap of any rollout ([0033](/decisions/0033-evolution-and-compatibility-n-and-n-1-inside-a-major-and-parallel-cutover/)).
 - Backups hold more than in v1, and secrets written after the last archive are lost on restore and must be rotated; the preview makes that visible. The recovery switch is backed up with a union merge, which keeps v1 ADR 0075's property that an old archive cannot reopen recovery.
+- Requirements for the reload classes: [REQ-OPS-057](/requirements/ops/#REQ-OPS-057) to [REQ-OPS-062](/requirements/ops/#REQ-OPS-062).
 - This record succeeds v1 ADRs 0018, 0036, 0063 and 0067, and generalises 0019 to 0022 and 0075.
 
 ## Roads not taken
@@ -177,6 +194,11 @@ The full value of a write sits in the OCSF record's own entity data ([0017](/dec
 - **Declared seeds a value and the console overrides it, or last writer wins.** Git would no longer show the effective value, and a change on either side could silently erase the other (v1 ADR 0020 removed exactly this take-over).
 - **Operator-set authority with a second person's approval, or signed operator writes.** It rebuilds a writable policy API and puts passkey friction on every write; a permission-checked write audited under a person is enough for 2.0.
 - **The `console` actor or a separate store holding every operator-set record.** One actor would validate other actors' rules and hold write access to every kind, and a second store would need running and replicating on every installation.
+- **Everything restarts, as in v1.** A revoked grant or a new client would wait for a rollout, and on Lambda for a new version of every function.
+- **Everything reloads.** A key handle, a listener or a connection pool would be rebuilt in a running process while requests are in flight, and a failure half-way leaves a process that is neither the old version nor the new.
+- **Apply the `live` part of a mixed snapshot and refuse only the `restart` part.** The process would run a document that nobody reviewed or published, with an audited digest that matches no commit, and the next restart would change its behaviour again. Refusing the whole keeps one rule and one version in force; the price is that a `live` change waits (see Consequences).
+- **A class per file or per source instead of per path.** One area holds both: a boundary is wiring and its `clients` are data. A class per file would force a file for each class and could not follow a subtree.
+- **A process that exits and is restarted when its configuration changes.** A policy edit would become an outage of the requests in flight, and a Lambda function has no supervisor to restart it.
 - **Vendor-issued secrets unsealed and re-wrapped for the archive, or left out of it.** Re-wrapping gives the backup side read access to every secret; leaving them out needs a person at every vendor after a restore.
 
 ## Follow-ups
@@ -184,3 +206,4 @@ The full value of a write sits in the OCSF record's own entity data ([0017](/dec
 - Backup archive format and the restore tooling: [#1015](https://github.com/truvity/sluis/issues/1015).
 - Cutover and migration of v1 configuration, in the parity milestone: [#1017](https://github.com/truvity/sluis/issues/1017).
 - Reconcilers (membership only, one per target, under a lease): [#1012](https://github.com/truvity/sluis/issues/1012).
+- Live reload on every runtime, with the classes above: [#977](https://github.com/truvity/sluis/issues/977).
