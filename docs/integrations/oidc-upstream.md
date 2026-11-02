@@ -36,7 +36,7 @@ The subject claim is `sub` unless the connection says otherwise (`subject_claim`
 Beyond sign-in, a connection supports what a CIAM product or any strict provider needs:
 
 - **Claim mapping per connection**, from the allow-listed claims of the provider to the facts sluis uses ([ADR 0049](/decisions/0049-a-domain-routes-only-after-dns-proof-and-a-connection-has-a-trust-level/#claims-and-groups)).
-- **`acr` and `amr` passthrough**, so policy sees how strongly a person signed in.
+- **`acr` and `amr` passthrough**, so policy sees how strongly a person signed in. A provider that sends them only on request, as Google does, needs a configured `claims` request parameter ([#1154](https://github.com/truvity/sluis/issues/1154)).
 - **Step-up (RFC 9470).** When a grant needs a stronger sign-in than the session has, sluis sends the person back with a challenge for a higher `acr`, or asks for a passkey ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#step-up)).
 - **Sessions and step-up for customers.** The upstream holds the long single-sign-on session; sluis keeps the 24-hour limit of a human session and authenticates the person at the upstream again, silently while the upstream's session is valid. A customer's step-up is a re-authentication at the upstream with the `acr_values` and `max_age` that policy asked for, and sluis asks no customer for a passkey ([ADR 0023](/decisions/0023-sessions-have-three-classes-with-limits-per-class/#customers)).
 - **Back-channel logout**: the upstream can end the session at sluis with a back-channel logout token, mapped by `sid` ([ADR 0051](/decisions/0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person/#inbound-back-channel-logout)).
