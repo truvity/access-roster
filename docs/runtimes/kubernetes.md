@@ -39,7 +39,7 @@ The edge relay is the only container with a port on the pod address. It forwards
 - **Drivers are native sidecars,** started by the platform before the actors that call them ([ADR 0005](/decisions/0005-the-store/#drivers)). A driver is never a pod of its own, because its socket cannot leave the pod.
 - **The mount is the first lock.** Each callee's socket directory is its own volume, mounted only into the containers the call graph allows; this takes the place of a host's socket groups. The callee still reads the caller's uid with `SO_PEERCRED` and checks the call graph, default deny. `shareProcessNamespace` is off.
 - **The fusion unit is the container** ([ADR 0003](/decisions/0003-units-transports-and-fusion/#fusion)). A generated check fails the build when a container that holds a key credential exposes a listener.
-- **A pod per integration,** with its own egress NetworkPolicy listing only its vendor's hosts, and its own lifecycle. The sluis pod calls it over HTTPS. The one exception is the pool of a customer boundary's customer connections, which runs a few replicas for all of them and reaches providers through an egress proxy ([ADR 0054](/decisions/0054-customer-connections-run-in-a-pool-per-customer-boundary/)).
+- **A pod per integration,** with its own egress NetworkPolicy listing only its vendor's hosts, and its own lifecycle. The sluis pod calls it over HTTPS. The one exception is the pool of a customer boundary's customer connections, which runs a few replicas for all of them and reaches providers through an egress proxy ([ADR 0033](/decisions/0033-customer-connections/)).
 - **No RBAC.** The chart renders no Role, RoleBinding, ClusterRole or ClusterRoleBinding: sluis needs no access to the Kubernetes API, not even for leases.
 
 ## Keys

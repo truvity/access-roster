@@ -494,7 +494,7 @@ requirements:
   - id: REQ-BACKUP-037
     area: BACKUP
     statement: "A backup archive MUST NOT hold an escrow copy of any data key except those of sealed secrets."
-    rationale: "An archive must not undo the shred of a company's audit key (ADR 0048)."
+    rationale: "An archive must not undo the shred of a company's audit key (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -506,7 +506,7 @@ requirements:
   - id: REQ-BACKUP-038
     area: BACKUP
     statement: "A restore MUST re-apply every shred and every erasure that the audit log records after the archive was taken."
-    rationale: "Restoring an old archive must not bring back erased data (ADR 0048)."
+    rationale: "Restoring an old archive must not bring back erased data (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -518,7 +518,7 @@ requirements:
   - id: REQ-BACKUP-039
     area: BACKUP
     statement: "sluis config check MUST refuse a production installation that declares no retention for its backup archives."
-    rationale: "An erasure reaches the copies in archives only when they expire (ADR 0048)."
+    rationale: "An erasure reaches the copies in archives only when they expire (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned

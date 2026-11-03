@@ -6,7 +6,7 @@ sidebar:
   order: 4
 ---
 
-The **generic OpenID Connect upstream** is the same kind of integration as Google sign-in, for any provider that publishes OIDC discovery: a customer's identity provider, a partner's, or a CIAM product. A dedicated connection is its own process, `oidc@<name>`; the connections of a product's customer organisations run in a pool of their customer boundary ([ADR 0054](/decisions/0054-customer-connections-run-in-a-pool-per-customer-boundary/)). A **peer sluis** is the case where the provider is another sluis installation.
+The **generic OpenID Connect upstream** is the same kind of integration as Google sign-in, for any provider that publishes OIDC discovery: a customer's identity provider, a partner's, or a CIAM product. A dedicated connection is its own process, `oidc@<name>`; the connections of a product's customer organisations run in a pool of their customer boundary ([ADR 0033](/decisions/0033-customer-connections/)). A **peer sluis** is the case where the provider is another sluis installation.
 
 ## What it's for
 

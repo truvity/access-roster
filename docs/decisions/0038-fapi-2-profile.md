@@ -8,7 +8,7 @@ Proposal: [issue #1025](https://github.com/truvity/sluis/issues/1025).
 
 ## Context
 
-Some relying parties of a customer-identity installation, a regulated entity's among them, need the FAPI 2.0 Security Profile: authorization by pushed request, tokens bound to a key, clients that authenticate with a key, the issuer in the response, and algorithms the profile allows. The work is split over [#912](https://github.com/truvity/sluis/issues/912) (the features), [#929](https://github.com/truvity/sluis/issues/929) (the conformance plans) and [#1025](https://github.com/truvity/sluis/issues/1025) (this record). The board holds all three in the customer-identity milestone while the roadmap lists FAPI under "Later" and its done-when does not name it. [0017](/decisions/0017-identity-and-sign-in/#optional-openid-flows) says FAPI 2.0 comes after the parity milestone, which is where the customer-identity milestone sits.
+Some relying parties of a customer-identity installation, a regulated party's among them, need the FAPI 2.0 Security Profile: authorization by pushed request, tokens bound to a key, clients that authenticate with a key, the issuer in the response, and algorithms the profile allows. The work is split over [#912](https://github.com/truvity/sluis/issues/912) (the features), [#929](https://github.com/truvity/sluis/issues/929) (the conformance plans) and [#1025](https://github.com/truvity/sluis/issues/1025) (this record). The board holds all three in the customer-identity milestone, and the roadmap does not list FAPI under "Later". [0017](/decisions/0017-identity-and-sign-in/#optional-openid-flows) says FAPI 2.0 comes after the parity milestone, which is where the customer-identity milestone sits.
 
 Two statements disagree on binding. Threat T-1 says tokens "are sender-constrained"; [0017](/decisions/0017-identity-and-sign-in/#subjects) and [0020](/decisions/0020-grant-vocabulary-and-token-claims/#binding) say an audience that declares no binding gets a bearer token, because AWS web identity, the Kubernetes API server and Argo CD accept bearer JWTs only. FAPI 2.0 also does not allow ES384, which is sluis's default algorithm ([0006](/decisions/0006-keys-and-sealing/#algorithms)); [#912](https://github.com/truvity/sluis/issues/912) lists PS256, ES256 and EdDSA as the ones to support.
 
@@ -21,14 +21,14 @@ Two statements disagree on binding. Threat T-1 says tokens "are sender-constrain
 
 ### The profile
 
-A client or an audience may declare `profile: fapi2`. Then `sluis config check` requires, and the token and authorization endpoints enforce:
+A client or an audience may declare `profile: fapi2`. An installation client declares it in config. A tenant client declares it only when its client template allows the profile ([0021](/decisions/0021-clients/#the-client-declaration)). Then `sluis config check` requires, and the token and authorization endpoints enforce:
 
 - **Pushed authorization requests (RFC 9126).** The authorization endpoint accepts only a `request_uri` from a PAR call; a `request_uri` is single-use and short-lived. A "PAR required" switch exists for the client and for the installation.
 - **PKCE with S256, the authorization code flow only,** exact redirect URI matching, and the `iss` response parameter of RFC 9207.
-- **Client authentication by `private_key_jwt`** or mutual TLS, never a client secret. The client's public key is in its record; sluis holds no key of the client, and the assertion rules of [REQ-CLIENT-017](/requirements/client/#REQ-CLIENT-017) to [REQ-CLIENT-019](/requirements/client/#REQ-CLIENT-019) (audience, lifetime of at most 60 seconds, a `jti` accepted once) are enforced as MUST for this profile.
+- **Client authentication by `private_key_jwt`** or mutual TLS, never a client secret. The client's public key is in its client declaration; sluis holds no key of the client, and the assertion rules of [REQ-CLIENT-017](/requirements/client/#REQ-CLIENT-017) to [REQ-CLIENT-019](/requirements/client/#REQ-CLIENT-019) (audience, lifetime of at most 60 seconds, a `jti` accepted once) are enforced as MUST for this profile.
 - **A sender-constrained access token: DPoP first,** with the server-provided nonce the plan requires. Mutual TLS follows its own consumer ([REQ-CLIENT-014](/requirements/client/#REQ-CLIENT-014)).
-- **Its own signing algorithm: ES256 first.** The profile's audience signs with an ES256 key of the boundary, a key of its own purpose beside the ES384 token key, in the key set under its own `kid`. PS256 and EdDSA are added when a client needs them and the key store offers them. The default stays ES384 ([REQ-TOKEN-019](/requirements/token/#REQ-TOKEN-019)). Algorithm keys are per boundary, never per tenant ([0032](/decisions/0032-customer-identity-installations/)).
-- **Signed request objects (RFC 9101) are accepted** from a client of the profile that sends them. Response signing and signed introspection, the parts of FAPI 2.0 Message Signing, are built with the first relying party that requires them; until then discovery does not advertise them and a request object is refused as it is today.
+- **Its own signing algorithm: ES256 first.** The profile's audience signs with an ES256 key of the boundary, a dedicated key beside the ES384 token key, in the key set under its own `kid`. `signer` signs with it through key@, and on a board it takes a spare card slot ([0006](/decisions/0006-keys-and-sealing/#the-slot-plan)). PS256 and EdDSA are added when a client needs them and the key store offers them. The default stays ES384 ([REQ-TOKEN-019](/requirements/token/#REQ-TOKEN-019)). Algorithm keys are per boundary, never per tenant ([0006](/decisions/0006-keys-and-sealing/#key-purposes)).
+- **Signed request objects (RFC 9101) are accepted** from a client of the profile that sends them. Response signing and signed introspection, the parts of FAPI 2.0 Message Signing, are built with the first relying party that requires them; until then discovery does not advertise them and a request object is refused.
 - **Details the plan checks,** such as the exact nonce behaviour, are implemented as the pinned revision of the plan needs and recorded in the standards register.
 
 ### Claims of conformance
@@ -37,14 +37,14 @@ sluis claims a FAPI 2.0 plan only when it passes ([Conformance](/standards/confo
 
 ### The roadmap and the board
 
-The FAPI 2.0 Security Profile is in the customer-identity milestone: its done-when gains the profile for clients that declare it, [#912](https://github.com/truvity/sluis/issues/912), [#929](https://github.com/truvity/sluis/issues/929) and [#1025](https://github.com/truvity/sluis/issues/1025) stay in that milestone, and the roadmap's "Later" list drops FAPI.
+The FAPI 2.0 Security Profile is in the customer-identity milestone: its done-when names the profile for clients that declare it, [#912](https://github.com/truvity/sluis/issues/912), [#929](https://github.com/truvity/sluis/issues/929) and [#1025](https://github.com/truvity/sluis/issues/1025) stay in that milestone, and the roadmap's "Later" list does not carry FAPI.
 
 ## Consequences
 
 - A regulated relying party gets the profile it asks for by declaring it, and nobody else pays for it: the default clients keep ES384 and bearer tokens.
-- The profile adds an ES256 key per boundary that uses it, certified like the other token keys, so a yearly re-signing item per boundary that declares the profile.
-- Clients of the profile hold keys, and a lost client key is that client's problem to rotate by a changed record.
-- Requirements: [REQ-CLIENT-035](/requirements/client/#REQ-CLIENT-035), [REQ-CLIENT-036](/requirements/client/#REQ-CLIENT-036), [REQ-CLIENT-037](/requirements/client/#REQ-CLIENT-037), [REQ-CLIENT-038](/requirements/client/#REQ-CLIENT-038), [REQ-CLIENT-039](/requirements/client/#REQ-CLIENT-039), [REQ-CLIENT-040](/requirements/client/#REQ-CLIENT-040), [REQ-TOKEN-040](/requirements/token/#REQ-TOKEN-040), [REQ-TOKEN-041](/requirements/token/#REQ-TOKEN-041) are added.
+- The profile adds an ES256 key per boundary that uses it, certified like the other token keys ([0006](/decisions/0006-keys-and-sealing/#the-token-signing-key)), so a yearly re-signing item per boundary that declares the profile.
+- Clients of the profile hold keys, and a lost client key is that client's problem to rotate by a changed client declaration.
+- Requirements: [REQ-CLIENT-035](/requirements/client/#REQ-CLIENT-035), [REQ-CLIENT-036](/requirements/client/#REQ-CLIENT-036), [REQ-CLIENT-037](/requirements/client/#REQ-CLIENT-037), [REQ-CLIENT-038](/requirements/client/#REQ-CLIENT-038), [REQ-CLIENT-039](/requirements/client/#REQ-CLIENT-039), [REQ-CLIENT-040](/requirements/client/#REQ-CLIENT-040), [REQ-TOKEN-040](/requirements/token/#REQ-TOKEN-040) and [REQ-TOKEN-041](/requirements/token/#REQ-TOKEN-041) state these rules.
 
 ## Roads not taken
 
