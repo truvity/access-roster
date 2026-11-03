@@ -1,0 +1,1611 @@
+# The kind registry: every kind of data sluis keeps, with its scope, class, treatment, profile, layer,
+# writer, readers and lifetime. The design phase keeps it by hand here; once the code exists the YAML is
+# generated from the Protobuf kind options and CI checks the two for equality.
+#
+# One kind, one row. `tools/checks/registries.mjs` (`just check-registries`) keeps it true: the closed
+# fields below, one writer per kind (except the declared self-scoped kinds), every writer and reader an
+# actor of docs/architecture/actors.yaml, a time to live on every temp kind, no tenant scope on a config
+# or secret kind, and the layered groups and linked kinds that refer to each other.
+#
+# Fields of a kind:
+#   name        PascalCase; the address segment is its kebab-case form (DataKeyWrap -> data-key-wrap)
+#   serves      the family of the writer: work | data | keys | audit (config and secret kinds: the family
+#               of their main reader)
+#   scope       boundary | boundary+tenant   (tenant never appears on config or secret kinds)
+#               Every connection of a tenant to a provider is tenant-scoped and durable, with its
+#               credential sealed: its directory (DirectoryConnection, EntraConnection), its code host
+#               (GitHubApp, GitHubInstallation), its chat workspace (SlackConnection) and its account at a
+#               provider that sluis mints for (MinterConnection), with their targets (MinterTarget),
+#               pins and states; so are the directory facts read through a connection and the desired
+#               state. They belong to the tenant that made them; the operator's own company is a tenant,
+#               so a connection the operator makes lives there. IaC may create one by calling the API: a
+#               write through the API is durable data, not config. A provider app definition that serves
+#               the whole installation (SlackApp, Upstream) and its secret stay config and secret and have
+#               no tenant.
+#               A sealed kind that still has no tenant (EnrolmentToken) is sealed under the boundary's
+#               `data` key (tenant `-`).
+#   class       config | secret | durable | temp
+#   treatment   hashed | sealed | plain   (sealed is the default; config and secret kinds: plain, they
+#               are signed or held by the secret source). A kind that holds personal data or free text
+#               (names, principals, vendor user ids, reasons, requesters) is sealed, or hashed when it is
+#               compare-only; plain is only for values that are neither secret nor personal.
+#   profile     Fixed | Operable | Tenant-adjustable for settings; "-" for state that only its writer
+#               creates in the course of its job (a profile classifies settings, not protocol state).
+#               Operable: an operator writes it at run time; it may be boundary- or tenant-scoped (a
+#               hold, for example). Tenant-adjustable: written by a tenant admin, or by a product for
+#               its tenant, within bounds declared in config.
+#   layer       for a member of a layered group: {group, layer}; groups are under `layered_groups`
+#   links       linked kinds (by id; the store does not join)
+#   writer      the ONE writer: an actor, or IaC / pipeline for config and secret.
+#               "self" = a declared self-scoped kind (`self_scoped: true`): the id starts with the writing
+#               actor and the store lets each actor write only ids under its own name (Lease,
+#               ReplayGuard, SpentGrant).
+#               Integrations are work actors named `adapter-<vendor>` (`adapter-github`, `adapter-slack`,
+#               `adapter-upstream-oidc`); `adapter-<vendor>` means any adapter, each writing ids under
+#               its own name only. Every writer and reader is an actor name (`store@`, `key@` and
+#               `exporter@` name the actors store, key and exporter), or one of the macros `every actor`,
+#               `self`, `the actor named in the id` and `adapter-<vendor>`; a trailing parenthesis
+#               qualifies the name and is not read. One named exception to one writer per kind: the
+#               restore command of store@ writes back the kinds it restores. The console writes only two
+#               kinds itself, Switch and LogLevelOverride; every other write is routed to the owner.
+#   readers     actors with a get/list/watch rule (store@ itself reads config bounds; not listed).
+#               The store writes a change-log row in the same transaction only for a kind that some
+#               actor may watch (exporter@ watches the exportable kinds, key@ watches DataKeyWrap, policy
+#               watches the policy kinds, and so on); a kind that nobody watches, a hot counter such as
+#               Allowance or RateWindow, is one conditional update with no change-log row. The watch
+#               rules are rows of the rule table, not a field of the kind.
+#   exportable  yes | no   (exporter@ watches the yes kinds, so it is a reader of each)
+#   backed_up   yes | no   (yes only for durable kinds that are authoritative; exporter@'s backup job reads each of
+#               them as ciphertext, a read rule implied by this field and not listed in readers)
+#   ttl         temp: mandatory, {default, max}; durable: only when the kind carries an expiry field.
+#               An expired item reads as absent and a sweeper removes it, except a Lease, which is never
+#               swept (see Lease)
+#   indexes     declared indexes besides listing by tenant
+#   purposes    DataKeyWrap only: the data key purposes, which docs/architecture/keys.yaml defines
+#   self_scoped true on a kind written by several actors, each under ids that start with its own name
+#   status      planned for a kind that exists in the registry but has no writer yet
+#   layer_module  core (default) | CIAM module | quota module
+#   notes       what the kind holds, in a sentence or two
+schema: 1
+checked: "2026-11-03"
+
+writers_outside_sluis:
+  IaC: "infrastructure as code: config and secret kinds of the installation's shape"
+  pipeline: "the publishing pipeline: reviewed, signed config documents (policies, vocabulary, profiles)"
+
+combine_rules:
+  union-forbid-wins: "every layer's policies are compiled into one Cedar set; a forbid anywhere wins, so the built-in baseline holds"
+  shortest-wins: "per field, the shortest duration of any layer"
+  intersection: "the methods every layer allows; a higher layer may only remove or require stronger"
+  override-until-expiry: "an unexpired run-time override wins; otherwise config; otherwise built-in"
+  within-bounds: "the config value, refused at load when outside the built-in bounds"
+  most-specific-wins: "per field, tenant client > tenant > installation client > boundary default (branding is exempt from the direction rule: bounded by config only)"
+
+layered_groups:
+  PolicySet:
+    profile: Tenant-adjustable
+    combine: union-forbid-wins
+    layers:
+      built-in: "baseline policies (their forbids are the floor) and predefined policies (break-glass and others)"
+      config: [Policy, RegulatedPartyPolicy]
+      operator: [PredefinedPolicyLink, PredefinedPolicyLinkTemporary]
+      tenant: [PolicyLink]
+    effective_read: "EffectivePolicySet(boundary, tenant): the four layers in one typed answer, each part with its version"
+    notes: "The only group with all four layers. A loosening predefined link is temp (it expires); a tightening one is durable."
+  TokenLifetime:
+    profile: Tenant-adjustable
+    combine: shortest-wins
+    layers: {built-in: "hard caps: access token at most 1 h, agent chain at most 90 d", config: [TokenLifetime], tenant: [TokenLifetimeTenant]}
+    notes: "A tenant write longer than config is refused at the store (direction rule on write)."
+  SignInMethods:
+    profile: Tenant-adjustable
+    combine: intersection
+    layers: {built-in: "the set of methods the release supports", config: [SignInMethods], tenant: [SignInMethodsTenant]}
+  Logging:
+    profile: Operable
+    combine: override-until-expiry
+    layers: {built-in: "default levels and sampling", config: [LogSettings], operator: [LogLevelOverride]}
+    notes: "Per boundary, actor and module; never per tenant. A more verbose level is a loosening, so the override expires."
+  Retention:
+    profile: Operable
+    combine: within-bounds
+    layers: {built-in: "retention floors", config: [Retention]}
+    notes: "Holds are linked, not layered: ErasureHold and PersonHold stop erasure while they exist."
+  Tunables:
+    profile: Fixed
+    combine: within-bounds
+    layers: {built-in: "defaults and hard limits", config: [Tunables]}
+  Branding:
+    profile: Tenant-adjustable
+    combine: most-specific-wins
+    layers: {built-in: "default theme", config: [Branding], tenant: [TenantBranding]}
+  RateBounds:
+    profile: Fixed
+    combine: within-bounds
+    layers: {built-in: "maximum rates and pending-state bounds", config: [RateBound]}
+    notes: "A tenant may lower the rates of its own connections and clients; those are fields of TenantConnection and TenantClient, checked against RateBound on write."
+
+built_in:
+  - "baseline policies and predefined policies (break-glass among them)"
+  - "hard caps: token and session lifetimes, agent chain 90 d, the maximum TTL of every temp kind, key@ cache TTL maximum"
+  - "default tunables, log levels, sampling and retention floors"
+  - "the supported sign-in methods, algorithms and their floors (software keys refuse production)"
+  - "the allowance modes: prepaid, limited, unlimited"
+  - "client template defaults"
+  - "the default slot plan per card model"
+  - "the audit action table"
+  - "the kind registry itself"
+
+not_kinds:
+  keys: "authority keys and wrapping keys stay in their key store (card or KMS); key@ uses them in place"
+  opened_data_keys: "only in key@'s memory, with a TTL per entry"
+  grants: "sealed grants are in flight only; a one-shot use leaves a SpentGrant hash"
+  audit: "audit records, usage facts, checkpoints, the writer's state (in the audit blob) and the search index; audit's own documents are config kinds (AuditLog, AuditWitnesses, AuditCatalogue)"
+  bootstrap_file: "store@'s own local file: boundary, one destination per class, driver sockets"
+  holder_credentials: "the engine login and secret-source access of store@, the destination credentials of exporter@, key@'s PIN or KMS permission, the audit blob credential: platform-provided (systemd credential, IAM role, service account), never served to an actor"
+  minted_credentials: "what a minter returns is never recorded"
+  backup_archives: "in the backup bucket; each archive's provenance is a backup.completed audit fact"
+  exported_copies: "in the destinations exporter@ writes"
+  product_side: "plans, prices, money balances, organisations, memberships, consent evidence, customer accounts and their credentials and MFA, end-user passkeys"
+
+kinds:
+  # ======================================================================== config (IaC / pipeline)
+  - name: Boundary
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [every actor, key@, exporter@]
+    exportable: no
+    backed_up: no
+    notes: "Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid block."
+
+  - name: TrustAnchors
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [signer, ca, ssh-ca, exchange, key@, exporter@]
+    exportable: yes
+    backed_up: no
+    notes: "Installation-wide document (same content in every boundary): root list, CA bundle, SSH CA key list. Ceremony output of the root custodian. Exportable as public material (trust bundle input). store@ verifies the first config with publisher keys pinned in the bootstrap file, not with this kind."
+
+  - name: RegulatedParty
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [session, exchange, signer]
+    exportable: no
+    backed_up: no
+    notes: "Issuer, key custody, required sector of a regulated party's boundary; written with the party."
+
+  - name: KeyPlan
+    serves: keys
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [key@, signer, ca, ssh-ca]
+    exportable: no
+    backed_up: no
+    notes: "Enabled key purposes per algorithm, KMS key aliases, slot plan per board, recovery recipient's public key, key@ cache TTL (under the built-in maximum)."
+
+  - name: Tunables
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    layer: {group: Tunables, layer: config}
+    writer: IaC
+    readers: [every actor (its own id only)]
+    exportable: no
+    backed_up: no
+    notes: "Id is <actor>[/<module>]: timeouts, listener, TLS, egress hosts, batch sizes."
+
+  - name: FrontHost
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [entry, session, signer, console]
+    exportable: no
+    backed_up: no
+    notes: "Login domain and rp_id per client (id: client or `default`); needs DNS and a certificate, so it is Fixed and shared by clients. Clients reference it; a tenant client may pick only from the entries config allows. Ceremonies use the one shared sign-in domain."
+
+  - name: UsageEmitter
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [every actor (emitter library), quota]
+    exportable: no
+    backed_up: no
+    notes: "What usage to record and where."
+
+  - name: Meter
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [quota, every actor (emitter library)]
+    exportable: no
+    backed_up: no
+    layer_module: quota module
+    notes: "Name, unit and kind of each meter; never changes once used."
+
+  - name: Quota
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [quota]
+    exportable: no
+    backed_up: no
+    layer_module: quota module
+    notes: "The quotas that exist, their unit and the bounds an allowance push must respect."
+
+  - name: Upstream
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [UpstreamSecret]
+    writer: IaC
+    readers: [session, adapter-upstream-oidc]
+    exportable: no
+    backed_up: no
+    notes: "An upstream made by hand or IaC on the provider side: issuer, client id, subject claim, a multi-tenant app (one app for many customer directories). Upstream criterion: config."
+
+  - name: Integration
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [IntegrationSecret]
+    writer: IaC
+    readers: [the actor named in the id (an adapter)]
+    exportable: no
+    backed_up: no
+    notes: "The definition of an integration made by hand or IaC: vendor, capability and the hosts its adapter may reach. It serves the whole installation and holds no connection of a tenant; a tenant's directory, chat workspace, code host or provider account is a durable kind of that tenant (DirectoryConnection, SlackConnection, GitHubApp, MinterConnection)."
+
+  - name: LogSettings
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Operable
+    layer: {group: Logging, layer: config}
+    writer: IaC
+    readers: [every actor (its own id only)]
+    exportable: no
+    backed_up: no
+    notes: "Log level and trace sampling per actor and module (id <actor>[/<module>])."
+
+  - name: Retention
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Operable
+    layer: {group: Retention, layer: config}
+    writer: IaC
+    readers: [session, exporter@]
+    exportable: no
+    backed_up: no
+    notes: "Retention windows per data class; must be at or above the built-in floor. The per-log windows of the audit logs are in AuditLog."
+
+  - name: AuditLog
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [AuditWitnesses, AuditCatalogue]
+    writer: IaC
+    readers: [writer, witness, indexer, reader]
+    exportable: no
+    backed_up: no
+    notes: "The logs of the boundary (audit, usage, issuance): log ids, lock mode, lifecycle tiers, the compliance profile and the per-log retention. Loaded and verified by store@ like every config kind; the audit pieces read it through the data port."
+
+  - name: AuditWitnesses
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [AuditLog]
+    writer: IaC
+    readers: [writer, witness]
+    exportable: no
+    backed_up: no
+    notes: "The witnesses of each log and the cosignatures it requires. Loaded by store@ like AuditLog."
+
+  - name: AuditCatalogue
+    serves: audit
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [AuditLog]
+    writer: pipeline
+    readers: [writer, indexer, reader]
+    exportable: no
+    backed_up: no
+    notes: "The catalogue: one document of actions together with the schemas of their fields, with one version for both, so the document and its schemas never move apart. Loaded by store@ like AuditLog."
+
+  - name: TokenLifetime
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: TokenLifetime, layer: config}
+    writer: IaC
+    readers: [session, exchange, signer]
+    exportable: no
+    backed_up: no
+
+  - name: SignInMethods
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: SignInMethods, layer: config}
+    writer: IaC
+    readers: [session]
+    exportable: no
+    backed_up: no
+
+  - name: Policy
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: PolicySet, layer: config}
+    writer: pipeline
+    readers: [policy]
+    exportable: no
+    backed_up: no
+    notes: "Cedar policy files and templates, including the console's operator roles (declared grants) and the delegation policy for tenant admins and products."
+
+  - name: RegulatedPartyPolicy
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: PolicySet, layer: config}
+    writer: pipeline
+    readers: [policy]
+    exportable: no
+    backed_up: no
+    notes: "A regulated party's own policy in its boundary; the document needs the party's signature as well as the publisher's: the signed document carries several JWS signatures (general JSON serialisation), the publisher's and the party's."
+
+  - name: GrantVocabulary
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: pipeline
+    readers: [policy, exchange, session, signer, console]
+    exportable: no
+    backed_up: no
+    notes: "Grant names, the role ladder, sensitive scopes. Not a sealed grant."
+
+  - name: ClientDocumentGate
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: pipeline
+    readers: [session, exchange]
+    exportable: no
+    backed_up: no
+    notes: "Which hosts a client metadata document may come from, what it requires, session limits."
+
+  - name: ClientTemplate
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [exchange, console]
+    exportable: no
+    backed_up: no
+    notes: "Templates and bounds for tenant clients and tenant connections (rates, redirect hosts, profiles such as FAPI 2.0). store@ reads the bounds to refuse an out-of-bound write."
+
+  - name: InstallationClient
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [InstallationClientSecret, ClientSecret, ClientSecretExport, Branding, FrontHost]
+    writer: IaC
+    readers: [entry, session, exchange, signer]
+    exportable: no
+    backed_up: no
+    notes: "The installation's own clients and resources. An exportable client is marked here."
+
+  - name: Branding
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: Branding, layer: config}
+    writer: IaC
+    readers: [session, console]
+    exportable: no
+    backed_up: no
+    notes: "Id `default` (the boundary) or an installation client."
+
+  - name: FirstAdmin
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [session, console]
+    exportable: no
+    backed_up: no
+    notes: "The first-admin allow-list of a boundary."
+
+  - name: BreakGlassPasskey
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [session]
+    exportable: no
+    backed_up: no
+    notes: "Config so that recovery works when the store is damaged. Two attested hardware keys and one pinned synced passkey; enrolment tools only show the JSON to commit."
+
+  - name: SlackApp
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [SlackAppSecret, SlackConnection, SlackInstallState]
+    writer: IaC
+    readers: [adapter-slack]
+    exportable: no
+    backed_up: no
+    notes: "App id, client id, scopes, redirect URL; made once by hand or IaC on the vendor side. The worked example of linked kinds."
+
+  - name: MinterBounds
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    links: [MinterTarget, MinterSecret]
+    writer: IaC
+    readers: [adapter-<vendor> (as credential minter), policy]
+    exportable: no
+    backed_up: no
+    notes: "What an installation allows a minter to mint: the target types (a cloud role, a prototype token, a DNS token) and the maximum lifetime of each; also the installation-level targets whose 'tenant' is not a sluis tenant (the NATS operator and its accounts). A tenant's MinterTarget is checked against it on write."
+
+  - name: ExchangeTrust
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: pipeline
+    readers: [exchange]
+    exportable: no
+    backed_up: no
+    notes: "Accepted issuers, audiences and proof kinds for token exchange and enrolment."
+
+  - name: PkiProfile
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: pipeline
+    readers: [ca, ssh-ca, policy]
+    exportable: no
+    backed_up: no
+    notes: "PKI roles: which leaf profiles ca and ssh-ca issue for whom."
+
+  - name: Sector
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [session, signer]
+    exportable: no
+    backed_up: no
+    layer_module: CIAM module
+
+  - name: RateBound
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    layer: {group: RateBounds, layer: config}
+    writer: IaC
+    readers: [entry]
+    exportable: no
+    backed_up: no
+    notes: "Protective rate bounds and pending-state bounds per connection, client and source address. Not quota."
+
+  - name: ReconcileTarget
+    serves: work
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: pipeline
+    readers: [adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: no
+    notes: "Targets of each reconciler, their mode (extend or strict), breaker thresholds, and channels bound in reviewed policy."
+
+  - name: ExportDestination
+    serves: data
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [exporter@]
+    exportable: no
+    backed_up: no
+    notes: "Store of record (SSM or OpenBao), a Kubernetes Secret for a single cluster, or a bucket for public material. The config check refuses a destination that overlaps a secret source."
+
+  - name: BackupPlan
+    serves: data
+    scope: boundary
+    class: config
+    treatment: plain
+    profile: Fixed
+    writer: IaC
+    readers: [exporter@]
+    exportable: no
+    backed_up: no
+    notes: "Schedule, bucket, the restore role and the offline recipient of the archive key. The backup is a job of exporter@, which reads this kind; the restore is an operator-started command of store@."
+
+  # ======================================================================== secret (IaC)
+  - name: UpstreamSecret
+    serves: work
+    scope: boundary
+    class: secret
+    treatment: plain
+    profile: Fixed
+    links: [Upstream]
+    writer: IaC
+    readers: [adapter-upstream-oidc]
+    exportable: no
+    backed_up: no
+    notes: "adapter-upstream-oidc exchanges the code at the upstream and returns the verified assertion to session, so session reads no upstream secret."
+
+  - name: IntegrationSecret
+    serves: work
+    scope: boundary
+    class: secret
+    treatment: plain
+    profile: Fixed
+    links: [Integration]
+    writer: IaC
+    readers: [the actor named in the id (an adapter)]
+    exportable: no
+    backed_up: no
+
+  - name: InstallationClientSecret
+    serves: work
+    scope: boundary
+    class: secret
+    treatment: plain
+    profile: Fixed
+    links: [InstallationClient]
+    writer: IaC
+    readers: [session, exchange]
+    exportable: no
+    backed_up: no
+    notes: "A client secret provided by IaC (the generated kind is ClientSecret)."
+
+  - name: SlackAppSecret
+    serves: work
+    scope: boundary
+    class: secret
+    treatment: plain
+    profile: Fixed
+    links: [SlackApp]
+    writer: IaC
+    readers: [adapter-slack]
+    exportable: no
+    backed_up: no
+
+  - name: MinterSecret
+    serves: work
+    scope: boundary
+    class: secret
+    treatment: plain
+    profile: Fixed
+    links: [MinterBounds]
+    writer: IaC
+    readers: [adapter-<vendor> (as credential minter)]
+    exportable: no
+    backed_up: no
+    notes: "The credential of an installation-level minter whose 'tenant' is not a sluis tenant: the NATS operator (where 'tenant' is a Kubernetes tenant). A sluis tenant's own token-creating credential is MinterConnection, sealed. The sharpest edge of its adapter."
+
+  # ======================================================================== durable
+  - name: DataKeyWrap
+    serves: keys
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: key@
+    readers: [key@]
+    exportable: no
+    backed_up: yes
+    indexes: [by_recipient, by_purpose]
+    purposes:
+      per_tenant: [data, pseudonym, evidence]
+      boundary: [grant, cookie, mac, data]
+    notes: "Id <purpose>/<generation>/<recipient>. Each tenant has three data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data` and `pseudonym` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
+
+  - name: Tenant
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    writer: exchange
+    readers: [every actor]
+    exportable: no
+    backed_up: yes
+    indexes: [by_name]
+    notes: "Name, state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). exchange owns what a tenant has configured."
+
+  - name: Allowance
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    writer: quota
+    readers: [quota, console]
+    exportable: no
+    backed_up: yes
+    layer_module: quota module
+    notes: "Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add | set | write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the version, and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update."
+
+  - name: AdmitRecord
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: quota
+    readers: [quota]
+    exportable: no
+    backed_up: no
+    ttl: {field: expires_at, default: 24h}
+    layer_module: quota module
+    notes: "Idempotency of an admit by operation id; rebuilt from usage facts after a restore. The admit's decrement of the Allowance is the same conditional update that a push uses."
+
+  - name: Person
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: session
+    readers: [session, exchange, signer]
+    exportable: no
+    backed_up: yes
+    notes: "Id is the subject (random, opaque). Claims for tokens are sealed for the tenant."
+
+  - name: UpstreamLink
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: session
+    readers: [session, exchange]
+    exportable: no
+    backed_up: yes
+    notes: "Id is a keyed hash (key@ Mac, purpose `mac`) of (issuer, subject claim value); holds the subject, the issuer and the claim name."
+
+  - name: UpstreamPin
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: yes
+    notes: "The subject claim first used for an issuer; a contradiction is refused."
+
+  - name: PersonHold
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Operable
+    writer: session
+    readers: [session, exchange, console]
+    exportable: no
+    backed_up: yes
+    notes: "An operator holds a person (who, when, why); the console routes the write to session. The reason is free text, so sealed. Operable and tenant-scoped: a hold is written by an operator about one tenant's person."
+
+  - name: ErasureHold
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Operable
+    writer: session
+    readers: [session, console]
+    exportable: no
+    backed_up: yes
+    notes: "A hold on erasure for a tenant, or for the whole boundary with tenant `-`. Its reason is free text, so sealed."
+
+  - name: PersonStatus
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: session
+    readers: [session, exchange]
+    exportable: no
+    backed_up: yes
+    layer_module: CIAM module
+    notes: "The status an upstream reported (suspended, erased)."
+
+  - name: Tombstone
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: yes
+    notes: "Subject, time and kind of an erasure; keeps a restore from bringing a person back."
+
+  - name: StaffPasskey
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: yes
+    notes: "An operator's or staff member's passkey on the shared sign-in domain: public key, hash of the credential id, sign count. End-user passkeys belong to the upstream."
+
+  - name: SigningRing
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: signer
+    readers: [signer, entry, exporter@]
+    exportable: yes
+    backed_up: yes
+    notes: "The token keys the key set publishes, each with its x5c chain; exported as the static key set."
+
+  - name: OpenPgpBinding
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: signer
+    readers: [signer]
+    exportable: no
+    backed_up: yes
+    notes: "The primary's certification of the release subkey; the signing API refuses without it."
+
+  - name: KeyCertificate
+    serves: keys
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: key@
+    readers: [signer, ca, ssh-ca, entry, exporter@]
+    exportable: yes
+    backed_up: yes
+    indexes: [by_purpose]
+    notes: "The certificate chain the root custodian returned for each key purpose (intermediates, token certificate), installed by `sluis key install`, which talks to key@; key@ is the writer."
+
+  - name: IssuedCertificate
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: ca
+    readers: [ca, console]
+    exportable: no
+    backed_up: yes
+    indexes: [by_expiry, by_subject_hash]
+    notes: "Serial (the id), profile, requester, validity, public-key hash. The requester and the subject are personal, so sealed; by_subject_hash holds a keyed hash (key@ Mac, purpose `mac`) and by_expiry a date."
+
+  - name: Revocation
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: ca
+    readers: [ca]
+    exportable: no
+    backed_up: yes
+    links: [Crl]
+
+  - name: IssuedSshCertificate
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: ssh-ca
+    readers: [ssh-ca, console]
+    exportable: no
+    backed_up: yes
+    links: [SshRevocation]
+    notes: "Serial (the id), principals and validity. The principals are account and person names, so sealed. Written by ssh-ca, a separate actor from ca."
+
+  - name: SshRevocation
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: ssh-ca
+    readers: [ssh-ca]
+    exportable: no
+    backed_up: yes
+    links: [Krl]
+
+  - name: EnrolmentToken
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: exchange
+    readers: [exchange]
+    exportable: no
+    backed_up: yes
+    ttl: {field: expires_at}
+    notes: "The HKDF-derived HMAC key of a single-use or reusable enrolment token (never the token). The one sealed kind with no tenant: it is sealed under the boundary's `data` key (tenant `-`)."
+
+  - name: SeenInstanceIdentity
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: exchange
+    readers: [exchange]
+    exportable: no
+    backed_up: yes
+    notes: "A cloud instance identity document accepted once per instance."
+
+  - name: TenantClient
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    links: [ClientSecret, ClientSecretExport, TenantBranding, ClientTemplate]
+    writer: exchange
+    readers: [entry, session, exchange, signer, console]
+    exportable: no
+    backed_up: yes
+    indexes: [by_client_id]
+    notes: "A tenant's client and its settings, inside its template's bounds; written by a tenant admin through the console or by a product."
+
+  - name: ClientSecret
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: hashed
+    profile: "-"
+    writer: exchange
+    readers: [session, exchange]
+    exportable: no
+    backed_up: yes
+    notes: "A generated client secret, one item per version; the current and the previous version verify during an overlap. Tenant `-` for the installation's own clients. exchange writes it and session verifies it at the token endpoint (a read)."
+
+  - name: ClientSecretExport
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: exchange
+    readers: [exporter@]
+    exportable: yes
+    backed_up: yes
+    notes: "The sealed copy of a generated secret, only for a client marked exportable; non-exported secrets keep only the hash."
+
+  - name: TenantBranding
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: Branding, layer: tenant}
+    writer: exchange
+    readers: [session, console]
+    exportable: no
+    backed_up: yes
+    notes: "Id `default` (the tenant) or a tenant client."
+
+  - name: TokenLifetimeTenant
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: TokenLifetime, layer: tenant}
+    writer: exchange
+    readers: [session, exchange, signer]
+    exportable: no
+    backed_up: yes
+
+  - name: SignInMethodsTenant
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: SignInMethods, layer: tenant}
+    writer: exchange
+    readers: [session]
+    exportable: no
+    backed_up: yes
+
+  - name: PolicyLink
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    layer: {group: PolicySet, layer: tenant}
+    writer: exchange
+    readers: [policy, console]
+    exportable: no
+    backed_up: yes
+    notes: "A tenant's template links; the template must exist in config (checked on write)."
+
+  - name: PredefinedPolicyLink
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Operable
+    layer: {group: PolicySet, layer: operator}
+    writer: exchange
+    readers: [policy, console]
+    exportable: no
+    backed_up: yes
+    notes: "A link to a built-in predefined policy that tightens; durable. Tenant `-` for the whole boundary."
+
+  - name: Switch
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: Operable
+    writer: console
+    readers: [the actor named in the id]
+    exportable: no
+    backed_up: yes
+    notes: "Tighten-only switches: pause a reconciler, recovery off, sign-in paused. Id <actor>/<switch>. Deleting a switch returns to config, which is not a loosening. The console writes it itself (with LogLevelOverride, the only kinds it writes): no owning actor has domain logic for it."
+
+  - name: MaintenanceMode
+    serves: data
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: Operable
+    writer: store@
+    readers: [every actor]
+    exportable: no
+    backed_up: no
+    notes: "Set first by a restore (refuse writes, stop sign-in) and lifted only after a clean read-back; survives a crash so a failed restore stays in maintenance. Written by store@ through its operator-started restore command (`sluis restore`), which also writes back every restored kind: the one named exception to one writer per kind."
+
+  - name: GitHubApp
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Operable
+    links: [GitHubManifestState, GitHubInstallation]
+    writer: adapter-github
+    readers: [adapter-github]
+    exportable: no
+    backed_up: yes
+    notes: "An app made by the manifest flow in the UI: app id, private key, webhook secret (sealed). Upstream criterion: durable. Written by adapter-github, which runs the manifest flow. It lives in the tenant that made it; an app the operator makes in the UI lives in the operator's own company, which is a tenant."
+
+  - name: GitHubInstallation
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: "-"
+    writer: adapter-github
+    readers: [adapter-github]
+    exportable: no
+    backed_up: yes
+    notes: "Pins: app id and installation id per organisation, first seen. A connection made through the install flow, so tenant-scoped like its app."
+
+  - name: SlackConnection
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Tenant-adjustable
+    links: [SlackApp, SlackAppSecret, SlackInstallState]
+    writer: adapter-slack
+    readers: [adapter-slack]
+    exportable: no
+    backed_up: yes
+    notes: "Workspace id, bot user, granted scopes and the bot token (sealed), made by the install flow."
+
+  - name: EntraConnection
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    links: [Upstream, EntraConsentState]
+    writer: adapter-upstream-oidc
+    readers: [session, adapter-upstream-oidc]
+    exportable: no
+    backed_up: yes
+    notes: "A customer directory's admin consent to the installation's multi-tenant app: directory id, consent time, scopes. Written by the adapter that completes the consent flow."
+
+  - name: DirectoryConnection
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Tenant-adjustable
+    links: [EntraConnection, GitHubInstallation, DirectoryUser]
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: yes
+    notes: "A tenant's connection to its directory: which directory (a Google Workspace domain, an Entra directory, a GitHub organisation), the domain, and the credential that syncs it, sealed. Made through the UI or the API, and written by the adapter that completes the connect flow: adapter-upstream-oidc for Google Workspace and Entra, adapter-github for a GitHub organisation, each under ids that start with its own name. The directory facts it reads are DirectoryUser, DirectoryGroup and DirectoryMembership of the same tenant."
+
+  - name: MinterConnection
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Tenant-adjustable
+    links: [MinterTarget, MinterBounds]
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as credential minter)]
+    exportable: no
+    backed_up: yes
+    notes: "A tenant's account at a provider that sluis mints for, such as its Cloudflare account, with the token-creating credential, sealed. Made through the UI or the API, and written by the adapter of the provider, which checks the credential before it keeps it. What a minter returns is never recorded."
+
+  - name: MinterTarget
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    links: [MinterConnection, MinterBounds]
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as credential minter), policy]
+    exportable: no
+    backed_up: yes
+    notes: "A mint target of a tenant: a cloud role, a prototype token or a DNS zone, with the lifetime asked for. Neither secret nor personal, so plain. Checked against MinterBounds on write, and written by the adapter that mints it."
+
+  - name: TenantConnection
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Tenant-adjustable
+    links: [ClientTemplate, DomainClaim]
+    writer: session
+    readers: [session, adapter-upstream-oidc]
+    exportable: no
+    backed_up: yes
+    layer_module: CIAM module
+    notes: "A tenant's own upstream connection, with its client secret sealed; trust level and ceiling within the template. Always durable data, entered through the UI or the API and written by session, with the client secret sealed: the upstream criterion (hand- or IaC-made app is config, browser round trip is durable) applies to connections the operator makes, and who connects decides."
+
+  - name: DomainClaim
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Tenant-adjustable
+    links: [TenantConnection]
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: yes
+    indexes: [by_domain]
+    layer_module: CIAM module
+    notes: "A domain, the DNS proof token and its last checks; routes only once proved."
+
+  - name: HeldChange
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: Operable
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as provisioner), console]
+    exportable: no
+    backed_up: yes
+    indexes: [by_target]
+    notes: "A change the breaker held, and the operator's confirmation of it (an act, recorded by the reconciler that owns the target)."
+
+  - name: ConsoleChannel
+    serves: work
+    scope: boundary
+    class: durable
+    treatment: plain
+    profile: Operable
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as provisioner), console]
+    exportable: no
+    backed_up: yes
+    notes: "Channels made on the console; channels bound in policy are ReconcileTarget (config). Two kinds, two owners. Written by the chat adapter (`adapter-slack` or another)."
+
+  # ======================================================================== temp
+  - name: PendingSignIn
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: sealed
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: no
+    ttl: {default: 10m, max: 10m}
+    notes: "State between the authorize request and the upstream callback (state, nonce, PKCE verifier); at most 1000 per connection and 20 per source address."
+
+  - name: AuthCode
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: no
+    ttl: {default: 60s, max: 10m}
+    notes: "With its PKCE challenge; spent by a conditional update, so it works once."
+
+  - name: DeviceCode
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: no
+    ttl: {default: 10m, max: 15m}
+
+  - name: SessionChain
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: session
+    readers: [session, exchange, console]
+    exportable: no
+    backed_up: no
+    ttl: {default: "human chain 24h absolute; agent chain 14d idle and 30d absolute", max: "90d (agent chain, built-in maximum)"}
+    indexes: [by_subject, by_client]
+    notes: "Interactive or agent chain: the hash of the current refresh token and its spent markers, class, client, sid, times, freshness per boundary, and the agent's consent (recorded on the chain). Listed and revocable by the person."
+
+  - name: WebAuthnChallenge
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: no
+    ttl: {default: 5m, max: 10m}
+    notes: "Spent once. Tenant `-` for staff ceremonies."
+
+  - name: UpstreamSession
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: session
+    readers: [session]
+    exportable: no
+    backed_up: no
+    ttl: {default: "the session's", max: "the session's"}
+    notes: "Id is a keyed hash (key@ Mac, purpose `mac`) of (connection, upstream sid); points to the browser session for back-channel logout."
+
+  - name: ClientDocument
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: session
+    readers: [session, exchange]
+    exportable: no
+    backed_up: no
+    ttl: {default: 10m, max: 1h}
+    notes: "A fetched client metadata document (CIMD); the last good copy may serve up to 1 h past expiry on transport failures only."
+
+  - name: UpstreamMetadata
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: adapter-upstream-oidc
+    readers: [session, adapter-upstream-oidc]
+    exportable: no
+    backed_up: no
+    ttl: {default: "from HTTP caching", max: 24h}
+    notes: "An upstream's discovery document and key set."
+
+  - name: VerifierKeyCache
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: exchange
+    readers: [exchange]
+    exportable: no
+    backed_up: no
+    ttl: {default: "from HTTP caching", max: 24h}
+    notes: "Published keys of a proof issuer (a cluster's service-account keys, a CI provider's OIDC keys)."
+
+  - name: ReplayGuard
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: self
+    self_scoped: true
+    readers: [self]
+    exportable: no
+    backed_up: no
+    ttl: {default: "the lifetime of the token or proof", max: 1h}
+    notes: "Seen jti of presented assertions and DPoP proofs, per verifying actor (id <actor>/<hash>)."
+
+  - name: RateWindow
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: entry
+    readers: [entry]
+    exportable: no
+    backed_up: no
+    ttl: {default: "the window", max: 1h}
+    notes: "Protective token buckets per connection, client, session and source address (not quota). On boards each window write is a Raft commit."
+
+  - name: Lease
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: self
+    self_scoped: true
+    readers: [self]
+    exportable: no
+    backed_up: no
+    ttl: {default: 30s, max: 10m}
+    notes: "A conditional create plus a TTL; the version is the fencing token. Background jobs only (a reconciler, a scheduled adapter, the backup job). Never swept: an expired lease is taken over by a conditional update of the same item, so its version only grows (rqlite's sweeper and DynamoDB TTL skip it; on DynamoDB its TTL attribute is set far in the future and the expiry is read-time only)."
+
+  - name: SpentGrant
+    serves: keys
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: self
+    self_scoped: true
+    readers: [self]
+    exportable: no
+    backed_up: no
+    ttl: {default: 2m, max: 5m}
+    notes: "The hash of a sealed grant used for a one-shot irreversible action (an artifact signature, a mint)."
+
+  - name: SpentPush
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: quota
+    readers: [quota]
+    exportable: no
+    backed_up: no
+    ttl: {default: 7d, max: 30d}
+    layer_module: quota module
+    notes: "The hash of the request id of an allowance push that was applied, so a retried push changes nothing. A hashed spent marker, like SpentGrant, but with one writer."
+
+  - name: LogLevelOverride
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: Operable
+    layer: {group: Logging, layer: operator}
+    writer: console
+    readers: [every actor (its own id only)]
+    exportable: no
+    backed_up: no
+    ttl: {default: 1h, max: 24h}
+    notes: "A run-time loosening (debug), so it expires. The console writes it itself (with Switch, the only kinds it writes): every actor reads its own id."
+
+  - name: PredefinedPolicyLinkTemporary
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: plain
+    profile: Operable
+    layer: {group: PolicySet, layer: operator}
+    writer: exchange
+    readers: [policy, console]
+    exportable: no
+    backed_up: no
+    ttl: {default: 1h, max: 24h}
+    notes: "A link to a predefined policy that loosens, such as break-glass recovery; it expires, and policy recompiles when it does."
+
+  - name: SlackInstallState
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: adapter-slack
+    readers: [adapter-slack]
+    exportable: no
+    backed_up: no
+    ttl: {default: 10m, max: 10m}
+    notes: "OAuth state of an install in progress."
+
+  - name: GitHubManifestState
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: adapter-github
+    readers: [adapter-github]
+    exportable: no
+    backed_up: no
+    ttl: {default: 1h, max: 1h}
+    notes: "OAuth-style state of a manifest flow in progress; 1 h is the vendor's manifest code lifetime. Tenant-scoped, as SlackInstallState is."
+
+  - name: EntraConsentState
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: adapter-upstream-oidc
+    readers: [adapter-upstream-oidc]
+    exportable: no
+    backed_up: no
+    ttl: {default: 10m, max: 10m}
+
+  - name: PendingEnrolment
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: exchange
+    readers: [exchange, console]
+    exportable: no
+    backed_up: no
+    ttl: {default: 7d, max: 30d}
+    notes: "An enrolment waiting for manual approval; lost means the host asks again."
+
+  - name: EnrolmentNonce
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: hashed
+    profile: "-"
+    writer: exchange
+    readers: [exchange]
+    exportable: no
+    backed_up: no
+    ttl: {default: 5m, max: 5m}
+    notes: "The fresh server nonce the enrolment HMAC covers."
+
+  - name: DirectoryUser
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: sealed
+    profile: "-"
+    writer: adapter-<vendor>
+    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: no
+    ttl: {default: 24h, max: 7d}
+    indexes: [by_upstream_subject_hash]
+    notes: "A learned fact: rebuildable by a re-sync, so temp with a long TTL (24 h default, 7 d at most). Holds names and addresses, so sealed. Tenant-scoped: a directory is read through a connection of that tenant. Id carries the vendor's own organisation."
+
+  - name: DirectoryGroup
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: sealed
+    profile: "-"
+    writer: adapter-<vendor>
+    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: no
+    ttl: {default: 24h, max: 7d}
+    notes: "Group and team names are vendor free text, so sealed. Tenant-scoped, as DirectoryUser is."
+
+  - name: DirectoryMembership
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: sealed
+    profile: "-"
+    writer: adapter-<vendor>
+    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: no
+    ttl: {default: 24h, max: 7d}
+    indexes: [by_group, by_user]
+    notes: "Holds vendor user ids, so sealed; the two indexes hold keyed hashes (key@ Mac, purpose `mac`) of the group and user ids. Tenant-scoped, as DirectoryUser is."
+
+  - name: DesiredState
+    serves: work
+    scope: boundary+tenant
+    class: temp
+    treatment: sealed
+    profile: "-"
+    writer: none yet (planned kind)
+    status: planned
+    readers: [adapter-<vendor> (as provisioner)]
+    exportable: no
+    backed_up: no
+    ttl: {default: 24h, max: 7d}
+    notes: "The digest-addressed desired state a reconciler pulls (who should be in which team or channel). Names users, so sealed. Tenant-scoped. Planned: the kind and its writer arrive with the reconciler milestone."
+
+  - name: Crl
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: ca
+    readers: [exporter@]
+    exportable: yes
+    backed_up: no
+    ttl: {default: 7d, max: 7d}
+    notes: "One static CRL per intermediate, re-signed every 24 h with nextUpdate 7 d and at once after a revocation. Derived from Revocation, so temp."
+
+  - name: Krl
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: ssh-ca
+    readers: [exporter@]
+    exportable: yes
+    backed_up: no
+    ttl: {default: 7d, max: 7d}
+    notes: "The SSH key revocation list hosts fetch."
+
+  - name: TrustBundle
+    serves: work
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: ca
+    readers: [exchange, exporter@]
+    exportable: yes
+    backed_up: no
+    ttl: {default: 24h, max: 7d}
+    notes: "The SPIFFE trust bundle hosts sync, rendered from TrustAnchors and KeyCertificate; its certificates verify themselves. ca renders chains, so ca writes it."
+
+  - name: ExportCursor
+    serves: data
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: exporter@
+    readers: [exporter@]
+    exportable: no
+    backed_up: no
+    ttl: {default: 30d, max: 30d}
+    notes: "The resume point per destination; losing it costs a full reconcile, which runs at start and daily anyway."
+
+  - name: PinReleaseRequest
+    serves: keys
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: key@
+    readers: [key@]
+    exportable: no
+    backed_up: no
+    ttl: {default: 5m, max: 15m}
+    notes: "A locked board's request for its card PIN: the node and an ephemeral public key made by the locked key@ for this request. Public values only, so plain. Id <node>/<request>. An unlocked peer's key@ watches the kind and answers with a PinRelease. Default 5 min, at most 15 min; a request that expires is made again."
+
+  - name: PinRelease
+    serves: keys
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: key@
+    readers: [key@]
+    exportable: no
+    backed_up: no
+    ttl: {default: 5m, max: 15m}
+    notes: "The answer to a PinReleaseRequest, same id: the board's PIN sealed by an unlocked peer's key@ to the ephemeral public key of the request, so only the locked key@ opens it. Already ciphertext, so plain. The PIN crosses only the Raft port, through the store. Default 5 min, at most 15 min."

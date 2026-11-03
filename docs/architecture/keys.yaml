@@ -1,0 +1,322 @@
+# The key registry: every key purpose of sluis, its algorithm, its AWS key type, its card slot on a board
+# and the actors that use it.
+#
+# key holds a boundary's keys and uses them in place: an authority key never leaves its key store (the
+# cloud key service or the card), and a data key is wrapped by a key of that store. One key per purpose
+# and algorithm, never shared across purposes. This file says which keys exist; the key policies, the
+# card slot plan and the generated reference page are made from it, together with
+# docs/architecture/actors.yaml (who uses what) and docs/architecture/kinds.yaml (DataKeyWrap).
+#
+# `tools/checks/registries.mjs` (`just check-registries`) keeps it true: the closed fields below, every
+# algorithm declared, the AWS baseline of one symmetric key and five P-384 keys, the slot plan without a
+# collision, exactly one using actor for each signing or key-agreement key, the data key purposes equal
+# to the purposes DataKeyWrap lists, and every user and every use agreeing with the actor registry.
+#
+# Sections:
+#   algorithms    the algorithms in use; the FIPS-approved set is the default, a named exception says why
+#   purposes      the keys that live in a key store: `kind` signing | key-agreement | wrapping
+#   slot_plan     the default card slot map, version 1, for the boards
+#   data_keys     the data keys, which key generates in software and wraps: three per tenant and four per boundary
+#   wrapping      how a data key is wrapped on AWS and on a board
+#
+# Fields of a purpose:
+#   name        the purpose, lower-case kebab-case
+#   kind        signing | key-agreement | wrapping
+#   algorithm   a key of `algorithms`
+#   enabled     baseline (always, on AWS one key per boundary or per trust domain or per log) |
+#               on-use (a purpose outside the baseline: no key until an installation enables it, then a
+#               dedicated key) | named-exception (the algorithm is an exception; dedicated key)
+#   ops         seal | open | sign | mac | public-key | wrap | unwrap
+#   aws         key_spec (the cloud key service's key spec), per (boundary | trust domain | log) and
+#               baseline (true for the five P-384 keys and the one symmetric key)
+#   board       slot (a card slot, `spare` for the spare range, `none` for a key that is not a card key)
+#               and, when it differs from `algorithm`, the board's algorithm; runtimes when the key
+#               exists on some runtimes only
+#   users       the actors that ask key to use it; `every work actor` and `adapter-<vendor>` are macros.
+#               The other side is `key_purposes` in actors.yaml, and the two must agree
+#   notes       what it is for
+schema: 1
+checked: "2026-11-03"
+
+algorithms:
+  ES384:
+    family: signature
+    curve: P-384
+    status: default
+    note: "ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself, including the checkpoints of the audit logs and of the issuance log."
+  ECDH-P-384:
+    family: key-agreement
+    curve: P-384
+    status: default
+    note: "ECDH over P-384 with HKDF-SHA384 and AES key wrap; the wrap of a data key on a board, the wrap of a backup archive key for each board and for the recovery recipient, and the HPKE enrolment key."
+  AES-256-GCM:
+    family: aead
+    status: default
+    note: "The nonce comes from the cryptographic library. On AWS the symmetric key of the cloud key service; in software the data keys and the encryption of a backup archive."
+  HMAC-SHA384:
+    family: mac
+    status: default
+    note: "The keyed hash behind key's Mac: pairwise subjects, pseudonyms and link ids."
+  PS256:
+    family: signature
+    status: exception
+    note: "FAPI 2.0. A dedicated key; PS256 on a card takes about 2.3 s per signature, so it suits a low-volume audience only."
+  ES256:
+    family: signature
+    curve: P-256
+    status: exception
+    note: "FAPI 2.0 and cloud federation for GCP. A dedicated key."
+  EdDSA:
+    family: signature
+    curve: Ed25519
+    status: exception
+    note: "FAPI 2.0, the NATS keys (nkeys fix Ed25519) and the C2SP witness keys. A dedicated key per purpose; Ed25519 in PIV needs firmware 5.7."
+  RS256:
+    family: signature
+    status: exception
+    note: "RSA-2048: an audience configured to need RS256, and cloud federation for Azure Entra. A dedicated key; published beside the EC keys."
+  ML-DSA-44:
+    family: signature
+    status: exception
+    note: "A witness format that the C2SP tlog-cosignature specification allows; a witness key authorises nothing."
+
+purposes:
+  # ---- the AWS baseline: one symmetric key and five P-384 keys per boundary (per trust domain, per log)
+  - name: wrapping
+    kind: wrapping
+    algorithm: AES-256-GCM
+    enabled: baseline
+    ops: [wrap, unwrap, public-key]
+    aws: { key_spec: SYMMETRIC_DEFAULT, per: boundary, baseline: true }
+    board: { slot: '9d', algorithm: ECDH-P-384 }
+    users: [key]
+    notes: "Protects the data keys. On AWS the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}. On a board the key-agreement key in slot 9d; a data key is wrapped for it and for the recovery recipient. Grants use the boundary data key `grant`, not this key."
+
+  - name: token-signing
+    kind: signing
+    algorithm: ES384
+    enabled: baseline
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: true }
+    board: { slot: '9a' }
+    users: [signer]
+    notes: "Signs tokens. Its certificate is a non-CA certificate that allows digital signatures only, issued by the node's intermediate; the published key set carries the x5c chain. Never the intermediate itself."
+
+  - name: x509-intermediate
+    kind: signing
+    algorithm: ES384
+    enabled: baseline
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: trust domain, baseline: true }
+    board: { slot: '9c' }
+    users: [ca]
+    notes: "The X.509 intermediate of a trust domain, certified by a root that root custody holds; sluis holds intermediates only."
+
+  - name: ssh-user
+    kind: signing
+    algorithm: ES384
+    enabled: baseline
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: true }
+    board: { slot: '82' }
+    users: [ssh-ca]
+    notes: "The SSH user certificate authority."
+
+  - name: ssh-host
+    kind: signing
+    algorithm: ES384
+    enabled: baseline
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: true }
+    board: { slot: '83' }
+    users: [ssh-ca]
+    notes: "The SSH host certificate authority."
+
+  - name: audit-log
+    kind: signing
+    algorithm: ES384
+    enabled: baseline
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: log, baseline: true }
+    board: { slot: '84' }
+    users: [writer]
+    notes: "Signs the checkpoints of an audit log and of its usage log; only the writer of that log may use it."
+
+  # ---- enabled on use: each a dedicated key
+  - name: issuance-log
+    kind: signing
+    algorithm: ES384
+    enabled: on-use
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [writer]
+    notes: "Signs the checkpoints of the issuance log, a third log kind of the audit writer; ca emits the entries."
+
+  - name: release-signing
+    kind: signing
+    algorithm: ES384
+    enabled: on-use
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: false }
+    board: { slot: '85' }
+    users: [signer]
+    notes: "The OpenPGP release subkey, reached through key; in the release boundary only. The primary's certification of the subkey is the kind OpenPgpBinding."
+
+  - name: enrolment
+    kind: key-agreement
+    algorithm: ECDH-P-384
+    enabled: on-use
+    ops: [open, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [exchange]
+    notes: "The HPKE key that a host's enrolment request is sealed to."
+
+  - name: witness
+    kind: signing
+    algorithm: EdDSA
+    enabled: on-use
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_EDWARDS25519, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [witness]
+    notes: "The key of the witness, in the format the cosignature specification requires (Ed25519, or ML-DSA-44 where the witness uses that). The witness signs its cosignatures through key, like every other signer; on a board the key sits in a spare slot."
+
+  - name: backup-archive
+    kind: wrapping
+    algorithm: AES-256-GCM
+    enabled: on-use
+    ops: [wrap, unwrap]
+    aws: { key_spec: SYMMETRIC_DEFAULT, per: boundary, baseline: false }
+    board: { slot: none, algorithm: ECDH-P-384 }
+    users: [exporter, store]
+    notes: "The key of a backup archive: the tar is encrypted as a whole with AES-256-GCM under a key made for that archive, enabled on use. On AWS key calls GenerateDataKey for exporter under a dedicated KMS key that may live in another account and whose policy lets only the restore role decrypt; exporter encrypts the tar and writes the wrapped copy in the archive header, and the restore of store opens it. On a board exporter wraps the archive key by ECDH P-384 with public keys only, for the key-agreement keys named in the plan and for the offline recovery recipient; the restore asks key for the card's ECDH. No card slot of its own."
+
+  - name: workload-issuer
+    kind: signing
+    algorithm: ES384
+    enabled: on-use
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: false }
+    board: { slot: '86', runtimes: [bare-metal] }
+    users: [sluis-node]
+    notes: "Boards only. Signs the workload tokens of the node's actors, through key; never shared with token-signing, because its callers and its blast radius differ."
+
+  # ---- named exceptions: each a dedicated key per purpose and algorithm
+  - name: token-signing-ps256
+    kind: signing
+    algorithm: PS256
+    enabled: named-exception
+    ops: [sign, public-key]
+    aws: { key_spec: RSA_2048, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [signer]
+    notes: "Tokens for a client that declares the FAPI 2.0 profile with PS256."
+
+  - name: token-signing-es256
+    kind: signing
+    algorithm: ES256
+    enabled: named-exception
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P256, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [signer]
+    notes: "Tokens for FAPI 2.0 with ES256, and workload tokens for a GCP federation."
+
+  - name: token-signing-eddsa
+    kind: signing
+    algorithm: EdDSA
+    enabled: named-exception
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_EDWARDS25519, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [signer]
+    notes: "Tokens for FAPI 2.0 with EdDSA."
+
+  - name: token-signing-rs256
+    kind: signing
+    algorithm: RS256
+    enabled: named-exception
+    ops: [sign, public-key]
+    aws: { key_spec: RSA_2048, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [signer]
+    notes: "Tokens for an audience configured to need RS256, and workload tokens for an Azure Entra federation. The audience, not the caller, decides."
+
+  - name: nats
+    kind: signing
+    algorithm: EdDSA
+    enabled: named-exception
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_EDWARDS25519, per: boundary, baseline: false }
+    board: { slot: spare }
+    users: [adapter-<vendor>]
+    notes: "The NATS operator, signing and account keys: one Ed25519 key per purpose, used only by the adapter that mints NATS credentials."
+
+slot_plan:
+  version: 1
+  # The default map, version 1 (2026-11-03). It covers PIV slots 9a, 9c, 9d, 9e and the retired slots 82 to 95. A purpose that an
+  # installation does not enable gets no slot and no key. An installation may override the map in its signed configuration; the key plan
+  # check refuses a collision and an enabled purpose with no slot.
+  slots:
+    '9a': token-signing
+    '9c': x509-intermediate
+    '9d': wrapping
+    '82': ssh-user
+    '83': ssh-host
+    '84': audit-log
+    '85': release-signing
+    '86': workload-issuer
+  spare:
+    from: '87'
+    to: '95'
+    count: 15
+    note: "Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one)."
+  unused:
+    '9e': "The card-authentication slot signs without a PIN by default."
+
+data_keys:
+  # Software AES-256 keys, generated by key, never KMS keys. Each is stored only as DataKeyWrap items, wrapped under `wrapping`.
+  tenant:
+    data:
+      ops: [seal, open]
+      users: [session, console, exchange, signer, ca, ssh-ca, adapter-upstream-oidc, adapter-github, adapter-slack, exporter]
+      erased: "tenant exit"
+      notes: "Personal and operational data of the tenant."
+    pseudonym:
+      ops: [mac]
+      users: [every work actor, reader]
+      erased: "tenant exit"
+      notes: "Keyed hashes, rolled by epoch: audit pseudonyms."
+    evidence:
+      ops: [seal, open]
+      users: [writer, indexer, reader]
+      erased: "end of the evidence retention"
+      notes: "Audit and usage records. Evidence never shares a key with personal data and outlives it."
+  boundary:
+    grant:
+      ops: [seal, open]
+      users: [policy, store, ca, signer, key, adapter-github]
+      erased: never
+      notes: "Seals the grants policy mints; the actors that carry a grant out open it. A grant is in flight only."
+    cookie:
+      ops: [seal, open]
+      users: [session]
+      erased: never
+      notes: "Seals and opens the session cookie, per request, batched."
+    mac:
+      ops: [mac]
+      users: [session, ca, adapter-github]
+      erased: never
+      notes: "The key behind key's Mac for link ids and index values: UpstreamLink and UpstreamSession ids, pairwise subjects (label `pairwise`), by_subject_hash, the directory indexes."
+    data:
+      ops: [seal, open]
+      users: [exchange]
+      erased: never
+      notes: "Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds this is EnrolmentToken only. The wrap has the same purpose name as the tenant's `data` key and a different address."
+
+wrapping:
+  aws: "GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored."
+  board: "A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data."
+  backup_archive: "An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient."

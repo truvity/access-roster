@@ -1,386 +1,536 @@
 # The actor registry: one row per actor of sluis, the source of truth for which actors exist.
 #
-# An actor is a process with one responsibility (ADR 0002, ADR 0041). This file names each one
-# and says what no other file says about it in one place: its language (ADR 0012), where it runs,
-# the keys and card slots it uses (ADR 0006), the ADRs that govern it, the requirement areas and
-# standards it implements, and the GitHub label and open issues that track its build.
+# An actor is a program with one responsibility, run as its own unit in each boundary it serves
+# (`actor@boundary`). Every actor belongs to one of four families. This file names each actor and
+# says what no other file says about it in one place: its family, whether it holds a credential at
+# rest, its ports, the actors it calls, the outside hosts it may reach (egress), the key purposes it
+# uses, its language, where it runs, the records that govern it, the requirement areas and standards
+# it implements, and the GitHub label and open issues that track its build.
 #
-# One fact, one place. What the architecture explorer already draws stays in
-# site/src/data/explorer/architecture.yaml and is not repeated here: for an actor drawn there as a
-# role, its executable (`binary`), the ports it uses (`uses`) and the actors it calls (`calls`) are
-# read from that file. An actor the explorer does not draw as a role gives `binary`, `ports` and
-# `calls` here. tools/checks/actors.mjs (`just check-actors`) enforces the split, checks this file
-# against the ADRs, the requirement records and the explorer, and writes the generated tables on
-# docs/reference/actors.md (`just actors-write`).
+# With the kind registry (docs/architecture/kinds.yaml) and the key registry
+# (docs/architecture/keys.yaml) this file generates every enforcement layer: the store's rules
+# (actor x kind x verb), the key policies, the unit's socket and uid permissions, and the per-uid
+# egress rules. `tools/checks/actors.mjs` (`just check-actors`) checks this file and writes the
+# generated tables on docs/reference/actors.md (`just actors-write`); `tools/checks/registries.mjs`
+# (`just check-registries`) checks the three registries against each other.
+#
+# Families:
+#   work     entry, console, session, exchange, policy, signer, ca, ssh-ca, quota and the adapters.
+#            A work actor holds no storage, key or audit credential at rest. It has exactly a `data`
+#            port, a `keys` port and an `audit-emit` port, and the ports of its job.
+#   data     store and exporter. store holds the storage credentials and has four ports downward, one
+#            per storage class; exporter holds the credentials of its export destinations.
+#   keys     key: holds the card PIN or the KMS permission; seals, opens, signs and makes keyed hashes.
+#   audit    writer, witness, indexer and reader. They read their documents (AuditLog, AuditWitnesses,
+#            AuditCatalogue) through the data port, like every other family's actors; the blob, the
+#            transport and the index are their own ports.
+#
+# The foundation and the modules: the data and keys families (store, exporter, key) are the foundation
+# every installation runs. The identity module (the work actors except quota, adapters included), the
+# audit module (the four audit pieces) and the quota module (quota) are sets of actors on top of it;
+# an installation runs the modules it needs, and the foundation's binaries do not change.
 #
 # Fields of an actor:
-#   name               the actor's name, as in ADR 0041; the label is `actor:<name>`
-#   group              core | quota | audit | platform | integration
+#   name               lower-case kebab-case; the label is `actor:<name>`. The actor named `store` is
+#                      written `store@` in the kind registry, and so on for `key` and `exporter`
+#   family             work | data | keys | audit
+#   holder             true for a credential holder: store, exporter, key and the four audit pieces;
+#                      false for every work actor
+#   holds              holders only: what the credential is
 #   purpose            one sentence
-#   aka                other words the ADRs use for it (prose names of the integration kinds)
-#   contract           integration kinds only: the contract name on the Integrations page
-#   language           Go or Rust; must agree with the ADR 0012 per-actor table
-#   language_rule      the ADR 0012 rule (R1 to R11) that picks the language
-#   language_row       the text that finds its row in the ADR 0012 table, when not `name` in backticks
+#   aka                other words the records use for it
+#   contracts          adapters only: the integration contracts the adapter implements
+#   language           Go or Rust
+#   language_rule      the rule (R1 to R11) of the language record that picks the language
+#   language_row       the text that finds its row in the language record's table, when not `name` in
+#                      backticks
 #   language_note      optional: a gate or an exception
 #   placement          scope (per-boundary | front | per-node | per-tenant | beside-sluis), instances
 #                      (any | exactly-1), runtimes (where it may run), and an optional note
-#   keys               the key purposes it uses: purpose, slot (the card slot map v1 of ADR 0006;
-#                      "spare" for a purpose that takes a spare slot when enabled, "none" for a key
-#                      that is not a card key), ops (sign | public-key | wrap | unwrap) and context
-#                      (the encryption context of a wrap or an unwrap)
-#   binary, ports, calls   only for actors the explorer does not draw as a role
-#   adrs               the four-digit numbers of the ADRs that govern it; each names the actor
+#   ports              the ports it has, of `ports` below
+#   calls              the actors it calls over its transport, besides the data, keys and audit-emit
+#                      ports (those reach store, key and the audit transport). `adapter-<vendor>`
+#                      means any adapter
+#   egress             the outside host classes its unit may reach, of `egress_classes` below; [] is
+#                      none. Local sockets are not egress
+#   key_purposes       the key purposes it uses, of docs/architecture/keys.yaml: purpose and ops
+#                      (seal | open | sign | mac | public-key | wrap | unwrap)
+#   adrs               the four-digit numbers of the records that govern it; each names the actor
 #   requirement_areas  area codes of docs/requirements/index.yaml
 #   standards          ids of docs/requirements/standards.yaml
 #   label              actor:<name>
 #   issues             open issues of truvity/sluis that build it; the labels script applies the label
+#
+# Platform pieces are programs an installation runs that are not actors of any family: the node agent
+# is the one that uses a key purpose, so it is listed under `platform`. The edge connector, the card
+# service and the engine processes take no part in the registry.
 schema: 1
 
+# The ports of a unit. A port with `family` is private to that family; a port with `shared: true` is
+# the client side of a service of another family, and any actor may have it.
+ports:
+  data: { shared: true, description: "To store: the typed clients of the generic store service." }
+  keys: { shared: true, description: "To key: Seal, Open, Sign and Mac." }
+  audit-emit: { shared: true, description: "To the audit transport: the emitter library hands each record over." }
+  listener: { family: work, description: "A listener that faces the edge: entry only." }
+  provider-api: { family: work, description: "A vendor's or an upstream's API, for an adapter." }
+  fetch: { family: work, description: "Outbound fetch of documents and key sets from hosts a configuration allows." }
+  config-source: { family: data, description: "store: the signed configuration documents (a file, a ConfigMap or AppConfig)." }
+  secret-source: { family: data, description: "store: the read-only secrets (a systemd credential or a parameter store)." }
+  durable: { family: data, description: "store: the engine for durable kinds." }
+  temp: { family: data, description: "store: the engine for temp kinds." }
+  destination: { family: data, description: "exporter: its export destinations." }
+  key-store: { family: keys, description: "key: the card or the cloud key service." }
+  blob: { family: audit, description: "The audit blob: tiles, checkpoints and the writer's state." }
+  transport: { family: audit, description: "The audit transport, from the emitters to the writer." }
+  index: { family: audit, description: "The audit search index." }
+
+# The outside host classes a unit may reach. The per-uid nftables rules and the pod network policies
+# are generated from each actor's list.
+egress_classes:
+  engine: "The store's engine: DynamoDB on AWS, the rqlite peers on boards."
+  config-store: "Where the signed configuration documents are kept (a file needs none; AppConfig does)."
+  secret-store: "Where the secrets are kept (SSM or a systemd credential)."
+  export-destinations: "The destinations an ExportDestination names: a store of record, a cluster's Secret, a bucket."
+  key-service: "The cloud key service (AWS KMS) on an installation that uses one."
+  audit-blob: "The audit blob (S3, R2 or local files)."
+  audit-transport: "The audit transport (a queue, NATS JetStream or a local spool)."
+  search-index: "The audit search index."
+  upstream-idp: "The issuer, token and key-set endpoints of the upstream identity providers an Upstream names."
+  client-document-hosts: "The hosts a ClientDocumentGate allows a client metadata document to come from."
+  proof-issuer-keys: "The key-set endpoints of the proof issuers an ExchangeTrust names."
+  github-api: "The GitHub API: of an Integration the operator declared, and of the GitHub organisations that tenants connected."
+  slack-api: "The Slack API of a SlackApp the operator declared."
+
 actors:
-  # ---- core (ADR 0041, "The actors")
+  # ---- work (ADR 0002, "Work actors")
   - name: entry
-    group: core
+    family: work
+    holder: false
     purpose: "Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns the step; it holds nothing."
     language: Rust
     language_rule: R2
     language_note: "Gated by spikes S1, S3 and S10; the fallback candidate is Go first."
-    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "The only actor with a public listener: a Unix socket on bare-metal and Kubernetes, loopback TCP on serverless." }
-    keys: []
-    adrs: ['0041', '0003', '0008', '0017', '0012', '0011']
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "The only actor reachable from outside: a Unix socket on bare-metal and Kubernetes, loopback TCP on serverless." }
+    ports: [data, keys, audit-emit, listener]
+    calls: [session, exchange, console, ssh-ca, adapter-<vendor>]
+    egress: []
+    key_purposes:
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0003', '0008', '0011', '0012', '0017']
     requirement_areas: [SEC, ISO]
     standards: [NC-05, ST-97]
     label: actor:entry
     issues: [958, 941, 796]
 
   - name: session
-    group: core
-    purpose: "Sign-in, session records, the session cookie and the freshness of each person's authentication per boundary (step-up)."
+    family: work
+    holder: false
+    purpose: "Sign-in, session chains, the session cookie and the freshness of each person's authentication per boundary (step-up)."
     language: Go
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "purpose=cookie (the cookie-sealing key)" }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-    adrs: ['0041', '0017', '0004', '0006', '0012']
+    ports: [data, keys, audit-emit, fetch]
+    calls: [policy, signer, adapter-upstream-oidc]
+    egress: [client-document-hosts]
+    key_purposes:
+      - { purpose: cookie, ops: [seal, open] }
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: mac, ops: [mac] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0017', '0018', '0019']
     requirement_areas: [AUTHN, SESS, TOKEN, FED]
     standards: [ST-28, ST-29, ST-03, ST-24, ST-34, ST-59, ST-30, ST-31]
     label: actor:session
     issues: [959, 775, 776, 777, 778, 885, 979, 1081, 793]
 
   - name: console
-    group: core
-    purpose: "The operator API, as the browser's backend: it checks the operator's delegation and routes each operator-set write to the actor that owns the record kind."
+    family: work
+    holder: false
+    purpose: "The operator API, as the browser's backend: it checks the operator's delegation and routes each write to the actor that owns the kind."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off; the single-page application is TypeScript."
     placement: { scope: front, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys: []
-    adrs: ['0041', '0004', '0012']
+    ports: [data, keys, audit-emit]
+    calls: [session, exchange, reader, adapter-<vendor>]
+    egress: []
+    key_purposes:
+      - { purpose: data, ops: [open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0027']
     requirement_areas: [UX, OPS]
     standards: [ST-97]
     label: actor:console
     issues: [960, 831, 832]
 
   - name: exchange
-    group: core
-    purpose: "Token exchange (RFC 8693), enrolment of hosts and workloads, the front of the signing API, and the verifiers of proofs."
+    family: work
+    holder: false
+    purpose: "Token exchange (RFC 8693), enrolment of hosts and workloads, the front of the signing API, the verifiers of proofs, and the owner of what a tenant has configured."
     language: Go
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: enrolment, slot: spare, ops: [unwrap], context: "opens an HPKE-sealed enrolment request" }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-    adrs: ['0041', '0022', '0006', '0012', '0045']
+    ports: [data, keys, audit-emit, fetch]
+    calls: [policy, quota, signer, ca, adapter-<vendor>]
+    egress: [proof-issuer-keys]
+    key_purposes:
+      - { purpose: enrolment, ops: [open, public-key] }
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0006', '0012', '0021', '0022', '0024']
     requirement_areas: [EXCH, WORKLOAD, CLIENT, SUPPLY]
     standards: [ST-07, ST-08, ST-44, ST-45, ST-46, ST-61, ST-110]
     label: actor:exchange
     issues: [961, 782, 783, 784, 785, 965, 966, 890]
 
   - name: signer
-    group: core
+    family: work
+    holder: false
     purpose: "Signs tokens under a signing policy with the token-signing key, checking the issuer, the audience, the lifetime and the algorithm, and signs artifacts with the release-signing key for a grant that policy sealed."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off; gated by spikes S1 and S10."
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Never fused with entry (the fusion rule)." }
-    keys:
-      - { purpose: token-signing, slot: 9a, ops: [sign, public-key] }
-      - { purpose: release-signing, slot: '85', ops: [sign, public-key], context: "the OpenPGP release subkey, for a signing grant" }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-      - { purpose: sealing, slot: 9d, ops: [unwrap], context: "purpose=grant (opens the signing grant of an artifact signature)" }
-    adrs: ['0041', '0012', '0045']
+    ports: [data, keys, audit-emit]
+    calls: []
+    egress: []
+    key_purposes:
+      - { purpose: token-signing, ops: [sign, public-key] }
+      - { purpose: token-signing-ps256, ops: [sign, public-key] }
+      - { purpose: token-signing-es256, ops: [sign, public-key] }
+      - { purpose: token-signing-eddsa, ops: [sign, public-key] }
+      - { purpose: token-signing-rs256, ops: [sign, public-key] }
+      - { purpose: release-signing, ops: [sign, public-key] }
+      - { purpose: grant, ops: [open] }
+      - { purpose: data, ops: [open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0006', '0012', '0020', '0024']
     requirement_areas: [KEYS, TOKEN, SUPPLY]
     standards: [ST-49, ST-50, ST-51, ST-52, ST-13, ST-83]
     label: actor:signer
     issues: [962, 774, 890]
 
   - name: policy
-    group: core
-    purpose: "The decision point: a declared Cedar policy maps facts to grants; it has no state and no network, and seals mint grants."
+    family: work
+    holder: false
+    purpose: "The decision point: a declared Cedar policy maps facts to grants; it keeps no state, has no outbound network, and has key seal the grants it mints."
     language: Rust
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [wrap], context: "purpose=grant" }
-    adrs: ['0041', '0007', '0006', '0012']
+    ports: [data, keys, audit-emit]
+    calls: []
+    egress: []
+    key_purposes:
+      - { purpose: grant, ops: [seal] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0007', '0012']
     requirement_areas: [POLICY]
     standards: [NC-12]
     label: actor:policy
     issues: [892, 786, 787, 852, 1008]
 
   - name: ca
-    group: core
+    family: work
+    holder: false
     purpose: "The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log."
     language: Go
     language_rule: R4
-    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: x509-intermediate, slot: 9c, ops: [sign, public-key] }
-      - { purpose: issuance-log, slot: spare, ops: [sign] }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-    adrs: ['0041', '0023', '0006', '0012']
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Never fused with entry (the fusion rule)." }
+    ports: [data, keys, audit-emit]
+    calls: []
+    egress: []
+    key_purposes:
+      - { purpose: x509-intermediate, ops: [sign, public-key] }
+      - { purpose: grant, ops: [open] }
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: mac, ops: [mac] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0006', '0012', '0023']
     requirement_areas: [PKI, DB]
     standards: [ST-62, ST-69, ST-109]
     label: actor:ca
     issues: [913, 969, 926, 978]
 
   - name: ssh-ca
-    group: core
+    family: work
+    holder: false
     purpose: "The SSH certificate authority, for user and host certificates that carry identity only."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off."
-    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: ssh-user, slot: '82', ops: [sign, public-key] }
-      - { purpose: ssh-host, slot: '83', ops: [sign, public-key] }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-    adrs: ['0041', '0023', '0012']
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Never fused with entry (the fusion rule)." }
+    ports: [data, keys, audit-emit]
+    calls: [policy]
+    egress: []
+    key_purposes:
+      - { purpose: ssh-user, ops: [sign, public-key] }
+      - { purpose: ssh-host, ops: [sign, public-key] }
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0023']
     requirement_areas: [SSH]
     standards: [ST-65, ST-66]
     label: actor:ssh-ca
     issues: [925, 1072]
 
-  # ---- the Quota piece (ADR 0030)
   - name: quota
-    group: quota
-    purpose: "Rate limits, caps and balances, with compare-and-set on the state port; it meters by default and enforces per policy rule."
+    family: work
+    holder: false
+    purpose: "Keeps the allowance of each tenant, counts it down with a conditional update, refuses at zero, and records every admit, refusal and top-up as an audit fact."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off."
-    placement: { scope: beside-sluis, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Runs beside sluis, sharing its driver instances, or in an installation of its own." }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds and the companies' usage data keys" }
-    adrs: ['0041', '0030', '0012', '0051', '0039', '0052', '0040', '0053']
+    placement: { scope: beside-sluis, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Runs beside sluis, sharing its store, or in an installation of its own." }
+    ports: [data, keys, audit-emit]
+    calls: []
+    egress: []
+    key_purposes:
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0039', '0040']
     requirement_areas: [QUOTA]
     standards: [NC-15]
     label: actor:quota
     issues: [915, 1026]
 
-  # ---- audit (ADR 0028, "Four pieces")
+  # ---- adapters: the work actors of the integrations, one per vendor tenant and credential (ADR 0025)
+  - name: adapter-upstream-oidc
+    family: work
+    holder: false
+    aka: ["upstream adapter"]
+    contracts: [Upstream]
+    purpose: "Federates sign-in from an upstream identity provider: it does the code exchange at the upstream and returns the verified assertion to session, and it never decides."
+    language: Go
+    language_rule: R4
+    language_row: Integrations
+    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
+    ports: [data, keys, audit-emit, provider-api]
+    calls: []
+    egress: [upstream-idp]
+    key_purposes:
+      - { purpose: data, ops: [open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0017', '0025']
+    requirement_areas: [FED]
+    standards: [ST-28, ST-29]
+    label: actor:adapter-upstream-oidc
+    issues: [916, 807]
+
+  - name: adapter-github
+    family: work
+    holder: false
+    aka: ["github adapter"]
+    contracts: [FactsSource, CredentialMinter, Provisioner]
+    purpose: "Reads directory facts from GitHub, mints short-lived GitHub credentials for a grant that policy sealed, and reconciles team membership to a desired state."
+    language: Go
+    language_rule: R4
+    language_row: Integrations
+    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler, a scheduled re-sync) takes a lease, so one runs at a time." }
+    ports: [data, keys, audit-emit, provider-api]
+    calls: []
+    egress: [github-api]
+    key_purposes:
+      - { purpose: grant, ops: [open] }
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: mac, ops: [mac] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0025', '0026']
+    requirement_areas: [FED, EXCH]
+    standards: [ST-42, ST-07]
+    label: actor:adapter-github
+    issues: [805, 806, 808, 811, 816, 817, 1018]
+
+  - name: adapter-slack
+    family: work
+    holder: false
+    aka: ["slack adapter"]
+    contracts: [Provisioner, Notifier]
+    purpose: "Sends notifications such as an enrolment waiting for approval, and reconciles chat channels to a desired state."
+    language: Go
+    language_rule: R4
+    language_row: Integrations
+    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler) takes a lease, so one runs at a time." }
+    ports: [data, keys, audit-emit, provider-api]
+    calls: []
+    egress: [slack-api]
+    key_purposes:
+      - { purpose: data, ops: [seal, open] }
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0002', '0012', '0025', '0026']
+    requirement_areas: []
+    standards: []
+    label: actor:adapter-slack
+    issues: [1018, 899]
+
+  # ---- data (ADR 0002, "Credential holders"; ADR 0005; ADR 0009)
+  - name: store
+    family: data
+    holder: true
+    holds: ["the engine login of the durable and temp classes", "the access to the config source and the secret source", "the restore identity, whose role alone may decrypt an archive key on AWS"]
+    purpose: "The only holder of storage credentials: one generic store service over four ports, one per storage class, that decodes and validates each value against the kind registry and applies the rules of the actor registry."
+    language: Rust
+    language_rule: R11
+    language_note: "Rust on the smallest board tier unless a serious trade-off is named; the row for store in the language record is set with that record's edit."
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A boundary of level L2 or higher has its own store; below L2 the parent's store serves it under its prefix." }
+    ports: [config-source, secret-source, durable, temp, keys, audit-emit]
+    calls: []
+    egress: [engine, config-store, secret-store]
+    key_purposes:
+      - { purpose: grant, ops: [open] }
+      - { purpose: backup-archive, ops: [unwrap] }
+    adrs: ['0002', '0004', '0005', '0010', '0012']
+    requirement_areas: [ISO, OPS, SECRETS]
+    standards: []
+    label: actor:store
+    issues: []
+
+  - name: exporter
+    family: data
+    holder: true
+    holds: ["the credentials of its export destinations", "a write-only credential for the backup bucket"]
+    purpose: "Publishes the kinds marked exportable to destinations outside sluis and runs the backup job; it never writes to a secret source."
+    language: Rust
+    language_rule: R11
+    language_note: "Rust on the smallest board tier unless a serious trade-off is named; the row for exporter in the language record is set with that record's edit."
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "The backup job takes a lease, so one runs at a time." }
+    ports: [data, keys, audit-emit, destination]
+    calls: [policy]
+    egress: [export-destinations]
+    key_purposes:
+      - { purpose: data, ops: [open] }
+      - { purpose: backup-archive, ops: [wrap] }
+    adrs: ['0002', '0009', '0010', '0012']
+    requirement_areas: [EXPORT, BACKUP]
+    standards: []
+    label: actor:exporter
+    issues: [1014]
+
+  # ---- keys (ADR 0002; ADR 0006)
+  - name: key
+    family: keys
+    holder: true
+    holds: ["the card PIN, or the permission to use the cloud key service"]
+    purpose: "Holds a boundary's keys: it seals, opens, signs and makes keyed hashes in place, caches opened data keys in memory with a time to live per entry, and writes the wrapped data keys and the key certificates."
+    language: Go
+    language_rule: R4
+    language_note: "Go with piv-go, the named exception to R3; the row for key in the language record is set with that record's edit."
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "From level L1. On boards one per node, with exclusive access to the node's card; with a cloud key service the key policy limits each purpose to one actor." }
+    ports: [data, key-store, audit-emit]
+    calls: []
+    egress: [key-service]
+    key_purposes:
+      - { purpose: wrapping, ops: [wrap, unwrap, public-key] }
+      - { purpose: grant, ops: [open] }
+    adrs: ['0002', '0006', '0010', '0012']
+    requirement_areas: [KEYS, SEC]
+    standards: [NC-10, ST-83]
+    label: actor:key
+    issues: [951, 1067, 914]
+
+  # ---- audit (ADR 0028)
   - name: writer
-    group: audit
-    purpose: "Seals the records it takes from the transport into its audit log and usage log in the blob, and has key-holder sign each checkpoint."
+    family: audit
+    holder: true
+    holds: ["write access to its log in the audit blob"]
+    purpose: "Seals the records it takes from the transport into its audit log and usage log in the blob, and has key sign each checkpoint."
     aka: ["audit writer"]
     language: Go
     language_rule: R4
     placement: { scope: per-boundary, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes], note: "Exactly one writer per log; a cluster keeps one log per node." }
-    keys:
-      - { purpose: log, slot: '84', ops: [sign] }
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the audit tenants' data keys and its own record kinds" }
-    adrs: ['0041', '0006', '0012', '0028', '0029']
+    ports: [data, keys, blob, transport]
+    calls: []
+    egress: [audit-blob, audit-transport]
+    key_purposes:
+      - { purpose: audit-log, ops: [sign, public-key] }
+      - { purpose: issuance-log, ops: [sign, public-key] }
+      - { purpose: evidence, ops: [seal] }
+    adrs: ['0002', '0012', '0028', '0029']
     requirement_areas: [AUDIT]
     standards: [ST-71, ST-72, ST-73, ST-75, ST-114]
     label: actor:writer
     issues: [837, 838, 1121]
 
   - name: witness
-    group: audit
-    purpose: "Cosigns each new checkpoint the writer sends once it is consistent with the last one it cosigned; optional everywhere."
+    family: audit
+    holder: true
+    holds: ["read and write access to its cosignatures in the audit blob"]
+    purpose: "Cosigns each new checkpoint the writer sends once it is consistent with the last one it cosigned, and has key sign each cosignature; optional everywhere."
     language: Go
     language_rule: R4
-    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "On the boards the other nodes are a node's peer witnesses." }
-    keys:
-      - { purpose: witness, slot: none, ops: [sign], context: "its own key, Ed25519 or ML-DSA-44 as tlog-cosignature requires (a named exception)" }
-    adrs: ['0041', '0006', '0012', '0029']
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "On the boards the other nodes are a node's peer witnesses, through the audit blob." }
+    ports: [data, keys, blob, transport]
+    calls: []
+    egress: [audit-blob]
+    key_purposes:
+      - { purpose: witness, ops: [sign, public-key] }
+    adrs: ['0002', '0012', '0029']
     requirement_areas: [AUDIT]
     standards: [ST-73, ST-74]
     label: actor:witness
     issues: [955]
 
   - name: indexer
-    group: audit
+    family: audit
+    holder: true
+    holds: ["read access to the audit blob", "write access to the search index"]
     purpose: "Follows each audit log of its boundary by signed checkpoint and applies the entries to the search index; the index's only writer."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off."
     placement: { scope: per-boundary, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [unwrap], context: "a declared reader of each company's audit data key" }
-    adrs: ['0041', '0012', '0028']
+    ports: [data, keys, blob, transport, index, audit-emit]
+    calls: []
+    egress: [audit-blob, search-index]
+    key_purposes:
+      - { purpose: evidence, ops: [open] }
+    adrs: ['0002', '0012', '0028']
     requirement_areas: [AUDIT]
     standards: [ST-72, ST-75]
     label: actor:indexer
     issues: [839, 1122]
 
   - name: reader
-    group: audit
+    family: audit
+    holder: true
+    holds: ["read access to the audit blob and the search index"]
     purpose: "Answers audit queries from the search index, filtered by the caller's grant, and records each read."
     language: Rust
     language_rule: R11
     language_note: "Rust unless its design names a serious trade-off."
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "With a sqlite index on a cluster it runs on the indexer's node." }
-    keys: []
-    adrs: ['0041', '0012', '0028']
+    ports: [data, keys, blob, index, audit-emit]
+    calls: []
+    egress: [audit-blob, search-index]
+    key_purposes:
+      - { purpose: pseudonym, ops: [mac] }
+      - { purpose: evidence, ops: [open] }
+    adrs: ['0002', '0012', '0028', '0029']
     requirement_areas: [AUDIT]
     standards: [ST-114]
     label: actor:reader
     issues: [839, 985, 1122]
 
-  # ---- platform (ADR 0041, "The other actors are named elsewhere")
-  - name: key-holder
-    group: platform
-    purpose: "The one mediating driver: owns a node's card (or the software key files) exclusively and serves each caller its own socket, with a peer-uid check and content-aware signing."
-    language: Go
-    language_rule: R4
-    language_note: "Go with piv-go: the named exception to R3."
-    binary: drivers/key-holder
-    ports: []
-    calls: []
-    placement: { scope: per-node, instances: exactly-1, runtimes: [bare-metal], note: "No key-holder with a cloud key service: KMS key policies take its place." }
-    keys:
-      - { purpose: every enabled purpose, slot: "9a, 9c, 9d, 82 to 95", ops: [sign, public-key, wrap, unwrap], context: "for the callers its access list names" }
-    adrs: ['0041', '0003', '0006', '0024', '0012']
-    requirement_areas: [KEYS, SEC]
-    standards: [NC-10, ST-83]
-    label: actor:key-holder
-    issues: [951, 1067, 914]
-
+# Programs that are not actors of a family (ADR 0002, "Platform pieces"). Only the node agent uses a key
+# purpose, so only it is listed.
+platform:
   - name: sluis-node
-    group: platform
-    purpose: "The node agent: issues each local actor a short-lived workload JWT, from its uid by peer credentials, signed with the node's hardware key."
+    purpose: "The node agent: issues each local actor a short-lived workload token, from its uid by peer credentials, signed through key with the node's workload-issuer key."
     language: Rust
     language_rule: R3
+    placement: { scope: per-node, instances: exactly-1, runtimes: [bare-metal], note: "On Kubernetes only as a fallback; none on serverless." }
     binary: node/sluis-node
     ports: [keys]
     calls: []
-    placement: { scope: per-node, instances: exactly-1, runtimes: [bare-metal], note: "On Kubernetes only as a fallback; none on serverless." }
-    keys:
-      - { purpose: workload-issuer, slot: '86', ops: [sign], context: "the node's workload JWTs" }
-    adrs: ['0041', '0003', '0022', '0012']
+    egress: []
+    key_purposes:
+      - { purpose: workload-issuer, ops: [sign, public-key] }
+    adrs: ['0002', '0003', '0006', '0012', '0022']
     requirement_areas: [WORKLOAD]
     standards: [ST-110, ST-46]
     label: actor:sluis-node
     issues: [870]
 
-  # ---- integrations (ADR 0041): one process per vendor tenant and credential
-  - name: upstream
-    group: integration
-    contract: Upstream
-    purpose: "Federates sign-in from an upstream identity provider and returns facts; it never decides."
-    language: Go
-    language_rule: R4
-    language_row: Integrations
-    binary: "integrations/<integration>"
-    ports: [secrets, transport]
-    calls: []
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys: []
-    adrs: ['0041', '0017']
-    requirement_areas: [FED]
-    standards: [ST-28, ST-29]
-    label: actor:upstream
-    issues: [916, 807]
-
-  - name: facts-source
-    group: integration
-    contract: FactsSource
-    aka: ["facts source"]
-    purpose: "Returns directory facts (users, groups, teams) and writes them as learned records of its own."
-    language: Go
-    language_rule: R4
-    language_row: Integrations
-    binary: "integrations/<integration>"
-    ports: [secrets, state, transport]
-    calls: []
-    placement: { scope: per-tenant, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes], note: "Its reconciler declares instances: exactly 1 (ADR 0002)." }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [wrap, unwrap], context: "the data keys of its own record kinds" }
-    adrs: ['0002', '0041']
-    requirement_areas: [FED]
-    standards: [ST-42]
-    label: actor:facts-source
-    issues: [805, 806, 808]
-
-  - name: credential-minter
-    group: integration
-    contract: CredentialMinter
-    aka: ["credential minter"]
-    purpose: "Mints a short-lived downstream credential for a grant that policy sealed, and nothing the grant does not cover."
-    language: Go
-    language_rule: R4
-    language_row: Integrations
-    binary: "integrations/<integration>"
-    ports: [keys, secrets, transport]
-    calls: []
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys:
-      - { purpose: sealing, slot: 9d, ops: [unwrap], context: "purpose=grant" }
-    adrs: ['0041', '0006']
-    requirement_areas: [EXCH]
-    standards: [ST-07]
-    label: actor:credential-minter
-    issues: [811, 816, 817]
-
-  - name: provisioner
-    group: integration
-    contract: Provisioner
-    purpose: "Pulls a digest-addressed desired state that core publishes and reconciles an external system to it."
-    language: Go
-    language_rule: R4
-    language_row: Integrations
-    binary: "integrations/<integration>"
-    ports: [secrets, transport]
-    calls: []
-    placement: { scope: per-tenant, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes] }
-    keys: []
-    adrs: ['0041']
-    requirement_areas: []
-    standards: []
-    label: actor:provisioner
-    issues: [1018]
-
-  - name: notifier
-    group: integration
-    contract: Notifier
-    purpose: "Sends notifications, such as an enrolment waiting for approval."
-    language: Go
-    language_rule: R4
-    language_row: Integrations
-    binary: "integrations/<integration>"
-    ports: [secrets, transport]
-    calls: []
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
-    keys: []
-    adrs: ['0041']
-    requirement_areas: []
-    standards: []
-    label: actor:notifier
-    issues: [899]
-
-# The example integration instances the ADRs name (`<vendor>[-<capability>]@<tenant>`), and the
-# integration kinds each one plays. An instance name in an ADR must be an actor or one of these.
-integration_instances:
-  google-signin: [upstream]
-  google-directory: [facts-source]
-  oidc: [upstream]
-  github: [facts-source, credential-minter, provisioner]
-  slack: [provisioner, notifier]
-  cloudflare: [credential-minter]
-  aws-minter: [credential-minter]
-
 # Names that look like actors and are not, with the reason. The check refuses them as actors.
 not_actors:
-  cloud-cloudflare: "A cloud port driver, cloud-cloudflare@<boundary> (ADR 0003)."
-  WorkloadVerifier: "A verifier driver of exchange with public material only, not a process (ADR 0022)."
+  cloud-cloudflare: "A driver, private to its owner; it is not an actor."
+  WorkloadVerifier: "A verifier of exchange with public material only, not a process."
