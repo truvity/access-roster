@@ -14,7 +14,7 @@ This is the threat model that [REQ-SEC-009](/requirements/sec/#REQ-SEC-009) requ
 
 The scope is one operator's installation: its [boundaries](/concepts/boundaries/), each with the foundation (store@, exporter@ and key@) and the modules it runs (identity, audit and quota), and the front that gives people one sign-in URL ([0002](/decisions/0002-families-of-actors/#the-foundation-and-the-modules), [0008](/decisions/0008-boundaries-and-tenants/#boundaries)).
 
-A boundary is the unit of keys and policy, and its level on the [ladder](/decisions/0008-boundaries-and-tenants/#the-ladder) says what it has of its own: L0 a tenant (the store's rules and its own data keys), L1 its own keys, L2 its own processes, L3 its own engine, L4 its own runtime. A tenant lives inside a boundary, with three data keys of its own and no authority key ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
+A boundary is the unit of keys and policy, and its level on the [ladder](/decisions/0008-boundaries-and-tenants/#the-ladder) says what it has of its own: L0 a tenant (the store's rules and its own data keys), L1 its own keys, L2 its own processes, L3 its own engine, L4 its own runtime. A tenant lives inside a boundary, with four data keys of its own and, by default, no authority key ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
 
 The assets, in the order an attacker wants them:
 

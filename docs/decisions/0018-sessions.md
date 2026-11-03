@@ -54,6 +54,10 @@ A session is state that may be lost: a lost chain costs a sign-in and never data
 - **Each agent session is listed and revocable by the person,** in the console, and its start, its use and its end are audit facts.
 - **Concurrent agent sessions are capped per person and client:** a default of 5 and a maximum of 20, set per installation. A new consent past the cap is refused; the person revokes one first.
 
+### One session chain per issuer
+
+- **Two tenants never share a sluis session, even inside one boundary.** A `SessionChain` belongs to one tenant's issuer, and the cookie of a login domain does not reach another ([REQ-SESS-046](/requirements/sess/#REQ-SESS-046)). Single sign-on across tenants is the upstream broker's session, and each tenant's policy may still demand a step-up or a fresh sign-in ([0017](/decisions/0017-identity-and-sign-in/#step-up)).
+
 ### Across boundaries
 
 - **A boundary's session never outlives the session that seeded it.** The exchange into a boundary carries the original start and class of the session, and the boundary applies its own limits under them, so it can shorten and never lengthen.

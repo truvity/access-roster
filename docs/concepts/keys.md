@@ -43,7 +43,7 @@ sequenceDiagram
 - **The value is sealed under the data key of its address's boundary, tenant and purpose,** with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open.
 - **key@ checks three things on every Seal and Open:** the caller's identity, by the transport; the caller's rule for the purpose and operation, generated from the actor registry; and the grant, which must be sealed for the address's tenant, name the operation and not be expired.
 - **Opens are batched,** so a request that needs a session cookie and a person's records pays one hop. On Lambda the hop was measured with the whole sign-in, which stays inside its budget ([0037](/decisions/0037-capacity-is-measured-before-it-is-promised/#the-warm-sign-in-on-lambda)).
-- **Mac** makes a keyed hash with HMAC-SHA384 over a data key: link ids, pairwise subjects and the hashed index entries of sealed kinds under the boundary's `mac` key, and audit pseudonyms under a tenant's `pseudonym` key. There is no extra KMS key for hashing.
+- **Mac** makes a keyed hash with HMAC-SHA384 over a data key: link ids and the hashed index entries of sealed kinds under the boundary's `mac` key, audit pseudonyms under a tenant's `pseudonym` key, and pairwise subjects under a tenant's `pairwise` key. There is no extra KMS key for hashing.
 
 ## Data keys
 
@@ -53,10 +53,11 @@ A data key is a software AES-256 key. key@ makes it, keeps it only wrapped, and 
 |---|---|---|
 | `data` | One per tenant | Personal and operational data of the tenant |
 | `pseudonym` | One per tenant, rolled by epoch | Keyed hashes of the tenant: audit pseudonyms |
+| `pairwise` | One per tenant, never rotated | Pairwise subjects of the tenant |
 | `evidence` | One per tenant | Audit and usage evidence of the tenant |
 | `grant` | One per boundary | Sealed grants |
 | `cookie` | One per boundary | Session cookies |
-| `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and pairwise subjects |
+| `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and the hashed index entries of sealed kinds |
 | `data` | One per boundary, tenant `-` | The sealed kinds that have no tenant in their address |
 
 The purposes never share a key, so a tenant's exit can delete its personal data and keep its evidence. A tenant that exists in several boundaries has separate data keys in each. A tenant has no authority key and no wrapping key: a party that needs one is a boundary ([ADR 0006](/decisions/0006-keys-and-sealing/#data-keys)).
@@ -77,7 +78,7 @@ key@ caches opened data keys in memory, each entry with its own time to live, se
 
 ### Erasing a tenant
 
-A tenant's exit deletes its `data` and `pseudonym` wraps at once, every generation and every recipient. Every value sealed for the tenant stops opening: this is the **crypto-shred**. Its `evidence` wrap is deleted when the evidence retention ends, because evidence outlives personal data ([ADR 0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant), [Audit](/concepts/audit/#tenants-encryption-and-erasure)).
+A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once, every generation and every recipient. Every value sealed for the tenant stops opening: this is the **crypto-shred**. Its `evidence` wrap is deleted when the evidence retention ends, because evidence outlives personal data ([ADR 0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant), [Audit](/concepts/audit/#tenants-encryption-and-erasure)).
 
 ## Sealed grants
 

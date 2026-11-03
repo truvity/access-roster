@@ -64,7 +64,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0003](0003-units-transports-and-fusion.md) | One model, many transports: a unit per actor, the same calls over sockets, invokes and pods, and fusion only by explicit choice | Accepted |
 | [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Accepted |
 | [0005](0005-the-store.md) | store@ holds every storage credential: one generic store service, typed clients, drivers private to their owner, and signed configuration loaded as a whole | Accepted |
-| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with three data keys per tenant and one key per purpose and algorithm | Accepted |
+| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with four data keys per tenant and one key per purpose and algorithm | Accepted |
 | [0007](0007-policy-and-sealed-grants.md) | Policy is Cedar in a Rust actor over four layers, and every tenant-scoped write carries a grant that policy sealed | Accepted |
 | [0008](0008-boundaries-and-tenants.md) | A boundary is the unit of keys and policy on a cumulative ladder from L0 to L4, and a tenant is a scope with data keys of its own | Accepted |
 | [0009](0009-export.md) | exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source | Accepted |

@@ -32,7 +32,7 @@ requirements:
       - {kind: integration-test, ref: "issued token scan"}
   - id: REQ-SUBJ-003
     area: SUBJ
-    statement: "A boundary MUST declare exactly one sector, which its clients inherit."
+    statement: "A tenant MUST declare exactly one sector, which its clients inherit."
     rationale: "A pairwise subject without a sector would fall back to a global identifier, and a sector per client is one more thing to forget (ADR 0034)."
     level: MUST
     source: stakeholder-ciam
@@ -45,7 +45,7 @@ requirements:
       - {kind: integration-test, ref: "sector assignment test"}
   - id: REQ-SUBJ-004
     area: SUBJ
-    statement: "The loader MUST refuse a boundary that declares no sector."
+    statement: "exchange MUST refuse a Tenant write that declares no sector."
     rationale: "A missing sector is a configuration error, and public has to be written down (ADR 0034)."
     level: MUST
     source: stakeholder-ciam
@@ -59,7 +59,7 @@ requirements:
   - id: REQ-SUBJ-005
     area: SUBJ
     statement: "The loader MUST refuse a client that names a sector of its own, a machine client included."
-    rationale: "A client inherits its boundary's sector, and a machine token carries the machine's own identifier as its subject, so no sector applies to it."
+    rationale: "A client inherits its tenant's sector, and a machine token carries the machine's own identifier as its subject, so no sector applies to it."
     level: MUST
     source: stakeholder-ciam
     status: planned
@@ -85,7 +85,7 @@ requirements:
       - {kind: integration-test, ref: "machine token subject test"}
   - id: REQ-SUBJ-007
     area: SUBJ
-    statement: "The subject for a client in a sector MUST be made by key@ with Mac over the boundary's mac data key, with the label pairwise and the sector in the input."
+    statement: "The subject for a client in a sector MUST be made by key@ with Mac over the tenant's pairwise data key, with the label pairwise and the sector in the input."
     rationale: "Sites in different sectors must not be able to join their customer lists."
     level: MUST
     source: stakeholder-ciam
@@ -196,7 +196,7 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-SUBJ-015
     area: SUBJ
-    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a boundary that changes its sector."
+    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a tenant that changes its sector."
     rationale: "Such a change would change every stored subject of the sector."
     level: MUST
     source: stakeholder-ciam
@@ -705,11 +705,12 @@ requirements:
     rationale: "A key per sector is a key per tenant, and KMS GenerateMac takes no encryption context to separate shared uses."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Full}
     issues: [1024]
+    superseded_by: [REQ-KEYS-072]
     verification:
       - {kind: integration-test, ref: "key count before and after a sector is added; unchanged"}
   - id: REQ-SUBJ-055
@@ -840,7 +841,7 @@ requirements:
       - {kind: integration-test, ref: "each of the three steps writes one record"}
   - id: REQ-SUBJ-066
     area: SUBJ
-    statement: "`sluis config check` MUST refuse the sector public for a boundary that is declared regulated."
+    statement: "exchange MUST refuse a Tenant write that declares the sector public and is declared regulated."
     rationale: "A regulated customer always gets pairwise subjects (ADR 0034)."
     level: MUST
     source: design-decision
@@ -849,10 +850,10 @@ requirements:
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "config check negative test: a regulated boundary declares public"}
+      - {kind: integration-test, ref: "Tenant write negative test: a regulated tenant declares public"}
   - id: REQ-SUBJ-067
     area: SUBJ
-    statement: "Every token that a boundary issues, by sign-in or by exchange, MUST carry the subject of that boundary's sector."
+    statement: "Every token that a tenant's issuer gives, by sign-in or by exchange, MUST carry the subject of that tenant's sector."
     rationale: "An exchanged token must not carry the subject of the token it was exchanged for (ADR 0034)."
     level: MUST
     source: design-decision
@@ -861,4 +862,16 @@ requirements:
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "a token exchanged in a boundary of sector alpha carries the alpha subject, not the subject of the incoming token"}
+      - {kind: integration-test, ref: "a token exchanged at a tenant of sector alpha carries the alpha subject, not the subject of the incoming token"}
+  - id: REQ-SUBJ-068
+    area: SUBJ
+    statement: "A pairwise subject MUST be derived from the person's Person id and never from the upstream's subject claim."
+    rationale: "The upstream's claim can change, and the Person id is the stable identity (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "two upstream claim values for one Person give one pairwise subject"}

@@ -28,7 +28,7 @@ The data model adds two more. A kind that holds personal data is sealed ([0004](
 
 ### The records
 
-`session` writes every kind below, in the front installation that signs people in; a boundary reads a person only through the front's tokens ([0017](/decisions/0017-identity-and-sign-in/#step-up)). Each is a kind of a tenant, the tenant that the sign-in's organisation id names ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to), [0008](/decisions/0008-boundaries-and-tenants/#tenants)), and a person whom no binding names is refused. The sealed ones are sealed under that tenant's `data` key ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
+`session` writes every kind below, in the front installation that signs people in; a boundary reads a person only through the front's tokens ([0017](/decisions/0017-identity-and-sign-in/#step-up)). Each is a kind of a tenant, the tenant of the client the person signs in to ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to), [0008](/decisions/0008-boundaries-and-tenants/#tenants)), and a person whom no binding names is refused. The sealed ones are sealed under that tenant's `data` key ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
 
 | Kind | Class | Treatment | Holds |
 |---|---|---|---|

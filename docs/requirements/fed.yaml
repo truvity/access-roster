@@ -478,8 +478,8 @@ requirements:
       - {kind: integration-test, ref: "config check negative test: a second upstream at the front of a customer installation"}
   - id: REQ-FED-036
     area: FED
-    statement: "sluis MUST refuse a sign-in unless the upstream's organisation claim holds exactly one organisation id and exactly one Tenant records it."
-    rationale: "A sign-in whose organisation is absent, unknown, ambiguous or plural must not fall into a tenant by default (ADR 0033)."
+    statement: "sluis MUST refuse a staff sign-in unless the upstream's organisation claim holds exactly one organisation id and exactly one Tenant records it, which is the tenant of the client."
+    rationale: "A staff sign-in whose organisation is absent, unknown, ambiguous, plural or another tenant's must not fall into a tenant by default (ADR 0033)."
     level: MUST
     source: design-decision
     status: planned
@@ -487,4 +487,16 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "sign-in matrix: the organisation id absent, unknown, recorded by two tenants, and two ids in the claim are each refused"}
+      - {kind: integration-test, ref: "sign-in matrix: the organisation id absent, unknown, recorded by two tenants, another tenant's, and two ids in the claim are each refused"}
+  - id: REQ-FED-037
+    area: FED
+    statement: "A person's tenant MUST be the tenant of the client they sign in to."
+    rationale: "The tenant is the controller, and an app's customers belong to it whatever organisation they have at the broker (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [916]
+    verification:
+      - {kind: integration-test, ref: "the same broker account signing in to clients of two tenants is a person of each tenant in turn"}

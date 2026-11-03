@@ -23,7 +23,7 @@ Each boundary declares a level, and each level includes the ones below it. A ten
 
 | Level | Adds |
 |---|---|
-| **L0 tenant** | Separation by the store's rules, a grant sealed for the tenant, and the tenant's own three data keys |
+| **L0 tenant** | Separation by the store's rules, a grant sealed for the tenant, and the tenant's own four data keys |
 | **L1 keys** | Its own key@ and wrapping key (a KMS key, or a card of its own, such as a second card per board), so its own authority keys, intermediates and issuer. It uses the parent's store@, units and engine |
 | **L2 process** | Its own store@ and its own units, with their own uid or role, on the parent's engine under its own address prefix |
 | **L3 engine** | Its own engine (an rqlite cluster or a DynamoDB table), bucket and queue |
@@ -35,7 +35,7 @@ Each boundary declares a level, and each level includes the ones below it. A ten
 
 ## Tenants
 
-A **tenant** is a scope inside a boundary with its own settings, clients, allowance and three data keys: `data`, `pseudonym` and `evidence` ([Keys](/concepts/keys/#data-keys)). It is the second address dimension, used by durable and temp kinds only. A tenant has no authority key and no wrapping key, and it may exist in several boundaries, each holding its own copy with its own data keys.
+A **tenant** is a scope inside a boundary with its own settings, clients, allowance and four data keys: `data`, `pseudonym`, `pairwise` and `evidence` ([Keys](/concepts/keys/#data-keys)). It is the second address dimension, used by durable and temp kinds only. By default a tenant has no authority key and no wrapping key (a tenant declared to keep its keys in a customer account has them there, [ADR 0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)), it has an issuer host of its own, and it may exist in several boundaries, each holding its own copy with its own data keys.
 
 Tenants of one boundary share its actors, its authority keys and its fate: a flaw in shared code reaches every tenant of the boundary. That is the accepted L0 risk, and a tenant that cannot accept it is **promoted** to a boundary of its own. Promotion moves the tenant's kinds to the new boundary and rewraps its data keys for the new boundary's wrapping key; the tenant keeps its name, its clients' names and its settings ([ADR 0008](/decisions/0008-boundaries-and-tenants/#promotion)).
 
@@ -84,7 +84,7 @@ flowchart LR
 
 ## Issuers and tokens
 
-Each environment boundary has its own issuer, and so does a customer boundary. A tenant has none: it is a scope of policy and the second dimension of an address. A login domain is an issuer of its boundary and shares the boundary's keys ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)).
+Each environment boundary has its own issuer, and each tenant has an issuer host of its own, which a boundary serves. A tenant's issuer signs with the token-signing key of its location, and a move of the tenant keeps its host ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)).
 
 | Issuer | Address |
 |---|---|

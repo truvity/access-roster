@@ -393,7 +393,7 @@ requirements:
       - {kind: test-vectors, ref: "T-1: a copied certificate-bound access token over a TLS connection with another client certificate; refused"}
   - id: REQ-ISO-028
     area: ISO
-    statement: "The single audience of a token that sluis issues to a client MUST be a client ID registered at the issuing boundary's issuer."
+    statement: "The single audience of a token that sluis issues to a client MUST be a client ID registered at the issuing issuer."
     rationale: "A readable client ID that each relying party pins stops a token for one client being accepted by another."
     level: MUST
     source: design-decision
@@ -1016,7 +1016,7 @@ requirements:
       - {kind: test-vectors, ref: "T-23: two validly signed root lists with one sequence and different content; the second is refused and the anchors on disk are unchanged"}
   - id: REQ-ISO-075
     area: ISO
-    statement: "A customer boundary MUST have an issuer host and keys of its own, shared with no other boundary."
+    statement: "A customer boundary MUST have keys of its own, shared with no other boundary."
     rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0008)."
     level: MUST
     source: design-decision
@@ -1025,7 +1025,7 @@ requirements:
     standards: []
     issues: [1023]
     verification:
-      - {kind: integration-test, ref: "a configuration that gives a customer boundary the host or a key of another boundary is refused by sluis config check"}
+      - {kind: integration-test, ref: "a configuration that gives a customer boundary a key of another boundary is refused by sluis config check"}
   - id: REQ-ISO-076
     area: ISO
     statement: "store@ MUST refuse a write of a tenant kind that widens a field its template bounds."
@@ -1053,7 +1053,7 @@ requirements:
       - {kind: integration-test, ref: "client ID format and uniqueness test"}
   - id: REQ-ISO-078
     area: ISO
-    statement: "A person MUST NOT hold a grant in the scope of any tenant other than the one that the declaration binds them to."
+    statement: "A person MUST NOT hold a grant in the scope of any tenant other than the tenant of the client they signed in to."
     rationale: "An identity provider is controlled by its administrators and must not reach another tenant's data (ADR 0032)."
     level: MUST
     source: design-decision
@@ -1506,3 +1506,15 @@ requirements:
     issues: [876]
     verification:
       - {kind: integration-test, ref: "chart corpus: the relay container mounts no token, no secret and no key volume"}
+  - id: REQ-ISO-116
+    area: ISO
+    statement: "Every tenant MUST have an issuer host of its own that no other tenant uses."
+    rationale: "Apps pin the issuer, so a tenant's issuer must be its own and survive its move (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1023]
+    verification:
+      - {kind: integration-test, ref: "a Tenant write that names the issuer host of another tenant is refused"}

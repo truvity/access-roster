@@ -508,7 +508,7 @@ requirements:
       - {kind: integration-test, ref: "the seal API takes no nonce; two seals of one value under one key differ"}
   - id: REQ-KEYS-035
     area: KEYS
-    statement: "Each tenant MUST have exactly three data keys, data, pseudonym and evidence."
+    statement: "Each tenant MUST have exactly four data keys, data, pseudonym, pairwise and evidence."
     rationale: "Purposes never share a key, so a tenant's exit can delete personal data and keep evidence (ADR 0006)."
     level: MUST
     source: design-decision
@@ -518,10 +518,10 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a new tenant gets exactly three DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
+      - {kind: integration-test, ref: "a new tenant gets exactly four DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
   - id: REQ-KEYS-036
     area: KEYS
-    statement: "A tenant's exit MUST delete its data and pseudonym wraps at once, every generation and every recipient."
+    statement: "A tenant's exit MUST delete its data, pseudonym and pairwise wraps at once, every generation and every recipient."
     rationale: "The wrap is the only route to the key, so every value sealed for the tenant stops opening (ADR 0006)."
     level: MUST
     source: design-decision
@@ -918,3 +918,95 @@ requirements:
     issues: [774]
     verification:
       - {kind: integration-test, ref: "a rotation writes a new SigningRing; the exported key set carries the new key and the old one for the overlap"}
+
+  # ---- where a tenant's keys live, and the pairwise key (decision 0006)
+  - id: REQ-KEYS-074
+    area: KEYS
+    statement: "A tenant's key location MUST be operator-held unless its Tenant item declares customer account."
+    rationale: "The location is chosen per tenant by a declaration and defaults to the installation's own KMS keys (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    actors: [key]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "a Tenant with no declaration is operator-held; a Tenant that declares customer account carries the account's key ids"}
+  - id: REQ-KEYS-068
+    area: KEYS
+    statement: "key@ MUST use a customer-account KMS key only through a key policy or grant that covers Encrypt, Decrypt, GenerateDataKey, Sign and GetPublicKey and no other operation."
+    rationale: "The customer's grant is the narrowest that key@ needs (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    actors: [key]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "a call for any other KMS operation on a customer-account key is refused by the key policy"}
+  - id: REQ-KEYS-069
+    area: KEYS
+    statement: "sluis MUST NOT hold a long-lived credential for a customer account."
+    rationale: "A credential that sluis holds is a secret that the customer cannot withdraw by one act (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "registry check: no secret source or kind holds a credential for a customer account; key@ reaches the account by its role"}
+  - id: REQ-KEYS-070
+    area: KEYS
+    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise and evidence keys under the customer's KMS key during the move ceremony."
+    rationale: "The move changes where the wraps are made and nothing an app sees (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    actors: [key]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "after the move every DataKeyWrap of the tenant names the customer's key and every value still opens"}
+  - id: REQ-KEYS-071
+    area: KEYS
+    statement: "When the grant for a customer account is revoked or disabled, key@ MUST stop that tenant's sealing and signing with UNAVAILABLE and leave every other tenant unaffected."
+    rationale: "Revocation is the customer's kill switch and fails closed for that tenant only (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    actors: [key]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "revoke the grant of one tenant: its seals and signs answer UNAVAILABLE, a second tenant's still succeed"}
+  - id: REQ-KEYS-072
+    area: KEYS
+    statement: "The pairwise data key of a tenant MUST NOT be rotated."
+    rationale: "A new key would change every pairwise subject of the tenant (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "the key plan check refuses a rotation of the pairwise purpose"}
+  - id: REQ-KEYS-073
+    area: KEYS
+    statement: "Moving a tenant MUST re-wrap its pairwise key for the new boundary's wrapping key and not replace it."
+    rationale: "A move must change no subject (ADR 0032)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "the pairwise subjects of a person before and after a promotion are equal"}

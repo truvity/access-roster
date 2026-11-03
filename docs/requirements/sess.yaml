@@ -616,3 +616,15 @@ requirements:
     issues: [1179]
     verification:
       - {kind: integration-test, ref: "session holds no cookie key; each request opens the cookie at key@"}
+  - id: REQ-SESS-046
+    area: SESS
+    statement: "Two tenants MUST NOT share a SessionChain, even inside one boundary."
+    rationale: "Single sign-on across tenants is the upstream broker's session, not a shared sluis session (ADR 0018)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1023]
+    verification:
+      - {kind: integration-test, ref: "a chain and a cookie of tenant A presented at the issuer of tenant B in the same boundary are refused"}

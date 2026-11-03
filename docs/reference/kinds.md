@@ -70,7 +70,7 @@ Signed configuration, written by infrastructure as code or the publishing pipeli
 
 ### `Boundary`
 
-Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid block, sector (required; public only when declared), regulated (a declaration).
+Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid block.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the work family.
 - **Writer:** `IaC`.
@@ -88,7 +88,7 @@ Installation-wide document (same content in every boundary): root list, CA bundl
 
 ### `RegulatedParty`
 
-Issuer and key custody of a regulated party's boundary; written with the party. Its sector is the boundary's.
+Issuer and key custody of a regulated party's boundary; written with the party.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the work family.
 - **Writer:** `IaC`.
@@ -496,18 +496,18 @@ Read-write state that must survive, behind the store's durable port; backed up w
 
 ### `DataKeyWrap`
 
-Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has three data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data` and `pseudonym` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
+Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has four data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
 
 - **Class:** durable; scope boundary+tenant; plain; profile none; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).
 - **Readers:** [`key@`](/reference/actors/#key); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Indexes:** `by_recipient`, `by_purpose`, besides listing by tenant.
-- **Data key purposes:** per tenant `data`, `pseudonym`, `evidence`; boundary `grant`, `cookie`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
+- **Data key purposes:** per tenant `data`, `pseudonym`, `pairwise`, `evidence`; boundary `grant`, `cookie`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
 
 ### `Tenant`
 
-Name (a slug of lower-case letters, digits and hyphens, not free text; a display name is TenantBranding's, sealed), state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). The upstream and the organisation id that the upstream sends for it, and the status client of the product that owns its people. exchange owns what a tenant has configured.
+Name (a slug of lower-case letters, digits and hyphens, not free text; a display name is TenantBranding's, sealed), state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). Its issuer host, its sector (required; `public` only when declared), whether it is regulated (a declaration), where its keys live (operator or customer account), the organisation id that the upstream sends for its business staff, and the status client of the product that owns its people. exchange owns what a tenant has configured.
 
 - **Class:** durable; scope boundary+tenant; plain; profile Tenant-adjustable; module core; serves the work family.
 - **Writer:** [`exchange`](/reference/actors/#exchange).

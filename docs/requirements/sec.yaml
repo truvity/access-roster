@@ -425,3 +425,27 @@ requirements:
     issues: [1063]
     verification:
       - {kind: integration-test, ref: "CT monitor incident test"}
+  - id: REQ-SEC-032
+    area: SEC
+    statement: "key@ MUST raise an alert when the grant for a customer-account tenant is lost."
+    rationale: "A revoked grant stops a tenant, so an operator has to know at once and must not work around it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "revoke a grant: an alert fires within the alert interval"}
+  - id: REQ-SEC-033
+    area: SEC
+    statement: "key@ MUST write an audit record when the grant for a customer-account tenant is lost."
+    rationale: "The customer's kill switch is an audit fact (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "revoke a grant: one audit record names the tenant and the time"}
