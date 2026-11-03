@@ -24,6 +24,9 @@ Store the archive on Cloudflare R2 or another store that speaks the S3 API at it
    ```
 
    Each process rereads it every minute, before expiry, and on a 401 or 403.
+   R2 refuses a token for a second or two after Cloudflare creates it, so a
+   401 or 403 for a credential first read less than 5 seconds ago is waited
+   out and the request sent once more.
 
 2. On Lambda, give the functions the parameter:
 

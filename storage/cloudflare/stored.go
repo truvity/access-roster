@@ -81,6 +81,10 @@ const (
 	// DefaultMargin is how long before its expires_on a stored credential stops
 	// being handed out without reading the document again.
 	DefaultMargin = 30 * time.Second
+	// DefaultSettle is how long after a credential is first read a refusal of
+	// it is waited out: R2 refuses a token Cloudflare has just created, with
+	// 401, for a second or two (up to about 2.3 s measured).
+	DefaultSettle = 5 * time.Second
 	// storedRetry is how soon a document that could not be read is read again
 	// while the credential held from it is still good.
 	storedRetry = 10 * time.Second
@@ -105,6 +109,12 @@ type StoredConfig struct {
 	// Margin is how long before expires_on the document is read again whatever
 	// Recheck says. Zero is [DefaultMargin].
 	Margin time.Duration
+	// Settle is how long after a credential is first read a 401 or 403 is
+	// taken for a credential the store does not accept yet rather than one it
+	// refuses: [StoredProvider.Reauthenticate] waits until the credential is
+	// that old and has the request sent once more. Zero is [DefaultSettle]; a
+	// negative value waits for nothing.
+	Settle time.Duration
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -126,7 +136,9 @@ type StoredProvider struct {
 
 	mu     sync.Mutex
 	held   StoredR2
+	seen   time.Time // when the held credential was first read
 	lastRe time.Time
+	sleep  func(ctx context.Context, d time.Duration) error
 }
 
 // NewStoredProvider checks the configuration and returns the provider. It reads
@@ -141,7 +153,10 @@ func NewStoredProvider(cfg StoredConfig) (*StoredProvider, error) {
 	if cfg.Margin <= 0 {
 		cfg.Margin = DefaultMargin
 	}
-	p := &StoredProvider{cfg: cfg, now: cfg.Now}
+	if cfg.Settle == 0 {
+		cfg.Settle = DefaultSettle
+	}
+	p := &StoredProvider{cfg: cfg, now: cfg.Now, sleep: sleep}
 	if p.now == nil {
 		p.now = time.Now
 	}
@@ -166,23 +181,58 @@ func (p *StoredProvider) Retrieve(ctx context.Context) (aws.Credentials, error) 
 	return aws.Credentials{}, err
 }
 
-// Reauthenticate reads the document again because the store answered 401 or 403,
-// unless it did so less than [MinReauth] ago, and reports whether the
-// credential changed. A caller holding the credentials in a cache invalidates
-// it when this answers true.
+// Reauthenticate is what the store answering 401 or 403 calls, and reports
+// whether to send the request once more. It reads the document again, unless
+// it did so less than [MinReauth] ago, and answers true if the credential
+// changed: its access key id or its secret, since a credential rotated in
+// place keeps its id. A credential that did not change and was first read less
+// than Settle ago is one the store may not accept yet (a token Cloudflare has
+// just created), not one it refuses: Reauthenticate waits until it is Settle
+// old, or ctx is done, and answers true. A caller holding the credentials in a
+// cache invalidates it when this answers true.
 func (p *StoredProvider) Reauthenticate(ctx context.Context) (bool, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	now := p.now()
-	if !p.lastRe.IsZero() && now.Sub(p.lastRe) < MinReauth {
+	if p.lastRe.IsZero() || now.Sub(p.lastRe) >= MinReauth {
+		p.lastRe = now
+		before := p.held
+		if err := p.readLocked(ctx, now); err != nil {
+			p.mu.Unlock()
+			return false, err
+		}
+		if !sameCredential(before, p.held) {
+			p.mu.Unlock()
+			return true, nil
+		}
+	}
+	wait := p.seen.Add(p.cfg.Settle).Sub(now)
+	p.mu.Unlock()
+	if p.seen.IsZero() || wait <= 0 {
 		return false, nil
 	}
-	p.lastRe = now
-	before := p.held.AccessKeyID
-	if err := p.readLocked(ctx, now); err != nil {
+	// Outside the lock, so that Retrieve and other requests refused at the
+	// same time are not held up: each waits for the same moment.
+	if err := p.sleep(ctx, wait); err != nil {
 		return false, err
 	}
-	return p.held.AccessKeyID != before, nil
+	return true, nil
+}
+
+// sameCredential reports whether two held credentials sign alike.
+func sameCredential(a, b StoredR2) bool {
+	return a.AccessKeyID == b.AccessKeyID && a.SecretAccessKey == b.SecretAccessKey
+}
+
+// sleep waits d, or until ctx is done.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // readLocked reads and checks the document and holds its credential. An
@@ -204,6 +254,9 @@ func (p *StoredProvider) readLocked(ctx context.Context, now time.Time) error {
 	if !now.Before(doc.ExpiresOn) {
 		return fmt.Errorf("cloudflare: the stored credential %s expired at %s: is sluis rotating the preset, and is the copy being synced?",
 			p.cfg.Source, doc.ExpiresOn.Format(time.RFC3339))
+	}
+	if !sameCredential(p.held, doc) {
+		p.seen = now
 	}
 	p.held = doc
 	return nil
