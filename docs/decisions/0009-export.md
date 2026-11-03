@@ -1,62 +1,71 @@
-# 0009 — The secrets port has one driver, sealed state, and the export port publishes only kinds marked external
+# 0009 — exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source
 
 **Status:** Accepted
-**Date:** 2026-11-02
+**Date:** 2026-11-03
 
 Proposal: [issue #1014](https://github.com/truvity/sluis/issues/1014).
 
 ## Context
 
-sluis holds secrets because it has to: a vendor-issued App key, a bot token, a generated client secret. It is not a secrets engine for anyone else ([Data and secrets](/concepts/data/#secrets-and-export)). [0005](/decisions/0005-the-store/#sealed-secrets) lets state hold a sealed secret on every runtime and leaves the interfaces of the `secrets` and `export` ports to this record. [0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin) says that whether a value may leave sluis is a property of its kind.
+sluis holds secrets because it has to: a vendor-issued app key, a bot token, a generated client secret. It is not a secrets engine for anyone else ([Data and secrets](/concepts/data/)). Some of what it holds must still leave it, because something outside sluis needs it with its own identity: a cluster that needs a client secret, a relying party that needs the key set, a host that needs the revocation list.
 
-v1 had a secrets port with four stores (a cloud parameter store, OpenBao KV v2, Kubernetes Secrets, memory) and exported typed credential documents to OpenBao (parity row [#798](https://github.com/truvity/sluis/issues/798); v1 ADR 0028 and the v1 secrets reference, on `master`). v2 has no OpenBao driver and writes no Kubernetes objects (principles, "What sluis is, and is not").
+Three rules from the data model bound the design.
 
-The forces: principle 8 (nothing without a consumer) and principle 10 ("A port has one driver until a second real installation needs another"), which point the same way here; principle 1 (the sealing key never leaves its store); and the boards, which have no cloud store at all.
+- **Where a thing is written decides its class** ([principle 14](/principles/#14-where-a-thing-is-written-decides-its-class)). A secret source is written by IaC and read-only for sluis. If sluis wrote into one, a value would have two writers and two classes.
+- **Few credential holders** ([principle 13](/principles/#13-few-credential-holders)). A destination needs a credential. That credential belongs to one holder of the data family, exporter@, and to no work actor ([0002](/decisions/0002-families-of-actors/#credential-holders)).
+- **Nothing without a consumer** ([principle 8](/principles/#8-nothing-without-a-consumer)). A kind leaves sluis only when someone is named who reads it.
+
+v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. The design rule "sluis writes no Kubernetes object" is amended here, and the single case it allows is below.
 
 ## Decision
 
-### The secrets port
+### What is exportable
 
-- **The port holds whole values under addresses** `<boundary>/<owner>/<name>`, where the owner is the actor or integration that wrote the secret. A secret is never a plain record in `state` ([0004](/decisions/0004-the-data-model/#sensitivities)).
-- **Four operations:** `get` (the current version, or a named one), `put` (creates a new version, as compare-and-set against the revision the caller read), `delete` (a version, or all of them), and `list`, which returns names and metadata and never a value. There is no unconditional put.
-- **Each version is one immutable item,** and a record names the current version, so a rotation overlaps with its predecessor. A store that keeps only one version is refused at start (REQ-SECRETS-007).
-- **Stores and sources.** A **store** is writable and holds sluis's own secrets. A **source** is read-only and supplies referenced and bootstrap secrets: a systemd credential or a mounted file. A declared field that names a secret names a source or the operator's own store, and sluis only reads it. A store's own credentials always come from a source.
-- **Every driver declares these flags,** and `sluis config check` refuses an installation that needs one the driver lacks: `writable`, `encryption` (at rest, by whom), `versioned`, `consumer-readable` (a consumer outside sluis can read the store with its own identity) and `per-path-grants`.
-- **A secret that only sluis uses lives in a namespace granted to no consumer** (REQ-SECRETS-010).
+- **Only a kind marked exportable in the kind registry may leave sluis.** The mark is a property of the kind ([0004](/decisions/0004-the-data-model/#kinds)), so what may leave is decided in review and not at run time. exporter@ refuses any other kind.
+- **Exactly seven kinds are exportable.** `SigningRing` (the key set), `KeyCertificate` (the certificate chains), `TrustAnchors` (input to the trust bundle), `Crl`, `Krl` and `TrustBundle` are public material. `ClientSecretExport` is the sealed copy of a generated client secret.
+- **A kind is marked only when a consumer is named** (principle 8). A new exportable kind needs the mark, a consumer and a rule that lets exporter@ read it, in that order.
+- **A generated secret that must leave sluis is stored twice:** as a hash to verify and as a sealed copy to export ([0004](/decisions/0004-the-data-model/#treatment)). The sealed copy exists only for a client marked exportable. A secret that is not exported keeps only its hash.
+- **No export carries a secret for a vendor that sluis could mint for.** sluis mints a scoped credential instead ([0025](/decisions/0025-integrations/)).
 
-### One driver: sealed state
+### Destinations
 
-- **`sealed-state` is the one `secrets` store in 2.0, on every runtime.** It keeps ciphertext in `state`, with the envelope and `purpose=secret` of [0005](/decisions/0005-the-store/#sealed-secrets), so it works wherever a state driver does, and the archive carries it sealed ([0010](/decisions/0010-backup-and-recovery/)). Its `consumer-readable` flag is false.
-- **A cloud parameter store, a Kubernetes Secret or an OpenBao store is not a driver.** One is added only with a named consumer: a value that something outside sluis must read with its own identity, and that is not served by an export. The consumer is named in the issue that adds the driver.
-- **Sealing, re-sealing and loss of the sealing key** are as [0005](/decisions/0005-the-store/#sealed-secrets) and [0010](/decisions/0010-backup-and-recovery/#the-archive) say. This record does not restate them.
+- **A destination is a config kind, `ExportDestination`,** with one driver per destination type, private to exporter@ ([0005](/decisions/0005-the-store/#drivers)). exporter@ holds the destination credentials; no work actor does, and store@ does not.
+- **A store of record** (AWS SSM or OpenBao) receives values that a cluster reads through External Secrets with its own identity. sluis never holds the cluster's identity.
+- **A bucket** receives public material at static addresses: the key set, certificate chains, revocation lists and the trust bundle. A bucket never receives `ClientSecretExport`; the configuration check refuses that pairing.
+- **A single cluster may receive a Kubernetes Secret directly,** written by exporter@ alone and only when the installation chooses the direct path. exporter@'s cluster credential is limited to writing the named Secrets in the named namespaces, and the threat model lists it.
+- **The amended rule:** sluis writes no Kubernetes object, except an exported Secret written by exporter@ when an installation chooses the direct path. Cluster tools such as cert-manager, trust-manager and External Secrets stay its clients and distributors.
+- **A destination may not overlap a secret source.** The configuration check refuses a destination whose address is also read as a secret source ([secret sources](/decisions/0005-the-store/#secret-sources)), so sluis never reads back what it wrote and no value has two writers.
 
-### The export port
+### Watch and reconcile
 
-- **An export is a typed, versioned document** with a kind, a schema and a version, stored once at `<boundary>/export/<consumer>/<kind>`. A breaking change is a new version written beside the old one for a declared window (REQ-SECRETS-006).
-- **Only a kind marked external (`x-sluis-external`) may be exported.** The marker is a property of the kind in the schema ([0004](/decisions/0004-the-data-model/#sensitivities)); the port refuses any other kind, and every export is authorised and audited (REQ-EXPORT-003, REQ-EXPORT-004). A secret referenced from declared configuration is never exported: the consumer is granted the operator's own path, which sluis may render for the operator to apply.
-- **Operations:** `put`, `delete` and `status`. A consumer reads an export with its own identity; sluis never holds the consumer's identity, only its public recipient (REQ-EXPORT-005).
-- **Export drivers at parity:** `publication`, which puts public material (the key set, CA certificates, trust bundles) at static addresses through a blob. Its consumers are every relying party and every cert-manager or trust-manager installation.
-- **A drop driver (a file in a directory, an object in a bucket) is added only when an issue names its consumer.** A drop is age-encrypted to the consumer's own recipient and is a derived, single-writer artefact replaced as a whole (REQ-EXPORT-002). None has a named consumer today, so none is built; the rule is recorded so that the first one is written the same way.
-- **No export carries a secret for a vendor that sluis could mint for** (REQ-SECRETS-008): sluis mints a scoped credential instead ([0049](/decisions/0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs/)).
+- **exporter@ watches the exportable kinds from a resume point** ([0005](/decisions/0005-the-store/#watch-and-the-resume-point)) and keeps the resume point of each destination in a temp kind, `ExportCursor`. Losing it costs a full reconcile, not data.
+- **A sealed value is opened at key@ with exporter@'s own grant,** written with the destination credential, and every write is an audit fact. The grant is sealed for the tenant of the value ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). Public material is read and written as it is.
+- **A full reconcile runs at start and once a day.** It writes what is missing or different at the destination and removes what exporter@ wrote for a value that no longer exists, so a missed change or an edit made at the destination is corrected within a day.
+
+### Refusals
+
+- **exporter@ refuses a write** for a kind that is not marked, for a destination that is not configured, for a sealed kind sent to a bucket, and for a value that key@ refuses on its grant check.
+- **A refusal is an audit fact and an alarm,** not a retry loop. The next reconcile tries again, and an operator sees why it was refused.
 
 ## Consequences
 
-- Parity row #798 is delivered by a smaller port: v1's four stores and its export to a vault are not carried. A v1 consumer that read an exported credential from OpenBao is wired differently in the cutover inventory ([#1017](https://github.com/truvity/sluis/issues/1017)).
-- Every installation tests one secrets path, the one that already holds the vendor-issued secrets of the boards. The price is that a secret is readable only through sluis: an operator who wants the AWS console to show it cannot.
-- Principle 10 asks for a second driver only when a second installation needs one, and none does: the state drivers underneath (embedded, rqlite, DynamoDB) already serve every installation. The first consumer of a second secrets driver will say what it needs.
-- A new external kind needs a schema marker, a consumer and a grant, in that order, and the checks that generate the deny matrix follow.
-- Requirements: REQ-SECRETS-013 and REQ-EXPORT-007 are added. The explanation page loses its proposed note.
+- What leaves sluis is a short, reviewed list, and a reader of the registry can see every export and its consumer.
+- A cluster reads a client secret from a store of record with its own identity, and sluis holds no cluster identity. A single cluster without a store of record can take the direct path, at the price that exporter@ holds one cluster credential.
+- A secret is readable outside sluis only through an export. An operator who wants the cloud console to show a value gets it from the store of record, not from sluis.
+- exporter@ is one more unit in every installation that exports. It shares its family with store@ and never shares a unit with a work actor.
+- The principles page loses the absolute "sluis never writes Kubernetes objects" and gains the amended sentence.
 
 ## Roads not taken
 
-- **A cloud parameter store driver for AWS installations.** It has size limits on a value, a second sealing path to test and no consumer that `sealed-state` does not serve.
-- **An OpenBao driver, or an export to a vault.** v2 has no OpenBao, and a vault would hold a copy of a secret that sluis already holds; the consumer is granted a path or minted a credential.
-- **Kubernetes Secrets as a store or an export.** sluis writes no Kubernetes objects; clusters pull from it.
-- **A general-purpose secrets engine with dynamic secrets, leases and transit.** It is the product of another team and widens the trusted base (REQ-SECRETS-009).
-- **Build the file drop and the bucket drop now.** They are described, but nothing reads them; principle 8.
-- **Export any kind on request.** Whether a value may leave sluis would become a runtime choice instead of a property of the schema, and the deny matrix could not be generated.
+- **Always go through a store of record and External Secrets.** One rule instead of two, but a single cluster would need a store it does not otherwise have.
+- **Write into the secret source.** sluis would read back what it wrote, and the same value would be IaC-written and sluis-written.
+- **Each work actor exports its own kinds.** Work actors would hold destination credentials, against principle 13.
+- **store@ does the exporting.** It would hold destination credentials beside its storage credentials and mix serving with publishing.
+- **Export any kind on request.** Whether a value may leave sluis would become a run-time choice instead of a property of the kind, and the rules could not be generated from the registry.
+- **A drop of files encrypted to a consumer's own recipient.** No consumer is named for it, so none is built; the first one arrives as a new destination type with its consumer.
+- **A general-purpose secrets engine with dynamic secrets, leases and transit.** It is the product of another team and widens the trusted base.
+- **Export a secret for a vendor sluis can mint for.** A long-lived copy would exist where a short-lived scoped credential is possible.
 
 ## Follow-ups
 
-- Build of `sealed-state`: [#957](https://github.com/truvity/sluis/issues/957); of the ports and the conformance suite: [#798](https://github.com/truvity/sluis/issues/798).
-- Generated client secrets and rotation on top of the port: [#790](https://github.com/truvity/sluis/issues/790).
+- Build of exporter@, its destination drivers and the conformance suite: [#1014](https://github.com/truvity/sluis/issues/1014).
