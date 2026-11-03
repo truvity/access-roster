@@ -53,7 +53,7 @@ Three gaps remained.
 - A tenant's connection is a path into a product. The ceiling of trust and the tenant bound are what keep one tenant's identity provider from reaching another's data.
 - sluis cannot answer "who is in this organisation": the module can.
 - A moved person keeps their `sub`, so a relying party that stored it keeps its users.
-- Requirements: [REQ-ISO-076](/requirements/iso/#REQ-ISO-076), [REQ-ISO-077](/requirements/iso/#REQ-ISO-077) and [REQ-ISO-078](/requirements/iso/#REQ-ISO-078).
+- Requirements: [REQ-DATA-025](/requirements/data/#REQ-DATA-025), [REQ-ISO-077](/requirements/iso/#REQ-ISO-077) and [REQ-ISO-078](/requirements/iso/#REQ-ISO-078).
 
 ## Roads not taken
 

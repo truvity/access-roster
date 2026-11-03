@@ -62,7 +62,7 @@ A connection has two separate fields, which resolves the overlap:
 - **Egress through a proxy.** The pool cannot list thousands of provider hosts in a network policy. Its egress policy admits only the egress proxy, a platform piece and not an actor ([0002](/decisions/0002-families-of-actors/#platform-pieces)), and the proxy does the address check of [REQ-FED-008](/requirements/fed/#REQ-FED-008) (no loopback, link-local or private address after name resolution) and nothing else, because it holds no data port and cannot read a connection. Each adapter restricts every call to the hosts of its connection's discovery document.
 - **The bounds of [0036](/decisions/0036-volumetric-abuse/#inside-sluis).** Each connection has its own concurrency limit, timeout and circuit breaker, so a slow provider of one tenant cannot use up the pool's workers for the others.
 - **Facts only.** A pool returns the assertion of [0025](/decisions/0025-integrations/#the-upstream-contract) to `session` and decides nothing. The person's tenant is set by the owner of the connection, in its record, never read from what the provider sent.
-- **State separation.** A pending sign-in and the keyed hashes it makes carry the connection and the tenant in their address, and the store scopes every call to the caller's grant ([REQ-ISO-003](/requirements/iso/#REQ-ISO-003)).
+- **State separation.** A pending sign-in and the keyed hashes it makes carry the connection and the tenant in their address, and the store scopes every call to the caller's grant ([REQ-DATA-013](/requirements/data/#REQ-DATA-013)).
 
 #### Scaling
 
