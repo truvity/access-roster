@@ -1,361 +1,175 @@
 ---
-title: "Tutorial: install on a board"
-description: Install sluis on one arm64 board with a YubiKey, get its intermediate certified, sign in, verify a token against the JWKS and read the audit trail.
+title: "Tutorial: a single-node local installation"
+description: "Run sluis on one workstation: Docker Compose, one rqlite node, software keys and signed config; sign in, verify a token and find the audit record."
 status: target
 sidebar:
   order: 0
 ---
 
 :::caution
-This tutorial describes the intended experience. It can't be run yet, because sluis v2 is not released. The commands, outputs and file names are examples of what the finished product shows ([examples are illustrative](/integrations/#examples-are-illustrative)). Every command is a subcommand of the one `sluis` binary.
+This tutorial describes the intended experience. It can't be run yet, because sluis v2 is not released. The `sluis` commands are those of the [command reference](/reference/cli/) for the first working version; a step whose command does not exist yet says so. Outputs are examples ([examples are illustrative](/integrations/#examples-are-illustrative)).
 :::
 
-You install sluis on one arm64 single-board computer with a YubiKey: the [boards](/runtimes/installations/#boards) installation reduced to one node, on the [bare-metal](/runtimes/bare-metal/) runtime. One board is a possible installation under the same rules as the three-board cluster, not a tested one, and the steps are the ones you repeat on each board of the cluster. You finish with a running sluis at `https://sluis.example.com`, a certified node intermediate, a token you have verified yourself, and the audit record of your own sign-in.
+You run the [local installation](/runtimes/#local) on one workstation: Docker Compose, one container per actor and per driver, an rqlite engine of one node, and software keys. It is the installation for development, continuous integration and the integration tests, and it runs the release's published images ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). You finish with a running sluis at `https://sluis.local.test`, a boundary `dev` at `https://sluis.dev.local.test`, a sign-in through a real identity provider, a token you have verified yourself, and the audit record of your sign-in.
 
-The tutorial becomes part of the test suite: it lives under `tests/tutorials` and runs on the installation it is written for, so a step that stops working fails CI. Development itself uses the [local](/runtimes/installations/#local) installation, with software keys.
+The tutorial is a test: it lives under `tests/tutorials` and runs in CI on the local installation, so a step that stops working fails the build.
 
 ## 1. Prerequisites
 
-- An arm64 single-board computer with 2 GB of RAM and eMMC storage. It runs a [supported platform](/distribution/packages/#supported-platforms), or a board image older than the systemd floor, which is a declared exception until board images for the supported distributions exist ([#881](https://github.com/truvity/sluis/issues/881)).
-- A YubiKey 5 with firmware 5.7 or newer, which includes the EUCLEAK fix. It is for this board only: no other card software uses it.
-- A domain you control, here `example.com`, on Cloudflare, and a Cloudflare tunnel for `sluis.example.com`. You use the tunnel in step 11.
-- An upstream identity provider you can sign in with, here an OIDC provider at `https://idp.example.org`, with a client ID and a client secret you can register a redirect URI for.
-- A workstation with a browser, `ssh`, `curl`, `gh`, `ykman`, Python 3, and ritueel's setup script for the software root ([ritueel.id](https://ritueel.id)).
+- A workstation with Docker and Docker Compose, and port 443 free on the loopback address.
+- A checkout of `truvity/sluis` at a release tag. The local installation's files are under `tests/installations/local/`: the bootstrap file, the config documents and the Compose project. The Compose project is generated from the registries ([The local installation](/runtimes/local/#topology)) and is planned.
+- The `sluis` binary for your workstation ([Binaries](/distribution/packages/#binaries)).
+- A Chromium-based browser, used with a profile made for this project, and Python 3 with `pyjwt[crypto]`.
+- Four lines in the hosts file, so the browser and the CLI reach the project by name ([Host names](/runtimes/local/#host-names)):
 
-Log in to the board and become root for the install steps.
+  ```text
+  127.0.0.1 sluis.local.test
+  127.0.0.1 sluis.dev.local.test
+  127.0.0.1 idp.local.test
+  127.0.0.1 app.local.test
+  ```
 
-## 2. Download and verify the packages
+## 2. Read the bootstrap file
 
-Releases carry checksums and GitHub build provenance attestations, and nothing else, until ritueel's roots exist. So there is no signed apt repository to add yet: download the `.deb` files and the release's `SHA256SUMS` from GitHub Releases, which is the immutable record, and check them ([Release signing](/distribution/release-signing/)).
-
-```sh
-# Example
-gh release download v2.0.0 --repo truvity/sluis --dir sluis-debs \
-  --pattern SHA256SUMS --pattern '*_arm64.deb'
-cd sluis-debs
-sha256sum -c SHA256SUMS --ignore-missing
-gh attestation verify sluis-server_2.0.0_arm64.deb --repo truvity/sluis
-```
-
-Every line must say `OK`. A failed check means the file is not the one the release published: stop. Once releases are signed, you add the apt repository with the release keyring instead ([Packages](/distribution/packages/#apt-debian-and-ubuntu)).
-
-## 3. Install the packages
-
-```sh
-# Example
-apt install ./{sluis,sluis-node,sluis-server,sluis-audit-writer,sluis-audit-search,sluis-driver-yubikey-piv}_2.0.0_arm64.deb
-```
-
-The packages install the actors, drivers and the node agent (`sluis-node`) under `/usr/libexec/sluis/{actors,drivers,integrations,node,vendor}/<short-name>`, and systemd template units. `sluis-driver-yubikey-piv` brings `pcscd`, which on a node serves the `key-holder` user only. Nothing is enabled yet.
-
-```sh
-# Example
-ls /usr/libexec/sluis/actors
-```
-
-```text
-# Example output
-audit-indexer  audit-reader  audit-witness  audit-writer  ca  console  entry  exchange  policy  session  signer  ssh-ca
-```
-
-These are the [core actors](/decisions/0002-families-of-actors/#the-four-families) and the audit actors; the install file decides which of them run.
-
-## 4. Run `sluis doctor`
-
-`sluis doctor` checks the platform before you create any key.
-
-```sh
-sluis doctor
-```
-
-```text
-# Example output
-ok    architecture        arm64
-warn  systemd             249 < 252: board-image exception, units use LoadCredential=
-warn  kernel randomness   5.10 < 5.18: VM-clone reseeding is not covered by the kernel
-ok    hwrng               absent (deliberate on this SoC)
-ok    entropy             initialised before key generation
-ok    pcscd               running, access limited to sluis-key-holder
-ok    yubikey             found, PIV, firmware 5.7.4
-ok    filesystem          /var/lib/sluis on eMMC, 28 GB free
-```
-
-The two warnings are the board-image exception, and a warning is not a failure. A `fail` line stops the install: fix it, then run `sluis doctor` again.
-
-## 5. Prepare the YubiKey
-
-On the workstation, before the card goes into the board, set a new PIN and PUK, and a management key protected by the PIN, so that `key-holder` can generate keys once it has the PIN:
-
-```sh
-# Example, on the workstation
-ykman piv access change-pin
-ykman piv access change-puk
-ykman piv access change-management-key --generate --protect
-```
-
-Then plug the card into the board. From now on only `key-holder` talks to it.
-
-## 6. Write a minimal config
-
-Configuration has four layers inside declared configuration: defaults, the runtime, your install file, and overrides per environment ([ADR 0004](/decisions/0004-the-data-model/)). The bare-metal runtime sets the key mode and the audit spool. The keys are those of [install-file schema v1](/reference/install-file/); start from the [local example file](/reference/install-file/#the-example-file-for-local) and change what differs on a board: the environment, the hosts, the keys driver and the upstream.
+store@ reads one local file at start, the [bootstrap file](/reference/bootstrap-file/): the boundary, a driver socket for each of its four ports, and the public keys of the publishers that sign config. Everything else is a signed config document. The local one, abridged:
 
 ```yaml
-# Example: /etc/sluis/install.yaml
-$schema: https://sluis.id/schema/install/v1/install.schema.json
-runtime: bare-metal
-environment: production
-nodes: 1
+# Abridged from tests/installations/local/bootstrap.yaml
+boundary: dev
+start_timeout: 30s
 
-front:
-  host: sluis.example.com
-  rp_id: example.com
+config_source: { driver: file, socket: /run/sluis/store/dev/config-source.sock }
+secret_source: { driver: credential, socket: /run/sluis/store/dev/secret-source.sock }
+durable: { driver: rqlite, socket: /run/sluis/store/dev/durable.sock }
+temp: { driver: rqlite, socket: /run/sluis/store/dev/temp.sock }
 
-boundaries:
-  prod:
-    kind: environment
-    level: L2
-    host: sluis.prod.example.com
-
-drivers:
-  keys: yubikey-piv    # the board's card; schema v1 lists it with the boards installation
-  state: embedded      # one node: a SQLite file per actor, no Raft
-  lease: local-lock
-  blob: fs             # on the board's disk; the cluster uses R2
-  transport: spool
-  index: sqlite        # one node: no replicated index
-
-upstreams:
-  workforce:
-    kind: oidc
-    issuer: https://idp.example.org
-    client_id: sluis-example
-    client_secret: { credential: idp-client-secret }   # referenced, never inlined
-
-clients:
-  sluis-cli:
-    kind: public
-    redirects: [http://127.0.0.1/callback]
-
-policy:
-  files: [policy/board.cedar]
-
-trust:
-  root_list: trust/root-list.json
-  ca_bundle: trust/ca-bundle.pem
+publishers:
+  - kid: publisher-1
+    public_key: |
+      -----BEGIN PUBLIC KEY-----
+      ...
+    spki_sha384: "db0b54d4…6ece58"
 ```
 
-This file enables neither SSH certificates nor release signing, so `ssh-ca` does not run and the node gets no `ssh-user`, `ssh-host` or release-signing key. Only an enabled purpose gets a slot ([the card slot map](/concepts/keys/#the-card-slot-map)).
+- **One rqlite node serves both engine ports,** the engine of the boards with a cluster of one ([0005](/decisions/0005-the-store/#engines)).
+- **The publisher pin is the trust anchor of config.** store@ verifies every config document against a key in this list before it parses it, and refuses any other ([Verifying a document](/reference/signed-config/#verifying-a-document)). At the first start the setup makes a publisher key of its own, writes its pin here and signs the config documents with it ([The first start](/runtimes/local/#the-first-start)).
+- **A duration is written with a unit,** here and in every config document: one whole number and one of `s`, `m`, `h` or `d`, such as `30s` or `15m` for fifteen minutes, never an ISO 8601 string such as `PT15M` ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf), [Durations](/reference/bootstrap-file/#durations)).
 
-The client secret is referenced: the config names a credential, and the secret itself is a file, the unit's systemd credential ([secrets in the install file](/reference/install-file/#format)).
+## 3. Start the project
 
 ```sh
 # Example
-install -m 0600 /dev/stdin /etc/sluis/credentials/idp-client-secret
+cd tests/installations/local
+docker compose up --detach
+docker compose wait setup
 ```
 
-## 7. Start `key-holder` and unlock the card
+`setup` is a one-shot service that does the first start and exits 0 ([The first start](/runtimes/local/#the-first-start)): it makes ritueel's software test root, signs the config, runs `sluis key request`, has ritueel certify the boundary's intermediate, runs `sluis key install`, makes the forwarder's certificate, and checks the result with `sluis doctor` and `sluis key status`. The services that need the keys start when it has completed. Its log ends with the key status:
+
+```text
+# Example output
+purpose            store     fingerprint      expires     warning
+x509-intermediate  software  SHA256:5mQ1…Xk4  2027-12-03  none
+token-signing      software  SHA256:Qe7w…2Lb  2027-12-03  none
+audit-log          software  SHA256:Hk3p…9Vd  -           none
+```
+
+The keys are software keys. key@'s `software` driver refuses to start in a production boundary and warns in a staging one, so these keys guard development data only ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
+
+## 4. Check the configuration
+
+`sluis config check` validates the bootstrap file and the config documents the way store@ does at start: the schema and protovalidate, every signature against the pinned publisher keys, the sequence, and the whole set against the registries ([`sluis config check`](/reference/cli/#sluis-config-check-and-explain)). Run it from the setup image:
 
 ```sh
 # Example
-systemctl enable --now sluis-key-holder@prod.service
-sluis node unlock node-1
-```
-
-`sluis node unlock` asks for the PIN and hands it to `key-holder`, which keeps it in locked memory only. The PIN is never written to disk. In a cluster an unlocked peer unlocks a rebooted node; a single board needs this one manual unlock after every boot.
-
-## 8. Request the node's keys
-
-```sh
-# Example
-sluis key request
+docker compose run --rm --entrypoint sluis setup \
+  config check /etc/sluis/config/dev --bootstrap /etc/sluis/bootstrap.d/dev.yaml
 ```
 
 ```text
 # Example output
-purpose         slot  store         state
-intermediate    9c    yubikey-piv   generated on device, P-384; request written
-token signing   9a    yubikey-piv   generated on device, P-384; certificate after install
-sealing         9d    yubikey-piv   generated on device, P-384
-log key         84    yubikey-piv   generated on device, P-384
-intermediate fingerprint  SHA256:5mQ1…Xk4
-request  /var/lib/sluis/keys/request/prod-x509-intermediate.csr.pem
-proof    /var/lib/sluis/keys/request/prod-x509-intermediate.proof.json
+ok    bootstrap file: schema v1, publisher-1 matches its pin
+ok    config documents: every signature verifies against a pinned publisher key
+ok    snapshot: the set validates against the kind registry
+ok    drivers fit the runtime (bare-metal, 1 node)
+warn  audit: no witness; with no witness a compromised writer can get a rewritten checkpoint signed
 ```
 
-The keys are generated on the card and never leave it. The request is a PKCS#10 certificate request; the proof file says the key lives in a PIV slot and carries the card's attestation chain, which sluis has already checked against Yubico's attestation root. The files are those of ritueel's [hand-off contract](https://ritueel.id/reference/hand-off-contract/) ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
+The warning is expected: the local installation has no witness ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). A `fail` line exits 3.
 
-## 9. Get the intermediate certified
+## 5. Trust the test root
 
-sluis holds no root and never makes one. The roots are [ritueel](https://ritueel.id)'s. For a first installation, ritueel's software-root mode stands in for the root cards: a setup script runs the ritueel commands that check the request and its attestation, certify the intermediate under a software root, and write the certificate, a result file and a signed root list.
+The setup wrote the test root's certificate, `ca-bundle.pem`, to the project's trust volume. Import it into the browser profile you made for this project, never into the system trust store ([TLS](/runtimes/local/#tls)). For the CLI, point `SSL_CERT_FILE` at a copy of the same file. The root is marked `TEST ONLY`, its key is a file with no passphrase, and `docker compose down --volumes` deletes it.
 
-```sh
-# Example, on the workstation
-scp -r root@board:/var/lib/sluis/keys/request ./request
-./setup-software-root.sh ./request ./response   # runs ritueel in software-root mode
-scp -r ./response root@board:/var/lib/sluis/keys/response
-```
+## 6. Sign in
 
-A production installation gets the same files from a ritueel ceremony with the root cards instead.
+People sign in through an upstream identity provider, never through accounts in sluis. Here it is Keycloak, in the project at `https://idp.local.test`.
 
-Back on the board, put the root list and the CA bundle where the install file names them (`trust.root_list` and `trust.ca_bundle`), then install the answer:
+1. In Keycloak's admin console, add a user with a password and a one-time-password credential. The realm sends `amr` with `mfa` after the one-time password ([Sign-in](/runtimes/local/#sign-in)).
+2. Give the user the subject value `u-1001`. The local policy binds the account `workforce/u-1001` to the grant name `dev:example-app:user` ([A worked example](/reference/policy/#a-worked-example)).
+3. Sign in:
 
-```sh
-# Example
-install -D -m 0644 -t /etc/sluis/trust /var/lib/sluis/keys/response/root-list.json /var/lib/sluis/keys/response/root-list.jws /var/lib/sluis/keys/response/ca-bundle.pem
-sluis key install /var/lib/sluis/keys/response
-sluis key status
-```
+   ```sh
+   # Example
+   SSL_CERT_FILE=./ca-bundle.pem sluis login --issuer https://sluis.local.test
+   ```
+
+   The command opens a browser at the group issuer, which sends you on to Keycloak. If the default browser does not trust the test root, open the URL that the command prints in the project's profile.
 
 ```text
 # Example output
-installed  intermediate  certificate verifies to a root in the root list (trust sequence 1); matches slot 9c
-issued     token signing certificate (non-CA, digital signature only) by the node intermediate
-
-purpose         slot  expires       warning
-intermediate    9c    2027-12-02    none
-token signing   9a    2027-12-02    none
-sealing         9d    -             none
-log key         84    -             none
-```
-
-`sluis key install` uses the certificate only after it has checked the issuer against the root list, the key match, the validity and the constraints. The intermediate lasts 13 months; ritueel re-signs the same key in month 12, and sluis warns 60, 30 and 14 days before expiry.
-
-## 10. Check the config and start the units
-
-```sh
-sluis config check /etc/sluis/install.yaml
-```
-
-```text
-# Example output
-ok    /etc/sluis/install.yaml validates against the schema (unevaluatedProperties: false)
-ok    drivers satisfy the runtime and the node count (bare-metal, 1 node)
-ok    every enabled purpose has a slot and a key; no collision
-ok    intermediate certified; root list trust sequence 1
-warn  audit.witness: none; with no witness a compromised writer can get a rewritten checkpoint signed
-```
-
-The warning is expected on one node: peer witnesses need two or more nodes. The schema is strict, so an unknown key is an error; `sluis config explain` shows each value in force and the layer it came from.
-
-Start the target that groups the units:
-
-```sh
-# Example
-systemctl enable --now sluis.target
-systemctl list-units 'sluis-*' --no-legend
-```
-
-```text
-# Example output
-sluis-key-holder@prod.service     loaded active running  sluis key-holder
-sluis-entry@prod.service          loaded active running  sluis entry
-sluis-session@prod.service        loaded active running  sluis session
-sluis-console@prod.service        loaded active running  sluis console
-sluis-exchange@prod.service       loaded active running  sluis exchange
-sluis-signer@prod.service         loaded active running  sluis signer
-sluis-policy@prod.service         loaded active running  sluis policy
-sluis-ca@prod.service             loaded active running  sluis ca
-sluis-audit-writer@prod.service   loaded active running  sluis audit-writer
-sluis-audit-indexer@prod.service  loaded active running  sluis audit-indexer
-sluis-audit-reader@prod.service   loaded active running  sluis audit-reader
-sluis-node.service                loaded active running  sluis node agent
-```
-
-Each unit runs as its own user; `ssh-ca` and the witness are not enabled. sluis opens no TCP listener: `entry` runs with `PrivateNetwork=yes` on `/run/sluis/entry/prod.sock`, every other actor and driver listens on a Unix socket under `/run/sluis/<actor>/`, and the embedded state driver has no Raft port, so `ss -ltn` lists no sluis listener.
-
-## 11. Connect cloudflared to `entry`
-
-`cloudflared` forwards to `entry`'s Unix socket as a `unix:` origin and makes outbound connections only, so the board opens no inbound port. Install it from Cloudflare's own repository, run it in the group of `entry`'s socket, and point the ingress at the socket.
-
-```yaml
-# Example: /etc/cloudflared/config.yaml
-tunnel: <tunnel-id-from-cloudflare>
-credentials-file: /etc/cloudflared/credentials.json
-ingress:
-  - hostname: sluis.example.com
-    service: unix:/run/sluis/entry/prod.sock
-  - service: http_status:404
-```
-
-```sh
-# Example
-systemctl enable --now cloudflared
-curl -s https://sluis.example.com/.well-known/openid-configuration | head -4
-```
-
-```text
-# Example output
-{
-  "issuer": "https://sluis.example.com",
-  "jwks_uri": "https://sluis.example.com/.well-known/jwks.json",
-  ...
-```
-
-## 12. Sign in
-
-On the workstation, sign in through the upstream provider.
-
-```sh
-# Example
-sluis login --issuer https://sluis.example.com
-```
-
-A browser opens at the upstream provider, and sluis relies on its multi-factor authentication. After you sign in, `policy` maps the provider's facts to grants and `signer` issues a token.
-
-```text
-# Example output
-signed in to https://sluis.example.com
+signed in to https://sluis.local.test
 subject  3d7c1e9a-5b2f-4c8e-9a41-0f6b2d8e7c15
-email    you@example.org
-token stored in ~/.cache/sluis/token.jwt  (expires in 1h)
 ```
 
-The subject is an opaque random id that sluis assigned when it first saw you in the directory. It is never your e-mail address, which is a separate `email` claim.
+The subject is an opaque random id that sluis assigned at your first sign-in, never your e-mail address ([0017](/decisions/0017-identity-and-sign-in/#subjects)). `sluis login` then exchanges your token silently at the `dev` boundary's own token endpoint ([`sluis login`](/reference/cli/#sluis-login-and-sluis-token)).
 
-## 13. Verify a token against the JWKS
+## 7. Get a token and verify it
 
-A sluis token is a standard JWS. Any JOSE library verifies it against the published key set, and sluis needs no client library. This example uses Python with PyJWT.
+```sh
+# Example
+SSL_CERT_FILE=./ca-bundle.pem sluis token --boundary dev --audience example-app > token.jwt
+```
+
+`example-app` asks for multi-factor authentication no older than 900 seconds, so a later run asks you to sign in again ([A worked example](/reference/policy/#a-worked-example)).
+
+A sluis token is a standard JWS. Any JOSE library verifies it against the key set of the boundary's issuer, which exporter@ publishes as a static document; sluis needs no client library:
 
 ```python
 # Example
+import json, ssl, urllib.request
 import jwt  # pip install "pyjwt[crypto]"
 
+issuer = "https://sluis.dev.local.test"
+ctx = ssl.create_default_context(cafile="ca-bundle.pem")
+with urllib.request.urlopen(issuer + "/.well-known/openid-configuration", context=ctx) as r:
+    jwks_uri = json.load(r)["jwks_uri"]
+
 token = open("token.jwt").read().strip()
-jwks = jwt.PyJWKClient("https://sluis.example.com/.well-known/jwks.json")
-key = jwks.get_signing_key_from_jwt(token)
-claims = jwt.decode(
-    token,
-    key.key,
-    algorithms=["ES384"],
-    issuer="https://sluis.example.com",
-    audience="example-service",
-)
-print(claims["sub"], claims.get("email"))
+key = jwt.PyJWKClient(jwks_uri, ssl_context=ctx).get_signing_key_from_jwt(token)
+claims = jwt.decode(token, key.key, algorithms=["ES384"], issuer=issuer, audience="example-app")
+print(claims["sub"], claims["groups"])
 ```
 
-ES384 (P-384) is sluis's default. Each key-set entry carries an `x5c` chain, the token certificate, the node intermediate and the root, which a standard client ignores and a careful verifier checks down to the root it pins. The signing key stays on the card, and `signer` uses it only through `key-holder`.
+ES384 is sluis's default. The issuer is the `dev` boundary's own, with its own keys: a token of `dev` is refused by a relying party that pins another boundary's issuer ([0017](/decisions/0017-identity-and-sign-in/#issuers)). Each key-set entry carries an `x5c` chain to the test root, which a careful verifier checks.
 
-## 14. Read the audit trail
+## 8. Find the audit record
 
-Your sign-in produced audit records. They went through the spool into a sealed batch, and the writer asked `key-holder` to sign the checkpoint with the log key.
+Your sign-in and the token are audit records of the `dev` boundary's audit, written by the writer to its `fs` blob and indexed for search ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation), [Audit](/concepts/audit/)). Each names you by a keyed pseudonym, not by subject or e-mail. The tutorial's test reads them back through the reader, as the integration tests do. Reading them from the command line, `sluis audit`, is planned ([Later commands](/reference/cli/#later-commands)).
+
+## 9. Stop, or start again
 
 ```sh
 # Example
-sluis audit tail --last 2
-sluis audit verify
+docker compose down             # keeps the volumes: same root, issuers and keys next time
+docker compose down --volumes   # deletes the root, the keys, the signed config and the data
 ```
 
-```text
-# Example output
-2026-11-02T09:14:01Z  3002/1  Logon        actor.user.uid=session@prod  status=Success
-2026-11-02T09:14:02Z  3002/99 Token Grant  actor.user.uid=signer@prod   status=Success
-chain ok: 1 batch, checkpoint signed by the log key, 0 gaps
-```
+After `down --volumes` the next `up` is a first start with a new root, and a browser profile that trusted the old root trusts nothing that exists any more.
 
-Each record is an OCSF event; you appear in it as a keyed pseudonym, not by subject or e-mail. `audit verify` walks the chain from the sealed batches in the blob store and never trusts the index, so a damaged index can't hide a missing record. See [Audit](/concepts/audit/).
+## Next steps
 
-## 15. Next steps
-
-- Read what you installed: the [actors](/concepts/actors/), the [drivers](/concepts/drivers/) and the [keys](/concepts/keys/).
-- Add a second and a third board, a YubiKey each, and move to the tested [boards installation](/runtimes/installations/#boards), with rqlite state and blobs on R2 so that the audit chain outlives a board ([Limits and residual risk](/runtimes/bare-metal/#limits-and-residual-risk)).
-- Read how releases are verified now and once they are signed: [Packages](/distribution/packages/) and [Release signing](/distribution/release-signing/).
+- What you ran, in detail: [The local installation](/runtimes/local/), the [bootstrap file](/reference/bootstrap-file/) and [signed config](/reference/signed-config/).
+- What runs inside: the [families](/concepts/families/), the [store](/concepts/data/#the-store) and [keys](/concepts/keys/).
+- The tested installations with hardware keys and a cluster: [boards](/runtimes/#boards), on the [bare-metal](/runtimes/bare-metal/) runtime.
+- The way back in when sign-in fails: [Break-glass recovery](/security/break-glass/).
