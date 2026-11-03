@@ -53,7 +53,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 |---|---|---|
 | `ajv`, its draft 2020-12 build | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | WebCrypto and WebAuthn, the browser's | Cryptography and passkeys in the console's single-page application | [ADR 0017](/decisions/0017-identity-and-sign-in/#passkeys) |
-| `@connectrpc/connect` (connect-es) | The Connect client of the public API | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota) |
+| `@connectrpc/connect` (connect-es) | The Connect client of the public API | [ADR 0030](/decisions/0039-quota-allowance/#the-allowance) |
 | `jose` | Verifying tokens in the console's single-page application and in the verification demo | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
 
 ## Refused

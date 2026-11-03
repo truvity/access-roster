@@ -474,6 +474,26 @@
       "old": "0043-break-glass-recovery-uses-passkeys-only",
       "new": "0017-identity-and-sign-in",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0044-audit-pseudonyms-are-keyed-per-company-and-epoch",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
@@ -545,6 +565,30 @@
     "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person#global-sign-out": "0034-end-users-and-upstream-signals#global-sign-out",
     "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#inbound-back-channel-logout": "0034-end-users-and-upstream-signals#inbound-back-channel-logout",
     "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#disable-and-delete": "0034-end-users-and-upstream-signals#disable-and-delete",
-    "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#global-sign-out": "0034-end-users-and-upstream-signals#global-sign-out"
+    "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#global-sign-out": "0034-end-users-and-upstream-signals#global-sign-out",
+    "0004-drivers-listeners-and-boundary-enforcement#nats-jetstream": "0028-audit-pieces#nats-jetstream",
+    "0004-drivers-listeners-and-boundary-enforcement#postgresql-row-level-security": "0028-audit-pieces#postgresql-row-level-security",
+    "0017-audit-records-the-usage-stream-and-quota#quota": "0039-quota-allowance#the-allowance",
+    "0025-audit-pseudonyms-are-keyed-per-company-and-epoch#decision": "0029-the-audit-log#pseudonyms",
+    "0044-audit-pseudonyms-are-keyed-per-company-and-epoch#decision": "0029-the-audit-log#pseudonyms",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#two-classes-of-data-two-keys": "0029-the-audit-log#encryption-and-crypto-shredding",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#roads-not-taken": "0029-the-audit-log#roads-not-taken",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#the-period-statement-is-the-portable-evidence": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#quota-by-origin": "0039-quota-allowance#the-allowance",
+    "0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client#accounts-are-issued": "0039-quota-allowance#the-allowance",
+    "0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client#plans-are-declared": "0039-quota-allowance#the-allowance",
+    "0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#a-period-closes-once": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#late-events-and-corrections": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#open-product-facts-the-billing-calendar": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people#service-callers": "0039-quota-allowance#the-push",
+    "0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people#when-the-issuer-is-down": "0039-quota-allowance#consistency-under-load",
+    "0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people#service-callers": "0039-quota-allowance#the-push",
+    "0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people#when-the-issuer-is-down": "0039-quota-allowance#consistency-under-load",
+    "0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-load-test": "0039-quota-allowance#consistency-under-load",
+    "0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-writer-is-down": "0039-quota-allowance#consistency-under-load",
+    "0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load",
+    "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-load-test": "0039-quota-allowance#consistency-under-load",
+    "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-writer-is-down": "0039-quota-allowance#consistency-under-load",
+    "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load"
   }
 }

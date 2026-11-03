@@ -26,7 +26,7 @@ service StateService {
 - **A record is a key, a revision, an optional expiry and a sealed value.** A revision is a 64-bit integer that the driver sets: 1 at creation, plus 1 at each change. An expiry is milliseconds since the Unix epoch, set by the application, never by the store ([ADR 0005](/decisions/0005-the-store/#drivers)).
 - **A record past its expiry reads as absent**, whatever the engine still holds, and a `Put` may create it again.
 - **`Batch` holds at most 64 writes** to records of the calling actor and is applied atomically, or refused whole with the code of the first write that failed and its index.
-- **Delete, listing by prefix and watch are not in the first working version.** Nothing in it needs them; session listing does, at parity ([#1009](https://github.com/truvity/sluis/issues/1009)). A conditional adjust of a counter is not part of that issue: it belongs to quota and is added only if the quota load test shows contention ([ADR 0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/#the-load-test)).
+- **Delete, listing by prefix and watch are not in the first working version.** Nothing in it needs them; session listing does, at parity ([#1009](https://github.com/truvity/sluis/issues/1009)). A conditional adjust of a counter is not part of that issue: it belongs to quota and is added only if the quota load test shows contention ([ADR 0039](/decisions/0039-quota-allowance/#consistency-under-load)).
 
 ### lease
 
