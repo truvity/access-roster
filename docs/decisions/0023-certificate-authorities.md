@@ -126,7 +126,7 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - Standing access is revoked by the next bundle, not by waiting for expiry. An outage longer than the staleness limit locks out normal logins, while grant, elevation and break-glass access keep working.
 - Every host with standing access runs `sluis-host`; a host in static mode has a manual revocation list and CA rotation.
 - The break-glass CA is a second trust root on each host, offline and guarded by ritueel.
-- Two CA actors mean two sets of profiles and conformance tests, two units, and two things to publish: X.509 anchors and CRLs, SSH CA keys and KRLs. On a 2 GB board two units cost memory, which is measured in [#1180](https://github.com/truvity/sluis/issues/1180).
+- Two CA actors mean two sets of profiles and conformance tests, two units, and two things to publish: X.509 anchors and CRLs, SSH CA keys and KRLs. On a 2 GB board two units cost memory: `ca` and `ssh-ca` hold 54.6 MiB together, so keeping them apart costs about 27 MiB per board, 1.4 % of it (MEASURED 2026-11-03, [0037](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity)).
 - One intermediate per boundary keeps the slot map and the yearly re-certification small. The cost is that separation between uses rests on the profiles and the databases' fixed subject maps, which are therefore tested as security controls.
 - A workload or actor certificate stolen from memory is useless within a day, usually within an hour, with no revocation needed. The cost is issuance load: every workload renews about every 40 minutes and every actor daily, which `ca` and key@ must carry ([0006](/decisions/0006-keys-and-sealing/#keys-per-board)).
 - A misconfigured `ca` in one environment cannot produce a certificate that a verifier in another environment accepts for its names, provided the verifier enforces name constraints, which current TLS libraries do. Excluding all IP ranges by default means a host reached by address needs a declared range before it can get a certificate for it.
@@ -162,5 +162,4 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 - ACME in `ca`, after the first release: [#978](https://github.com/truvity/sluis/issues/978).
 - Merkle Tree Certificates (`mtc-tlog`) on the post-quantum track: Later, [#1029](https://github.com/truvity/sluis/issues/1029).
 - The X.509 CA actor that implements the profiles: [#913](https://github.com/truvity/sluis/issues/913).
-- Memory of `ca` and `ssh-ca` as separate units on a 2 GB board: [#1180](https://github.com/truvity/sluis/issues/1180).
 - DNS name constraints in ritueel's policy, so that ritueel checks the DNS part of an intermediate's constraints: [truvity/ritueel#70](https://github.com/truvity/ritueel/issues/70).
