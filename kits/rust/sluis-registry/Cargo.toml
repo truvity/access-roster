@@ -1,0 +1,11 @@
+[package]
+name = "sluis-registry"
+description = "The enforcement tables generated from the registries: store rules, key rules, the call graph and the pinned uids."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
