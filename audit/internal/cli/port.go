@@ -294,8 +294,10 @@ type reauther interface {
 }
 
 // reauthenticate is what the store does after a 401 or 403: have the provider replace
-// its credentials (at most once in cloudflare.MinReauth) and drop the cached
-// ones so the request is signed anew. It answers false when nothing was replaced.
+// its credentials (at most once in cloudflare.MinReauth), or wait out a
+// credential too new to be accepted yet, and drop the cached ones so the
+// request is signed anew. It answers false when the request is not worth
+// sending again.
 func reauthenticate(prov reauther, cache *aws.CredentialsCache) s3store.Reauth {
 	return s3store.ReauthFunc(func(ctx context.Context) (bool, error) {
 		replaced, err := prov.Reauthenticate(ctx)

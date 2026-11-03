@@ -20,7 +20,10 @@ import (
 // than 403 for a key that was rotated away, which is why both count. Reauth
 // bounds how often it replaces them (the minting provider: once in 30
 // seconds), and answering false means "the credentials are as they were", so
-// the request is not sent again.
+// the request is not sent again. Answering true means "send it again": the
+// credentials were replaced, or (the stored provider) were read moments
+// before, so the store may not have accepted them yet, and Reauth waited
+// until they had time to be.
 type Reauth interface {
 	Reauthenticate(ctx context.Context) (replaced bool, err error)
 }

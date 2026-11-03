@@ -136,7 +136,9 @@ func TestStoredProviderReauthenticate(t *testing.T) {
 	if c, err := cache.Retrieve(context.Background()); err != nil || c.AccessKeyID != "k1" {
 		t.Fatalf("%+v %v", c, err)
 	}
-	// The same document after a 403: nothing replaced, the request is not sent again.
+	// The same document after a 403, the credential past its settling: nothing
+	// replaced, the request is not sent again.
+	now = now.Add(cloudflare.DefaultSettle)
 	if replaced, err := p.Reauthenticate(context.Background()); err != nil || replaced {
 		t.Fatalf("unchanged document: replaced=%v err=%v", replaced, err)
 	}
@@ -153,6 +155,100 @@ func TestStoredProviderReauthenticate(t *testing.T) {
 	cache.Invalidate()
 	if c, _ := cache.Retrieve(context.Background()); c.AccessKeyID != "k2" {
 		t.Fatalf("after a reauthentication: %s", c.AccessKeyID)
+	}
+}
+
+func storedDocSecret(id, secret string, expires time.Time) []byte {
+	return fmt.Appendf(nil, `{"schema":"cloudflare/v1","access_key_id":%q,"secret_access_key":%q,"endpoint":"https://acct.r2.example.test","expires_on":%q}`,
+		id, secret, expires.UTC().Format(time.RFC3339))
+}
+
+// A credential rotated in place keeps its access key id and changes its
+// secret: that is a replacement, and the request is sent again.
+func TestStoredProviderReauthenticateSameIDNewSecret(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	src := &source{doc: storedDocSecret("k1", "s1", now.Add(time.Hour))}
+	p, _ := cloudflare.NewStoredProvider(cloudflare.StoredConfig{Read: src.read, Source: "x", Now: func() time.Time { return now }})
+	cloudflare.SetSleep(p, func(context.Context, time.Duration) error { t.Fatal("waited for a replaced credential"); return nil })
+	if _, err := p.Retrieve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(cloudflare.DefaultSettle)
+	src.doc = storedDocSecret("k1", "s2", now.Add(time.Hour))
+	if replaced, err := p.Reauthenticate(context.Background()); err != nil || !replaced {
+		t.Fatalf("same id, new secret: replaced=%v err=%v", replaced, err)
+	}
+	if c, _ := p.Retrieve(context.Background()); c.AccessKeyID != "k1" || c.SecretAccessKey != "s2" {
+		t.Fatal("the new secret is not handed out")
+	}
+}
+
+// A credential read moments ago and refused is one the store may not accept
+// yet (R2 refuses a token Cloudflare has just created): the refusal is waited
+// out once, up to Settle after the credential was first read, and the request
+// is sent again. Every request refused meanwhile waits for the same moment.
+func TestStoredProviderReauthenticateWaitsForANewCredential(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	src := &source{doc: storedDoc("k1", now.Add(time.Hour))}
+	p, _ := cloudflare.NewStoredProvider(cloudflare.StoredConfig{Read: src.read, Source: "x", Now: func() time.Time { return now }})
+	var waited []time.Duration
+	cloudflare.SetSleep(p, func(_ context.Context, d time.Duration) error { waited = append(waited, d); return nil })
+	if _, err := p.Retrieve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The rotation is read: k2, just created.
+	now = now.Add(cloudflare.DefaultRecheck)
+	src.doc = storedDoc("k2", now.Add(time.Hour))
+	if c, _ := p.Retrieve(context.Background()); c.AccessKeyID != "k2" {
+		t.Fatalf("rotated credential not read: %s", c.AccessKeyID)
+	}
+	// Refused 100 ms later, the document unchanged.
+	now = now.Add(100 * time.Millisecond)
+	reads := src.reads
+	if replaced, err := p.Reauthenticate(context.Background()); err != nil || !replaced {
+		t.Fatalf("a new credential refused: replaced=%v err=%v", replaced, err)
+	}
+	if src.reads != reads+1 {
+		t.Fatalf("the document was read %d times, want once", src.reads-reads)
+	}
+	// A second request refused within MinReauth: not read again, waits too.
+	now = now.Add(400 * time.Millisecond)
+	if replaced, err := p.Reauthenticate(context.Background()); err != nil || !replaced || src.reads != reads+1 {
+		t.Fatalf("a second refusal: replaced=%v err=%v reads=%d", replaced, err, src.reads-reads)
+	}
+	if want := []time.Duration{cloudflare.DefaultSettle - 100*time.Millisecond, cloudflare.DefaultSettle - 500*time.Millisecond}; fmt.Sprint(waited) != fmt.Sprint(want) {
+		t.Fatalf("waited %v, want %v", waited, want)
+	}
+	// Once it has settled, a refusal is the answer.
+	now = now.Add(cloudflare.DefaultSettle)
+	if replaced, err := p.Reauthenticate(context.Background()); err != nil || replaced {
+		t.Fatalf("a settled credential refused: replaced=%v err=%v", replaced, err)
+	}
+	if len(waited) != 2 {
+		t.Fatalf("waited again for a settled credential: %v", waited)
+	}
+}
+
+func TestStoredProviderReauthenticateWaitEndsWithTheContext(t *testing.T) {
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	src := &source{doc: storedDoc("k1", now.Add(time.Hour))}
+	p, _ := cloudflare.NewStoredProvider(cloudflare.StoredConfig{Read: src.read, Source: "x", Now: func() time.Time { return now }, Settle: time.Hour})
+	if _, err := p.Retrieve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if replaced, err := p.Reauthenticate(ctx); replaced || !errors.Is(err, context.Canceled) {
+		t.Fatalf("a cancelled wait: replaced=%v err=%v", replaced, err)
+	}
+	// A negative Settle waits for nothing.
+	q, _ := cloudflare.NewStoredProvider(cloudflare.StoredConfig{Read: src.read, Source: "x", Now: func() time.Time { return now }, Settle: -1})
+	cloudflare.SetSleep(q, func(context.Context, time.Duration) error { t.Fatal("waited with a negative Settle"); return nil })
+	if _, err := q.Retrieve(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if replaced, err := q.Reauthenticate(context.Background()); err != nil || replaced {
+		t.Fatalf("negative Settle: replaced=%v err=%v", replaced, err)
 	}
 }
 

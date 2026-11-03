@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Fixed
+
+- **audit: a credential read moments after its rotation is no longer refused once and given up on.** The v1.79.4 retry after a 401 did not take effect at a rotation: a writer that had been idle read the new `credentials_ref` document within a second of it being written, R2 answered 401 because it does not accept a token Cloudflare has just created for a second or two (up to about 2.3 s measured), the reread found the same document, and the request was not sent again (`replaced=false`), so about a third of rotations sent a batch back to its queue. The old credential was still valid throughout, and the document was already written: neither the rotation's order nor a cache was the cause. `cloudflare.StoredProvider.Reauthenticate` now waits until a refused credential that did not change is `StoredConfig.Settle` (default 5 s) old since it was first read, or the context ends, and answers true so the request is sent once more; a refusal of an older credential is the answer, as before. It also compares the secret, not only the access key id, so a credential rotated in place, keeping its id, counts as replaced. `cloudflare.DefaultSettle` in the storage module. **Upgrade:** none.
+
 ## v1.80.2
 
 A patch release: a wrapped signing key is published 12 hours before it signs instead of 15 minutes, so a verifier that caches the key set for an hour no longer refuses the new key's tokens after each daily rotation; and the key set and the metadata documents carry `Cache-Control: public, max-age=300`. Also dependency updates (`sigstore-go` v1.4.0) and CI tooling. Upgrade notes: an installation that sets `signingKey.kmsWrapped.prepublish` keeps its value; raise it to at least its verifiers' longest key-set cache, or remove it.
