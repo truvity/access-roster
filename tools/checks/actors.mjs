@@ -166,16 +166,16 @@ for (const a of actors) {
     else if (!names(adr.get(n).text, a)) error(`${REGISTRY}: ${a.name}: ADR ${n} does not name the actor`);
   }
 }
-const a0003 = adr.get('0041')?.text;
-if (!a0003) error('docs/decisions/: ADR 0041, the actors, is missing');
+const a0041 = adr.get('0041')?.text;
+if (!a0041) error('docs/decisions/: ADR 0041, the actors, is missing');
 else {
-  const section = /### The actors\n([\s\S]*?)\n### /.exec(a0003)?.[1] ?? '';
+  const section = /### The actors\n([\s\S]*?)\n### /.exec(a0041)?.[1] ?? '';
   const core = [...section.matchAll(/^\s*\| `([a-z][a-z0-9-]*)` \|/gm)].map((m) => m[1]);
   if (!core.length) error('ADR 0041: no table of core actors under "### The actors"');
   for (const n of core) if (byName.get(n)?.group !== 'core') error(`ADR 0041 names ${n} as a core actor; the registry ${byName.has(n) ? `has it in group ${byName.get(n).group}` : 'lacks it'}`);
   for (const a of actors) {
     if (a.group === 'core' && !core.includes(a.name)) error(`${REGISTRY}: ${a.name} is a core actor that the ADR 0041 table does not list`);
-    if (!names(a0003, a)) error(`${REGISTRY}: ${a.name}: ADR 0041 does not name it`);
+    if (!names(a0041, a)) error(`${REGISTRY}: ${a.name}: ADR 0041 does not name it`);
   }
 }
 for (const [n, { text }] of adr) {
@@ -187,10 +187,10 @@ for (const [n, { text }] of adr) {
     }
   }
 }
-const a0014 = adr.get('0012')?.text;
-if (!a0014) error('docs/decisions/: ADR 0012, the languages, is missing');
+const a0012 = adr.get('0012')?.text;
+if (!a0012) error('docs/decisions/: ADR 0012, the languages, is missing');
 else {
-  const table = /### Per-actor table\n([\s\S]*?)\n\n(?!\|)/.exec(a0014)?.[1] ?? '';
+  const table = /### Per-actor table\n([\s\S]*?)\n\n(?!\|)/.exec(a0012)?.[1] ?? '';
   const rows = table.split('\n').filter((l) => /^\|/.test(l) && !/^\|[-| ]+\|$/.test(l)).slice(1)
     .map((l) => l.slice(1, -1).split(' | ').map((c) => c.trim()));
   if (!rows.length) error('ADR 0012: no rows under "### Per-actor table"');
