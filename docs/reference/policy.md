@@ -158,6 +158,7 @@ Each of these is added by the record or pull request that first asks about it, a
 | Added | By | Because |
 |---|---|---|
 | `Group`, and a binding that names a directory group | Directory sync ([#805](https://github.com/truvity/sluis/issues/805)) | The first working version reads no directory; internal groups are accounts ([0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)) |
+| `Target`, and the batch membership method | Reconcilers ([#1220](https://github.com/truvity/sluis/issues/1220)) | A directory adapter asks which people a connection's groups put in a target ([0026](/decisions/0026-reconcilers/#the-desired-state)) |
 | `Host` and the action `cert.issue` | Host enrolment ([0022](/decisions/0022-workload-identity-and-host-enrolment/)) | Their first asker is `exchange` with a host proof |
 | `Resource` | Declared resources ([#979](https://github.com/truvity/sluis/issues/979)) | A resource is a declared URL with its own `requires` ([0021](/decisions/0021-clients/#resources)) |
 | Attributes for the claims of a token | The per-audience claim override ([#788](https://github.com/truvity/sluis/issues/788)) | The first version issues the fixed set of [0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token) |
@@ -205,7 +206,7 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 
 ## What a decision holds
 
-`policy`'s contract is a ConnectRPC service like the others ([Contracts and errors](/reference/contracts/)). Its request and answer carry:
+`policy`'s contract is a ConnectRPC service like the others ([Contracts and errors](/reference/contracts/)). It has two methods: the decision, whose request and answer are below, and a [batch membership method](#the-batch-membership-method) for directory adapters. The request and answer of a decision carry:
 
 | In the request | |
 |---|---|
@@ -221,6 +222,25 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 | The sealed grant | On `allow` only: the sealed grant, sealed by key@ under the boundary's `grant` data key ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)) |
 
 The `proto/` file is written with the first code. Every decision is audited with its reasons and the digest.
+
+### The batch membership method
+
+A directory adapter asks for the members of the targets its directory feeds, once per connection after each refresh ([0026](/decisions/0026-reconcilers/#the-desired-state)). It is the one place where `policy` answers about many subjects at once.
+
+| In the request | |
+|---|---|
+| The connection | The directory connection and its tenant; policy reads the targets' ReconcileTarget itself |
+| The facts | The directory groups and memberships of the connection that the adapter read, each with its age, as a slice of entities. The adapter counts the age; `policy` has no clock |
+
+| In the answer | |
+|---|---|
+| The members | For each target, named with the tenant that owns its container, the vendor identifiers of the people the connection's groups are to put in it, as opaque references |
+| The missing declarations | For each target that is owned by another company, whether the connection's company allows its group to be provisioned there; a target without the allowance is listed and gets no member |
+| The reasons and the digest | As for a decision |
+| The sealed grant | For each owner's tenant of a target both sides declared, the grant for writing its part, an empty part included |
+
+- **The answer is the decision, and the adapter only writes it.** The adapter adds, removes and reorders no member ([0025](/decisions/0025-integrations/#the-rule)).
+- **A fact that has passed its `max_age` is stale,** and a target whose answer rests on it is listed as such, so that the adapter writes no part for it.
 
 
 ### Policy ids and annotations

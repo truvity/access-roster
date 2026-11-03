@@ -65,7 +65,7 @@ MEASURED on boards with a card each, on the dates in the first column ([Board ca
 
 What it means:
 
-- **The cards, not the state, limit a board installation.** The design needs about 7 commits a second at the v1 peak and about 73 at the signing ceiling (estimated 2026-10-31 from the flows), against a budget of about 275 commits a second (the saturation of one cluster, MEASURED 2026-11-03, [Board capacity](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity)).
+- **The cards, not the state, limit a board installation,** unless a hot quota allowance runs at the target of 100 admits a second, which alone takes about 200 commits a second ([0039](/decisions/0039-quota-allowance/#consistency-under-load)). The design needs about 7 commits a second at the v1 peak and about 73 at the signing ceiling (estimated 2026-10-31 from the flows), against a budget of about 275 commits a second (the saturation of one cluster, MEASURED 2026-11-03, [Board capacity](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity)).
 - **A cache miss on a card is a 143 ms wait.** The seven a second per card serve misses and not requests, so the hit rate of the cache decides how many requests a card supports.
 - **Every limiter admit and every session write is a Raft commit.** Their rate is an input to the budget of about 275.
 

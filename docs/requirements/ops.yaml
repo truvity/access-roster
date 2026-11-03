@@ -854,8 +854,8 @@ requirements:
   # ---- reconcilers (decision 0026)
   - id: REQ-OPS-066
     area: OPS
-    statement: "A reconciler MUST act only on the targets that the ReconcileTarget config kind declares."
-    rationale: "A target is a reviewed document, so a reconciler cannot be pointed at a system nobody approved (ADR 0026)."
+    statement: "A reconciler MUST act only on the targets that the ReconcileTarget durable kind declares."
+    rationale: "A target is a record inside the bounds that config and reviewed policy set, so a reconciler cannot be pointed at a system nobody approved (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -878,14 +878,121 @@ requirements:
       - {kind: integration-test, ref: "a Switch for a target stops its next pass and survives a restart"}
   - id: REQ-OPS-068
     area: OPS
-    statement: "A reconciler MUST compute its pass from the kind DesiredState once its writer exists."
-    rationale: "The kind and its writer arrive with the reconciler milestone, so this record waits for them (ADR 0026)."
+    statement: "A provisioner MUST reconcile its target to the union of the current DesiredState parts of that target."
+    rationale: "A target with several sources has one part per source, and the union is what the target should hold (ADR 0026)."
     level: MUST
     source: design-decision
-    status: open
+    status: planned
     runtimes: all
     standards: []
-    issues: [1181]
-    gap: proposed-design
+    issues: [1220]
     verification:
-      - {kind: integration-test, ref: "a pass computed from a DesiredState item changes the external system to match it"}
+      - {kind: integration-test, ref: "a pass over two DesiredState parts changes the external system to match their union"}
+  - id: REQ-OPS-069
+    area: OPS
+    statement: "A directory adapter MUST write the DesiredState parts of a connection under the lease it holds for refreshing that connection's directory, straight after each refresh."
+    rationale: "The lease already gives one writer per connection, so no actor and no scheduler is added (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a directory refresh under the lease ends with one DesiredState part per target and source, and a process without the lease writes none"}
+  - id: REQ-OPS-070
+    area: OPS
+    statement: "A directory adapter MUST write a DesiredState part from the answer of the policy batch membership method and from nothing else."
+    rationale: "Writing the answer is executing, so the adapter decides no membership (ADR 0025, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a part holds exactly the members policy answered for a fake directory, whatever the directory also holds"}
+  - id: REQ-OPS-071
+    area: OPS
+    statement: "A reconciler MUST NOT remove a person whose source has no current DesiredState part."
+    rationale: "A missing or stale part is unreadable, never empty (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a missing or stale part removes no one and is reported"}
+  - id: REQ-OPS-072
+    area: OPS
+    statement: "A reconciler MUST NOT remove a person from a target unless the person's own directory has stopped vouching for them."
+    rationale: "A person absent from another source's part is not gone from their own directory (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a person named by one part and absent from another is not removed"}
+  - id: REQ-OPS-073
+    area: OPS
+    statement: "A DesiredState part MUST be sealed under the data key of the tenant that owns the container the target describes."
+    rationale: "The owner's exit shreds every part of its targets, and no provisioner opens another tenant's key (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a part for a target of tenant A, written by the directory of tenant B, opens only with the data key of tenant A"}
+  - id: REQ-OPS-074
+    area: OPS
+    statement: "A directory adapter MUST write a DesiredState part into another company's tenant only when the owner's ReconcileTarget lists the connection as a source and the connection's company policy allows the group in that target."
+    rationale: "A share that one side has not declared must write nothing (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a write across tenants is refused when either declaration is missing and succeeds when both exist"}
+  - id: REQ-OPS-075
+    area: OPS
+    statement: "A reconciler pass MUST report a share that only one side has declared."
+    rationale: "The people on both sides need to see what is missing, because nothing is written (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a pass for a target with a one-sided share reports the missing declaration and changes nothing"}
+  - id: REQ-OPS-076
+    area: OPS
+    statement: "A DesiredState part written across tenants MUST carry only the vendor identifiers of the declared people."
+    rationale: "Only the declared people and their vendor identifiers cross between companies (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a part written into another tenant holds the vendor identifiers of the declared people and no name or address"}
+  - id: REQ-OPS-077
+    area: OPS
+    statement: "A DesiredState write across tenants MUST be audited in the tenant that writes and in the tenant that owns the target."
+    rationale: "Each company can see what was written about its people and into its container (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a write across tenants leaves one audit record in each tenant"}

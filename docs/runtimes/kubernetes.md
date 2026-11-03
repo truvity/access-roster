@@ -63,7 +63,7 @@ The call graph of the actor registry is enforced in the pod's code and again by 
 
 - **AWS KMS only,** with the layout of every AWS installation ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). The key policy of every key names key@'s role alone, so no other pod and no node reaches KMS. No card runs on Kubernetes: the key policy is the access list.
 - **No software key in production.** Only the `kubernetes-dev` preset allows the `software` driver, on the terms of the local installation, for the smoke test on kind. A cluster with no key mode that the floor allows refuses to start ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
-- **Kubernetes in 2.0 means Kubernetes on AWS (EKS).** A cluster without AWS is not in 2.0, because it would need a second key mode and a second store engine. The direction for later, when it has a consumer, is PostgreSQL via CNPG as the store engine; the key source is decided then. The Backlog decision issue tracks it ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
+- **Kubernetes in 2.0 means Kubernetes on AWS (EKS).** A cluster without AWS is not in 2.0, because it would need a second key mode and a second store engine. The direction for later, when it has a consumer, is PostgreSQL via CNPG as the store engine; the key source is decided then. [Issue #1238](https://github.com/truvity/sluis/issues/1238) tracks it ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 
 ## Identity
 

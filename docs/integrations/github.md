@@ -21,7 +21,7 @@ GitHub plays the most kinds of integration. A verifier driver of `exchange` chec
 | `WorkloadVerifier` | The `github-oidc` verifier driver of `exchange` checks an Actions identity token against GitHub's key set and returns attributes: `repository`, `ref`, `job_workflow_ref`, `environment`, `visibility`, owner and repository ids. It holds no secret. It is in the first working version, for the callers of the signing API ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
 | `FactsSource` | `adapter-github` reports organisation members, team members and maintainers, as the directory facts of the tenant ([0019](/decisions/0019-person-and-upstream-link/#directory-facts-parity)). |
 | `CredentialMinter` | `adapter-github` mints an installation token for a catalogued App, for a mint grant that `policy` sealed. |
-| `Provisioner` | `adapter-github` makes the organisation's teams equal the desired state core publishes: invites, adds, promotes and removes. |
+| `Provisioner` | `adapter-github` makes the organisation's teams equal the desired state that the directory adapters wrote ([0026](/decisions/0026-reconcilers/#the-desired-state)): invites, adds, promotes and removes. |
 
 A person's GitHub account is linked to their directory identity through a separate **link App**, so a team can be filled from a directory group. The link App is a `GitHubApp` of the operator's own tenant, and the link it makes is a `GitHubAccountLink` of its own, not an `UpstreamLink`.
 

@@ -517,7 +517,7 @@ Name (a slug of lower-case letters, digits and hyphens, not free text; a display
 
 ### `Allowance`
 
-Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add \| set \| write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the version, and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update.
+Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add \| set \| write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the units (a delta), and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update.
 
 - **Class:** durable; scope boundary+tenant; plain; profile Tenant-adjustable; module quota module; serves the work family.
 - **Writer:** [`quota`](/reference/actors/#quota).
@@ -862,11 +862,11 @@ A mint target of a tenant: a cloud role, a prototype token, a DNS zone or a GitH
 
 ### `ReconcileTarget`
 
-The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API.
+The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy, the sources it lists (directory connections, its own or another company's) and, for a Slack Connect channel, a shared flag. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API.
 
 - **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
-- **Readers:** adapter-&lt;vendor> (as provisioner), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
+- **Readers:** adapter-&lt;vendor> (as provisioner), [`policy`](/reference/actors/#policy), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Links:** [`DirectoryConnection`](#directoryconnection), [`SlackConnection`](#slackconnection), [`GitHubInstallation`](#githubinstallation).
 
@@ -882,7 +882,7 @@ A change the breaker held, and the operator's confirmation of it (an act, record
 
 ### `ConsoleChannel`
 
-Channels made on the console; channels bound in policy are ReconcileTarget (config). Two kinds, two owners. Written by the chat adapter (`adapter-slack` or another).
+Channels made on the console; channels bound in policy are ReconcileTarget (durable). Two kinds, two owners. Written by the chat adapter (`adapter-slack` or another).
 
 - **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
@@ -919,7 +919,7 @@ State with a time to live, kept in the temp engine.
 | [`DirectoryUser`](#directoryuser) | boundary+tenant | sealed | none | adapter-&lt;vendor> |
 | [`DirectoryGroup`](#directorygroup) | boundary+tenant | sealed | none | adapter-&lt;vendor> |
 | [`DirectoryMembership`](#directorymembership) | boundary+tenant | sealed | none | adapter-&lt;vendor> |
-| [`DesiredState`](#desiredstate) | boundary+tenant | sealed | none | none yet (planned kind) |
+| [`DesiredState`](#desiredstate) | boundary+tenant | sealed | none | adapter-&lt;vendor> |
 | [`Crl`](#crl) | boundary | plain | none | [`ca`](/reference/actors/#ca) |
 | [`Krl`](#krl) | boundary | plain | none | [`ssh-ca`](/reference/actors/#ssh-ca) |
 | [`TrustBundle`](#trustbundle) | boundary | plain | none | [`ca`](/reference/actors/#ca) |
@@ -1170,13 +1170,15 @@ Holds vendor user ids, so sealed; the two indexes hold keyed hashes (key@ Mac, p
 
 ### `DesiredState`
 
-The digest-addressed desired state a reconciler pulls (who should be in which team or channel). Names users, so sealed. Tenant-scoped. Planned: the kind and its writer arrive with the reconciler milestone.
+One part of the desired state of a target: the people one source directory connection puts in it, addressed by digest. Written by the adapter of that directory (adapter-upstream-oidc for Google Workspace and Entra, adapter-github for a GitHub organisation) under the lease of its refresh, from the answer of policy's batch membership method; read by the provisioner of the target, which reconciles to the union of the current parts. Names users, so sealed, under the data key of the tenant that owns the container, which is not always the tenant of the source: a part from another company is written there for a declared pair only, and holds vendor identifiers only. A missing or stale part is unreadable, never empty.
 
-- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data. Status: planned.
-- **Writer:** none yet (planned kind).
+- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
+- **Writer:** adapter-&lt;vendor>.
 - **Readers:** adapter-&lt;vendor> (as provisioner).
 - **Exportable:** no; **backed up:** no.
 - **Lifetime:** default 24h; maximum 7d.
+- **Links:** [`ReconcileTarget`](#reconciletarget), [`DirectoryConnection`](#directoryconnection).
+- **Indexes:** `by_target`, besides listing by tenant.
 
 ### `Crl`
 
