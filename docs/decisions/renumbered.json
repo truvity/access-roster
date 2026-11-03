@@ -464,6 +464,11 @@
       "old": "0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery",
       "new": "0010-backup-and-recovery",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person",
+      "new": "0034-end-users-and-upstream-signals",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
@@ -528,6 +533,13 @@
     "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#the-scale-to-design-for": "0008-boundaries-and-tenants#scale",
     "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#growth-is-another-installation": "0008-boundaries-and-tenants#scale",
     "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#workforce-installations": "0008-boundaries-and-tenants#example-installations",
-    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#customer-identity-installations": "0008-boundaries-and-tenants#example-installations"
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#customer-identity-installations": "0008-boundaries-and-tenants#example-installations",
+    "0048-customer-connections-run-in-a-pool-per-customer-boundary#what-a-pool-is-allowed": "0033-customer-connections#what-a-pool-is-allowed",
+    "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person#inbound-back-channel-logout": "0034-end-users-and-upstream-signals#inbound-back-channel-logout",
+    "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person#disable-and-delete": "0034-end-users-and-upstream-signals#disable-and-delete",
+    "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person#global-sign-out": "0034-end-users-and-upstream-signals#global-sign-out",
+    "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#inbound-back-channel-logout": "0034-end-users-and-upstream-signals#inbound-back-channel-logout",
+    "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#disable-and-delete": "0034-end-users-and-upstream-signals#disable-and-delete",
+    "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person#global-sign-out": "0034-end-users-and-upstream-signals#global-sign-out"
   }
 }
