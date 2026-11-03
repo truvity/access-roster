@@ -4,8 +4,8 @@ area: QUOTA
 requirements:
   - id: REQ-QUOTA-001
     area: QUOTA
-    statement: "Quota MUST be metering by default, with enforcement configurable per policy rule for chosen subjects or audiences."
-    rationale: "Enforcement carries availability risk."
+    statement: "Where a policy rule names a quota, the actor that serves the request MUST ask quota before it does the work."
+    rationale: "Admission must precede the cost it limits."
     level: MUST
     source: design-decision
     status: planned
@@ -14,15 +14,17 @@ requirements:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "metering-only and enforcing configurations"}
+      - {kind: integration-test, ref: "a request under a rule that names a quota is refused before any work when the allowance is exhausted"}
+      - {kind: integration-test, ref: "an unlimited allowance records and admits"}
   - id: REQ-QUOTA-002
     area: QUOTA
-    statement: "Under strict enforcement the admitted total MUST never exceed the configured limit under concurrent requests."
-    rationale: "These are the testable accuracy guarantees."
+    statement: "The units admitted MUST never exceed the units that the product set and added, under concurrent requests."
+    rationale: "Enforcement is strict, and a soft mode is not added."
     level: MUST
     source: stakeholder-integrator
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency", depth: Partial}
     issues: [915]
@@ -35,37 +37,40 @@ requirements:
     rationale: "These are the testable accuracy guarantees."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-15, section: "Idempotency", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-002]
     verification:
       - {kind: integration-test, ref: "k6 load test"}
   - id: REQ-QUOTA-003
     area: QUOTA
-    statement: "A request to admit, to confirm usage or to cancel MUST be idempotent under a caller-supplied request identifier."
-    rationale: "Retries must not double-count."
+    statement: "An admit and a push MUST be idempotent under a caller-supplied request identifier."
+    rationale: "A retry must not count twice."
     level: MUST
     source: stakeholder-integrator
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Full}
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "retry test"}
+      - {kind: integration-test, ref: "retry test for an admit and a push"}
   - id: REQ-QUOTA-004
     area: QUOTA
     statement: "The effect of an event on a balance MUST be separate from the meter it counts towards."
     rationale: "Top-ups and consumption are different facts."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-072]
     verification:
       - {kind: integration-test, ref: "effect catalogue test"}
   - id: REQ-QUOTA-010
@@ -75,11 +80,12 @@ requirements:
     rationale: "Top-ups and consumption are different facts."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-072]
     verification:
       - {kind: integration-test, ref: "signed effect test"}
   - id: REQ-QUOTA-005
@@ -88,11 +94,12 @@ requirements:
     rationale: "Money-like operations need exactly-once effects."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Full}
     issues: [915]
+    superseded_by: [REQ-QUOTA-086, REQ-QUOTA-091]
     verification:
       - {kind: integration-test, ref: "duplicate top-up test"}
   - id: REQ-QUOTA-006
@@ -101,11 +108,12 @@ requirements:
     rationale: "Operators choose the risk."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-079]
     verification:
       - {kind: integration-test, ref: "exhaustion test"}
   - id: REQ-QUOTA-011
@@ -115,27 +123,29 @@ requirements:
     rationale: "Operators choose the risk."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-082, REQ-QUOTA-026]
     verification:
       - {kind: integration-test, ref: "outage test"}
   - id: REQ-QUOTA-007
     area: QUOTA
-    statement: "A client MUST be able to query current usage and remaining balance."
-    rationale: "Aggregates must be verifiable."
+    statement: "A client MUST be able to query the mode, the units left and the version of an allowance with a call that has no side effect."
+    rationale: "The product reads Left before it pushes with an expected version."
     level: MUST
     source: stakeholder-integrator
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
       - {id: ST-78, section: "8785", depth: Partial}
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "usage query test"}
+      - {kind: integration-test, ref: "Left test: no state, no version and no audit fact changes"}
   - id: REQ-QUOTA-012
     area: QUOTA
     split_from: REQ-QUOTA-007
@@ -143,18 +153,19 @@ requirements:
     rationale: "Aggregates must be verifiable."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
       - {id: ST-78, section: "8785", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-091]
     verification:
       - {kind: integration-test, ref: "aggregate-sum test"}
   - id: REQ-QUOTA-008
     area: QUOTA
-    statement: "Turning enforcement on in production MUST be preceded by a load test of the mint path with enforcement enabled, on the state driver that the installation uses."
-    rationale: "Enforcement adds state writes to the hot path."
+    statement: "Turning enforcement on in production MUST be preceded by a load test of admit and push with enforcement enabled, on the driver that the installation uses, with a dated result."
+    rationale: "Enforcement adds writes to the hot path."
     level: MUST
     source: design-decision
     status: planned
@@ -163,18 +174,19 @@ requirements:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [1144]
     verification:
-      - {kind: integration-test, ref: "load test"}
+      - {kind: integration-test, ref: "load test with k6 on the reference installation of each driver"}
   - id: REQ-QUOTA-013
     area: QUOTA
     statement: "An operator MAY lower a declared quota limit on the console as a tighten-only change."
     rationale: "A fast brake on abuse must not wait for a deployment."
     level: MAY
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [915, 960]
+    superseded_by: [REQ-QUOTA-075]
     verification:
       - {kind: integration-test, ref: "quota limit tighten test"}
   - id: REQ-QUOTA-014
@@ -183,10 +195,11 @@ requirements:
     rationale: "Usage is reserved before work and settled after it."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-080]
     verification:
       - {kind: integration-test, ref: "reservation test"}
   - id: REQ-QUOTA-015
@@ -195,10 +208,11 @@ requirements:
     rationale: "An honest crash costs nothing, and abuse shows in the expired count."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-080]
     verification:
       - {kind: integration-test, ref: "expired reservation test"}
   - id: REQ-QUOTA-016
@@ -207,20 +221,22 @@ requirements:
     rationale: "A reservation bounds what a confirmation may charge."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-080]
     verification:
       - {kind: integration-test, ref: "confirm bound test"}
   - id: REQ-QUOTA-017
     area: QUOTA
-    statement: "Quota MUST remember a request identifier for 24 hours, scoped to the calling client and the method."
+    statement: "Quota MUST remember the request identifier of an admit for 24 hours as an AdmitRecord, scoped to the calling client and the method."
     rationale: "A short window keeps the state small on the hot path."
     level: MUST
     source: stakeholder-integrator
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
@@ -248,6 +264,7 @@ requirements:
     source: standard
     status: planned
     runtimes: all
+    actors: [entry]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Full}
     issues: [915]
@@ -255,12 +272,13 @@ requirements:
       - {kind: integration-test, ref: "header mapping test"}
   - id: REQ-QUOTA-020
     area: QUOTA
-    statement: "Quota amounts MUST be signed 64-bit integers in a unit declared per meter and per balance."
+    statement: "Quota amounts MUST be signed 64-bit integers in a unit declared per quota."
     rationale: "Integer arithmetic is exact on every store."
     level: MUST
     source: stakeholder-integrator
     status: planned
     runtimes: all
+    actors: [quota]
     standards: []
     issues: [915]
     verification:
@@ -271,11 +289,12 @@ requirements:
     rationale: "A credential that can add credit must not be able to drain a balance."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-084]
     verification:
       - {kind: integration-test, ref: "top-up sign and grant test"}
   - id: REQ-QUOTA-022
@@ -284,10 +303,11 @@ requirements:
     rationale: "Corrections are rare, explained and visible."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-084]
     verification:
       - {kind: integration-test, ref: "adjust grant test"}
   - id: REQ-QUOTA-023
@@ -296,10 +316,11 @@ requirements:
     rationale: "A refund traces to what it refunds and cannot exceed it."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-084]
     verification:
       - {kind: integration-test, ref: "refund bound test"}
   - id: REQ-QUOTA-024
@@ -314,22 +335,23 @@ requirements:
     issues: [915]
     verification:
       - {kind: integration-test, ref: "catalogue balance effect test"}
-    superseded_by: [REQ-QUOTA-029]
+    superseded_by: [REQ-QUOTA-091]
   - id: REQ-QUOTA-025
     area: QUOTA
     statement: "A quota balance MUST belong to an account issued under a declared plan template and be keyed by boundary, company, account and meter."
     rationale: "Per-customer billing and per-client caps fit one model, and keys carry no personal data."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-072]
     verification:
       - {kind: integration-test, ref: "account key test"}
   - id: REQ-QUOTA-026
     area: QUOTA
-    statement: "`sluis config check` MUST refuse an enforcing quota rule that does not declare both its exhaustion and its unavailability behaviour."
+    statement: "`sluis config check` MUST refuse a quota rule that does not declare whether an unreachable quota fails open or closed."
     rationale: "Every risk choice is explicit and reviewed."
     level: MUST
     source: design-decision
@@ -338,17 +360,18 @@ requirements:
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "config-check quota rule test"}
+      - {kind: integration-test, ref: "config-check test: a rule that names a quota with neither declaration is refused"}
   - id: REQ-QUOTA-027
     area: QUOTA
     statement: "An enforcing quota rule MUST use strict enforcement."
     rationale: "Strict is the one mode built and proven first; soft enforcement comes when a load test shows the need."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-002]
     verification:
       - {kind: integration-test, ref: "strict-only configuration test"}
   - id: REQ-QUOTA-028
@@ -357,10 +380,11 @@ requirements:
     rationale: "Rates cover bursts and calendar caps match invoices."
     level: MUST
     source: stakeholder-integrator
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-072, REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "limit kinds test"}
   - id: REQ-QUOTA-029
@@ -369,37 +393,40 @@ requirements:
     rationale: "Only quota changes balances, under its compare-and-set, and roll-forward reads one log."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-091]
     verification:
       - {kind: integration-test, ref: "catalogue balance effect test"}
   - id: REQ-QUOTA-030
     area: QUOTA
-    statement: "After a restore quota MUST rebuild the request identifiers of the last 24 hours from the usage log."
+    statement: "After a restore quota MUST rebuild the AdmitRecords of the last 24 hours from the audit facts."
     rationale: "A retry that straddles a restore must still count once."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "request id rebuild from the usage log test"}
+      - {kind: integration-test, ref: "admit record rebuild from the audit facts test"}
   - id: REQ-QUOTA-031
     area: QUOTA
     statement: "After a restore quota MUST roll its balances forward from the usage log."
     rationale: "No top-up or adjustment that reached the log is lost."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-BACKUP-028]
     verification:
       - {kind: integration-test, ref: "balance roll-forward from the usage log test"}
   - id: REQ-QUOTA-032
@@ -408,11 +435,12 @@ requirements:
     rationale: "Meters cost nothing on the hot path and can always be rebuilt from the facts."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "meter rebuild from the usage log test"}
   - id: REQ-QUOTA-033
@@ -421,11 +449,12 @@ requirements:
     rationale: "A billing system that reads FOCUS reads sluis usage with little mapping."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-115, section: "1.4", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "finance export columns test"}
   - id: REQ-QUOTA-034
@@ -434,11 +463,12 @@ requirements:
     rationale: "The writer removes the duplicate by message id, so a retried call has one usage event and changes a balance once."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-15, section: "Idempotency-Key", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-081]
     verification:
       - {kind: integration-test, ref: "retried call reuses its message test"}
   - id: REQ-QUOTA-035
@@ -447,10 +477,11 @@ requirements:
     rationale: "A crash between the change and the send then leaves the message to be sent, not a balance change with no usage event."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-093]
     verification:
       - {kind: integration-test, ref: "crash between change and send test"}
   - id: REQ-QUOTA-036
@@ -459,10 +490,11 @@ requirements:
     rationale: "A statement in the log is portable evidence that survives the exit of the company (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "close a period: the statement entry is in the usage log, and its digest in the envelope matches the statement"}
   - id: REQ-QUOTA-037
@@ -472,10 +504,11 @@ requirements:
     rationale: "A reader can recompute the statement from exactly what it covers."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "statement sources test"}
   - id: REQ-QUOTA-038
@@ -485,10 +518,11 @@ requirements:
     rationale: "A statement that never changes can be signed, stored and disputed."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "statement appended once test"}
   - id: REQ-QUOTA-039
@@ -497,10 +531,11 @@ requirements:
     rationale: "A late event is billed and not lost."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "late event counted test"}
   - id: REQ-QUOTA-040
@@ -510,10 +545,11 @@ requirements:
     rationale: "A late event is visible on the statement."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "late event flag names its period test"}
   - id: REQ-QUOTA-041
@@ -522,10 +558,11 @@ requirements:
     rationale: "A closed statement is never rewritten or reopened."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "correction through Adjust test"}
   - id: REQ-QUOTA-042
@@ -534,10 +571,11 @@ requirements:
     rationale: "A statement computed before the outbox drains would miss usage."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "close deferred by outbox test"}
   - id: REQ-QUOTA-043
@@ -546,11 +584,12 @@ requirements:
     rationale: "A changed statement is detected."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: test-vectors, ref: "statement recomputation vectors"}
   - id: REQ-QUOTA-044
@@ -559,11 +598,12 @@ requirements:
     rationale: "Billing pulls at its own pace and holds the only credential."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "statement pull and authorisation test"}
   - id: REQ-QUOTA-045
@@ -572,10 +612,11 @@ requirements:
     rationale: "A statement survives the shredding of a company's audit key."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "statement content scan test"}
   - id: REQ-QUOTA-046
@@ -584,10 +625,11 @@ requirements:
     rationale: "Plans are declared authority, reviewed in git."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "plan template declared only test"}
   - id: REQ-QUOTA-047
@@ -596,11 +638,12 @@ requirements:
     rationale: "An account is issued under a declared template by a declared client."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-QUOTA-077]
     verification:
       - {kind: integration-test, ref: "account creation grant test"}
   - id: REQ-QUOTA-048
@@ -609,10 +652,11 @@ requirements:
     rationale: "A retried creation counts once."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-077]
     verification:
       - {kind: integration-test, ref: "account creation idempotency test"}
   - id: REQ-QUOTA-049
@@ -622,10 +666,11 @@ requirements:
     rationale: "A conflicting creation is visible."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-077]
     verification:
       - {kind: integration-test, ref: "account creation conflict test"}
   - id: REQ-QUOTA-050
@@ -634,10 +679,11 @@ requirements:
     rationale: "A typo or a hostile caller must not open an account."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-076]
     verification:
       - {kind: integration-test, ref: "unknown account refused test"}
   - id: REQ-QUOTA-051
@@ -646,11 +692,12 @@ requirements:
     rationale: "No account that reached the log is lost."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-BACKUP-028]
     verification:
       - {kind: integration-test, ref: "account roll-forward from the usage log test"}
   - id: REQ-QUOTA-052
@@ -659,10 +706,11 @@ requirements:
     rationale: "An account must not lose its limits by a reload."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-095]
     verification:
       - {kind: integration-test, ref: "plan removal reload test"}
   - id: REQ-QUOTA-053
@@ -671,20 +719,22 @@ requirements:
     rationale: "A closed account takes no new usage."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-076]
     verification:
       - {kind: integration-test, ref: "closed account test"}
   - id: REQ-QUOTA-054
     area: QUOTA
-    statement: "The quota front MUST authenticate a calling service by its X.509-SVID over mutual TLS against the trust bundle that the installation declares."
+    statement: "The entry actor MUST authenticate a calling service by its X.509-SVID over mutual TLS against the trust bundle that the installation declares."
     rationale: "The certificate is the credential of a service, and no token is exchanged per call."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [entry]
     standards:
       - {id: ST-109, section: "1", depth: Partial}
       - {id: ST-19, section: "1", depth: Partial}
@@ -693,33 +743,35 @@ requirements:
       - {kind: integration-test, ref: "service call authentication test"}
   - id: REQ-QUOTA-055
     area: QUOTA
-    statement: "Quota MUST ask `policy` to authorise every call with the caller's identity, the action and the account, with its company, plan and state, as the resource."
-    rationale: "A service acts only on the accounts its policy names."
+    statement: "Quota MUST send `policy` the caller's identity, the action and the tenant with its quota for every call, and carry the grant that policy seals on its writes."
+    rationale: "A service acts only on the tenants and quotas its policy names."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [quota]
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [1026]
     verification:
-      - {kind: integration-test, ref: "per-account authorisation test"}
+      - {kind: integration-test, ref: "per-tenant authorisation test"}
   - id: REQ-QUOTA-056
     area: QUOTA
-    statement: "Quota MUST NOT reuse a grant for the same caller, action and account for longer than 60 seconds."
-    rationale: "A suspended or closed account stops admitting within a minute."
+    statement: "Quota MUST NOT reuse a grant for the same caller, action, tenant and quota for longer than 60 seconds."
+    rationale: "A suspended tenant stops admitting within a minute."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [quota]
     standards: []
     issues: [1026]
     verification:
       - {kind: integration-test, ref: "grant reuse ceiling test"}
   - id: REQ-QUOTA-057
     area: QUOTA
-    statement: "The quota front MUST accept a person only with an exchanged token for its audience that is valid for at most 5 minutes and bound to the caller's X.509-SVID."
-    rationale: "A person's call is as short-lived and as bound as the audit front's."
+    statement: "A person's push MUST come through the console with an exchanged token and step-up."
+    rationale: "A person's call is as short-lived and as bound as every console write."
     level: MUST
     source: design-decision
     status: planned
@@ -729,10 +781,10 @@ requirements:
       - {id: ST-19, section: "1", depth: Partial}
     issues: [1026]
     verification:
-      - {kind: integration-test, ref: "person token test"}
+      - {kind: integration-test, ref: "a person's push through the console with and without step-up"}
   - id: REQ-QUOTA-058
     area: QUOTA
-    statement: "The quota front MUST keep accepting calls from services whose certificates are valid while the issuer is unreachable."
+    statement: "The entry actor MUST keep accepting calls from services whose certificates are valid while the issuer is unreachable."
     rationale: "The hot path does not depend on the issuer."
     level: MUST
     source: design-decision
@@ -744,7 +796,7 @@ requirements:
       - {kind: integration-test, ref: "issuer outage test"}
   - id: REQ-QUOTA-059
     area: QUOTA
-    statement: "`sluis config check` MUST refuse a `session` or `console` actor in an installation that runs only the Quota piece."
+    statement: "`sluis config check` MUST refuse a `session` or `console` actor in an installation that runs only the quota module."
     rationale: "A quota installation has no browser surface until a consumer needs one."
     level: MUST
     source: design-decision
@@ -756,7 +808,7 @@ requirements:
       - {kind: integration-test, ref: "config-check quota installation test"}
   - id: REQ-QUOTA-060
     area: QUOTA
-    statement: "The action table entry of an emitting product MUST declare, for every meter, its name, unit and kind, and for a gauge how its samples combine over a period."
+    statement: "A Meter config document MUST declare the name, unit and kind of every meter, and for a gauge how its samples combine over a period."
     rationale: "A meter means the same thing to every reader."
     level: MUST
     source: design-decision
@@ -796,11 +848,12 @@ requirements:
     rationale: "Statements and caps count the same events, and a wrong clock cannot move usage across periods."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2", depth: Partial}
     issues: [915]
+    superseded_by: [REQ-AUDIT-157]
     verification:
       - {kind: test-vectors, ref: "period assignment vectors"}
   - id: REQ-QUOTA-064
@@ -809,10 +862,11 @@ requirements:
     rationale: "An event moved by the rule shows as moved."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-AUDIT-158]
     verification:
       - {kind: integration-test, ref: "time adjusted flag test"}
   - id: REQ-QUOTA-065
@@ -821,16 +875,17 @@ requirements:
     rationale: "A floor and a once-only refund depend on the order of effects."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-BACKUP-014]
     verification:
       - {kind: integration-test, ref: "roll-forward order across logs test"}
   - id: REQ-QUOTA-066
     area: QUOTA
-    statement: "Quota MUST bound its outbox by count and by the age of its oldest message, with both bounds declared in the install file."
-    rationale: "An effect that only the outbox holds is lost if the state is lost."
+    statement: "Quota MUST bound the spool of its emitter library by count and by the age of its oldest message, with both bounds declared in UsageEmitter."
+    rationale: "A fact that only the spool holds is lost if the state is lost."
     level: MUST
     source: design-decision
     status: planned
@@ -838,11 +893,11 @@ requirements:
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "outbox bound test"}
+      - {kind: integration-test, ref: "spool bound test"}
   - id: REQ-QUOTA-067
     area: QUOTA
     split_from: REQ-QUOTA-066
-    statement: "When its outbox reaches a bound, quota MUST refuse changing calls as unavailable."
+    statement: "When its spool reaches a bound, quota MUST refuse changing calls as unavailable."
     rationale: "Admission stops before an effect can be lost."
     level: MUST
     source: design-decision
@@ -851,11 +906,11 @@ requirements:
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "outbox full test"}
+      - {kind: integration-test, ref: "spool full test"}
   - id: REQ-QUOTA-068
     area: QUOTA
     split_from: REQ-QUOTA-066
-    statement: "When its outbox is at a bound, quota MUST keep serving reads."
+    statement: "When its spool is at a bound, quota MUST keep serving reads."
     rationale: "An operator and a billing system can still see the balances while changes are refused."
     level: MUST
     source: design-decision
@@ -864,11 +919,11 @@ requirements:
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "reads with a full outbox test"}
+      - {kind: integration-test, ref: "reads with a full spool test"}
   - id: REQ-QUOTA-069
     area: QUOTA
-    statement: "Quota MUST raise an alarm when its outbox passes the declared warning level."
-    rationale: "An operator sees a writer outage building up before it stops admission."
+    statement: "Quota MUST raise an alarm when its spool passes the declared warning level."
+    rationale: "An operator sees a transport outage building up before it stops admission."
     level: MUST
     source: design-decision
     status: planned
@@ -876,17 +931,18 @@ requirements:
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "outbox alarm test"}
+      - {kind: integration-test, ref: "spool alarm test"}
   - id: REQ-QUOTA-070
     area: QUOTA
     statement: "After a restore, quota MUST refuse `Admit` on an enforcing balance as unavailable until the longest reservation time to live in force has passed."
     rationale: "The reservations forgotten by the restore must not let the limit be exceeded."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [915]
+    superseded_by: [REQ-QUOTA-080]
     verification:
       - {kind: integration-test, ref: "quiet window after restore test"}
   - id: REQ-QUOTA-071
@@ -896,9 +952,338 @@ requirements:
     rationale: "Work that was admitted before the restore is still charged, and the limit still holds."
     level: MUST
     source: design-decision
+    status: withdrawn
+    runtimes: all
+    standards: []
+    issues: [915]
+    superseded_by: [REQ-QUOTA-080]
+    verification:
+      - {kind: integration-test, ref: "confirm of an unknown reservation test"}
+
+  # ---- the allowance, the push and the countdown (decision 0039)
+  - id: REQ-QUOTA-072
+    area: QUOTA
+    statement: "Quota MUST keep one allowance per tenant and quota, as the durable kind Allowance, with units that never go below zero."
+    rationale: "Plans, prices and money live in the product, and sluis holds only the count (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "concurrent admits and write-offs never take the units below zero"}
+      - {kind: integration-test, ref: "the registry gives Allowance exactly one writer, quota"}
+  - id: REQ-QUOTA-073
+    area: QUOTA
+    statement: "An allowance MUST have one of the built-in modes prepaid, limited or unlimited."
+    rationale: "The mode tells the product what the units mean, and sluis treats prepaid and limited alike (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a push that sets an unknown mode is refused"}
+  - id: REQ-QUOTA-074
+    area: QUOTA
+    statement: "An unlimited allowance MUST record an admit and never refuse it."
+    rationale: "Unlimited is a mode of the count and not an absence of it (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "admits against an unlimited allowance are all answered and each is an audit fact"}
+  - id: REQ-QUOTA-075
+    area: QUOTA
+    statement: "Quota MUST refuse a push for a quota that the Quota config kind does not declare, or outside its bounds."
+    rationale: "The bounds are the largest amount of one push and the largest number of units an allowance may hold, and they change only by a reviewed document (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a push for an undeclared quota, over the amount bound and over the holding bound; each refused"}
+  - id: REQ-QUOTA-076
+    area: QUOTA
+    statement: "Quota MUST refuse an admit, an add or a write-off on an allowance that does not exist, as not found."
+    rationale: "A mistyped tenant or quota creates nothing (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "each of the three calls against an absent allowance is refused as not found"}
+  - id: REQ-QUOTA-077
+    area: QUOTA
+    statement: "The first set pushed for a tenant and a quota MUST create the allowance."
+    rationale: "An allowance exists only after the product has set it (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a set creates the allowance with the mode and units; a second set changes them"}
+  - id: REQ-QUOTA-078
+    area: QUOTA
+    statement: "An admit MUST be one conditional update of the allowance that applies only if the units cover the amount at the moment of the write."
+    rationale: "A conditional update of one hot item reaches the peak, where a transaction does not (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915, 1144]
+    verification:
+      - {kind: integration-test, ref: "concurrent admit test: after every run the admitted total equals the units taken and no limit is exceeded"}
+      - {kind: integration-test, ref: "the update is a single conditional statement on every driver in use"}
+  - id: REQ-QUOTA-079
+    area: QUOTA
+    statement: "An admit that the units do not cover MUST be refused as exhausted, with HTTP 429 and Connect code resource_exhausted, and change nothing."
+    rationale: "A refusal at zero is the countdown's end and must be distinct from an outage (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "the last unit is admitted; the next admit is refused with the code and the units are unchanged"}
+  - id: REQ-QUOTA-080
+    area: QUOTA
+    statement: "An admit MUST be final, with no reservation, confirm or cancel."
+    rationale: "Giving units back after failed work is an add by the product, which owns the decision to refund (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "the quota contract has no Confirm or Cancel call; a refund is an add"}
+  - id: REQ-QUOTA-081
+    area: QUOTA
+    statement: "Quota MUST write the AdmitRecord of an admit before the conditional update, so that a retry after a crash applies the update."
+    rationale: "An admit is never missed, and the error of a crash after the update is toward refusing and not toward admitting more (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "crash between the record and the update: the retry applies the update once"}
+      - {kind: integration-test, ref: "crash after the update: the retry returns the first answer and the audit fact shows the doubled count"}
+  - id: REQ-QUOTA-082
+    area: QUOTA
+    statement: "A throttled or unreachable quota MUST answer unavailable and never exhausted."
+    rationale: "When quota cannot do its job it says so and does not guess, and the calling rule decides whether that fails open or closed (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915, 1144]
+    verification:
+      - {kind: integration-test, ref: "a throttled driver produces unavailable and no allowance changes"}
+  - id: REQ-QUOTA-083
+    area: QUOTA
+    statement: "The entry actor MUST route a product's call to quota and decide nothing itself."
+    rationale: "Entry routes and verifies a certificate, and policy decides (ADR 0039)."
+    level: MUST
+    source: design-decision
     status: planned
     runtimes: all
     standards: []
     issues: [915]
     verification:
-      - {kind: integration-test, ref: "confirm of an unknown reservation test"}
+      - {kind: integration-test, ref: "the registry check: entry has no call to policy for a quota call"}
+  - id: REQ-QUOTA-084
+    area: QUOTA
+    statement: "A push MUST carry a request id, an operation of add, set or write-off and optionally the expected version."
+    rationale: "A push is the one way the product changes an allowance, and the request id makes it idempotent (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a push without a request id or with an unknown operation is refused"}
+  - id: REQ-QUOTA-085
+    area: QUOTA
+    statement: "A push with an expected version MUST apply only if the allowance is at that version, and otherwise be refused as a conflict."
+    rationale: "A product that needs an exact result passes the version it read with Left (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a push with a stale version is refused and changes nothing"}
+  - id: REQ-QUOTA-086
+    area: QUOTA
+    statement: "A repeat of an applied push with the same content MUST be answered as already applied and change nothing."
+    rationale: "A product retries until it gets an answer, and a retry must not apply twice (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "the same push twice: one change, and the second answer is already applied with the allowance as it is now"}
+  - id: REQ-QUOTA-087
+    area: QUOTA
+    statement: "The same request id with other content MUST be refused as a conflict."
+    rationale: "A reused request id with another body is a bug or an attack, not a retry (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a request id reused with another amount is refused"}
+  - id: REQ-QUOTA-088
+    area: QUOTA
+    statement: "Quota MUST apply the update of a push first and write the SpentPush marker second, with the hash of the request id stored in the allowance by the same update."
+    rationale: "A retry that finds no marker but finds its own hash in the allowance writes the missing marker and answers already applied (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "crash between the update and the marker: the retry writes the marker and applies nothing more"}
+  - id: REQ-QUOTA-089
+    area: QUOTA
+    statement: "Quota MUST refuse a write-off that would take the units below zero."
+    rationale: "Units never go below zero, and a correction cannot make a debt (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a write-off larger than the units is refused and the units are unchanged"}
+  - id: REQ-QUOTA-090
+    area: QUOTA
+    statement: "The policy actions to push and to admit MUST be distinct, so that a service that may push cannot admit and a service that may admit cannot push."
+    rationale: "A product's billing service and its request path are different callers with different rights (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a service with the push action asks for an admit; refused, and the reverse"}
+  - id: REQ-QUOTA-091
+    area: QUOTA
+    statement: "Every admit, refusal and push MUST be one emit that names the caller, the tenant, the quota, the operation or amount, the request id, the outcome and the units and version after."
+    rationale: "The facts are the evidence and the source of the roll-forward after a restore (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915, 841]
+    verification:
+      - {kind: integration-test, ref: "each admit, refusal and push produces one audit record and one usage part from one call with the listed fields"}
+  - id: REQ-QUOTA-092
+    area: QUOTA
+    statement: "A refusal fact MUST name its reason as exhausted, not found, conflict, not authorised or unavailable."
+    rationale: "A product and an operator must see why an admit or a push did not apply (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "one refusal of each reason produces a fact with that reason"}
+  - id: REQ-QUOTA-093
+    area: QUOTA
+    statement: "Quota MUST answer a changing call only after the emitter library has accepted its message."
+    rationale: "A fact that never reached the log is lost if the state is lost (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "stop the transport: a changing call is held until the library has spooled its message"}
+  - id: REQ-QUOTA-094
+    area: QUOTA
+    statement: "When a tenant is erased, quota MUST delete the tenant's allowances."
+    rationale: "Allowances are plain items of the tenant and go with its other plain items (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "erase a tenant: its allowances are gone and the facts remain as evidence"}
+  - id: REQ-QUOTA-095
+    area: QUOTA
+    statement: "sluis MUST NOT hold a price, close a period or run a finance export."
+    rationale: "The product owns plans, prices and money, and sluis gives evidence (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [quota]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: manual, ref: "interface review: no quota call or kind names a price, a plan, an account, a statement or a period"}
+      - {kind: integration-test, ref: "no finance export job exists in the actor registry"}
+  - id: REQ-QUOTA-096
+    area: QUOTA
+    statement: "The enforcement load test MUST be repeated when the major version of a driver changes."
+    rationale: "A measurement is dated, and a new driver version is a new thing (ADR 0039)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1144]
+    verification:
+      - {kind: integration-test, ref: "a driver major version bump fails CI until a new dated load-test result is recorded"}
