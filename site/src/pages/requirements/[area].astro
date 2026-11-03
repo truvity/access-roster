@@ -11,9 +11,9 @@ const c = catalogue();
 const area = c.areaByCode.get(Astro.props.code)!;
 const title = area.title;
 const n = (f: (r: (typeof area.reqs)[number]) => boolean) => area.reqs.filter(f).length;
-const index = c.areas.findIndex((a) => a.code === area.code);
-const prev = c.areas[index - 1];
-const next = c.areas[index + 1];
+const index = c.activeAreas.findIndex((a) => a.code === area.code);
+const prev = index > 0 ? c.activeAreas[index - 1] : undefined;
+const next = index >= 0 ? c.activeAreas[index + 1] : undefined;
 ---
 
 <ReqLayout
@@ -29,6 +29,7 @@ const next = c.areas[index + 1];
     A clause cut from a longer record sits under it and says "Split from".
     An accent-coloured <code>#N</code> chip links an issue that delivers the record.
   </p>
+  {area.retired && <p>This area is retired: every record is withdrawn and names the records that replace it. The file and the ids stay.</p>}
   <ReqTable reqs={area.reqs} detail />
   <nav class="rq-pager" aria-label="Areas">
     {prev ? <a href={areaPath(prev.code)}>&larr; {prev.code}</a> : <span></span>}

@@ -12,7 +12,7 @@
 //     actors store, key and exporter), a macro, or for a config or secret kind IaC or the pipeline; a
 //     temp kind has a time to live with a default and a maximum (a default never above its maximum, a
 //     maximum never 0s, and for the kinds whose maxima are decided never above that maximum); a config or secret kind has no tenant
-//     scope, is plain, and has no expiry; only the console's two kinds are written by the console; a
+//     scope, is plain, and has no expiry; a kind flagged `personal: true` is never plain; only the console's two kinds are written by the console; a
 //     kind the exporter watches is readable by it; every `backed_up: yes` kind is read by exporter@'s
 //     backup job as ciphertext (a read rule implied by the field, not listed in `readers`), so exporter@
 //     must be a data-family actor with the data port; layered groups and the kinds in their layers agree;
@@ -52,7 +52,7 @@ const TREATMENTS = ['hashed', 'sealed', 'plain'];
 const PROFILES = ['Fixed', 'Operable', 'Tenant-adjustable', '-'];
 const MODULES = ['core', 'CIAM module', 'quota module'];
 const KIND_FIELDS = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'layer', 'links', 'writer', 'readers', 'exportable', 'backed_up',
-  'ttl', 'indexes', 'purposes', 'self_scoped', 'status', 'layer_module', 'watched_by', 'notes'];
+  'ttl', 'indexes', 'purposes', 'self_scoped', 'status', 'layer_module', 'watched_by', 'personal', 'notes'];
 const KIND_REQUIRED = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'writer', 'readers', 'exportable', 'backed_up'];
 const KIND_TOP = ['schema', 'checked', 'writers_outside_sluis', 'combine_rules', 'layered_groups', 'built_in', 'not_kinds', 'kinds'];
 const OUTSIDE = ['IaC', 'pipeline'];
@@ -288,6 +288,10 @@ for (const [i, k] of list.entries()) {
   if ('links' in k && !isStrList(k.links)) error(`${at}: links must be a list of kinds`);
   if ('indexes' in k && !isStrList(k.indexes)) error(`${at}: indexes must be a list of strings`);
   if ('notes' in k && typeof k.notes !== 'string') error(`${at}: notes must be a string`);
+  // `personal: true` is the reviewed flag of a kind that holds personal data (ADR 0004, "Treatment"): such a kind is
+  // sealed, or hashed when it is compare-only, and never plain. A config or secret kind is plain and carries no flag.
+  if ('personal' in k && typeof k.personal !== 'boolean') error(`${at}: personal must be true or false`);
+  if (k.personal === true && k.treatment === 'plain') error(`${at}: a personal kind is never plain (treatment follows the data: sealed, or hashed when it is compare-only)`);
   const external = k.class === 'config' || k.class === 'secret';
   if (external) {
     if (k.scope !== 'boundary') error(`${at}: a ${k.class} kind has no tenant scope`);

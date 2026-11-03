@@ -63,7 +63,7 @@ Parses each request, validates it against closed parameter lists generated from 
 - **Egress:** none.
 - **Key purposes:** `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0008](/decisions/0008-boundaries-and-tenants/), [ADR 0011](/decisions/0011-runtimes-and-installations/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/).
-- **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/).
+- **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/), [QUOTA](/requirements/quota/).
 - **Standards:** NC-05 HTTP security headers and cookies: HSTS (RFC 6797), CSP, cookie prefixes; ST-97 ConnectRPC / gRPC / Protobuf.
 - **Issues:** [#958](https://github.com/truvity/sluis/issues/958), [#941](https://github.com/truvity/sluis/issues/941), [#796](https://github.com/truvity/sluis/issues/796); label `actor:entry`.
 
@@ -79,7 +79,7 @@ Sign-in, session chains, the session cookie and the freshness of each person's a
 - **Egress:** `client-document-hosts`.
 - **Key purposes:** `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0018](/decisions/0018-sessions/), [ADR 0019](/decisions/0019-person-and-upstream-link/).
-- **Requirement areas:** [AUTHN](/requirements/authn/), [SESS](/requirements/sess/), [TOKEN](/requirements/token/), [FED](/requirements/fed/).
+- **Requirement areas:** [AUTHN](/requirements/authn/), [SESS](/requirements/sess/), [TOKEN](/requirements/token/), [FED](/requirements/fed/), [SUBJ](/requirements/subj/).
 - **Standards:** ST-28 OIDC Core 1.0; ST-29 OIDC Discovery; ST-03 RFC 7636 PKCE; ST-24 RFC 9470 Step-up; ST-34 Form Post response mode; ST-59 WebAuthn L2/L3; ST-30 RP-Initiated Logout; ST-31 Back-Channel Logout.
 - **Issues:** [#959](https://github.com/truvity/sluis/issues/959), [#775](https://github.com/truvity/sluis/issues/775), [#776](https://github.com/truvity/sluis/issues/776), [#777](https://github.com/truvity/sluis/issues/777), [#778](https://github.com/truvity/sluis/issues/778), [#885](https://github.com/truvity/sluis/issues/885), [#979](https://github.com/truvity/sluis/issues/979), [#1081](https://github.com/truvity/sluis/issues/1081), [#793](https://github.com/truvity/sluis/issues/793); label `actor:session`.
 
@@ -95,7 +95,7 @@ The operator API, as the browser's backend: it checks the operator's delegation 
 - **Egress:** none.
 - **Key purposes:** `data` (open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0027](/decisions/0027-the-console/).
-- **Requirement areas:** [UX](/requirements/ux/), [OPS](/requirements/ops/).
+- **Requirement areas:** [UX](/requirements/ux/), [OPS](/requirements/ops/), [DATA](/requirements/data/).
 - **Standards:** ST-97 ConnectRPC / gRPC / Protobuf.
 - **Issues:** [#960](https://github.com/truvity/sluis/issues/960), [#831](https://github.com/truvity/sluis/issues/831), [#832](https://github.com/truvity/sluis/issues/832); label `actor:console`.
 
@@ -258,7 +258,7 @@ The only holder of storage credentials: one generic store service over four port
 - **Egress:** `engine`, `config-store`, `secret-store`.
 - **Key purposes:** `grant` (open), `backup-archive` (unwrap).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0004](/decisions/0004-the-data-model/), [ADR 0005](/decisions/0005-the-store/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
-- **Requirement areas:** [ISO](/requirements/iso/), [OPS](/requirements/ops/), [SECRETS](/requirements/secrets/).
+- **Requirement areas:** [ISO](/requirements/iso/), [OPS](/requirements/ops/), [DATA](/requirements/data/), [BACKUP](/requirements/backup/), [EXCH](/requirements/exch/).
 - **Standards:** none.
 - **Issues:** none; label `actor:store`.
 
@@ -290,7 +290,7 @@ Holds a boundary's keys: it seals, opens, signs and makes keyed hashes in place,
 - **Egress:** `key-service`.
 - **Key purposes:** `wrapping` (wrap, unwrap, public-key), `grant` (open), `pin-release` (sign, public-key).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
-- **Requirement areas:** [KEYS](/requirements/keys/), [SEC](/requirements/sec/).
+- **Requirement areas:** [KEYS](/requirements/keys/), [SEC](/requirements/sec/), [ISO](/requirements/iso/), [BACKUP](/requirements/backup/), [AUDIT](/requirements/audit/).
 - **Standards:** NC-10 PIV (NIST SP 800-73) and OpenPGP card on YubiKey; ST-83 RFC 9580 OpenPGP.
 - **Issues:** [#951](https://github.com/truvity/sluis/issues/951), [#1067](https://github.com/truvity/sluis/issues/1067), [#914](https://github.com/truvity/sluis/issues/914); label `actor:key`.
 

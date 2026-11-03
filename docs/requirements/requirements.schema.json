@@ -119,7 +119,8 @@
                 "required": ["title", "file"],
                 "properties": {
                   "title": { "type": "string", "minLength": 3 },
-                  "file": { "type": "string", "pattern": "^[a-z0-9]+\\.yaml$" }
+                  "file": { "type": "string", "pattern": "^[a-z0-9]+\\.yaml$" },
+                  "retired": { "type": "boolean", "description": "true when every record of the area is withdrawn: the area keeps its file and ids and the site leaves it out of the area lists." }
                 }
               }
             },

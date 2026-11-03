@@ -144,6 +144,10 @@ reqExpect('a done record whose test file does not name it', catalogueFiles(`    
 reqExpect('a done record whose test path leaves the repository', catalogueFiles(`    status: done\n${withTests('../outside_test.go')}`), 'fail', { has: ['L1', 'tests'] });
 reqExpect('an empty tests list', catalogueFiles('    status: done\n    tests: []\n'), 'fail', { has: ['fewer than 1 items'] });
 reqExpect('a planned record that names a missing test file', catalogueFiles(`    status: planned\n    features: [design]\n${withTests('tests/missing_test.go')}`), 'fail', { has: ['tests/missing_test.go is not a file'] });
+const retiredIndex = (withRetired) => ({ 'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml${withRetired ? ', retired: true' : ''}}\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n` });
+reqExpect('a retired area whose record is live', catalogueFiles('    status: planned\n    features: [design]\n', retiredIndex(true)), 'fail', { has: ['L19 area EX', 'REQ-EX-001'] });
+reqExpect('a retired area whose only record is withdrawn', catalogueFiles('    status: withdrawn\n    superseded_by: [REQ-EX-001]\n', retiredIndex(true)), 'pass');
+reqExpect('an area that is not retired may hold a live record', catalogueFiles('    status: planned\n    features: [design]\n', retiredIndex(false)), 'pass');
 
 // ---- C4 public content. The token-shaped strings are assembled here, not written out.
 const pub = (text) => ({ 'README.md': `# Example\n\n${text}\n` });
@@ -343,6 +347,10 @@ expect('a kind the console writes beyond its two', 'registries', editKind('Perso
 expect('a temp kind without a time to live', 'registries', editKind('AuthCode', '    ttl: {default: 60s, max: 10m}\n', ''), 'fail', { has: ['AuthCode: a temp kind has a time to live with a default and a max'] });
 expect('a temp kind without a maximum', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 60s}'), 'fail', { has: ['a default and a max'] });
 expect('a config kind with a tenant scope', 'registries', editKind('Boundary', 'scope: boundary', 'scope: boundary+tenant'), 'fail', { has: ['Boundary: a config kind has no tenant scope'] });
+expect('a personal kind that is plain', 'registries', editKind('Allowance', 'treatment: plain', 'treatment: plain\n    personal: true'), 'fail', { has: ['Allowance: a personal kind is never plain'] });
+expect('a personal kind that is sealed', 'registries', editKind('TenantClient', 'treatment: sealed', 'treatment: sealed\n    personal: true'), 'pass');
+expect('a personal flag that is not a boolean', 'registries', editKind('Person', 'personal: true', 'personal: yes please'), 'fail', { has: ['Person: personal must be true or false'] });
+expect('a config kind marked personal', 'registries', editKind('FirstAdmin', 'treatment: plain', 'treatment: plain\n    personal: true'), 'fail', { has: ['FirstAdmin: a personal kind is never plain'] });
 expect('a secret kind that is sealed', 'registries', editKind('UpstreamSecret', 'treatment: plain', 'treatment: sealed'), 'fail', { has: ['a secret kind is plain'] });
 expect('a secret kind written by the pipeline', 'registries', editKind('UpstreamSecret', 'writer: IaC', 'writer: pipeline'), 'fail', { has: ['a secret kind is written by IaC'] });
 expect('a temp kind that is backed up', 'registries', editKind('AuthCode', 'backed_up: no', 'backed_up: yes'), 'fail', { has: ['only a durable kind is backed up'] });
