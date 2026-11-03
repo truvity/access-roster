@@ -491,7 +491,7 @@ requirements:
     area: AUTHN
     split_from: REQ-AUTHN-015
     statement: "sluis MUST NOT serve front-channel logout."
-    rationale: "Front-channel logout depends on third-party cookies, and back-channel logout is the supported path (ADR 0006)."
+    rationale: "Front-channel logout depends on third-party cookies, and back-channel logout is the supported path (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -519,7 +519,7 @@ requirements:
     area: AUTHN
     split_from: REQ-AUTHN-015
     statement: "sluis MUST NOT serve third-party-initiated login."
-    rationale: "Third-party-initiated login is a login CSRF vector, and no app launcher needs it yet (ADR 0006)."
+    rationale: "Third-party-initiated login is a login CSRF vector, and no app launcher needs it yet (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -966,7 +966,7 @@ requirements:
   - id: REQ-AUTHN-058
     area: AUTHN
     statement: "The authorization endpoint MUST serve response_mode=form_post for the authorization code flow."
-    rationale: "Form post keeps the code out of URLs, history and Referer headers, and some relying parties require it (ADR 0006)."
+    rationale: "Form post keeps the code out of URLs, history and Referer headers, and some relying parties require it (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -980,7 +980,7 @@ requirements:
   - id: REQ-AUTHN-059
     area: AUTHN
     statement: "The form post response page MUST carry a Content-Security-Policy that lets only its own auto-submit script run, by a nonce fresh for each response."
-    rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it (ADR 0006)."
+    rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -994,7 +994,7 @@ requirements:
   - id: REQ-AUTHN-060
     area: AUTHN
     statement: "The authorization endpoint MUST answer a response_mode other than query and form_post with invalid_request."
-    rationale: "Only the two response modes of the code flow are served (ADR 0006)."
+    rationale: "Only the two response modes of the code flow are served (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1008,7 +1008,7 @@ requirements:
   - id: REQ-AUTHN-061
     area: AUTHN
     statement: "The discovery document MUST NOT advertise front-channel logout as supported."
-    rationale: "Discovery is truthful, and front-channel logout is not served (ADR 0006)."
+    rationale: "Discovery is truthful, and front-channel logout is not served (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1022,7 +1022,7 @@ requirements:
   - id: REQ-AUTHN-062
     area: AUTHN
     statement: "The configuration check MUST refuse a client that declares a frontchannel_logout_uri or an initiate_login_uri."
-    rationale: "A client must not be configured for a flow that sluis does not serve (ADR 0006)."
+    rationale: "A client must not be configured for a flow that sluis does not serve (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1036,7 +1036,7 @@ requirements:
   - id: REQ-AUTHN-063
     area: AUTHN
     statement: "sluis MAY serve client-initiated backchannel authentication in poll mode after the parity milestone, once a real consumer exists."
-    rationale: "A service can then ask for a person's approval on another device with the passkeys that are already planned; it is Later, because no consumer has asked for it yet (ADR 0006)."
+    rationale: "A service can then ask for a person's approval on another device with the passkeys that are already planned; it is Later, because no consumer has asked for it yet (ADR 0017)."
     level: MAY
     source: design-decision
     status: planned
@@ -1049,7 +1049,7 @@ requirements:
   - id: REQ-AUTHN-064
     area: AUTHN
     statement: "sluis MUST NOT serve the ping or push token delivery modes of client-initiated backchannel authentication."
-    rationale: "Poll mode covers the use, and ping and push add an outbound call to the client (ADR 0006)."
+    rationale: "Poll mode covers the use, and ping and push add an outbound call to the client (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1062,7 +1062,7 @@ requirements:
   - id: REQ-AUTHN-065
     area: AUTHN
     statement: "A backchannel authentication request MUST be approved only by a passkey assertion made on the approving device."
-    rationale: "An approval is a sign-in, and a notification tap alone proves only that someone holds the device (ADR 0006)."
+    rationale: "An approval is a sign-in, and a notification tap alone proves only that someone holds the device (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned

@@ -6,7 +6,7 @@ sidebar:
   order: 0
 ---
 
-The architecture of sluis is described at three zoom levels ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#three-zoom-levels)). Each level answers one question, and the output of one level is the input of the next.
+The architecture of sluis is described at three zoom levels ([ADR 0002](/decisions/0002-families-of-actors/#three-zoom-levels)). Each level answers one question, and the output of one level is the input of the next.
 
 | Level | Question | What it produces | Page |
 | ----- | -------- | ---------------- | ---- |
@@ -16,7 +16,7 @@ The architecture of sluis is described at three zoom levels ([ADR 0002](/decisio
 
 ## The permission manifest is the spine
 
-Every [actor](/concepts/actors/) has one **permission manifest**. It states which record kinds the actor reads and writes, which of its kinds accept operator-set writes, which secrets and keys it may use, which hosts it may reach, which actors may call it, and which actors it calls. The manifest is derived from L1 (the operations on each resource) and L2 (data ownership and the call graph), and it lives in `manifest/` ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#the-permission-manifest)). Its format and generators are on [Permission manifest](/architecture/manifest/), and the actors it covers are in the [actor registry](/reference/actors/).
+Every [actor](/concepts/actors/) has one **permission manifest**. It states which record kinds the actor reads and writes, which of its kinds accept operator-set writes, which secrets and keys it may use, which hosts it may reach, which actors may call it, and which actors it calls. The manifest is derived from L1 (the operations on each resource) and L2 (data ownership and the call graph), and it lives in `manifest/` ([ADR 0002](/decisions/0002-families-of-actors/#the-permission-manifest)). Its format and generators are on [Permission manifest](/architecture/manifest/), and the actors it covers are in the [actor registry](/reference/actors/).
 
 Nothing that enforces least privilege is written by hand. The manifest generates it, for every runtime:
 
@@ -48,7 +48,7 @@ Until the manifest exists, the diagrams on these pages are Mermaid, written next
 - **Every major component is a ConnectRPC contract**, even when it runs in the same process as its caller. Contracts are Protobuf, in `proto/`.
 - **Integrations return facts, or carry out effects that core has already authorized. They never decide.** A minter receives a mint grant that the `policy` actor sealed under the sealing key. Caps and rate limits live in core.
 - **Core calls integrations, never the reverse.**
-- **Plugins always run out of process.** There are no Go `.so` plugins and no WebAssembly ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#drivers-are-platform-started-services)).
+- **Plugins always run out of process.** There are no Go `.so` plugins and no WebAssembly ([ADR 0003](/decisions/0003-units-transports-and-fusion/#drivers-are-platform-started-services)).
 
 ## Pages
 

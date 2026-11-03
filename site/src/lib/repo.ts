@@ -1,4 +1,4 @@
-// The repository facts the build publishes as /data/repo.json (ADR 0020): the decision
+// The repository facts the build publishes as /data/repo.json (ADR 0014): the decision
 // records with their status and proposal issue, the requirements with the issues that
 // deliver them, and the coverage figure. They change only by a merged pull request.
 // The shape is public/data/repo.schema.json; site/scripts/check-repo-json.mjs validates

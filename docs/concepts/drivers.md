@@ -6,7 +6,7 @@ sidebar:
   order: 2
 ---
 
-An [actor](/concepts/actors/) needs things from outside itself: keys to sign with, a place to keep records, a place to put audit archives. It asks for each through a **port**, an abstract interface with capability flags where the technologies behind it differ. The technology that answers it is a **driver**, and a driver declares what it requires: a long-running process, a local disk, a number of nodes, or a **dependency** such as an AWS account ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#ports-and-drivers)).
+An [actor](/concepts/actors/) needs things from outside itself: keys to sign with, a place to keep records, a place to put audit archives. It asks for each through a **port**, an abstract interface with capability flags where the technologies behind it differ. The technology that answers it is a **driver**, and a driver declares what it requires: a long-running process, a local disk, a number of nodes, or a **dependency** such as an AWS account ([ADR 0002](/decisions/0002-families-of-actors/#ports-and-drivers)).
 
 An actor sees one contract per port, whatever sits behind it. `signer` calls "sign with the token key" on the keys port; whether that lands on AWS KMS, a YubiKey or a software key is installation configuration, not actor code.
 
@@ -40,7 +40,7 @@ Two ports carry flags that an actor can require, so that "any driver for this po
 
 An actor states the lock mode it needs; the audit log's rule is on [Audit](/concepts/audit/#lock-modes-retention-and-legal-holds).
 
-**State `cas`.** An actor that changes a record more than one caller can reach requires compare-and-set. Quota's balances are the main case: strict enforcement is compare-and-set on the mint path ([ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/#quota)).
+**State `cas`.** An actor that changes a record more than one caller can reach requires compare-and-set. Quota's balances are the main case: strict enforcement is compare-and-set on the mint path ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
 
 ### Create-if-absent
 
@@ -55,7 +55,7 @@ The [port conformance suite](https://github.com/truvity/sluis/issues/851) tests 
 
 ## Drivers are services, and nobody execs them
 
-A driver is a platform-started service that speaks ConnectRPC over a Unix socket, with the same wire contract for every driver of a port, so a driver may be written in another language than its actor. **No actor starts a driver** ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#drivers-are-platform-started-services)):
+A driver is a platform-started service that speaks ConnectRPC over a Unix socket, with the same wire contract for every driver of a port, so a driver may be written in another language than its actor. **No actor starts a driver** ([ADR 0003](/decisions/0003-units-transports-and-fusion/#drivers-are-platform-started-services)):
 
 | Runtime | The platform starts a driver as |
 |---|---|
@@ -95,7 +95,7 @@ Another actor cannot open `aws.sock`, and AWS does the rest: the KMS key policy 
 
 ## The mediating driver
 
-A node's card has one PIN and cannot refuse a caller by itself, so **`key-holder`** owns it and every other process goes through it. It is the one `shared` driver ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#key-holder-is-the-one-mediator)):
+A node's card has one PIN and cannot refuse a caller by itself, so **`key-holder`** owns it and every other process goes through it. It is the one `shared` driver ([ADR 0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)):
 
 - **One process, one Unix socket per caller.** Each socket sits in a directory that only its caller can open: systemd `.socket` units with `SocketUser=` and `FileDescriptorName=` on a host, and only that caller's socket mounted into its container.
 - **A peer-uid check as a second factor.** `key-holder` reads the caller's uid from the connection (`SO_PEERCRED`) and checks it against the socket it arrived on and an access list of caller, key purpose and operation, generated from the manifests.
@@ -107,13 +107,13 @@ With a cloud key service there is no `key-holder`: the key policy is the whole l
 
 ## State clusters
 
-There is no `state-owner` mediator: every state backend checks its callers itself ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#one-writer-per-kind)). On bare-metal clusters this means **one rqlite cluster per (boundary, owning actor)**. The owning actor gets an rqlite user with `execute`, and each declared reader a user with `query` only. Each cluster runs as a systemd template instance, `sluis-rqlite@<boundary>-<actor>`, with its own ports from a port scheme, its own certificate, mutual TLS between nodes and to clients, and a sandbox that lets it write only its data directory. What a board can carry is measured in [Board capacity](/runtimes/bare-metal/#board-capacity).
+There is no `state-owner` mediator: every state backend checks its callers itself ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)). On bare-metal clusters this means **one rqlite cluster per (boundary, owning actor)**. The owning actor gets an rqlite user with `execute`, and each declared reader a user with `query` only. Each cluster runs as a systemd template instance, `sluis-rqlite@<boundary>-<actor>`, with its own ports from a port scheme, its own certificate, mutual TLS between nodes and to clients, and a sandbox that lets it write only its data directory. What a board can carry is measured in [Board capacity](/runtimes/bare-metal/#board-capacity).
 
-rqlite's client API is a TCP port, so the unit of a per-actor rqlite driver does not run with `PrivateNetwork=yes`. It gets a narrow rule instead: `IPAddressDeny=any`, `IPAddressAllow=` for its own cluster's addresses only, and `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, plus a client certificate per cluster. If rqlite adds a Unix-socket listener, the driver moves to it ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#how-a-per-actor-rqlite-driver-reaches-its-cluster)).
+rqlite's client API is a TCP port, so the unit of a per-actor rqlite driver does not run with `PrivateNetwork=yes`. It gets a narrow rule instead: `IPAddressDeny=any`, `IPAddressAllow=` for its own cluster's addresses only, and `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, plus a client certificate per cluster. If rqlite adds a Unix-socket listener, the driver moves to it ([ADR 0005](/decisions/0005-the-store/#how-a-per-actor-rqlite-driver-reaches-its-cluster)).
 
 ## Defence in depth
 
-Every port is protected in **three layers**, all generated from one manifest, and each must hold alone ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#three-layers-per-port)). The threats these layers answer and what is left after each control are on the [threat model](/security/threat-model/); each control's test vectors are in the [isolation requirements](/requirements/iso/).
+Every port is protected in **three layers**, all generated from one manifest, and each must hold alone ([ADR 0003](/decisions/0003-units-transports-and-fusion/#three-layers-per-port)). The threats these layers answer and what is left after each control are on the [threat model](/security/threat-model/); each control's test vectors are in the [isolation requirements](/requirements/iso/).
 
 | Layer | Where | What it does |
 |---|---|---|
@@ -125,7 +125,7 @@ Every port is protected in **three layers**, all generated from one manifest, an
 - **Isolation is tested per layer, with the other layers switched off**, so that no layer passes only because another caught the case.
 - **A driver whose backend cannot check each caller** is allowed only at L3 and above, together with its layer-3 separation.
 
-The layer-2 check of every driver is listed in [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#per-driver-checks).
+The layer-2 check of every driver is listed in [ADR 0003](/decisions/0003-units-transports-and-fusion/#per-driver-checks).
 
 ## What each driver requires
 
@@ -162,13 +162,13 @@ Every driver declares what it needs from the installation: a long-running proces
 | file | config-source | – | – | any | – (a path: a file, a Lambda layer, a mounted ConfigMap) |
 | appconfig | config-source | – | – | any | AWS: the AppConfig data API, with credentials from the `cloud` port |
 
-Nodes and dependencies belong to an installation, not to a [runtime](/runtimes/), except that serverless always comes with its provider ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#runtime-kinds)).
+Nodes and dependencies belong to an installation, not to a [runtime](/runtimes/), except that serverless always comes with its provider ([ADR 0011](/decisions/0011-runtimes-and-installations/#runtime-kinds)).
 
 Azure App Configuration, Google Cloud Parameter Manager, Consul and etcd are planned `config-source` drivers with no promise and no issue; each arrives with the first installation that needs it ([ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#a-port-config-source)).
 
 ## Which drivers fit which runtime
 
-Which drivers a runtime can run is **derived** from the table above and from what the runtime provides: a long-running driver is impossible on serverless, a driver that needs a disk works on Kubernetes only with a per-pod volume, and so on. Each runtime page lists its drivers: [bare-metal](/runtimes/bare-metal/), [serverless](/runtimes/serverless/) and [Kubernetes](/runtimes/kubernetes/). The drivers of the four tested installations are on [Installations](/runtimes/installations/) and in [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#installations).
+Which drivers a runtime can run is **derived** from the table above and from what the runtime provides: a long-running driver is impossible on serverless, a driver that needs a disk works on Kubernetes only with a per-pod volume, and so on. Each runtime page lists its drivers: [bare-metal](/runtimes/bare-metal/), [serverless](/runtimes/serverless/) and [Kubernetes](/runtimes/kubernetes/). The drivers of the four tested installations are on [Installations](/runtimes/installations/) and in [ADR 0011](/decisions/0011-runtimes-and-installations/#installations).
 
 The transport defaults follow the runtime: the spool on bare-metal, SQS on serverless (the workforce installation proves it) and NATS JetStream on Kubernetes (the customer-identity installation proves it); `direct` is supported with no default. A witness is optional everywhere ([Audit](/concepts/audit/#the-witness-is-optional)).
 
@@ -185,7 +185,7 @@ A prefix scope exists only on R2 temporary credentials, and R2 has no OIDC feder
 
 ### The postgres index driver
 
-The `index` port has one Postgres driver, `postgres`, with a **provisioning mode** that says who creates the database; it does not change what the indexer and the reader do ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#provisioning-modes)):
+The `index` port has one Postgres driver, `postgres`, with a **provisioning mode** that says who creates the database; it does not change what the indexer and the reader do ([ADR 0028](/decisions/0028-audit-pieces/#provisioning-modes)):
 
 | Mode | Where | What sluis does |
 |---|---|---|
@@ -193,11 +193,11 @@ The `index` port has one Postgres driver, `postgres`, with a **provisioning mode
 | `cnpg` | Kubernetes | Provisions a CloudNativePG cluster in the same cluster |
 | `external` | Anywhere | Nothing: it takes a connection string only. A database behind a load balancer, or one run on bare metal, is `external` |
 
-Each actor kind has a fixed schema, row-level security separates boundaries and tenants, actors never own tables, and PostgreSQL 15 or newer is required ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#postgresql-row-level-security)). Clients authenticate with certificates from `ca`, or with IAM on RDS and Aurora. `postgres` is an index driver only; there is no Postgres state driver in 2.0.
+Each actor kind has a fixed schema, row-level security separates boundaries and tenants, actors never own tables, and PostgreSQL 15 or newer is required ([ADR 0003](/decisions/0003-units-transports-and-fusion/#postgresql-row-level-security)). Clients authenticate with certificates from `ca`, or with IAM on RDS and Aurora. `postgres` is an index driver only; there is no Postgres state driver in 2.0.
 
 ### The rqlite index driver
 
-`rqlite` is a replicated SQLite, so with it the reader can run on **any node**, which a `sqlite` file on one node cannot offer. It is the index of the boards, with an external-content FTS5 table; if FTS5 fails on the boards' own hardware, they fall back to `sqlite` on the indexer's node ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#search-and-the-index)).
+`rqlite` is a replicated SQLite, so with it the reader can run on **any node**, which a `sqlite` file on one node cannot offer. It is the index of the boards, with an external-content FTS5 table; if FTS5 fails on the boards' own hardware, they fall back to `sqlite` on the indexer's node ([ADR 0028](/decisions/0028-audit-pieces/#search-and-the-index)).
 
 ## How `sluis config check` validates an installation
 
@@ -226,7 +226,7 @@ error  ports.blob: production audit log store needs lock mode "compliance" or a 
 
 ## Where an actor runs is derived
 
-Where an actor runs is **derived from the port and driver rules**, for every sluis actor and for the audit pieces ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#placement-is-derived)). There are no per-installation placement decisions: `sluis config check` enforces the rules, and each tested installation only names its default drivers. For example:
+Where an actor runs is **derived from the port and driver rules**, for every sluis actor and for the audit pieces ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)). There are no per-installation placement decisions: `sluis config check` enforces the rules, and each tested installation only names its default drivers. For example:
 
 - An actor that declares **`instances: exactly 1`**, such as the indexer, runs on one node, and needs the lease port when there is more than one node or the nodes are elastic.
 - With a `sqlite` index on a cluster there is one writer, so the reader runs on the indexer's node; with `rqlite` or `postgres` it can run on any node.
@@ -255,4 +255,4 @@ Short names fit the kernel's 15-character process name; units, users and the CLI
 
 Compiled-in drivers would make fat binaries and need a rebuild to add a backend; a self-spawned driver would need exec rights; one AWS driver for all actors would hold every actor's credentials and lose IAM's per-actor enforcement. Separate services cost a socket to protect, contract versioning and some memory, and one Unix-socket hop is a fraction of a millisecond against the milliseconds of a KMS or DynamoDB call.
 
-The language of each driver follows [ADR 0014](/decisions/0014-the-language-follows-the-executable/#per-actor-table): the AWS, GCP and Azure drivers are Rust, and on serverless one Rust `aws` executable implements every AWS port for its function, as one extension; `key-holder` and `cloud-cloudflare` are Go.
+The language of each driver follows [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table): the AWS, GCP and Azure drivers are Rust, and on serverless one Rust `aws` executable implements every AWS port for its function, as one extension; `key-holder` and `cloud-cloudflare` are Go.

@@ -3,7 +3,7 @@
 // and cannot add types, actions or attributes. Every request is validated against it.
 
 // An upstream account, named by the upstream's declared name and the value of the upstream's
-// subject claim: `<upstream>/<claim value>` (ADR 0027). An operator can name an account before
+// subject claim: `<upstream>/<claim value>` (ADR 0019). An operator can name an account before
 // its first sign-in, which the random subject of a person does not allow. `org` is the company
 // that owns the upstream.
 entity Account = {
@@ -11,7 +11,7 @@ entity Account = {
   org: String,
 };
 
-// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0028). `sensitive` is true
+// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). `sensitive` is true
 // when its scope is sensitive.
 entity Grant = {
   scope: String,
@@ -21,7 +21,7 @@ entity Grant = {
 };
 
 // A person, known by the opaque `sub` of the issuer, and linked to the upstream account they
-// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0027: an
+// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0019: an
 // operator holds a person on the console). `grants` is not sent by the asking actor: `policy`
 // finds it with the action "grant.hold" and adds it before it decides any other action.
 entity Person in [Account] = {
@@ -84,7 +84,7 @@ action "token.exchange" appliesTo {
   context: Authentication,
 };
 
-// A workload asks for a signature by a signing key (ADR 0029). The context is the SHA-384 of the
+// A workload asks for a signature by a signing key (ADR 0045). The context is the SHA-384 of the
 // content in lower-case hex, and its length in bytes.
 action "artifact.sign" appliesTo {
   principal: Workload,

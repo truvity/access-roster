@@ -21,7 +21,7 @@ Cloudflare is a credential minter. sluis holds one account-level token that can 
 |---|---|
 | `CredentialMinter` | Opens a mint grant sealed by `policy`, checks the prototype, creates a token by cloning the prototype with an expiry, and sweeps expired tokens it created. |
 
-That is the only kind, as `cloudflare@<company>`. It is separate from the **`cloud-cloudflare@<boundary>` driver**, which mints R2 temporary credentials for sluis's own buckets with the boundary's parent token; the two share a library but not a credential ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#per-driver-checks)).
+That is the only kind, as `cloudflare@<company>`. It is separate from the **`cloud-cloudflare@<boundary>` driver**, which mints R2 temporary credentials for sluis's own buckets with the boundary's parent token; the two share a library but not a credential ([ADR 0003](/decisions/0003-units-transports-and-fusion/#per-driver-checks)).
 
 ## What sluis asks the vendor for
 

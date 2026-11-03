@@ -1,4 +1,4 @@
-// The Worker that serves sluis.id: static assets, and the live status API on /api/* (ADR 0020).
+// The Worker that serves sluis.id: static assets, and the live status API on /api/* (ADR 0014).
 // Built by `astro build` with the Cloudflare adapter (SLUIS_TARGET=workers), which
 // writes the configuration to deploy from this file (.wrangler/deploy/config.json points at it).
 // The deploy job of .github/workflows/site.yaml runs `wrangler deploy` on it. The repository holds no account id, no
@@ -25,15 +25,15 @@
     "not_found_handling": "404-page",
     // Only /api/* runs the Worker first. A request for anything else that is an asset is
     // served from the assets and never invokes the Worker: that keeps static traffic off
-    // the Free plan's daily request limit (ADR 0020). Never widen this to "/*" or true,
+    // the Free plan's daily request limit (ADR 0014). Never widen this to "/*" or true,
     // and never turn on Workers Cache.
     "run_worker_first": ["/api/*"]
   },
-  // The safety net for missed webhook deliveries (ADR 0020): every 15 minutes the Worker
+  // The safety net for missed webhook deliveries (ADR 0014): every 15 minutes the Worker
   // reads the board and writes KV only when something changed (src/worker/status.ts).
   "triggers": { "crons": ["*/15 * * * *"] },
   "kv_namespaces": [
-    // The live status documents, `board` and `ci` (ADR 0020, src/worker/status.ts). The id comes from the build variable
+    // The live status documents, `board` and `ci` (ADR 0014, src/worker/status.ts). The id comes from the build variable
     // SLUIS_STATUS_KV_ID, a secret of the deploy environment (src/cloudflare-kv-id.mjs rewrites the generated
     // configuration); this placeholder is never deployed.
     { "binding": "STATUS", "id": "00000000000000000000000000000000" }

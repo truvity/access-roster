@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// /data/repo.json in the built site (ADR 0020), checked against what it is built from:
+// /data/repo.json in the built site (ADR 0014), checked against what it is built from:
 //   - it validates against site/public/data/repo.schema.json, and the built site serves
 //     the same schema at /data/repo.schema.json;
 //   - its decisions are exactly the records in docs/decisions (NNNN-*.md, not the

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Tests of the site's Worker (src/worker/, ADR 0020), in Node, with GitHub and KV replaced
+// Tests of the site's Worker (src/worker/, ADR 0014), in Node, with GitHub and KV replaced
 // by fakes: no network, no Cloudflare account, no secret. Node runs the TypeScript modules
 // directly (type stripping), the same modules Wrangler bundles.
 //

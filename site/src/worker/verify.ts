@@ -1,4 +1,4 @@
-// The two ways a caller proves itself to the Worker (ADR 0020):
+// The two ways a caller proves itself to the Worker (ADR 0014):
 // - a GitHub webhook delivery carries X-Hub-Signature-256, the HMAC-SHA256 of the raw body
 //   under the App's webhook secret (a Worker secret);
 // - a CI run on `main` carries a GitHub Actions OIDC token, pinned here to the issuer, the

@@ -48,7 +48,7 @@ shapes:
     state: embedded single-node store
     use: Development, CI and the integration tests.
     notes:
-      - text: "Keys are software keys by default. The software keys driver refuses to start in production and warns in staging (ADR 0012); a dedicated development card is opt-in (ADR 0018)."
+      - text: "Keys are software keys by default. The software keys driver refuses to start in production and warns in staging (ADR 0006); a dedicated development card is opt-in (ADR 0011)."
         status: decided
       - text: "The log store is the fs blob, a local directory with no lock mode, so tamper evidence comes from verification and, where there is one, a witness. The witness is optional, and sluis config check warns when there is none."
         status: decided
@@ -69,7 +69,7 @@ shapes:
         status: decided
       - text: "The blob is Cloudflare R2, through the one s3-compatible driver with credentials from the cloudflare cloud driver. An account administrator can remove R2's lock (lock mode removable), so the peer witnesses protect against a rewritten history."
         status: decided
-      - text: "The index is rqlite, a replicated SQLite, so the reader can run on any node (ADR 0015). If its full-text index does not hold up on the boards, they fall back to sqlite on the indexer's node."
+      - text: "The index is rqlite, a replicated SQLite, so the reader can run on any node (ADR 0028). If its full-text index does not hold up on the boards, they fall back to sqlite on the indexer's node."
         status: decided
       - text: "A board image older than the systemd floor (252) is a declared exception until board images for the supported distributions exist (#881)."
         status: decided
@@ -86,7 +86,7 @@ shapes:
     state: DynamoDB
     use: Integration tests and tutorials.
     notes:
-      - text: "The default index here is postgres on Aurora (ADR 0015), reached through RDS Proxy with IAM authentication and one database role per actor kind; the indexer and the reader run in the VPC. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log."
+      - text: "The default index here is postgres on Aurora (ADR 0028), reached through RDS Proxy with IAM authentication and one database role per actor kind; the indexer and the reader run in the VPC. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log."
         status: decided
       - text: "The transport is an SQS queue here. Direct mode is not available on serverless, because its fallback is a local spool and a function has no disk."
         status: decided
@@ -173,7 +173,7 @@ edges_kinds:
     sub: cloudflared tunnel
     line2: "cloudflared"
     line3: "unix: origin"
-    does: "The Cloudflare tunnel client. Its ingress service is entry's public Unix socket, as a unix: origin (unix:/run/sluis/entry/<boundary>-public.sock), so it makes outbound connections only and no inbound port is opened on the node. It holds no key and can open no other actor's socket. In the local installation a Compose service (this connector's image or a forwarder) mounts entry's socket and publishes a port (ADR 0018)."
+    does: "The Cloudflare tunnel client. Its ingress service is entry's public Unix socket, as a unix: origin (unix:/run/sluis/entry/<boundary>-public.sock), so it makes outbound connections only and no inbound port is opened on the node. It holds no key and can open no other actor's socket. In the local installation a Compose service (this connector's image or a forwarder) mounts entry's socket and publishes a port (ADR 0011)."
     listen: Outbound tunnel only. It forwards to entry's public Unix socket.
     transport: Unix socket (a unix origin)
     status: decided
@@ -229,7 +229,7 @@ drivers:
     instance: per-actor
     shared_name: null
     binary: drivers/rqlite
-    does: Serves the state port on rqlite, with one cluster per boundary and owning actor (sluis-rqlite@<boundary>-<actor>) and no state-owner. The owner has an rqlite user with execute, and each declared reader a query-only user. Raft peer traffic is each cluster's own TCP port, over mTLS with a certificate per cluster. rqlite has no Unix-socket listener, so the actor unit gets a narrow network rule for its own cluster's address and port only, instead of PrivateNetwork=yes, and a client certificate per cluster (ADR 0004).
+    does: Serves the state port on rqlite, with one cluster per boundary and owning actor (sluis-rqlite@<boundary>-<actor>) and no state-owner. The owner has an rqlite user with execute, and each declared reader a query-only user. Raft peer traffic is each cluster's own TCP port, over mTLS with a certificate per cluster. rqlite has no Unix-socket listener, so the actor unit gets a narrow network rule for its own cluster's address and port only, instead of PrivateNetwork=yes, and a client certificate per cluster (ADR 0003).
     holds: The Raft peer TLS credential
     backing: rqlited (Raft, three nodes)
     status: decided
@@ -312,7 +312,7 @@ drivers:
     instance: shared
     shared_name: null
     binary: drivers/rqlite
-    does: "The index port on rqlite, a replicated SQLite, so the reader can run on any node. A projection of the log, never the evidence. It is the index of the boards (ADR 0015)."
+    does: "The index port on rqlite, a replicated SQLite, so the reader can run on any node. A projection of the log, never the evidence. It is the index of the boards (ADR 0028)."
     holds: The replicated index tables
     backing: rqlite (replicated SQLite)
     status: decided
@@ -380,7 +380,7 @@ roles:
     name: entry
     kind: actor
     binary: actors/entry
-    does: "Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns it: session for sign-in and sessions, exchange for token exchange and enrolment, console for the operator API, ssh-ca for SSH certificates. It sits behind the edge connector and is the only actor whose API faces the edge. It is written in a memory-safe language, fuzzed, loads no plugin and runs on a read-only file system (ADR 0003)."
+    does: "Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns it: session for sign-in and sessions, exchange for token exchange and enrolment, console for the operator API, ssh-ca for SSH certificates. It sits behind the edge connector and is the only actor whose API faces the edge. It is written in a memory-safe language, fuzzed, loads no plugin and runs on a read-only file system (ADR 0041)."
     holds: "Nothing: no key, no secret, no state and no outbound network"
     uses: [transport]
     workload_jwt: false
@@ -397,7 +397,7 @@ roles:
       docker: "unix socket"
       systemd: "unix socket"
       lambda: "tcp 127.0.0.1"
-    listener_note: "entry's public API is the only listener that faces the edge. On bare-metal it is a Unix socket that cloudflared forwards to as a unix: origin, and entry has no network at all. On serverless it is a loopback TCP port inside the function's sandbox, because the Lambda Web Adapter needs one. On Kubernetes a key-less edge relay container in the pod forwards to entry's socket (ADR 0018). Every other actor listens on Unix sockets only."
+    listener_note: "entry's public API is the only listener that faces the edge. On bare-metal it is a Unix socket that cloudflared forwards to as a unix: origin, and entry has no network at all. On serverless it is a loopback TCP port inside the function's sandbox, because the Lambda Web Adapter needs one. On Kubernetes a key-less edge relay container in the pod forwards to entry's socket (ADR 0011). Every other actor listens on Unix sockets only."
   session:
     status: decided
     name: session
@@ -468,7 +468,7 @@ roles:
     name: ca
     kind: actor
     binary: actors/ca
-    does: "The X.509 certificate authority: host and workload SVIDs at enrolment, and database client certificates. The subject comes from the requester's authenticated identity, never from the request. Every certificate is audited and goes in the issuance log. The SSH CA is a separate actor, ssh-ca (ADR 0008)."
+    does: "The X.509 certificate authority: host and workload SVIDs at enrolment, and database client certificates. The subject comes from the requester's authenticated identity, never from the request. Every certificate is audited and goes in the issuance log. The SSH CA is a separate actor, ssh-ca (ADR 0023)."
     holds: Use of the node intermediate's key, which stays behind the keys port
     uses: [keys, state, transport]
     resources:
@@ -481,7 +481,7 @@ roles:
     name: ssh-ca
     kind: actor
     binary: actors/ssh-ca
-    does: "The SSH certificate authority, for user and host certificates. A certificate carries identity only (u:<person-key> for people, w:<workload> for machines); what an identity may log in as comes from the bundle that sluis-host writes on each host. Policy decides each signature (ssh.certify). It is its own actor because it is a different authority from ca (ADR 0008)."
+    does: "The SSH certificate authority, for user and host certificates. A certificate carries identity only (u:<person-key> for people, w:<workload> for machines); what an identity may log in as comes from the bundle that sluis-host writes on each host. Policy decides each signature (ssh.certify). It is its own actor because it is a different authority from ca (ADR 0023)."
     holds: Use of the SSH user and host CA keys, which stay behind the keys port
     uses: [keys, state, transport]
     resources:
@@ -495,7 +495,7 @@ roles:
     name: quota
     kind: actor
     binary: actors/quota
-    does: "Rate limits and caps, with compare-and-set on the state port. Caps and limits live in core. Quota (quota engine, quota state) is a separate piece, combinable with sluis, and it shares sluis's driver instances. It meters by default and enforces per policy rule, strictly in 2.0 (ADR 0017)."
+    does: "Rate limits and caps, with compare-and-set on the state port. Caps and limits live in core. Quota (quota engine, quota state) is a separate piece, combinable with sluis, and it shares sluis's driver instances. It meters by default and enforces per policy rule, strictly in 2.0 (ADR 0030)."
     holds: Balances and meters (state), no key
     uses: [state, transport]
     resources:
@@ -975,7 +975,7 @@ flows:
         edges: ["indexer>drv-state", "indexer>drv-blob", "indexer>store-index", "reader>store-index"]
         text: The indexer follows each log's signed checkpoints from its cursor, fetches the entry bundles they cover and applies them to the index; the reader answers queries from it. Verification never trusts the index. The audit explorer shows the lag and the integrity chain.
         variants:
-          - { shapes: [boards], text: "The index is rqlite (ADR 0015), so the reader can run on any node. Readers merge the three logs by time." }
+          - { shapes: [boards], text: "The index is rqlite (ADR 0028), so the reader can run on any node. Readers merge the three logs by time." }
           - { shapes: [lambda], text: "The index here is postgres on Aurora, reached through RDS Proxy." }
 
 # What runs where on a cluster of boards (bare-metal with N nodes).
@@ -988,7 +988,7 @@ cluster:
   - { process: "signer, policy, ca, ssh-ca", where: "every node, each using that node's own card through key-holder", status: decided }
   - { process: writer, where: "every node: exactly one writer per log, and one log per node, each writer draining its own spool and signing with its own node's log key", status: decided }
   - { process: witness, where: "every node, as a peer: each node's log is cosigned by the other two (2-of-3)", status: decided }
-  - { process: "state driver and its store", where: "every node; one rqlite cluster per (boundary, owning actor), each a Raft quorum of three over its own TCP port with mTLS. The actor unit reaches its cluster's client port through a narrow per-actor network rule, with a client certificate per cluster (ADR 0004)", status: decided }
+  - { process: "state driver and its store", where: "every node; one rqlite cluster per (boundary, owning actor), each a Raft quorum of three over its own TCP port with mTLS. The actor unit reaches its cluster's client port through a narrow per-actor network rule, with a client certificate per cluster (ADR 0003)", status: decided }
   - { process: keys driver, where: "each node's own YubiKey, behind key-holder, with one socket per caller", status: decided }
   - { process: sluis-node, where: every node, status: decided }
   - { process: integrations, where: "next to the actors that call them on each node, over Unix sockets; no actor is called across nodes, and the Raft port is the only TCP port between nodes", status: decided }

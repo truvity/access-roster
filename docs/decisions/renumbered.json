@@ -1,141 +1,447 @@
 {
-  "$comment": "The records renumbered on 2026-11-01 (docs/decisions/README.md, 'Design phase'). Each old slug, its record number and where it went. site/astro.config.mjs turns every row into a 301; tools/checks/decisions.mjs checks that no old slug is a file and every new one is. A part of a record that went elsewhere is in anchors.",
-  "date": "2026-11-01",
+  "$comment": "The records renumbered on 2026-11-01 and again on 2026-11-NN (docs/decisions/README.md, 'Design phase'). Each old slug and the record that holds its content now; every row points at a final record, so no redirect chains. site/astro.config.mjs turns every row whose old differs from new into a 301; tools/checks/decisions.mjs checks that no old slug is a file and every new one is. A part of a record that went elsewhere is in anchors. This file is the step-0 variant: it omits the rows whose old slug is still a record file (the parked records), which the content pull requests add when they delete those files.",
+  "dates": [
+    "2026-11-01",
+    "2026-11-NN"
+  ],
   "records": [
     {
       "old": "0001-v1-and-v2-lines",
-      "new": "0001-v1-and-v2-lines"
+      "new": "0001-v1-and-v2-lines",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0002-the-design-model-actors-ports-drivers-and-contracts",
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0003-core-actors-with-one-responsibility-each",
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0004-drivers-listeners-and-boundary-enforcement",
+      "new": "0003-units-transports-and-fusion",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0005-boundaries-and-the-isolation-ladder",
+      "new": "0008-boundaries-and-tenants",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0006-identity-issuers-audiences-and-sign-in",
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0007-workload-identity-and-host-enrolment",
+      "new": "0022-workload-identity-and-host-enrolment",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0008-certificate-authorities-for-x509-ssh-and-databases",
+      "new": "0023-certificate-authorities",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0009-policy-is-cedar-in-a-rust-actor",
+      "new": "0007-policy-and-sealed-grants",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0010-configuration-and-data-pkl-schema-origins-and-sensitivities",
+      "new": "0004-the-data-model",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0011-state-is-one-port-with-compare-and-set",
+      "new": "0005-the-store",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0012-cryptography-and-authority-keys",
+      "new": "0006-keys-and-sealing",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0013-the-hand-off-to-root-custody-and-the-signing-api",
+      "new": "0024-root-custody-and-the-signing-api",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0014-the-language-follows-the-executable",
+      "new": "0012-the-language-follows-the-executable",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0015-audit-pieces-transport-search-and-front",
+      "new": "0028-audit-pieces",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0016-the-audit-log",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0017-audit-records-the-usage-stream-and-quota",
+      "new": "0030-audit-records-and-the-usage-stream",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0018-runtimes-installations-and-delivery-order",
+      "new": "0011-runtimes-and-installations",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0019-release-train-packaging-and-distribution",
+      "new": "0013-release-train-packaging-and-distribution",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0020-the-site-is-static-on-cloudflare-workers",
+      "new": "0014-the-site-is-static-on-cloudflare-workers",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0021-leaf-certificate-profiles-lifetimes-and-revocation",
+      "new": "0023-certificate-authorities",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0022-telemetry-is-opentelemetry-with-fixed-conventions",
+      "new": "0016-telemetry",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0023-sessions-have-three-classes-with-limits-per-class",
+      "new": "0018-sessions",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0024-break-glass-recovery-uses-passkeys-only",
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0025-audit-pseudonyms-are-keyed-per-company-and-epoch",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0026-integrations-return-facts-or-carry-out-effects-that-core-authorised",
+      "new": "0025-integrations",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim",
+      "new": "0019-person-and-upstream-link",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience",
+      "new": "0020-grant-vocabulary-and-token-claims",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature",
+      "new": "0024-root-custody-and-the-signing-api",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record",
+      "new": "0008-boundaries-and-tenants",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued",
+      "new": "0004-the-data-model",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0033-evolution-and-compatibility-n-and-n-1-inside-a-major-and-parallel-cutover",
+      "new": "0015-evolution-and-compatibility",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0034-a-backup-is-an-age-encrypted-tar-of-canonical-json-per-kind-and-restores-onto-any-driver",
+      "new": "0010-backup-and-recovery",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external",
+      "new": "0009-export",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0036-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs",
+      "new": "0025-integrations",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0037-a-reconciler-manages-membership-only-one-per-target-under-a-lease-through-the-provisioner-contract",
+      "new": "0026-reconcilers",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0038-clients-are-declared-resources-map-to-a-client-and-self-described-clients-are-admitted-only-from-allow-listed-origins",
+      "new": "0021-clients",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0039-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0040-console-roles-are-declared-grants-and-its-pages-are-organised-by-the-origin-of-what-they-show",
+      "new": "0027-the-console",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0044-a-meter-has-a-name-a-unit-and-a-kind-and-a-usage-event-belongs-to-the-period-of-its-event-time",
+      "new": "0040-meters-and-usage-evidence",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0046-ciam-is-a-broker-the-upstream-owns-accounts-and-sluis-owns-sessions-and-tokens",
+      "new": "0031-ciam-is-a-broker",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0047-a-customer-identity-installation-is-a-front-a-few-customer-boundaries-and-key-less-tenants",
+      "new": "0032-customer-identity-installations",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0048-customer-connections-run-in-a-pool-per-customer-boundary",
+      "new": "0033-customer-connections",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0049-a-domain-routes-only-after-dns-proof-and-a-connection-has-a-trust-level",
+      "new": "0033-customer-connections",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0050-an-end-user-is-a-person-record-with-five-states-erased-by-deleting-its-records",
+      "new": "0034-end-users-and-upstream-signals",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person",
+      "new": "0034-end-users-and-upstream-signals",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0052-customer-pages-are-few-themed-per-client-and-localised-per-request",
+      "new": "0035-customer-pages",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0053-volumetric-abuse-is-stopped-at-the-edge-and-sluis-bounds-what-one-source-can-cost",
+      "new": "0036-volumetric-abuse",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0054-capacity-is-measured-before-it-is-promised",
+      "new": "0037-capacity-is-measured-before-it-is-promised",
+      "renumbered": "2026-11-NN"
+    },
+    {
+      "old": "0055-fapi-2-is-a-profile-a-client-declares",
+      "new": "0038-fapi-2-profile",
+      "renumbered": "2026-11-NN"
     },
     {
       "old": "0002-actors-declare-ports-placement-is-derived",
-      "new": "0002-the-design-model-actors-ports-drivers-and-contracts"
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0003-environments-are-runtime-kinds",
-      "new": "0018-runtimes-installations-and-delivery-order"
+      "new": "0011-runtimes-and-installations",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0003-runtimes-are-runtime-kinds",
-      "new": "0018-runtimes-installations-and-delivery-order"
+      "new": "0011-runtimes-and-installations",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0004-audit-is-four-pieces-joined-by-a-transport-port",
-      "new": "0015-audit-pieces-transport-search-and-front"
+      "new": "0028-audit-pieces",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0005-three-zoom-levels-contracts-and-a-permission-manifest",
-      "new": "0002-the-design-model-actors-ports-drivers-and-contracts"
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0007-core-is-a-few-actors-with-one-responsibility-each",
-      "new": "0003-core-actors-with-one-responsibility-each"
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp",
-      "new": "0004-drivers-listeners-and-boundary-enforcement"
+      "new": "0003-units-transports-and-fusion",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0009-one-installation-per-boundary",
-      "new": "0005-boundaries-and-the-isolation-ladder"
+      "new": "0008-boundaries-and-tenants",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0010-cryptography-uses-p384-by-default-with-named-exceptions",
-      "new": "0012-cryptography-and-authority-keys"
+      "new": "0006-keys-and-sealing",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0011-authority-keys-sign-in-place-and-never-leave-their-store",
-      "new": "0012-cryptography-and-authority-keys"
+      "new": "0006-keys-and-sealing",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0012-machine-identity-follows-spiffe-proofs-are-exchanged-for-short-lived-credentials",
-      "new": "0007-workload-identity-and-host-enrolment"
+      "new": "0022-workload-identity-and-host-enrolment",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0013-ca-and-ssh-ca-are-the-certificate-authorities-and-ssh-uses-only-sluis-own-ca",
-      "new": "0008-certificate-authorities-for-x509-ssh-and-databases"
+      "new": "0023-certificate-authorities",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0014-policy-is-written-in-cedar-and-evaluated-by-a-rust-actor",
-      "new": "0009-policy-is-cedar-in-a-rust-actor"
+      "new": "0007-policy-and-sealed-grants",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0015-configuration-is-defined-once-in-pkl-and-shipped-as-json-schema",
-      "new": "0010-configuration-and-data-pkl-schema-origins-and-sensitivities"
+      "new": "0004-the-data-model",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0016-data-has-an-origin-and-a-sensitivity",
-      "new": "0010-configuration-and-data-pkl-schema-origins-and-sensitivities"
+      "new": "0004-the-data-model",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0017-state-is-one-port-with-compare-and-set-and-clusters-replicate-with-rqlite",
-      "new": "0011-state-is-one-port-with-compare-and-set"
+      "new": "0005-the-store",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0021-the-audit-log-is-sealed-batches-in-a-blob-with-a-lock-mode",
-      "new": "0016-the-audit-log"
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0022-search-is-an-index-fed-from-the-log-and-the-index-is-one-driver-with-provisioning-modes",
-      "new": "0015-audit-pieces-transport-search-and-front"
+      "new": "0028-audit-pieces",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0023-quotas-api-is-idempotent-and-its-data-follows-the-origin-model",
-      "new": "0017-audit-records-the-usage-stream-and-quota"
+      "new": "0030-audit-records-and-the-usage-stream",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0029-one-repository-one-version-one-release-train-and-packaging-follows-the-runtime",
-      "new": "0019-release-train-packaging-and-distribution"
+      "new": "0013-release-train-packaging-and-distribution",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0031-intermediates-and-the-hand-off-to-root-custody",
-      "new": "0013-the-hand-off-to-root-custody-and-the-signing-api"
+      "new": "0024-root-custody-and-the-signing-api",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0033-database-access-uses-short-lived-credentials",
-      "new": "0008-certificate-authorities-for-x509-ssh-and-databases"
+      "new": "0023-certificate-authorities",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0038-the-local-installation-is-docker-compose-with-one-container-per-actor",
-      "new": "0018-runtimes-installations-and-delivery-order"
+      "new": "0011-runtimes-and-installations",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0039-delivery-goes-local-first-then-boards-lambda-and-kubernetes-in-parallel",
-      "new": "0018-runtimes-installations-and-delivery-order"
+      "new": "0011-runtimes-and-installations",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0048-passkeys-step-up-and-device-login",
-      "new": "0006-identity-issuers-audiences-and-sign-in"
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0058-boundaries-are-enforced-in-three-layers-per-port-and-every-state-value-is-encrypted",
-      "new": "0004-drivers-listeners-and-boundary-enforcement"
+      "new": "0003-units-transports-and-fusion",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0059-each-boundary-has-its-own-issuer-and-tokens-carry-one-audience",
-      "new": "0006-identity-issuers-audiences-and-sign-in"
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0060-the-language-follows-the-executable",
-      "new": "0014-the-language-follows-the-executable"
+      "new": "0012-the-language-follows-the-executable",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0061-optional-openid-plans-form-post-is-supported-ciba-comes-later",
-      "new": "0006-identity-issuers-audiences-and-sign-in"
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0062-audit-front-is-a-slim-entry-the-reader-as-its-api-and-a-console-of-its-own",
-      "new": "0015-audit-pieces-transport-search-and-front"
+      "new": "0028-audit-pieces",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0063-the-site-is-static-on-cloudflare-workers-with-a-live-status-api",
-      "new": "0020-the-site-is-static-on-cloudflare-workers"
+      "new": "0014-the-site-is-static-on-cloudflare-workers",
+      "renumbered": "2026-11-01"
     },
     {
       "old": "0064-audit-records-are-ocsf-events-with-one-unmapped-sluis-object-and-usage-is-a-separate-stream",
-      "new": "0017-audit-records-the-usage-stream-and-quota"
+      "new": "0030-audit-records-and-the-usage-stream",
+      "renumbered": "2026-11-01"
     }
   ],
   "anchors": {
-    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0011-state-is-one-port-with-compare-and-set#how-a-per-actor-rqlite-driver-reaches-its-cluster"
+    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#how-a-per-actor-rqlite-driver-reaches-its-cluster"
   }
 }

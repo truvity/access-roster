@@ -58,7 +58,7 @@ ls /usr/libexec/sluis/actors
 audit-indexer  audit-reader  audit-witness  audit-writer  ca  console  entry  exchange  policy  session  signer  ssh-ca
 ```
 
-These are the [core actors](/decisions/0003-core-actors-with-one-responsibility-each/#the-actors) and the audit actors; the install file decides which of them run.
+These are the [core actors](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors) and the audit actors; the install file decides which of them run.
 
 ## 4. Run `sluis doctor`
 
@@ -97,7 +97,7 @@ Then plug the card into the board. From now on only `key-holder` talks to it.
 
 ## 6. Write a minimal config
 
-Configuration has four layers inside declared configuration: defaults, the runtime, your install file, and overrides per environment ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/)). The bare-metal runtime sets the key mode and the audit spool. The keys are those of [install-file schema v1](/reference/install-file/); start from the [local example file](/reference/install-file/#the-example-file-for-local) and change what differs on a board: the environment, the hosts, the keys driver and the upstream.
+Configuration has four layers inside declared configuration: defaults, the runtime, your install file, and overrides per environment ([ADR 0004](/decisions/0004-the-data-model/)). The bare-metal runtime sets the key mode and the audit spool. The keys are those of [install-file schema v1](/reference/install-file/); start from the [local example file](/reference/install-file/#the-example-file-for-local) and change what differs on a board: the environment, the hosts, the keys driver and the upstream.
 
 ```yaml
 # Example: /etc/sluis/install.yaml
@@ -182,7 +182,7 @@ request  /var/lib/sluis/keys/request/prod-x509-intermediate.csr.pem
 proof    /var/lib/sluis/keys/request/prod-x509-intermediate.proof.json
 ```
 
-The keys are generated on the card and never leave it. The request is a PKCS#10 certificate request; the proof file says the key lives in a PIV slot and carries the card's attestation chain, which sluis has already checked against Yubico's attestation root. The files are those of ritueel's [hand-off contract](https://ritueel.id/reference/hand-off-contract/) ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-hand-off)).
+The keys are generated on the card and never leave it. The request is a PKCS#10 certificate request; the proof file says the key lives in a PIV slot and carries the card's attestation chain, which sluis has already checked against Yubico's attestation root. The files are those of ritueel's [hand-off contract](https://ritueel.id/reference/hand-off-contract/) ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
 
 ## 9. Get the intermediate certified
 

@@ -65,7 +65,7 @@ Every record carries the fields the README defines, among them `source` (where t
 
 ### Linking the issues that deliver it
 
-Add `issues:` with the numbers of the issues that deliver the requirement, for example `issues: [915]`; `features` takes only `parity` or `design`. A requirement may have no issue yet. The field is a link, not a milestone: the project status page groups requirements by the `Product milestone` of their issues ([ADR 0020](/decisions/0020-the-site-is-static-on-cloudflare-workers/)), so set the milestone on the issue. `just check-requirements` warns about every planned or partial requirement without `issues`.
+Add `issues:` with the numbers of the issues that deliver the requirement, for example `issues: [915]`; `features` takes only `parity` or `design`. A requirement may have no issue yet. The field is a link, not a milestone: the project status page groups requirements by the `Product milestone` of their issues ([ADR 0014](/decisions/0014-the-site-is-static-on-cloudflare-workers/)), so set the milestone on the issue. `just check-requirements` warns about every planned or partial requirement without `issues`.
 
 ### Marking a requirement done
 

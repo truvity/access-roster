@@ -1,4 +1,4 @@
-// The v2 project board, read once per build (ADR 0020) with src/lib/board.ts. The status
+// The v2 project board, read once per build (ADR 0014) with src/lib/board.ts. The status
 // page groups by the options of its `Product milestone` field, so a new or reordered
 // option changes the page with no code change; the Worker reads the same board live.
 //

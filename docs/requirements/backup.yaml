@@ -205,7 +205,7 @@ requirements:
   - id: REQ-BACKUP-015
     area: BACKUP
     statement: "Roll-forward after a restore MUST cover revocations, approvals, consents and the issued parts of clients."
-    rationale: "These kinds change between backups and must not revert, while a grant is a sealed, short-lived output of policy and not a durable record (ADR 0012)."
+    rationale: "These kinds change between backups and must not revert, while a grant is a sealed, short-lived output of policy and not a durable record (ADR 0006)."
     level: MUST
     source: design-decision
     status: planned
@@ -455,7 +455,7 @@ requirements:
   - id: REQ-BACKUP-033
     area: BACKUP
     statement: "Sealing a secret MUST encrypt an escrow copy of its data key to the archive recipients, so that a restore can open archived sealed secrets when the sealing key is lost."
-    rationale: "A sealed archive is only as recoverable as its sealing key, and with recipients held apart, one of them an offline hardware token (REQ-BACKUP-001, REQ-BACKUP-020), a lost sealing key is a restore and not a root ceremony (ADR 0011)."
+    rationale: "A sealed archive is only as recoverable as its sealing key, and with recipients held apart, one of them an offline hardware token (REQ-BACKUP-001, REQ-BACKUP-020), a lost sealing key is a restore and not a root ceremony (ADR 0005)."
     level: MUST
     source: design-decision
     status: planned
@@ -494,7 +494,7 @@ requirements:
   - id: REQ-BACKUP-037
     area: BACKUP
     statement: "A backup archive MUST NOT hold an escrow copy of any data key except those of sealed secrets."
-    rationale: "An archive must not undo the shred of a company's audit key (ADR 0032)."
+    rationale: "An archive must not undo the shred of a company's audit key (ADR 0048)."
     level: MUST
     source: design-decision
     status: planned
@@ -506,7 +506,7 @@ requirements:
   - id: REQ-BACKUP-038
     area: BACKUP
     statement: "A restore MUST re-apply every shred and every erasure that the audit log records after the archive was taken."
-    rationale: "Restoring an old archive must not bring back erased data (ADR 0032)."
+    rationale: "Restoring an old archive must not bring back erased data (ADR 0048)."
     level: MUST
     source: design-decision
     status: planned
@@ -518,7 +518,7 @@ requirements:
   - id: REQ-BACKUP-039
     area: BACKUP
     statement: "sluis config check MUST refuse a production installation that declares no retention for its backup archives."
-    rationale: "An erasure reaches the copies in archives only when they expire (ADR 0032)."
+    rationale: "An erasure reaches the copies in archives only when they expire (ADR 0048)."
     level: MUST
     source: design-decision
     status: planned
@@ -530,7 +530,7 @@ requirements:
   - id: REQ-BACKUP-040
     area: BACKUP
     statement: "A backup archive MUST be a tar file whose entries are a manifest and one RFC 8785 canonical JSON file for each boundary and record kind."
-    rationale: "A stable form can be compared byte for byte and read without sluis (ADR 0034)."
+    rationale: "A stable form can be compared byte for byte and read without sluis (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -542,7 +542,7 @@ requirements:
   - id: REQ-BACKUP-041
     area: BACKUP
     statement: "A restore onto a driver other than the one that was backed up MUST yield the record counts and digests that the manifest states for every kind."
-    rationale: "The archive is logical, so a restore is also the way to move state between drivers (ADR 0034)."
+    rationale: "The archive is logical, so a restore is also the way to move state between drivers (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -554,7 +554,7 @@ requirements:
   - id: REQ-BACKUP-042
     area: BACKUP
     statement: "A restore MUST refuse a destination that already holds records of the restored kinds unless the operator asks to overwrite."
-    rationale: "A restore into a live installation by mistake would replace newer state (ADR 0034)."
+    rationale: "A restore into a live installation by mistake would replace newer state (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -566,7 +566,7 @@ requirements:
   - id: REQ-BACKUP-043
     area: BACKUP
     statement: "A restore run as a plan MUST write nothing."
-    rationale: "An operator reads the plan before anything changes (ADR 0034)."
+    rationale: "An operator reads the plan before anything changes (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -578,7 +578,7 @@ requirements:
   - id: REQ-BACKUP-044
     area: BACKUP
     statement: "A restore MUST refuse an archive whose manifest names a format version that it does not support, naming that version."
-    rationale: "An archive read with the wrong rules would be restored wrongly (ADR 0034)."
+    rationale: "An archive read with the wrong rules would be restored wrongly (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned

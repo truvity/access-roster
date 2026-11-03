@@ -58,7 +58,7 @@ See [the AWS pattern](/integrations/connecting/#aws-oidc-provider-and-role-trust
 1. Run `sluis integrations render aws --account example-prod`. It writes the IAM OIDC provider and one trust policy per declared role, as a template for your infrastructure-as-code tool, so trust comes from the same file as the clients.
 2. Apply it in the account, and declare the roles as clients with `requires`.
 3. A person runs `sluis login`, then `sluis aws-config`, which writes a profile `<role>@<account>` per role they are granted.
-4. A CI job uses the exchange action with `audiences: aws:<account>:<role>`, where `<account>` is the account's declared name (`example-prod` below), never its number ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#audiences)).
+4. A CI job uses the exchange action with `audiences: aws:<account>:<role>`, where `<account>` is the account's declared name (`example-prod` below), never its number ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)).
 
 ```yaml
 # /etc/sluis/install.yaml (example)

@@ -989,7 +989,7 @@ requirements:
   - id: REQ-ISO-075
     area: ISO
     statement: "A customer boundary MUST have an issuer host and keys of its own, shared with no other boundary."
-    rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0030)."
+    rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0046)."
     level: MUST
     source: design-decision
     status: planned
@@ -1001,7 +1001,7 @@ requirements:
   - id: REQ-ISO-076
     area: ISO
     statement: "sluis MUST refuse a record issued for a tenant that widens a field its template bounds."
-    rationale: "A tenant must not widen its own claims, trust ceiling or redirect rules (ADR 0047)."
+    rationale: "A tenant must not widen its own claims, trust ceiling or redirect rules (ADR 0032)."
     level: MUST
     source: design-decision
     status: planned

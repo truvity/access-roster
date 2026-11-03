@@ -1,4 +1,4 @@
-// The data part of the status page (ADR 0020) as HTML: the milestone cards, the ledger, the
+// The data part of the status page (ADR 0014) as HTML: the milestone cards, the ledger, the
 // checks on `main` and the open work. One renderer for both places it is drawn:
 // - at build time, src/pages/status.astro puts the snapshot of the board into the page;
 // - in the Worker, /api/status/live/ draws the same from the board in KV, and the page's

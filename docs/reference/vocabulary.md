@@ -6,7 +6,7 @@ sidebar:
   order: 8
 ---
 
-A grant is a name, `<scope>:<thing>:<role>`, and every grant a policy, a client or a token can name is declared in one file, the **vocabulary** ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary)). The install file names it with [`policy.vocabulary`](/reference/install-file/#policy). This page fixes the file's shape for the first working version, schema v1. How grants are found, bound and checked at run time is on [Policy](/reference/policy/).
+A grant is a name, `<scope>:<thing>:<role>`, and every grant a policy, a client or a token can name is declared in one file, the **vocabulary** ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). The install file names it with [`policy.vocabulary`](/reference/install-file/#policy). This page fixes the file's shape for the first working version, schema v1. How grants are found, bound and checked at run time is on [Policy](/reference/policy/).
 
 Schema v1 has only the keys that code of the first working version reads ([principle 8](/principles/#8-nothing-without-a-consumer)). Adding a key or a value is compatible; removing or changing one is a new schema version beside v1, as for the install file.
 
@@ -27,7 +27,7 @@ Schema v1 has only the keys that code of the first working version reads ([princ
 
 ### `scopes`
 
-A scope is an environment, a company or `all` ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary)). The file does not say which; a scope named like an environment boundary or a company boundary of the install file means that boundary by convention, which is how the delegation policy of [Policy](/reference/policy/#the-grants-of-one-tenant) reads a company's scope. `all` is an ordinary name with no meaning of its own: `all:x:admin` is a grant like any other, and never implies `dev:x:admin`.
+A scope is an environment, a company or `all` ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). The file does not say which; a scope named like an environment boundary or a company boundary of the install file means that boundary by convention, which is how the delegation policy of [Policy](/reference/policy/#the-grants-of-one-tenant) reads a company's scope. `all` is an ordinary name with no meaning of its own: `all:x:admin` is a grant like any other, and never implies `dev:x:admin`.
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -61,7 +61,7 @@ The two forms mean the same when the long form leaves `scopes` out, and the file
 
 The grants of an installation are the combinations the file lists: for every thing, every role of it, and every scope the role exists in, the grant `<scope>:<thing>:<role>`. `policy` builds one `Grant` entity for each, with its `scope`, `thing`, `role` and `sensitive` ([Policy](/reference/policy/#entity-types)), and finds the held grants of a person by that set. A name that is not among them is not a grant: a policy file, a client's `requires`, a binding or a link that names one is refused at load.
 
-A role ladder is explicit. It never inherits across scopes: the roles a role implies are the ones of the same scope and thing. Implication is transitive, and the held set a token is narrowed from has the whole ladder expanded ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#the-claims-of-a-token)).
+A role ladder is explicit. It never inherits across scopes: the roles a role implies are the ones of the same scope and thing. Implication is transitive, and the held set a token is narrowed from has the whole ladder expanded ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)).
 
 A role that exists in some scopes only is written in the long form:
 
@@ -96,7 +96,7 @@ The local installation's vocabulary is [`tests/installations/local/policy/vocabu
 
 <!-- example: tests/installations/local/policy/vocabulary.yaml -->
 ```yaml
-# The grant vocabulary of the local installation (ADR 0028). Schema v1:
+# The grant vocabulary of the local installation (ADR 0020). Schema v1:
 # https://sluis.id/reference/vocabulary/
 #
 # A grant is <scope>:<thing>:<role>. Every scope has every thing, and every role of a thing exists

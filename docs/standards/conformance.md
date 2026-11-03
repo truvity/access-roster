@@ -25,7 +25,7 @@ The plan names are the OpenID Foundation's; the exact plan identifiers are confi
 | FAPI 2.0 Message Signing OP | Signed requests and responses, on top of the Security Profile | With its first relying party ([#929](https://github.com/truvity/sluis/issues/929)) |
 | CIBA, poll mode | Approval with a passkey on the approving device | Later: after the parity milestone, once a real consumer exists ([#980](https://github.com/truvity/sluis/issues/980)) |
 
-The optional plans follow [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/).
+The optional plans follow [ADR 0017](/decisions/0017-identity-and-sign-in/).
 
 ### The plans sluis does not claim
 
@@ -49,7 +49,7 @@ Conformance is a pipeline, not a ritual, because a run done by hand rots. The pi
 - **The suite** is a self-hosted instance of the open-source OpenID Foundation conformance suite.
 - **Against the installations.** Each plan runs against the [local](/runtimes/installations/#local) installation and the [lambda](/runtimes/installations/#lambda) installation, through the [installation test harness](https://github.com/truvity/sluis/issues/877). The cloud installation runs only in a restricted private runner group with no pull-request trigger ([#891](https://github.com/truvity/sluis/issues/891)).
 - **When.** On pull requests that touch protocol code, against the local installation; nightly and on every release, the full set against the lambda installation. A change that breaks a claimed plan fails CI.
-- **The inputs.** sluis holds no accounts, even in tests. The harness signs people in through a real identity provider, Keycloak in a container on every pull request, and nightly against two free cloud tenants: Google Cloud Identity Free and Microsoft Entra ID Free ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)), and the harness clients and that provider's realm are declared in a reviewed file. Passkeys are tested with a browser's virtual authenticator and a software authenticator library. The product carries no test code: the server under test is the released build, and only configuration differs.
+- **The inputs.** sluis holds no accounts, even in tests. The harness signs people in through a real identity provider, Keycloak in a container on every pull request, and nightly against two free cloud tenants: Google Cloud Identity Free and Microsoft Entra ID Free ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), and the harness clients and that provider's realm are declared in a reviewed file. Passkeys are tested with a browser's virtual authenticator and a software authenticator library. The product carries no test code: the server under test is the released build, and only configuration differs.
 - **The outputs.** Logs and result bundles are archived per release. Result exports hold client secrets, so what is published is the plan, the variant, the version and the counts.
 - **The attended steps.** Some modules end at a page the suite cannot judge, such as an error page the issuer must show. The pipeline either compares the page automatically or hands it to a reviewer; which, is settled in [#931](https://github.com/truvity/sluis/issues/931).
 

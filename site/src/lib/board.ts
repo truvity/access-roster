@@ -1,4 +1,4 @@
-// The v2 project board as plain JSON (ADR 0020): the options of its `Product milestone`
+// The v2 project board as plain JSON (ADR 0014): the options of its `Product milestone`
 // field, in their order, and every sluis issue on the board with its state, labels and
 // milestone. Read with the GitHub GraphQL API and a token given by the caller: the build
 // (src/lib/project.ts) passes its own, the Worker (src/worker/) an installation token of

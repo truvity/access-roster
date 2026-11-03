@@ -61,7 +61,7 @@ jobs:
       - run: devbox run -- site/scripts/build-v1.sh v1-src site/dist
       - run: devbox run -- site/scripts/check-built.sh site/dist
 
-  # The Cloudflare Workers build (ADR 0020): what the deploy job of site.yaml builds, minus
+  # The Cloudflare Workers build (ADR 0014): what the deploy job of site.yaml builds, minus
   # the deploy. The strict build for the Worker, v1 under /v1/, the headers and redirects
   # checks, and `wrangler deploy --dry-run` with a fake KV id. No Cloudflare credential.
   workers:

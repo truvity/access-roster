@@ -1,4 +1,4 @@
-// The Worker of sluis.id (ADR 0020). Static assets are served before any of this runs; the
+// The Worker of sluis.id (ADR 0014). Static assets are served before any of this runs; the
 // Worker runs first for /api/* only, and is a plain module that Wrangler bundles, with no
 // Astro server in it (src/cloudflare-worker-main.mjs names it in the generated configuration).
 //

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sluis.id/data/repo.schema.json",
   "title": "sluis repository facts (/data/repo.json)",
-  "description": "Build-time facts from the sluis repository: decision records, requirements and the coverage figure. Written by site/src/lib/repo.ts; ADR 0020.",
+  "description": "Build-time facts from the sluis repository: decision records, requirements and the coverage figure. Written by site/src/lib/repo.ts; ADR 0014.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "schema", "builtAt", "source", "decisions", "requirements", "coverage"],

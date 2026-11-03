@@ -6,11 +6,11 @@ sidebar:
   order: 7
 ---
 
-sluis keeps records: sessions, directory facts, operator-set configuration, quota balances, the signing ring's metadata, audit batches. Most of the security of the design rests on who may change which of them and who can read them. Three rules carry it: every record kind has an origin and a sensitivity ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/)), every record kind has one writer, and every value is sealed before it reaches a store ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/)). Secrets follow the same rules, behind a port of their own.
+sluis keeps records: sessions, directory facts, operator-set configuration, quota balances, the signing ring's metadata, audit batches. Most of the security of the design rests on who may change which of them and who can read them. Three rules carry it: every record kind has an origin and a sensitivity ([ADR 0004](/decisions/0004-the-data-model/)), every record kind has one writer, and every value is sealed before it reaches a store ([ADR 0005](/decisions/0005-the-store/)). Secrets follow the same rules, behind a port of their own.
 
 ## Origins and sensitivity
 
-Every stored **record kind** declares one **origin**, and every field one **sensitivity**, in the configuration schema. Together they decide where a value lives, who may write it, whether it is in a backup, what a restore does with it, whether it may leave sluis, and what an audit record, a log line or a span may say about it. The backup list, the deny matrix, the telemetry allowlist and the audit redaction are generated from them ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)).
+Every stored **record kind** declares one **origin**, and every field one **sensitivity**, in the configuration schema. Together they decide where a value lives, who may write it, whether it is in a backup, what a restore does with it, whether it may leave sluis, and what an audit record, a log line or a span may say about it. The backup list, the deny matrix, the telemetry allowlist and the audit redaction are generated from them ([ADR 0004](/decisions/0004-the-data-model/#origins)).
 
 To classify a record kind, ask in order; the first "yes" is its origin.
 
@@ -35,7 +35,7 @@ A field may also carry a **free-text** flag, for text a person typed: it never e
 
 ## One writer per record kind
 
-Every **record kind** has exactly one **record writer**: one actor that may create and change it. Other actors may read it if their manifest says so. The port library scopes every call to `<boundary>/<kind>/…` from the actor's own identity, and the store checks the actor's own credential: a file per actor uid on `embedded`, an `execute` user for the owner and `query`-only users for readers on `rqlite`, a `dynamodb:LeadingKeys` condition per role on DynamoDB ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#one-writer-per-kind)). There is no state mediator in between.
+Every **record kind** has exactly one **record writer**: one actor that may create and change it. Other actors may read it if their manifest says so. The port library scopes every call to `<boundary>/<kind>/…` from the actor's own identity, and the store checks the actor's own credential: a file per actor uid on `embedded`, an `execute` user for the owner and `query`-only users for readers on `rqlite`, a `dynamodb:LeadingKeys` condition per role on DynamoDB ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)). There is no state mediator in between.
 
 Examples; the record kinds of the first working version, with their writers, origins and lifetimes, are on [Storage](/reference/storage/#record-kinds-of-the-first-working-version), and the full list is generated from the manifests:
 
@@ -54,7 +54,7 @@ When two processes seem to need to write one record, the record is split instead
 
 ## Every value is encrypted
 
-**Every state value is encrypted in the port library**, before it reaches any driver, whatever its sensitivity. A store, its replicas and its backups hold ciphertext and record keys only ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#every-value-is-encrypted)).
+**Every state value is encrypted in the port library**, before it reaches any driver, whatever its sensitivity. A store, its replicas and its backups hold ciphertext and record keys only ([ADR 0005](/decisions/0005-the-store/#every-value-is-encrypted)).
 
 - **AES-256-GCM, with a data key per (boundary, record kind).** It is wrapped under the boundary's sealing key through the `keys` port, and a data key is rotated before its AES-GCM usage limit.
 - **The sealing key is one per environment boundary**: on AWS a symmetric KMS key with an encryption context per use, on a card the P-384 ECDH key in slot `9d` ([Keys](/concepts/keys/#the-card-slot-map)). Tenants have no key of their own, only data keys wrapped under it; grants and the session cookie key are wrapped under it with their own purpose.
@@ -78,17 +78,17 @@ A record past its lifetime reads as absent, whatever the engine did with it. The
 
 ### The atomic batch
 
-A **write batch** applies several writes together or none of them. The audit writer uses it to register the sealed batches of its audit log and its usage log, record the ids it de-duplicated and move its cursor, so a crash cannot leave one without the others and the two logs never disagree ([ADR 0016](/decisions/0016-the-audit-log/#sealing)). The next number of the sequence is allocated by a compare-and-set inside the same batch.
+A **write batch** applies several writes together or none of them. The audit writer uses it to register the sealed batches of its audit log and its usage log, record the ids it de-duplicated and move its cursor, so a crash cannot leave one without the others and the two logs never disagree ([ADR 0029](/decisions/0029-the-audit-log/#sealing)). The next number of the sequence is allocated by a compare-and-set inside the same batch.
 
 ### Further operations
 
 :::note[Proposed]
-Delete, listing by prefix and a feed of changes are further state operations, planned for v1 parity in [#1009](https://github.com/truvity/sluis/issues/1009). A **conditional adjust** is a quota matter: it changes a number by a delta and refuses if the result would cross a floor, as one operation on the store. It is added only if the quota load test shows that compare-and-set on a hot counter contends ([ADR 0045](/decisions/0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/#the-load-test), [#1145](https://github.com/truvity/sluis/issues/1145)); until then quota uses compare-and-set.
+Delete, listing by prefix and a feed of changes are further state operations, planned for v1 parity in [#1009](https://github.com/truvity/sluis/issues/1009). A **conditional adjust** is a quota matter: it changes a number by a delta and refuses if the result would cross a floor, as one operation on the store. It is added only if the quota load test shows that compare-and-set on a hot counter contends ([ADR 0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/#the-load-test), [#1145](https://github.com/truvity/sluis/issues/1145)); until then quota uses compare-and-set.
 :::
 
 ### Leases and fencing tokens
 
-A lease is **named**: one for each thing that needs a single owner, and many can be held at once by different holders. Acquiring a lease returns a **fencing token**, a number that grows each time the lease changes hands. A holder passes its token with every write it makes under the lease, and the store refuses a token lower than one it has seen, so a holder that was paused, lost its lease and woke up believing it still held it cannot write over the new holder ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#leases)).
+A lease is **named**: one for each thing that needs a single owner, and many can be held at once by different holders. Acquiring a lease returns a **fencing token**, a number that grows each time the lease changes hands. A holder passes its token with every write it makes under the lease, and the store refuses a token lower than one it has seen, so a holder that was paused, lost its lease and woke up believing it still held it cannot write over the new holder ([ADR 0005](/decisions/0005-the-store/#leases)).
 
 - **Leases live on the state store**, built on compare-and-set with a fencing token, on every state driver, independent of the Raft leader. A named lease `leader` stays available. On a single node a local lock is enough.
 - **Where the target store can fence, the fence is in that store.** A Postgres index write checks the token in the same transaction, and audit batches are created only if absent, so a log cannot fork; with one log per node, the boards' audit writers need no lease.
@@ -108,7 +108,7 @@ sluis holds secrets because it has to: a GitHub App key that the vendor issued t
 
 ### Where a secret comes from
 
-A secret's origin decides who wrote it and whether it is backed up ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)):
+A secret's origin decides who wrote it and whether it is backed up ([ADR 0004](/decisions/0004-the-data-model/#origins)):
 
 | Origin | Example | Lives in | In a backup |
 |---|---|---|---|
@@ -119,7 +119,7 @@ A secret's origin decides who wrote it and whether it is backed up ([ADR 0010](/
 
 ### Sealed state
 
-A **`sealed-state`** driver is a `secrets` driver that keeps its ciphertext in `state`. Sealed state is allowed on every runtime ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#sealed-secrets)) and is the one `secrets` store in 2.0 ([ADR 0035](/decisions/0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external/#one-driver-sealed-state)).
+A **`sealed-state`** driver is a `secrets` driver that keeps its ciphertext in `state`. Sealed state is allowed on every runtime ([ADR 0005](/decisions/0005-the-store/#sealed-secrets)) and is the one `secrets` store in 2.0 ([ADR 0009](/decisions/0009-export/#one-driver-sealed-state)).
 
 - **A sealed value uses the same envelope as every value**, with `purpose=secret` in the encryption context and the additional authenticated data, so it cannot be read as an ordinary value or the other way round.
 - **Each version of a secret is one immutable item**, and the record that names the current version changes by compare-and-set, so a rotated secret can overlap with its predecessor.
@@ -130,7 +130,7 @@ Nobody outside sluis can read sealed state, so an exported value goes out throug
 
 ### The export port
 
-Exports are **typed and versioned**: a document has a kind, a schema and a version, and a breaking change is a new version written beside the old one for a deprecation window. Whether a value may leave sluis is a property of its kind: a kind marked external is published through `export` ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#backup-and-restore-by-origin)).
+Exports are **typed and versioned**: a document has a kind, a schema and a version, and a breaking change is a new version written beside the old one for a deprecation window. Whether a value may leave sluis is a property of its kind: a kind marked external is published through `export` ([ADR 0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin)).
 
 | Class | Example | Channel |
 |---|---|---|
@@ -143,9 +143,9 @@ Exports are **typed and versioned**: a document has a kind, a schema and a versi
 
 ### Drops are age-encrypted to the consumer
 
-A **file drop** (a file in a directory that a node-local consumer reads) and a **bucket drop** (an object in a bucket) are **age-encrypted to the consumer's own recipient**, a named exception to sluis's algorithm rules ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#named-exceptions)). The consumer's private key can sit on a hardware token (an `age-plugin-yubikey` recipient); sluis holds only the public recipient. A drop is therefore safe in a bucket others can read, and a stolen copy of sluis's state does not open it.
+A **file drop** (a file in a directory that a node-local consumer reads) and a **bucket drop** (an object in a bucket) are **age-encrypted to the consumer's own recipient**, a named exception to sluis's algorithm rules ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). The consumer's private key can sit on a hardware token (an `age-plugin-yubikey` recipient); sluis holds only the public recipient. A drop is therefore safe in a bucket others can read, and a stolen copy of sluis's state does not open it.
 
-The operations of the two ports, the writable **stores** against read-only **sources**, the driver flags, and the rule that `sealed-state` is the one `secrets` store and that only a kind marked external is exported are [ADR 0035](/decisions/0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external/). A drop driver is built when an issue names its consumer; none has one today.
+The operations of the two ports, the writable **stores** against read-only **sources**, the driver flags, and the rule that `sealed-state` is the one `secrets` store and that only a kind marked external is exported are [ADR 0009](/decisions/0009-export/). A drop driver is built when an issue names its consumer; none has one today.
 
 ## What is backed up
 

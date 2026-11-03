@@ -8,10 +8,10 @@
 //     actor and every core, quota and audit actor is drawn; for a drawn actor the executable, the
 //     ports and the calls live in the explorer only, and an actor that is not drawn states them in
 //     the registry; the node agent, key-holder and the integration kinds agree;
-//   - the ADRs: each ADR an actor lists names it; ADR 0003's table of core actors equals the
-//     registry's core group and ADR 0003 names every actor; every instance name `<name>@<...>` in
+//   - the ADRs: each ADR an actor lists names it; ADR 0041's table of core actors equals the
+//     registry's core group and ADR 0041 names every actor; every instance name `<name>@<...>` in
 //     an ADR is an actor, an example integration instance or a declared non-actor; the language
-//     and rule of each actor agree with the per-actor table of ADR 0014;
+//     and rule of each actor agree with the per-actor table of ADR 0012;
 //   - the requirement records: every name in a record's optional `actors:` is an actor, and the
 //     record's area is one of that actor's requirement areas;
 //   - the generated tables on docs/reference/actors.md are current (`--write` rewrites them).
@@ -80,7 +80,7 @@ for (const [i, a] of actors.entries()) {
   if (!GROUPS.includes(a.group)) error(`${at}: group must be one of ${GROUPS.join(', ')}`);
   if (typeof a.purpose !== 'string' || !/^[A-Z"`].{10,300}\.$/.test(a.purpose)) error(`${at}: purpose must be one sentence ending in a period`);
   if (!LANGUAGES.includes(a.language)) error(`${at}: language must be one of ${LANGUAGES.join(', ')}`);
-  if (typeof a.language_rule !== 'string' || !/^R(?:[1-9]|1[01])$/.test(a.language_rule)) error(`${at}: language_rule must be R1 to R11 (ADR 0014)`);
+  if (typeof a.language_rule !== 'string' || !/^R(?:[1-9]|1[01])$/.test(a.language_rule)) error(`${at}: language_rule must be R1 to R11 (ADR 0012)`);
   if ('aka' in a && !isStrList(a.aka)) error(`${at}: aka must be a list of strings`);
   if (a.group === 'integration' && typeof a.contract !== 'string') error(`${at}: an integration kind names its contract`);
   if (a.group !== 'integration' && 'contract' in a) error(`${at}: only an integration kind has a contract`);
@@ -166,16 +166,16 @@ for (const a of actors) {
     else if (!names(adr.get(n).text, a)) error(`${REGISTRY}: ${a.name}: ADR ${n} does not name the actor`);
   }
 }
-const a0003 = adr.get('0003')?.text;
-if (!a0003) error('docs/decisions/: ADR 0003, the actors, is missing');
+const a0003 = adr.get('0041')?.text;
+if (!a0003) error('docs/decisions/: ADR 0041, the actors, is missing');
 else {
   const section = /### The actors\n([\s\S]*?)\n### /.exec(a0003)?.[1] ?? '';
   const core = [...section.matchAll(/^\s*\| `([a-z][a-z0-9-]*)` \|/gm)].map((m) => m[1]);
-  if (!core.length) error('ADR 0003: no table of core actors under "### The actors"');
-  for (const n of core) if (byName.get(n)?.group !== 'core') error(`ADR 0003 names ${n} as a core actor; the registry ${byName.has(n) ? `has it in group ${byName.get(n).group}` : 'lacks it'}`);
+  if (!core.length) error('ADR 0041: no table of core actors under "### The actors"');
+  for (const n of core) if (byName.get(n)?.group !== 'core') error(`ADR 0041 names ${n} as a core actor; the registry ${byName.has(n) ? `has it in group ${byName.get(n).group}` : 'lacks it'}`);
   for (const a of actors) {
-    if (a.group === 'core' && !core.includes(a.name)) error(`${REGISTRY}: ${a.name} is a core actor that the ADR 0003 table does not list`);
-    if (!names(a0003, a)) error(`${REGISTRY}: ${a.name}: ADR 0003 does not name it`);
+    if (a.group === 'core' && !core.includes(a.name)) error(`${REGISTRY}: ${a.name} is a core actor that the ADR 0041 table does not list`);
+    if (!names(a0003, a)) error(`${REGISTRY}: ${a.name}: ADR 0041 does not name it`);
   }
 }
 for (const [n, { text }] of adr) {
@@ -187,20 +187,20 @@ for (const [n, { text }] of adr) {
     }
   }
 }
-const a0014 = adr.get('0014')?.text;
-if (!a0014) error('docs/decisions/: ADR 0014, the languages, is missing');
+const a0014 = adr.get('0012')?.text;
+if (!a0014) error('docs/decisions/: ADR 0012, the languages, is missing');
 else {
   const table = /### Per-actor table\n([\s\S]*?)\n\n(?!\|)/.exec(a0014)?.[1] ?? '';
   const rows = table.split('\n').filter((l) => /^\|/.test(l) && !/^\|[-| ]+\|$/.test(l)).slice(1)
     .map((l) => l.slice(1, -1).split(' | ').map((c) => c.trim()));
-  if (!rows.length) error('ADR 0014: no rows under "### Per-actor table"');
+  if (!rows.length) error('ADR 0012: no rows under "### Per-actor table"');
   for (const a of actors) {
     const key = a.language_row ?? `\`${a.name}\``;
     const hit = rows.filter((r) => (a.language_row ? r[0] === key : r[0].includes(key)));
-    if (hit.length !== 1) { error(`ADR 0014: ${hit.length} rows of the per-actor table name ${key}, expected 1`); continue; }
+    if (hit.length !== 1) { error(`ADR 0012: ${hit.length} rows of the per-actor table name ${key}, expected 1`); continue; }
     const [, lang = '', rule = ''] = hit[0];
-    if (!new RegExp(`\\b${a.language}\\b`).test(lang)) error(`${REGISTRY}: ${a.name}: language ${a.language}, but ADR 0014 says "${lang}"`);
-    if (!new RegExp(`\\b${a.language_rule}\\b`).test(rule)) error(`${REGISTRY}: ${a.name}: rule ${a.language_rule}, but ADR 0014 gives "${rule}"`);
+    if (!new RegExp(`\\b${a.language}\\b`).test(lang)) error(`${REGISTRY}: ${a.name}: language ${a.language}, but ADR 0012 says "${lang}"`);
+    if (!new RegExp(`\\b${a.language_rule}\\b`).test(rule)) error(`${REGISTRY}: ${a.name}: rule ${a.language_rule}, but ADR 0012 gives "${rule}"`);
   }
 }
 
@@ -254,7 +254,7 @@ function render() {
     const ports = exUses(a);
     const drivers = onLocal(a) ? ports.filter((p) => local[p]).map((p) => `${p}: ${code(local[p])}`) : [];
     out.push('', `### ${code(a.name)}`, '', a.purpose, '');
-    out.push(`- **Language:** ${a.language}, rule ${a.language_rule} of ${adrLink('0014')}.${a.language_note ? ` ${a.language_note}` : ''}`);
+    out.push(`- **Language:** ${a.language}, rule ${a.language_rule} of ${adrLink('0012')}.${a.language_note ? ` ${a.language_note}` : ''}`);
     out.push(`- **Placement:** ${scopeText[a.placement.scope]}; ${a.placement.instances === 'exactly-1' ? 'exactly one instance' : 'any number of instances'}; on ${a.placement.runtimes.join(', ')}.${a.placement.note ? ` ${a.placement.note}` : ''}`);
     out.push(`- **Keys:** ${a.keys.length ? a.keys.map(keyText).join('. ') : 'none'}.`);
     out.push(`- **Ports:** ${list(ports)}.${drivers.length ? ` On local: ${drivers.join(', ')}.` : ''}`);

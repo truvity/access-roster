@@ -29,7 +29,7 @@ transport_kinds:
     durable: "the record is appended to the node's local spool and fsync'd"
     wait: "In the local spool on the node: segment files on disk (illustrative). The size cap and what happens at it are an open point (below)."
     recv: "The writer reads the spool in append order and acknowledges what it has sealed."
-    caller: "The spool keeps a directory per producer uid, so the driver knows which actor appended (ADR 0004)."
+    caller: "The spool keeps a directory per producer uid, so the driver knows which actor appended (ADR 0003)."
     drain: "The writer reads the spool in append order, rolls records into batches, writes them to the log, has each checkpoint signed and registers the batch. Dedupe by record id absorbs anything delivered twice."
     bound: "Free disk on the node and the spool's size cap (an open point)"
     instance: "shared: one spool, the driver checks every caller's peer credentials"
@@ -47,7 +47,7 @@ transport_kinds:
     durable: "SQS accepted the message in the queue, up to its retention; failed deliveries move to a dead-letter queue"
     wait: "In the SQS queue, up to its retention (SQS allows up to 14 days). Messages that keep failing move to a dead-letter queue after the maximum receive count."
     recv: "The Lambda event source mapping hands batches of messages to the writer function. The function returns the messages it could not seal."
-    caller: "Each actor has its own aws driver (a Lambda extension) and sends under its own IAM role; the queue policy names the sender roles (ADR 0004)."
+    caller: "Each actor has its own aws driver (a Lambda extension) and sends under its own IAM role; the queue policy names the sender roles (ADR 0003)."
     drain: "The event source mapping delivers the backlog in batches as fast as the function and its blob and state limits allow. A batch that fails returns its messages; dedupe by record id absorbs repeats. Messages that fail repeatedly go to the dead-letter queue."
     bound: "Queue retention (up to 14 days), function concurrency, blob and state throughput"
     instance: "per-actor: each producer sends under its own IAM role"
@@ -62,7 +62,7 @@ transport_kinds:
     durable: "the stream accepted the message; it is replicated when the NATS service has three nodes"
     wait: "In the JetStream stream, up to its retention limits."
     recv: "The writer pulls from a durable consumer and acknowledges what it has sealed."
-    caller: "Each producer connects with its own credential, under NATS accounts and permission templates (ADR 0004)."
+    caller: "Each producer connects with its own credential, under NATS accounts and permission templates (ADR 0003)."
     drain: "The writer pulls the backlog from its consumer in batches. Dedupe by record id absorbs redelivery."
     bound: "Stream retention and storage on the NATS service"
     instance: "per-actor: each producer connects under its own credential"
@@ -102,15 +102,15 @@ shapes:
     blob: "Cloudflare R2, through the s3-compatible driver with credentials from the cloudflare cloud driver"
     lock: "lock mode removable (an R2 account administrator can remove the lock); the peer witnesses protect the history, which is what lets a production log run here"
     cluster: "three nodes; each node has its own writer, spool and log; the audit pieces run on the same nodes and share driver instances"
-    index_placement: "rqlite, a replicated SQLite (ADR 0015), so the reader can run on any node; sqlite on the indexer's node is the fallback"
+    index_placement: "rqlite, a replicated SQLite (ADR 0028), so the reader can run on any node; sqlite on the indexer's node is the fallback"
   lambda:
     log_key: "one KMS key, used only by the writer function's IAM role through its key policy. One log; the function's role is the isolation"
     witness: "none by default (optional); an external witness is possible. There is no peer"
     blob: "an S3 bucket"
     lock: "lock mode compliance (Object Lock)"
     cluster: "managed by the platform; the writer runs with a reserved concurrency of 1 on a standard SQS queue, and correctness comes from create-if-absent on the bucket"
-    index_placement: "postgres on Aurora by default (ADR 0015), reached through RDS Proxy with IAM authentication; the indexer and the reader run in the VPC"
-    note: "The default index here is postgres on Aurora (ADR 0015), reached through RDS Proxy with IAM authentication and one database role per actor kind. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log. The search index is a rebuildable cache; the log in the blob is the record."
+    index_placement: "postgres on Aurora by default (ADR 0028), reached through RDS Proxy with IAM authentication; the indexer and the reader run in the VPC"
+    note: "The default index here is postgres on Aurora (ADR 0028), reached through RDS Proxy with IAM authentication and one database role per actor kind. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log. The search index is a rebuildable cache; the log in the blob is the record."
 
 # ---------------------------------------------------------------------------
 # The map
@@ -172,7 +172,7 @@ nodes:
     does: "Rate limits and caps. A separate piece: the quota engine, with its quota state (the state port with compare-and-set). It can be combined with sluis in one installation, where it shares driver instances. Every limit decision is audited, so it is a producer like every other actor."
     rows:
       - { k: Placement, v: "Derived from the port and driver rules; a separate piece, combinable with sluis." }
-      - { k: Mode, v: "Metering by default; enforcement per policy rule, strict in 2.0 (never over the limit). Enforcement is switched on in production after the load test of the mint path (ADR 0017)." }
+      - { k: Mode, v: "Metering by default; enforcement per policy rule, strict in 2.0 (never over the limit). Enforcement is switched on in production after the load test of the mint path (ADR 0030)." }
     holds: Put on the transport; its own quota state
     never: Blob, index or key access for audit
   recovery:
@@ -400,7 +400,7 @@ flows:
         edges: ["indexer>statedrv", "indexer>blobdrv", "indexer>index", "statedrv>statestore", "blobdrv>archive"]
         text: The indexer sees the new checkpoint, checks its signature and its consistency with the previous one, fetches the entry bundles it covers and applies them to the search index, then advances its cursor. It indexes only what a signed checkpoint covers.
         variants:
-          - { shapes: [boards], text: "The index is rqlite (ADR 0015), replicated across the nodes, so the reader can run on any node. The reader merges the three logs by time." }
+          - { shapes: [boards], text: "The index is rqlite (ADR 0028), replicated across the nodes, so the reader can run on any node. The reader merges the three logs by time." }
           - { shapes: [lambda], text: "The index here is postgres on Aurora, reached through RDS Proxy." }
   - id: search
     title: An auditor searches
@@ -545,7 +545,7 @@ promises:
     text: The writer asks the keys driver to sign each checkpoint. The driver's access list (or the key policy on AWS) lets only the writer use the log key, and the writer cannot read it. The witness holds nothing the writer holds, and cannot write to the log.
     status: decided
   - title: A witness is optional, and the risk of none is written down
-    text: sluis config check warns when an installation has no witness. With no witness, a compromised writer can get a rewritten checkpoint signed; a compliance lock still prevents overwriting objects, but not a split view. A production log needs a compliance lock or a weaker lock plus a peer or external witness, and sluis config check refuses anything else there (ADR 0016).
+    text: sluis config check warns when an installation has no witness. With no witness, a compromised writer can get a rewritten checkpoint signed; a compliance lock still prevents overwriting objects, but not a split view. A production log needs a compliance lock or a weaker lock plus a peer or external witness, and sluis config check refuses anything else there (ADR 0029).
     status: decided
   - title: The search index is a projection, never the evidence
     text: Losing a search index costs search time and no evidence. The log in the blob is the record, and verification never trusts the index or the state.
@@ -590,7 +590,7 @@ chain:
       text: An auditor trusts a log key because they pinned it, out of band. A published key is distribution only; a verifier ignores a key it has not pinned.
       status: decided
     - title: Seal granularity
-      text: A batch is sealed at 256 records or 5 seconds after its first record, whichever comes first, and an empty batch is never sealed, so an idle log signs nothing. Each batch ends with a seal entry that records its count, the writer instance and the observed clock offset (ADR 0016).
+      text: A batch is sealed at 256 records or 5 seconds after its first record, whichever comes first, and an empty batch is never sealed, so an idle log signs nothing. Each batch ends with a seal entry that records its count, the writer instance and the observed clock offset (ADR 0029).
       status: decided
 
 lag:
@@ -603,7 +603,7 @@ lag:
 
 index_notes:
   - title: One index per boundary
-    text: The index is fed from the logs by signed checkpoint, one cursor per log, and has a company column that every query is filtered on. On boards it is a replicated rqlite index (ADR 0015), so the reader can run on any node; with sqlite the reader runs on the indexer's node. Purges are entries of the log like any other.
+    text: The index is fed from the logs by signed checkpoint, one cursor per log, and has a company column that every query is filtered on. On boards it is a replicated rqlite index (ADR 0028), so the reader can run on any node; with sqlite the reader runs on the indexer's node. Purges are entries of the log like any other.
     status: decided
   - title: Rebuilding
     text: The search index can be thrown away. A rebuild builds a new generation from the log beside the serving one, then switches the reader to it.
@@ -613,12 +613,12 @@ index_notes:
     status: decided
 
 compare:
-  - { topic: "Record, action table, profiles", v1: "one record format (a Protobuf core with JSON Schema slots), a catalogue per application, profile copies per purpose", v2: "an OCSF event per record with the sluis facts in one unmapped.sluis object, a table of actions in code with a JSON Schema generated from it, and a separate usage log in CloudEvents for quota and billing (ADR 0017); framework profiles come with v1 parity (ADR 0016)" }
+  - { topic: "Record, action table, profiles", v1: "one record format (a Protobuf core with JSON Schema slots), a catalogue per application, profile copies per purpose", v2: "an OCSF event per record with the sluis facts in one unmapped.sluis object, a table of actions in code with a JSON Schema generated from it, and a separate usage log in CloudEvents for quota and billing (ADR 0030); framework profiles come with v1 parity (ADR 0029)" }
   - { topic: "How a record is accepted", v1: "emit library with block or async delivery to a receiver, JetStream or SQS", v2: "transport port (direct, or queue: spool, SQS, NATS JetStream); the request returns on transport durability" }
   - { topic: "Who runs it", v1: "pods or Lambda functions, a chart or a Pulumi library; a CronJob for the notary", v2: "actors started by the platform; drivers as services, no exec" }
   - { topic: "Coordination between parts", v1: "none: the bucket layout is the contract and each part lists the bucket", v2: "each log's signed checkpoints; the indexer follows them from its cursor" }
-  - { topic: Index, v1: "PostgreSQL, fed by observe, which lists the bucket from a cursor after a settle window", v2: "sqlite on local, rqlite on boards, postgres on Aurora on lambda and on cnpg on Kubernetes (ADR 0015), fed by checkpoint from the indexer's cursor" }
-  - { topic: Seals, v1: "one per profile, tenant and hour, built by listing the bucket; empty hours sealed", v2: "a C2SP checkpoint per batch, at 256 records or 5 seconds; an empty batch is never sealed (ADR 0016)" }
+  - { topic: Index, v1: "PostgreSQL, fed by observe, which lists the bucket from a cursor after a settle window", v2: "sqlite on local, rqlite on boards, postgres on Aurora on lambda and on cnpg on Kubernetes (ADR 0028), fed by checkpoint from the indexer's cursor" }
+  - { topic: Seals, v1: "one per profile, tenant and hour, built by listing the bucket; empty hours sealed", v2: "a C2SP checkpoint per batch, at 256 records or 5 seconds; an empty batch is never sealed (ADR 0029)" }
   - { topic: "Signing key", v1: "a notary with KMS, a transit key or a key file; a separate service account from the writer", v2: "the writer asks the keys driver to sign each checkpoint with the log key, and only the writer may use it; a witness cosigns, and is optional" }
   - { topic: Recovery, v1: "not part of audit", v2: "a local spool in every installation; never blocks" }
   - { topic: Blob, v1: "S3 with or without object lock, per install", v2: "the blob port with a lock mode (none, removable, compliance) and create-if-absent writes" }

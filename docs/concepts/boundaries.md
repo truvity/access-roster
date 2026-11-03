@@ -6,7 +6,7 @@ sidebar:
   order: 3
 ---
 
-A **boundary** is the unit of isolation in sluis: what one compromised or misconfigured part cannot cross. The record is [ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/); the issuers and tokens are [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/).
+A **boundary** is the unit of isolation in sluis: what one compromised or misconfigured part cannot cross. The record is [ADR 0008](/decisions/0008-boundaries-and-tenants/); the issuers and tokens are [ADR 0017](/decisions/0017-identity-and-sign-in/).
 
 ## Kinds of boundary
 
@@ -30,11 +30,11 @@ Each boundary declares a level. Each level adds to the one before it.
 | **L3 store** | Its own state store (an rqlite cluster, a DynamoDB table), bucket and queue |
 | **L4 runtime** | Its own Kubernetes cluster, cloud account or hosts, and a separate install file joined by declared trust |
 
-A **tenant**, such as an audit, directory or quota tenant, or a customer organisation, is L0: a record kept apart by code only, with no key of its own, and never a substitute for a boundary. Every environment on a cloud runtime runs at least at L2; companies run at **L2 plus sealed data**, in the front installation. A driver whose backend cannot check its callers is allowed at L3 and above only ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#three-layers-per-port)). An actor instance carries its boundary in its name, `<actor>@<boundary>` ([Naming](/concepts/actors/#naming)).
+A **tenant**, such as an audit, directory or quota tenant, or a customer organisation, is L0: a record kept apart by code only, with no key of its own, and never a substitute for a boundary. Every environment on a cloud runtime runs at least at L2; companies run at **L2 plus sealed data**, in the front installation. A driver whose backend cannot check its callers is allowed at L3 and above only ([ADR 0003](/decisions/0003-units-transports-and-fusion/#three-layers-per-port)). An actor instance carries its boundary in its name, `<actor>@<boundary>` ([Naming](/concepts/actors/#naming)).
 
 ## Tenants and scale
 
-Keys and isolation belong to a boundary and to nothing smaller ([ADR 0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/)). An installation is designed for about **5 to 10 customer boundaries** and **thousands of tenants** in them. The install file's `uid_block` runs from 0 to 54, so one file declares at most 55 boundaries of all kinds, which is enough. A tenant that needs keys, an issuer or a failure domain of its own is a customer boundary; a cohort that must be separate moves to an installation of its own. A billing account belongs to one installation.
+Keys and isolation belong to a boundary and to nothing smaller ([ADR 0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/)). An installation is designed for about **5 to 10 customer boundaries** and **thousands of tenants** in them. The install file's `uid_block` runs from 0 to 54, so one file declares at most 55 boundaries of all kinds, which is enough. A tenant that needs keys, an issuer or a failure domain of its own is a customer boundary; a cohort that must be separate moves to an installation of its own. A billing account belongs to one installation.
 
 Installations run in one region of one cloud provider for now, chosen per installation in its install file, and a later residency region is another installation that shares nothing.
 
@@ -75,7 +75,7 @@ A call from one boundary to another is **mutual TLS with SPIFFE IDs** ([Identity
 A company leaves, or moves to an installation of its own, by a runbook that exists from the first day:
 
 1. disconnect the company's boundary: its upstream, directory, integrations and minters are its own processes and records;
-2. export its slice of the audit trail, then crypto-shred it by deleting its audit tenant's data key ([ADR 0016](/decisions/0016-the-audit-log/)); legal holds are kept outside sluis, so check them first;
+2. export its slice of the audit trail, then crypto-shred it by deleting its audit tenant's data key ([ADR 0029](/decisions/0029-the-audit-log/)); legal holds are kept outside sluis, so check them first;
 3. re-issue its workloads under the new installation's CA;
 4. remove the person links of its subjects.
 
@@ -92,7 +92,7 @@ Each environment has its own issuer, and so does a customer boundary. Companies 
 - **A boundary has no sign-in of its own.** Its slim `entry@<boundary>` takes the group issuer as its upstream; a passkey tap is asked for only where that boundary's policy wants fresh multi-factor authentication.
 - **The CLI signs in once.** `sluis login` signs in at the front, and the CLI then exchanges tokens silently at each boundary's own token endpoint. The front never sees a boundary's tokens.
 - **One passkey for every issuer.** The boundary hosts are siblings of the group host, so the passkey's relying-party id is the registrable parent (`example.com`), and every verifier checks a strict allow-list of origins: the sluis hosts only.
-- **The audit front has a host of its own**, `sluis-audit.<env>.example.com` ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#the-audit-front)).
+- **The audit front has a host of its own**, `sluis-audit.<env>.example.com` ([ADR 0028](/decisions/0028-audit-pieces/#the-audit-front)).
 - **Step-up is per client and per environment**, in `policy@<boundary>`: a request that needs more answers `insufficient_user_authentication` with `acr_values` ([RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470)).
 
 ### Token claims
@@ -103,11 +103,11 @@ Each environment has its own issuer, and so does a customer boundary. Companies 
 | `aud` | **Exactly one registered `client_id`**, never a URL. An RFC 8707 `resource=` selects a registered client and is never copied into `aud`. Between actors of two boundaries, `aud` is the target's SPIFFE ID |
 | `sub` | An opaque random id, the same at every issuer, never an e-mail address ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
 | `acr`, `amr`, `auth_time` | How and when the person signed in |
-| `cnf.jkt` | Only when the audience declares DPoP, which comes later ([ADR 0055](/decisions/0055-fapi-2-is-a-profile-a-client-declares/)): the key the token is bound to. A bearer token has no `cnf` |
+| `cnf.jkt` | Only when the audience declares DPoP, which comes later ([ADR 0038](/decisions/0038-fapi-2-profile/)): the key the token is bound to. A bearer token has no `cnf` |
 | grants | Only that boundary's grants |
 | `org` | The person's company |
 
-Client ids are unique per issuer, readable, and the same in every environment (`kubernetes`, `argocd`); an AWS role is a client of its own, `aws:<account>:<role>` with the account's declared name, and its account's OIDC provider lists it, never `sts.amazonaws.com` ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#audiences)). Every relying party pins `iss` and `aud`.
+Client ids are unique per issuer, readable, and the same in every environment (`kubernetes`, `argocd`); an AWS role is a client of its own, `aws:<account>:<role>` with the account's declared name, and its account's OIDC provider lists it, never `sts.amazonaws.com` ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)). Every relying party pins `iss` and `aud`.
 
 ## The reference federation
 
@@ -116,7 +116,7 @@ The reference choices for a federation of several companies and environments, be
 | Topic | Choice |
 |---|---|
 | Subjects | A subject per directory account, plus a declared link between the subjects of one person. Grants are not inherited across the link. An SSH certificate carries the person key |
-| Keys | Keys and intermediates per environment, certified through the hand-off to ritueel ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-hand-off)) |
+| Keys | Keys and intermediates per environment, certified through the hand-off to ritueel ([ADR 0013](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)) |
 | State | One engine with a prefix per boundary, replaced by a store of its own at L3 and above |
 | Policy | One source, compiled per environment; the environment's sealing key seals its grants. **Company ceilings** are Cedar `forbid` guards: no grant on another company's scope unless declared cross-company |
 | Audit | A log per environment, with its own front. Each company reads it as a tenant with its own data key |

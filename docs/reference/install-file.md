@@ -6,9 +6,9 @@ sidebar:
   order: 3
 ---
 
-The install file is the installation: one file says which runtime, boundaries, drivers, upstreams, clients and policy one deployment has ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#runtime-kinds)). This page fixes its shape for the first working version, schema v1. How configuration works in general (layers, origins, live reload, `explain`) is on [Configuration](/concepts/configuration/); the rules are [ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/).
+The install file is the installation: one file says which runtime, boundaries, drivers, upstreams, clients and policy one deployment has ([ADR 0011](/decisions/0011-runtimes-and-installations/#runtime-kinds)). This page fixes its shape for the first working version, schema v1. How configuration works in general (layers, origins, live reload, `explain`) is on [Configuration](/concepts/configuration/); the rules are [ADR 0004](/decisions/0004-the-data-model/).
 
-Schema v1 has only the keys that code of the first working version reads ([principle 8](/principles/#8-nothing-without-a-consumer)). Keys for the boards, Lambda and Kubernetes installations, integrations, quota and the rest are added at the parity milestone, each by the pull request that reads it. Adding a key or a value is compatible; removing or changing one is a new schema version beside v1 ([ADR 0019](/decisions/0019-release-train-packaging-and-distribution/#compatibility-between-releases)).
+Schema v1 has only the keys that code of the first working version reads ([principle 8](/principles/#8-nothing-without-a-consumer)). Keys for the boards, Lambda and Kubernetes installations, integrations, quota and the rest are added at the parity milestone, each by the pull request that reads it. Adding a key or a value is compatible; removing or changing one is a new schema version beside v1 ([ADR 0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases)).
 
 ## Where it lives
 
@@ -29,11 +29,11 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
   6. **No tab character.** A tab anywhere is refused, so write `\t` inside a double-quoted string.
   7. **Flow collections (`[...]` and `{...}`) nest at most 64 levels deep.** The Rust reader stops at about 250 levels and the Go reader at 10,000, so the profile sets the limit.
   8. **An error names the path or the line and column, never the value.** The reader's own messages are not shown, because some print the source line. A syntax error names its kind only, because the two readers place it differently; every other error of the profile has the same line and column in both.
-- **The schema is JSON Schema draft 2020-12** with the `$id` `https://sluis.id/schema/install/v1/install.schema.json`, generated from the Pkl sources in `schema/` and embedded in every binary that reads the file ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)).
+- **The schema is JSON Schema draft 2020-12** with the `$id` `https://sluis.id/schema/install/v1/install.schema.json`, generated from the Pkl sources in `schema/` and embedded in every binary that reads the file ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
 - **Strict:** `unevaluatedProperties: false` on every object, so an unknown key is an error that names its path; format assertions are on. An error never shows the value.
 - **`$schema`** may name the `$id` above, for editors. A file that names another `$id` is refused.
 - **Names** of boundaries, upstreams and clients are lower-case kebab-case, 1 to 32 characters, starting with a letter: they appear in unit names, sockets and record keys (`<actor>@<boundary>`).
-- **Durations** are ISO 8601 duration strings, the JSON Schema `duration` format ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)): `PT90S`, `PT15M`, `PT12H` or `P30D`. A string such as `90s` is refused. Every duration field also has a `pattern` beside the format, because the two validators disagree on some valid strings: Go accepts `PT1H1S` and Rust refuses it, so the pattern decides (MEASURED 2026-11-02). A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
+- **Durations** are ISO 8601 duration strings, the JSON Schema `duration` format ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)): `PT90S`, `PT15M`, `PT12H` or `P30D`. A string such as `90s` is refused. Every duration field also has a `pattern` beside the format, because the two validators disagree on some valid strings: Go accepts `PT1H1S` and Rust refuses it, so the pattern decides (MEASURED 2026-11-02). A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
 - **The profile's vectors** (measured 2026-11-01 and again 2026-11-02 with `go.yaml.in/yaml/v3` v3.0.6 and `saphyr-parser` 0.3.3; the conformance kit starts from them):
 
   | Document | Verdict |
@@ -65,7 +65,7 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
 |---|---|---|---|
 | `$schema` | no | every binary | The schema `$id`, for editors |
 | `runtime` | yes | every binary, `sluis config check` | `bare-metal`, `serverless` or `kubernetes`. The first working version accepts `bare-metal` |
-| `environment` | yes | every binary; the `software` keys driver | `development`, `staging` or `production` ([floors in code](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)) |
+| `environment` | yes | every binary; the `software` keys driver | `development`, `staging` or `production` ([floors in code](/decisions/0006-keys-and-sealing/#floors-in-code)) |
 | `nodes` | yes | `sluis config check` | The number of nodes; the first working version accepts `1` |
 | `front` | yes | `entry`, `session`, `console`, `signer` | The front installation's group issuer and the passkey relying party ([below](#front)) |
 | `boundaries` | yes | every actor; the generators | The boundaries this file holds ([below](#boundaries)) |
@@ -80,18 +80,18 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
 
 | Field | Required | Meaning |
 |---|---|---|
-| `host` | yes | The host of the group issuer. The issuer URL is `https://<host>`, with no path ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers)) |
-| `rp_id` | yes | The passkey relying-party ID: the registrable parent domain of the front host and every boundary host ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#passkeys)) |
-| `token_ttl` | no | The default lifetime of the access and ID tokens of the group issuer, a duration. Default and maximum `PT1H`; it can only be shortened ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#lifetimes)) |
+| `host` | yes | The host of the group issuer. The issuer URL is `https://<host>`, with no path ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)) |
+| `rp_id` | yes | The passkey relying-party ID: the registrable parent domain of the front host and every boundary host ([ADR 0017](/decisions/0017-identity-and-sign-in/#passkeys)) |
+| `token_ttl` | no | The default lifetime of the access and ID tokens of the group issuer, a duration. Default and maximum `PT1H`; it can only be shortened ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#lifetimes)) |
 
 ### `boundaries`
 
-A mapping from the boundary's name to its declaration. Every boundary below L4 is declared in the install file of the installation that holds it; an L4 boundary has an install file of its own ([ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/#federation-between-boundaries)).
+A mapping from the boundary's name to its declaration. Every boundary below L4 is declared in the install file of the installation that holds it; an L4 boundary has an install file of its own ([ADR 0008](/decisions/0008-boundaries-and-tenants/#federation-between-boundaries)).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `kind` | yes | `environment` or `company` ([ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/#boundary-kinds)). A `company` boundary is what an upstream's [`org`](#upstreams) names. The customer kind comes with the CIAM upstream milestone |
-| `level` | yes | `L0` to `L3`; L4 is a separate install file ([The isolation ladder](/decisions/0005-boundaries-and-the-isolation-ladder/#the-isolation-ladder)) |
+| `kind` | yes | `environment` or `company` ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundary-kinds)). A `company` boundary is what an upstream's [`org`](#upstreams) names. The customer kind comes with the CIAM upstream milestone |
+| `level` | yes | `L0` to `L3`; L4 is a separate install file ([The isolation ladder](/decisions/0008-boundaries-and-tenants/#the-isolation-ladder)) |
 | `host` | environment boundaries only | The host of the boundary's issuer, a sibling of the front host under `rp_id`. A company boundary has no issuer |
 | `uid_block` | yes | An integer from 0 to 54, unique in the file. In containers the uid of `<actor>@<boundary>` is the actor's pinned base uid plus 1000 times this number ([The uid table](/architecture/manifest/#the-uid-table)). Never reused after a boundary is removed |
 | `token_ttl` | no | The default lifetime of the access and ID tokens of this boundary's issuer, as for [`front`](#front) |
@@ -99,7 +99,7 @@ A mapping from the boundary's name to its declaration. Every boundary below L4 i
 
 ### `drivers`
 
-One driver per port. The values the first working version accepts are the local installation's ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#installations)); the drivers of the other tested installations are added with them.
+One driver per port. The values the first working version accepts are the local installation's ([ADR 0011](/decisions/0011-runtimes-and-installations/#installations)); the drivers of the other tested installations are added with them.
 
 | Field | Values in v1 |
 |---|---|
@@ -110,7 +110,7 @@ One driver per port. The values the first working version accepts are the local 
 | `transport` | `spool`, `direct` |
 | `index` | `sqlite` |
 
-`sluis config check` refuses a driver that does not fit the runtime or the node count, and the `software` keys driver refuses to start when `environment` is `production` ([Ports and drivers](/concepts/drivers/#how-sluis-config-check-validates-an-installation)). The on-disk layout of these drivers is on [Storage](/reference/storage/#the-local-drivers-on-disk). The audit log is in the first working version ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)), so the `transport`, `blob` and `index` drivers serve it; the keys for its retention and its witness join schema v1 with the pull request that reads them.
+`sluis config check` refuses a driver that does not fit the runtime or the node count, and the `software` keys driver refuses to start when `environment` is `production` ([Ports and drivers](/concepts/drivers/#how-sluis-config-check-validates-an-installation)). The on-disk layout of these drivers is on [Storage](/reference/storage/#the-local-drivers-on-disk). The audit log is in the first working version ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), so the `transport`, `blob` and `index` drivers serve it; the keys for its retention and its witness join schema v1 with the pull request that reads them.
 
 ### `actors`
 
@@ -120,28 +120,28 @@ A mapping from an actor's name, as in the [actor registry](/reference/actors/), 
 |---|---|---|
 | `log_level` | `info` | `debug`, `info`, `warn` or `error`, for the actor's log on standard error |
 
-Telemetry is not configured here: it is the standard `OTEL_*` environment variables only ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)).
+Telemetry is not configured here: it is the standard `OTEL_*` environment variables only ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
 
 ### `upstreams`
 
-A mapping from an upstream's name to its declaration. Each upstream is one integration process, `<vendor>[-<capability>]@<tenant>` ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#names)), owned by one company ([ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/#what-each-boundary-owns)). An installation whose people all belong to one organisation declares that organisation as a company boundary too.
+A mapping from an upstream's name to its declaration. Each upstream is one integration process, `<vendor>[-<capability>]@<tenant>` ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#names)), owned by one company ([ADR 0008](/decisions/0008-boundaries-and-tenants/#what-each-boundary-owns)). An installation whose people all belong to one organisation declares that organisation as a company boundary too.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `kind` | yes | The integration that serves it. The first working version has `oidc`, the generic OpenID Connect upstream, sign-in only, with subjects assigned at the first sign-in ([#1106](https://github.com/truvity/sluis/issues/1106), [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#subjects)) |
-| `org` | yes | The company that owns the upstream: the name of a [`company` boundary](#boundaries) of this file. Every person who signs in through the upstream, and every account it names, has this `org`, which is the company claim of a token and the company scope of a policy. It is declared here and nowhere else: an upstream cannot send it, and a policy cannot set it ([ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/#boundary-kinds), [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers), [Policy](/reference/policy/#entity-types)) |
+| `kind` | yes | The integration that serves it. The first working version has `oidc`, the generic OpenID Connect upstream, sign-in only, with subjects assigned at the first sign-in ([#1106](https://github.com/truvity/sluis/issues/1106), [ADR 0017](/decisions/0017-identity-and-sign-in/#subjects)) |
+| `org` | yes | The company that owns the upstream: the name of a [`company` boundary](#boundaries) of this file. Every person who signs in through the upstream, and every account it names, has this `org`, which is the company claim of a token and the company scope of a policy. It is declared here and nowhere else: an upstream cannot send it, and a policy cannot set it ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundary-kinds), [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers), [Policy](/reference/policy/#entity-types)) |
 | `issuer` | yes | The upstream's issuer URL |
-| `subject_claim` | no | The ID-token claim whose value, with the issuer, identifies the person: default `sub`. Microsoft Entra needs `oid`, because its `sub` differs per application. A mutable claim (`email`, `preferred_username`, `upn`, `name`) is refused, and so is a change while the upstream has links ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#linking-an-upstream-account)) |
+| `subject_claim` | no | The ID-token claim whose value, with the issuer, identifies the person: default `sub`. Microsoft Entra needs `oid`, because its `sub` differs per application. A mutable claim (`email`, `preferred_username`, `upn`, `name`) is refused, and so is a change while the upstream has links ([ADR 0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)) |
 | `client_id` | yes | sluis's client ID at the upstream |
 | `client_secret` | yes | A reference: `{ credential: NAME }` |
 
 ### `clients`
 
-A mapping from a client ID to its declaration, for the group issuer; `boundaries.<name>.clients` has the same shape for a boundary's issuer. Client IDs are readable, unique per issuer and the same in every environment ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#audiences)). Clients are declared only: authority is never operator-set ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)). The fields are v1's client model, cut to what the first working version reads; the rest comes at parity: the profiles, the added fields, `resources` and `client_documents` are [ADR 0038](/decisions/0038-clients-are-declared-resources-map-to-a-client-and-self-described-clients-are-admitted-only-from-allow-listed-origins/).
+A mapping from a client ID to its declaration, for the group issuer; `boundaries.<name>.clients` has the same shape for a boundary's issuer. Client IDs are readable, unique per issuer and the same in every environment ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)). Clients are declared only: authority is never operator-set ([ADR 0004](/decisions/0004-the-data-model/#origins)). The fields are v1's client model, cut to what the first working version reads; the rest comes at parity: the profiles, the added fields, `resources` and `client_documents` are [ADR 0021](/decisions/0021-clients/).
 
 | Field | Required | Meaning |
 |---|---|---|
-| `kind` | yes | `public` (PKCE, no secret), `confidential` (a secret; a boundary's client at the group issuer is of this kind, because `entry@<boundary>` signs a browser in there as a relying party, [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#step-up)) or `exchange` (only an audience of token exchange, with no redirect and no secret, such as a machine's client ID) |
+| `kind` | yes | `public` (PKCE, no secret), `confidential` (a secret; a boundary's client at the group issuer is of this kind, because `entry@<boundary>` signs a browser in there as a relying party, [ADR 0017](/decisions/0017-identity-and-sign-in/#step-up)) or `exchange` (only an audience of token exchange, with no redirect and no secret, such as a machine's client ID) |
 | `redirects` | `public` and `confidential` | Exact redirect URIs. A boundary's client at the group issuer declares one: `https://<boundary host>/callback`. `https` only, except `http://127.0.0.1` and `http://[::1]` with any port for a public native client (RFC 8252) |
 | `secret` | `confidential` only | A reference: `{ credential: NAME }`. Generated client secrets come with [#790](https://github.com/truvity/sluis/issues/790) |
 | `requires` | no | The grants of which a subject needs at least one to get a token for this client, as in v1 |
@@ -151,14 +151,14 @@ A mapping from a client ID to its declaration, for the group issuer; `boundaries
 
 | Field | Required | Meaning |
 |---|---|---|
-| `files` | yes | The Cedar policy files, validated against the Cedar schema at load ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/)). The schema is fixed by sluis and embedded in `policy`; an operator writes policy against it and adds no type, action or attribute. The entity types, the actions and a worked example are on [Policy](/reference/policy/) |
-| `vocabulary` | yes | The grant vocabulary file: the scopes, the things with their roles and what each role implies. Every grant name in a policy file, a client's `requires` and a binding is checked against it. Its shape is on [Vocabulary](/reference/vocabulary/) ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary)) |
+| `files` | yes | The Cedar policy files, validated against the Cedar schema at load ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)). The schema is fixed by sluis and embedded in `policy`; an operator writes policy against it and adds no type, action or attribute. The entity types, the actions and a worked example are on [Policy](/reference/policy/) |
+| `vocabulary` | yes | The grant vocabulary file: the scopes, the things with their roles and what each role implies. Every grant name in a policy file, a client's `requires` and a binding is checked against it. Its shape is on [Vocabulary](/reference/vocabulary/) ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)) |
 
 ### `trust`
 
 | Field | Required | Meaning |
 |---|---|---|
-| `root_list` | no | Optional. The signed root list that ritueel produced: `root-list.json`, with its signature `root-list.jws` in the same directory ([the format](https://ritueel.id/reference/root-list/)). When it is present, a certificate of the bundle is an anchor only if its key is on the list, and `sluis key request` reads the active primaries from it ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#root-pins-and-the-root-list)); an OpenPGP subkey request needs it. Without it, anchors come from the bundle alone, with no rollback protection and no trust sequence ([the floor](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-floor)). At parity `sluis trust sync` keeps it current |
+| `root_list` | no | Optional. The signed root list that ritueel produced: `root-list.json`, with its signature `root-list.jws` in the same directory ([the format](https://ritueel.id/reference/root-list/)). When it is present, a certificate of the bundle is an anchor only if its key is on the list, and `sluis key request` reads the active primaries from it ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)); an OpenPGP subkey request needs it. Without it, anchors come from the bundle alone, with no rollback protection and no trust sequence ([the floor](/decisions/0024-root-custody-and-the-signing-api/#the-floor)). At parity `sluis trust sync` keeps it current |
 | `ca_bundle` | yes | The anchors: the CA bundle, `ca-bundle.pem`. ritueel's bundle holds the roots' certificates in the list's order, with the list's sequence in its first line; a bundle from another CA is the certificates the operator installed. `signer` takes the root certificate for the `x5c` chain of the key set from it, and `sluis config check` refuses a ritueel bundle that does not match the list |
 
 ## Sources of the install file
@@ -167,7 +167,7 @@ The install file can list more sources of declared configuration in an optional 
 
 ## Which keys reload
 
-Every path of the install file, and of every source document, is `live` or `restart` ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#reload-classes)). A `live` path is applied on reload without a restart. A change to a `restart` path is refused at reload, as a whole with every other change in the snapshot, and applied only by a restart. The class is the annotation `x-sluis-reload` in the schema; a path with no annotation of its own has the class of its parent, and the root is `restart`. The question for each path is whether changing it needs a new process, a new key handle or a new connection pool.
+Every path of the install file, and of every source document, is `live` or `restart` ([ADR 0004](/decisions/0004-the-data-model/#reload-classes)). A `live` path is applied on reload without a restart. A change to a `restart` path is refused at reload, as a whole with every other change in the snapshot, and applied only by a restart. The class is the annotation `x-sluis-reload` in the schema; a path with no annotation of its own has the class of its parent, and the root is `restart`. The question for each path is whether changing it needs a new process, a new key handle or a new connection pool.
 
 | Path | Class | Why |
 |---|---|---|
@@ -204,7 +204,7 @@ Areas that join the schema later follow the same question, and the pull request 
 
 ## Which keys a file enables
 
-A key purpose that an installation does not enable gets no key ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#the-card-slot-map)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.
+A key purpose that an installation does not enable gets no key ([ADR 0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.
 
 ## What `sluis config check` checks
 
@@ -226,7 +226,7 @@ The local installation ships as an example install file, [`tests/installations/l
 <!-- example: tests/installations/local/install.yaml -->
 ```yaml
 # The local installation: Docker Compose on one workstation, software keys, one node
-# (ADR 0018). Install-file schema v1: https://sluis.id/reference/install-file/
+# (ADR 0011). Install-file schema v1: https://sluis.id/reference/install-file/
 $schema: https://sluis.id/schema/install/v1/install.schema.json
 runtime: bare-metal
 environment: development

@@ -6,9 +6,9 @@
 # HPKE was dropped the same morning and is back on the page since the afternoon: enrolment is encrypted
 # end to end with it (agreed 2026-10-30). The SPIFFE rows ST-107 to ST-113 replace ST-48 (agreed 2026-10-30);
 # ST-48 keeps its id for SPIRE as prior art, which sluis does not deploy.
-# The optional OpenID plans (ADR 0006, decided 2026-10-30): Form Post (ST-34) is a v2 target; Front-Channel Logout (ST-32)
+# The optional OpenID plans (ADR 0017, decided 2026-10-30): Form Post (ST-34) is a v2 target; Front-Channel Logout (ST-32)
 # and 3rd Party-Initiated Login (ST-35) are not planned; CIBA (ST-36) is Later, in poll mode, after the parity milestone and once a real consumer exists.
-# The audit record formats (ADR 0017, decided 2026-11-01): OCSF (ST-114), in core classes with the sluis facts in `unmapped.sluis` and no extension, is the audit record;
+# The audit record formats (ADR 0030, decided 2026-11-01): OCSF (ST-114), in core classes with the sluis facts in `unmapped.sluis` and no extension, is the audit record;
 # CloudEvents (ST-100) is back on the page for the usage stream, not as an audit envelope; FOCUS (ST-115) names the columns
 # of the finance export.
 schema: 1

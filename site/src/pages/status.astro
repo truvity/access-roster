@@ -1,5 +1,5 @@
 ---
-// The project status page (ADR 0020). Groups and their order come from the project's
+// The project status page (ADR 0014). Groups and their order come from the project's
 // `Product milestone` field (src/lib/project.ts); requirement and decision facts from the
 // repository. The data part (src/lib/status-html.ts) is drawn here from the board as read at
 // build time, and the page's one script (src/scripts/status-live.ts) swaps in the same part
@@ -17,7 +17,7 @@ const { board, groups } = await statusGroups();
 const line = await designLine();
 const asOf = BUILT_AT.replace('T', ' ').replace(/:\d{2}Z$/, ' UTC');
 const boardUrl = `https://github.com/orgs/${ORG}/projects/${PROJECT_NUMBER}`;
-const ADR = '/decisions/0020-the-site-is-static-on-cloudflare-workers/';
+const ADR = '/decisions/0014-the-site-is-static-on-cloudflare-workers/';
 ---
 
 <StarlightPage
@@ -63,7 +63,7 @@ const ADR = '/decisions/0020-the-site-is-static-on-cloudflare-workers/';
 
     <h2 id="how-this-page-is-built">How this page is built</h2>
     <p>
-      The page is built with the site, as decided in <a href={ADR}>ADR 0020</a>. The groups and their order are the options of the
+      The page is built with the site, as decided in <a href={ADR}>ADR 0014</a>. The groups and their order are the options of the
       project's <code>{FIELD}</code> field, read from GitHub during the build and again by the live block; adding or reordering an option
       changes the page with no code change. Requirement and decision status come from the repository (<code>docs/requirements/</code> and <code>docs/decisions/</code>)
       and are published as <a href="/data/repo.json"><code>/data/repo.json</code></a>. A requirement is <code>done</code> only when a pull request set it together with the passing test. A requirement is placed under the earliest

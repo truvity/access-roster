@@ -134,7 +134,7 @@ requirements:
   - id: REQ-POLICY-010
     area: POLICY
     statement: "The loader MUST refuse a grant name that the installation's vocabulary does not declare."
-    rationale: "A typo then stops the load instead of granting nothing or the wrong thing (ADR 0028)."
+    rationale: "A typo then stops the load instead of granting nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -170,7 +170,7 @@ requirements:
   - id: REQ-POLICY-013
     area: POLICY
     statement: "An installation MUST declare a grant vocabulary."
-    rationale: "Without one a name nobody declared would load, and a typo would grant nothing or the wrong thing (ADR 0028)."
+    rationale: "Without one a name nobody declared would load, and a typo would grant nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned

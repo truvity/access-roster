@@ -380,7 +380,7 @@ requirements:
   - id: REQ-KEYS-027
     area: KEYS
     statement: "The workload-issuer key of sluis-node MUST be a key of its own that no other actor uses."
-    rationale: "Its callers and its blast radius differ from the token-signing key's, and signing keys are never shared (ADR 0012)."
+    rationale: "Its callers and its blast radius differ from the token-signing key's, and signing keys are never shared (ADR 0006)."
     level: MUST
     source: design-decision
     status: planned

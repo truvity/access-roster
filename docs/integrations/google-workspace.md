@@ -33,16 +33,16 @@ For sign-in, an OAuth client of type *Web application* with the scopes `openid`,
 | Service-account key with delegation | A JSON key, as a credential. Some organisations forbid creating keys. |
 | Admin consent | A Super Admin's refresh token, which dies with that account. |
 
-The keyless method is the target for new installations. It needs the GCP exchange ([#871](https://github.com/truvity/sluis/issues/871)), with its token signed under the ES256 cloud-federation exception ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#named-exceptions)); until that is built, an installation uses a key or admin consent. The [setup patterns](/integrations/connecting/#google-workspace) compare the three.
+The keyless method is the target for new installations. It needs the GCP exchange ([#871](https://github.com/truvity/sluis/issues/871)), with its token signed under the ES256 cloud-federation exception ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)); until that is built, an installation uses a key or admin consent. The [setup patterns](/integrations/connecting/#google-workspace) compare the three.
 
 ## What policy controls
 
 - **Which domains a tenant serves**: every domain it owns, or a list. A domain served by no tenant cannot sign in.
 - **Which groups are read.** The mirrored groups can be narrowed, so a policy can refer only to those.
 - **Who may sign in at all.** Sign-in proves an identity; whether it is admitted to a client is the client's `requires`.
-- **Freshness.** How long a held snapshot may be used when the directory cannot be read; after that window sluis refuses rather than guesses, and a person disabled in the directory is refused at once ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#directory-outages)).
+- **Freshness.** How long a held snapshot may be used when the directory cannot be read; after that window sluis refuses rather than guesses, and a person disabled in the directory is refused at once ([ADR 0017](/decisions/0017-identity-and-sign-in/#directory-outages)).
 
-sluis refuses a sign-in whose e-mail is unverified, and one whose Google `sub` differs from the one first recorded for the person (a deliberate move needs an operator). The person's sluis subject is an opaque id, never the e-mail address ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#subjects)).
+sluis refuses a sign-in whose e-mail is unverified, and one whose Google `sub` differs from the one first recorded for the person (a deliberate move needs an operator). The person's sluis subject is an opaque id, never the e-mail address ([ADR 0017](/decisions/0017-identity-and-sign-in/#subjects)).
 
 Google sends `amr` and `auth_time` only when the sign-in request carries a `claims` parameter that asks for them, and the console settings for them are on. Until the generic upstream can send a configured `claims` parameter ([#1154](https://github.com/truvity/sluis/issues/1154)), a Google sign-in reaches policy with no `amr`, which policy treats as unknown ([Policy](/reference/policy/#context)).
 

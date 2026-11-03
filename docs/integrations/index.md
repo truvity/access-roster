@@ -6,13 +6,13 @@ sidebar:
   order: 0
 ---
 
-An **integration** connects sluis to something outside it: a sign-in provider, a directory, a cloud, a chat workspace. Each integration actor is its own process and holds only its own vendor credential: one process per vendor tenant and per credential, named `<vendor>[-<capability>]@<tenant>`. Sign-in and the directory of one workspace tenant are two credentials and so two processes, `google-signin@<company>` and `google-directory@<company>` ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#names)).
+An **integration** connects sluis to something outside it: a sign-in provider, a directory, a cloud, a chat workspace. Each integration actor is its own process and holds only its own vendor credential: one process per vendor tenant and per credential, named `<vendor>[-<capability>]@<tenant>`. Sign-in and the directory of one workspace tenant are two credentials and so two processes, `google-signin@<company>` and `google-directory@<company>` ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#names)).
 
 This page is the model and the index; the [setup patterns](/integrations/connecting/) describe the vendor ceremonies once.
 
 ## Six kinds of integration
 
-Five kinds are integration actors, each a ConnectRPC contract over one shared base contract. The sixth, the workload verifier, is a verifier driver of `exchange` that holds public material only ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
+Five kinds are integration actors, each a ConnectRPC contract over one shared base contract. The sixth, the workload verifier, is a verifier driver of `exchange` that holds public material only ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
 
 | Kind | It answers or does | Examples |
 |---|---|---|
@@ -29,10 +29,10 @@ Every vendor-shaped value travels as an opaque reference or a namespaced attribu
 
 > Integrations return facts, or carry out effects that core has already authorized. They never decide.
 
-[ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-actors) states the rule; [ADR 0026](/decisions/0026-integrations-return-facts-or-carry-out-effects-that-core-authorised/) fixes the contract every integration is built against: what an integration may return, how core authorises an effect, and the split by credential.
+[ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors) states the rule; [ADR 0025](/decisions/0025-integrations/) fixes the contract every integration is built against: what an integration may return, how core authorises an effect, and the split by credential.
 
 - A **FactsSource** or **WorkloadVerifier** returns facts. Whether a fact entitles anyone to anything is `policy`'s question.
-- A **CredentialMinter** carries out an effect. It receives a **mint grant that `policy` sealed under the sealing key**, opens it (which fails for a grant from any other environment), and mints exactly what the grant says. It decides nothing about whether to mint ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#grants-are-sealed-not-signed)).
+- A **CredentialMinter** carries out an effect. It receives a **mint grant that `policy` sealed under the sealing key**, opens it (which fails for a grant from any other environment), and mints exactly what the grant says. It decides nothing about whether to mint ([ADR 0006](/decisions/0006-keys-and-sealing/#grants-are-sealed-not-signed)).
 - A **Provisioner** pulls a desired state **addressed by its digest** and reconciles to it. It does not choose what the state should be.
 
 Caps and rate limits live in core, in `policy` and `quota`, so a minter never holds a rule about how much is too much.
@@ -66,7 +66,7 @@ The AWS and Kubernetes pages sit between the two: the integration part is the wo
 
 ## Isolation and permissions
 
-An integration declares its configuration block and the permissions it needs in a descriptor. The installer never grants more than the descriptor asks, and never accepts a descriptor above the installation's admission policy: no authority keys for a third-party integration, and outbound access only to the hosts it declares. Because each integration is a separate process with its own user and credential, a compromised connector to one vendor does not reach another vendor's token. On Kubernetes each integration is a pod with its own egress NetworkPolicy ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#kubernetes)); the other runtimes are on [Runtimes](/runtimes/).
+An integration declares its configuration block and the permissions it needs in a descriptor. The installer never grants more than the descriptor asks, and never accepts a descriptor above the installation's admission policy: no authority keys for a third-party integration, and outbound access only to the hosts it declares. Because each integration is a separate process with its own user and credential, a compromised connector to one vendor does not reach another vendor's token. On Kubernetes each integration is a pod with its own egress NetworkPolicy ([ADR 0011](/decisions/0011-runtimes-and-installations/#kubernetes)); the other runtimes are on [Runtimes](/runtimes/).
 
 ## The integrations
 

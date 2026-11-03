@@ -1,4 +1,4 @@
-// The Worker's read access to GitHub (ADR 0020): an installation token of the read-only
+// The Worker's read access to GitHub (ADR 0014): an installation token of the read-only
 // GitHub App, minted from the App's private key, which is a Worker secret. The token lives
 // in this isolate's memory until shortly before it expires, and is never logged or stored.
 //

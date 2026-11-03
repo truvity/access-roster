@@ -1,4 +1,4 @@
-// The live block of the status page (/status/, ADR 0020): swaps the build-time snapshot for
+// The live block of the status page (/status/, ADR 0014): swaps the build-time snapshot for
 // the same component rendered by the Worker from the live board (/api/status/live/). This
 // does what an Astro server island does, from a bundled script: Astro's own island loader
 // is an inline script holding a random id and an encrypted token that change on every

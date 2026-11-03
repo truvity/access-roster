@@ -18,7 +18,7 @@ The node count is an attribute of the installation, not of the runtime: bare-met
 - The node agent (`sluis-node`) issues each actor a short-lived workload JWT and, on a cloud VM, is the only process that holds the instance role and brokers per-actor credentials.
 - The permission manifest generates the units: `User=`, a private state directory, the credentials an actor may read, and socket modes and groups for the callers it allows.
 - **Hardening per unit:** `ProtectSystem=strict`, `NoNewPrivileges=`, an empty `CapabilityBoundingSet=` and `SystemCallFilter=@system-service`. Every actor that needs no network, `entry`, `policy` and `signer` among them, gets `PrivateNetwork=yes` and `RestrictAddressFamilies=AF_UNIX`. Integrations reach their providers through the egress proxy.
-- `key-holder` fronts the node's YubiKey with one socket per caller, a peer-uid check and content-aware signing ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#key-holder-is-the-one-mediator)). State has no mediator: each owning actor has its own rqlite cluster, and the unit of its driver reaches the cluster's TCP client port through a narrow network rule ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#how-a-per-actor-rqlite-driver-reaches-its-cluster)).
+- `key-holder` fronts the node's YubiKey with one socket per caller, a peer-uid check and content-aware signing ([ADR 0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)). State has no mediator: each owning actor has its own rqlite cluster, and the unit of its driver reaches the cluster's TCP client port through a narrow network rule ([ADR 0005](/decisions/0005-the-store/#how-a-per-actor-rqlite-driver-reaches-its-cluster)).
 - Integration actors run only when the installation uses them.
 
 ## Supported distributions and the systemd floor
@@ -43,18 +43,18 @@ With three nodes the installation survives the loss of one.
 - **State:** rqlite across the nodes, **one cluster per (boundary, owning actor)**, each a template instance `sluis-rqlite@<boundary>-<actor>` with its own port and certificate. The owning actor has the only rqlite user that may `execute`; a declared reader has a `query`-only user. Each cluster's unit writes its data directory only. Each cluster needs a quorum of two of three; a node that is down is replaced or repaired without losing state.
 - **Raft over mTLS.** Each cluster's peer traffic uses its own TCP port, with mutual TLS and a certificate per cluster, allowed only between the peers. No actor is called across nodes.
 - **Audit:** a local spool on each node, and one log per node with its own writer and log key; the other nodes are its peer witnesses, so one compromised node cannot extend a log alone ([Audit](/concepts/audit/)). Readers merge the logs by time.
-- **Identity:** the boundary's issuer issues workload tokens, and its key set holds one key per node card. Per-node issuers, `https://<issuer>/nodes/<node>/`, are optional, for a fleet whose nodes run different actors: there a cloud role trusts only the issuers of the nodes that run it ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/)).
+- **Identity:** the boundary's issuer issues workload tokens, and its key set holds one key per node card. Per-node issuers, `https://<issuer>/nodes/<node>/`, are optional, for a fleet whose nodes run different actors: there a cloud role trusts only the issuers of the nodes that run it ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/)).
 - Losing two nodes of three stops writes, and sign-in with them, because sessions and grants need state. Three nodes usually share a site, a network and a power feed, so this is not a multi-site design.
 
 ## Board capacity
 
-Measured on 2026-10-31 on one single-board computer (arm64, 4 cores, 2 GB RAM, eMMC, with a YubiKey 5 Nano on firmware 5.8.0), and again on 2026-11-02 on three identical boards on one gigabit switch with real replication between them (4 x Cortex-A55, 1978 MiB usable RAM, 32 GB eMMC, kernel 5.10.160). Each row says which. The language choice that follows from it is [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+Measured on 2026-10-31 on one single-board computer (arm64, 4 cores, 2 GB RAM, eMMC, with a YubiKey 5 Nano on firmware 5.8.0), and again on 2026-11-02 on three identical boards on one gigabit switch with real replication between them (4 x Cortex-A55, 1978 MiB usable RAM, 32 GB eMMC, kernel 5.10.160). Each row says which. The language choice that follows from it is [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 
 | Measure | Figure |
 |---|---|
 | Memory of a full board: 10 rqlite clusters, 30 actors, two `entry` instances, the card path, `cloudflared` and the board's other services | About 985 MiB with Go actors, about 680 MiB with Rust actors, of 1978 MiB usable, under a ceiling of 1380 MiB (a quarter of the RAM kept for page cache, 100 MiB for slab and bursts) |
 | Go actor against Rust actor | MEASURED 2026-11-02, 30 actors under load, one language each: a Rust actor holds about 0.2 MiB of private memory and a Go actor 8.0 to 8.7 MiB, so Go costs 235 to 255 MiB more at 30 actors. The estimate of 2026-10-31 was about 300 MiB. Go does not give the memory back after the load |
-| The mix of ADR 0014 next to the rqlite nodes, per board | MEASURED 2026-11-02, 25 Rust actors, 5 Go actors, 2 `entry`, a `session` stand-in and 10 rqlite nodes, light load: 160 to 200 MiB of PSS for the 43 processes, of which rqlite 98 to 134 MiB. The board's own services use about 160 MiB before anything starts, and `MemAvailable` never fell below 1559 of 1978 MiB |
+| The mix of ADR 0012 next to the rqlite nodes, per board | MEASURED 2026-11-02, 25 Rust actors, 5 Go actors, 2 `entry`, a `session` stand-in and 10 rqlite nodes, light load: 160 to 200 MiB of PSS for the 43 processes, of which rqlite 98 to 134 MiB. The board's own services use about 160 MiB before anything starts, and `MemAvailable` never fell below 1559 of 1978 MiB |
 | rqlite | About 9 MiB per cluster under write load, plus about 22 MiB of binary pages once per board |
 | State writes | MEASURED 2026-11-02, three boards, 10 clusters of three nodes (one node of each on each board), Raft over plain TCP, the load generator on the boards: 400 commits a second for the installation were delivered in full with a p99 of 118 to 127 ms and 13 to 15 % of the CPU idle; saturated, about 600 a second with the CPU 95 % busy and the eMMC 29 % busy. The budget stays 400. The CPU limits writes before the eMMC does. The single-board figure of 2026-10-31 (about 430 a second) had no replication and is not comparable |
 | Latency of a replicated commit | MEASURED 2026-11-02: p50 21 to 41 ms and p99 62 to 123 ms at 7 and at 73 commits a second. Treat 20 to 40 ms as the cost of a replicated commit on this eMMC |
@@ -69,8 +69,8 @@ The totals of 2026-10-31 stand, now with the actor and rqlite rows measured and 
 |---|---|---|---|
 | `exchange` | 1 replay marker per token exchange | 0.76 | 20.0 |
 | `session` | 6 per sign-in (5% of tokens) | 0.24 | 6.3 |
-| `quota`, where a rule enforces | 2 per minted token: `Admit` and `Confirm` ([ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/)) | 1.6 | 42.0 |
-| Audit `writer`, 3 logs | 1 per sealed batch, at most 0.2 a second per log ([ADR 0016](/decisions/0016-the-audit-log/#sealing)) | 0.6 | 0.6 |
+| `quota`, where a rule enforces | 2 per minted token: `Admit` and `Confirm` ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/)) | 1.6 | 42.0 |
+| Audit `writer`, 3 logs | 1 per sealed batch, at most 0.2 a second per log ([ADR 0029](/decisions/0029-the-audit-log/#sealing)) | 0.6 | 0.6 |
 | `witness`, 3 | 2 co-signatures per batch | 1.2 | 1.2 |
 | `indexer` | 1 per sealed batch, with the cursor | 0.6 | 0.6 |
 | Leases | 4 leases renewed every 5 s | 0.8 | 0.8 |
@@ -86,7 +86,7 @@ An EC2 instance or an Auto Scaling group is a possible bare-metal installation, 
 
 ## Local Docker
 
-Docker on a workstation is the development and CI form of bare-metal, one node: the [local](/runtimes/installations/#local) installation ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)).
+Docker on a workstation is the development and CI form of bare-metal, one node: the [local](/runtimes/installations/#local) installation ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)).
 
 - It runs as **Docker Compose, one container per actor and per driver**, each as its actor's uid, so the call graph and the socket access lists are the ones the other installations enforce.
 - Actors and drivers speak ConnectRPC over Unix sockets on shared volumes under `/run/sluis/<actor>/`.

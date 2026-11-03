@@ -8,9 +8,9 @@ sidebar:
 ---
 import AuditExplorer from '../../site/src/components/explorer/AuditExplorer.astro';
 
-This is the target state, not a running system. Every actor puts its records on the transport and moves on. The writer seals them into a C2SP tiled log in a blob and asks `key-holder` to sign each checkpoint with the log key; an optional witness cosigns the checkpoints, and an indexer feeds a search index from the signed log. The page is drawn from `site/src/data/explorer/audit.yaml`, written by hand from the design. The ideas are on [Audit](/concepts/audit/); the reasoning is in [ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/), [ADR 0016](/decisions/0016-the-audit-log/) and [ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/).
+This is the target state, not a running system. Every actor puts its records on the transport and moves on. The writer seals them into a C2SP tiled log in a blob and asks `key-holder` to sign each checkpoint with the log key; an optional witness cosigns the checkpoints, and an indexer feeds a search index from the signed log. The page is drawn from `site/src/data/explorer/audit.yaml`, written by hand from the design. The ideas are on [Audit](/concepts/audit/); the reasoning is in [ADR 0028](/decisions/0028-audit-pieces/), [ADR 0029](/decisions/0029-the-audit-log/) and [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/).
 
-Audit uses the sluis ports plus `witness`, the only port it adds. The same actors, records and integrity chain run in every installation; only the drivers behind the ports change. Audit is four pieces, the emitter, the log, Search and Quota, and pieces combined in one installation, even with sluis, share driver instances ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#four-pieces)). Pick an installation: local, boards or lambda. The map, the flows and the outage table follow it. Without script the page shows boards, and every table is plain HTML. The explorer does not draw the Kubernetes installation yet; there the audit side is a separate audit installation ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#kubernetes)).
+Audit uses the sluis ports plus `witness`, the only port it adds. The same actors, records and integrity chain run in every installation; only the drivers behind the ports change. Audit is four pieces, the emitter, the log, Search and Quota, and pieces combined in one installation, even with sluis, share driver instances ([ADR 0028](/decisions/0028-audit-pieces/#four-pieces)). Pick an installation: local, boards or lambda. The map, the flows and the outage table follow it. Without script the page shows boards, and every table is plain HTML. The explorer does not draw the Kubernetes installation yet; there the audit side is a separate audit installation ([ADR 0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 
 ## Installations
 
@@ -20,7 +20,7 @@ Audit uses the sluis ports plus `witness`, the only port it adds. The same actor
 
 Select a box to see what it holds, what it never holds and who it calls. Choose a flow to step through it: each step lights the lines it uses, in order. Every actor listens on Unix sockets; [the architecture explorer](/architecture/explorer/) shows the sockets and processes of each installation.
 
-Where Search (the indexer, the search index and the reader) and Quota run is derived from the port and driver rules ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#placement-is-derived)). Quota meters by default and enforces per policy rule ([ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/#quota)). The witness is optional everywhere ([ADR 0016](/decisions/0016-the-audit-log/#witnesses)).
+Where Search (the indexer, the search index and the reader) and Quota run is derived from the port and driver rules ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)). Quota meters by default and enforces per policy rule ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). The witness is optional everywhere ([ADR 0029](/decisions/0029-the-audit-log/#witnesses)).
 
 <AuditExplorer part="map" />
 
@@ -36,7 +36,7 @@ The emitter, a library in every actor, and the writer are joined by the transpor
 
 <AuditExplorer part="transport" />
 
-The installation defaults are a local spool on bare-metal, an SQS queue on serverless and NATS JetStream on Kubernetes; direct is supported with no default ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#transport)). The recovery path is separate: it spools locally in every installation and never blocks.
+The installation defaults are a local spool on bare-metal, an SQS queue on serverless and NATS JetStream on Kubernetes; direct is supported with no default ([ADR 0028](/decisions/0028-audit-pieces/#transport)). The recovery path is separate: it spools locally in every installation and never blocks.
 
 ## The integrity chain
 
@@ -48,7 +48,7 @@ How an auditor can tell that nothing was removed, changed or added. The writer h
 
 <AuditExplorer part="lag" />
 
-The default index of each tested installation is in [ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#search-and-the-index): `sqlite` on local, a replicated `rqlite` index on boards, `postgres` on Aurora on lambda, reached through RDS Proxy, and `postgres` on `cnpg` on Kubernetes. The indexer follows each log's signed checkpoints, so the index lags the log by the seal interval, a few seconds, plus its own pass. With a `sqlite` index on a cluster the reader runs on the indexer's node. The search index is a rebuildable cache; the log in the blob is the record.
+The default index of each tested installation is in [ADR 0028](/decisions/0028-audit-pieces/#search-and-the-index): `sqlite` on local, a replicated `rqlite` index on boards, `postgres` on Aurora on lambda, reached through RDS Proxy, and `postgres` on `cnpg` on Kubernetes. The indexer follows each log's signed checkpoints, so the index lags the log by the seal interval, a few seconds, plus its own pass. With a `sqlite` index on a cluster the reader runs on the indexer's node. The search index is a rebuildable cache; the log in the blob is the record.
 
 ## When the writer is down for an hour
 

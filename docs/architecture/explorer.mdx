@@ -8,7 +8,7 @@ sidebar:
 ---
 import ArchExplorer from '../../site/src/components/explorer/ArchExplorer.astro';
 
-This is the target state, not a running system. The map is drawn from `site/src/data/explorer/architecture.yaml`, written by hand from the design until the [permission manifest](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#the-permission-manifest) exists and generates it. What each actor and driver is and does is on [Components](/architecture/components/); the words are on [Actors](/concepts/actors/) and [Ports and drivers](/concepts/drivers/).
+This is the target state, not a running system. The map is drawn from `site/src/data/explorer/architecture.yaml`, written by hand from the design until the [permission manifest](/decisions/0002-families-of-actors/#the-permission-manifest) exists and generates it. What each actor and driver is and does is on [Components](/architecture/components/); the words are on [Actors](/concepts/actors/) and [Ports and drivers](/concepts/drivers/).
 
 The map draws three of the four [tested installations](/runtimes/installations/): local, boards and lambda. It does not draw the [Kubernetes installation](/runtimes/kubernetes/) yet. Pick an installation, and the map, the tables and the flows follow it. Without script the page shows boards, and every table is plain HTML.
 
@@ -26,7 +26,7 @@ Select a box to see what it holds, its manifest summary and its listeners; the l
 
 ## Processes and listeners
 
-The same facts as tables, for the installation picked above. Where each actor runs is derived from the port and driver rules ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#placement-is-derived)); the listeners are on [Deployment](/architecture/deployment/).
+The same facts as tables, for the installation picked above. Where each actor runs is derived from the port and driver rules ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)); the listeners are on [Deployment](/architecture/deployment/).
 
 <ArchExplorer part="tables" />
 

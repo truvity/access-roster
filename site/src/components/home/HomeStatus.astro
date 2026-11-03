@@ -2,7 +2,7 @@
 // The honest status of v2, on the home page. The words are fixed: v2 is designed, not
 // built. The figures are the build-time ones (decision records counted
 // from the repository), and a bundled script (home-status.ts) replaces them with the live
-// ones from the site's status API (/api/status, ADR 0020). When the API cannot answer, the
+// ones from the site's status API (/api/status, ADR 0014). When the API cannot answer, the
 // build-time figures stay and the note says they are from the build.
 import { listDecisions, decisionFacts, isAccepted } from '../../lib-decisions';
 import { BUILT_AT, designLine } from '../../lib/repo';

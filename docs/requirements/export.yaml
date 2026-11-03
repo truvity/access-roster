@@ -90,7 +90,7 @@ requirements:
   - id: REQ-EXPORT-007
     area: EXPORT
     statement: "The export port MUST refuse a document of a record kind that the schema does not mark external."
-    rationale: "Whether a value may leave sluis is a property of its kind (ADR 0035)."
+    rationale: "Whether a value may leave sluis is a property of its kind (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
