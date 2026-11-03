@@ -28,13 +28,13 @@ The fields of a kind:
 
 | Field | Meaning |
 |---|---|
-| Schema | The Protobuf message, with its constraints ([Schemas are Protobuf](#schemas-are-protobuf)) |
-| Scope | `boundary`, or `boundary + tenant` for durable and temp kinds ([The address](#the-address)) |
-| Class | `config`, `secret`, `durable` or `temp` ([Storage classes](#storage-classes)) |
-| Treatment | `hashed`, `sealed` or `plain` ([Treatment](#treatment)) |
-| Profile | `Fixed`, `Operable` or `Tenant-adjustable` for settings; `-` for state that only its writer creates in the course of its job ([Profiles](#profiles)) |
-| Layer or links | The group and layer of a member of a layered kind, or the kinds it is linked to ([Layered and linked kinds](#layered-and-linked-kinds)) |
-| Writer | The one actor that writes it, or IaC or the publishing pipeline for config and secret ([One writer per kind](#one-writer-per-kind)) |
+| Schema | The Protobuf message, with its constraints ([Schemas are Protobuf](/decisions/0004-the-data-model/#schemas-are-protobuf)) |
+| Scope | `boundary`, or `boundary + tenant` for durable and temp kinds ([The address](/decisions/0004-the-data-model/#the-address)) |
+| Class | `config`, `secret`, `durable` or `temp` ([Storage classes](/decisions/0004-the-data-model/#storage-classes)) |
+| Treatment | `hashed`, `sealed` or `plain` ([Treatment](/decisions/0004-the-data-model/#treatment)) |
+| Profile | `Fixed`, `Operable` or `Tenant-adjustable` for settings; `-` for state that only its writer creates in the course of its job ([Profiles](/decisions/0004-the-data-model/#profiles)) |
+| Layer or links | The group and layer of a member of a layered kind, or the kinds it is linked to ([Layered and linked kinds](/decisions/0004-the-data-model/#layered-and-linked-kinds)) |
+| Writer | The one actor that writes it, or IaC or the publishing pipeline for config and secret ([One writer per kind](/decisions/0004-the-data-model/#one-writer-per-kind)) |
 | Readers and rules | The actors with a get, list or watch rule on it |
 | Indexes | The declared lookups besides listing by tenant |
 | TTL | Temp: mandatory, with a default and a maximum. Durable: only when the kind carries an expiry field |
@@ -74,9 +74,9 @@ Every kind is in **exactly one storage class**. The classes are mutually exclusi
 | **durable** | Read-write, must survive | The durable engine behind store@ | One actor, through the store | Yes, when the kind is authoritative | If the kind has one |
 | **temp** | Read-write, may be lost | The temp engine behind store@ | One actor, through the store | Never | If the kind has one |
 
-- **Where a thing is written decides its class** (principle 14). IaC and the publishing pipeline write config and secrets; sluis writes durable and temp data through the store; sluis never writes config. A setting that comes from several places is split into one kind per place ([Layered and linked kinds](#layered-and-linked-kinds)).
+- **Where a thing is written decides its class** (principle 14). IaC and the publishing pipeline write config and secrets; sluis writes durable and temp data through the store; sluis never writes config. A setting that comes from several places is split into one kind per place ([Layered and linked kinds](/decisions/0004-the-data-model/#layered-and-linked-kinds)).
 - **Config is read-only and signed.** It reaches the store as signed documents, one per config kind, loaded as a whole snapshot ([0005](/decisions/0005-the-store/#configuration-loading)). The tenant dimension never appears on a config kind: a tenant never appears in config.
-- **A secret is a value from a secret source,** which holds it in the clear for whoever may read it ([0005](/decisions/0005-the-store/#secret-sources)). A secret that sluis generates or receives is not this class: it is sealed or hashed durable data ([Treatment](#treatment)).
+- **A secret is a value from a secret source,** which holds it in the clear for whoever may read it ([0005](/decisions/0005-the-store/#secret-sources)). A secret that sluis generates or receives is not this class: it is sealed or hashed durable data ([Treatment](/decisions/0004-the-data-model/#treatment)).
 - **Durable data must survive.** It has one writer. A durable kind that nothing else can recreate is **authoritative**, and only authoritative kinds are backed up ([0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 - **Temp data may be lost,** and losing it costs a sign-in or a retry, never data. A temp kind has a mandatory time to live with a default and a maximum built in ([0005](/decisions/0005-the-store/#time-to-live)). A fact that a re-sync rebuilds is temp: the directory facts have a 24 h default and a 7 d maximum.
 - **Built-in TTL defaults of temp kinds** (maximum in brackets): AuthCode 60 s [10 min], DeviceCode 10 min [15 min], WebAuthnChallenge 5 min [10 min], Lease 30 s [10 min], SpentGrant 2 min [5 min], LogLevelOverride 1 h [24 h], PredefinedPolicyLinkTemporary 1 h [24 h], PendingEnrolment 7 d [30 d]; UpstreamMetadata and VerifierKeyCache follow HTTP caching [24 h]. The other TTLs are in the registry. A tunable may shorten a value and never lengthens it past the maximum.
@@ -197,7 +197,7 @@ An upstream or provider app is classed by how it is made.
 - **The criterion applies to every connection made in the UI, the operator's own included.** A hand- or IaC-made app is config plus a secret source, and config never has a tenant. A flow that needs a browser round trip is run in the UI by the adapter that completes it, and what it makes is durable, with its secrets sealed, and **belongs to the tenant that ran the flow**: `GitHubApp`, `GitHubInstallation`, `SlackConnection` and `EntraConnection`, with the state of the flow in progress (a temp kind) in the same tenant. An operator who makes a GitHub App in the UI makes it in the operator's own company, which is a tenant.
 - **An app and a connection are two things.** A provider app that serves the whole installation (`SlackApp`, `Upstream` as a multi-tenant app, and their secrets) stays config and secret at the boundary. Every connection of a tenant to a provider is a durable kind of that tenant with its credential sealed, made through the UI or the API: a directory (Google Workspace, Entra or a GitHub organisation), a Cloudflare account, a Slack workspace, a GitHub organisation or app. The company that runs the installation is a tenant of it, so its own connections are durable too.
 - **An IaC tool that writes through the API makes durable data, not config.** IaC may create a connection by calling the API; where a thing is written decides its class ([principle 14](/principles/#14-where-a-thing-is-written-decides-its-class)), and a write through the store's API lands in a durable kind of the tenant. Config stays what IaC commits as a signed document.
-- **Linked kinds carry the difference.** The app is config, its secret a secret, its connection per tenant durable and the install in progress temp, and the directory facts a connection reads are temp kinds of the same tenant ([Layered and linked kinds](#layered-and-linked-kinds)).
+- **Linked kinds carry the difference.** The app is config, its secret a secret, its connection per tenant durable and the install in progress temp, and the directory facts a connection reads are temp kinds of the same tenant ([Layered and linked kinds](/decisions/0004-the-data-model/#layered-and-linked-kinds)).
 
 #### Who connects decides
 

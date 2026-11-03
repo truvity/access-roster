@@ -24,7 +24,7 @@ This record reverses the stance that only the owner of the card stands between a
   |---|---|---|
   | work | `entry` | Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns the step. It sits behind the edge connector and is the only actor reachable from outside. |
   | work | `session` | Sign-in, sessions, the session cookie and the freshness of each person's authentication per boundary (step-up). It asks key@ to seal and open the cookie on every request. |
-  | work | `console` | The operator API, as the browser's backend ([The console](#the-console)). |
+  | work | `console` | The operator API, as the browser's backend ([The console](/decisions/0002-families-of-actors/#the-console)). |
   | work | `exchange` | Token exchange (RFC 8693), enrolment, the front of the signing API, and the verifiers of proofs. |
   | work | `policy` | The decision point. A declared Cedar policy maps facts to grants, and `policy` asks key@ to seal them ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). It has no outbound network. |
   | work | `signer` | Signs tokens under a signing policy, and artifacts for a grant that `policy` sealed ([0024](/decisions/0024-root-custody-and-the-signing-api/)). It asks key@ to sign and is not a pure signing oracle. |
@@ -59,7 +59,7 @@ flowchart LR
 
 ### Work actors
 
-- **A work actor holds no storage, key or audit credential at rest.** It reaches data, keys and audit only through its ports ([Ports of a work actor](#ports-of-a-work-actor)), so a flaw in a work actor yields what it is using at that moment and nothing it could replay later ([principle 13](/principles/#13-few-credential-holders)).
+- **A work actor holds no storage, key or audit credential at rest.** It reaches data, keys and audit only through its ports ([Ports of a work actor](/decisions/0002-families-of-actors/#ports-of-a-work-actor)), so a flaw in a work actor yields what it is using at that moment and nothing it could replay later ([principle 13](/principles/#13-few-credential-holders)).
 - **`entry` routes and does nothing else.** `session` serves sign-in and sessions, `exchange` token exchange and enrolment, `console` the operator API, and `signer` signing.
 - **`signer` and `policy` are split.** The actor that signs does not decide, and the actor that decides cannot sign.
 - **`ca` and `ssh-ca` are two actors.** An SSH CA is a different authority from an X.509 CA, with a different key, format and relying parties, so a flaw in one does not sign for the other. An installation does not fuse them, because that would undo the separation ([0003](/decisions/0003-units-transports-and-fusion/#fusion)).

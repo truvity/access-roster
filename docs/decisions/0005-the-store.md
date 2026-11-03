@@ -30,7 +30,7 @@ Facts about the engines, checked on the dates given. rqlite authorises per endpo
 | Durable | durable | Read-write | `rqlite` (boards and local), `dynamodb` (AWS) |
 | Temp | temp | Read-write | `rqlite`, `dynamodb` |
 
-The durable and temp ports may sit on one engine; they are two ports because the classes differ in backup and in TTL. The bootstrap file names one destination per port ([The bootstrap file](#the-bootstrap-file)).
+The durable and temp ports may sit on one engine; they are two ports because the classes differ in backup and in TTL. The bootstrap file names one destination per port ([The bootstrap file](/decisions/0005-the-store/#the-bootstrap-file)).
 
 #### The service
 
@@ -50,10 +50,10 @@ The verbs:
 | `update` | Changes an item only at the version the caller read (`if_version`) |
 | `delete` | Removes an item, optionally at a version |
 | `apply` | Creates the item or sets it to the given value in one call, for a writer that owns the whole item and replays idempotently |
-| `watch` | Streams the changes of a kind from a resume point ([Watch and the resume point](#watch-and-the-resume-point)) |
+| `watch` | Streams the changes of a kind from a resume point ([Watch and the resume point](/decisions/0005-the-store/#watch-and-the-resume-point)) |
 
-- **An item has a version.** The store sets it: 1 at create, plus 1 at each change. An update names the version it read. For a lease the version is the fencing token ([Leases](#leases)).
-- **An item has an expiry** when its kind has a TTL ([Time to live](#time-to-live)).
+- **An item has a version.** The store sets it: 1 at create, plus 1 at each change. An update names the version it read. For a lease the version is the fencing token ([Leases](/decisions/0005-the-store/#leases)).
+- **An item has an expiry** when its kind has a TTL ([Time to live](/decisions/0005-the-store/#time-to-live)).
 - **Item keys and the sealed envelope** are on the [store API](/reference/store-api/) reference page, with the wire contract.
 
 ### Typed clients
@@ -89,7 +89,7 @@ trait Kind {
 
 ### Watch and the resume point
 
-- **Watch streams the changes of a kind from a resume point.** The store writes a change-log row in the same transaction as each change of a kind that some actor may watch, so no change to a watched kind is missed or invented; a kind that nobody may watch writes none, and a hot counter such as an allowance stays one conditional update ([Drivers](#drivers)); the resume point is the change-log sequence a watcher hands back after a restart.
+- **Watch streams the changes of a kind from a resume point.** The store writes a change-log row in the same transaction as each change of a kind that some actor may watch, so no change to a watched kind is missed or invented; a kind that nobody may watch writes none, and a hot counter such as an allowance stays one conditional update ([Drivers](/decisions/0005-the-store/#drivers)); the resume point is the change-log sequence a watcher hands back after a restart.
 - **A resume point that the change log no longer holds** is refused with a distinct error, and the watcher lists the kind again.
 - **Config has no change log.** When the store swaps a snapshot, it delivers each changed config kind to the watchers of that kind; a watcher that reconnects reads the kind again.
 - **On Lambda nothing is pushed.** A reader re-reads with an ETag, and an unchanged answer costs one small reply.
@@ -126,8 +126,8 @@ trait Kind {
 ### Time to live
 
 - **A temp kind has a mandatory TTL;** a durable kind has one only when it carries an expiry field. The registry gives a default and a maximum ([0004](/decisions/0004-the-data-model/#storage-classes)). A writer may ask for a shorter TTL, and never a longer one than the maximum.
-- **A read checks the expiry.** An item past its expiry reads as absent, whatever the engine still holds, and a create may write it again (a `Lease` is taken over by a conditional update instead, [Leases](#leases)).
-- **A sweeper removes expired items:** rqlite's leader runs it, and DynamoDB TTL does it on AWS. The sweep only frees space; correctness comes from the read-time check. A `Lease` item is the one exemption ([Leases](#leases)).
+- **A read checks the expiry.** An item past its expiry reads as absent, whatever the engine still holds, and a create may write it again (a `Lease` is taken over by a conditional update instead, [Leases](/decisions/0005-the-store/#leases)).
+- **A sweeper removes expired items:** rqlite's leader runs it, and DynamoDB TTL does it on AWS. The sweep only frees space; correctness comes from the read-time check. A `Lease` item is the one exemption ([Leases](/decisions/0005-the-store/#leases)).
 - **store@ sets every timestamp,** never the engine.
 
 ### Leases
@@ -145,7 +145,7 @@ trait Kind {
 - **Config reaches the store as signed config documents,** one per config kind, holding all the items of the kind. A document is a JWS in general JSON serialisation (RFC 7515, section 7.2); its payload is the exact bytes of the reviewed file. The protected header carries the `kid` of the publisher key and a sequence number `seq`. The format and the test vectors are on the [signed config](/reference/signed-config/) reference page.
 - **The store verifies the signature before it parses a byte.** It accepts a signature only from a publisher key pinned in the bootstrap file, and refuses any other algorithm than ES384, and any `crit`, `jku`, `x5u` or embedded `jwk`. The signature proves the publisher and the bytes; that the commit was reviewed is the branch protection of the repository.
 - **A document may carry several signatures.** A regulated party's policy carries the publisher's and the party's, and the store requires both.
-- **A sequence number that must grow** stops a running store from taking an older document than the one in force. It protects a running process only ([Freshness at a cold start](#freshness-at-a-cold-start)).
+- **A sequence number that must grow** stops a running store from taking an older document than the one in force. It protects a running process only ([Freshness at a cold start](/decisions/0005-the-store/#freshness-at-a-cold-start)).
 - **Installation-wide documents** have the same content in every boundary's config source; store@ reads its own boundary's source only ([0008](/decisions/0008-boundaries-and-tenants/#installation-wide-settings)).
 
 #### The snapshot
@@ -202,7 +202,7 @@ trait Kind {
 - A reap timeout shorter than a planned outage removes a healthy node, so it is set against rolling updates. After a full power loss a cluster returns only with a quorum.
 - A cold start needs the config source and every document: an AppConfig outage stops a start, and so does a document that is missing or broken. On Lambda this adds a dependency to the start of store@'s function; the measure of it belongs to that installation's tests.
 - An audit piece cannot cold-start without store@, which also loads its documents. It already depends on the store through key@, whose key wraps are kinds, so a loader of its own would buy no independence.
-- A signed document is not fresh at a cold start: the residual is stated under [Freshness at a cold start](#freshness-at-a-cold-start).
+- A signed document is not fresh at a cold start: the residual is stated under [Freshness at a cold start](/decisions/0005-the-store/#freshness-at-a-cold-start).
 - A secret-source value is visible to store@: accepted, and stated in the threat model.
 - The pages that follow are [Store API](/reference/store-api/), [Bootstrap file](/reference/bootstrap-file/), [Signed config](/reference/signed-config/) and [Data](/concepts/data/).
 
