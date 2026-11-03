@@ -164,7 +164,7 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 
 ### How a data key is wrapped
 
-- **AWS:** GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored.
+- **AWS:** GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored; for a tenant declared customer-account, under that account's KMS key (0006).
 - **Board:** A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data.
 - **Backup archive:** An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient.
 

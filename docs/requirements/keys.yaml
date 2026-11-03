@@ -973,7 +973,7 @@ requirements:
       - {kind: integration-test, ref: "after the move every DataKeyWrap of the tenant names the customer's key and every value still opens"}
   - id: REQ-KEYS-071
     area: KEYS
-    statement: "When the grant for a customer account is revoked or disabled, key@ MUST stop that tenant's sealing and signing with UNAVAILABLE and leave every other tenant unaffected."
+    statement: "When the grant for a customer account is revoked or disabled, key@ MUST stop that tenant's seals, opens and signs with UNAVAILABLE and leave every other tenant unaffected."
     rationale: "Revocation is the customer's kill switch and fails closed for that tenant only (ADR 0006)."
     level: MUST
     source: design-decision
@@ -983,7 +983,7 @@ requirements:
     standards: []
     issues: [1211]
     verification:
-      - {kind: integration-test, ref: "revoke the grant of one tenant: its seals and signs answer UNAVAILABLE, a second tenant's still succeed"}
+      - {kind: integration-test, ref: "revoke the grant of one tenant: its seals, opens and signs answer UNAVAILABLE, a second tenant's still succeed"}
   - id: REQ-KEYS-072
     area: KEYS
     statement: "The pairwise data key of a tenant MUST NOT be rotated."

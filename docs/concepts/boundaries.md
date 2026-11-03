@@ -39,7 +39,7 @@ A **tenant** is a scope inside a boundary with its own settings, clients, allowa
 
 Tenants of one boundary share its actors, its authority keys and its fate: a flaw in shared code reaches every tenant of the boundary. That is the accepted L0 risk, and a tenant that cannot accept it is **promoted** to a boundary of its own. Promotion moves the tenant's kinds to the new boundary and rewraps its data keys for the new boundary's wrapping key; the tenant keeps its name, its clients' names and its settings ([ADR 0008](/decisions/0008-boundaries-and-tenants/#promotion)).
 
-A tenant's life is create, suspend and erase. Suspending is a tightening and takes effect at once. Erasing deletes the tenant's `data` and `pseudonym` wraps, which is the crypto-shred, then its plain items; its `evidence` wrap goes when the evidence retention ends ([ADR 0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle)).
+A tenant's life is create, suspend and erase. Suspending is a tightening and takes effect at once. Erasing deletes the tenant's `data`, `pseudonym` and `pairwise` wraps, which is the crypto-shred, then its plain items; its `evidence` wrap goes when the evidence retention ends ([ADR 0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle)).
 
 ## Example installations
 
@@ -104,7 +104,7 @@ Each environment boundary has its own issuer, and each tenant has an issuer host
 |---|---|
 | `iss` | The issuer URL |
 | `aud` | **Exactly one registered `client_id`**, never a URL. An RFC 8707 `resource=` selects a registered client and is never copied into `aud`. Between actors of two boundaries, `aud` is the target's SPIFFE ID |
-| `sub` | The person's opaque random id for a boundary whose sector is `public`, and a pairwise value for any other sector ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
+| `sub` | The person's opaque random id for a tenant whose sector is `public`, and a pairwise value for any other sector ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
 | `acr`, `amr`, `auth_time` | How and when the person signed in |
 | `cnf` | Only when the audience declares a binding: `cnf.jkt` for DPoP, `cnf.x5t#S256` for mutual TLS ([ADR 0038](/decisions/0038-fapi-2-profile/#binding-is-declared-per-audience)). A bearer token has no `cnf` |
 | grant names | Only that boundary's grant names, narrowed per audience |

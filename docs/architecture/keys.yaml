@@ -333,6 +333,6 @@ data_keys:
       notes: "Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds these are EnrolmentToken and PendingEnrolment. The wrap has the same purpose name as the tenant's `data` key and a different address."
 
 wrapping:
-  aws: "GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored."
+  aws: "GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored; for a tenant declared customer-account, under that account's KMS key (0006)."
   board: "A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data."
   backup_archive: "An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient."

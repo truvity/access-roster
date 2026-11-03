@@ -510,7 +510,7 @@ terms:
     avoid: ["escrow recipient", "offline copy of the sealing key"]
 
   - term: crypto-shred
-    definition: "Erasing a tenant by deleting its data key wraps: the `data` and `pseudonym` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
+    definition: "Erasing a tenant by deleting its data key wraps: the `data`, `pseudonym` and `pairwise` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
     category: keys
     see: ["0006-keys-and-sealing#erasing-a-tenant"]
 
@@ -586,7 +586,7 @@ terms:
 
   # ---------------------------------------------------------------- boundaries
   - term: boundary
-    definition: "The unit of keys and policy. Every address starts with it, it has a level on the ladder, its own key@ from L1, and its own issuer and audit log."
+    definition: "The unit of keys and policy. Every address starts with it, it has a level on the ladder, its own key@ from L1, and its own audit log."
     category: boundaries
     see: ["0008-boundaries-and-tenants#boundaries"]
     avoid: ["environment (as the general term)", "company boundary", "product boundary"]
@@ -668,7 +668,7 @@ terms:
 
   # ---------------------------------------------------------------- ciam
   - term: customer boundary
-    definition: "A boundary of the customer kind: the boundary of one regulated customer, or one shared boundary for several customers. It has its own keys and issuer, and its tenants each have their own data keys. It is a boundary, not a tenant."
+    definition: "A boundary of the customer kind: the boundary of one regulated customer, or one shared boundary for several customers. It has its own keys, and its tenants each have their own data keys. It is a boundary, not a tenant."
     category: ciam
     see: ["0008-boundaries-and-tenants#boundaries", "0032-customer-identity-installations"]
     avoid: ["company boundary", "product boundary"]

@@ -12,7 +12,7 @@ Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).
 
 Three gaps remained.
 
-- **Single sign-on across products needs a shape.** The products of a customer must not each ask the person again, yet each customer boundary has an issuer of its own ([0017](/decisions/0017-identity-and-sign-in/#issuers)).
+- **Single sign-on across products needs a shape.** The products of a customer must not each ask the person again, yet each tenant has an issuer of its own ([0017](/decisions/0017-identity-and-sign-in/#issuers)).
 - **Client IDs are readable and unique per issuer,** with names of 1 to 32 characters ([0017](/decisions/0017-identity-and-sign-in/#audiences)). Thousands of tenants that each have a `web` client need a rule.
 - **The NATS mapping must not become an account per tenant.** [REQ-ISO-025](/requirements/iso/#REQ-ISO-025) says "in its boundary's account". With a tenant now meaning a customer organisation, an account per tenant would be thousands of accounts.
 
@@ -68,12 +68,11 @@ This example is not normative, and its names are generic. A wallet product (tena
 - A person of a moved tenant keeps their `sub` and the tenant keeps its `iss`, so a relying party that stored them keeps its users and its pin.
 - Two controllers are two tenants, so a regulated customer's relying party and a product's never see the same `sub`, and an app cannot tell which boundary serves its tenant.
 - Each tenant's issuer host is one more name to publish and to watch with the CAA and Certificate Transparency rules of [REQ-SEC-029](/requirements/sec/#REQ-SEC-029) to [REQ-SEC-031](/requirements/sec/#REQ-SEC-031).
-- Requirements: [REQ-DATA-025](/requirements/data/#REQ-DATA-025), [REQ-ISO-077](/requirements/iso/#REQ-ISO-077) and [REQ-ISO-078](/requirements/iso/#REQ-ISO-078).
+- Requirements: [REQ-DATA-025](/requirements/data/#REQ-DATA-025), [REQ-ISO-116](/requirements/iso/#REQ-ISO-116), [REQ-ISO-077](/requirements/iso/#REQ-ISO-077) and [REQ-ISO-078](/requirements/iso/#REQ-ISO-078).
 
 ## Roads not taken
 
 - **An issuer per boundary, shared by its tenants.** Apps of different controllers would share an issuer and an audience space, and moving one tenant would change its `iss`.
-- **A sector per boundary.** Controllers in one boundary would share a sector, and a boundary's `mac` key cannot move with one tenant without handing over the others' subjects.
 - **One customer boundary for the whole customer base.** All products would share an issuer and an audience space, so a token for one product would be a candidate for another's relying parties.
 - **A boundary for every tenant.** Each would carry keys, an issuer host and a yearly certification ([0008](/decisions/0008-boundaries-and-tenants/#scale)).
 - **Organisation membership stored in sluis.** It would make sluis the store of a product's user groups, which [0031](/decisions/0031-ciam-is-a-broker/) refuses.
@@ -83,7 +82,6 @@ This example is not normative, and its names are generic. A wallet product (tena
 - **A new subject for a moved person.** Every relying party would lose its users and every link would be a new person.
 - **A new `iss` for a moved tenant.** Every relying party would re-pin and every person would sign in again, which fails the exit that [0008](/decisions/0008-boundaries-and-tenants/#example-installations) promises.
 - **A pairwise key made again at the new boundary.** Every pairwise subject would change, as a new subject for a moved person does.
-- **A boundary for every controller.** Each would carry keys, an engine and a yearly certification ([0008](/decisions/0008-boundaries-and-tenants/#scale)), when a tenant gives a controller its own issuer, key and sector for items and four data keys.
 
 ## Follow-ups
 

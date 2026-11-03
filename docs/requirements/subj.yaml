@@ -196,7 +196,7 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-SUBJ-015
     area: SUBJ
-    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a tenant that changes its sector."
+    statement: "exchange MUST refuse a Tenant write that would alter a pairwise subject already given out, such as a renamed sector or a tenant that changes its sector."
     rationale: "Such a change would change every stored subject of the sector."
     level: MUST
     source: stakeholder-ciam
@@ -710,7 +710,7 @@ requirements:
     standards:
       - {id: NC-06, section: "2104", depth: Full}
     issues: [1024]
-    superseded_by: [REQ-KEYS-072]
+    superseded_by: [REQ-SUBJ-007]
     verification:
       - {kind: integration-test, ref: "key count before and after a sector is added; unchanged"}
   - id: REQ-SUBJ-055
