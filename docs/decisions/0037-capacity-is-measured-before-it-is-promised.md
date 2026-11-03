@@ -60,14 +60,14 @@ MEASURED on boards with a card each, on the dates in the first column ([Board ca
 |---|---|---|
 | 2026-10-31 | One P-384 signature on a card | About 147 ms, about 7 a second per card, about 21 a second for three boards |
 | 2026-11-03 | Opening a data key on a card (ECDH) | Median 143 ms, about 7 a second per card; a cached key costs a memory operation |
-| 2026-11-02 | Replicated commits, three boards, 10 clusters of three nodes | 400 a second delivered in full with a p99 of 118 to 127 ms; saturated at about 600 a second with the CPU 95% busy |
+| 2026-11-02 | Replicated commits, three boards, 10 clusters of three nodes | 400 a second delivered in full with a p99 of 118 to 127 ms; saturated at about 600 a second with the CPU 95% busy. This is not the budget: an installation has one cluster, which saturated at about 275 a second (2026-11-03, [Board capacity](#board-capacity)) |
 | 2026-11-02 | One replicated commit | p50 21 to 41 ms and p99 62 to 123 ms |
 
 What it means:
 
-- **The cards, not the state, limit a board installation.** The design needs about 7 commits a second at the v1 peak and about 73 at the signing ceiling (estimated 2026-10-31 from the flows), against a budget of 400.
+- **The cards, not the state, limit a board installation.** The design needs about 7 commits a second at the v1 peak and about 73 at the signing ceiling (estimated 2026-10-31 from the flows), against a budget of about 275 commits a second (the saturation of one cluster, MEASURED 2026-11-03, [Board capacity](#board-capacity)).
 - **A cache miss on a card is a 143 ms wait.** The seven a second per card serve misses and not requests, so the hit rate of the cache decides how many requests a card supports.
-- **Every limiter admit and every session write is a Raft commit.** Their rate is an input to the budget of 400.
+- **Every limiter admit and every session write is a Raft commit.** Their rate is an input to the budget of about 275.
 
 Whether the customers' load fits the quota and the budgets depends on the products' sessions and clients, which are inputs the rest of the spike still needs.
 

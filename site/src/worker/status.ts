@@ -157,10 +157,10 @@ export interface Live {
 
 // The live view: the board in KV joined with the /data/repo.json of this deployment, read
 // from the static assets (no Worker request, no KV read). Null when KV holds no board yet.
-export async function liveStatus(env: Env, origin: string): Promise<Live | null> {
+export async function liveStatus(env: Env, base: string): Promise<Live | null> {
   const [doc, ci] = await Promise.all([env.STATUS.get<BoardDoc>(BOARD_KEY, 'json'), env.STATUS.get<CiDoc>(CI_KEY, 'json')]);
   if (!doc) return null;
-  const res = await env.ASSETS.fetch(new Request(new URL('/data/repo.json', origin)));
+  const res = await env.ASSETS.fetch(new Request(new URL('/data/repo.json', base)));
   if (!res.ok) throw new Error(`the static assets answered HTTP ${res.status} for /data/repo.json`);
   const repo = (await res.json()) as RepoLike & { builtAt: string };
   return {

@@ -14,14 +14,14 @@
 //   - the markers: every `terms-allow: <id>` found is listed, so a reviewer sees each exception. A
 //     marker with an id that is not a retired id is an error.
 //
-// Mode: WARN by default (the hits are printed, the exit code is 0). `--error` (or TERMS_MODE=error)
-// makes any hit fail the run; it is switched on at the end of wave 3 of the design rewrite.
+// Mode: WARN when run directly (the hits are printed, the exit code is 0). `--error` (or
+// TERMS_MODE=error) makes any hit fail the run; `just check-terms`, and so `just check` and CI, passes it.
 // A glossary or a scan that finds nothing to check fails in both modes: an empty sweep proves nothing.
 //
 // Needs the `yaml` package of site/ (`just site-install`).
 //
 // usage: tools/checks/terms.mjs [--error] [--quiet] [repo-root]
-//   --error   a hit fails the run (default: warn)
+//   --error   a hit fails the run (default when run directly: warn; the Justfile recipe passes it)
 //   --quiet   print the summary and the markers, not every hit
 import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
