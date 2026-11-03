@@ -60,7 +60,7 @@ const shots = process.argv[3] ? resolve(process.argv[3]) : null;
 
 // The explorer pages are listed: they have no diagram to find, and the explorer
 // script must have run on them.
-const EXPLORERS = ['/architecture/explorer/', '/architecture/audit-explorer/'];
+const EXPLORERS = ['/architecture/identity-explorer/', '/architecture/audit-explorer/'];
 // Pages that must be in the sweep whatever else is found (a diagram on each).
 const REQUIRED = ['/concepts/boundaries/', '/concepts/identity/', '/architecture/', '/runtimes/',
   '/runtimes/kubernetes/', '/integrations/connecting/'];

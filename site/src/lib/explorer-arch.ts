@@ -1,4 +1,4 @@
-// Builds the architecture explorer's model, per tested installation, from
+// Builds the identity explorer's model, per tested installation, from
 // src/data/explorer/architecture.yaml. Nothing here states a fact about sluis:
 // facts are in the YAML, and this file only expands them (names from the
 // runtime templates, the call graph per preset, the layout of the map).

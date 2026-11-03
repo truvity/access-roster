@@ -8,7 +8,7 @@ sidebar:
 ---
 import AuditExplorer from '../../site/src/components/explorer/AuditExplorer.astro';
 
-This is the target state, not a running system. Every actor puts its records on the transport and moves on. The writer seals them into a C2SP tiled log in a blob and asks key@ to sign each checkpoint with the log key; an optional witness cosigns the checkpoints, and an indexer feeds a search index from the signed log. The page is drawn from `site/src/data/explorer/audit.yaml`, written by hand from the design. The ideas are on [Audit](/concepts/audit/); the reasoning is in [0028](/decisions/0028-audit-pieces/), [0029](/decisions/0029-the-audit-log/) and [0030](/decisions/0030-audit-records-and-the-usage-stream/).
+This is the target state, not a running system. This page shows the audit module on the shared foundation (store@, exporter@ and key@); [the identity explorer](/architecture/identity-explorer/) shows the identity module on the same foundation. Every actor puts its records on the transport and moves on. The writer seals them into a C2SP tiled log in a blob and asks key@ to sign each checkpoint with the log key; an optional witness cosigns the checkpoints, and an indexer feeds a search index from the signed log. The page is drawn from `site/src/data/explorer/audit.yaml`, written by hand from the design. The ideas are on [Audit](/concepts/audit/); the reasoning is in [0028](/decisions/0028-audit-pieces/), [0029](/decisions/0029-the-audit-log/) and [0030](/decisions/0030-audit-records-and-the-usage-stream/).
 
 The audit pieces have the data and keys ports every actor has, and three ports of their own: the blob, the transport and the index. They read their documents (`AuditLog`, `AuditWitnesses` and `AuditCatalogue`) through the data port, as kinds that store@ loads. The same actors, records and integrity chain run in every installation; only the drivers behind the ports change. Audit is the emitter library and four pieces, the writer, the witness, the indexer and the reader, and each piece keeps its own drivers ([0028](/decisions/0028-audit-pieces/#four-pieces)). Pick an installation: local, boards or lambda. The map, the flows and the outage table follow it. Without script the page shows boards, and every table is plain HTML. The explorer does not draw the Kubernetes installation yet; there the audit side may be a separate audit installation ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 
@@ -18,7 +18,7 @@ The audit pieces have the data and keys ports every actor has, and three ports o
 
 ## Map and flows
 
-Select a box to see what it holds, what it never holds and who it calls. Choose a flow to step through it: each step lights the lines it uses, in order. On a board every actor listens on Unix sockets only; [the architecture explorer](/architecture/explorer/) shows the sockets and units of each installation.
+Select a box to see what it holds, what it never holds and who it calls. Choose a flow to step through it: each step lights the lines it uses, in order. On a board every actor listens on Unix sockets only; [the identity explorer](/architecture/identity-explorer/) shows the sockets and units of each installation.
 
 Where Search (the indexer, the search index and the reader) runs is derived from the actor registry ([0003](/decisions/0003-units-transports-and-fusion/#units)). `quota` is not an audit piece: it counts an allowance down and records each admit, refusal and push as an audit fact ([0039](/decisions/0039-quota-allowance/#countdown-and-refusal)). The witness is optional everywhere ([0029](/decisions/0029-the-audit-log/#witnesses)).
 
@@ -68,4 +68,4 @@ These points are proposed in the design and not yet decided. Each links its trac
 
 <AuditExplorer part="open" />
 
-See also [the architecture explorer](/architecture/explorer/).
+See also [the identity explorer](/architecture/identity-explorer/), which shows the identity module.

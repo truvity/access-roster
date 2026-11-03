@@ -148,7 +148,7 @@ check-agent-links:
     tools/checks/agent-links.mjs
 
 # The actor registry, docs/architecture/actors.yaml: the four families, the credential holders, the
-# ports, calls and egress, against the decision records that name actors, the architecture explorer's
+# ports, calls and egress, against the decision records that name actors, the identity explorer's
 # roles, the requirement records' `actors:` and the generated tables on docs/reference/actors.md. Each
 # actor has the GitHub label `actor:<name>` that the registry lists. A decision record that does not name
 # an actor only warns; `--strict-adrs` makes it an error.
