@@ -6,7 +6,7 @@ sidebar:
   order: 1
 ---
 
-The registry lists every [actor](/concepts/actors/) of sluis by [family](/decisions/0002-families-of-actors/#the-four-families): the work actors and the adapters, store and exporter (data), key (keys), and the audit pieces. Its source is [`docs/architecture/actors.yaml`](https://github.com/truvity/sluis/blob/main/docs/architecture/actors.yaml), and the tables below are generated from it. With the kind registry and the key registry it generates the enforcement layers; each fact has one source.
+The registry lists every [actor](/concepts/families/) of sluis by [family](/decisions/0002-families-of-actors/#the-four-families): the work actors (the adapters among them), store and exporter (data), key (keys), and the audit pieces. Its source is [`docs/architecture/actors.yaml`](https://github.com/truvity/sluis/blob/main/docs/architecture/actors.yaml), and the tables below are generated from it. With the kind registry and the key registry it generates the enforcement layers; each fact has one source.
 
 `just check-actors` (`tools/checks/actors.mjs`) keeps the registry true. It fails when:
 
@@ -91,7 +91,7 @@ The operator API, as the browser's backend: it checks the operator's delegation 
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; the single-page application is TypeScript.
 - **Placement:** in the front installation; any number of instances; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `audit-emit`.
-- **Calls:** `session`, `exchange`, `policy`, `reader`, any adapter.
+- **Calls:** `session`, `exchange`, `policy`, `quota`, `reader`, any adapter.
 - **Egress:** none.
 - **Key purposes:** `data` (open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0027](/decisions/0027-the-console/).
@@ -141,7 +141,7 @@ The decision point: a declared Cedar policy maps facts to grants; it keeps no st
 - **Ports:** `data`, `keys`, `audit-emit`.
 - **Calls:** none.
 - **Egress:** none.
-- **Key purposes:** `grant` (seal), `pseudonym` (mac).
+- **Key purposes:** `grant` (seal), `data` (open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0007](/decisions/0007-policy-and-sealed-grants/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [POLICY](/requirements/policy/).
 - **Standards:** NC-12 Cedar policy language.
@@ -197,16 +197,16 @@ Keeps the allowance of each tenant, counts it down with a conditional update, re
 
 ### `adapter-upstream-oidc`
 
-Federates sign-in from an upstream identity provider: it does the code exchange at the upstream and returns the verified assertion to session, and it never decides.
+Federates sign-in from an upstream identity provider: it does the code exchange at the upstream and returns the verified assertion to session, and it never decides. It also reads the directory of Google Workspace and Entra that a tenant connected, as a facts source.
 
 - **Family:** work; holds no credential at rest.
-- **Contracts:** `Upstream`.
+- **Contracts:** `Upstream`, `FactsSource`.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `audit-emit`, `provider-api`.
 - **Calls:** `policy`.
-- **Egress:** `upstream-idp`.
-- **Key purposes:** `data` (open), `pseudonym` (mac).
+- **Egress:** `upstream-idp`, `directory-api`.
+- **Key purposes:** `data` (seal, open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0025](/decisions/0025-integrations/).
 - **Requirement areas:** [FED](/requirements/fed/).
 - **Standards:** ST-28 OIDC Core 1.0; ST-29 OIDC Discovery.
@@ -288,7 +288,7 @@ Holds a boundary's keys: it seals, opens, signs and makes keyed hashes in place,
 - **Ports:** `data`, `key-store`, `audit-emit`.
 - **Calls:** none.
 - **Egress:** `key-service`.
-- **Key purposes:** `wrapping` (wrap, unwrap, public-key), `grant` (open).
+- **Key purposes:** `wrapping` (wrap, unwrap, public-key), `grant` (open), `pin-release` (sign, public-key).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [KEYS](/requirements/keys/), [SEC](/requirements/sec/).
 - **Standards:** NC-10 PIV (NIST SP 800-73) and OpenPGP card on YubiKey; ST-83 RFC 9580 OpenPGP.
