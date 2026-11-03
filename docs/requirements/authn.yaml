@@ -667,7 +667,7 @@ requirements:
     gap: register-gap
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
-      - {kind: integration-test, ref: "negative test (wrong origin)"}
+      - {kind: integration-test, ref: "negative test (wrong web origin)"}
   - id: REQ-AUTHN-019
     area: AUTHN
     statement: "A WebAuthn relying party MUST bind a single-use challenge to each ceremony."
@@ -886,8 +886,8 @@ requirements:
       - {kind: integration-test, ref: "assertion test with the pinned credential ID and with another credential of the same account"}
   - id: REQ-AUTHN-070
     area: AUTHN
-    statement: "A session opened by the recovery sign-in MUST carry the recovery scope only."
-    rationale: "Recovery restores access, and a wider session would turn it into a standing back door."
+    statement: "A session opened by the recovery sign-in MUST carry only the scope of the built-in break-glass policy, whose link expires."
+    rationale: "Recovery restores access, and a wider or lasting session would turn it into a standing back door."
     level: MUST
     source: design-decision
     status: planned
@@ -897,6 +897,7 @@ requirements:
     issues: [795]
     verification:
       - {kind: integration-test, ref: "scope test: a recovery session asks for another scope and is refused"}
+      - {kind: integration-test, ref: "the recovery link expires within its maximum and the scope ends with it"}
   - id: REQ-AUTHN-071
     area: AUTHN
     statement: "Every use of the recovery sign-in, successful or refused, MUST produce an audit record."
@@ -1073,3 +1074,41 @@ requirements:
     issues: [980, 885]
     verification:
       - {kind: integration-test, ref: "CIBA approval without a passkey assertion is refused"}
+
+  # ---- break-glass recovery (decision 0017)
+  - id: REQ-AUTHN-074
+    area: AUTHN
+    statement: "The break-glass credentials MUST be the config kind BreakGlassPasskey, so that recovery works when the store is damaged."
+    rationale: "Recovery must not depend on the thing it recovers (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1178]
+    verification:
+      - {kind: integration-test, ref: "with the durable engine empty or unreadable, a break-glass sign-in against the signed config set succeeds"}
+  - id: REQ-AUTHN-076
+    area: AUTHN
+    statement: "The break-glass enrolment tools MUST only show the JSON to commit and store nothing."
+    rationale: "The credential is config, so only a reviewed commit adds it (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1178]
+    verification:
+      - {kind: integration-test, ref: "each tool is run against a store that records writes; no write occurs"}
+  - id: REQ-AUTHN-077
+    area: AUTHN
+    statement: "A restore MUST NOT change a BreakGlassPasskey."
+    rationale: "Break-glass credentials are config and are not in the archive, so no archive can add or remove one (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1178]
+    verification:
+      - {kind: integration-test, ref: "a restore of an archive from before a credential change leaves the signed config set as it is"}
