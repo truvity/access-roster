@@ -15,13 +15,15 @@ sluis is for engineers who run the identity layer of a small organisation, a pla
 An installation is one of two kinds, and the two are distinct installations of the same product ([roadmap](/roadmap/#a-core-and-two-later-modules)):
 
 - A **workforce installation** signs in the people of an organisation and reconciles its systems. It runs the core.
-- A **customer installation** adds the CIAM module and brokers an external customer-identity product for the end users of several products. The core is the same in both; the CIAM and quota modules are later layers.
+- A **customer installation** adds the CIAM layer ([0032](/decisions/0032-customer-identity-installations/)) and brokers an external customer-identity product for the end users of several products. The core is the same in both; the CIAM layer and the quota module are later layers.
+
+Every installation runs the same **foundation**: store@ for data, exporter@ for export and key@ for keys. Identity, audit and quota are **modules** on top of it, and an installation runs the modules it needs, such as the audit module alone ([Families](/concepts/families/#the-foundation-and-the-modules)).
 
 The people who work with either kind are these.
 
-- **Operators** install it on a workstation, on three single-board computers, as AWS Lambda functions or on Kubernetes. The same actors and configuration run on each; these four are the [tested installations](/runtimes/installations/).
+- **Operators** install it on a workstation, on three single-board computers, as AWS Lambda functions or on Kubernetes. The same actors and configuration run on each; these four are the [tested installations](/runtimes/).
 - **Platform and security engineers** write the policy that says who may get which credential, and read the audit trail that says who did.
-- **Integrators** add sign-in providers, directory sources and credential minters as separate processes, in any language that speaks ConnectRPC.
+- **Integrators** add sign-in providers, directory sources and credential minters as adapters: work actors that implement one of the ConnectRPC contracts of [Integrations](/integrations/).
 
 ## What it does
 
@@ -29,14 +31,14 @@ The people who work with either kind are these.
 - It **issues OIDC tokens** and **exchanges tokens** (RFC 8693): a robot or a CI job presents a token from the system it runs on and receives a sluis token for the system it wants to reach.
 - It **mints short-lived downstream credentials**, such as cloud credentials, GitHub installation tokens and certificates. Nothing it hands out is meant to outlive the task.
 - It **reconciles directory facts** from workspace directories and GitHub teams, so that policy can say "members of this team" without sluis owning the team.
-- It **writes a tamper-evident audit trail** of every success ([Audit](/concepts/audit/)).
+- It **writes a tamper-evident audit trail** of every flow, refusals included ([Audit](/concepts/audit/)).
 
-The part that holds a key is small and parses no internet input, and the part that decides is separate from the part that signs ([Actors](/concepts/actors/)).
+The part that holds a key is small and parses no internet input, and the part that decides is separate from the part that signs. Work actors hold no storage, key or audit credential at rest; only the data, keys and audit families do ([Families](/concepts/families/)).
 
 ## What it leaves out
 
-- **It is not a general secrets engine.** It keeps its own and its integrations' secrets and publishes a small typed set of credentials, but has no general key-value store, transit engine or lease system. Use a secrets manager for those.
-- **It has no users of its own, holds no roots and writes no Kubernetes objects.** Roots belong to the sister product [ritueel](https://ritueel.id). The reasons are in [what sluis is, and is not](/principles/#what-sluis-is-and-is-not).
+- **It is not a general secrets engine.** It keeps the secrets it generates or receives as sealed or hashed data, reads the secrets an operator gives it from a secret source, and publishes a small typed set of values, but has no general key-value store, transit engine or lease system for others. Use a secrets manager for those ([Data](/concepts/data/)).
+- **It has no users of its own and holds no roots.** It writes no Kubernetes object, except a Secret that exporter@ writes when an installation chooses the direct path. Roots belong to the sister product [ritueel](https://ritueel.id). The reasons are in [what sluis is, and is not](/principles/#what-sluis-is-and-is-not).
 
 ## v1 and v2
 
@@ -47,13 +49,14 @@ v1 is the sluis that runs today, a set of AWS Lambda functions on the `master` b
 | Section | What you find there |
 |---|---|
 | [Design principles](/principles/) | The yardstick the decision records follow. |
-| [Concepts](/concepts/) | The model and its vocabulary: actors, ports and drivers, boundaries, keys, identity, audit and data. |
+| [Concepts](/concepts/) | The model and its vocabulary: [families of actors](/concepts/families/), [data](/concepts/data/), [keys](/concepts/keys/), [boundaries](/concepts/boundaries/), [identity](/concepts/identity/) and [audit](/concepts/audit/). |
 | [Integrations](/integrations/) | Every system sluis connects to, and how to set it up. |
-| [Architecture](/architecture/) | Context, components and deployment, and the permission manifest behind them. |
+| [Architecture](/architecture/) | The three zoom levels, the components and the deployment, and the registries behind them ([Kinds](/reference/kinds/), [Rules](/reference/rules/), [Actors](/reference/actors/)). |
 | [Security](/security/threat-model/) | The threat model and break-glass recovery. |
 | [Runtimes](/runtimes/) | Bare-metal, serverless and Kubernetes, and the four tested installations. |
+| [Reference](/reference/) | The specifications the first working version is built against. |
 | [Tutorial](/tutorials/single-node-install/) | A step-by-step install on a single node. |
-| [Distribution](/distribution/) | Packages, platforms and release signing. |
+| [Distribution](/distribution/packages/) | Packages, platforms and release signing. |
 | [Standards](/standards/) | The specifications sluis follows and how conformance is proved. |
 | [Decisions](/decisions/), [Roadmap](/roadmap/), [Project status](/status/) | The reasoning, the milestones and where the work stands. |
 
