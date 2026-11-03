@@ -1,8 +1,8 @@
 ---
 // The audit explorer. `part` picks the piece, so the page can put its own
 // headings between them. The facts are in src/data/explorer/audit.yaml.
-// The CSS class by-key-holder is the purple border of a step signed through
-// the keys driver.
+// The purple border marks a step signed through key@ (the class name is
+// kept for the stylesheet).
 import '../../styles/explorer.css';
 import Chip from './Chip.astro';
 import MapView from './MapView.astro';
@@ -27,7 +27,7 @@ const dflt: string = data.default_shape;
     </div>
     <div class="ex-table-wrap">
       <table>
-        <thead><tr><th>Installation</th><th>Runtime</th><th>Transport</th><th>State</th><th>Log key</th><th>Witness</th><th>Blob</th><th>Search index</th></tr></thead>
+        <thead><tr><th>Installation</th><th>Runtime</th><th>Transport</th><th>Store engine</th><th>Log key</th><th>Witness</th><th>Blob</th><th>Search index</th></tr></thead>
         <tbody>
           {models.map((m) => (
             <tr data-shape-row={m.id}>
@@ -91,6 +91,7 @@ const dflt: string = data.default_shape;
       {data.chain.stages.map((s: any, i: number) => (
         <>
           {i > 0 && <span class="ex-chain-arrow" aria-hidden="true">→</span>}
+          {/* terms-allow: key-holder */}
           <div class={`ex-chain-box ${s.by === 'writer' ? 'by-writer' : 'by-key-holder'}`}>
             <b>{s.title}</b>
             {s.lines.map((l: string) => <span>{l}</span>)}
@@ -104,11 +105,12 @@ const dflt: string = data.default_shape;
       {data.chain.checkpoints.map((s: any, i: number) => (
         <>
           {i > 0 && <span class="ex-chain-arrow" aria-hidden="true">← consistent with</span>}
+          {/* terms-allow: key-holder */}
           <div class="ex-chain-box by-key-holder"><b>{s.id}</b><span>{s.covers}</span></div>
         </>
       ))}
     </div>
-    <p class="ex-sub">An auditor verifies with <code>sluis audit verify</code>, which reads the bucket and nothing else:</p>
+    <p class="ex-sub">An auditor verifies with <code>sluis audit verify</code>, which reads a project's bucket and nothing else:</p>
     <ol>{data.chain.verifier.map((v: string) => <li>{v}</li>)}</ol>
     <div class="ex-cards">
       {data.chain.notes.map((n: any) => (
@@ -120,10 +122,10 @@ const dflt: string = data.default_shape;
 
 {part === 'lag' && (
   <div class="ex" data-ex-lag data-leader={data.lag.leader} data-rate={data.lag.rate_per_min}>
-    <p style="font-size:var(--sl-text-sm)">Lag is the leader sequence minus the node's cursor. A node answers from what it has applied and says how far behind it is. Numbers are an example, for three nodes.</p>
+    <p style="font-size:var(--sl-text-sm)">Lag is the leader sequence minus the cursor of an indexed log. The indexer answers from what it has applied and says how far behind it is. Numbers are an example, for the three logs of a three-node cluster.</p>
     <div class="ex-table-wrap">
       <table>
-        <thead><tr><th>Node</th><th>Cursor</th><th>Lag</th><th>Applied</th></tr></thead>
+        <thead><tr><th>Log</th><th>Cursor</th><th>Lag</th><th>Applied</th></tr></thead>
         <tbody>
           {data.lag.nodes.map((n: any) => (
             <tr data-cursor={n.cursor}>

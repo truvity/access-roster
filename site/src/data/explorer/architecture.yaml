@@ -1,7 +1,7 @@
 # Data for the architecture explorer (docs/architecture/explorer.mdx).
 #
 # The facts live here and the component only renders them. Today the file is
-# written by hand from the design; once the permission manifest exists, the
+# written by hand from the design; 
 # actors, drivers, edges, uids and sockets below are generated from it and the
 # prose fields stay.
 #
@@ -42,10 +42,10 @@ shapes:
     nodes: 1
     node_agent: false
     edge: cloudflared
-    ports: { keys: software, state: embedded, blob: fs, transport: spool, index: sqlite }
+    ports: { keys: software, state: rqlite-one, blob: fs, transport: spool, index: sqlite }
     keys: software keys; a dedicated development card is opt-in
-    keys_note: "A dedicated development card is opt-in. Only the key-holder container reaches it, through the host's smart-card service, and key-holder has the card to itself."
-    state: embedded single-node store
+    keys_note: "A dedicated development card is opt-in. Only the key@ container reaches it, through the host's smart-card service, and key@ has the card to itself."
+    state: rqlite, one node
     use: Development, CI and the integration tests.
     notes:
       - text: "Keys are software keys by default. The software keys driver refuses to start in production and warns in staging (ADR 0006); a dedicated development card is opt-in (ADR 0011)."
@@ -65,9 +65,9 @@ shapes:
     state: rqlite (Raft) across three nodes
     use: Integration tests and tutorials. A Cloudflare tunnel serves sluis.example.com.
     notes:
-      - text: "The audit pieces run on the same nodes as sluis, so they share driver instances. Each node keeps its own audit log, and the other two nodes are its peer witnesses (2-of-3). Readers merge the logs by time."
+      - text: "The audit pieces run on the same nodes as sluis. Each node runs its own writer, with its own spool and log key, so each node keeps its own audit log, and the other two nodes are its peer witnesses (2-of-3). Readers merge the logs of a project by time."
         status: decided
-      - text: "The blob is Cloudflare R2, through the one s3-compatible driver with credentials from the cloudflare cloud driver. An account administrator can remove R2's lock (lock mode removable), so the peer witnesses protect against a rewritten history."
+      - text: "The blob is Cloudflare R2, through the one s3-compatible driver, with R2 temporary credentials scoped to the bucket and a prefix. An account administrator can remove R2's lock (lock mode removable), so the peer witnesses protect against a rewritten history."
         status: decided
       - text: "The index is rqlite, a replicated SQLite, so the reader can run on any node (ADR 0028). If its full-text index does not hold up on the boards, they fall back to sqlite on the indexer's node."
         status: decided
@@ -90,7 +90,7 @@ shapes:
         status: decided
       - text: "The transport is an SQS queue here. Direct mode is not available on serverless, because its fallback is a local spool and a function has no disk."
         status: decided
-      - text: "The log key is a single KMS key whose key policy names the writer function's role only. There is one log, so there is no peer witness; a witness is optional."
+      - text: "The log key is one KMS key per writer instance, whose key policy names the writer function's role only. A project has one log here, so there is no peer witness; a witness is optional."
         status: decided
 
 # What each runtime turns a process id into. {id} is the process id, {driver}
@@ -172,10 +172,10 @@ edges_kinds:
     title: edge connector
     sub: cloudflared tunnel
     line2: "cloudflared"
-    line3: "unix: origin"
+    line3: "unix socket"
     does: "The Cloudflare tunnel client. Its ingress service is entry's public Unix socket, as a unix: origin (unix:/run/sluis/entry/<boundary>-public.sock), so it makes outbound connections only and no inbound port is opened on the node. It holds no key and can open no other actor's socket. In the local installation a Compose service (this connector's image or a forwarder) mounts entry's socket and publishes a port (ADR 0011)."
     listen: Outbound tunnel only. It forwards to entry's public Unix socket.
-    transport: Unix socket (a unix origin)
+    transport: Unix socket (the tunnel's unix service)
     status: decided
   lwa:
     title: edge connector
@@ -196,9 +196,9 @@ drivers:
     port: keys
     title: software
     instance: shared
-    shared_name: key-holder
+    shared_name: key@
     binary: drivers/software
-    does: "Software keys, served by key-holder under its own uid, with the same socket per caller as on a card. A development and test driver: it refuses to start in production and warns in staging."
+    does: "Software keys, held by key@ under its own uid, with the same socket per caller as on a card. A development and test driver: it refuses to start in production and warns in staging (ADR 0006)."
     holds: The software key files
     backing: software key files
     status: decided
@@ -206,30 +206,30 @@ drivers:
     port: keys
     title: yubikey-piv
     instance: shared
-    shared_name: key-holder
+    shared_name: key@
     binary: drivers/yubikey-piv
-    does: "Serves the keys port from the node's YubiKey (PIV), as key-holder, the one mediating driver. key-holder has the card to itself: it runs as a dedicated user, and no other card software runs on the node. One device and one PIN, so one shared instance with three checks: one Unix socket per caller, in a directory only that caller can open; the caller's peer uid on every connection; and content-aware signing per purpose (a TBSCertificate for ca, an OpenSSH certificate body for ssh-ca, a JWS signing input for token purposes). An access list generated from the manifest names who may use which key. Written in Go with piv-go."
-    holds: "The PIN, in locked memory, delivered by an unlocked peer or by sluis node unlock. No symmetric keys: sealing uses ECDH plus HKDF with the card's P-384 sealing key."
+    does: "Serves the key store of key@ from the node's YubiKey (PIV). key@ has the card to itself: its driver runs as a dedicated user, and no other card software runs on the node. One device and one PIN, so one shared instance with three checks: one Unix socket per caller, in a directory only that caller can open; the caller's peer uid on every connection; and content-aware signing per purpose (a TBSCertificate for ca, an OpenSSH certificate body for ssh-ca, a JWS signing input for token purposes). The rules of the actor registry say who may use which key purpose. Written in Go with piv-go."
+    holds: "The PIN, in key@'s locked memory, released by an unlocked peer through the store or delivered by sluis node unlock. A locked board signs its PinReleaseRequest with the pin-release key (slot 87, PIN never, touch never), and the peer checks the signature and the slot's attestation before it seals the PIN to the request's one-time key. No symmetric key on the card: a data key is wrapped for the card's key-agreement key (slot 9d), by ECDH, HKDF-SHA384 and AES key wrap."
     backing: YubiKey PIV
     slots: "one slot per enabled purpose, from the default card map"
     status: decided
-  embedded:
+  rqlite-one:
     port: state
-    title: embedded
-    instance: per-actor
+    title: rqlite (one node)
+    instance: shared
     shared_name: null
-    binary: drivers/embedded
-    does: Serves the state port from a single-node embedded store, with no Raft, a file per actor and uid. One writer per record kind follows from the scope the port library takes from the actor's own identity.
-    holds: The store file
-    backing: embedded single-node store
+    binary: drivers/rqlite
+    does: Serves the durable and temp ports of store@ from one rqlite node, with no Raft peers, so the one node serves both engine ports. The driver reaches rqlite's client API on the loopback address and is its only client (ADR 0005). The one writer of each kind is checked by store@ against the kind registry, not by the engine.
+    holds: Nothing. The engine login is platform-provided.
+    backing: rqlite, one node
     status: decided
   rqlite:
     port: state
     title: rqlite
-    instance: per-actor
+    instance: shared
     shared_name: null
     binary: drivers/rqlite
-    does: Serves the state port on rqlite, with one cluster per boundary and owning actor (sluis-rqlite@<boundary>-<actor>) and no state-owner. The owner has an rqlite user with execute, and each declared reader a query-only user. Raft peer traffic is each cluster's own TCP port, over mTLS with a certificate per cluster. rqlite has no Unix-socket listener, so the actor unit gets a narrow network rule for its own cluster's address and port only, instead of PrivateNetwork=yes, and a client certificate per cluster (ADR 0003).
+    does: Serves the durable and temp ports of store@ on rqlite, one cluster of 1, 3 or 5 nodes for the engine, and store@ is the engine's only user. rqlite has no Unix-socket listener, so its client API stays on the loopback address and the driver is its only client, with a client certificate. Raft peer traffic is the cluster's own TCP port, the only port a board opens to another board, over mutual TLS with a certificate per cluster (ADR 0005, ADR 0003).
     holds: The Raft peer TLS credential
     backing: rqlited (Raft, three nodes)
     status: decided
@@ -240,7 +240,7 @@ drivers:
     instance: per-actor
     shared_name: null
     binary: drivers/aws
-    does: One binary for KMS (keys), DynamoDB (state), S3 or an S3-compatible store (blob) and SQS (transport). One instance per actor, running as that actor's uid, so the cloud's own IAM or key policy is the enforcer.
+    does: One binary for KMS (the key store of key@), DynamoDB (the durable and temp ports of store@), S3 or an S3-compatible store (the audit blob) and SQS (the audit transport). Each holder runs its own instance, as that holder's uid or as an extension of its own function, so the cloud's own IAM or key policy is the enforcer.
     holds: Nothing. Credentials come from the platform identity, or from a workload JWT exchanged for cloud credentials.
     backing: AWS KMS, DynamoDB, S3 or SQS
     status: decided
@@ -271,7 +271,7 @@ drivers:
     instance: per-actor
     shared_name: null
     binary: drivers/aws
-    does: The blob port on AWS S3, served by the one s3-compatible driver, with credentials from the cloud port and IAM prefix conditions. A put is create-if-absent, so no object is ever replaced. Only the writer, the indexer and the reader use it.
+    does: The blob port on AWS S3, served by the one s3-compatible driver, with credentials from the platform identity and IAM prefix conditions. A put is create-if-absent, so no object is ever replaced. Only the writer, the witness, the indexer and the reader use it.
     holds: Nothing
     backing: object store
     status: decided
@@ -281,7 +281,7 @@ drivers:
     instance: per-actor
     shared_name: null
     binary: drivers/aws
-    does: The blob port on a Cloudflare R2 bucket, served by the one s3-compatible driver with R2 temporary credentials scoped to the bucket and a prefix, minted by the cloudflare cloud driver. A put is create-if-absent. An account administrator can remove the bucket lock (lock mode removable), so tamper evidence leans on the witnesses. Only the writer, the indexer and the reader use it.
+    does: The blob port on a Cloudflare R2 bucket, served by the one s3-compatible driver with R2 temporary credentials scoped to the bucket and a prefix. A put is create-if-absent. An account administrator can remove the bucket lock (lock mode removable), so tamper evidence leans on the witnesses. Only the writer, the witness, the indexer and the reader use it.
     holds: Nothing
     backing: R2 bucket (S3 API)
     status: decided
@@ -344,20 +344,20 @@ ports:
     node: drv-keys
     title: keys
     store_node: store-keys
-    store_title: key custody
-    users: [session, exchange, policy, signer, ca, ssh-ca, writer, witness]
+    store_title: key store
+    users: [key]
   state:
     node: drv-state
     title: state
     store_node: store-state
-    store_title: state store
-    users: [session, exchange, signer, ca, ssh-ca, quota, writer, witness, indexer, reader]
+    store_title: engine
+    users: [store]
   blob:
     node: drv-blob
     title: blob
     store_node: store-blob
     store_title: blob
-    users: [writer, indexer, reader]
+    users: [writer, witness, indexer, reader]
   transport:
     node: drv-transport
     title: transport
@@ -372,7 +372,7 @@ ports:
 # ---------------------------------------------------------------------------
 # Actors (the key stays `roles`). Each is its own OS user and unit, its own
 # Lambda function, or its own container. `resources` is an illustrative slice
-# of the permission manifest.
+# of the rules of the kind registry and the actor registry.
 # ---------------------------------------------------------------------------
 roles:
   entry:
@@ -385,8 +385,8 @@ roles:
     uses: [transport]
     workload_jwt: false
     resources:
-      - "calls: session, exchange, console, ssh-ca (on serverless it invokes them); integrations only to route a push notification"
-      - "state: none; keys: none; secrets: none"
+      - "calls: session, exchange, console, ssh-ca, quota (on serverless it invokes them); an adapter only to route a push notification"
+      - "data: its own kind RateWindow; keys: mac and pseudonym through key@; no credential"
       - "network: none (PrivateNetwork=yes, AF_UNIX only, seccomp and Landlock on bare-metal)"
       - "transport: put"
     listen_by_runtime:
@@ -403,12 +403,12 @@ roles:
     name: session
     kind: actor
     binary: actors/session
-    does: "Sign-in and sessions: the authorization flows with the upstream integrations, session records, the HttpOnly session cookie it seals, and freshness per boundary (RFC 9470 step-up). It owns the recovery verifier and switch. It asks policy before it issues anything and has no listener toward the edge."
-    holds: "The cookie-sealing key, behind the keys port; sessions and refresh tokens (state)"
+    does: "Sign-in and sessions: the authorization flows with the upstream integrations, session chains, the HttpOnly session cookie (sealed and opened at key@ under the boundary's cookie data key), and the freshness of each person's authentication per boundary (RFC 9470 step-up). It verifies break-glass recovery assertions. It asks policy before it issues anything and has no listener toward the edge."
+    holds: "No credential at rest. The cookie is sealed at key@; sessions and refresh tokens are kinds that store@ holds"
     uses: [keys, state, transport]
     resources:
-      - "state: sessions/*, codes/*, recovery/* (its own record kinds, in its own rqlite cluster)"
-      - "keys: seal and open the session cookie"
+      - "data: Person, UpstreamLink, SessionChain, AuthCode and the other kinds it writes (one writer per kind)"
+      - "keys: seal and open the session cookie under the cookie data key"
       - "calls: policy, signer, the Upstream integrations"
       - "called by: entry (sign-in, cookie), console (session check)"
       - "transport: put"
@@ -417,26 +417,26 @@ roles:
     name: exchange
     kind: actor
     binary: actors/exchange
-    does: "Token exchange (RFC 8693), enrolment of hosts and workloads, and the proof verifiers (aws-iid, k8s-sa-token, github-oidc, yubikey-attestation, enrol-token, manual approval). Verifier drivers hold public material only. An enrolment request is HPKE-encrypted end to end, and exchange opens it through the keys port; the enrolment key stays in key-holder or KMS. A downstream mint goes from here to the minter with a grant that policy sealed."
-    holds: "No authority key. Enrolments, token hashes and the host registry (state)"
+    does: "Token exchange (RFC 8693), enrolment of hosts and workloads, and the proof verifiers (aws-iid, k8s-sa-token, github-oidc, yubikey-attestation, enrol-token, manual approval). Verifier drivers hold public material only. An enrolment request is HPKE-encrypted end to end, and exchange opens it through key@; the enrolment key stays in key@'s key store (the card or KMS). A downstream mint goes from here to the minter with a grant that policy sealed."
+    holds: "No authority key and no credential at rest. Its enrolment, client and host kinds are held by store@"
     uses: [keys, state, transport]
     resources:
-      - "state: enrolments/*, enrol-tokens/* (hashes only), hosts/*, clients/* (its own record kinds)"
+      - "data: PendingEnrolment, EnrolmentToken, TenantClient and the other kinds it writes (one writer per kind)"
       - "keys: open an enrolment request sealed to the enrolment key"
       - "calls: policy, quota, signer, ca, the WorkloadVerifier, CredentialMinter and Notifier integrations"
-      - "called by: entry, console (operator writes to its record kinds)"
+      - "called by: entry, console (operator writes to its kinds)"
       - "transport: put"
   console:
     status: decided
     name: console
     kind: actor
     binary: actors/console
-    does: "The operator API, as the browser's backend. It has session check the cookie, checks the operator's delegation (per company, and per environment for machine-plane records), and routes each operator-set write to the actor that owns the record kind, which validates and writes it. It reads through the actors it calls. The browser holds no token; the single-page application is a separate static artifact."
+    does: "The operator API, as the browser's backend. It has session check the cookie, checks the operator's delegation (per company, and per environment for machine-plane records), and routes each operator write to the actor that owns the kind, which validates and writes it. It reads through the actors it calls. The browser holds no token; the single-page application is a separate static artifact."
     holds: "No key and no write access to other actors' records; delegation checks only"
     uses: [transport]
     resources:
-      - "state: none of its own; writes go to the owning actor"
-      - "calls: session (session check), the owning actors of operator-set kinds (exchange for enrolments and hosts, an integration for its console-managed kinds), reader (the audit page)"
+      - "data: it writes only Switch and LogLevelOverride itself; every other write goes to the owning actor"
+      - "calls: session (session check), the owning actors of the kinds an operator changes (exchange for enrolments and hosts, an integration for its console-managed kinds), quota (the push of an allowance correction), reader (the audit page)"
       - "keys: none"
       - "transport: put (every operator change, under the operator's name)"
   policy:
@@ -444,12 +444,12 @@ roles:
     name: policy
     kind: actor
     binary: actors/policy
-    does: "The decision point. A reviewed, file-based Cedar policy maps facts to grants. It is written in Rust with the cedar-policy crate. It keeps no state and opens no network connection. It seals mint grants under the sealing key."
-    holds: Use of the sealing key for grants only
+    does: "The decision point. A reviewed, file-based Cedar policy maps facts to grants. It is written in Rust with the cedar-policy crate. It keeps no state and opens no network connection. It has key@ seal each grant under the boundary's grant data key."
+    holds: Seal of grants at key@ and open of a tenant's sealed links; no key of its own
     uses: [keys, transport]
     resources:
-      - "keys: seal grants under the sealing key (purpose=grant)"
-      - "state: none; network: none"
+      - "keys: seal grants under the boundary's grant data key; open a tenant's sealed PolicyLink"
+      - "data: reads the effective policy set through store@ and keeps no state of its own; network: none"
       - "transport: put"
   signer:
     status: decided
@@ -457,11 +457,11 @@ roles:
     kind: actor
     binary: actors/signer
     does: "Signs tokens under a signing policy, directly with the token-signing key: there are no derived or short-lived online keys. It is not a pure oracle: it checks the issuer, the audience, the lifetime and the algorithm, and accepts a request only from session and exchange."
-    holds: Use of the token-signing key, which stays behind the keys port
+    holds: Use of the token-signing key, which stays at key@
     uses: [keys, state, transport]
     resources:
       - "keys: sign a JWS signing input with the token-signing key"
-      - "state: ring/*, the key set it publishes (each entry with its x5c chain)"
+      - "data: SigningRing, the key set it publishes (each entry with its x5c chain)"
       - "transport: put"
   ca:
     status: decided
@@ -469,11 +469,11 @@ roles:
     kind: actor
     binary: actors/ca
     does: "The X.509 certificate authority: host and workload SVIDs at enrolment, and database client certificates. The subject comes from the requester's authenticated identity, never from the request. Every certificate is audited and goes in the issuance log. The SSH CA is a separate actor, ssh-ca (ADR 0023)."
-    holds: Use of the node intermediate's key, which stays behind the keys port
+    holds: Use of the trust domain's X.509 intermediate key, which stays at key@
     uses: [keys, state, transport]
     resources:
-      - "keys: sign a TBSCertificate within its profile's constraints (key-holder parses it before signing)"
-      - "state: issued/* (its own record kinds)"
+      - "keys: sign a TBSCertificate within its profile's constraints (key@ parses it before signing)"
+      - "data: IssuedCertificate, Revocation (its own kinds); the entries of the issuance log"
       - "called by: exchange"
       - "transport: put"
   ssh-ca:
@@ -482,11 +482,11 @@ roles:
     kind: actor
     binary: actors/ssh-ca
     does: "The SSH certificate authority, for user and host certificates. A certificate carries identity only (u:<person-key> for people, w:<workload> for machines); what an identity may log in as comes from the bundle that sluis-host writes on each host. Policy decides each signature (ssh.certify). It is its own actor because it is a different authority from ca (ADR 0023)."
-    holds: Use of the SSH user and host CA keys, which stay behind the keys port
+    holds: Use of the SSH user and host CA keys, which stay at key@
     uses: [keys, state, transport]
     resources:
-      - "keys: sign an OpenSSH certificate body only (key-holder parses it before signing)"
-      - "state: ssh-issued/* (its own record kinds)"
+      - "keys: sign an OpenSSH certificate body only (key@ parses it before signing)"
+      - "data: IssuedSshCertificate, SshRevocation (its own kinds)"
       - "calls: policy"
       - "called by: entry (the SSH certificate endpoint)"
       - "transport: put"
@@ -495,37 +495,37 @@ roles:
     name: quota
     kind: actor
     binary: actors/quota
-    does: "Rate limits and caps, with compare-and-set on the state port. Caps and limits live in core. Quota (quota engine, quota state) is a separate piece, combinable with sluis, and it shares sluis's driver instances. It meters by default and enforces per policy rule, strictly in 2.0 (ADR 0030)."
-    holds: Balances and meters (state), no key
+    does: "Keeps the allowance of each tenant, counts it down with a conditional update, refuses at zero and records every admit, refusal and push as an audit fact. It is a work actor of the quota module, not an audit piece, and it runs beside sluis, sharing its store, or in an installation of its own (ADR 0039)."
+    holds: No credential and no key. The allowance and the admit records are kinds that store@ holds
     uses: [state, transport]
     resources:
-      - "state: quota/* compare-and-set (balances are issued records; meters are derived from the log)"
-      - "transport: put"
+      - "data: Allowance (a conditional update, no change-log row), AdmitRecord, SpentPush"
+      - "calls: policy; called by: entry, exchange, console"
+      - "transport: put (each admit, refusal and push)"
   writer:
     status: decided
     name: writer
     kind: actor
     binary: actors/writer
-    does: "Seals records into its audit log and usage log in the blob, a C2SP tiled log. It reads the transport, validates, dedupes, rolls a batch, writes the entry bundles and tiles, asks key-holder to sign the checkpoint with the log key, writes the checkpoint, and registers the batch in one atomic state batch. key-holder lets only the writer use the log key, so the writer never holds the key itself. It asks each witness to cosign the new checkpoint."
-    holds: The log-store credential; no key (key-holder signs for it)
-    uses: [keys, transport, blob, state]
+    does: "Seals the records of its project into its audit log and usage log in the blob, a C2SP tiled log. It reads the transport, validates, dedupes, rolls a batch, writes the entry bundles and tiles, asks key@ to sign the checkpoint with the log key, writes the checkpoint, and registers the batch in one conditional write of its own state in the project's bucket. key@ lets only the writer use the log key, so the writer never holds the key itself. It asks each witness to cosign the new checkpoint."
+    holds: Write access to its log in the blob; no key (key@ signs for it)
+    uses: [keys, transport, blob]
     resources:
       - "transport: receive and ack"
-      - "keys: sign the checkpoint with the log key (through key-holder, or the key policy on AWS)"
-      - "blob: create-if-absent on its own log's prefix"
-      - "state: audit_batches, its dedupe ids and its transport cursor, in one atomic batch"
+      - "keys: sign the checkpoint with the log key (through key@; on AWS the key policy names the writer's role)"
+      - "blob: create-if-absent on its own log's prefix; its state (the sealed batches, the dedupe ids and its transport cursor) in one conditional write"
       - "calls: the witnesses (cosign)"
   witness:
     status: decided
     name: witness
     kind: actor
     binary: actors/witness
-    does: "Cosigns each new checkpoint the writer sends it (tlog-witness), once it has checked that the checkpoint is consistent with the last one it cosigned, so that the writer alone cannot choose which history an auditor sees. Optional everywhere; sluis config check warns when an installation has none. On the boards the other nodes are a node's peer witnesses (peer driver). It holds nothing the writer holds."
-    holds: Its own key
-    uses: [keys, state, transport]
+    does: "Cosigns each new checkpoint the writer sends it (tlog-witness), once it has checked that the checkpoint is consistent with the last one it cosigned, so that the writer alone cannot choose which history an auditor sees. Optional everywhere (drivers none, peer and external); sluis config check warns when an installation has none. On the boards the other nodes are a node's peer witnesses (peer driver). It holds nothing the writer holds."
+    holds: Read and write access to its cosignatures in the blob; its key is at key@
+    uses: [keys, blob, transport]
     resources:
       - "keys: sign a cosignature with its own key"
-      - "state: the last checkpoint it cosigned, per log"
+      - "blob: the last checkpoint it cosigned, per log"
       - "called by: writer (cosign)"
       - "transport: put"
   indexer:
@@ -533,66 +533,67 @@ roles:
     name: indexer
     kind: actor
     binary: actors/indexer
-    does: "Search, the indexer. Follows each log of its boundary by signed checkpoint, with one cursor per log: it checks each new checkpoint's signature and consistency, then fetches the entry bundles it covers from the blob and applies them to the search index. It declares instances: exactly 1, so with more than one node it holds a lease. Where it runs is derived from the port and driver rules."
+    does: "Search, the indexer. Follows each log of its boundary by signed checkpoint, with one cursor per log: it checks each new checkpoint's signature and consistency, then fetches the entry bundles it covers from the blob and applies them to the search index. One indexer runs per boundary and takes no lease: indexing is idempotent and each cursor only moves forward, by a conditional write in the index. It opens each record at key@ under the tenant's evidence key. Where it runs follows the index driver (ADR 0003)."
     holds: Read on the blob; write on the search index; its cursors
-    uses: [state, blob, transport]
+    uses: [keys, blob, transport]
     resources:
-      - "state: its cursor per log, and its lease"
       - "blob: read checkpoints and entry bundles"
-      - "index: apply"
+      - "index: apply, and its cursor per log (a conditional write)"
+      - "keys: open a record under the evidence key, for a grant policy sealed"
       - "transport: put (each purge it applies is audited)"
   reader:
     status: decided
     name: reader
     kind: actor
     binary: actors/reader
-    does: "Search, the reader. Answers audit queries from the search index and records each read. Where it runs is derived from the port and driver rules: with a sqlite index on a cluster it runs on the indexer's node; with an rqlite or postgres index it can run on any node."
-    holds: Read only; the search index
-    uses: [state, blob, transport]
+    does: "Search, the reader. Answers audit queries from the search index and records each read. Where it runs follows the index driver (ADR 0003): with a sqlite index on a cluster it runs on the indexer's node; with an rqlite or postgres index it can run on any node."
+    holds: Read only; the blob and the search index
+    uses: [keys, blob, transport]
     resources:
       - "blob: read an entry and its inclusion proof"
       - "index: query"
       - "transport: put (each read is audited)"
 
 # ---------------------------------------------------------------------------
-# Integrations: six kinds, each its own process. The names are examples.
+# Integrations: five contracts, served by adapters (adapter-<vendor>, each its own process), and
+# the workload verifier, a verifier driver of exchange. The names are examples.
 # ---------------------------------------------------------------------------
 integrations:
   int-upstream:
     kind: Upstream
     example: int-google
     does: Federates sign-in from an upstream identity provider (Authorize, Callback). Returns facts; it never decides.
-    holds: The provider's client secret
+    holds: Nothing at rest. The client secret of the installation's app is read from the secret source through store@
     egress: the provider's own hosts only
   int-workload:
     kind: WorkloadVerifier
     example: int-workload
-    does: Verifies workload tokens (Kubernetes and CI OIDC subject tokens) against the issuers' published keys. Holds no secret.
+    does: A verifier driver of exchange. Verifies workload tokens (Kubernetes and CI OIDC subject tokens) against the issuers' published keys. Holds no secret.
     holds: No secret
     egress: the configured issuers' key hosts only
   int-facts:
     kind: FactsSource
     example: int-github
-    does: Returns directory facts (workspace directories, GitHub teams, chat workspaces) and writes them as learned records of its own. A product's push notification reaches it through entry; it then pulls the full state. It also owns the operator-set kinds of its own objects (a chat integration's managed channels), written through console.
-    holds: The source's credential
+    does: Returns directory facts (workspace directories, GitHub teams, chat workspaces) and writes them as temp kinds of its own, each with a time to live. A product's push notification reaches it through entry; it then pulls the full state. It also owns the kinds of its own objects (a chat integration's managed channels), written on an operator's request through console.
+    holds: Nothing at rest. It opens the sealed credential of the tenant's connection at key@ for each call
     egress: the source's API host only
   int-minter:
     kind: CredentialMinter
     example: int-cloudflare
     does: Mints a short-lived downstream credential (cloud API token, GitHub installation token, AWS credentials). It receives a mint grant sealed by policy and carries it out; it never decides.
-    holds: The connection's parent credential
+    holds: Nothing at rest. It opens the sealed credential of the tenant's connection at key@ for each call
     egress: the vendor's API host only
   int-provisioner:
     kind: Provisioner
     example: int-gitops
     does: Pulls a digest-addressed desired state and carries it out. Core calls it; it never calls core.
-    holds: The target's credential
+    holds: Nothing at rest. It opens the sealed credential of the target's connection at key@ for each call
     egress: the desired-state source and the target only
   int-notifier:
     kind: Notifier
     example: int-slack
     does: Sends notifications.
-    holds: The service's webhook or token
+    holds: Nothing at rest. It opens the sealed webhook or token of the tenant's connection at key@ for each call
     egress: the service's host only
 
 # ---------------------------------------------------------------------------
@@ -602,11 +603,11 @@ node_agent:
   status: decided
   title: sluis-node
   binary: node/sluis-node
-  does: "Issues a short-lived workload JWT per actor. Each actor's process identity comes from its uid, by peer credentials. The node's non-extractable hardware key signs the JWT, once an hour per actor."
-  holds: The node's hardware key, through the keys driver
+  does: "Issues a short-lived workload JWT per actor. Each actor's process identity comes from its uid, by peer credentials. key@ signs the JWT with the node's workload-issuer key, which never leaves the card, once an hour per actor."
+  holds: No key. The workload-issuer key is a key purpose at key@ (card slot 86)
   resources:
-    - "keys: sign workload JWTs with the node key"
-    - "callers: every sluis uid listed in the uid-to-actor map generated from the manifest"
+    - "keys: sign workload JWTs with the workload-issuer key, through key@"
+    - "callers: every sluis uid listed in the uid-to-actor map generated from the actor registry"
   listener_note: "On bare-metal every actor, entry included, and every driver listens on Unix sockets only. sluis-node publishes no network listener; the issuer's discovery document and JWKS (public keys only) are static files served from the distribution bucket."
 
 # ---------------------------------------------------------------------------
@@ -628,18 +629,18 @@ externals:
   downstream:
     title: cloud IAM
     sub: STS, GCP WIF, Entra
-    does: The cloud's token service. A cloud driver exchanges a workload JWT for that cloud's credentials there.
+    does: The cloud's token service. A holder's cloud driver exchanges a workload JWT for that cloud's credentials there.
 
 # What a port's backing node says, per port and driver.
 backing_lines:
   blob.r2: ["R2 bucket", "S3 API, lock removable"]
   index.rqlite_index: ["rqlite index", "replicated SQLite"]
-  keys.software: ["software keys", "files under key-holder"]
+  keys.software: ["software keys", "files under key@"]
   keys.yubikey-piv: ["YubiKey PIV", "one per node"]
   keys.aws: ["AWS KMS", "key per purpose"]
-  state.embedded: ["embedded store", "single node"]
+  state.rqlite-one: ["rqlited", "one node"]
   state.rqlite: ["rqlited", "Raft, 3 nodes"]
-  state.aws: ["DynamoDB", "table per record kind"]
+  state.aws: ["DynamoDB", "a table per engine"]
   blob.s3: ["S3 bucket", "S3 API, Object Lock"]
   transport.spool: ["local spool", "fsync'd segments"]
   transport.sqs: ["SQS queue", "dead-letter queue"]
@@ -658,23 +659,25 @@ calls:
   - { f: entry, t: exchange, m: "Route: exchange", d: "Token exchange, enrolment and downstream mint go to exchange." }
   - { f: entry, t: console, m: "Route: console", d: "The operator API goes to console." }
   - { f: entry, t: ssh-ca, m: "Route: SSH cert", d: "An SSH certificate request goes to ssh-ca." }
+  - { f: entry, t: quota, m: "Route: quota", d: "A product's allowance push or admit call, authenticated at entry, goes to quota." }
   - { f: entry, t: int-facts, m: "Route: push", d: "A product's push notification goes to the integration that owns the object; the integration then pulls the full state." }
   - { f: session, t: int-upstream, m: "Authorize / Callback", d: Human sign-in upstream. }
   - { f: session, t: policy, m: Decide, d: "Maps the upstream facts to grants, and says whether fresh MFA is needed." }
   - { f: session, t: signer, m: SignToken, d: "ID and access tokens for a signed-in session." }
-  - { f: session, t: drv-keys, m: "Seal(cookie)", d: "Seals and opens the session cookie with the cookie-sealing key." }
-  - { f: session, t: drv-state, m: "sessions/*", d: "Sessions, codes and the recovery switch, in its own cluster." }
+  - { f: session, t: drv-keys, m: "Seal(cookie)", d: "Seals and opens the session cookie under the boundary's cookie data key." }
+  - { f: session, t: drv-state, m: "SessionChain", d: "Session chains, codes and the person's links: the kinds session writes." }
   - { f: console, t: session, m: "Check session", d: "session checks the HttpOnly cookie and its freshness for the boundary." }
   - { f: console, t: exchange, m: "Operator write", d: "Approve a pending enrolment, create an enrolment token; exchange validates and writes its own records." }
-  - { f: console, t: int-facts, m: "Operator write", d: "An operator-set kind an integration owns, such as a chat integration's managed channels." }
+  - { f: console, t: int-facts, m: "Operator write", d: "A kind an integration owns, such as a chat integration's managed channels." }
+  - { f: console, t: quota, m: "Push", d: "Routes an operator's correction of an allowance to quota (ADR 0039)." }
   - { f: console, t: reader, m: Search, d: The console audit page. }
   - { f: exchange, t: int-workload, m: Verify, d: Check a workload subject token. }
   - { f: exchange, t: policy, m: Decide, d: "host.enrol, token exchange and mint decisions." }
   - { f: exchange, t: quota, m: Admit, d: Rate and count limits. }
   - { f: exchange, t: signer, m: SignToken, d: Issue a token. }
   - { f: exchange, t: ca, m: Issue, d: "A host or workload SVID, bound to the requester's identity." }
-  - { f: exchange, t: drv-keys, m: "Open(enrolment)", d: "Opens an HPKE-sealed enrolment request; the enrolment key never leaves the keys port." }
-  - { f: exchange, t: drv-state, m: "enrolments/*", d: "Enrolments, enrolment-token hashes, hosts and clients, in its own cluster." }
+  - { f: exchange, t: drv-keys, m: "Open(enrolment)", d: "Opens an HPKE-sealed enrolment request; the enrolment key never leaves key@." }
+  - { f: exchange, t: drv-state, m: "PendingEnrolment", d: "Enrolments, enrolment tokens, hosts and clients: the kinds exchange writes." }
   - { f: exchange, t: int-minter, m: Mint(grant), d: "Downstream mint, with a grant sealed by policy." }
   - { f: exchange, t: int-notifier, m: Notify, d: "Notifications, such as an enrolment waiting for approval." }
   - { f: console, t: int-provisioner, m: Reconcile, d: "Asks the provisioner to reconcile to a published, digest-addressed desired state (illustrative)." }
@@ -685,24 +688,22 @@ calls:
   - { f: int-minter, t: vendor, m: Mint, d: Mints the credential at the vendor. }
   - { f: int-provisioner, t: vendor, m: Pull, d: Pulls the desired state and applies it. }
   - { f: int-notifier, t: vendor, m: Send, d: Sends the notification. }
-  - { f: policy, t: drv-keys, m: "Wrap(grant)", d: Seals mint grants under the sealing key. }
+  - { f: policy, t: drv-keys, m: "Wrap(grant)", d: "Has key@ seal each mint grant under the boundary's grant data key." }
   - { f: signer, t: drv-keys, m: "Sign(token)", d: Token signatures. }
   - { f: ca, t: drv-keys, m: "Sign(cert)", d: "A TBSCertificate within its profile's constraints." }
   - { f: ssh-ca, t: drv-keys, m: "Sign(ssh cert)", d: "An OpenSSH certificate body only." }
-  - { f: writer, t: drv-keys, m: "Sign(checkpoint)", d: "Asks key-holder to sign the checkpoint with the log key; only the writer may use it." }
+  - { f: writer, t: drv-keys, m: "Sign(checkpoint)", d: "Asks key@ to sign the checkpoint with the log key; only the writer may use it." }
   - { f: writer, t: witness, m: Cosign, d: "Asks the witness to cosign the new checkpoint (tlog-witness)." }
   - { f: witness, t: drv-keys, m: "Sign(cosign)", d: Cosigns a checkpoint with its own key. }
-  - { f: signer, t: drv-state, m: "ring/*", d: The key set it publishes. }
-  - { f: quota, t: drv-state, m: "quota/*", d: Compare-and-set on balances. }
-  - { f: ca, t: drv-state, m: "issued/*", d: Its issued certificates. }
-  - { f: ssh-ca, t: drv-state, m: "ssh-issued/*", d: Its issued SSH certificates. }
-  - { f: witness, t: drv-state, m: "Last checkpoint", d: The last checkpoint it cosigned, per log. }
-  - { f: writer, t: drv-state, m: "audit_batches", d: "Registers each sealed batch, its dedupe ids and its cursor, in one atomic batch." }
-  - { f: indexer, t: drv-state, m: "Cursor", d: "Its cursor per log, and its lease on a cluster." }
-  - { f: writer, t: drv-blob, m: "Put tiles, checkpoint", d: "Writes entry bundles, tiles and the checkpoint, each created only if absent." }
+  - { f: signer, t: drv-state, m: "SigningRing", d: The key set it publishes. }
+  - { f: quota, t: drv-state, m: "Allowance", d: "A conditional update on the allowance." }
+  - { f: ca, t: drv-state, m: "IssuedCertificate", d: Its issued certificates. }
+  - { f: ssh-ca, t: drv-state, m: "IssuedSshCertificate", d: Its issued SSH certificates. }
+  - { f: witness, t: drv-blob, m: "Last checkpoint", d: The last checkpoint it cosigned, per log, in the blob. }
+  - { f: writer, t: drv-blob, m: "Put tiles, checkpoint, state", d: "Writes entry bundles, tiles and the checkpoint, each created only if absent, and registers each sealed batch, its dedupe ids and its cursor in one conditional write of its own state." }
   - { f: indexer, t: drv-blob, m: "Get checkpoint, bundles", d: Reads new checkpoints and the entry bundles they cover. }
   - { f: reader, t: drv-blob, m: "Get entry", d: Fetches a record's entry and its inclusion proof when one record is opened. }
-  - { f: indexer, t: store-index, m: "Apply", d: Applies batches to the search index. }
+  - { f: indexer, t: store-index, m: "Apply", d: "Applies batches to the search index and moves its cursor per log by a conditional write." }
   - { f: reader, t: store-index, m: "Query", d: Answers queries. }
   - { f: entry, t: drv-transport, m: Put, d: "Records each request it routes or refuses." }
   - { f: session, t: drv-transport, m: Put, d: "Records each sign-in and step-up." }
@@ -721,10 +722,10 @@ calls:
   - { f: drv-state, t: store-state, m: "", d: "" }
   - { f: drv-blob, t: store-blob, m: "", d: "" }
   - { f: drv-transport, t: store-transport, m: "", d: "" }
-  - { f: sluis-node, t: drv-keys, m: "Sign(JWT)", d: "Signs the workload JWT with the node's hardware key.", when: { node_agent: true } }
-  - { f: drv-keys, t: sluis-node, m: "Workload JWT", d: "A cloud key driver asks sluis-node for its actor's JWT (uid from peer credentials).", when: { node_agent: true, ports: { keys: aws } } }
-  - { f: drv-state, t: sluis-node, m: "Workload JWT", d: "A cloud state driver asks sluis-node for its actor's JWT.", when: { node_agent: true, ports: { state: aws } } }
-  - { f: drv-blob, t: sluis-node, m: "Workload JWT", d: "The blob driver asks sluis-node for its actor's JWT (uid from peer credentials).", when: { node_agent: true } }
+  - { f: sluis-node, t: drv-keys, m: "Sign(JWT)", d: "Has key@ sign the workload JWT with the node's workload-issuer key.", when: { node_agent: true } }
+  - { f: drv-keys, t: sluis-node, m: "Workload JWT", d: "key@'s cloud key driver asks sluis-node for the JWT of its holder (uid from peer credentials).", when: { node_agent: true, ports: { keys: aws } } }
+  - { f: drv-state, t: sluis-node, m: "Workload JWT", d: "store@'s cloud engine driver asks sluis-node for the JWT of its holder.", when: { node_agent: true, ports: { state: aws } } }
+  - { f: drv-blob, t: sluis-node, m: "Workload JWT", d: "An audit piece's blob driver asks sluis-node for the JWT of its holder (uid from peer credentials).", when: { node_agent: true } }
   - { f: drv-keys, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true, ports: { keys: aws } } }
   - { f: drv-state, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true, ports: { state: aws } } }
   - { f: drv-blob, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true } }
@@ -746,7 +747,7 @@ flows:
       - title: The edge connector forwards to entry
         nodes: [edge, entry]
         edges: ["edge>entry"]
-        text: The edge connector forwards the request to entry's public Unix socket, a unix origin.
+        text: The edge connector forwards the request to entry's public Unix socket, the tunnel's unix service.
         variants:
           - { shapes: [lambda], text: "API Gateway invokes the function, and the Lambda Web Adapter forwards the request to entry over loopback TCP inside the sandbox, the one place entry has a TCP port." }
       - title: entry routes to session
@@ -764,9 +765,9 @@ flows:
       - title: The session is stored and sealed
         nodes: [session, drv-state, store-state, drv-keys, store-keys]
         edges: ["session>drv-state", "drv-state>store-state", "session>drv-keys", "drv-keys>store-keys"]
-        text: session writes the session record in its own state, which no other actor can write, and seals the HttpOnly cookie with its cookie-sealing key. The browser holds no token.
+        text: session writes the session chain through store@, which lets no other actor write that kind, and has key@ seal the HttpOnly cookie under the boundary's cookie data key. The browser holds no token.
         variants:
-          - { shapes: [boards], text: "The session record goes to session's own rqlite cluster, where only session has the execute user." }
+          - { shapes: [boards], text: "The session chain goes through store@ to the installation's rqlite cluster, which keeps the three boards in step." }
       - title: The sign-in is audited
         nodes: [entry, session, drv-transport, store-transport]
         edges: ["entry>drv-transport", "session>drv-transport", "drv-transport>store-transport"]
@@ -794,15 +795,15 @@ flows:
       - title: The limit is adjusted
         nodes: [exchange, quota, drv-state]
         edges: ["exchange>quota", "quota>drv-state"]
-        text: quota admits the request and updates the balance with compare-and-set. Caps and rate limits live in core.
+        text: quota admits the request and counts the tenant's allowance down with a conditional update; it refuses at zero. Caps and rate limits live in core.
       - title: signer signs the token
         nodes: [exchange, signer, drv-keys, store-keys]
         edges: ["exchange>signer", "signer>drv-keys", "drv-keys>store-keys"]
-        text: signer signs the token under its signing policy through the keys driver. The token is sender-constrained (DPoP or mutual TLS) and carries exactly one audience.
+        text: signer signs the token under its signing policy, through key@. The token is sender-constrained (DPoP or mutual TLS) and carries exactly one audience.
         variants:
           - { shapes: [lambda], text: "The token is signed directly with the non-extractable KMS token-signing key; each signature is a billed KMS request." }
-          - { shapes: [boards], text: "The node's YubiKey signs each token itself with the token-signing key, through signer's own key-holder socket, far faster than the load needs." }
-          - { shapes: [local], text: "A software key signs it through key-holder, or the opt-in development card; the software driver refuses to start in production." }
+          - { shapes: [boards], text: "The node's YubiKey signs each token itself with the token-signing key, through signer's own socket at key@, far faster than the load needs." }
+          - { shapes: [local], text: "A software key signs it through key@, or the opt-in development card; the software driver refuses to start in production." }
       - title: The exchange is audited
         nodes: [exchange, drv-transport, store-transport]
         edges: ["exchange>drv-transport", "policy>drv-transport", "signer>drv-transport", "drv-transport>store-transport"]
@@ -818,7 +819,7 @@ flows:
       - title: exchange opens and verifies it
         nodes: [exchange, drv-keys, store-keys]
         edges: ["exchange>drv-keys", "drv-keys>store-keys"]
-        text: "exchange opens the request through the keys port; the enrolment key stays in key-holder or KMS. A verifier driver checks the proof: an instance identity document (once per instance), a ServiceAccount token, a CI token, a YubiKey attestation, an enrolment token (its ID and an HMAC, never the token itself) or a manual approval."
+        text: "exchange opens the request through key@; the enrolment key stays in key@'s key store, the card or KMS. A verifier driver checks the proof: an instance identity document (once per instance), a ServiceAccount token, a CI token, a YubiKey attestation, an enrolment token (its ID and an HMAC, never the token itself) or a manual approval."
       - title: policy decides
         nodes: [exchange, policy]
         edges: ["exchange>policy"]
@@ -826,11 +827,11 @@ flows:
       - title: ca issues the certificate
         nodes: [exchange, ca, drv-keys, store-keys]
         edges: ["exchange>ca", "ca>drv-keys", "drv-keys>store-keys"]
-        text: ca issues the host's X.509-SVID. Its subject comes from the authenticated requester, never from the request, and key-holder signs only a TBSCertificate within the profile's constraints.
+        text: ca issues the host's X.509-SVID. Its subject comes from the authenticated requester, never from the request, and key@ signs only a TBSCertificate within the profile's constraints.
       - title: The enrolment is recorded and audited
         nodes: [exchange, drv-state, store-state, drv-transport, store-transport]
         edges: ["exchange>drv-state", "drv-state>store-state", "exchange>drv-transport", "ca>drv-transport", "drv-transport>store-transport"]
-        text: exchange writes the enrolment and the host record in its own state; exchange and ca each put a record on the transport.
+        text: exchange writes the enrolment and the host record through store@; exchange and ca each put a record on the transport.
   - id: operator
     title: Operator write
     why: An operator changes a record on the console, and the owning actor writes it.
@@ -846,11 +847,11 @@ flows:
       - title: console checks the delegation and routes the write
         nodes: [console, exchange]
         edges: ["console>exchange"]
-        text: console checks that the operator is delegated for this company and environment, then routes the write, here the approval of a pending host, to exchange, the actor that owns the record kind. console itself has no write access to it.
+        text: console checks that the operator is delegated for this company and environment, then routes the write, here the approval of a pending host, to exchange, the actor that owns the kind. console itself has no write access to it.
       - title: The owning actor validates and writes
         nodes: [exchange, drv-state, store-state]
         edges: ["exchange>drv-state", "drv-state>store-state"]
-        text: exchange validates the write with its own logic and writes its own record. The state backend refuses any other writer.
+        text: exchange validates the write with its own logic and writes its own kind. store@ refuses any other writer, by the rules of the kind registry.
       - title: The change is audited under the operator's name
         nodes: [console, exchange, drv-transport, store-transport]
         edges: ["console>drv-transport", "exchange>drv-transport", "drv-transport>store-transport"]
@@ -870,13 +871,13 @@ flows:
       - title: The certificate is signed
         nodes: [ssh-ca, drv-keys, store-keys]
         edges: ["ssh-ca>drv-keys", "drv-keys>store-keys"]
-        text: "The certificate carries u:<person-key> for a person or w:<workload> for a machine. key-holder signs only an OpenSSH certificate body with the SSH user CA key."
+        text: "The certificate carries u:<person-key> for a person or w:<workload> for a machine. key@ signs only an OpenSSH certificate body with the SSH user CA key."
         variants:
           - { shapes: [lambda], text: "The SSH CA key is a KMS key whose key policy names only ssh-ca's role." }
       - title: The certificate is recorded and audited
         nodes: [ssh-ca, drv-state, drv-transport, store-transport]
         edges: ["ssh-ca>drv-state", "ssh-ca>drv-transport", "drv-transport>store-transport"]
-        text: ssh-ca records the certificate (requester, profile, serial, validity, key hash) and puts a record on the transport.
+        text: ssh-ca records the certificate (requester, profile, serial, validity, key hash) through store@ and puts a record on the transport.
   - id: mint
     title: Downstream mint
     why: A caller asks for a short-lived downstream credential, such as a cloud API token.
@@ -884,7 +885,7 @@ flows:
       - title: The caller names the connection
         nodes: [client, edge, entry, exchange]
         edges: ["client>edge", "edge>entry", "entry>exchange"]
-        text: The caller posts to the mint endpoint, naming the connection and the preset. entry routes it to exchange.
+        text: The caller posts to the mint endpoint, naming the connection and the target. entry routes it to exchange.
       - title: policy decides
         nodes: [exchange, policy]
         edges: ["exchange>policy"]
@@ -892,15 +893,15 @@ flows:
       - title: policy seals a mint grant
         nodes: [policy, drv-keys, store-keys]
         edges: ["policy>drv-keys", "drv-keys>store-keys"]
-        text: policy seals the mint grant (connection, preset, ttl, nonce, expiry) with authenticated encryption under the sealing key, with purpose=grant in the encryption context. There is no grant-signing key.
+        text: policy has key@ seal the mint grant (connection, target, ttl, nonce, expiry) under the boundary's grant data key, with authenticated encryption that binds the grant to its address. A grant is sealed, never signed.
       - title: exchange calls the minter with the grant
         nodes: [exchange, int-minter]
         edges: ["exchange>int-minter"]
-        text: exchange passes the grant to the minter. The minter opens the grant under the same context and checks the nonce. It does not decide; caps and rate limits already live in core.
+        text: exchange passes the grant to the minter. The minter opens the grant at key@ and checks the nonce. It does not decide; caps and rate limits already live in core.
       - title: The minter mints at the vendor
         nodes: [int-minter, vendor]
         edges: ["int-minter>vendor"]
-        text: The minter holds only the connection's parent credential. It mints the short-lived credential and returns it.
+        text: The minter opens the sealed credential of the tenant's connection at key@, holds nothing at rest, mints the short-lived credential and returns it. What a minter returns is never recorded.
       - title: The mint is audited
         nodes: [exchange, drv-transport, store-transport]
         edges: ["exchange>drv-transport", "drv-transport>store-transport"]
@@ -912,16 +913,16 @@ flows:
       - title: The driver asks sluis-node
         nodes: [drv-keys, drv-state, drv-blob, sluis-node]
         edges: ["drv-keys>sluis-node", "drv-state>sluis-node", "drv-blob>sluis-node"]
-        text: The cloud driver of an actor asks sluis-node for its actor's workload JWT. sluis-node reads the caller's uid from the socket (SO_PEERCRED) and maps the uid to the actor. On a node, the key driver, state driver and blob driver that are cloud drivers each ask for their own actor's JWT.
+        text: The cloud driver of a holder asks sluis-node for the workload JWT of its holder. sluis-node reads the caller's uid from the socket (SO_PEERCRED) and maps the uid to the actor. On a node, key@'s key driver, store@'s engine driver and an audit piece's blob driver, where they are cloud drivers, each ask for the JWT of their own holder.
         variants:
           - { shapes: [local], text: "The local installation has no sluis-node and no cloud federation." }
           - { shapes: [lambda], text: "The lambda installation has no sluis-node: the Lambda execution role of each function is the identity, so there is no workload JWT. Platform-native identity is used where it exists." }
       - title: The node key signs the JWT
         nodes: [sluis-node, drv-keys, store-keys]
         edges: ["sluis-node>drv-keys", "drv-keys>store-keys"]
-        text: The node's non-extractable hardware key signs the JWT, once an hour per actor. AWS accepts ES384. GCP needs ES256 and Entra needs RS256, the written-down exceptions to ES384 as the default.
+        text: key@ signs the JWT with the node's workload-issuer key, which never leaves the card, once an hour per actor. AWS accepts ES384. GCP needs ES256 and Entra needs RS256, the written-down exceptions to ES384 as the default.
         variants:
-          - { shapes: [boards], text: "On boards the node's own YubiKey signs the JWT, the same card whose key signs that node's audit log." }
+          - { shapes: [boards], text: "On boards the node's own YubiKey signs the JWT, the same card whose other key signs that node's audit log." }
       - title: The driver exchanges the JWT
         nodes: [drv-keys, drv-state, drv-blob, downstream]
         edges: ["drv-keys>downstream", "drv-state>downstream", "drv-blob>downstream"]
@@ -950,29 +951,29 @@ flows:
       - title: The batch is written to the log
         nodes: [writer, drv-blob, store-blob]
         edges: ["writer>drv-blob", "drv-blob>store-blob"]
-        text: The writer writes the batch's entry bundles and tiles to its log in the blob. Every object is created only if absent, so nothing is ever replaced. Its blob driver may write its own log's prefix and nothing else.
+        text: The writer writes the batch's entry bundles and tiles to its log in the blob. Every object is created only if absent, so nothing is ever replaced. Its blob driver may write its own project's prefix and nothing else.
       - title: The writer has the checkpoint signed
         nodes: [writer, drv-keys, store-keys]
         edges: ["writer>drv-keys", "drv-keys>store-keys"]
-        text: The writer asks key-holder to sign the new checkpoint with the log key, and writes it. key-holder's access list (or the key policy on AWS) lets only the writer use the log key, so the writer never holds the key itself.
+        text: The writer asks key@ to sign the new checkpoint with the log key, and writes it. key@'s rules (or the key policy on AWS) let only the writer use the log key, so the writer never holds the key itself.
         variants:
-          - { shapes: [local], text: "A software key signs, through key-holder. The local blob has no lock, so tamper evidence depends on a witness, which is optional." }
+          - { shapes: [local], text: "A software key signs, through key@. The local blob has no lock, so tamper evidence depends on a witness, which is optional." }
           - { shapes: [boards], text: "The node's own YubiKey signs for that node's log." }
-          - { shapes: [lambda], text: "One KMS key whose key policy names the writer function's role only. There is one log and no peer witness; the function's role is the isolation." }
+          - { shapes: [lambda], text: "One KMS key per writer instance, whose key policy names the writer function's role only. A project has one log and no peer witness here; the function's role is the isolation." }
       - title: The batch is registered
-        nodes: [writer, drv-state, store-state]
-        edges: ["writer>drv-state", "drv-state>store-state"]
-        text: In one atomic state batch the writer registers the sealed batch, records the duplicate ids it dropped and moves its transport cursor. A crash leaves all of it or none. Verification never trusts the state.
+        nodes: [writer, drv-blob, store-blob]
+        edges: ["writer>drv-blob", "drv-blob>store-blob"]
+        text: In one conditional write of its own state in the project's bucket the writer registers the sealed batch, records the duplicate ids it dropped and moves its transport cursor. A crash leaves all of it or none. Verification never trusts the state.
       - title: A witness cosigns the checkpoint
-        nodes: [writer, witness, drv-state, drv-keys, store-keys]
-        edges: ["writer>witness", "witness>drv-state", "witness>drv-keys", "drv-keys>store-keys"]
-        text: Where the installation has a witness, the writer asks it to cosign the new checkpoint. The witness checks that it is consistent with the last one it cosigned and signs with its own key. A witness is optional everywhere, and sluis config check warns when there is none. Without one, a compromised writer can get a rewritten checkpoint signed, and a lock does not prevent a split view.
+        nodes: [writer, witness, drv-blob, drv-keys, store-keys]
+        edges: ["writer>witness", "witness>drv-blob", "witness>drv-keys", "drv-keys>store-keys"]
+        text: Where the installation has a witness, the writer asks it to cosign the new checkpoint. The witness checks that it is consistent with the last one it cosigned and has key@ sign with its own key. A witness is optional everywhere, and sluis config check warns when there is none. Without one, a compromised writer can get a rewritten checkpoint signed, and a lock does not prevent a split view.
         variants:
           - { shapes: [boards], text: "The other two nodes are this node's peer witnesses (2-of-3), and this node witnesses theirs." }
-          - { shapes: [local, lambda], text: "No witness by default. An external witness is possible." }
+          - { shapes: [local, lambda], text: "No witness unless the installation adds one: a peer or an external witness is possible." }
       - title: The index follows the log
-        nodes: [indexer, reader, drv-state, drv-blob, store-index]
-        edges: ["indexer>drv-state", "indexer>drv-blob", "indexer>store-index", "reader>store-index"]
+        nodes: [indexer, reader, drv-blob, store-index]
+        edges: ["indexer>drv-blob", "indexer>store-index", "reader>store-index"]
         text: The indexer follows each log's signed checkpoints from its cursor, fetches the entry bundles they cover and applies them to the index; the reader answers queries from it. Verification never trusts the index. The audit explorer shows the lag and the integrity chain.
         variants:
           - { shapes: [boards], text: "The index is rqlite (ADR 0028), so the reader can run on any node. Readers merge the three logs by time." }
@@ -981,14 +982,14 @@ flows:
 # What runs where on a cluster of boards (bare-metal with N nodes).
 cluster:
   - { process: edge connector, where: every node, status: decided }
-  - { process: quota, where: "derived from the port and driver rules: a separate piece, combinable with sluis and sharing its driver instances; metering by default, enforcement per policy rule", status: decided }
-  - { process: "Search (indexer, search index, reader)", where: "derived from the port and driver rules: with an rqlite or postgres index the reader runs on any node; with a sqlite index it runs on the indexer's node", status: decided }
+  - { process: quota, where: "a work actor of the quota module, beside sluis and sharing its store, or in an installation of its own; it counts each tenant's allowance down and refuses at zero (ADR 0039)", status: decided }
+  - { process: "Search (indexer, search index, reader)", where: "follows the index driver: with an rqlite or postgres index the reader runs on any node; with a sqlite index it runs on the indexer's node", status: decided }
   - { process: entry, where: "every node, on a Unix socket behind that node's edge connector, with no network", status: decided }
-  - { process: "session, console, exchange", where: "every node, beside entry. session and exchange each keep their state in their own rqlite cluster; console keeps none", status: decided }
-  - { process: "signer, policy, ca, ssh-ca", where: "every node, each using that node's own card through key-holder", status: decided }
+  - { process: "session, console, exchange", where: "every node, beside entry. Their kinds are held by store@ in the installation's rqlite cluster; console writes only Switch and LogLevelOverride", status: decided }
+  - { process: "signer, policy, ca, ssh-ca", where: "every node, each asking key@ to use that node's own card", status: decided }
   - { process: writer, where: "every node: exactly one writer per log, and one log per node, each writer draining its own spool and signing with its own node's log key", status: decided }
   - { process: witness, where: "every node, as a peer: each node's log is cosigned by the other two (2-of-3)", status: decided }
-  - { process: "state driver and its store", where: "every node; one rqlite cluster per (boundary, owning actor), each a Raft quorum of three over its own TCP port with mTLS. The actor unit reaches its cluster's client port through a narrow per-actor network rule, with a client certificate per cluster (ADR 0003)", status: decided }
-  - { process: keys driver, where: "each node's own YubiKey, behind key-holder, with one socket per caller", status: decided }
+  - { process: "store@'s engine driver and its store", where: "every node; one rqlite cluster for the installation's engine, a Raft quorum of three over its own TCP port with mutual TLS. rqlite's client API stays on the loopback address, and the driver is its only client (ADR 0005)", status: decided }
+  - { process: key@'s key driver, where: "each node's own YubiKey, behind key@, with one socket per caller", status: decided }
   - { process: sluis-node, where: every node, status: decided }
   - { process: integrations, where: "next to the actors that call them on each node, over Unix sockets; no actor is called across nodes, and the Raft port is the only TCP port between nodes", status: decided }

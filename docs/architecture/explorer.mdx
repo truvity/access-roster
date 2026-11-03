@@ -1,6 +1,6 @@
 ---
 title: Architecture explorer
-description: An interactive map of the sluis actor processes, drivers, sockets and flows in each tested installation, drawn from data files.
+description: An interactive map of the sluis actors, holders, drivers, sockets and flows in each tested installation, drawn from data files.
 status: target
 tableOfContents: false
 sidebar:
@@ -8,9 +8,9 @@ sidebar:
 ---
 import ArchExplorer from '../../site/src/components/explorer/ArchExplorer.astro';
 
-This is the target state, not a running system. The map is drawn from `site/src/data/explorer/architecture.yaml`, written by hand from the design until the [permission manifest](/decisions/0002-families-of-actors/#registries-generate-the-enforcement) exists and generates it. What each actor and driver is and does is on [Components](/architecture/components/); the words are on [Actors](/concepts/actors/) and [Ports and drivers](/concepts/drivers/).
+This is the target state, not a running system. The map is drawn from `site/src/data/explorer/architecture.yaml`. Which actors exist, their families, their calls and their key purposes are the [actor registry](/reference/actors/)'s and the [key registry](/reference/keys/)'s; the data file adds the drawing, the flows and the installations, written by hand from the design. What each actor and driver is and does is on [Components](/architecture/components/); the words are on [Families](/concepts/families/) and [Data](/concepts/data/).
 
-The map draws three of the four [tested installations](/runtimes/installations/): local, boards and lambda. It does not draw the [Kubernetes installation](/runtimes/kubernetes/) yet. Pick an installation, and the map, the tables and the flows follow it. Without script the page shows boards, and every table is plain HTML.
+The map draws three of the four [tested installations](/decisions/0011-runtimes-and-installations/#installations): local, boards and lambda. It does not draw the [Kubernetes installation](/runtimes/kubernetes/) yet. Pick an installation, and the map, the tables and the flows follow it. Without script the page shows boards, and every table is plain HTML.
 
 ## Installations
 
@@ -18,7 +18,7 @@ The map draws three of the four [tested installations](/runtimes/installations/)
 
 ## The map
 
-Select a box to see what it holds, its manifest summary and its listeners; the lines show who it calls and who calls it. Choose a flow to step through it. A chip says whether a point is decided or proposed, and a proposed point links its tracking issue.
+Select a box to see what it holds, its rules and key purposes in the registries, and its listeners; the lines show who it calls and who calls it. Choose a flow to step through it. A chip says whether a point is decided or proposed, and a proposed point links its tracking issue.
 
 <ArchExplorer part="legend" />
 
@@ -26,13 +26,13 @@ Select a box to see what it holds, its manifest summary and its listeners; the l
 
 ## Processes and listeners
 
-The same facts as tables, for the installation picked above. Where each actor runs is derived from the port and driver rules ([ADR 0003](/decisions/0003-units-transports-and-fusion/#units)); the listeners are on [Deployment](/architecture/deployment/).
+The same facts as tables, for the installation picked above. Where each actor runs is derived from the actor registry ([0003](/decisions/0003-units-transports-and-fusion/#units)); the listeners are on [Deployment](/architecture/deployment/#listeners).
 
 <ArchExplorer part="tables" />
 
 ## Clusters
 
-On bare-metal with N nodes, the boards installation, each node runs the full set of processes. The rule behind the writer row is on [Audit](/concepts/audit/), what a board carries under [Board capacity](/runtimes/bare-metal/#board-capacity), and which card slot holds which key in [the card slot map](/concepts/keys/#the-card-slot-map).
+On the boards installation each board runs the full set of units over one rqlite cluster. The rule behind the writer row is on [Audit](/concepts/audit/), what a board carries under [Board capacity](/runtimes/bare-metal/#board-capacity), and which card slot holds which key in [the slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan).
 
 <ArchExplorer part="cluster" />
 
