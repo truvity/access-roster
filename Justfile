@@ -281,3 +281,24 @@ check-code:
         fi
     done
     just go-lint go-test rust-lint rust-test
+
+# Registry codegen: the enforcement tables of the three registries (docs/architecture/actors.yaml,
+# kinds.yaml and keys.yaml) as kits/go/registry/zz_registry.go and
+# kits/rust/sluis-registry/src/generated.rs. Run it after a registry changes.
+registry-gen:
+    go run ./tools/gen/registry
+
+# The generated registry files are current, and the uid list only grew. Fails while a generated file
+# differs from the registries or is not committed. The uid list is compared with main's, which CI
+# fetches first (a shallow checkout has no origin/main); with no copy on main the test prints SKIP.
+registry-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just registry-gen
+    paths="kits/go/registry/zz_registry.go kits/rust/sluis-registry/src/generated.rs"
+    # shellcheck disable=SC2086
+    git diff --exit-code -- $paths
+    # shellcheck disable=SC2086
+    [ -z "$(git ls-files --others --exclude-standard -- $paths)" ] || { echo "::error::a generated registry file is not committed" >&2; exit 1; }
+    git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main 2>/dev/null || true
+    go test -count=1 -v -run 'TestUIDsAppendOnly' ./tools/gen/registry

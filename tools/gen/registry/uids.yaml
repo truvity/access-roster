@@ -1,0 +1,46 @@
+# The pinned uids of sluis (docs/decisions/0011-runtimes-and-installations.md: the uids are pinned, the same in
+# Compose, in the chart and in the units, because the peer-uid check relies on them).
+#
+# The uid of an instance is 61000 + ordinal + 1000 x the uid block of its boundary (REQ-ISO-072); the ordinal
+# is the position in this list, counted from 0, and it is below 128.
+#
+# The list is APPEND-ONLY: never reorder, rename or remove a name, because that moves a uid under a running
+# installation. A test (`just registry-check`) compares this file with the one on main and fails when a name
+# moved or went. Add a new actor, driver or test user at the end.
+#
+# `tools/gen/registry` fails while an actor or a platform piece of docs/architecture/actors.yaml has no name here.
+# A name `driver-<owner>-<driver>` is the user of a driver; the owner is an actor and is the only caller of
+# the driver's sockets.
+names:
+  # the actors, in the order of docs/architecture/actors.yaml
+  - entry
+  - session
+  - console
+  - exchange
+  - signer
+  - policy
+  - ca
+  - ssh-ca
+  - quota
+  - adapter-upstream-oidc
+  - adapter-github
+  - adapter-slack
+  - store
+  - exporter
+  - key
+  - writer
+  - witness
+  - indexer
+  - reader
+  # the platform piece
+  - sluis-node
+  # the drivers of the first working version
+  - driver-store-rqlite
+  - driver-store-file
+  - driver-store-credential
+  - driver-key-software
+  - driver-writer-spool
+  - driver-writer-fs
+  - driver-indexer-sqlite
+  # the test harness
+  - harness-forwarder
