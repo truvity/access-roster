@@ -2291,7 +2291,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("exporter", "spent-grant", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("exporter", "ssh-revocation", 0x0003), // get list
     ("exporter", "staff-passkey", 0x0003), // get list
-    ("exporter", "switch", 0x0183), // get(self) list(self)
+    ("exporter", "switch", 0x0003), // get list
     ("exporter", "tenant", 0x0003), // get list
     ("exporter", "tenant-branding", 0x0003), // get list
     ("exporter", "tenant-client", 0x0003), // get list

@@ -314,12 +314,10 @@ func (b *builder) kinds(m *model) {
 		for _, a := range w.actors {
 			add(a, seg, bit("create")|bit("update")|bit("delete")|bit("apply")|bit("get")|bit("list"), w.self)
 		}
-		readsOf := map[string]bool{}
 		for _, t := range k.Readers {
 			r := b.expand(k.Name, t)
 			for _, a := range r.actors {
 				add(a, seg, bit("get")|bit("list"), r.self)
-				readsOf[a] = true
 			}
 		}
 		watchers := k.WatchedBy
@@ -336,8 +334,10 @@ func (b *builder) kinds(m *model) {
 				row.Watched = true
 			}
 		}
-		// the backup job reads every backed-up kind as ciphertext, whatever `readers` lists
-		if k.BackedUp == "yes" && !readsOf["exporter"] {
+		// The backup job reads every backed-up kind as ciphertext, whatever `readers` lists, and in full: it is
+		// added whether or not exporter is a reader already, because a reader macro may bind exporter to its own
+		// ids only (Switch), which would leave the backup unable to read the kind.
+		if k.BackedUp == "yes" {
 			add("exporter", seg, bit("get")|bit("list"), false)
 		}
 

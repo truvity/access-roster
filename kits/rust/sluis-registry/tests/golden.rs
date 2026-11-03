@@ -34,6 +34,18 @@ fn store_rules() {
     assert!(!store_self_scoped("exchange", "session-chain"));
     assert!(is_writer("session", "session-chain"));
     assert!(!is_writer("exchange", "session-chain"));
+    // The backup job reads every backed-up kind in full. Switch is backed up and its readers are
+    // "the actor named in the id", which binds every other actor to its own ids; exporter must not
+    // be bound.
+    for verb in ["get", "list"] {
+        assert!(
+            store_allows("exporter", "switch", verb),
+            "exporter {verb} switch"
+        );
+        assert!(!store_self_scoped_for("exporter", "switch", verb));
+        assert!(store_self_scoped_for("session", "switch", verb));
+    }
+    assert!(!store_allows("exporter", "switch", "create"));
     // An adapter writes the directory facts under its own ids and reads them all: the verb decides.
     assert!(store_self_scoped_for(
         "adapter-github",

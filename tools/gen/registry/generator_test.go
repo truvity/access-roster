@@ -71,6 +71,7 @@ kinds:
   - {name: Cfg, scope: boundary, class: config, treatment: plain, writer: IaC, readers: [every actor, store@], exportable: "no", backed_up: "no"}
   - {name: Tmp, scope: boundary, class: temp, treatment: sealed, writer: session, readers: [entry], watched_by: [entry], ttl: {default: 5m, max: 1h}, exportable: "no", backed_up: "no"}
   - {name: Mine, scope: boundary, class: temp, treatment: plain, writer: self, self_scoped: true, readers: [self], ttl: {default: 1m, max: 2m}, exportable: "no", backed_up: "no"}
+  - {name: Own, scope: boundary, class: durable, treatment: plain, writer: entry, readers: [the actor named in the id], exportable: "no", backed_up: "yes"}
   - {name: Fact, scope: boundary+tenant, class: durable, treatment: sealed, writer: adapter-<vendor>, readers: ["adapter-<vendor> (as facts source)", "entry (a label)"], exportable: "yes", backed_up: "yes"}
 `
 	const keys = `
@@ -134,6 +135,10 @@ func TestBuildFixture(t *testing.T) {
 	if !self("adapter-x", "fact", "create") || self("adapter-x", "fact", "get") {
 		t.Errorf("fact: %b", m.store[ruleKey{"adapter-x", "fact"}])
 	}
+	// the backup read is not bound to the reader macro that already names exporter
+	if !has("exporter", "own", "get") || self("exporter", "own", "get") || !self("session", "own", "get") {
+		t.Errorf("own: exporter %b, session %b", m.store[ruleKey{"exporter", "own"}], m.store[ruleKey{"session", "own"}])
+	}
 	// a label in parentheses is ignored
 	if !has("entry", "fact", "get") || self("entry", "fact", "get") {
 		t.Errorf("fact for entry: %b", m.store[ruleKey{"entry", "fact"}])
@@ -187,7 +192,7 @@ func TestBuildRefuses(t *testing.T) {
 		"a temp kind without a ttl":           {func(in *inputs) { in.kinds.Kinds[1].TTL = nil }, "needs a ttl"},
 		"a default above the max":             {func(in *inputs) { in.kinds.Kinds[1].TTL.Default = "2h" }, "above its max"},
 		"an unknown reader":                   {func(in *inputs) { in.kinds.Kinds[1].Readers = []string{"nobody"} }, "neither an actor nor a known macro"},
-		"an unknown contract":                 {func(in *inputs) { in.kinds.Kinds[3].Readers = []string{"adapter-<vendor> (as wizard)"} }, "names no contract"},
+		"an unknown contract":                 {func(in *inputs) { in.kinds.Kinds[4].Readers = []string{"adapter-<vendor> (as wizard)"} }, "names no contract"},
 		"an unknown key purpose":              {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Purpose = "nope" }, "not in docs/architecture/keys.yaml"},
 		"an op the purpose does not allow":    {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"seal"} }, "not an op of the purpose"},
 		"an unknown op":                       {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"explode"} }, "is unknown"},
@@ -241,11 +246,24 @@ func TestRealRegistries(t *testing.T) {
 }
 
 // TestUIDsAppendOnly compares tools/gen/registry/uids.yaml with the one on origin/main: a name that moved or
-// went changes a uid under a running installation. `just registry-check` fetches main first.
+// went changes a uid under a running installation. `just registry-check` fetches main first. The test skips in
+// one case only: origin/main exists and has no uids.yaml yet. A missing origin/main, or any other git error,
+// fails it, so a failed fetch cannot switch the check off.
 func TestUIDsAppendOnly(t *testing.T) {
+	if out, err := exec.Command("git", "rev-parse", "--verify", "--quiet", "refs/remotes/origin/main").CombinedOutput(); err != nil {
+		t.Fatalf("origin/main does not exist, so the uid list cannot be compared (run `just registry-check`, which fetches it): %v %s", err, out)
+	}
+	// "origin/main:<path>" names a blob; ls-tree says whether main has the file without reading it.
+	tree, err := exec.Command("git", "ls-tree", "--name-only", "origin/main", uidsFile).Output() // #nosec G204 -- a constant path
+	if err != nil {
+		t.Fatalf("git ls-tree origin/main: %v", err)
+	}
+	if strings.TrimSpace(string(tree)) == "" {
+		t.Skip("SKIP: no previous uids.yaml on main")
+	}
 	out, err := exec.Command("git", "show", "origin/main:"+uidsFile).Output() // #nosec G204 -- a constant path
 	if err != nil {
-		t.Skip("SKIP: no previous uids.yaml on main")
+		t.Fatalf("git show origin/main:%s: %v", uidsFile, err)
 	}
 	var old, cur uidsDoc
 	if err := yaml.Unmarshal(out, &old); err != nil {
