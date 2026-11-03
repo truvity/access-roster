@@ -81,11 +81,11 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0020](0020-grant-vocabulary-and-token-claims.md) | Grant names come from a declared vocabulary, and a token carries fixed claims for one audience | Accepted |
 | [0021](0021-clients.md) | Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts | Accepted |
 | [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE: proofs are exchanged for short-lived credentials, and hosts enrol the same way | Accepted |
-| [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the X.509 and SSH certificate authorities, SSH uses only sluis's own CA, and databases get short-lived client certificates | Accepted |
+| [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the certificate authorities; every leaf has a fixed profile and a short lifetime | Accepted |
 | [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
-| [0025](0025-integrations.md) | Integrations return facts or carry out effects that core authorised, never decide, and are split by credential | Accepted |
-| [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease, through the Provisioner contract | Accepted |
-| [0027](0027-the-console.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
+| [0025](0025-integrations.md) | Integrations are adapters, work actors that return facts or carry out authorised effects, hold nothing at rest, and mint only for declared targets | Accepted |
+| [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease | Proposed |
+| [0027](0027-the-console.md) | The console checks delegation and routes writes, and its pages follow the storage class and profile of what they show | Accepted |
 | [0028](0028-audit-pieces.md) | Audit is four pieces joined by a transport, search is an index fed from the log, and an audit installation has its own front | Accepted |
 | [0029](0029-the-audit-log.md) | The audit log is a tiled log in a blob, sealed by its one writer, with pseudonyms, lifecycle tiers and per-tenant keys | Accepted |
 | [0030](0030-audit-records-and-the-usage-stream.md) | Audit records are OCSF events with one `unmapped.sluis` object, and usage is a separate stream from the same call | Accepted |
@@ -117,9 +117,7 @@ These records are superseded: the content of each moves into the record its stat
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
-| [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
-| [0049](0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Superseded by 0025 |
 | [0051](0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Superseded by 0039 |
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
 

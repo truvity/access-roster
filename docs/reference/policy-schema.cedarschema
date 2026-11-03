@@ -84,7 +84,7 @@ action "token.exchange" appliesTo {
   context: Authentication,
 };
 
-// A workload asks for a signature by a signing key (ADR 0045). The context is the SHA-384 of the
+// A workload asks for a signature by a signing key (ADR 0024). The context is the SHA-384 of the
 // content in lower-case hex, and its length in bytes.
 action "artifact.sign" appliesTo {
   principal: Workload,
