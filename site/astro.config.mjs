@@ -132,7 +132,7 @@ export default defineConfig({
     '/tutorials/': '/tutorials/single-node-install/',
     '/distribution/platforms/': '/distribution/packages/',
     '/integrations/slack/': '/integrations/more/#slack',
-    '/integrations/outline/': '/integrations/more/#outline-wiki',
+    '/integrations/outline/': '/integrations/more/#wiki',
     '/integrations/oncall/': '/integrations/more/#goalert',
     '/contributing/requirements/': '/contributing/decisions/',
     '/contributing/research/': '/contributing/decisions/#spikes-and-research',
