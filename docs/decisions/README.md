@@ -60,10 +60,10 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0001](0001-v1-and-v2-lines.md) | v1 and v2 are two lines that coexist until v2 replaces v1 | Accepted |
-| [0002](0002-families-of-actors.md) | The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement | Accepted; amended by 0057 |
-| [0003](0003-units-transports-and-fusion.md) | Drivers are platform-started services on Unix sockets, listeners are few and named, and every port is enforced in three layers | Accepted |
-| [0004](0004-the-data-model.md) | Configuration is defined once in Pkl and shipped as JSON Schema, and every record kind has an origin and every field a sensitivity | Accepted |
-| [0005](0005-the-store.md) | State is one port with compare-and-set; one writer owns each record kind, enforced by the backend; every value is encrypted; clusters replicate with rqlite | Accepted |
+| [0002](0002-families-of-actors.md) | Actors form four families: work actors hold no credential at rest, and only the data, keys and audit families hold credentials | Accepted |
+| [0003](0003-units-transports-and-fusion.md) | One model, many transports: a unit per actor, the same calls over sockets, invokes and pods, and fusion only by explicit choice | Proposed |
+| [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Proposed |
+| [0005](0005-the-store.md) | store@ holds every storage credential: one generic store service, typed clients, drivers private to their owner, and signed configuration loaded as a whole | Accepted |
 | [0006](0006-keys-and-sealing.md) | Cryptography uses P-384 by default, and authority keys are born in their store, sign in place and rotate by rule | Accepted |
 | [0007](0007-policy-and-sealed-grants.md) | Policy is written in Cedar and evaluated by a Rust policy actor | Accepted |
 | [0008](0008-boundaries-and-tenants.md) | Boundaries are environments, companies and customer boundaries on an isolation ladder, and a boundary on its own runtime is an installation federated by declared trust | Accepted |
@@ -116,13 +116,11 @@ These records are superseded: the content of each moves into the record its stat
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0041](0041-core-actors-with-one-responsibility-each.md) | Core is a few actors with one responsibility each: a slim entry, session, console, exchange, signer, policy, ca and ssh-ca | Superseded by 0002 |
 | [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
 | [0043](0043-break-glass-recovery-uses-passkeys-only.md) | Break-glass recovery uses passkeys only: two attested hardware keys and one pinned synced passkey, a recovery scope, an alert on every use and a quarterly drill | Superseded by 0017 |
 | [0044](0044-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Superseded by 0029 |
 | [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
 | [0046](0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record.md) | Tenancy and scale: a boundary is the unit of keys and isolation, a tenant is a record without keys, and growth past a cohort is another installation | Superseded by 0008 |
-| [0047](0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued.md) | Declared and issued configuration: authority is declared and delivered through a configuration service, and instances are issued at run time under declared templates | Superseded by 0004 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
 | [0049](0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Superseded by 0025 |
 | [0050](0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Superseded by 0029 |
@@ -132,7 +130,6 @@ These records are superseded: the content of each moves into the record its stat
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
 | [0055](0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person.md) | Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client | Superseded by 0034 |
 | [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Superseded by 0010 |
-| [0057](0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force.md) | Configuration sources are a port: sources own disjoint paths, authority is signed, and a failing source keeps the version in force | Superseded by 0005 |
 
 ## Where the old records went
 
@@ -144,7 +141,7 @@ The records before 2026-11-01, by their old number and slug. An "ADR NNNN" in an
 | 0003 | `runtimes-are-runtime-kinds` | [0011](0011-runtimes-and-installations.md) |
 | 0004 | `audit-is-four-pieces-joined-by-a-transport-port` | [0028](0028-audit-pieces.md) |
 | 0005 | `three-zoom-levels-contracts-and-a-permission-manifest` | [0002](0002-families-of-actors.md) |
-| 0007 | `core-is-a-few-actors-with-one-responsibility-each` | [0041](0041-core-actors-with-one-responsibility-each.md) |
+| 0007 | `core-is-a-few-actors-with-one-responsibility-each` | [0002](0002-families-of-actors.md) |
 | 0008 | `drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp` | [0003](0003-units-transports-and-fusion.md) |
 | 0009 | `one-installation-per-boundary` | [0008](0008-boundaries-and-tenants.md) |
 | 0010 | `cryptography-uses-p384-by-default-with-named-exceptions` | [0006](0006-keys-and-sealing.md) |
