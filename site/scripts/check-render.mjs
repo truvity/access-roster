@@ -26,10 +26,10 @@
 //     in dark mode it answers 503, and the snapshot must stay with its note shown. The one
 //     failed-load line Chrome logs for that 503 is expected and not counted.
 //   - /status/ has one group per option of the project's `Product milestone` field, in
-//     the field's order, then "Not in a milestone", each with its open-work section.
+//     the field's order, then "Unassigned", each with its open-work section.
 //     The options are read here as well, with GH_TOKEN or GITHUB_TOKEN; when this check
 //     cannot read them, the page must say that the project data was not available (and
-//     hold only "Not in a milestone"), or hold data-options + 1 groups.
+//     hold only "Unassigned"), or hold data-options + 1 groups.
 //   - /decisions/ lists every record in docs/decisions and not the template, each with
 //     the status its own **Status:** line gives and the layer its own **Layer:** line gives (core when it has none).
 //
@@ -69,7 +69,7 @@ const REQUIRED = ['/concepts/boundaries/', '/concepts/identity/', '/architecture
 const MIN_DIAGRAM_PAGES = 10;
 // Generated pages with no diagram that must still render cleanly.
 const GENERATED = ['/status/', '/decisions/'];
-const NO_MILESTONE = 'Not in a milestone';
+const NO_MILESTONE = 'Unassigned';
 
 // The options of the board's milestone field, or null when no token here can read them.
 async function milestoneOptions() {

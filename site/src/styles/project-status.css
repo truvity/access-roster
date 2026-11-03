@@ -19,6 +19,8 @@
 .ps-card-n { font-weight: 600; }
 .ps .ps-card .ps-bargroup { margin: .7rem 0 0; }
 .ps .ps-card .ps-bars-k { font-size: var(--sl-text-xs); font-weight: 600; color: var(--sl-color-white); text-transform: uppercase; letter-spacing: .04em; }
+.ps .ps-card .ps-bars-n { margin: .25rem 0 0; font-size: var(--sl-text-xs); color: var(--sl-color-gray-3); }
+.ps .ps-table .ps-total-row th, .ps .ps-table .ps-total-row td { border-top: 2px solid var(--sl-color-gray-5); font-weight: 600; }
 .ps-bars-s { font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--sl-color-gray-3); }
 .ps-bars { margin: .25rem 0 0; display: grid; gap: .3rem; }
 .ps .ps-bars > div { margin: 0; display: grid; grid-template-columns: 1fr auto; gap: 0 .5rem; align-items: center; font-size: var(--sl-text-xs); }
@@ -43,7 +45,7 @@
 /* the ledger */
 .ps-wrap { overflow-x: auto; max-width: 100%; border: 1px solid var(--sl-color-gray-5); border-radius: .5rem; margin-block: 1rem; }
 .ps-wrap:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 2px; }
-.ps .ps-table { display: table; border-collapse: collapse; width: 100%; min-width: 64rem; margin: 0; font-size: var(--sl-text-sm); }
+.ps .ps-table { display: table; border-collapse: collapse; width: 100%; min-width: 70rem; margin: 0; font-size: var(--sl-text-sm); }
 .ps-table caption { text-align: left; padding: .5rem .6rem; font-size: var(--sl-text-xs); color: var(--sl-color-gray-3); caption-side: top; }
 .ps .ps-table th, .ps .ps-table td { padding: .35rem .5rem; border: 0; border-bottom: 1px solid var(--sl-color-gray-5); text-align: right; white-space: nowrap; vertical-align: top; }
 .ps .ps-table th:first-child { text-align: left; }

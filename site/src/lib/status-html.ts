@@ -7,7 +7,7 @@
 // function of its inputs with no Astro component in it. The styles are
 // src/styles/project-status.css, which /status/ loads. It imports nothing at run time:
 // site/scripts/check-worker.mjs runs it in Node.
-import type { Group, ReqCounts } from './status-groups.ts';
+import { totalsOf, type Group, type ReqCounts } from './status-groups.ts';
 
 export interface Run { workflow: string; status: string; conclusion: string | null; url: string; sha: string; at: string }
 export interface BodyInput {
@@ -30,14 +30,14 @@ export const utc = (iso: string) => iso.replace('T', ' ').replace(/:\d{2}(\.\d+)
 const ISSUES = 'https://github.com/truvity/sluis/issues/';
 const COMMITS = 'https://github.com/truvity/sluis/commit/';
 const shortSha = (sha: string) => (/^[0-9a-f]{7,40}$/.test(sha) ? sha.slice(0, 7) : '');
-const COLS = 1 + 6 + 3 + 4;
+const COLS = 1 + 7 + 4 + 4;
 
 const tag = (text: string, kind: 'live' | 'build' | 'current') => `<span class="ps-tag ps-tag-${kind}">${esc(text)}</span>`;
 const num = (v: number | null, first: boolean, title?: string) =>
   v === null
     ? `<td class="${cls('ps-num', 'ps-zero', first && 'ps-first')}"${title ? ` title="${esc(title)}"` : ''}>—</td>`
     : `<td class="${cls('ps-num', first && 'ps-first', v === 0 && 'ps-zero')}">${esc(v)}</td>`;
-const reqCells = (c: ReqCounts) => [c.total, c.open, c.planned, c.partial, c.done, c.auto].map((v, k) => num(v, k === 0)).join('');
+const reqCells = (c: ReqCounts) => [c.total, c.open, c.planned, c.partial, c.done, c.outOfScope, c.auto].map((v, k) => num(v, k === 0)).join('');
 const frac = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 const label = (g: Group, i: number) => (g.milestone ? `${i + 1}. ${g.name}` : g.name);
 const runState = (r: Run) => (r.status === 'completed' ? (r.conclusion ?? 'completed') : r.status.replace(/_/g, ' '));
@@ -47,33 +47,40 @@ const runFailed = (r: Run) => r.status === 'completed' && !['success', 'skipped'
 // Design and Build are drawn apart and named, so that a record or a requirement decided on
 // paper is never read as code that runs.
 type Bar = [label: string, value: number, total: number];
-function barGroup(kind: 'design' | 'build', head: string, sub: string, summary: string, bars: Bar[]): string {
+function barGroup(kind: 'design' | 'build', head: string, sub: string, summary: string, bars: Bar[], note = ''): string {
   return `<div class="ps-bargroup ps-bargroup-${kind}" role="group" aria-label="${esc(summary)}">`
     + `<p class="ps-bars-k">${esc(head)} <span class="ps-bars-s">${esc(sub)}</span></p>`
     + `<dl class="ps-bars">${bars.map(([k, a, b]) =>
       `<div><dt>${esc(k)}</dt><dd><meter class="ps-meter" min="0" max="${b || 1}" value="${a}" aria-hidden="true">${frac(a, b)}%</meter>`
-      + `<span class="ps-v">${a} of ${b}</span></dd></div>`).join('')}</dl></div>`;
+      + `<span class="ps-v">${a} of ${b}</span></dd></div>`).join('')}</dl>`
+    + (note ? `<p class="ps-bars-n">${esc(note)}</p>` : '') + '</div>';
 }
 
 function cards(groups: Group[]): string {
-  const milestones = groups.filter((g) => g.milestone && g.issues);
-  if (!milestones.length) return '';
-  const items = milestones.map((g, i) => {
+  // A card for each milestone, and one for "Unassigned" when something sits there, so that
+  // the cards add up to the totals in the page's header.
+  const shown = groups.filter((g) => g.issues && (g.milestone || g.reqs.total > 0 || g.adrs.records.length > 0 || g.issues.open + g.issues.closed > 0));
+  if (!shown.some((g) => g.milestone)) return '';
+  const items = shown.map((g, i) => {
     const iss = g.issues!;
     // Design: what is decided on paper. A requirement is decided once it is no longer open
-    // (planned, partial or done); an ADR is accepted, out of accepted, proposed and to write.
-    const adrTotal = g.adrs.accepted + g.adrs.proposed + (g.adrs.toWrite ?? 0);
+    // (planned, partial, done or out of scope); an ADR counts once, as a record: accepted out
+    // of the records that exist (accepted, proposed, other). Decisions still to write have no
+    // record yet and are named beside the bar, not added to it.
+    const adrTotal = g.adrs.records.length;
     const decided = g.reqs.total - g.reqs.open;
+    const toWrite = g.adrs.toWrite ?? 0;
     const design = barGroup('design', 'Design', 'decided on paper, not built',
       `Design: ${g.adrs.accepted} of ${adrTotal} ADRs accepted, ${decided} of ${g.reqs.total} requirements decided`,
-      [['ADRs accepted', g.adrs.accepted, adrTotal], ['Requirements decided', decided, g.reqs.total]]);
+      [['ADRs accepted', g.adrs.accepted, adrTotal], ['Requirements decided', decided, g.reqs.total]],
+      toWrite ? `${toWrite} more ${toWrite === 1 ? 'decision' : 'decisions'} to write, not counted above` : '');
     // Build: requirements marked done (set by hand in the pull request that adds the passing
     // tests), and the issues closed, which also count decision issues.
     const build = barGroup('build', 'Build', 'code and tests',
       `Build: ${g.reqs.done} of ${g.reqs.total} requirements done, ${iss.closed} of ${iss.open + iss.closed} issues closed`,
       [['Requirements done', g.reqs.done, g.reqs.total], ['Issues closed', iss.closed, iss.open + iss.closed]]);
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
-      + `<p class="ps-card-k">Milestone ${i + 1}${g.current ? ' · <strong>current</strong>' : ''}</p>`
+      + `<p class="ps-card-k">${g.milestone ? `Milestone ${i + 1}` : 'No milestone'}${g.current ? ' · <strong>current</strong>' : ''}</p>`
       + `<p class="ps-card-n" id="card-${esc(g.slug)}"><a href="#${esc(g.slug)}">${esc(g.name)}</a></p>`
       + design + build + '</article>';
   });
@@ -83,17 +90,19 @@ function cards(groups: Group[]): string {
 function ledger(groups: Group[], when: string): string {
   const head = '<thead><tr class="ps-groups">'
     + '<th scope="col" rowspan="2">Milestone / area</th>'
-    + `<th scope="colgroup" colspan="6">Requirements ${tag('build-time', 'build')}</th>`
-    + `<th scope="colgroup" colspan="3">ADRs ${tag('build-time', 'build')}</th>`
+    + `<th scope="colgroup" colspan="7">Requirements ${tag('build-time', 'build')}</th>`
+    + `<th scope="colgroup" colspan="4">ADRs ${tag('build-time', 'build')}</th>`
     + `<th scope="colgroup" colspan="4">Issues ${tag('live', 'live')}<span class="ps-asof">${esc(when)}</span></th>`
     + '</tr><tr>'
-    + '<th scope="col" class="ps-first" title="Not withdrawn and not out of scope">Total</th>'
+    + '<th scope="col" class="ps-first" title="Every live requirement: not withdrawn">Total</th>'
     + '<th scope="col" title="status: open, not decided yet">Undecided</th>'
     + '<th scope="col" title="status: planned">Planned</th>'
     + '<th scope="col" title="status: partial">Partial</th>'
     + '<th scope="col" title="status: done, set by hand in the pull request that adds the passing tests">Done</th>'
+    + '<th scope="col" title="status: out-of-scope, a boundary kept as a refusal">Out of scope</th>'
     + '<th scope="col" title="Has a verification other than manual review">Auto-verifiable</th>'
-    + '<th scope="col" class="ps-first">Accepted</th>'
+    + '<th scope="col" class="ps-first" title="Every decision record, in the group of its proposal issue">Records</th>'
+    + '<th scope="col">Accepted</th>'
     + '<th scope="col">Proposed</th>'
     + '<th scope="col" title="An open type:decision issue with no record yet">To write</th>'
     + '<th scope="col" class="ps-first">Open</th>'
@@ -106,20 +115,27 @@ function ledger(groups: Group[], when: string): string {
     const issues = g.issues ? [g.issues.open, g.issues.closed, g.issues.blocked, g.issues.needsDecision] : [null, null, null, null];
     const row = `<tr class="ps-group-row"><th scope="rowgroup" id="${esc(g.slug)}">${esc(label(g, i))}${g.current ? ` ${tag('current milestone', 'current')}` : ''}</th>`
       + reqCells(g.reqs)
-      + [g.adrs.accepted, g.adrs.proposed, g.adrs.toWrite].map((v, k) => num(v, k === 0, NA)).join('')
+      + [g.adrs.records.length, g.adrs.accepted, g.adrs.proposed, g.adrs.toWrite].map((v, k) => num(v, k === 0, NA)).join('')
       + issues.map((v, k) => num(v, k === 0, NA)).join('')
       + '</tr>';
     const areas = g.areas.map((a) => `<tr class="ps-area-row"><th scope="row"><a href="/requirements/${esc(a.code.toLowerCase())}/">${esc(a.code)}</a></th>`
       + reqCells(a.counts)
-      + Array.from({ length: COLS - 7 }, (_, k) => `<td class="${cls('ps-num', 'ps-zero', [0, 3].includes(k) && 'ps-first')}">—</td>`).join('')
+      + Array.from({ length: COLS - 7 }, (_, k) => `<td class="${cls('ps-num', 'ps-zero', [0, 4].includes(k) && 'ps-first')}">—</td>`).join('')
       + '</tr>');
     return `<tbody class="${cls('ps-group', g.current && 'ps-current', !g.milestone && 'ps-none-group')}" data-group="${esc(g.name)}">${row}${areas.join('')}</tbody>`;
   });
+  const t = totalsOf(groups);
+  const total = `<tfoot><tr class="ps-total-row" data-total="all"><th scope="row">Total</th>${reqCells(t.reqs)}`
+    + [t.records, t.accepted, t.proposed, t.toWrite].map((v, k) => num(v, k === 0, NA)).join('')
+    + (groups.some((g) => g.issues)
+      ? [0, 1, 2, 3].map((k) => num(groups.reduce((n, g) => n + (g.issues ? [g.issues.open, g.issues.closed, g.issues.blocked, g.issues.needsDecision][k] : 0), 0), k === 0, NA)).join('')
+      : [0, 1, 2, 3].map((k) => num(null, k === 0, NA)).join(''))
+    + '</tr></tfoot>';
   return '<div class="ps-wrap" tabindex="0" role="region" aria-labelledby="ps-caption"><table class="ps-table">'
     + `<caption id="ps-caption">Status by milestone and requirement area: requirements and ADRs from the build, issues ${esc(when)}</caption>`
-    + '<colgroup><col class="ps-col-name" /></colgroup><colgroup span="6" class="ps-cg"></colgroup><colgroup span="3" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup>'
-    + head + bodies.join('') + '</table></div>'
-    + '<p class="ps-note">Area rows count requirements only; decision records and issues are counted per milestone.</p>';
+    + '<colgroup><col class="ps-col-name" /></colgroup><colgroup span="7" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup>'
+    + head + bodies.join('') + total + '</table></div>'
+    + '<p class="ps-note">Each decision record is counted once, under the milestone of its proposal issue, and each live requirement once, under the earliest milestone of its issues; what has no milestone is under Unassigned, so the milestones add up to the Total row. Area rows count requirements only; issues are counted per milestone.</p>';
 }
 
 function checks(input: BodyInput): string {
