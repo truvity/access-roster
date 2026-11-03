@@ -469,6 +469,11 @@
       "old": "0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person",
       "new": "0034-end-users-and-upstream-signals",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0043-break-glass-recovery-uses-passkeys-only",
+      "new": "0017-identity-and-sign-in",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
