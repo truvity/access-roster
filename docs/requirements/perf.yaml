@@ -54,3 +54,42 @@ requirements:
     manual_reason: "A result is checked by reading it against the shape of a result."
     verification:
       - {kind: manual, ref: "result review"}
+
+  # ---- spikes that gate capacity claims (decision 0037)
+  - id: REQ-PERF-005
+    area: PERF
+    statement: "On Lambda, store@ and key@ MUST run as functions of their own, with no in-process store exception for any work actor."
+    rationale: "The latency spike measured the invoke hops within the sign-in budget, so every request keeps both independent checks (ADR 0003, ADR 0037)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    standards: []
+    issues: [1179]
+    verification:
+      - {kind: integration-test, ref: "the serverless installation's function list: store@ and key@ are separate functions and no work actor links the store"}
+  - id: REQ-PERF-007
+    area: PERF
+    split_from: REQ-PERF-005
+    statement: "A sign-in on the serverless installation MUST complete within 500 ms at p99 with at least 1024 MB of memory for each function on the sign-in path."
+    rationale: "The budget is the measured result of the latency spike, and a smaller function slows the cryptography on the path (ADR 0037)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    standards: []
+    issues: [1179]
+    verification:
+      - {kind: integration-test, ref: "load test of the sign-in path on Lambda with 1024 MB functions: p99 under 500 ms, dated"}
+  - id: REQ-PERF-006
+    area: PERF
+    statement: "The memory per unit on a 2 GB board with ca and ssh-ca separate, and the directory re-sync cost, MUST be measured before the board capacity is promised."
+    rationale: "A capacity number enters a record only after a dated measurement (ADR 0037)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [1180]
+    verification:
+      - {kind: integration-test, ref: "the dated result in ADR 0037, Board capacity: memory per unit and re-sync cost"}
