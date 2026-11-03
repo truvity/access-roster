@@ -212,7 +212,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1219]
     verification:
       - {kind: integration-test, ref: "an override written with 25 hours is refused; at expiry the level is the config level"}
   - id: REQ-OBS-017
@@ -224,6 +224,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1219]
     verification:
       - {kind: integration-test, ref: "actor X lists the overrides of actor Y; refused"}

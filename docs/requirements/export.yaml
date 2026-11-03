@@ -129,7 +129,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1217]
     verification:
       - {kind: integration-test, ref: "registry check: an exportable kind without a named consumer fails"}
   - id: REQ-EXPORT-010
@@ -205,7 +205,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    features: ["design"]
+    issues: [1217]
     verification:
       - {kind: integration-test, ref: "delete the ExportCursor items; exporter@ resumes with a full reconcile and loses no document"}
   - id: REQ-EXPORT-016
@@ -258,6 +258,6 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    features: ["design"]
+    issues: [1217]
     verification:
       - {kind: integration-test, ref: "registry check: no exportable kind holds a vendor secret that a minter can mint"}

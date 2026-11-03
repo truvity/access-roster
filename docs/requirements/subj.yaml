@@ -748,7 +748,7 @@ requirements:
     runtimes: all
     actors: [session]
     standards: []
-    features: ["design"]
+    issues: [1221]
     verification:
       - {kind: integration-test, ref: "a link id is a Mac output with the label link; the upstream subject is not in the id"}
   - id: REQ-SUBJ-058
@@ -761,7 +761,7 @@ requirements:
     runtimes: all
     actors: [session]
     standards: []
-    features: ["design"]
+    issues: [1221]
     verification:
       - {kind: integration-test, ref: "registry check: PersonHold is sealed; a stored hold shows only ciphertext"}
   - id: REQ-SUBJ-060
@@ -773,6 +773,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1221]
     verification:
       - {kind: integration-test, ref: "a directory fact expires at its time to live; a time to live over 7 days is refused"}

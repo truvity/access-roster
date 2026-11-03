@@ -2036,7 +2036,7 @@ requirements:
     runtimes: all
     actors: [writer]
     standards: []
-    features: ["design"]
+    issues: [1218]
     verification:
       - {kind: integration-test, ref: "a machine-plane record is sealed under the operator tenant's evidence key"}
   - id: REQ-AUDIT-153
@@ -2049,7 +2049,7 @@ requirements:
     runtimes: all
     actors: [reader]
     standards: []
-    features: ["design"]
+    issues: [1218]
     verification:
       - {kind: test-vectors, ref: "entries whose envelope differs from the record in one field each are reported"}
   - id: REQ-AUDIT-154
@@ -2062,7 +2062,7 @@ requirements:
     runtimes: all
     actors: [writer]
     standards: []
-    features: ["design"]
+    issues: [1218]
     verification:
       - {kind: integration-test, ref: "a record for an unpushed tenant stays in the queue and an alarm is raised; after the push it is written"}
   - id: REQ-AUDIT-155
@@ -2075,7 +2075,7 @@ requirements:
     runtimes: all
     actors: [reader]
     standards: []
-    features: ["design"]
+    issues: [1218]
     verification:
       - {kind: integration-test, ref: "a token from an undeclared issuer is refused; one from the declared issuer yields a grant"}
   - id: REQ-AUDIT-156
@@ -2087,7 +2087,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1218]
     verification:
       - {kind: integration-test, ref: "the same push twice creates one tenant and one set of data keys"}
 

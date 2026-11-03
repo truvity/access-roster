@@ -70,7 +70,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1222]
     verification:
       - {kind: integration-test, ref: "the stored EnrolmentToken is ciphertext and does not contain the token value"}
   - id: REQ-WORKLOAD-006
@@ -82,6 +82,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1222]
     verification:
       - {kind: integration-test, ref: "exchange holds no enrolment private key; an enrolment request opens through key@"}

@@ -372,7 +372,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1223]
     verification:
       - {kind: integration-test, ref: "package metadata check: a driver package has no unit file and depends on its owner's package"}
   - id: REQ-SUPPLY-029
@@ -384,6 +384,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1223]
     verification:
       - {kind: integration-test, ref: "the dependencies of sluis-audit-writer and sluis-audit-search reach no package of the identity module"}

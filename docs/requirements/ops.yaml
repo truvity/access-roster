@@ -861,7 +861,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1220]
     verification:
       - {kind: integration-test, ref: "a reconciler pass for a target absent from ReconcileTarget changes nothing"}
   - id: REQ-OPS-067
@@ -873,7 +873,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1220]
     verification:
       - {kind: integration-test, ref: "a Switch for a target stops its next pass and survives a restart"}
   - id: REQ-OPS-068

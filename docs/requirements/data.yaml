@@ -18,7 +18,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a get, a write and a watch of an undeclared kind name are refused with a code that names the registry"}
   - id: REQ-DATA-002
@@ -30,7 +30,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a kind with two classes, no treatment or an unknown profile fails the check"}
   - id: REQ-DATA-003
@@ -42,7 +42,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a kind with two writers, or a writer that is not an actor, fails the check"}
   - id: REQ-DATA-004
@@ -55,7 +55,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "an actor that is not the writer of a kind creates, updates and deletes an item; each is refused with the rule's code"}
       - {kind: test-vectors, ref: "the generated rules matrix against the registry"}
@@ -69,7 +69,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "actor X writes a Lease whose id starts with actor Y's name; refused"}
   - id: REQ-DATA-006
@@ -81,7 +81,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a temp kind without a TTL fails"}
   - id: REQ-DATA-007
@@ -93,7 +93,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a config kind scoped to boundary and tenant fails"}
   - id: REQ-DATA-008
@@ -105,7 +105,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a kind marked `personal: true` with treatment plain fails; the same kind sealed or hashed passes"}
   - id: REQ-DATA-009
@@ -117,7 +117,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a reader named after a product or a person fails"}
   - id: REQ-DATA-010
@@ -130,7 +130,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a list by an undeclared index is refused; no call accepts a query string"}
 
@@ -145,7 +145,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: test-vectors, ref: "address vectors: well-formed and malformed addresses, a config address with a tenant segment"}
   - id: REQ-DATA-012
@@ -157,7 +157,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a kind marked `personal: true` is never plain, so a personal value is sealed or hashed and not in the clear"}
       - {kind: integration-test, ref: "an id made from a natural key is a keyed hash made at key@"}
@@ -184,7 +184,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "two boundaries load the same installation-wide document from their own sources; a read of a document from another boundary's source is impossible by the bootstrap file"}
 
@@ -199,7 +199,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "the permission of store@ on its config source and secret source holds no write action; a write call to a config kind is refused"}
       - {kind: integration-test, ref: "IAM policy test: no write action on a configuration profile or a secret parameter"}
@@ -213,7 +213,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "an actor that is not a listed reader of a secret kind asks for it; refused"}
   - id: REQ-DATA-017
@@ -226,7 +226,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "a secret is read and the disk, the audit log, the logs and the traces are scanned for its value"}
   - id: REQ-DATA-018
@@ -238,7 +238,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "a config kind that names a secret missing from the source fails the load; a secret kind with no config kind fails the registry check"}
   - id: REQ-DATA-019
@@ -251,7 +251,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1206]
     verification:
       - {kind: integration-test, ref: "store@ has no key purpose and no key credential in the actor registry"}
       - {kind: integration-test, ref: "a dump of the engine holds ciphertext and hashes only for sealed and hashed kinds"}
@@ -265,7 +265,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1206]
     verification:
       - {kind: test-vectors, ref: "envelope vectors: a truncated, a mislabelled and a well-formed sealed value"}
   - id: REQ-DATA-021
@@ -277,7 +277,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1206]
     verification:
       - {kind: integration-test, ref: "a generated client secret is stored as a hash; a received provider token is stored sealed; neither appears in the secret class"}
   - id: REQ-DATA-022
@@ -289,7 +289,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1206]
     verification:
       - {kind: integration-test, ref: "a client marked exportable has a ClientSecret hash and a ClientSecretExport copy; a client not marked has the hash only"}
   - id: REQ-DATA-023
@@ -301,7 +301,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1206]
     verification:
       - {kind: integration-test, ref: "the index entries of a sealed kind are scanned for the plaintext of the sealed fields"}
 
@@ -316,7 +316,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a write by the console, an operator and a tenant admin to a Fixed kind is refused"}
   - id: REQ-DATA-025
@@ -342,7 +342,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a write into tenant B with a grant sealed for tenant A is refused"}
   - id: REQ-DATA-027
@@ -355,7 +355,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a write with no grant, with an expired grant and with a grant for another tenant; each refused"}
       - {kind: integration-test, ref: "a write to a boundary-scoped address is checked by the rule alone"}
@@ -369,7 +369,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a tenant lifetime longer than config, a link outside its template and a method config forbids; each refused"}
   - id: REQ-DATA-029
@@ -382,7 +382,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a break-glass link written to the durable link kind is refused; written to the temp kind it expires within its maximum"}
   - id: REQ-DATA-030
@@ -394,7 +394,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a suspension is in force on the next call and is still in force after a restart and a restore"}
   - id: REQ-DATA-031
@@ -407,7 +407,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: test-vectors, ref: "combine vectors per group, including a forbid in the lowest layer"}
   - id: REQ-DATA-032
@@ -420,7 +420,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "an effective read of the policy group returns every layer's part with its version"}
   - id: REQ-DATA-033
@@ -433,7 +433,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a tenant client brand overrides the boundary default; a brand outside the allowed hosts is refused"}
   - id: REQ-DATA-034
@@ -446,7 +446,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a PolicyLink that names a template absent from config is refused"}
   - id: REQ-DATA-035
@@ -458,7 +458,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "registry check: the connection kinds are durable, tenant-scoped and sealed"}
       - {kind: integration-test, ref: "a TenantConnection written through the API is accepted without a config change"}
@@ -472,7 +472,7 @@ requirements:
     runtimes: all
     actors: [console]
     standards: []
-    features: ["design"]
+    issues: [1219]
     verification:
       - {kind: integration-test, ref: "the console's write rules over the store name exactly two kinds; a write of any other kind from the console is refused"}
 
@@ -546,7 +546,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "a config document with a retired field fails the load with an error that names the path"}
   - id: REQ-DATA-043
@@ -558,7 +558,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1205]
     verification:
       - {kind: integration-test, ref: "a stored item with a retired field is read and rewritten without it"}
   - id: REQ-DATA-044
@@ -598,7 +598,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: conformance-suite, ref: "store service conformance: a new kind is added to the registry and served with no new method"}
   - id: REQ-DATA-046
@@ -611,7 +611,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a write with a wrong type, an unknown key and an out-of-range value is refused and nothing is stored"}
   - id: REQ-DATA-047
@@ -638,7 +638,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a process under another uid, a Lambda role and a service account each get the rules of their own identity only"}
   - id: REQ-DATA-049
@@ -651,7 +651,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a batch with one invalid item changes nothing; a batch that mixes the kinds of two writers is refused"}
   - id: REQ-DATA-050
@@ -664,7 +664,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "two updates at one version: the second is refused; a create at an existing address is refused"}
   - id: REQ-DATA-051
@@ -677,7 +677,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "with the mode set, a write from every work actor is refused and a restore write is accepted"}
   - id: REQ-DATA-052
@@ -690,7 +690,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a refused write returns the rule's code and the audit log holds the fact without the value"}
   - id: REQ-DATA-053
@@ -743,7 +743,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1204]
     verification:
       - {kind: integration-test, ref: "an admit against an allowance writes one item and no log row"}
   - id: REQ-DATA-057
@@ -756,7 +756,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1204]
     verification:
       - {kind: integration-test, ref: "a watch from a purged sequence returns the distinct error; a list then catches up"}
   - id: REQ-DATA-058
@@ -769,7 +769,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1204]
     verification:
       - {kind: integration-test, ref: "a snapshot swap that changes one config kind notifies its watchers and no others"}
   - id: REQ-DATA-059
@@ -782,7 +782,7 @@ requirements:
     runtimes: ["serverless"]
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1204]
     verification:
       - {kind: integration-test, ref: "a re-read with the current ETag returns unchanged and carries no body"}
   - id: REQ-DATA-060
@@ -809,7 +809,7 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "a temp write with a TTL one second over the maximum is refused; at the maximum it is accepted"}
   - id: REQ-DATA-062
@@ -861,7 +861,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1203]
     verification:
       - {kind: integration-test, ref: "the kind registry's rules let only reconcilers, scheduled adapters and the backup job write a Lease"}
 
@@ -952,7 +952,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1216]
     verification:
       - {kind: integration-test, ref: "a boundary at L3 and one at L2 on the same installation: the first has its own table or cluster, the second a prefix of its parent's"}
   - id: REQ-DATA-074
@@ -1241,6 +1241,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "the kind registry holds no kind for these; a scan of the engine finds no key material or grant"}

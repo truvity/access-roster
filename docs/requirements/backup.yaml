@@ -809,7 +809,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1202]
     verification:
       - {kind: integration-test, ref: "registry check: a backed-up kind without a merge rule fails"}
   - id: REQ-BACKUP-062
