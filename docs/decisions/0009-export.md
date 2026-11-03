@@ -11,8 +11,8 @@ sluis holds secrets because it has to: a vendor-issued app key, a bot token, a g
 
 Three rules from the data model bound the design.
 
-- **Where a thing is written decides its class** ([principle 14](/principles/#14-where-a-thing-is-written-decides-its-class)). A secret source is written by IaC and read-only for sluis. If sluis wrote into one, a value would have two writers and two classes.
-- **Few credential holders** ([principle 13](/principles/#13-few-credential-holders)). A destination needs a credential. That credential belongs to one holder of the data family, exporter@, and to no work actor ([0002](/decisions/0002-families-of-actors/#credential-holders)).
+- **Where a thing is written decides its class** ([principle 17](/principles/#17-where-a-thing-is-written-decides-its-class)). A secret source is written by IaC and read-only for sluis. If sluis wrote into one, a value would have two writers and two classes.
+- **Few credential holders** ([principle 16](/principles/#16-few-credential-holders)). A destination needs a credential. That credential belongs to one holder of the data family, exporter@, and to no work actor ([0002](/decisions/0002-families-of-actors/#credential-holders)).
 - **Nothing without a consumer** ([principle 8](/principles/#8-nothing-without-a-consumer)). A kind leaves sluis only when someone is named who reads it.
 
 v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. The design rule "sluis writes no Kubernetes object" is amended here, and the single case it allows is below.
@@ -59,7 +59,7 @@ v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. 
 
 - **Always go through a store of record and External Secrets.** One rule instead of two, but a single cluster would need a store it does not otherwise have.
 - **Write into the secret source.** sluis would read back what it wrote, and the same value would be IaC-written and sluis-written.
-- **Each work actor exports its own kinds.** Work actors would hold destination credentials, against principle 13.
+- **Each work actor exports its own kinds.** Work actors would hold destination credentials, against principle 16.
 - **store@ does the exporting.** It would hold destination credentials beside its storage credentials and mix serving with publishing.
 - **Export any kind on request.** Whether a value may leave sluis would become a run-time choice instead of a property of the kind, and the rules could not be generated from the registry.
 - **A drop of files encrypted to a consumer's own recipient.** No consumer is named for it, so none is built; the first one arrives as a new destination type with its consumer.
