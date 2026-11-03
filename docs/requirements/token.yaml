@@ -436,7 +436,7 @@ requirements:
       - {kind: integration-test, ref: "introspection tests"}
   - id: REQ-TOKEN-015
     area: TOKEN
-    statement: "sluis MAY issue pairwise subject identifiers per sector, derived from the sluis subject with a keyed hash of one non-rotating key per boundary, so that two sectors cannot correlate a person."
+    statement: "sluis MAY issue pairwise subject identifiers per sector, derived from the sluis subject with a keyed hash of one non-rotating key per tenant, so that two sectors cannot correlate a person."
     rationale: "Pairwise subjects prevent cross-service tracking, while single sign-on follows the sluis session and does not depend on the subject."
     level: MAY
     source: stakeholder-ciam

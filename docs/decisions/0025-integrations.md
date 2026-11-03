@@ -46,7 +46,7 @@ The workload verifier is not an adapter but a verifier driver of `exchange`, whi
 
   | Adapter | App definition, installation-wide (config, secret) | Connection of a tenant (durable, sealed credential) | Flow in progress (temp) |
   |---|---|---|---|
-  | `adapter-upstream-oidc` | `Upstream`, `UpstreamSecret` | `EntraConnection`, `DirectoryConnection`; the customer's own `TenantConnection`, written by `session` ([0033](/decisions/0033-customer-connections/)) | `EntraConsentState` |
+  | `adapter-upstream-oidc` | `Upstream`, `UpstreamSecret` | `EntraConnection`, `DirectoryConnection` | `EntraConsentState` |
   | `adapter-github` | none | `GitHubApp`, `GitHubInstallation`, `DirectoryConnection` | `GitHubManifestState` |
   | `adapter-slack` | `SlackApp`, `SlackAppSecret` | `SlackConnection` | `SlackInstallState` |
   | A provider's adapter, for minting | `MinterBounds` | `MinterConnection`, `MinterTarget` | none |
@@ -67,9 +67,9 @@ The workload verifier is not an adapter but a verifier driver of `exchange`, whi
 
 ### The upstream contract
 
-- **`Begin`** takes the `state`, the `nonce` and the S256 `code_challenge` that `session` made, sluis's callback URL, and optionally `acr_values`, `max_age`, a login hint, `prompt` and `ui_locales`, and returns the authorization URL. `prompt` and `ui_locales` are the request's own, passed on as given ([0035](/decisions/0035-customer-pages/#templates-and-locales)). `session` keeps the sign-in's state in a `PendingSignIn`; the adapter keeps none.
+- **`Begin`** takes the `state`, the `nonce` and the S256 `code_challenge` that `session` made, sluis's callback URL, and optionally `acr_values`, `max_age`, a login hint, `prompt` and `ui_locales`, and returns the authorization URL. `prompt` and `ui_locales` are the request's own, passed on as given, or `none` for a silent renewal ([0035](/decisions/0035-customer-pages/#templates-and-locales), [0018](/decisions/0018-sessions/#customers)). `session` keeps the sign-in's state in a `PendingSignIn`; the adapter keeps none.
 - **`Complete`** takes the callback's `code` and `iss` parameter, the `code_verifier`, the `nonce` and the callback URL. `adapter-upstream-oidc` exchanges the code at the upstream's token endpoint with the client credential, checks the ID token strictly (signature against the upstream's key set, an allow-list of algorithms, `iss`, `aud`, `azp`, `nonce` and the time claims), and returns the verified assertion to `session`. The client credential never leaves the adapter, so `session` holds no upstream credential and has no rule for `UpstreamSecret`.
-- **The credential is the operator's or the customer's.** For an upstream the operator made, it is the `UpstreamSecret` of a secret source. For a customer organisation's own provider, it is the client secret sealed in its `TenantConnection`, opened at key@ for the call; those adapters run in a pool per customer boundary ([0033](/decisions/0033-customer-connections/#a-pool-per-customer-boundary)).
+- **The credential is the operator's.** It is the `UpstreamSecret` of a secret source. A customer organisation's own provider is configured in the broker and not in sluis ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
 - **A missing subject claim, a bad token or a missing `iss` in the response is refused with `INVALID`.** There is no lenient fallback, and no fallback to another claim or to the e-mail address.
 
 ### How core authorises an effect

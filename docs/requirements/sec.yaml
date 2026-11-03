@@ -263,8 +263,8 @@ requirements:
       - {kind: integration-test, ref: "404 on public listener"}
   - id: REQ-SEC-011
     area: SEC
-    statement: "Tokens of one installation MUST NOT be accepted by another installation's token endpoint, introspection or exchange."
-    rationale: "Cross-installation replay breaks isolation."
+    statement: "Tokens of one installation MUST NOT be accepted by another installation's token endpoint, introspection or exchange, except in an exchange between installations of one operator that both declare the trust (REQ-EXCH-006)."
+    rationale: "Cross-installation replay breaks isolation, and a declared trust of one operator is the one way across (ADR 0008)."
     level: MUST
     source: standard
     status: planned
@@ -274,7 +274,7 @@ requirements:
       - {id: ST-56, section: "3", depth: Full}
     issues: [962]
     verification:
-      - {kind: integration-test, ref: "cross-installation negative test"}
+      - {kind: integration-test, ref: "cross-installation negative test: another operator, and one operator without the declared trust"}
   - id: REQ-SEC-020
     area: SEC
     statement: "sluis MUST bound the sign-in starts of each connection with a token bucket kept in its state."
@@ -350,7 +350,7 @@ requirements:
   - id: REQ-SEC-026
     area: SEC
     statement: "An open circuit breaker of a connection MUST refuse its new sign-ins with UNAVAILABLE without calling the upstream."
-    rationale: "A failing provider must not hold the pool's workers."
+    rationale: "A failing upstream must not hold the adapter's workers."
     level: MUST
     source: design-decision
     status: planned
@@ -377,7 +377,7 @@ requirements:
   - id: REQ-SEC-028
     area: SEC
     statement: "A tenant MUST NOT raise a rate limit above the RateBound that config declares."
-    rationale: "A tenant may lower the rate limits of its own connections and clients and never raise them past the bound (ADR 0036)."
+    rationale: "A tenant may lower the rate limits of its own clients and never raise them past the bound (ADR 0036)."
     level: MUST
     source: design-decision
     status: planned
@@ -385,7 +385,7 @@ requirements:
     standards: []
     issues: [1207]
     verification:
-      - {kind: integration-test, ref: "a TenantClient and a TenantConnection write that raise each rate in turn are refused"}
+      - {kind: integration-test, ref: "a TenantClient write that raises each rate in turn is refused"}
   - id: REQ-SEC-029
     area: SEC
     statement: "A DNS CAA record that carries the operator's account URI MUST restrict certificate issuance for every issuer host."
@@ -425,3 +425,27 @@ requirements:
     issues: [1063]
     verification:
       - {kind: integration-test, ref: "CT monitor incident test"}
+  - id: REQ-SEC-032
+    area: SEC
+    statement: "key@ MUST raise an alert when the grant for a customer-account tenant is lost."
+    rationale: "A revoked grant stops a tenant, so an operator has to know at once and must not work around it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "revoke a grant: an alert fires within the alert interval"}
+  - id: REQ-SEC-033
+    area: SEC
+    statement: "key@ MUST write an audit record when the grant for a customer-account tenant is lost."
+    rationale: "The customer's kill switch is an audit fact (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    issues: [1211]
+    verification:
+      - {kind: integration-test, ref: "revoke a grant: one audit record names the tenant and the time"}

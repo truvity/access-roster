@@ -854,8 +854,8 @@ requirements:
   # ---- reconcilers (decision 0026)
   - id: REQ-OPS-066
     area: OPS
-    statement: "A reconciler MUST act only on the targets that the ReconcileTarget config kind declares."
-    rationale: "A target is a reviewed document, so a reconciler cannot be pointed at a system nobody approved (ADR 0026)."
+    statement: "A reconciler MUST act only on the targets that the ReconcileTarget durable kind declares."
+    rationale: "A target is a record inside the bounds that config and reviewed policy set, so a reconciler cannot be pointed at a system nobody approved (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned

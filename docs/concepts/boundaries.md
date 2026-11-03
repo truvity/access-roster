@@ -23,7 +23,7 @@ Each boundary declares a level, and each level includes the ones below it. A ten
 
 | Level | Adds |
 |---|---|
-| **L0 tenant** | Separation by the store's rules, a grant sealed for the tenant, and the tenant's own three data keys |
+| **L0 tenant** | Separation by the store's rules, a grant sealed for the tenant, and the tenant's own four data keys |
 | **L1 keys** | Its own key@ and wrapping key (a KMS key, or a card of its own, such as a second card per board), so its own authority keys, intermediates and issuer. It uses the parent's store@, units and engine |
 | **L2 process** | Its own store@ and its own units, with their own uid or role, on the parent's engine under its own address prefix |
 | **L3 engine** | Its own engine (an rqlite cluster or a DynamoDB table), bucket and queue |
@@ -35,11 +35,11 @@ Each boundary declares a level, and each level includes the ones below it. A ten
 
 ## Tenants
 
-A **tenant** is a scope inside a boundary with its own settings, clients, allowance and three data keys: `data`, `pseudonym` and `evidence` ([Keys](/concepts/keys/#data-keys)). It is the second address dimension, used by durable and temp kinds only. A tenant has no authority key and no wrapping key, and it may exist in several boundaries, each holding its own copy with its own data keys.
+A **tenant** is a scope inside a boundary with its own settings, clients, allowance and four data keys: `data`, `pseudonym`, `pairwise` and `evidence` ([Keys](/concepts/keys/#data-keys)). It is the second address dimension, used by durable and temp kinds only. By default a tenant has no authority key and no wrapping key (a tenant declared to keep its keys in a customer account has them there, [ADR 0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)), it has an issuer host of its own, and it may exist in several boundaries, each holding its own copy with its own data keys.
 
 Tenants of one boundary share its actors, its authority keys and its fate: a flaw in shared code reaches every tenant of the boundary. That is the accepted L0 risk, and a tenant that cannot accept it is **promoted** to a boundary of its own. Promotion moves the tenant's kinds to the new boundary and rewraps its data keys for the new boundary's wrapping key; the tenant keeps its name, its clients' names and its settings ([ADR 0008](/decisions/0008-boundaries-and-tenants/#promotion)).
 
-A tenant's life is create, suspend and erase. Suspending is a tightening and takes effect at once. Erasing deletes the tenant's `data` and `pseudonym` wraps, which is the crypto-shred, then its plain items; its `evidence` wrap goes when the evidence retention ends ([ADR 0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle)).
+A tenant's life is create, suspend and erase. Suspending is a tightening and takes effect at once. Erasing deletes the tenant's `data`, `pseudonym` and `pairwise` wraps, which is the crypto-shred, then its plain items; its `evidence` wrap goes when the evidence retention ends ([ADR 0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle)).
 
 ## Example installations
 
@@ -84,7 +84,7 @@ flowchart LR
 
 ## Issuers and tokens
 
-Each environment boundary has its own issuer, and so does a customer boundary. A tenant has none: it is a scope of policy and the second dimension of an address. A login domain is an issuer of its boundary and shares the boundary's keys ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)).
+Each environment boundary has its own issuer, and each tenant has an issuer host of its own, which a boundary serves. A tenant's issuer signs with the token-signing key of its location, and a move of the tenant keeps its host ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)).
 
 | Issuer | Address |
 |---|---|
@@ -104,7 +104,7 @@ Each environment boundary has its own issuer, and so does a customer boundary. A
 |---|---|
 | `iss` | The issuer URL |
 | `aud` | **Exactly one registered `client_id`**, never a URL. An RFC 8707 `resource=` selects a registered client and is never copied into `aud`. Between actors of two boundaries, `aud` is the target's SPIFFE ID |
-| `sub` | An opaque random id, the same at every issuer ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
+| `sub` | The person's opaque random id for a tenant whose sector is `public`, and a pairwise value for any other sector ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
 | `acr`, `amr`, `auth_time` | How and when the person signed in |
 | `cnf` | Only when the audience declares a binding: `cnf.jkt` for DPoP, `cnf.x5t#S256` for mutual TLS ([ADR 0038](/decisions/0038-fapi-2-profile/#binding-is-declared-per-audience)). A bearer token has no `cnf` |
 | grant names | Only that boundary's grant names, narrowed per audience |

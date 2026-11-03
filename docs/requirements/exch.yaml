@@ -116,8 +116,8 @@ requirements:
       - {kind: integration-test, ref: "post-logout exchange test"}
   - id: REQ-EXCH-006
     area: EXCH
-    statement: "An exchange MUST be refused when the subject token was issued by a different installation."
-    rationale: "Cross-installation exchange breaks the trust boundary."
+    statement: "An exchange MUST be refused when the subject token was issued by a different installation, unless both installations belong to one operator and each declares trust in the other."
+    rationale: "Cross-installation exchange breaks the trust boundary except under the trust that one operator declares on both sides (ADR 0008)."
     level: MUST
     source: v1-parity
     status: planned
@@ -126,7 +126,8 @@ requirements:
       - {id: ST-07, section: "2", depth: Full}
     issues: [782]
     verification:
-      - {kind: integration-test, ref: "cross-installation negative test"}
+      - {kind: integration-test, ref: "cross-installation negative test: another operator, and one operator with trust declared on one side only"}
+      - {kind: integration-test, ref: "an exchange between two installations of one operator that both declare the trust is accepted"}
   - id: REQ-EXCH-007
     area: EXCH
     statement: "A client that exchanges tokens MUST be confidential."

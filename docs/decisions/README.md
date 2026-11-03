@@ -64,7 +64,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0003](0003-units-transports-and-fusion.md) | One model, many transports: a unit per actor, the same calls over sockets, invokes and pods, and fusion only by explicit choice | Accepted |
 | [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Accepted |
 | [0005](0005-the-store.md) | store@ holds every storage credential: one generic store service, typed clients, drivers private to their owner, and signed configuration loaded as a whole | Accepted |
-| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with three data keys per tenant and one key per purpose and algorithm | Accepted |
+| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with four data keys per tenant and one key per purpose and algorithm | Accepted |
 | [0007](0007-policy-and-sealed-grants.md) | Policy is Cedar in a Rust actor over four layers, and every tenant-scoped write carries a grant that policy sealed | Accepted |
 | [0008](0008-boundaries-and-tenants.md) | A boundary is the unit of keys and policy on a cumulative ladder from L0 to L4, and a tenant is a scope with data keys of its own | Accepted |
 | [0009](0009-export.md) | exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source | Accepted |
@@ -96,7 +96,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 |-----|----------|--------|
 | [0031](0031-ciam-is-a-broker.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
 | [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front and a few customer boundaries whose tenants each have their own data keys, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
-| [0033](0033-customer-connections.md) | Customer connections run in a pool per customer boundary, and a domain routes only after DNS proof | Accepted |
+| [0033](0033-customer-connections.md) | An installation federates to a fixed set of upstreams that its operator declares, and a customer installation sees exactly one | Accepted |
 | [0034](0034-end-users-and-upstream-signals.md) | An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase | Accepted |
 | [0035](0035-customer-pages.md) | Customer pages are few, branded per client and login domain, and localised per request | Accepted |
 | [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket kept as a temp kind | Accepted |

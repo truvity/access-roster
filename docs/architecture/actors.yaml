@@ -139,6 +139,7 @@ actors:
       - { purpose: cookie, ops: [seal, open] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: mac, ops: [mac] }
+      - { purpose: pairwise, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0012', '0017', '0018', '0019']
     requirement_areas: [AUTHN, SESS, TOKEN, FED, SUBJ]
@@ -179,6 +180,7 @@ actors:
     key_purposes:
       - { purpose: enrolment, ops: [open, public-key] }
       - { purpose: data, ops: [seal, open] }
+      - { purpose: pairwise, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0006', '0012', '0021', '0022', '0024']
     requirement_areas: [EXCH, WORKLOAD, CLIENT, SUPPLY]

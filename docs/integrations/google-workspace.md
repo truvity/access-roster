@@ -28,7 +28,6 @@ The two jobs use different credentials, so they are **two connections**. One ada
 | Credential | Kind | Class | Made by |
 |---|---|---|---|
 | The sign-in client of the operator | `Upstream` and `UpstreamSecret` | Config and secret | Hand or IaC, in a reviewed file |
-| The sign-in client of a tenant's own provider | `TenantConnection`, written by `session` | Durable, per tenant, client secret sealed | The UI or the API ([0033](/decisions/0033-customer-connections/)) |
 | The directory | `DirectoryConnection`, written by `adapter-upstream-oidc` | Durable, per tenant, credential sealed | The UI or the API |
 
 - **A tenant's directory is read through its own connection.** The facts are the temp kinds `DirectoryUser`, `DirectoryGroup` and `DirectoryMembership` of that tenant, sealed because they hold names and addresses, with a time to live of 24 hours by default and 7 days at most ([0025](/decisions/0025-integrations/#what-an-integration-may-return)).
@@ -49,7 +48,7 @@ The keyless method is the target for new installations. It needs the GCP exchang
 
 ## What policy controls
 
-- **Which domains route to the tenant**: each is proven by a DNS record ([0033](/decisions/0033-customer-connections/#domain-proof)); an address whose domain no connection serves goes to the client's default connection ([0033](/decisions/0033-customer-connections/#choosing-the-connection)).
+- **Which domains route to which upstream**: the operator declares them in the `Upstream` ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)); an address whose domain no upstream declares goes to the client's default upstream ([0033](/decisions/0033-customer-connections/#choosing-the-connection)).
 - **Which groups are read.** The mirrored groups can be narrowed, so a policy can refer only to those.
 - **Who may sign in at all.** Sign-in proves an identity; whether it is admitted to a client is the client's `requires`.
 - **Freshness.** How long held facts may be used when the directory cannot be read; after that window sluis refuses rather than guesses, and a person disabled in the directory is refused at once ([0017](/decisions/0017-identity-and-sign-in/#directory-outages)).

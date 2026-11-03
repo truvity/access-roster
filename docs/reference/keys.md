@@ -150,6 +150,7 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 |---|---|---|---|---|
 | <a id="tenant-data-key-data"></a>`data` | `seal`, `open` | [`session`](/reference/actors/#session), [`console`](/reference/actors/#console), [`exchange`](/reference/actors/#exchange), [`policy`](/reference/actors/#policy), [`signer`](/reference/actors/#signer), [`ca`](/reference/actors/#ca), [`ssh-ca`](/reference/actors/#ssh-ca), [`adapter-upstream-oidc`](/reference/actors/#adapter-upstream-oidc), [`adapter-github`](/reference/actors/#adapter-github), [`adapter-slack`](/reference/actors/#adapter-slack), [`exporter`](/reference/actors/#exporter) | tenant exit | Personal and operational data of the tenant. |
 | <a id="tenant-data-key-pseudonym"></a>`pseudonym` | `mac` | every work actor, [`reader`](/reference/actors/#reader), product-emitter | tenant exit | Keyed hashes, rolled by epoch: audit pseudonyms. A product's emitter is a declared external caller (actors.yaml). |
+| <a id="tenant-data-key-pairwise"></a>`pairwise` | `mac` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | tenant exit | The key behind a pairwise subject: sub = Mac(the tenant's pairwise key, the person's stable id). One per tenant, never rotated, used for nothing else. It is re-wrapped, not replaced, when the tenant moves. |
 | <a id="tenant-data-key-evidence"></a>`evidence` | `seal`, `open` | [`writer`](/reference/actors/#writer), [`indexer`](/reference/actors/#indexer), [`reader`](/reference/actors/#reader) | end of the evidence retention | Audit and usage records. Evidence never shares a key with personal data and outlives it. |
 
 ### Per boundary
@@ -158,12 +159,12 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 |---|---|---|---|---|
 | <a id="boundary-data-key-grant"></a>`grant` | `seal`, `open` | [`policy`](/reference/actors/#policy), [`store`](/reference/actors/#store), [`ca`](/reference/actors/#ca), [`signer`](/reference/actors/#signer), [`key`](/reference/actors/#key), [`adapter-github`](/reference/actors/#adapter-github) | never | Seals the grants policy mints; the actors that carry a grant out open it. A grant is in flight only. |
 | <a id="boundary-data-key-cookie"></a>`cookie` | `seal`, `open` | [`session`](/reference/actors/#session) | never | Seals and opens the session cookie, per request, batched. |
-| <a id="boundary-data-key-mac"></a>`mac` | `mac` | [`entry`](/reference/actors/#entry), [`session`](/reference/actors/#session), [`ca`](/reference/actors/#ca), [`adapter-github`](/reference/actors/#adapter-github) | never | The key behind key's Mac for link ids and index values: UpstreamLink and UpstreamSession ids, pairwise subjects (label `pairwise`), by_subject_hash, the directory indexes. |
+| <a id="boundary-data-key-mac"></a>`mac` | `mac` | [`entry`](/reference/actors/#entry), [`session`](/reference/actors/#session), [`ca`](/reference/actors/#ca), [`adapter-github`](/reference/actors/#adapter-github) | never | The key behind key's Mac for link ids and index values: UpstreamLink and UpstreamSession ids, by_subject_hash, the directory indexes. |
 | <a id="boundary-data-key-data"></a>`data` | `seal`, `open` | [`exchange`](/reference/actors/#exchange), [`console`](/reference/actors/#console) | never | Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds these are EnrolmentToken and PendingEnrolment. The wrap has the same purpose name as the tenant's `data` key and a different address. |
 
 ### How a data key is wrapped
 
-- **AWS:** GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored.
+- **AWS:** GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored; for a tenant declared customer-account, under that account's KMS key (0006).
 - **Board:** A software data key wrapped by ECDH P-384, HKDF-SHA384 and AES key wrap for each board's key-agreement key and for the recovery recipient; the full address is the authenticated data.
 - **Backup archive:** An archive key is not a data key of a boundary and is not wrapped under the boundary's symmetric key. On AWS: GenerateDataKey under the dedicated archive KMS key, which may live in another account and which only the restore role decrypts. On a board: the same ECDH P-384 wrap as a data key, for the key-agreement keys named in the plan and for the recovery recipient.
 
@@ -196,9 +197,9 @@ From the actor registry; the key registry names the same pairs from the other si
 | Actor | Key purposes (ops) |
 |---|---|
 | [`entry`](/reference/actors/#entry) | `mac` (mac), `pseudonym` (mac) |
-| [`session`](/reference/actors/#session) | `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pseudonym` (mac) |
+| [`session`](/reference/actors/#session) | `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac) |
 | [`console`](/reference/actors/#console) | `data` (open), `pseudonym` (mac) |
-| [`exchange`](/reference/actors/#exchange) | `enrolment` (open, public-key), `data` (seal, open), `pseudonym` (mac) |
+| [`exchange`](/reference/actors/#exchange) | `enrolment` (open, public-key), `data` (seal, open), `pairwise` (mac), `pseudonym` (mac) |
 | [`signer`](/reference/actors/#signer) | `token-signing` (sign, public-key), `token-signing-ps256` (sign, public-key), `token-signing-es256` (sign, public-key), `token-signing-eddsa` (sign, public-key), `token-signing-rs256` (sign, public-key), `release-signing` (sign, public-key), `grant` (open), `data` (open), `pseudonym` (mac) |
 | [`policy`](/reference/actors/#policy) | `grant` (seal), `data` (open), `pseudonym` (mac) |
 | [`ca`](/reference/actors/#ca) | `x509-intermediate` (sign, public-key), `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac) |
