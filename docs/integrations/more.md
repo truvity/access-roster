@@ -1,6 +1,6 @@
 ---
 title: More integrations
-description: Slack, a wiki, GoAlert and Telegram: the v1 parity integrations that keep chat channels, wiki groups and an on-call tool in step with the directory.
+description: Slack, a wiki, GoAlert and Telegram, the v1 parity integrations that keep chat channels, wiki groups and an on-call tool in step with the directory.
 status: target
 sidebar:
   order: 20
