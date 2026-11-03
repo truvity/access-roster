@@ -80,7 +80,7 @@ sequenceDiagram
 
 ### Two independent checks
 
-Two checks stand between any actor and a tenant's sealed value ([principle 15](/principles/#15-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)). Each holds alone, so a flaw in one is caught by the other.
+Two checks stand between any actor and a tenant's sealed value ([principle 18](/principles/#18-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)). Each holds alone, so a flaw in one is caught by the other.
 
 1. **The store's rule.** For each call the store checks the actor, the kind and the verb against the rules of the kind registry, which are generated, and on a tenant-scoped write it checks the grant ([0005](/decisions/0005-the-store/#rules)). The scope of the call comes from the actor's identity and the grant, never from a field the request supplies.
 2. **`key@`'s grant check on every Seal and Open.** `key@` opens the grant, checks that it was sealed for the tenant of the address and allows the operation, and checks the caller's rule for the purpose ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).

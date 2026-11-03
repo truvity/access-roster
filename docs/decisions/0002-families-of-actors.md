@@ -59,7 +59,7 @@ flowchart LR
 
 ### Work actors
 
-- **A work actor holds no storage, key or audit credential at rest.** It reaches data, keys and audit only through its ports ([Ports of a work actor](/decisions/0002-families-of-actors/#ports-of-a-work-actor)), so a flaw in a work actor yields what it is using at that moment and nothing it could replay later ([principle 13](/principles/#13-few-credential-holders)).
+- **A work actor holds no storage, key or audit credential at rest.** It reaches data, keys and audit only through its ports ([Ports of a work actor](/decisions/0002-families-of-actors/#ports-of-a-work-actor)), so a flaw in a work actor yields what it is using at that moment and nothing it could replay later ([principle 16](/principles/#16-few-credential-holders)).
 - **`entry` routes and does nothing else.** `session` serves sign-in and sessions, `exchange` token exchange and enrolment, `console` the operator API, and `signer` signing.
 - **`signer` and `policy` are split.** The actor that signs does not decide, and the actor that decides cannot sign.
 - **`ca` and `ssh-ca` are two actors.** An SSH CA is a different authority from an X.509 CA, with a different key, format and relying parties, so a flaw in one does not sign for the other. An installation does not fuse them, because that would undo the separation ([0003](/decisions/0003-units-transports-and-fusion/#fusion)).
@@ -81,7 +81,7 @@ flowchart LR
 - **A holder never shares a unit with a work actor,** and key@ never shares one with `entry` ([0003](/decisions/0003-units-transports-and-fusion/#fusion)). A holder's unit runs its own code and its own drivers and parses no unauthenticated input.
 - **On Lambda every function has a role, and only the holders' roles reach storage, keys, export destinations or the audit blob.** The role of a work function lets it invoke other functions and send to the audit transport through its emit port, and nothing else.
 - **Processes follow the owner of a credential, not the port.** There is a unit per holder, never a unit per port.
-- **A holder's compromise is bounded by what it holds.** A flaw in store@ yields ciphertext, hashes, plain values and the values of secret sources, but no plaintext of a sealed value, because store@ never seals or opens ([0005](/decisions/0005-the-store/#secret-sources), [principle 15](/principles/#15-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)). A flaw in key@ yields keys but not the data they protect, since the data is in store@ ([threat model](/security/threat-model/)).
+- **A holder's compromise is bounded by what it holds.** A flaw in store@ yields ciphertext, hashes, plain values and the values of secret sources, but no plaintext of a sealed value, because store@ never seals or opens ([0005](/decisions/0005-the-store/#secret-sources), [principle 18](/principles/#18-plaintext-lives-only-where-it-is-used-behind-two-independent-checks)). A flaw in key@ yields keys but not the data they protect, since the data is in store@ ([threat model](/security/threat-model/)).
 
 ### Ports of a work actor
 

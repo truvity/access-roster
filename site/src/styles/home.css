@@ -547,7 +547,6 @@ html :is(h1#_top, .sluis-title h1) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 3rem;
   margin-top: 1.75rem;
-  counter-reset: principle;
 }
 .home .principle-list li {
   display: grid;
@@ -556,10 +555,9 @@ html :is(h1#_top, .sluis-title h1) {
   gap: 0 0.5rem;
   padding: 0.7rem 0;
   border-top: 1px solid var(--h-line);
-  counter-increment: principle;
 }
 .home .principle-list li::before {
-  content: counter(principle);
+  content: attr(data-n);
   font-family: var(--h-serif);
   font-size: 1.25rem;
   color: var(--h-mute);

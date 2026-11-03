@@ -7,7 +7,7 @@ Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
 ## Context
 
-sluis keeps its data as kinds ([0004](/decisions/0004-the-data-model/)). Much of its security rests on who may change which item and on what happens when two callers change one at once. A work actor holds no storage credential at rest (principle 13, [0002](/decisions/0002-families-of-actors/#credential-holders)), so one holder in the data family has to take the engines, the config sources and the secret sources, and every actor reaches data through it.
+sluis keeps its data as kinds ([0004](/decisions/0004-the-data-model/)). Much of its security rests on who may change which item and on what happens when two callers change one at once. A work actor holds no storage credential at rest (principle 16, [0002](/decisions/0002-families-of-actors/#credential-holders)), so one holder in the data family has to take the engines, the config sources and the secret sources, and every actor reaches data through it.
 
 v1 put everything that is not a blob behind one State contract (v1 ADR 0027, on `master`): one key at a time, compare-and-swap by revision, listing by prefix and a lifetime, with expired items filtered on read. It had two engines, NATS JetStream on Kubernetes and DynamoDB on AWS; the JetStream half was removed on 2026-10-04 because no deployment ran it. Before that port, sessions lived in a cache with asynchronous replication, so a failover could lose an acknowledged write, sign everyone out and bring a rotated refresh token back.
 
@@ -97,13 +97,13 @@ trait Kind {
 
 ### Drivers
 
-- **A driver is a separate binary behind one port,** private to its owner: store@, key@ or exporter@. key@'s card and KMS driver is private to key@ ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). Only the owner can open a driver's socket, and a work actor never sees one (principle 10).
+- **A driver is a separate binary behind one port,** private to its owner: store@, key@ or exporter@. key@'s card and KMS driver is private to key@ ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). Only the owner can open a driver's socket, and a work actor never sees one (principle 11).
 - **The platform starts a driver; nobody execs it.** On boards it is a systemd service beside its owner's unit, on Lambda an extension of the holder's function, and on Kubernetes a native sidecar container in the holder's pod, with its socket on an emptyDir and the cloud token mounted only into the driver container ([0003](/decisions/0003-units-transports-and-fusion/#units)).
 - **Each port has one contract and one CLI:** `serve`, `check`, `version` and `conformance`. `check` verifies the driver's configuration and reach; `conformance` runs the port's suite against the driver. A driver passes the suite or it is not a driver, and the in-memory engine passes it too.
 - **A driver sees items only,** and never knows what a kind means. An item is a key, a version, bytes, a TTL and index entries.
 - **The item contract of the durable and temp drivers has four calls:** `Get` (an item by key), `Query` (items by key prefix, paged), `Transact` (puts and deletes with conditions, all or none) and `TailLog` (the change log from a sequence). The config source and the secret source have one call, `Read`, which returns bytes and a version label, and a capability flag `watch`: `none`, `notify` or `poll`. A config source driver returns bytes and never parses them. The exact messages are on the store API reference page.
 - **A `Transact` with one item and one condition is one conditional update,** not a transaction. A counter that many callers change, such as an allowance, depends on it: a conditional update of one hot DynamoDB item reaches about 1,000 a second, about ten times the estimated peak of a busy allowance, and a transaction does not (measured 2026-11-02; [0039](/decisions/0039-quota-allowance/)).
-- **Each port has one driver until a second real installation needs another;** that driver arrives with that installation (principle 10). `sluis config check` refuses a driver that does not fit the runtime, such as `rqlite` on serverless.
+- **Each port has one driver until a second real installation needs another;** that driver arrives with that installation (principle 11). `sluis config check` refuses a driver that does not fit the runtime, such as `rqlite` on serverless.
 
 ### Engines
 
@@ -212,8 +212,8 @@ trait Kind {
 - **Own Raft on `hashicorp/raft`.** We would build snapshots, membership and conditional updates ourselves; it stays the fallback if rqlite's risk grows.
 - **A query language or SQL for actors.** Any actor could ask any question, every engine would have to run it, and the rules could not be generated from the registry; a new question is a new declared index.
 - **One generated service per kind.** A method and generated code per kind on the wire multiply with the registry; one generic service and typed clients give the same types without it. <!-- terms-allow: service-per-kind -->
-- **The store seals and opens.** A key in store@ would let a compromise of the one holder of every engine credential read every sealed value; sealing at key@ keeps plaintext in the actor that uses it (principle 15).
-- **An engine and a driver for each actor, each driver holding its actor's credential.** It puts an engine credential in every work actor against principle 13, and an engine that cannot tell callers apart needs a cluster for each owning actor, with its ports, certificates and upgrades on a 2 GB board.
+- **The store seals and opens.** A key in store@ would let a compromise of the one holder of every engine credential read every sealed value; sealing at key@ keeps plaintext in the actor that uses it (principle 18).
+- **An engine and a driver for each actor, each driver holding its actor's credential.** It puts an engine credential in every work actor against principle 16, and an engine that cannot tell callers apart needs a cluster for each owning actor, with its ports, certificates and upgrades on a 2 GB board.
 - **NATS JetStream key-value for clusters.** It is replicated with revisions, but v1 removed it from its State contract because no deployment ran it, it is a second service with its own flush interval, and it adds nothing to the declared indexes.
 - **A cache with asynchronous replication.** An acknowledged write can be lost on failover, signing everyone out and reviving rotated tokens.
 - **Kubernetes objects as the store.** Session-rate writes load the API server, items have no lifetime, and it fits one runtime.

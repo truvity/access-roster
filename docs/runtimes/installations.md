@@ -21,7 +21,7 @@ An installation serves one [boundary](/concepts/boundaries/) at L4, or the front
 
 ## Reference installation shapes
 
-sluis is one product in many shapes, and it is built against these reference shapes. Drivers are added with the installation that needs them ([principle 10](/principles/#10-one-product-many-installations)). A driver that no reference shape runs is not trusted to be a driver.
+sluis is one product in many shapes, and it is built against these reference shapes. Drivers are added with the installation that needs them ([principle 11](/principles/#11-one-product-many-installations)). A driver that no reference shape runs is not trusted to be a driver.
 
 There are two kinds of installation, and they are distinct installations of the same product: a **workforce installation** signs in the people of an organisation and reconciles its systems, and a **customer installation** adds the CIAM module and brokers an external customer-identity product for the end users of several products. Each has its own boundary, keys and state. The shapes below are listed by layer ([roadmap](/roadmap/#a-core-and-two-later-modules)): the core first, then the shapes that need a later module.
 

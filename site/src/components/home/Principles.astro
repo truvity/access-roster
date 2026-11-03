@@ -7,12 +7,12 @@ const who = { shared: 'with ritueel', part: 'partly with ritueel', sluis: 'sluis
 <section class="pain principles" aria-labelledby="principles">
   <h2 id="principles">The principles every decision follows</h2>
   <p class="lead">
-    Sixteen short rules settle the design questions. Eleven are shared with ritueel, two of them in part; five belong to
-    sluis alone. A decision record that seems to break a rule has to say why.
+    Sixteen short rules settle the design questions. Ten are shared with ritueel, two of them in part; six are sluis's
+    own, numbered from one sequence with ritueel's. A decision record that seems to break a rule has to say why.
   </p>
   <ol class="principle-list">
     {principles.map((p) => (
-      <li>
+      <li data-n={p.n}>
         <a href={`/principles/${p.href}`}>{p.name}</a>
         <span class="who" data-who={p.who}>{who[p.who]}</span>
       </li>
