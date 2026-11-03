@@ -110,7 +110,7 @@ function build(shape: any): ShapeModel {
     const perRole = d.instance === 'per-actor';
     const users: string[] = p.users;
     const tpl = perRole ? rt.role_driver : rt.shared_driver;
-    // A per-actor driver is named by its binary (`drivers/aws`, `drivers/nats-jetstream`).
+    // A driver that runs once for each actor is named by its binary (`drivers/aws`, `drivers/nats-jetstream`).
     const vars = { id: driverId, driver: perRole ? String(d.binary).replace(/^drivers\//, '') : driverId };
     const instances = perRole
       ? users.map((u) => `${fill(tpl.unit, { ...vars, role: u })}: ${fill(tpl.listen, { ...vars, role: u })}`)
