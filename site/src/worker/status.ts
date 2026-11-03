@@ -190,7 +190,7 @@ export function statusJson(live: Live) {
       current: g.current,
       issues: g.issues,
       requirements: g.reqs,
-      decisions: { accepted: g.adrs.accepted, proposed: g.adrs.proposed, toWrite: g.adrs.toWrite },
+      decisions: { accepted: g.adrs.accepted, proposed: g.adrs.proposed, other: g.adrs.other, toWrite: g.adrs.toWrite },
       openIssues: [...g.openDecisionIssues, ...g.otherOpenIssues].sort((a, b) => a.number - b.number).map(issue),
     })),
     ci: { main: live.runs },

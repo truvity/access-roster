@@ -17,7 +17,7 @@ const { verifyWebhook, claimsProblem, CI_AUDIENCE } = await import('../src/worke
 const { appJwt, pemToPkcs8 } = await import('../src/worker/github.ts');
 const { writeDecision, parseSummary, refresh, BOARD_KEY, BOARD_WRITE_CAP } = await import('../src/worker/status.ts');
 const { api, hookMatters, STATUS_CACHE } = await import('../src/worker/api.ts');
-const { groupStatus } = await import('../src/lib/status-groups.ts');
+const { groupStatus, totalsOf, counted } = await import('../src/lib/status-groups.ts');
 const { statusBodyHtml } = await import('../src/lib/status-html.ts');
 
 let cases = 0;
@@ -209,7 +209,7 @@ await test('/api/status: 503 before the first refresh, then JSON with a short ca
   assert.match(res.headers.get('content-type'), /^application\/json/);
   const body = await res.json();
   assert.equal(body.schema, 1);
-  assert.deepEqual(body.milestones.map((m) => m.name), ['M1', 'M2', 'Not in a milestone']);
+  assert.deepEqual(body.milestones.map((m) => m.name), ['M1', 'M2', 'Unassigned']);
   assert.equal(body.milestones[0].current, true);
   assert.deepEqual(body.milestones[0].issues, { open: 1, closed: 0, blocked: 0, needsDecision: 0 });
   assert.equal(body.milestones[0].requirements.total, 1);
@@ -291,6 +291,121 @@ await test('the milestone cards: a Design group and a Build group, named, with t
   const g2 = groupStatus({ options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] }, decided);
   const card2 = statusBodyHtml({ groups: g2, mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
   assert.ok(card2.includes('1 of 1 requirements decided') && card2.includes('0 of 1 requirements done'), 'planned counts as decided, not as done');
+});
+
+// ---- the counting: every record and every live requirement is in exactly one block
+// A repository where records share proposal issues (#10 proposes two records, as #909 does in
+// the real one), a proposal issue is off the board or has no milestone, and requirements link
+// several issues, none, an issue off the board, an issue with no milestone, or are out of scope.
+const COUNT_REPO = {
+  builtAt: '2026-11-01T10:00:00Z',
+  decisions: [
+    { id: '0001-a', number: '0001', title: 'A', status: 'Accepted', proposal: 10 },
+    { id: '0002-b', number: '0002', title: 'B', status: 'Accepted', proposal: 10 },
+    { id: '0003-c', number: '0003', title: 'C', status: 'Proposed', proposal: 10 },
+    { id: '0004-d', number: '0004', title: 'D', status: 'Accepted', proposal: 20 },
+    { id: '0005-e', number: '0005', title: 'E', status: 'Accepted', proposal: 30 },
+    { id: '0006-f', number: '0006', title: 'F', status: 'Accepted', proposal: 99 },
+    { id: '0007-g', number: '0007', title: 'G', status: 'Accepted', proposal: null },
+    { id: '0008-h', number: '0008', title: 'H', status: 'Superseded', proposal: 20 },
+    { id: '0009-i', number: '0009', title: 'I', status: 'Accepted', proposal: 40 },
+  ],
+  requirements: [
+    { id: 'REQ-AA-001', area: 'AA', status: 'planned', issues: [20, 10], auto: false },
+    { id: 'REQ-AA-002', area: 'AA', status: 'done', issues: [10, 20, 30], auto: true },
+    { id: 'REQ-AA-003', area: 'AA', status: 'open', issues: [], auto: false },
+    { id: 'REQ-AA-004', area: 'AA', status: 'partial', issues: [99], auto: false },
+    { id: 'REQ-BB-001', area: 'BB', status: 'planned', issues: [30], auto: false },
+    { id: 'REQ-BB-002', area: 'BB', status: 'planned', issues: [30, 99], auto: false },
+    { id: 'REQ-BB-003', area: 'BB', status: 'out-of-scope', issues: [], auto: false },
+    { id: 'REQ-BB-004', area: 'BB', status: 'out-of-scope', issues: [20], auto: false },
+    { id: 'REQ-BB-005', area: 'BB', status: 'withdrawn', issues: [10], auto: false },
+    { id: 'REQ-BB-006', area: 'BB', status: 'planned', issues: [40], auto: false },
+  ],
+};
+const COUNT_BOARD = { options: ['M1', 'M2'], issues: [
+  { number: 10, title: 'shared proposal', open: false, labels: ['type:decision'], milestone: 'M1' },
+  { number: 20, title: 'second', open: true, labels: ['type:decision'], milestone: 'M2' },
+  { number: 30, title: 'no milestone', open: true, labels: [], milestone: null },
+  { number: 40, title: 'milestone no longer an option', open: true, labels: [], milestone: 'Retired' },
+  { number: 50, title: 'to write', open: true, labels: ['type:decision'], milestone: 'M2' },
+] };
+const liveRequirements = COUNT_REPO.requirements.filter((r) => r.status !== 'withdrawn').length;
+
+await test('counting: each record is in exactly one block, under its own proposal issue', () => {
+  const groups = groupStatus(COUNT_BOARD, COUNT_REPO);
+  assert.deepEqual(groups.map((g) => g.name), ['M1', 'M2', 'Unassigned']);
+  const where = (g) => g.adrs.records.map((d) => d.id);
+  assert.deepEqual(where(groups[0]), ['0001-a', '0002-b', '0003-c'], 'records sharing #10 stay together');
+  assert.deepEqual(where(groups[1]), ['0004-d', '0008-h']);
+  assert.deepEqual(where(groups[2]), ['0005-e', '0006-f', '0007-g', '0009-i'], 'no milestone, off the board, no proposal, retired option');
+  const seen = groups.flatMap(where);
+  assert.equal(seen.length, COUNT_REPO.decisions.length);
+  assert.deepEqual([...new Set(seen)].sort(), COUNT_REPO.decisions.map((d) => d.id).sort());
+  assert.equal(groups[0].adrs.accepted, 2);
+  assert.equal(groups[0].adrs.proposed, 1);
+  assert.equal(groups[1].adrs.other, 1, 'a superseded record is a record');
+  assert.equal(groups[1].adrs.toWrite, 1, '#50 has no record; #20 and #10 have');
+});
+await test('counting: each live requirement is in exactly one block, under the earliest milestone of its issues', () => {
+  const groups = groupStatus(COUNT_BOARD, COUNT_REPO);
+  const counts = groups.map((g) => g.reqs);
+  assert.deepEqual(counts.map((c) => c.total), [2, 1, 6]);
+  // REQ-AA-001 (#20, #10) and REQ-AA-002 (#10, #20, #30) go to M1; REQ-BB-004 (#20) to M2.
+  assert.equal(counts[0].planned + counts[0].done, 2);
+  assert.equal(counts[1].outOfScope, 1);
+  assert.equal(counts[2].outOfScope, 1);
+  assert.equal(groups.flatMap((g) => g.areas).reduce((n, a) => n + a.counts.total, 0), liveRequirements);
+  assert.equal(counts.reduce((n, c) => n + c.total, 0), liveRequirements, 'withdrawn is in no block');
+});
+await test('counting: the blocks add up to the totals', () => {
+  const groups = groupStatus(COUNT_BOARD, COUNT_REPO);
+  const t = totalsOf(groups);
+  assert.equal(t.records, COUNT_REPO.decisions.length);
+  assert.equal(t.accepted + t.proposed + t.other, COUNT_REPO.decisions.length);
+  assert.equal(t.reqs.total, liveRequirements);
+  assert.equal(t.reqs.open + t.reqs.planned + t.reqs.partial + t.reqs.done + t.reqs.outOfScope, liveRequirements);
+  assert.ok(COUNT_REPO.requirements.every((r) => counted(r) === (r.status !== 'withdrawn')));
+  // Without a board everything is Unassigned and the totals are the same.
+  const none = totalsOf(groupStatus(null, COUNT_REPO));
+  assert.equal(none.records, COUNT_REPO.decisions.length);
+  assert.equal(none.reqs.total, liveRequirements);
+});
+await test('counting: the page draws the same sums, in the Total row and in the cards', () => {
+  const groups = groupStatus(COUNT_BOARD, COUNT_REPO);
+  const html = statusBodyHtml({ groups, mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
+  const row = (re) => [...re.exec(html)[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((m) => Number(m[1]));
+  const total = row(/<tr class="ps-total-row"[^>]*>(.*?)<\/tr>/);
+  assert.equal(total[0], liveRequirements, 'requirements Total');
+  assert.equal(total[7], COUNT_REPO.decisions.length, 'ADR Records');
+  const rows = [...html.matchAll(/<tr class="ps-group-row">(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((x) => Number(x[1])));
+  assert.equal(rows.length, 3);
+  assert.equal(rows.reduce((n, r) => n + r[0], 0), total[0]);
+  assert.equal(rows.reduce((n, r) => n + r[7], 0), total[7]);
+  // Every row has Total = Undecided + Planned + Partial + Done + Out of scope.
+  for (const r of [...rows, total]) assert.equal(r[0], r[1] + r[2] + r[3] + r[4] + r[5]);
+  // The cards: one for each milestone and one for Unassigned; their denominators are the records.
+  const cards = [...html.matchAll(/aria-label="Design: (\d+) of (\d+) ADRs accepted, (\d+) of (\d+) requirements decided"/g)].map((m) => m.slice(1).map(Number));
+  assert.equal(cards.length, 3);
+  assert.equal(cards.reduce((n, c) => n + c[1], 0), COUNT_REPO.decisions.length);
+  assert.equal(cards.reduce((n, c) => n + c[3], 0), liveRequirements);
+  assert.ok(html.includes('data-group="Unassigned"') && html.includes('No milestone'));
+  assert.ok(html.includes('1 more decision to write, not counted above'));
+});
+await test('counting: the live fragment of the Worker uses the same rule', async () => {
+  const { state, env } = world();
+  state.board = COUNT_BOARD;
+  const countEnv = { ...env, ASSETS: { fetch: async (r) => (new URL(r.url ?? r).pathname === '/data/repo.json' ? Response.json(COUNT_REPO) : new Response('no', { status: 404 })) } };
+  await refresh(countEnv, 'test');
+  const api1 = await (await api(req('/api/status'), countEnv, ctx)).json();
+  assert.equal(api1.milestones.reduce((n, m) => n + m.requirements.total, 0), liveRequirements);
+  assert.equal(api1.milestones.reduce((n, m) => n + m.decisions.accepted + m.decisions.proposed + m.decisions.other, 0), COUNT_REPO.decisions.length);
+  assert.equal(api1.milestones.at(-1).name, 'Unassigned');
+  const live = await (await api(req('/api/status/live/'), countEnv, ctx)).text();
+  const built = statusBodyHtml({ groups: groupStatus(COUNT_BOARD, COUNT_REPO), mode: 'live', asOf: api1.asOf, available: true, runs: api1.ci.main });
+  const totalRow = (h) => /<tr class="ps-total-row"[^>]*>.*?<\/tr>/.exec(h)?.[0];
+  assert.ok(totalRow(live), 'the live fragment has a Total row');
+  assert.equal(totalRow(live), totalRow(built));
 });
 
 if (failures.length) {

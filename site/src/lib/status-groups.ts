@@ -1,11 +1,17 @@
 // The rows of the status page (/status/, ADR 0014): one group per option of the project's
-// `Product milestone` field, in the field's order, then "Not in a milestone".
+// `Product milestone` field, in the field's order, then "Unassigned".
 //
+// Every decision record and every live requirement is in exactly one group, so the groups
+// add up to the totals in the page's header (totalsOf below, drawn as the table's last row).
 // - An issue belongs to the group of its own milestone value.
 // - A requirement belongs to the group of the issues it links (`issues:`); with several, the
-//   earliest group in option order. A requirement whose issues have no milestone, or that
-//   links none, is "Not in a milestone".
-// - A decision record belongs to the group of its proposal issue.
+//   earliest group in option order. A requirement that links no issue, whose issues are not
+//   on the board, or whose issues have no milestone (or one that is not an option) is
+//   "Unassigned". Withdrawn requirements are not live and are in no group; out-of-scope
+//   ones are live (they are in the header's total) and have their own column.
+// - A decision record belongs to the group of its proposal issue, and to "Unassigned" when
+//   that issue is not on the board or has no milestone. Records that share a proposal issue
+//   are in the same group; each is counted once.
 // - A decision still "to write" is an open `type:decision` issue that no record names as
 //   its proposal.
 // - The current milestone is the first option, in order, that still has open issues.
@@ -13,10 +19,10 @@
 // A pure function of the board and the repository facts, so that the build (with the board
 // it reads and the facts it publishes as /data/repo.json) and the Worker (with the board in
 // KV and the deployed /data/repo.json) compute the same groups. Without a board every
-// requirement and record is "Not in a milestone", and the issue figures are unknown (null).
+// requirement and record is "Unassigned", and the issue figures are unknown (null).
 // This module imports nothing at run time: site/scripts/check-worker.mjs runs it in Node.
 
-export const NO_MILESTONE = 'Not in a milestone';
+export const NO_MILESTONE = 'Unassigned';
 export const LABEL_DECISION = 'type:decision';
 export const LABEL_BLOCKED = 'status:blocked';
 export const LABEL_NEEDS_DECISION = 'status:needs-decision';
@@ -29,7 +35,7 @@ export interface DecisionFact { id: string; number: string; title: string; statu
 export interface RequirementFact { id: string; area: string; status: string; issues: number[]; auto: boolean }
 export interface RepoLike { decisions: DecisionFact[]; requirements: RequirementFact[] }
 
-export interface ReqCounts { total: number; open: number; planned: number; partial: number; done: number; auto: number }
+export interface ReqCounts { total: number; open: number; planned: number; partial: number; done: number; outOfScope: number; auto: number }
 export interface AreaRow { code: string; counts: ReqCounts }
 export interface Group {
   name: string;
@@ -38,7 +44,7 @@ export interface Group {
   current: boolean;
   reqs: ReqCounts;
   areas: AreaRow[];
-  adrs: { accepted: number; proposed: number; toWrite: number | null; records: DecisionFact[] };
+  adrs: { accepted: number; proposed: number; other: number; toWrite: number | null; records: DecisionFact[] };
   issues: { open: number; closed: number; blocked: number; needsDecision: number } | null;
   openDecisionIssues: BoardIssue[];
   otherOpenIssues: BoardIssue[];
@@ -47,8 +53,9 @@ export interface Group {
 // The status family a record counts under on the status page.
 export const isAccepted = (status: string) => status.startsWith('Accepted');
 export const isProposed = (status: string) => status === 'Proposed';
-// A record the status page counts: not withdrawn and not a refusal kept as out of scope.
-export const counted = (r: { status: string }) => r.status !== 'withdrawn' && r.status !== 'out-of-scope';
+// A requirement the status page counts: every live one, that is, not withdrawn. This is the
+// header's figure (coverage().all.requirements in src/lib/requirements.ts).
+export const counted = (r: { status: string }) => r.status !== 'withdrawn';
 
 const countReqs = (rs: RequirementFact[]): ReqCounts => ({
   total: rs.length,
@@ -56,6 +63,7 @@ const countReqs = (rs: RequirementFact[]): ReqCounts => ({
   planned: rs.filter((r) => r.status === 'planned').length,
   partial: rs.filter((r) => r.status === 'partial').length,
   done: rs.filter((r) => r.status === 'done').length,
+  outOfScope: rs.filter((r) => r.status === 'out-of-scope').length,
   auto: rs.filter((r) => r.auto).length,
 });
 
@@ -68,7 +76,8 @@ export function groupStatus(board: BoardLike | null, repo: RepoLike): Group[] {
   const byNumber = new Map((board?.issues ?? []).map((i) => [i.number, i]));
   const indexOfIssue = (n: number | null) => {
     const m = n === null ? null : byNumber.get(n)?.milestone;
-    return m ? options.indexOf(m) : last;
+    const k = m ? options.indexOf(m) : -1;
+    return k < 0 ? last : k;
   };
   // Areas in catalogue order: the order in which the requirements name them.
   const areaCodes = [...new Set(repo.requirements.map((r) => r.area))];
@@ -101,6 +110,7 @@ export function groupStatus(board: BoardLike | null, repo: RepoLike): Group[] {
       adrs: {
         accepted: recordsBy[gi].filter((d) => isAccepted(d.status)).length,
         proposed: recordsBy[gi].filter((d) => isProposed(d.status)).length,
+        other: recordsBy[gi].filter((d) => !isAccepted(d.status) && !isProposed(d.status)).length,
         toWrite: board ? open.filter((i) => decisionIssue(i) && !proposals.has(i.number)).length : null,
         records: recordsBy[gi],
       },
@@ -119,4 +129,22 @@ export function groupStatus(board: BoardLike | null, repo: RepoLike): Group[] {
   const current = groups.find((g) => g.milestone && g.issues && g.issues.open > 0);
   if (current) current.current = true;
   return groups;
+}
+
+// The sums of the groups, which must equal the page's header: `records` is every decision
+// record and `requirements` every live requirement (see the rules at the top).
+export interface Totals { reqs: ReqCounts; records: number; accepted: number; proposed: number; other: number; toWrite: number | null }
+export function totalsOf(groups: Group[]): Totals {
+  const sum = (f: (g: Group) => number) => groups.reduce((n, g) => n + f(g), 0);
+  return {
+    reqs: {
+      total: sum((g) => g.reqs.total), open: sum((g) => g.reqs.open), planned: sum((g) => g.reqs.planned),
+      partial: sum((g) => g.reqs.partial), done: sum((g) => g.reqs.done), outOfScope: sum((g) => g.reqs.outOfScope), auto: sum((g) => g.reqs.auto),
+    },
+    records: sum((g) => g.adrs.records.length),
+    accepted: sum((g) => g.adrs.accepted),
+    proposed: sum((g) => g.adrs.proposed),
+    other: sum((g) => g.adrs.other),
+    toWrite: groups.some((g) => g.adrs.toWrite === null) ? null : sum((g) => g.adrs.toWrite ?? 0),
+  };
 }

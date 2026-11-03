@@ -67,7 +67,9 @@ const ADR = '/decisions/0014-the-site-is-static-on-cloudflare-workers/';
       project's <code>{FIELD}</code> field, read from GitHub during the build and again by the live block; adding or reordering an option
       changes the page with no code change. Requirement and decision status come from the repository (<code>docs/requirements/</code> and <code>docs/decisions/</code>)
       and are published as <a href="/data/repo.json"><code>/data/repo.json</code></a>. A requirement is <code>done</code> only when a pull request set it together with the passing test. A requirement is placed under the earliest
-      milestone of the issues it links, a decision record under the milestone of its proposal issue, and the current milestone is the
+      milestone of the issues it links, a decision record under the milestone of its proposal issue, and what has no milestone
+      (no issue, an issue off the board, or an issue with no milestone) is under Unassigned. Each record and each live requirement
+      is counted once, so the milestones and Unassigned add up to the Total row and to the figures at the top of the page. The current milestone is the
       first one that still has open issues. The build places them with the board as it was then; the live block places them with the
       board as it is now. The live data comes from the site's status API, <a href="https://sluis.id/api/status"><code>/api/status</code></a>: GitHub
       webhooks and a check every 15 minutes keep it current, and CI runs on <code>main</code> post coverage and conformance to it.
