@@ -876,7 +876,7 @@ The targets of a reconciler for one connection of a tenant (a team, a channel), 
 
 - **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
-- **Readers:** adapter-&lt;vendor> (as provisioner), adapter-&lt;vendor> (as facts source), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
+- **Readers:** adapter-&lt;vendor> (as provisioner), [`policy`](/reference/actors/#policy), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Links:** [`DirectoryConnection`](#directoryconnection), [`SlackConnection`](#slackconnection), [`GitHubInstallation`](#githubinstallation).
 

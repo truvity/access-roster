@@ -1182,7 +1182,7 @@ kinds:
     profile: Tenant-adjustable
     links: [DirectoryConnection, SlackConnection, GitHubInstallation]
     writer: adapter-<vendor>
-    readers: [adapter-<vendor> (as provisioner), adapter-<vendor> (as facts source), console]
+    readers: [adapter-<vendor> (as provisioner), policy, console]
     exportable: no
     backed_up: yes
     notes: "The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy, the sources it lists (directory connections, its own or another company's) and, for a Slack Connect channel, a shared flag. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API."
