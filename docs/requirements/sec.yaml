@@ -95,7 +95,7 @@ requirements:
       - {id: NC-05, section: "Fetch Metadata", depth: Full}
     issues: [796]
     verification:
-      - {kind: integration-test, ref: "origin matrix"}
+      - {kind: integration-test, ref: "web origin matrix"}
   - id: REQ-SEC-015
     area: SEC
     split_from: REQ-SEC-003
@@ -359,3 +359,69 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "breaker test with a failing upstream"}
+
+  # ---- rate windows (decision 0036)
+  - id: REQ-SEC-027
+    area: SEC
+    statement: "The entry actor MUST key a rate window on a keyed hash of the source address made at key@ with the mac purpose."
+    rationale: "A window keyed on a plain address would be personal data in a temp kind (ADR 0036)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [entry]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a RateWindow id is a Mac output; the source address is not in the item"}
+  - id: REQ-SEC-028
+    area: SEC
+    statement: "A tenant MUST NOT raise a rate limit above the RateBound that config declares."
+    rationale: "A tenant may lower the rate limits of its own connections and clients and never raise them past the bound (ADR 0036)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a TenantClient and a TenantConnection write that raise each rate in turn are refused"}
+  - id: REQ-SEC-029
+    area: SEC
+    statement: "A DNS CAA record that carries the operator's account URI MUST restrict certificate issuance for every issuer host."
+    rationale: "Issuance by an unintended authority is the main impersonation path."
+    level: MUST
+    source: stakeholder-ciam
+    status: planned
+    runtimes: all
+    standards:
+      - {id: NC-13, section: "8657", depth: Full}
+    issues: [1063]
+    verification:
+      - {kind: integration-test, ref: "CAA record check"}
+  - id: REQ-SEC-030
+    area: SEC
+    statement: "Certificate Transparency logs MUST be monitored for certificates of every issuer host."
+    rationale: "Monitoring finds certificates that the operator did not request."
+    level: MUST
+    source: stakeholder-ciam
+    status: planned
+    runtimes: all
+    standards:
+      - {id: NC-13, section: "8657", depth: Partial}
+    issues: [1063]
+    verification:
+      - {kind: integration-test, ref: "CT monitor test"}
+  - id: REQ-SEC-031
+    area: SEC
+    statement: "A certificate for an issuer host that the operator did not request MUST be treated as an incident."
+    rationale: "It signals an impersonation attempt."
+    level: MUST
+    source: stakeholder-ciam
+    status: planned
+    runtimes: all
+    standards:
+      - {id: NC-13, section: "8657", depth: Partial}
+    issues: [1063]
+    verification:
+      - {kind: integration-test, ref: "CT monitor incident test"}

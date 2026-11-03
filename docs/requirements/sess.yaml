@@ -588,3 +588,31 @@ requirements:
     issues: [1106]
     verification:
       - {kind: integration-test, ref: "a browser sign-in at a boundary reaches the group issuer with a code challenge, at the declared redirect, and no other redirect is accepted for that client"}
+
+  # ---- session chains (decision 0018)
+  - id: REQ-SESS-044
+    area: SESS
+    statement: "A session MUST be a SessionChain, a temp kind that holds the hash of the current refresh token and its spent markers."
+    rationale: "A copy of the store must not yield a usable refresh token, and a lost temp class costs only a sign-in (ADR 0018)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a SessionChain is temp and hashed; a scan finds no refresh token value"}
+  - id: REQ-SESS-045
+    area: SESS
+    statement: "The session cookie MUST be sealed and opened at key@ on every request under the boundary's cookie data key."
+    rationale: "session never holds the cookie key (ADR 0018)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [1179]
+    verification:
+      - {kind: integration-test, ref: "session holds no cookie key; each request opens the cookie at key@"}

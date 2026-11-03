@@ -406,7 +406,7 @@ requirements:
       - {kind: integration-test, ref: "a redirecting and an oversized document"}
   - id: REQ-CLIENT-030
     area: CLIENT
-    statement: "sluis MUST advertise support for client ID metadata documents only while at least one origin is allow-listed."
+    statement: "sluis MUST advertise support for client ID metadata documents only while at least one host is allow-listed in ClientDocumentGate."
     rationale: "Discovery must not promise what the installation refuses (ADR 0021)."
     level: MUST
     source: design-decision
@@ -415,7 +415,7 @@ requirements:
     standards: []
     issues: [792]
     verification:
-      - {kind: test-vectors, ref: "discovery with and without an origin"}
+      - {kind: test-vectors, ref: "discovery with and without an allow-listed host"}
   - id: REQ-CLIENT-031
     area: CLIENT
     statement: "The resource-proxy sidecar MUST remove the caller's Authorization header before it forwards a request."
@@ -542,3 +542,17 @@ requirements:
     issues: [912]
     verification:
       - {kind: integration-test, ref: "assertion replay test"}
+
+  # ---- tenant clients (decision 0021)
+  - id: REQ-CLIENT-041
+    area: CLIENT
+    statement: "A tenant client MUST be an instance within the bounds of its ClientTemplate."
+    rationale: "A tenant must not widen its own claims, trust ceiling or redirect rules (ADR 0021)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1023]
+    verification:
+      - {kind: integration-test, ref: "a tenant client that adds a grant name, a claim or a redirect host outside the template is refused; the same fields inside the template are accepted"}

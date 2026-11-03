@@ -191,7 +191,7 @@ requirements:
     standards: []
     issues: [846]
     verification:
-      - {kind: integration-test, ref: "the rendered files of the example install files apply with the cloud tool alone"}
+      - {kind: integration-test, ref: "the rendered files of the example bootstrap files apply with the cloud tool alone"}
   - id: REQ-DEPLOY-015
     area: DEPLOY
     statement: "The Pulumi library MUST live in a Go module of its own and consume the rendered artifacts only."

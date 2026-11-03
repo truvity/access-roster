@@ -324,7 +324,7 @@ requirements:
     standards: []
     issues: [890]
     verification:
-      - {kind: integration-test, ref: "the access list of key-holder and the key policy name one actor, and the signer has no other format to ask for"}
+      - {kind: integration-test, ref: "the rules of key@ and the key policy name one actor, and the signer has no other format to ask for"}
   - id: REQ-SUPPLY-025
     area: SUPPLY
     statement: "The contract vectors of the previous release of the same major version MUST pass against the actors of the current release."
@@ -339,7 +339,7 @@ requirements:
       - {kind: test-vectors, ref: "previous-release vectors for messages, records and documents run against the current build in CI"}
   - id: REQ-SUPPLY-026
     area: SUPPLY
-    statement: "A field of a stored record kind MUST NOT be removed in the release that stops writing it."
+    statement: "A field of a stored kind MUST NOT be removed in the release that stops writing it."
     rationale: "A rollback and a mixed window both need the previous release to read what the current one wrote (ADR 0015)."
     level: MUST
     source: design-decision
@@ -361,3 +361,29 @@ requirements:
     issues: [1022]
     verification:
       - {kind: test-vectors, ref: "current vectors run against the previous release's artifacts in CI"}
+
+  # ---- packages (decision 0013)
+  - id: REQ-SUPPLY-028
+    area: SUPPLY
+    statement: "A driver package MUST install no service of its own."
+    rationale: "A driver is private to its owner and starts beside it (ADR 0013)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "package metadata check: a driver package has no unit file and depends on its owner's package"}
+  - id: REQ-SUPPLY-029
+    area: SUPPLY
+    statement: "A host that runs the foundation and the audit module MUST install no identity actor."
+    rationale: "Audit alone is the foundation plus the audit module and nothing more (ADR 0013)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the dependencies of sluis-audit-writer and sluis-audit-search reach no package of the identity module"}

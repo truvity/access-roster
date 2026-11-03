@@ -86,5 +86,5 @@ A client may present an `https` URL as its `client_id`; sluis then fetches its m
 
 ## Follow-ups
 
-- Resources as policy entities: [#979](https://github.com/truvity/sluis/issues/979).
+- Resources as policy entities: no issue yet; one is opened when a consumer needs it.
 - Build: client model [#789](https://github.com/truvity/sluis/issues/789), secrets [#790](https://github.com/truvity/sluis/issues/790), resources [#791](https://github.com/truvity/sluis/issues/791), metadata documents [#792](https://github.com/truvity/sluis/issues/792), MCP authorization [#822](https://github.com/truvity/sluis/issues/822), the sidecar [#823](https://github.com/truvity/sluis/issues/823).

@@ -62,11 +62,12 @@ requirements:
     rationale: "Branding without free-form injection."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
     issues: [927]
+    superseded_by: [REQ-UX-015, REQ-UX-016]
     verification:
       - {kind: integration-test, ref: "theme declaration test"}
   - id: REQ-UX-008
@@ -76,11 +77,12 @@ requirements:
     rationale: "Branding without free-form injection."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
     issues: [927]
+    superseded_by: [REQ-UX-015]
     verification:
       - {kind: integration-test, ref: "theme load test"}
   - id: REQ-UX-004
@@ -123,7 +125,7 @@ requirements:
       - {kind: integration-test, ref: "every write endpoint called by a viewer"}
   - id: REQ-UX-010
     area: UX
-    statement: "Every console page that shows a configured value MUST show its origin and, for a declared value, that it is locked."
+    statement: "Every console page that shows a configured value MUST show its storage class and profile and, for a layered kind, its provenance."
     rationale: "An operator must see why a field cannot be changed and where it comes from (ADR 0027)."
     level: MUST
     source: design-decision
@@ -132,7 +134,7 @@ requirements:
     standards: []
     issues: [831]
     verification:
-      - {kind: integration-test, ref: "each page's data carries origin and lock"}
+      - {kind: integration-test, ref: "each page's data carries class, profile and provenance"}
   - id: REQ-UX-011
     area: UX
     statement: "A console role MUST be a grant of the declared vocabulary that the console has no action to assign."
@@ -159,7 +161,7 @@ requirements:
       - {kind: integration-test, ref: "locale order test"}
   - id: REQ-UX-013
     area: UX
-    statement: "The loader MUST refuse a theme whose colours fall below the WCAG AA contrast ratio."
+    statement: "A Branding document and a TenantBranding write MUST be refused when their colours fall below the WCAG AA contrast ratio."
     rationale: "Hosted pages must meet WCAG 2.1 AA whatever the theme."
     level: MUST
     source: stakeholder-ciam
@@ -169,11 +171,11 @@ requirements:
       - {id: NC-04, depth: Partial}
     issues: [927]
     verification:
-      - {kind: integration-test, ref: "contrast check on a failing and a passing theme"}
+      - {kind: integration-test, ref: "contrast check on a failing and a passing theme, at load and at write"}
   - id: REQ-UX-014
     area: UX
     statement: "sluis MUST NOT serve a stylesheet, script or template that comes from a client or a tenant."
-    rationale: "A tenant could otherwise rebuild a page into a phishing page on sluis's origin."
+    rationale: "A tenant could otherwise rebuild a page into a phishing page on a sluis web origin."
     level: MUST
     source: design-decision
     status: planned
@@ -182,3 +184,39 @@ requirements:
     issues: [927]
     verification:
       - {kind: integration-test, ref: "theme with markup or a stylesheet is refused"}
+  - id: REQ-UX-015
+    area: UX
+    statement: "A brand asset MUST be served only from an asset host that the Branding bound allows."
+    rationale: "Branding without free-form injection (ADR 0035)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [927]
+    verification:
+      - {kind: integration-test, ref: "a TenantBranding write with an unknown asset host is refused; a Branding document with one fails the load"}
+  - id: REQ-UX-016
+    area: UX
+    statement: "A tenant client MUST name only a FrontHost entry that its client template allows."
+    rationale: "The login domain per client is a reviewed config kind (ADR 0035)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [927]
+    verification:
+      - {kind: integration-test, ref: "a tenant client that names a host outside the allowed FrontHost entries is refused; a client that names none is served on the entry named default"}
+  - id: REQ-UX-017
+    area: UX
+    statement: "TenantBranding MUST be written by exchange only."
+    rationale: "exchange owns what a tenant has configured, and the console routes the write (ADR 0035)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [927]
+    verification:
+      - {kind: integration-test, ref: "a write of TenantBranding by any other actor is refused"}
