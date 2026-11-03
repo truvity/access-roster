@@ -1,6 +1,6 @@
 // What the home page says, as data. Every claim about a vendor is one that a page of these
 // docs states: the GitHub and Slack ceremonies and Google delegation on
-// /integrations/connecting/, the Cloudflare minting token on /integrations/cloudflare/,
+// /integrations/connecting/, the Cloudflare minting token on /integrations/cloud/#cloudflare,
 // the AWS provider limit on /integrations/connecting/#aws-oidc-provider-and-role-trust.
 
 export interface Chip {
@@ -59,10 +59,10 @@ export const answers = {
       { text: 'Integrations', href: '/integrations/' },
       { text: 'Google Workspace', href: '/integrations/google-workspace/' },
       { text: 'Generic OIDC', href: '/integrations/oidc-upstream/' },
-      { text: 'AWS', href: '/integrations/aws/' },
+      { text: 'AWS', href: '/integrations/cloud/#aws' },
       { text: 'Kubernetes', href: '/integrations/kubernetes/' },
-      { text: 'PostgreSQL', href: '/integrations/postgresql/' },
-      { text: 'SSH', href: '/integrations/ssh/' },
+      { text: 'PostgreSQL', href: '/integrations/infrastructure-access/#postgresql' },
+      { text: 'SSH', href: '/integrations/infrastructure-access/#ssh' },
       { text: 'Applications', href: '/integrations/applications/' },
     ] satisfies Link[],
   },
@@ -72,7 +72,7 @@ export const answers = {
     links: [
       { text: 'Connecting integrations', href: '/integrations/connecting/' },
       { text: 'GitHub', href: '/integrations/github/' },
-      { text: 'Cloudflare', href: '/integrations/cloudflare/' },
+      { text: 'Cloudflare', href: '/integrations/cloud/#cloudflare' },
       { text: 'Slack and more', href: '/integrations/more/' },
       { text: 'The local installation', href: '/runtimes/local/' },
     ] satisfies Link[],

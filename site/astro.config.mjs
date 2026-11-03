@@ -97,7 +97,7 @@ export default defineConfig({
   trailingSlash: 'always',
   // The v2 taxonomy renamed the "shapes" pages to "runtimes" (bare-metal,
   // serverless, kubernetes) and merged the five bare-metal shapes into the
-  // installations page; "roles" became "actors". The old paths keep working.
+  // runtimes page; "roles" became "actors". The old paths keep working.
   // Each redirect points at the final page, so nothing chains. The /environments/
   // paths were the previous name of /runtimes/.
   redirects: {
@@ -105,22 +105,26 @@ export default defineConfig({
     '/environments/bare-metal/': '/runtimes/bare-metal/',
     '/environments/serverless/': '/runtimes/serverless/',
     '/environments/kubernetes/': '/runtimes/kubernetes/',
-    '/environments/presets/': '/runtimes/installations/',
+    '/environments/presets/': '/runtimes/',
     '/shapes/': '/runtimes/',
-    '/shapes/local/': '/runtimes/installations/#local',
-    '/shapes/single-node/': '/runtimes/installations/',
-    '/shapes/cluster/': '/runtimes/installations/#boards',
+    '/shapes/local/': '/runtimes/#local',
+    '/shapes/single-node/': '/runtimes/',
+    '/shapes/cluster/': '/runtimes/#boards',
     '/shapes/aws-ec2-single/': '/runtimes/bare-metal/',
     '/shapes/aws-ec2-cluster/': '/runtimes/bare-metal/',
     '/shapes/aws-lambda/': '/runtimes/serverless/',
     '/shapes/kubernetes/': '/runtimes/kubernetes/',
-    '/concepts/roles/': '/concepts/actors/',
+    '/concepts/roles/': '/concepts/families/',
+    '/concepts/actors/': '/concepts/families/',
+    '/concepts/drivers/': '/concepts/data/#the-store',
+    '/concepts/configuration/': '/concepts/data/#configuration',
+    '/concepts/backup/': '/concepts/data/#backup-and-restore',
     // The pages merged or moved on 2026-11-01 (one fact, one page). The 404 page
     // sends an unknown path to /v1/ when v1 has it, so every old path is listed here.
     '/open-decisions/': '/decisions/',
     '/concepts/principles/': '/principles/',
     '/concepts/machine-identity/': '/concepts/identity/',
-    '/concepts/secrets/': '/concepts/data/#secrets-and-export',
+    '/concepts/secrets/': '/concepts/data/#storage-classes',
     '/concepts/integrations/': '/integrations/',
     '/runtimes/boundaries/': '/concepts/boundaries/',
     '/architecture/processes/': '/architecture/components/',
@@ -133,6 +137,20 @@ export default defineConfig({
     '/contributing/requirements/': '/contributing/decisions/',
     '/contributing/research/': '/contributing/decisions/#spikes-and-research',
     '/contributing/writing/': '/contributing/pages/#writing-style',
+    // The pages merged on 2026-11-03 (wave 2 of the v2 design).
+    '/architecture/context/': '/architecture/',
+    '/architecture/source-layout/': '/architecture/components/#source-layout',
+    '/architecture/manifest/': '/reference/rules/',
+    '/reference/storage/': '/reference/store-api/',
+    '/reference/install-file/': '/reference/bootstrap-file/',
+    '/reference/config-sources/': '/reference/signed-config/',
+    '/reference/vocabulary/': '/reference/policy/#the-grant-vocabulary',
+    '/runtimes/installations/': '/runtimes/',
+    '/distribution/': '/distribution/packages/',
+    '/integrations/aws/': '/integrations/cloud/#aws',
+    '/integrations/cloudflare/': '/integrations/cloud/#cloudflare',
+    '/integrations/postgresql/': '/integrations/infrastructure-access/#postgresql',
+    '/integrations/ssh/': '/integrations/infrastructure-access/#ssh',
     ...decisionRedirects,
   },
   ...(workers ? workersOptions : {}),
