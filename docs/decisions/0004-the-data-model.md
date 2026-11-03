@@ -1,6 +1,6 @@
 # 0004 — Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-03
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
@@ -11,7 +11,7 @@ sluis keeps many kinds of data: settings that an operator reviews, settings that
 
 The store ([0005](/decisions/0005-the-store/)) has to enforce every one of those answers for every actor, and an actor holds no storage credential ([0002](/decisions/0002-families-of-actors/#credential-holders)). The store can do that only if the answers are data it can read: one registry, compiled in, that says what each kind is. A setting that several places can set, such as policy from a reviewed repository, from an operator and from a tenant admin, also needs a rule for how the places combine and in which direction each may move. And a customer that arrives at run time cannot wait for a pull request, so the data model has to say what a tenant may write and within which bounds (principle 17: where a thing is written decides its class).
 
-The shape of every kind is read by many consumers: Go and Rust actors, the TypeScript console, Helm and the reference pages. One schema source keeps them in agreement, and Protobuf is already the wire contract ([0002](/decisions/0002-families-of-actors/#contracts)). Whether Protobuf, with generated JSON Schema and protovalidate, carries every constraint the data model needs in Go and Rust is a spike ([#1177](https://github.com/truvity/sluis/issues/1177)), and this record stays `Proposed` until it reports.
+The shape of every kind is read by many consumers: Go and Rust actors, the TypeScript console, Helm and the reference pages. One schema source keeps them in agreement, and Protobuf is already the wire contract ([0002](/decisions/0002-families-of-actors/#contracts)). A spike measured whether Protobuf, with generated JSON Schema and protovalidate, carries every constraint the data model needs in Go and Rust ([#1177](https://github.com/truvity/sluis/issues/1177), 2026-11-03): protovalidate agrees in both languages, and the JSON Schema is a derived subset ([Schemas are Protobuf](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 
 ## Decision
 
@@ -96,7 +96,7 @@ Every kind has one treatment. **Sealed** is the default, and a kind is declared 
 | **sealed** | A value that is read back: a provider token, personal data, free text | The ciphertext. The writing actor sealed it at key@ | `Person`, `TenantConnection`, `GitHubApp`, `IssuedCertificate` |
 | **plain** | A value that is neither secret nor personal: a switch, a link, a counter | The value as it is | `Switch`, `Allowance`, `TenantClient`, `PolicyLink` |
 
-- **Treatment follows the data.** A kind that holds personal data or free text (names, SSH principals, vendor user ids, the reason of a hold, a requester) is sealed, or hashed when it is compare-only. Plain is only for values that are neither secret nor personal.
+- **Treatment follows the data.** A kind that holds personal data or free text (names, SSH principals, vendor user ids, the reason of a hold, a requester) is sealed, or hashed when it is compare-only. Plain is only for values that are neither secret nor personal. The rule covers what sluis stores, durable and temp. Config is the operator's reviewed, signed document and may name people, as the first-admin allow-list, the people bindings of a policy and the operators' break-glass passkeys do, because recovery and the first sign-in must work without the store.
 - **The store never seals or opens.** It keeps ciphertext and hashes as they are. To write a sealed value, the actor asks key@ to seal it and then writes; to read, it asks key@ to open it ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)). The plaintext exists only in that actor, for that call.
 - **The writing actor validates a sealed field before it seals it,** because the store cannot read it. The schema of a sealed kind describes the plaintext.
 - **An index on a sealed kind holds a keyed hash or a date,** computed by the writing actor (a keyed hash is key@'s `Mac`). An index never holds personal data in the clear.
@@ -206,11 +206,12 @@ A tenant's own connection to its identity provider is **always durable data** (`
 ### Schemas are Protobuf
 
 - **Protobuf is the only schema source.** Each kind is a Protobuf message, and its constraints are protovalidate rules. The wire contracts are Protobuf over ConnectRPC ([0002](/decisions/0002-families-of-actors/#contracts)); Go and Rust types are generated from the same messages.
-- **JSON Schema is generated from the messages,** for what is not on the wire: Helm values, the bootstrap file ([0005](/decisions/0005-the-store/#the-bootstrap-file)) and external configs. It is draft 2020-12, part of the public API, committed, and CI fails on a stale file.
+- **Protobuf with protovalidate is the authority in code. JSON Schema is a derived subset,** generated from the messages for editors and `helm lint` on what is not on the wire: Helm values, the bootstrap file ([0005](/decisions/0005-the-store/#the-bootstrap-file)) and external configs. It is draft 2020-12, post-processed after generation, committed as a golden file that CI compares, and part of the public API.
 - **Each schema has a stable `$id`,** a URL on the sluis site with its version in the path. A published identifier never changes; an incompatible change is a new version under a new path, beside the old one ([0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases)).
-- **Validation is protovalidate in Go and Rust,** with shared conformance vectors. A validator that disagrees fails the build, and each real disagreement adds a vector. The schema is embedded in each binary that loads it.
+- **Validation is protovalidate in Go and Rust,** with shared conformance vectors. A validator that disagrees fails the build, and each real disagreement adds a vector. The schema is embedded in each binary that loads it, and every binary validates a document against it before decoding.
 - **Strictness comes from the schema.** An unknown key is an error that names the path. An error never shows the value. A retired field in a signed config document is refused; a retired field in an item that sluis wrote is read, ignored and never written again, because refusing it would make an installed item unreadable.
-- **The fidelity spike is a gate** ([#1177](https://github.com/truvity/sluis/issues/1177)), as the language spikes are ([0012](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates)). It proves that the generated JSON Schema and protovalidate agree in Go and Rust. Work goes on against the contract meanwhile; a constraint that Protobuf cannot carry changes this section.
+- **The JSON Schema agrees with protovalidate on every constraint it can express** ([#1177](https://github.com/truvity/sluis/issues/1177), MEASURED 2026-11-03). Only protovalidate enforces cross-field CEL rules, duration and timestamp ranges, exact byte lengths, the strictness of `uri`, and the refusal of non-canonical proto3 JSON spellings, so a document that the JSON Schema accepts can still be refused at load.
+- **Durations in configuration files are written with a unit** (`900s`, `15m`, `12h`, `30d`); the loader converts them to a Duration, and the generated schema checks the pattern. In a value that is not a configuration file a duration is a proto3 JSON duration, such as `30s`.
 - **Pkl is not used.** <!-- terms-allow: pkl -->
 
 ### What is not data
@@ -261,5 +262,5 @@ These are not kinds. The registry does not list them, and an actor cannot read o
 
 ## Follow-ups
 
-- The schema fidelity spike: Protobuf as the only schema source, with generated JSON Schema (Helm values, the bootstrap file, external configs) and protovalidate in Go and Rust. It gates this record: [#1177](https://github.com/truvity/sluis/issues/1177).
+- The schema fidelity spike reported on 2026-11-03; its post-processor, the golden file and the shared vectors land with the first schemas: [#1177](https://github.com/truvity/sluis/issues/1177).
 - The cutover of a v1 installation's configuration: [#1017](https://github.com/truvity/sluis/issues/1017).
