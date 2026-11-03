@@ -10,7 +10,7 @@ import ArchExplorer from '../../site/src/components/explorer/ArchExplorer.astro'
 
 This is the target state, not a running system. This page shows the identity module on the shared foundation (store@, exporter@ and key@); [the audit explorer](/architecture/audit-explorer/) shows the audit module on the same foundation. The map is drawn from `site/src/data/explorer/architecture.yaml`. Which actors exist, their families, their calls and their key purposes are the [actor registry](/reference/actors/)'s and the [key registry](/reference/keys/)'s; the data file adds the drawing, the flows and the installations, written by hand from the design. What each actor and driver is and does is on [Components](/architecture/components/); the words are on [Families](/concepts/families/) and [Data](/concepts/data/).
 
-The map draws three of the four [tested installations](/decisions/0011-runtimes-and-installations/#installations): local, boards and lambda. It does not draw the [Kubernetes installation](/runtimes/kubernetes/) yet. Pick an installation, and the map, the tables and the flows follow it. Without script the page shows boards, and every table is plain HTML.
+The map draws the four [tested installations](/decisions/0011-runtimes-and-installations/#installations): local, boards, lambda and [kubernetes](/runtimes/kubernetes/). Pick an installation, and the map, the tables and the flows follow it. Without script the page shows boards, and every table is plain HTML.
 
 ## Installations
 

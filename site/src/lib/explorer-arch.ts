@@ -3,7 +3,7 @@
 // facts are in the YAML, and this file only expands them (names from the
 // runtime templates, the call graph per preset, the layout of the map).
 // Vocabulary: a "shape" in the code is a tested installation (local, boards,
-// lambda) of a runtime (bare-metal, serverless, kubernetes); a "role" in the
+// lambda, kubernetes) of a runtime (bare-metal, serverless, kubernetes); a "role" in the
 // code is an actor. The identifiers keep their old names; the text shown to
 // the reader uses the new.
 import { parse } from 'yaml';
@@ -110,7 +110,8 @@ function build(shape: any): ShapeModel {
     const perRole = d.instance === 'per-actor';
     const users: string[] = p.users;
     const tpl = perRole ? rt.role_driver : rt.shared_driver;
-    const vars = { id: driverId, driver: perRole ? 'aws' : driverId };
+    // A per-actor driver is named by its binary (`drivers/aws`, `drivers/nats-jetstream`).
+    const vars = { id: driverId, driver: perRole ? String(d.binary).replace(/^drivers\//, '') : driverId };
     const instances = perRole
       ? users.map((u) => `${fill(tpl.unit, { ...vars, role: u })}: ${fill(tpl.listen, { ...vars, role: u })}`)
       : [];
@@ -139,7 +140,7 @@ function build(shape: any): ShapeModel {
       id: p.node, lane: 2, row: PORT_ROW[port], cls: perRole ? 'driver-role' : 'driver-shared', shared: !perRole,
       title: `${port} · ${d.title}`,
       l2: perRole ? `per-actor x ${users.length}` : fill(tpl.id_short, vars),
-      l3: perRole ? 'uid of each actor' : fill(tpl.sock_short, vars),
+      l3: perRole ? (rt.per_actor_line ?? 'uid of each actor') : fill(tpl.sock_short, vars),
       detail: {
         title: `${label(port)} driver: ${d.title}`,
         kind: perRole ? 'driver service, per-actor' : `driver service, shared${d.shared_name ? ` (${d.shared_name})` : ''}`,
@@ -208,6 +209,7 @@ function build(shape: any): ShapeModel {
   const ids = new Set(nodes.map((n) => n.id));
   const okWhen = (w: any) => {
     if (!w) return true;
+    if (w.runtime !== undefined && shape.runtime !== w.runtime) return false;
     if (w.node_agent !== undefined && !!shape.node_agent !== w.node_agent) return false;
     if (w.ports) for (const [p, v] of Object.entries(w.ports)) if (shape.ports[p] !== v) return false;
     return true;

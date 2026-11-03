@@ -18,7 +18,7 @@
 # Vocabulary: an actor is a process with one responsibility; a runtime is the
 # runtime kind (bare-metal, serverless, kubernetes); an installation is one
 # concrete deployment. Four are tested: local, boards, lambda and kubernetes;
-# this file draws the first three. The keys below keep the names the code
+# this file draws all four. The keys below keep the names the code
 # reads: `shapes` lists the tested installations, `roles` the actors,
 # `environment` names the runtime kind, and `runtimes` are the runtime
 # templates.
@@ -91,6 +91,30 @@ shapes:
       - text: "The transport is an SQS queue here. Direct mode is not available on serverless, because its fallback is a local spool and a function has no disk."
         status: decided
       - text: "The log key is one KMS key per writer instance, whose key policy names the writer function's role only. A project has one log here, so there is no peer witness; a witness is optional."
+        status: decided
+  - id: kubernetes
+    name: Kubernetes (EKS)
+    environment: kubernetes
+    hardware: A pod per actor and per holder on Amazon EKS, from one Helm chart
+    runtime: kubernetes
+    nodes: N
+    node_agent: false
+    edge: relay
+    ports: { keys: aws, state: aws, blob: s3, transport: nats, index: postgres }
+    keys: AWS KMS
+    state: DynamoDB
+    use: The customer-identity installation, and the reference installation of the nats-jetstream driver.
+    notes:
+      - text: "Each actor and each holder is a pod with its own service account. A driver is a native sidecar container in its holder's pod, with its socket on an emptyDir, and the cloud token is mounted only into the driver container, so a work pod has no cloud identity (ADR 0003, ADR 0005)."
+        status: decided
+      - text: "A call between pods is gRPC with a projected service-account token whose audience the callee checks, behind a NetworkPolicy per callee that admits only the pods of its allowed callers (ADR 0003)."
+        status: decided
+      - text: "Mutual TLS between callers is later work."
+        status: proposed
+        issue: 1224
+      - text: "A cell is one replica of each actor, co-scheduled by pod affinity and spread across nodes and zones; a Service with trafficDistribution PreferClose keeps a call inside its cell, and a PodDisruptionBudget keeps the cell's replicas up during a drain (ADR 0003)."
+        status: decided
+      - text: "The audit transport is NATS JetStream, with NATS accounts and permission templates, the index is postgres in the cnpg mode in the same cluster, and the blob is an S3 bucket (ADR 0028)."
         status: decided
 
 # What each runtime turns a process id into. {id} is the process id, {driver}
@@ -165,6 +189,30 @@ runtimes:
       sock_short: "{driver}.sock"
     role_call: Lambda invoke
     driver_call: Unix socket (extension)
+  kubernetes:
+    label: Kubernetes pods
+    process: pod
+    per_actor_line: sidecar of each actor's pod
+    role:
+      unit: "Pod {id} (Deployment)"
+      identity: "ServiceAccount {id}"
+      id_short: "SA {id}"
+      listen: "the pod address: gRPC, admitted by a NetworkPolicy from the callers only"
+      sock_short: "gRPC"
+    shared_driver:
+      unit: "Native sidecar container sluis-driver-{driver} in the holder's pod"
+      identity: "the holder's pod; only this container holds the cloud token"
+      id_short: "sidecar"
+      listen: "/run/sluis/driver-{driver}/api.sock on an emptyDir"
+      sock_short: "sock driver-{driver}"
+    role_driver:
+      unit: "Native sidecar container sluis-driver-{driver} in the pod of {role}"
+      identity: "the driver container of ServiceAccount {role}"
+      id_short: "sidecar of {role}"
+      listen: "/run/sluis/{role}/{driver}.sock on an emptyDir"
+      sock_short: "{driver}.sock"
+    role_call: In-cluster gRPC
+    driver_call: Unix socket on an emptyDir
 
 # The edge connector, per kind.
 edges_kinds:
@@ -185,6 +233,15 @@ edges_kinds:
     does: The Lambda Web Adapter, pinned and vendored into sluis's own layer, behind API Gateway. It forwards the invocation to entry over a loopback TCP port inside the sandbox, which holds only sluis processes.
     listen: Loopback TCP inside the sandbox (127.0.0.1:8080 is an example).
     transport: Loopback TCP (127.0.0.1)
+    status: decided
+  relay:
+    title: edge relay
+    sub: key-less edge relay container
+    line2: "edge relay"
+    line3: "unix socket"
+    does: "A key-less container in entry's pod. It listens on the pod address, so a Gateway API implementation or an Ingress controller can route to it, and forwards to entry's Unix socket in a shared volume. entry itself stays socket-only. A cloudflared sidecar is a supported mode."
+    listen: The pod address, reached by the gateway or the ingress controller.
+    transport: Unix socket (a volume shared in the pod)
     status: decided
 
 # ---------------------------------------------------------------------------
@@ -296,6 +353,17 @@ drivers:
     holds: Nothing
     backing: SQS queue
     status: decided
+  nats:
+    port: transport
+    mode: queue
+    title: nats-jetstream
+    instance: per-actor
+    shared_name: null
+    binary: drivers/nats-jetstream
+    does: The transport port in queue mode on a NATS JetStream stream. Each producer connects with its own NATS credential, under NATS accounts and permission templates, so an emitter publishes only to its own project's subjects (ADR 0028).
+    holds: Its own NATS credential, one per producer
+    backing: NATS JetStream
+    status: decided
   sqlite:
     port: index
     title: sqlite
@@ -393,10 +461,12 @@ roles:
       docker: "/run/sluis/entry/<boundary>-public.sock on a shared volume; the container has no network"
       systemd: "/run/sluis/entry/<boundary>-public.sock, a Unix socket; PrivateNetwork=yes, so no TCP listener"
       lambda: "TCP 127.0.0.1:8080 (an example port) inside the sandbox, through the Lambda Web Adapter"
+      kubernetes: "/run/sluis/entry/<boundary>-public.sock on a volume shared in the pod; the edge relay container beside it listens on the pod address and forwards here, so entry has no TCP listener"
     map_line_by_runtime:
       docker: "unix socket"
       systemd: "unix socket"
       lambda: "tcp 127.0.0.1"
+      kubernetes: "unix socket"
     listener_note: "entry's public API is the only listener that faces the edge. On bare-metal it is a Unix socket that cloudflared forwards to as a unix: origin, and entry has no network at all. On serverless it is a loopback TCP port inside the function's sandbox, because the Lambda Web Adapter needs one. On Kubernetes a key-less edge relay container in the pod forwards to entry's socket (ADR 0011). Every other actor listens on Unix sockets only."
   session:
     status: decided
@@ -644,6 +714,7 @@ backing_lines:
   blob.s3: ["S3 bucket", "S3 API, Object Lock"]
   transport.spool: ["local spool", "fsync'd segments"]
   transport.sqs: ["SQS queue", "dead-letter queue"]
+  transport.nats: ["NATS JetStream", "subject per project"]
   index.sqlite: ["SQLite + FTS5", "one file per node"]
   index.postgres: ["Postgres", "rds, cnpg or external"]
   index.remote: ["no index here", "separate Search install"]
@@ -729,7 +800,10 @@ calls:
   - { f: drv-keys, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true, ports: { keys: aws } } }
   - { f: drv-state, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true, ports: { state: aws } } }
   - { f: drv-blob, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the workload JWT for the cloud's credentials.", when: { node_agent: true } }
-  - { f: drv-keys, t: downstream, m: "Platform identity", d: "The Lambda execution role is the identity; no workload JWT.", when: { node_agent: false, ports: { keys: aws } } }
+  - { f: drv-keys, t: downstream, m: "Platform identity", d: "The Lambda execution role is the identity; no workload JWT.", when: { runtime: lambda, node_agent: false, ports: { keys: aws } } }
+  - { f: drv-keys, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the projected service-account token, mounted only into this driver container, for the holder's cloud role; no workload JWT of sluis.", when: { runtime: kubernetes, ports: { keys: aws } } }
+  - { f: drv-state, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the projected service-account token, mounted only into this driver container, for the holder's cloud role.", when: { runtime: kubernetes, ports: { state: aws } } }
+  - { f: drv-blob, t: downstream, m: "AssumeRoleWithWebIdentity", d: "Exchanges the projected service-account token, mounted only into this driver container, for the holder's cloud role.", when: { runtime: kubernetes } }
 
 # ---------------------------------------------------------------------------
 # Flows. Nodes and edges name map nodes; ids that an installation lacks are skipped.
@@ -750,6 +824,7 @@ flows:
         text: The edge connector forwards the request to entry's public Unix socket, the tunnel's unix service.
         variants:
           - { shapes: [lambda], text: "API Gateway invokes the function, and the Lambda Web Adapter forwards the request to entry over loopback TCP inside the sandbox, the one place entry has a TCP port." }
+          - { shapes: [kubernetes], text: "The gateway reaches the key-less edge relay container in entry's pod, which forwards to entry's Unix socket on a volume shared in the pod; entry has no TCP listener." }
       - title: entry routes to session
         nodes: [entry, session]
         edges: ["entry>session"]
@@ -801,7 +876,7 @@ flows:
         edges: ["exchange>signer", "signer>drv-keys", "drv-keys>store-keys"]
         text: signer signs the token under its signing policy, through key@. The token is sender-constrained (DPoP or mutual TLS) and carries exactly one audience.
         variants:
-          - { shapes: [lambda], text: "The token is signed directly with the non-extractable KMS token-signing key; each signature is a billed KMS request." }
+          - { shapes: [lambda, kubernetes], text: "The token is signed directly with the non-extractable KMS token-signing key; each signature is a billed KMS request." }
           - { shapes: [boards], text: "The node's YubiKey signs each token itself with the token-signing key, through signer's own socket at key@, far faster than the load needs." }
           - { shapes: [local], text: "A software key signs it through key@, or the opt-in development card; the software driver refuses to start in production." }
       - title: The exchange is audited
@@ -874,6 +949,7 @@ flows:
         text: "The certificate carries u:<person-key> for a person or w:<workload> for a machine. key@ signs only an OpenSSH certificate body with the SSH user CA key."
         variants:
           - { shapes: [lambda], text: "The SSH CA key is a KMS key whose key policy names only ssh-ca's role." }
+          - { shapes: [kubernetes], text: "The SSH CA key is a KMS key whose key policy names key@'s role alone." }
       - title: The certificate is recorded and audited
         nodes: [ssh-ca, drv-state, drv-transport, store-transport]
         edges: ["ssh-ca>drv-state", "ssh-ca>drv-transport", "drv-transport>store-transport"]
@@ -917,6 +993,7 @@ flows:
         variants:
           - { shapes: [local], text: "The local installation has no sluis-node and no cloud federation." }
           - { shapes: [lambda], text: "The lambda installation has no sluis-node: the Lambda execution role of each function is the identity, so there is no workload JWT. Platform-native identity is used where it exists." }
+          - { shapes: [kubernetes], text: "The kubernetes installation has no sluis-node: a projected service-account token, mounted only into the driver container, is the workload token, and the driver exchanges it for a cloud role by web identity (ADR 0011)." }
       - title: The node key signs the JWT
         nodes: [sluis-node, drv-keys, store-keys]
         edges: ["sluis-node>drv-keys", "drv-keys>store-keys"]
@@ -942,6 +1019,7 @@ flows:
         variants:
           - { shapes: [local, boards], text: "Durable means an fsync to the node's local spool." }
           - { shapes: [lambda], text: "Durable means the queue accepted the message." }
+          - { shapes: [kubernetes], text: "Durable means the JetStream stream accepted the message." }
       - title: The writer takes the records
         nodes: [writer, drv-transport]
         edges: ["writer>drv-transport"]
@@ -960,6 +1038,7 @@ flows:
           - { shapes: [local], text: "A software key signs, through key@. The local blob has no lock, so tamper evidence depends on a witness, which is optional." }
           - { shapes: [boards], text: "The node's own YubiKey signs for that node's log." }
           - { shapes: [lambda], text: "One KMS key per writer instance, whose key policy names the writer function's role only. A project has one log and no peer witness here; the function's role is the isolation." }
+          - { shapes: [kubernetes], text: "One KMS key per writer instance, whose key policy names key@'s role alone; key@ lets only the writer use it." }
       - title: The batch is registered
         nodes: [writer, drv-blob, store-blob]
         edges: ["writer>drv-blob", "drv-blob>store-blob"]
@@ -970,7 +1049,7 @@ flows:
         text: Where the installation has a witness, the writer asks it to cosign the new checkpoint. The witness checks that it is consistent with the last one it cosigned and has key@ sign with its own key. A witness is optional everywhere, and sluis config check warns when there is none. Without one, a compromised writer can get a rewritten checkpoint signed, and a lock does not prevent a split view.
         variants:
           - { shapes: [boards], text: "The other two nodes are this node's peer witnesses (2-of-3), and this node witnesses theirs." }
-          - { shapes: [local, lambda], text: "No witness unless the installation adds one: a peer or an external witness is possible." }
+          - { shapes: [local, lambda, kubernetes], text: "No witness unless the installation adds one: a peer or an external witness is possible." }
       - title: The index follows the log
         nodes: [indexer, reader, drv-blob, store-index]
         edges: ["indexer>drv-blob", "indexer>store-index", "reader>store-index"]
@@ -978,6 +1057,7 @@ flows:
         variants:
           - { shapes: [boards], text: "The index is rqlite (ADR 0028), so the reader can run on any node. Readers merge the three logs by time." }
           - { shapes: [lambda], text: "The index here is postgres on Aurora, reached through RDS Proxy." }
+          - { shapes: [kubernetes], text: "The index here is postgres in the cnpg mode, a CloudNativePG cluster in the same Kubernetes cluster." }
 
 # What runs where on a cluster of boards (bare-metal with N nodes).
 cluster:

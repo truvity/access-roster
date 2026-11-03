@@ -172,4 +172,5 @@ After `down --volumes` the next `up` is a first start with a new root, and a bro
 - What you ran, in detail: [The local installation](/runtimes/local/), the [bootstrap file](/reference/bootstrap-file/) and [signed config](/reference/signed-config/).
 - What runs inside: the [families](/concepts/families/), the [store](/concepts/data/#the-store) and [keys](/concepts/keys/).
 - The tested installations with hardware keys and a cluster: [boards](/runtimes/#boards), on the [bare-metal](/runtimes/bare-metal/) runtime.
+- The tested installations with cloud keys: [lambda](/runtimes/#lambda), on the [serverless](/runtimes/serverless/) runtime, and [kubernetes](/runtimes/#kubernetes), on the [kubernetes](/runtimes/kubernetes/) runtime, which runs the same images from one Helm chart.
 - The way back in when sign-in fails: [Break-glass recovery](/security/break-glass/).

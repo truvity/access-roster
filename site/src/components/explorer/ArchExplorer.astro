@@ -39,7 +39,7 @@ const dflt: string = data.default_shape;
               <td>{m.shape.hardware}</td>
               <td>{m.shape.keys}</td>
               <td>{m.shape.state}</td>
-              <td>{m.shape.environment} ({m.runtime.label}){m.shape.nodes > 1 ? `, ${m.shape.nodes} nodes` : m.shape.nodes === 0 ? ', elastic' : ', 1 node'}</td>
+              <td>{m.shape.environment} ({m.runtime.label}){m.shape.nodes === 'N' ? ', N nodes' : m.shape.nodes > 1 ? `, ${m.shape.nodes} nodes` : m.shape.nodes === 0 ? ', elastic' : ', 1 node'}</td>
               <td>{m.shape.use}</td>
             </tr>
           ))}
@@ -64,7 +64,7 @@ const dflt: string = data.default_shape;
       <li><svg viewBox="0 0 34 14" aria-hidden="true"><path d="M1 7H33" stroke="var(--sl-color-accent-high)" stroke-width="3.2" /></svg>the current flow step</li>
       <li><span class="ex-chip ex-chip-decided">{statuses.decided}</span><span class="ex-chip ex-chip-proposed">{statuses.proposed}</span>a proposed point links its tracking issue</li>
     </ul>
-    <p style="font-size:var(--sl-text-sm);margin-top:.6rem">A box shows its name, then its user (or role, on serverless) and its socket. A line is a ConnectRPC call from the box on its tail to the box on its head; the answer travels back along the same line.</p>
+    <p style="font-size:var(--sl-text-sm);margin-top:.6rem">A box shows its name, then its user (its role on serverless, its service account on Kubernetes) and its socket (the kind of call, on serverless and Kubernetes). A line is a ConnectRPC call from the box on its tail to the box on its head; the answer travels back along the same line.</p>
   </div>
 )}
 

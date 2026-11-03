@@ -79,7 +79,7 @@ The generated [keys page](/reference/keys/) lists every purpose with its algorit
 
 ### Keys per boundary on AWS
 
-A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key.
+A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key. The lambda and kubernetes installations use this layout alike ([0011](/decisions/0011-runtimes-and-installations/#installations)); on Kubernetes every key policy names `key@`'s role alone.
 
 | Key | Type | Purpose |
 |---|---|---|
@@ -213,7 +213,7 @@ flowchart LR
 
 - **`key@` caches opened data keys in memory,** each entry with its own time to live. A cached key opens and seals without a card operation or a KMS call, so the card's seven operations a second serve cache misses and not requests.
 - **The time to live is set in the `KeyPlan` under a built-in maximum.** A longer value is refused when the configuration loads.
-- **The entry is also the erasure delay.** On boards `key@` watches `DataKeyWrap` and drops an entry when its wrap is deleted. On Lambda nothing is pushed: a warm `key@` function keeps its entries until they expire, so the time to live is the longest time a deleted tenant's data can still be opened ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)).
+- **The entry is also the erasure delay.** On boards and on Kubernetes `key@` watches `DataKeyWrap` and drops an entry when its wrap is deleted. On Lambda nothing is pushed: a warm `key@` function keeps its entries until they expire, so the time to live is the longest time a deleted tenant's data can still be opened ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)).
 - **The cache holds data keys only.** It never holds an authority key or a wrapping key; those stay in their key store.
 - **Memory holding a key is locked and is not written to disk or to a core file.**
 

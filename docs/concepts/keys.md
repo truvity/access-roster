@@ -73,7 +73,7 @@ Each wrapped copy of a data key is an ordinary durable kind, **`DataKeyWrap`**, 
 
 ### The cache
 
-key@ caches opened data keys in memory, each entry with its own time to live, set in the key plan under a built-in maximum. A cached key opens and seals without a card operation or a KMS call. The time to live is also the **erasure delay**: on boards key@ watches `DataKeyWrap` and drops an entry when its wrap is deleted; on Lambda nothing is pushed, so a warm function keeps its entries until they expire.
+key@ caches opened data keys in memory, each entry with its own time to live, set in the key plan under a built-in maximum. A cached key opens and seals without a card operation or a KMS call. The time to live is also the **erasure delay**: on boards and on Kubernetes key@ watches `DataKeyWrap` and drops an entry when its wrap is deleted; on Lambda nothing is pushed, so a warm function keeps its entries until they expire.
 
 ### Erasing a tenant
 
