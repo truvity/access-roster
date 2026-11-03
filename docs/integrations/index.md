@@ -19,7 +19,7 @@ Five kinds are contracts that an adapter implements, each a ConnectRPC service o
 | `Upstream` | Sign-in with an upstream identity provider | A workspace identity provider, a generic OIDC provider |
 | `FactsSource` | Supplies directory facts: users, groups, teams | A workspace directory, GitHub teams |
 | `CredentialMinter` | Mints a downstream credential for a grant that `policy` sealed | GitHub installation tokens, Cloudflare API tokens |
-| `Provisioner` | Reconciles an external system to a desired state that core publishes | GitHub teams, Slack channels |
+| `Provisioner` | Reconciles an external system to a desired state that the directory adapter writes from `policy`'s answer | GitHub teams, Slack channels |
 | `Notifier` | Sends a message | A chat app |
 | `WorkloadVerifier` | Verifies a token a workload presents and returns what it proves | GitHub Actions, Kubernetes ServiceAccounts, AWS roles |
 
@@ -73,7 +73,7 @@ An integration has two parts that are stored differently ([0004](/decisions/0004
 
 ## Core calls adapters, never the reverse
 
-`session` calls its upstream adapter, `exchange` its minters and notifiers, and `console` the adapters whose flows it starts or whose kinds it routes writes to. `entry` only routes a push notification. An adapter calls no work actor other than `policy`; what it needs from core, such as a provisioner's desired state, core publishes as data that the adapter reads through its data port.
+`session` calls its upstream adapter, `exchange` its minters and notifiers, and `console` the adapters whose flows it starts or whose kinds it routes writes to. `entry` only routes a push notification. An adapter calls no work actor other than `policy`; a provisioner's desired state is data that it reads through its data port, written by the directory adapter from `policy`'s answer ([0026](/decisions/0026-reconcilers/#the-desired-state)).
 
 Three invariants are tested, so the rule survives changes ([0025](/decisions/0025-integrations/#the-rule)).
 

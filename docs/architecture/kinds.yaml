@@ -1182,10 +1182,10 @@ kinds:
     profile: Tenant-adjustable
     links: [DirectoryConnection, SlackConnection, GitHubInstallation]
     writer: adapter-<vendor>
-    readers: [adapter-<vendor> (as provisioner), console]
+    readers: [adapter-<vendor> (as provisioner), adapter-<vendor> (as facts source), console]
     exportable: no
     backed_up: yes
-    notes: "The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API."
+    notes: "The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy, the sources it lists (directory connections, its own or another company's) and, for a Slack Connect channel, a shared flag. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API."
 
   - name: TenantConnection
     serves: work
@@ -1577,13 +1577,14 @@ kinds:
     treatment: sealed
     personal: true
     profile: "-"
-    writer: none yet (planned kind)
-    status: planned
+    links: [ReconcileTarget, DirectoryConnection]
+    writer: adapter-<vendor>
     readers: [adapter-<vendor> (as provisioner)]
     exportable: no
     backed_up: no
     ttl: {default: 24h, max: 7d}
-    notes: "The digest-addressed desired state a reconciler pulls (who should be in which team or channel). Names users, so sealed. Tenant-scoped. Planned: the kind and its writer arrive with the reconciler milestone."
+    indexes: [by_target]
+    notes: "One part of the desired state of a target: the people one source directory connection puts in it, addressed by digest. Written by the adapter of that directory (adapter-upstream-oidc for Google Workspace and Entra, adapter-github for a GitHub organisation) under the lease of its refresh, from the answer of policy's batch membership method; read by the provisioner of the target, which reconciles to the union of the current parts. Names users, so sealed, under the data key of the tenant that owns the container, which is not always the tenant of the source: a part from another company is written there for a declared pair only, and holds vendor identifiers only. A missing or stale part is unreadable, never empty."
 
   - name: Crl
     serves: work
