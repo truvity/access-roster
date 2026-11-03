@@ -61,9 +61,10 @@ A key is shared between two uses only when all of these are equal: **the audienc
 | Witness key, one per format | As the format requires | A boundary that runs a witness | The witness, which signs its cosignatures through `key@` |
 | Backup archive key | AES-256-GCM, wrapped by a dedicated KMS key on AWS and by ECDH P-384 on a board | Where an installation takes backups | `exporter@` wraps and the restore of `store@` opens ([0010](/decisions/0010-backup-and-recovery/#the-archive-key)) |
 | Workload issuer of `sluis-node` | P-384 | Boards only | `sluis-node`, which signs through `key@` |
+| PIN release key | P-384 | Boards only | The locked `key@`, which signs its `PinReleaseRequest` with it ([Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin)) |
 | Each named exception: PS256, RS256, ES256, Ed25519 and the NATS nkeys | As named | Where the exception is configured | The actor that signs for it |
 
-The generated keys page lists every purpose with its algorithm, its key type on AWS, its slot on a board and the actor that asks for it.
+The generated [keys page](/reference/keys/) lists every purpose with its algorithm, its key type on AWS, its slot on a board and the actor that asks for it.
 
 ### Keys sign in place
 
@@ -78,7 +79,7 @@ The generated keys page lists every purpose with its algorithm, its key type on 
 
 ### Keys per boundary on AWS
 
-A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one log. Each further trust domain or log adds one P-384 key.
+A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key.
 
 | Key | Type | Purpose |
 |---|---|---|
@@ -105,7 +106,7 @@ A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust dom
 
 ### The slot plan
 
-A documented, versioned map says which card slot serves which purpose: one slot per purpose and per algorithm, and a shared spare range. This is the default map, version 1. It covers PIV slots `9a`, `9c`, `9d`, `9e` and the retired slots `82` to `95`.
+A documented, versioned map says which card slot serves which purpose: one slot per purpose and per algorithm, and a shared spare range. This is the default map, version 1. It covers PIV slots `9a`, `9c`, `9d`, `9e` and the retired slots `82` to `95`. Every board slot is generated with a PIN policy and a touch policy that the map states, and the attestation of the slot shows them.
 
 | Slot | Purpose |
 |---|---|
@@ -114,16 +115,17 @@ A documented, versioned map says which card slot serves which purpose: one slot 
 | `9d` | Key agreement (ECDH): unwraps data keys, the boundary's `grant` data key among them |
 | `82` | `ssh-user` CA |
 | `83` | `ssh-host` CA |
-| `84` | Log key of the audit writer |
+| `84` | Log key of an audit writer instance (a further project's writer instance takes a spare slot) |
 | `85` | OpenPGP release-signing subkey (release boundary only) |
 | `86` | Workload issuer, for `sluis-node` (enabled on use) |
-| `87` to `95` | Spare (fifteen slots, hex), shared by every purpose |
+| `87` | PIN release key: signs the `PinReleaseRequest` of a locked board; PIN policy never, touch never |
+| `88` to `95` | Spare (fourteen slots, hex), shared by every purpose |
 | `9e` | Not used: the card-authentication slot signs without a PIN by default |
 
 - **Slot `9d` is the key-agreement slot, and it is the only one.** Grants do not use it directly: they are sealed under a boundary data key, so a grant costs a memory operation and not an ECDH on the card ([Seal and open](/decisions/0006-keys-and-sealing/#seal-and-open)).
 - **A second purpose or a second algorithm takes a spare slot.** A further trust domain gets another X.509 intermediate, an exception such as PS256 gets its own key, and the purposes of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) that are enabled on use each take one. The installation names the slot in its `KeyPlan`; the default map is built in.
 - **The spare range holds the new key of an event rotation** while the old one finishes, and the older key-agreement key until every wrap is rewrapped.
-- **The map records each slot's attestation.** The slot map of root cards is ritueel's. The keys page shows the map.
+- **The map records each slot's attestation,** the policies it shows included: PIN once and touch never for every slot but `87`, PIN never and touch never for `87`. The slot map of root cards is ritueel's. The keys page shows the map.
 - **The release subkey lives in a PIV slot reached through `key@`,** which also makes the subkey's back-signature on the card. The OpenPGP applet is not used on a board.
 - **A second card per board serves a further L1 boundary** on the same engine, so that the boundaries are separated by wrapping keys of their own ([0008](/decisions/0008-boundaries-and-tenants/#the-ladder)).
 
@@ -241,14 +243,17 @@ flowchart LR
 
 ### Touch and PIN
 
-- **Board cards are touch never and PIN once.** A board signs unattended, including the back-signature of its subkey. The policies are fixed at key generation and visible in the attestation.
+- **Board cards are touch never and PIN once,** except the `pin-release` slot, whose PIN policy is never. A board signs unattended, including the back-signature of its subkey. The policies are fixed at key generation and visible in the attestation.
 - **A board starts locked.** `key@` does not have the PIN when it starts:
   - `sluis node unlock <node>` delivers the PIN over an authenticated channel: an SSH certificate from sluis's own CA, or the admin API;
   - a peer that is already unlocked releases the board's PIN through the store, sealed to a one-time key of the locked `key@`, so no flow is added between boards (below); this covers a reboot of one board and a rolling update;
   - after a full power loss one manual unlock is needed, and the first board then unlocks the others;
   - the PIN is never stored in plaintext on disk, and `key@` never retries a wrong PIN, because the card blocks after three attempts and then needs the PUK.
 - **The PIN lives in `key@`'s locked memory** and reaches the card through `key@`'s own driver only.
-- **The release of a PIN goes through the store.** The locked `key@` writes a `PinReleaseRequest`: its node and an ephemeral P-384 public key made for this request, whose private half stays in its memory. An unlocked peer's `key@` watches the kind and answers with a `PinRelease` under the same id: the board's PIN, sealed to that public key (ECDH P-384, HKDF-SHA384, AES-256-GCM), which only the locked `key@` can open.
+- **A card keeps a firmware floor of 5.7.** A YubiKey of a board runs firmware 5.7 or newer, which fixes the EUCLEAK flaw and adds Ed25519 in PIV ([Algorithms](/decisions/0006-keys-and-sealing/#algorithms)); `key@` refuses a card whose attestation shows older firmware.
+- **The release of a PIN goes through the store.** The locked `key@` writes a `PinReleaseRequest`: its node, an ephemeral P-384 public key made for this request, whose private half stays in its memory, and a signature over both made with the board's `pin-release` key.
+  - **The `pin-release` key is the one card key that signs while the board is locked.** It sits in slot `87`, a slot whose PIN policy is never and whose touch policy is never, so no PIN is needed to sign. Its attestation is in the slot map, with the other slots' ([The slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan)). It signs a request and nothing else, and no other purpose uses it.
+  - **The unlocked peer checks the request before it answers.** It verifies the signature with the public key of the requesting board's slot `87` in the slot map, and verifies that the slot's attestation shows PIN never, touch never and a key born on the card. Only then does it seal the PIN to the one-time key. A request that fails either check is refused and is an audit fact, so a request written by anyone else, a compromised `store@` included, gets no PIN. An unlocked peer's `key@` watches the kind and answers with a `PinRelease` under the same id: the board's PIN, sealed to that public key (ECDH P-384, HKDF-SHA384, AES-256-GCM), which only the locked `key@` can open.
   - Both are temp kinds written by `key@` alone, with a default of 5 minutes and a maximum of 15. A request that expires is made again.
   - The PIN crosses only the Raft port, inside the store's replication, so the flow adds no listener and no inter-node port ([0003](/decisions/0003-units-transports-and-fusion/#calls-between-nodes)). The sealed PIN is ciphertext in an ordinary temp kind: the store sees nothing it could use, and no archive holds it.
 

@@ -20,7 +20,7 @@ Data is **kinds**. A kind is declared once in the compiled kind registry and has
 ### Kinds
 
 - **A kind is a typed resource declared in the kind registry.** It names a Protobuf schema, a scope, one storage class, a treatment, a profile, its layers or links, its declared indexes, its rules (actor × kind × verb) and exactly one writer. A kind that is not in the registry cannot be read or written.
-- **The registry is compiled into the binaries that use it.** store@ enforces it ([0005](/decisions/0005-the-store/#rules)); the tests and the generated pages Kinds and Rules read it. Adding a kind is a reviewed change to the registry, and it names its consumer (principle 8).
+- **The registry is compiled into the binaries that use it.** store@ enforces it ([0005](/decisions/0005-the-store/#rules)); the tests and the generated pages [Kinds](/reference/kinds/) and [Rules](/reference/rules/) read it. Adding a kind is a reviewed change to the registry, and it names its consumer (principle 8).
 - **A kind's name is PascalCase** (`DataKeyWrap`); its address segment is the kebab-case form (`data-key-wrap`).
 - **A new question about data is a new declared index,** not a query ([0005](/decisions/0005-the-store/#the-store-api)).
 
@@ -94,7 +94,7 @@ Every kind has one treatment. **Sealed** is the default, and a kind is declared 
 |---|---|---|---|
 | **hashed** | A compare-only secret: it is verified, never read back | The hash. The value never reaches key@ | `SessionChain` (the hash of the current refresh token), `AuthCode`, `ClientSecret` |
 | **sealed** | A value that is read back: a provider token, personal data, free text | The ciphertext. The writing actor sealed it at key@ | `Person`, `TenantConnection`, `GitHubApp`, `IssuedCertificate` |
-| **plain** | A value that is neither secret nor personal: a switch, a link, a counter | The value as it is | `Switch`, `Allowance`, `TenantClient`, `PolicyLink` |
+| **plain** | A value that is neither secret nor personal: a switch, a mint target, a counter | The value as it is | `Switch`, `Allowance`, `MinterTarget` |
 
 - **Treatment follows the data.** A kind that holds personal data or free text (names, SSH principals, vendor user ids, the reason of a hold, a requester) is sealed, or hashed when it is compare-only. Plain is only for values that are neither secret nor personal. The rule covers what sluis stores, durable and temp. Config is the operator's reviewed, signed document and may name people, as the first-admin allow-list, the people bindings of a policy and the operators' break-glass passkeys do, because recovery and the first sign-in must work without the store.
 - **The store never seals or opens.** It keeps ciphertext and hashes as they are. To write a sealed value, the actor asks key@ to seal it and then writes; to read, it asks key@ to open it ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)). The plaintext exists only in that actor, for that call.
@@ -211,7 +211,7 @@ A tenant's own connection to its identity provider is **always durable data** (`
 - **Validation is protovalidate in Go and Rust,** with shared conformance vectors. A validator that disagrees fails the build, and each real disagreement adds a vector. The schema is embedded in each binary that loads it, and every binary validates a document against it before decoding.
 - **Strictness comes from the schema.** An unknown key is an error that names the path. An error never shows the value. A retired field in a signed config document is refused; a retired field in an item that sluis wrote is read, ignored and never written again, because refusing it would make an installed item unreadable.
 - **The JSON Schema agrees with protovalidate on every constraint it can express** ([#1177](https://github.com/truvity/sluis/issues/1177), MEASURED 2026-11-03). Only protovalidate enforces cross-field CEL rules, duration and timestamp ranges, exact byte lengths, the strictness of `uri`, and the refusal of non-canonical proto3 JSON spellings, so a document that the JSON Schema accepts can still be refused at load.
-- **Durations in configuration files are written with a unit** (`900s`, `15m`, `12h`, `30d`); the loader converts them to a Duration, and the generated schema checks the pattern. In a value that is not a configuration file a duration is a proto3 JSON duration, such as `30s`.
+- **Durations in configuration files are written with a unit:** one whole number and one of `s`, `m`, `h` or `d` (`900s`, `15m`, `12h`, `30d`), with no fraction and no compound. The loader converts them to a Duration, and the generated schema checks the pattern `^[0-9]+(s|m|h|d)$`. In a value that is not a configuration file a duration is a proto3 JSON duration, such as `30s`.
 - **Pkl is not used.** <!-- terms-allow: pkl -->
 
 ### What is not data
@@ -241,7 +241,7 @@ These are not kinds. The registry does not list them, and an actor cannot read o
 - Temp kinds can be lost, so every writer treats them as such: a lost `SessionChain` costs a sign-in.
 - The effective value of a layered kind is composed on read, so a store read of a layered group costs a read per layer. The store caches the config layers in its snapshot.
 - Moving a v1 installation is part of the cutover tooling of the parity milestone ([#1017](https://github.com/truvity/sluis/issues/1017)).
-- The pages that follow are [Data](/concepts/data/), Kinds and Rules; the last two are generated from the registry.
+- The pages that follow are [Data](/concepts/data/), [Kinds](/reference/kinds/) and [Rules](/reference/rules/); the last two are generated from the registry.
 
 ## Roads not taken
 

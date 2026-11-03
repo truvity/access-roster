@@ -118,7 +118,7 @@ The store keeps sealed values as ciphertext and compare-only values as hashes; i
 
 **sluis's own.**
 
-A request takes the same steps and passes the same checks on every installation; only the transport of each hop differs: a Unix socket checked by peer uid on the boards, a Lambda invoke checked by role, an in-cluster call checked by service-account token or SPIFFE mutual TLS. A design that needs a different step on one platform is a design change for all of them. See [ADR 0003](/decisions/0003-units-transports-and-fusion/#transports) and [ADR 0011](/decisions/0011-runtimes-and-installations/).
+A request takes the same steps and passes the same checks on every installation; only the transport of each hop differs: a Unix socket checked by peer uid on the boards, a Lambda invoke checked by role, an in-cluster call checked by service-account token. A design that needs a different step on one platform is a design change for all of them. See [ADR 0003](/decisions/0003-units-transports-and-fusion/#transports) and [ADR 0011](/decisions/0011-runtimes-and-installations/).
 
 *Questions it settles:* may Lambda skip `key@` and decrypt in the store for latency? (Not without a design change recorded for every installation; the Lambda latency spike found invokes fast enough, so there is no in-process store: Lambda changes the transport, not the steps.) Does Kubernetes get its own data model? (No.) Can the boards' test suite stand in for Lambda's checks? (For the steps, yes; for the transport, no.)
 

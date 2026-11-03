@@ -44,16 +44,23 @@
 #               `adapter-upstream-oidc`); `adapter-<vendor>` means any adapter, each writing ids under
 #               its own name only. Every writer and reader is an actor name (`store@`, `key@` and
 #               `exporter@` name the actors store, key and exporter), or one of the macros `every actor`,
-#               `self`, `the actor named in the id` and `adapter-<vendor>`; a trailing parenthesis
-#               qualifies the name and is not read. One named exception to one writer per kind: the
+#               `self`, `the actor named in the id` and `adapter-<vendor>`. A trailing parenthesis
+#               qualifies the name. `(as <contract>)` after `adapter-<vendor>` limits the macro to the
+#               adapters that implement that contract in actors.yaml (credential minter, provisioner,
+#               facts source, upstream, notifier); any other parenthesis is a label and is not read.
+#               One named exception to one writer per kind: the
 #               restore command of store@ writes back the kinds it restores. The console writes only two
 #               kinds itself, Switch and LogLevelOverride; every other write is routed to the owner.
 #   readers     actors with a get/list/watch rule (store@ itself reads config bounds; not listed).
 #               The store writes a change-log row in the same transaction only for a kind that some
 #               actor may watch (exporter@ watches the exportable kinds, key@ watches DataKeyWrap, policy
 #               watches the policy kinds, and so on); a kind that nobody watches, a hot counter such as
-#               Allowance or RateWindow, is one conditional update with no change-log row. The watch
-#               rules are rows of the rule table, not a field of the kind.
+#               Allowance or RateWindow, is one conditional update with no change-log row. A get, list rule
+#               comes from `readers`; a watch rule comes from `watched_by` (below), from `exportable`
+#               and, for a config kind, from `readers`.
+#   watched_by  durable and temp kinds only: the readers (written as in `readers`) that watch the kind.
+#               exporter@ watches an exportable kind without being listed here, and the readers of a
+#               config kind get its changes with the snapshot, so neither is repeated
 #   exportable  yes | no   (exporter@ watches the yes kinds, so it is a reader of each)
 #   backed_up   yes | no   (yes only for durable kinds that are authoritative; exporter@'s backup job reads each of
 #               them as ciphertext, a read rule implied by this field and not listed in readers)
@@ -486,7 +493,7 @@ kinds:
     readers: [session]
     exportable: no
     backed_up: no
-    notes: "Config so that recovery works when the store is damaged. Two attested hardware keys and one pinned synced passkey; enrolment tools only show the JSON to commit."
+    notes: "Config so that recovery works when the store is damaged. Three credential classes (hardware-fido, hardware-piv, synced): two attested hardware keys of either hardware class and one pinned synced passkey; enrolment tools only show the JSON to commit."
 
   - name: SlackApp
     serves: work
@@ -562,18 +569,6 @@ kinds:
     exportable: no
     backed_up: no
     notes: "Protective rate bounds and pending-state bounds per connection, client and source address. Not quota."
-
-  - name: ReconcileTarget
-    serves: work
-    scope: boundary
-    class: config
-    treatment: plain
-    profile: Fixed
-    writer: pipeline
-    readers: [adapter-<vendor> (as provisioner)]
-    exportable: no
-    backed_up: no
-    notes: "Targets of each reconciler, their mode (extend or strict), breaker thresholds, and channels bound in reviewed policy."
 
   - name: ExportDestination
     serves: data
@@ -672,6 +667,7 @@ kinds:
     profile: "-"
     writer: key@
     readers: [key@]
+    watched_by: [key@]
     exportable: no
     backed_up: yes
     indexes: [by_recipient, by_purpose]
@@ -1008,14 +1004,15 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: Tenant-adjustable
     layer: {group: PolicySet, layer: tenant}
     writer: exchange
     readers: [policy, console]
+    watched_by: [policy]
     exportable: no
     backed_up: yes
-    notes: "A tenant's template links; the template must exist in config (checked on write). A link names a template and a group or a role, never a person, so it stays plain."
+    notes: "A tenant's template links; the template must exist in config (checked on write). A link names a template and a group, a role or an account (an account is <upstream>/<claim value>, a vendor user id), so it is sealed. policy opens it to build the effective policy set."
 
   - name: PredefinedPolicyLink
     serves: work
@@ -1026,6 +1023,7 @@ kinds:
     layer: {group: PolicySet, layer: operator}
     writer: exchange
     readers: [policy, console]
+    watched_by: [policy]
     exportable: no
     backed_up: yes
     notes: "A link to a built-in predefined policy that tightens; durable. Tenant `-` for the whole boundary."
@@ -1065,7 +1063,7 @@ kinds:
     readers: [adapter-github]
     exportable: no
     backed_up: yes
-    notes: "An app made by the manifest flow in the UI: app id, private key, webhook secret (sealed). Upstream criterion: durable. Written by adapter-github, which runs the manifest flow. It lives in the tenant that made it; an app the operator makes in the UI lives in the operator's own company, which is a tenant."
+    notes: "An app made by the manifest flow in the UI: app id, private key, webhook secret (sealed). Upstream criterion: durable. Written by adapter-github, which runs the manifest flow. It lives in the tenant that made it; an app the operator makes in the UI lives in the operator's own company, which is a tenant. Each App is also a MinterTarget. The link App, the one public App that people authorise as themselves, is a GitHubApp of the operator's tenant; the link it creates is a GitHubAccountLink."
 
   - name: GitHubInstallation
     serves: work
@@ -1078,6 +1076,19 @@ kinds:
     exportable: no
     backed_up: yes
     notes: "Pins: app id and installation id per organisation, first seen. A connection made through the install flow, so tenant-scoped like its app."
+
+
+  - name: GitHubAccountLink
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: "-"
+    writer: session
+    readers: [session, adapter-github]
+    exportable: no
+    backed_up: yes
+    notes: "The link between a person and their GitHub account, made when the person authorises the link App as themselves: the person, the GitHub user id and the permissions the person granted. It is its own kind, apart from UpstreamLink, which ties a person to the account that signs them in. It holds a vendor user id, so sealed. Written by session once adapter-github has returned the verified GitHub account; the person may narrow or revoke it, and it is lost when the person leaves."
 
   - name: SlackConnection
     serves: work
@@ -1113,7 +1124,7 @@ kinds:
     profile: Tenant-adjustable
     links: [EntraConnection, GitHubInstallation, DirectoryUser]
     writer: adapter-<vendor>
-    readers: [adapter-<vendor> (as provisioner)]
+    readers: [adapter-<vendor> (as facts source)]
     exportable: no
     backed_up: yes
     notes: "A tenant's connection to its directory: which directory (a Google Workspace domain, an Entra directory, a GitHub organisation), the domain, and the credential that syncs it, sealed. Made through the UI or the API, and written by the adapter that completes the connect flow: adapter-upstream-oidc for Google Workspace and Entra, adapter-github for a GitHub organisation, each under ids that start with its own name. The directory facts it reads are DirectoryUser, DirectoryGroup and DirectoryMembership of the same tenant."
@@ -1142,7 +1153,21 @@ kinds:
     readers: [adapter-<vendor> (as credential minter), policy]
     exportable: no
     backed_up: yes
-    notes: "A mint target of a tenant: a cloud role, a prototype token or a DNS zone, with the lifetime asked for. Neither secret nor personal, so plain. Checked against MinterBounds on write, and written by the adapter that mints it."
+    notes: "A mint target of a tenant: a cloud role, a prototype token, a DNS zone or a GitHub App, with the lifetime asked for. Neither secret nor personal, so plain. Checked against MinterBounds on write, and written by the adapter that mints it. Each GitHub App of the catalogue is a target: the permissions a token may hold are checked against MinterBounds when the App is registered."
+
+
+  - name: ReconcileTarget
+    serves: work
+    scope: boundary+tenant
+    class: durable
+    treatment: sealed
+    profile: Tenant-adjustable
+    links: [DirectoryConnection, SlackConnection, GitHubInstallation]
+    writer: adapter-<vendor>
+    readers: [adapter-<vendor> (as provisioner), console]
+    exportable: no
+    backed_up: yes
+    notes: "The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API."
 
   - name: TenantConnection
     serves: work
@@ -1394,6 +1419,7 @@ kinds:
     layer: {group: Logging, layer: operator}
     writer: console
     readers: [every actor (its own id only)]
+    watched_by: [every actor (its own id only)]
     exportable: no
     backed_up: no
     ttl: {default: 1h, max: 24h}
@@ -1408,6 +1434,7 @@ kinds:
     layer: {group: PolicySet, layer: operator}
     writer: exchange
     readers: [policy, console]
+    watched_by: [policy]
     exportable: no
     backed_up: no
     ttl: {default: 1h, max: 24h}
@@ -1484,7 +1511,7 @@ kinds:
     treatment: sealed
     profile: "-"
     writer: adapter-<vendor>
-    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    readers: [session, exchange, adapter-<vendor> (as facts source)]
     exportable: no
     backed_up: no
     ttl: {default: 24h, max: 7d}
@@ -1498,7 +1525,7 @@ kinds:
     treatment: sealed
     profile: "-"
     writer: adapter-<vendor>
-    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    readers: [session, exchange, adapter-<vendor> (as facts source)]
     exportable: no
     backed_up: no
     ttl: {default: 24h, max: 7d}
@@ -1511,7 +1538,7 @@ kinds:
     treatment: sealed
     profile: "-"
     writer: adapter-<vendor>
-    readers: [session, exchange, adapter-<vendor> (as provisioner)]
+    readers: [session, exchange, adapter-<vendor> (as facts source)]
     exportable: no
     backed_up: no
     ttl: {default: 24h, max: 7d}
@@ -1592,10 +1619,11 @@ kinds:
     profile: "-"
     writer: key@
     readers: [key@]
+    watched_by: [key@]
     exportable: no
     backed_up: no
     ttl: {default: 5m, max: 15m}
-    notes: "A locked board's request for its card PIN: the node and an ephemeral public key made by the locked key@ for this request. Public values only, so plain. Id <node>/<request>. An unlocked peer's key@ watches the kind and answers with a PinRelease. Default 5 min, at most 15 min; a request that expires is made again."
+    notes: "A locked board's request for its card PIN: the node, an ephemeral public key made by the locked key@ for this request, and a signature over both by the board's pin-release key (a card slot with PIN policy never, attested in the slot map). Public values only, so plain. Id <node>/<request>. An unlocked peer's key@ watches the kind, verifies the signature and the slot attestation, and answers with a PinRelease. Default 5 min, at most 15 min; a request that expires is made again."
 
   - name: PinRelease
     serves: keys
@@ -1605,6 +1633,7 @@ kinds:
     profile: "-"
     writer: key@
     readers: [key@]
+    watched_by: [key@]
     exportable: no
     backed_up: no
     ttl: {default: 5m, max: 15m}

@@ -23,7 +23,7 @@
 #   name        the purpose, lower-case kebab-case
 #   kind        signing | key-agreement | wrapping
 #   algorithm   a key of `algorithms`
-#   enabled     baseline (always, on AWS one key per boundary or per trust domain or per log) |
+#   enabled     baseline (always, on AWS one key per boundary, per trust domain or per writer instance) |
 #               on-use (a purpose outside the baseline: no key until an installation enables it, then a
 #               dedicated key) | named-exception (the algorithm is an exception; dedicated key)
 #   ops         seal | open | sign | mac | public-key | wrap | unwrap
@@ -81,7 +81,7 @@ algorithms:
     note: "A witness format that the C2SP tlog-cosignature specification allows; a witness key authorises nothing."
 
 purposes:
-  # ---- the AWS baseline: one symmetric key and five P-384 keys per boundary (per trust domain, per log)
+  # ---- the AWS baseline: one symmetric key and five P-384 keys per boundary (per trust domain, per audit writer instance)
   - name: wrapping
     kind: wrapping
     algorithm: AES-256-GCM
@@ -137,7 +137,7 @@ purposes:
     algorithm: ES384
     enabled: baseline
     ops: [sign, public-key]
-    aws: { key_spec: ECC_NIST_P384, per: log, baseline: true }
+    aws: { key_spec: ECC_NIST_P384, per: writer instance, baseline: true }
     board: { slot: '84' }
     users: [writer]
     notes: "Signs the checkpoints of a project's audit log and usage log; one key per writer instance (one per project, and per node on boards); only that writer may use it."
@@ -202,6 +202,16 @@ purposes:
     board: { slot: '86', runtimes: [bare-metal] }
     users: [sluis-node]
     notes: "Boards only. Signs the workload tokens of the node's actors, through key; never shared with token-signing, because its callers and its blast radius differ."
+
+  - name: pin-release
+    kind: signing
+    algorithm: ES384
+    enabled: on-use
+    ops: [sign, public-key]
+    aws: { key_spec: ECC_NIST_P384, per: boundary, baseline: false }
+    board: { slot: '87', runtimes: [bare-metal] }
+    users: [key]
+    notes: "Boards only. The locked key signs its PinReleaseRequest with it. The slot is generated with PIN policy never and touch policy never, so it signs while the board is locked, and the slot map records its attestation. The unlocked peer verifies the signature and the attestation before it seals the PIN to the request's one-time key. Used for nothing else."
 
   # ---- named exceptions: each a dedicated key per purpose and algorithm
   - name: token-signing-ps256
@@ -268,10 +278,11 @@ slot_plan:
     '84': audit-log
     '85': release-signing
     '86': workload-issuer
+    '87': pin-release
   spare:
-    from: '87'
+    from: '88'
     to: '95'
-    count: 15
+    count: 14
     note: "Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one)."
   unused:
     '9e': "The card-authentication slot signs without a PIN by default."
@@ -281,7 +292,7 @@ data_keys:
   tenant:
     data:
       ops: [seal, open]
-      users: [session, console, exchange, signer, ca, ssh-ca, adapter-upstream-oidc, adapter-github, adapter-slack, exporter]
+      users: [session, console, exchange, policy, signer, ca, ssh-ca, adapter-upstream-oidc, adapter-github, adapter-slack, exporter]
       erased: "tenant exit"
       notes: "Personal and operational data of the tenant."
     pseudonym:
@@ -314,7 +325,7 @@ data_keys:
       ops: [seal, open]
       users: [exchange, console]
       erased: never
-      notes: "Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds this is EnrolmentToken only. The wrap has the same purpose name as the tenant's `data` key and a different address."
+      notes: "Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds these are EnrolmentToken and PendingEnrolment. The wrap has the same purpose name as the tenant's `data` key and a different address."
 
 wrapping:
   aws: "GenerateDataKey under the boundary's one symmetric key, with the encryption context {boundary, tenant, purpose}; only the wrapped copy is stored."

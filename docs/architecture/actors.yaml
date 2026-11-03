@@ -101,6 +101,7 @@ egress_classes:
   proof-issuer-keys: "The key-set endpoints of the proof issuers an ExchangeTrust names."
   github-api: "The GitHub API: of an Integration the operator declared, and of the GitHub organisations that tenants connected."
   slack-api: "The Slack API of a SlackApp the operator declared."
+  directory-api: "The directory APIs that a DirectoryConnection names: Google Workspace and Microsoft Entra."
 
 actors:
   # ---- work (ADR 0002, "Work actors")
@@ -154,7 +155,7 @@ actors:
     language_note: "Rust unless its design names a serious trade-off; the single-page application is TypeScript."
     placement: { scope: front, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, audit-emit]
-    calls: [session, exchange, policy, reader, adapter-<vendor>]
+    calls: [session, exchange, policy, quota, reader, adapter-<vendor>]
     egress: []
     key_purposes:
       - { purpose: data, ops: [open] }
@@ -224,6 +225,7 @@ actors:
     egress: []
     key_purposes:
       - { purpose: grant, ops: [seal] }
+      - { purpose: data, ops: [open] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0007', '0012']
     requirement_areas: [POLICY]
@@ -299,17 +301,17 @@ actors:
     family: work
     holder: false
     aka: ["upstream adapter"]
-    contracts: [Upstream]
-    purpose: "Federates sign-in from an upstream identity provider: it does the code exchange at the upstream and returns the verified assertion to session, and it never decides."
+    contracts: [Upstream, FactsSource]
+    purpose: "Federates sign-in from an upstream identity provider: it does the code exchange at the upstream and returns the verified assertion to session, and it never decides. It also reads the directory of Google Workspace and Entra that a tenant connected, as a facts source."
     language: Go
     language_rule: R4
     language_row: Integrations
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, audit-emit, provider-api]
     calls: [policy]
-    egress: [upstream-idp]
+    egress: [upstream-idp, directory-api]
     key_purposes:
-      - { purpose: data, ops: [open] }
+      - { purpose: data, ops: [seal, open] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0012', '0017', '0025']
     requirement_areas: [FED]
@@ -422,6 +424,7 @@ actors:
     key_purposes:
       - { purpose: wrapping, ops: [wrap, unwrap, public-key] }
       - { purpose: grant, ops: [open] }
+      - { purpose: pin-release, ops: [sign, public-key] }
     adrs: ['0002', '0006', '0010', '0012']
     requirement_areas: [KEYS, SEC]
     standards: [NC-10, ST-83]

@@ -124,7 +124,7 @@ terms:
     avoid: ["per-actor driver", "mediating driver", "shared driver instance"]
 
   - term: transport
-    definition: "How a call between two units travels on one installation: a Unix socket with the caller known by uid, a Lambda invoke with the caller known by its role, or in-cluster gRPC authenticated by a service-account token or SPIFFE mutual TLS. The steps and the checks are the same on every transport."
+    definition: "How a call between two units travels on one installation: a Unix socket with the caller known by uid, a Lambda invoke with the caller known by its role, or in-cluster gRPC authenticated by a projected service-account token whose audience the callee checks. The steps and the checks are the same on every transport."
     category: families
     see: ["0003-units-transports-and-fusion#transports"]
     notes: "Not the audit transport, which is the queue, spool or stream between the emitters and the writer."
