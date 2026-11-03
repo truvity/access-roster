@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/go-jose/go-jose/v4"
@@ -106,19 +107,15 @@ func Provider(iss *Issuer, storage op.Storage) (*op.Provider, error) {
 		op.WithCustomTokenEndpoint(op.NewEndpoint("/token")),
 		op.WithCustomEndSessionEndpoint(op.NewEndpoint("/end_session")),
 		op.WithCustomRevocationEndpoint(op.NewEndpoint("/revoke")),
-		// INVARIANT: this response must never carry a `Cache-Control`
-		// with a positive max-age, nor an `Expires` in the future. A
-		// go-oidc-based verifier -- the Kubernetes API server's OIDC
-		// authenticator (e.g. managed EKS), Kargo -- keeps its OWN JWKS
-		// cache and derives that cache's lifetime from these headers; it
-		// only refetches on an unknown `kid` once its cache has expired.
-		// With neither header present it treats the key set as already
-		// expired, so a rotated or newly-algorithm'd kid verifies on the
-		// very next request -- confirmed live. A long max-age here would
-		// turn every rotation into an outage: verifiers keep rejecting
-		// freshly-signed tokens until their stale cache finally expires.
-		// See [TestJWKSAndDiscoveryAreNotCacheableByAProxy].
-		op.WithCustomKeysEndpoint(op.NewEndpoint("/keys")),
+		// The key set is served with `Cache-Control: public, max-age=300`
+		// ([publicDocuments]). A go-oidc-based verifier -- the Kubernetes
+		// API server's OIDC authenticator (e.g. managed EKS), Kargo --
+		// keeps its OWN cache of it for that long and refetches on an
+		// unknown `kid` only once the cache has expired, so the max-age
+		// must stay far shorter than the time a key is published before
+		// it signs: 15m for a file or KMS key (`activationDelay`), 12h for
+		// a wrapped one (`prepublish`). See [TestThePublicDocumentsAreCachedBriefly].
+		op.WithCustomKeysEndpoint(op.NewEndpoint(keysPath)),
 		op.WithCORSOptions(corsOptions()),
 	}
 	if iss.Config().AllowInsecure {
@@ -303,7 +300,7 @@ func HandlerWithSignIn(iss *Issuer, storage op.Storage, signIn SignInDeps) (http
 		protocol = githubTokens(iss, own, provider, protocol)
 		protocol = cloudflareTokens(iss, own, provider, protocol)
 	}
-	mux.Handle("/", neverCached(protocol))
+	mux.Handle("/", neverCached(publicDocuments(iss.Config().URL, protocol)))
 
 	served := withSigningAudience(withOneResolution(authorizationResponseIssuer(iss.Config().URL, mux)))
 
@@ -345,12 +342,8 @@ func withSigningAudience(next http.Handler) http.Handler {
 // to cache a key set would put a fetch of it in front of every
 // verification anybody does.
 //
-// The library sets no caching headers of its own on either, so this
-// stays out of their way rather than adding `no-cache` explicitly. That
-// silence is deliberate, not an oversight: see the comment on
-// `op.WithCustomKeysEndpoint` for why the ABSENCE of `Cache-Control` on
-// `/keys` is exactly what key rotation needs from a go-oidc-based
-// verifier.
+// The library sets no caching headers of its own on either; how long they
+// may be cached is [publicDocuments]'s to say.
 func neverCached(next http.Handler) http.Handler {
 	secret := map[string]bool{
 		"/token":       true,
@@ -368,6 +361,75 @@ func neverCached(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// keysPath is the key set (discovery's `jwks_uri`).
+const keysPath = "/keys"
+
+// PublicDocumentMaxAge is how long a client or a cache may keep the key set and
+// the two metadata documents: the max-age of their `Cache-Control`.
+//
+// Five minutes, so a verifier fetches the key set at most every five minutes
+// rather than on every token, and a key removed from it (a compromised one) is
+// gone from every cache that honours the header within five minutes. It must
+// stay far shorter than the time a new key is published before it signs (15m
+// for a file or KMS key, 12h for a wrapped one): a verifier that holds a key set
+// from before the new key was published rejects the new key's tokens until its
+// copy expires. An edge cache that overrides the origin (the Cloudflare rule of
+// the edge library, 5m by default) adds its own TTL to this.
+const PublicDocumentMaxAge = 5 * time.Minute
+
+// publicDocumentCacheControl is the `Cache-Control` of a public document.
+var publicDocumentCacheControl = "public, max-age=" + strconv.Itoa(int(PublicDocumentMaxAge/time.Second))
+
+// publicDocuments puts `Cache-Control: public, max-age=300` on a successful GET
+// or HEAD of the key set, of OpenID discovery and of the RFC 8414 metadata: the
+// same for every caller, and fetched by every verifier and every client. Before
+// v1.80.2 they carried no `Cache-Control`, so how long a client kept them was
+// its own guess, and an edge cache's TTL was invisible to it.
+//
+// Only a 200: an error, or a 304, is not a document worth keeping. A
+// `Cache-Control` the handler set itself is kept.
+func publicDocuments(issuerURL string, next http.Handler) http.Handler {
+	paths := map[string]bool{
+		keysPath:                          true,
+		discoveryPath:                     true,
+		authorizationServerURI(issuerURL): true,
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !paths[r.URL.Path] || (r.Method != http.MethodGet && r.Method != http.MethodHead) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(&cachedOnOK{ResponseWriter: w}, r)
+	})
+}
+
+// cachedOnOK sets the public documents' `Cache-Control` as the status is
+// written, when it is 200 and the handler set none.
+type cachedOnOK struct {
+	http.ResponseWriter
+	wrote bool
+}
+
+func (c *cachedOnOK) WriteHeader(code int) {
+	if !c.wrote {
+		c.wrote = true
+		if code == http.StatusOK && c.Header().Get("Cache-Control") == "" {
+			c.Header().Set("Cache-Control", publicDocumentCacheControl)
+		}
+	}
+	c.ResponseWriter.WriteHeader(code)
+}
+
+func (c *cachedOnOK) Write(b []byte) (int, error) {
+	if !c.wrote {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(b)
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (c *cachedOnOK) Unwrap() http.ResponseWriter { return c.ResponseWriter }
 
 // endSessionPath is the RP-initiated logout endpoint, and
 // [signedOutPath] is where it lands when the request named nowhere.

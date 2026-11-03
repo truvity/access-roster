@@ -27,10 +27,10 @@ knows only RSA and ECDSA.
 Every `rotateEvery` a replica generates a new pair per algorithm under the State lease `lease.signing-keygen:<alg>`. A lost
 race costs one more published key, never a wrong token.
 
-A new key enters the JWKS at once and signs after `prepublish` (default `15m`). Envoy's `jwt_authn` caches a key set for
-10 minutes and does not refetch on an unknown `kid`. A replaced key stays published for `retain`, which defaults to
-`lifetimes.token` plus 5m of skew. At start `retain` must be at least that, and `rotateEvery` must exceed `prepublish`
-and be at most 168h.
+A new key enters the JWKS at once and signs after `prepublish`, unset half of `rotateEvery` (`12h`) and never under
+`activationDelay`: longer than any verifier caches the key set. A replaced key stays published for `retain`, which
+defaults to `lifetimes.token` plus 5m of skew. At start `retain` must be at least that, and `rotateEvery` must exceed
+`prepublish` and be at most 168h.
 
 A process looks for work at most every `pollInterval` (30s), on a request, and on Kubernetes on a timer.
 

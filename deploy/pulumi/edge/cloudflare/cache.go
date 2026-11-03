@@ -43,10 +43,12 @@ const (
 // Deprecated: use PublicPathsCache in github.com/truvity/edge/v3/cloudflare/rules; this module is removed after v1.77.
 type PublicCacheArgs struct {
 	// TTL is how long Cloudflare keeps a copy (the rule's edge TTL, overriding
-	// the origin, which sends no Cache-Control). Default DefaultPublicCacheTTL,
-	// at least a second, at most MaxPublicCacheTTL, in whole seconds. Keep it
-	// shorter than the signing keys' prepublish window, so a key is in every
-	// cached key set before it signs.
+	// the origin's Cache-Control: public, max-age=300, which a client is still
+	// told). Default DefaultPublicCacheTTL, the same five minutes, at least a
+	// second, at most MaxPublicCacheTTL, in whole seconds. Keep it far shorter
+	// than the signing keys' prepublish window, so a key is in every cached key
+	// set before it signs: a client may hold the edge's copy for the max-age on
+	// top of the TTL.
 	TTL time.Duration
 	// Paths are the exact request paths cached. Default DefaultPublicCachePaths.
 	// Each starts with "/" and holds only URL path characters; nothing that

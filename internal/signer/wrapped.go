@@ -56,6 +56,10 @@ const (
 	// MaxWrappedRotateEvery keeps a key's record inside [keyRingEntryTTL].
 	MaxWrappedRotateEvery = 7 * 24 * time.Hour
 
+	// DefaultWrappedPrepublish is the pre-publish with the default rotation:
+	// half of [DefaultWrappedRotateEvery] (see [WrappedPrepublishDefault]).
+	DefaultWrappedPrepublish = DefaultWrappedRotateEvery / 2
+
 	// wrapRSABits is the size of the RS256 data key (RSA_3072).
 	wrapRSABits = 3072
 
@@ -80,6 +84,19 @@ type WrappedConfig struct {
 	// Interval is how often a process looks for work (a new key to learn, one
 	// to generate). Zero is [DefaultKeyPollInterval].
 	Interval time.Duration
+}
+
+// WrappedPrepublishDefault is the pre-publish of a schedule that names none:
+// half of rotateEvery, so a key is in the key set for half a period before it
+// signs (12h with the default 24h), and never shorter than floor (the
+// installation's `signingKey.activationDelay`). A verifier that caches the key
+// set for longer than the pre-publish rejects every token signed with the new
+// key until its cache expires; half a period is far longer than such caches (an
+// hour is common). The key set then holds two keys per algorithm at a time (the
+// signing one, and the next or the replaced one) while `retain` is under the
+// other half of the period, and three only while it is longer.
+func WrappedPrepublishDefault(rotateEvery, floor time.Duration) time.Duration {
+	return max(rotateEvery/2, floor)
 }
 
 // Validate refuses a configuration that cannot rotate safely.

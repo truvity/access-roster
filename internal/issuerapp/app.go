@@ -1737,14 +1737,17 @@ func wrappedFromPort(k *port.KMSWrappedSigning) (*config.SigningKeyKMSWrapped, e
 
 // wrappedConfig resolves `signingKey.kmsWrapped` against the rest of the
 // configuration: the algorithms default to ES384 and RS256, the rotation to
-// every 24h, the pre-publish to `signingKey.activationDelay` and the retention
-// to `signingKey.overlap` (the token lifetime plus a skew margin), and then the
-// schedule is held to what makes it safe (see [signer.WrappedConfig.Validate]).
+// every 24h, the pre-publish to half the rotation and never shorter than
+// `signingKey.activationDelay` ([signer.WrappedPrepublishDefault]), and the
+// retention to `signingKey.overlap` (the token lifetime plus a skew margin), and
+// then the schedule is held to what makes it safe (see
+// [signer.WrappedConfig.Validate]).
 func (c Config) wrappedConfig() (signer.WrappedConfig, error) {
 	k := c.kmsWrapped
+	rotateEvery := dur(k.RotateEvery, signer.DefaultWrappedRotateEvery)
 	out := signer.WrappedConfig{
-		RotateEvery: dur(k.RotateEvery, signer.DefaultWrappedRotateEvery),
-		Prepublish:  dur(k.Prepublish, c.keyActivationDelay),
+		RotateEvery: rotateEvery,
+		Prepublish:  dur(k.Prepublish, signer.WrappedPrepublishDefault(rotateEvery, c.keyActivationDelay)),
 		Retain:      dur(k.Retain, c.keyOverlap),
 		Interval:    c.keyPollInterval,
 	}

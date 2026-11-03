@@ -244,7 +244,8 @@ type (
 		// RotateEvery is how often a new key pair is generated. Default 24h.
 		RotateEvery *Duration `json:"rotateEvery,omitempty"`
 		// Prepublish is how long a new key is published before it signs.
-		// Default `signingKey.activationDelay` (15m).
+		// Default half of RotateEvery (12h), and never shorter than
+		// `signingKey.activationDelay`.
 		Prepublish *Duration `json:"prepublish,omitempty"`
 		// Retain is how long a superseded key stays published. Default
 		// `signingKey.overlap`, which is `lifetimes.token` plus a skew margin.

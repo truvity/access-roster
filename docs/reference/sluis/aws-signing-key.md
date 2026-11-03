@@ -36,7 +36,7 @@ signingKey:
     stateSecret: issuer/state-secret
     # algorithms: [ES384, RS256]     # the first is the default
     # rotateEvery: 24h
-    # prepublish: 15m
+    # prepublish: 12h                # half of rotateEvery
     # retain: 65m
 ```
 

@@ -5390,8 +5390,8 @@
                 },
                 "prepublish": {
                   "$ref": "#/definitions/config-sluis.duration",
-                  "default": "15m",
-                  "description": "How long a new key is published before anything signs with it: longer than a verifier caches the key set (Envoy's jwt_authn: 10m). Unset is `activationDelay`."
+                  "default": "12h",
+                  "description": "How long a new key is published before anything signs with it: longer than any verifier caches the key set (Envoy's jwt_authn: 10m; an hour is common), and shorter than `rotateEvery`. Unset is half of `rotateEvery`, and never shorter than `activationDelay`."
                 },
                 "region": {
                   "description": "The key's region. Unset follows the AWS SDK's own resolution.",
