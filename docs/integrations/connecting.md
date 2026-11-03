@@ -18,7 +18,7 @@ The path decides the storage class, not the vendor ([0004](/decisions/0004-the-d
 | A **connection** of a tenant to a provider | The UI or the API, with a browser round trip where the vendor needs one | **Durable**, per tenant, credential **sealed** | `GitHubApp`, `SlackConnection`, `EntraConnection`, `DirectoryConnection`, `MinterConnection` |
 | A **flow in progress** | The adapter that runs the flow | **Temp** | `SlackInstallState`, `GitHubManifestState`, `EntraConsentState` |
 
-- **Who connects decides.** An app the operator makes is config. A tenant's own connection to its identity provider, its directory or its account is durable data entered through the UI or the API, never config the operator commits ([0004](/decisions/0004-the-data-model/#who-connects-decides)).
+- **Who connects decides.** An app the operator makes is config. A tenant's own connection to its directory or its account is durable data entered through the UI or the API, never config the operator commits ([0004](/decisions/0004-the-data-model/#who-connects-decides)).
 - **The operator's own company is a tenant,** so a connection the operator makes in the UI is durable too.
 - **An IaC tool that calls the API makes durable data,** not config. Where a thing is written decides its class ([principle 17](/principles/#17-where-a-thing-is-written-decides-its-class)).
 
@@ -139,7 +139,7 @@ sluis needs two separate credentials from Google: an OAuth client for **sign-in*
 In a Google Cloud project, create an OAuth client of type *Web application*, with the sign-in callback sluis prints (and, for admin consent, the connect callback) as redirect URIs. The consent screen asks for `openid`, `email` and `profile` only. For one organisation it can be *Internal*; for several tenants it must be *In production*, because in testing a second tenant gets an access error and refresh tokens expire after seven days.
 
 - **The operator's client is an `Upstream`:** config, with its client secret in a secret source (`UpstreamSecret`).
-- **A tenant's own provider is a `TenantConnection`:** entered through the UI or the API, with its client secret sealed ([0033](/decisions/0033-customer-connections/)).
+- **A tenant's own identity provider is not connected to sluis.** In a customer installation it is configured in the broker, which is the one upstream ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
 
 ### The directory: three methods
 
@@ -212,11 +212,8 @@ For any provider that publishes OpenID Connect discovery:
 
 1. Register sluis as a client at the provider, with the callback sluis prints.
 2. **For the operator's own upstream,** commit an `Upstream` (issuer, client id, subject claim) and put the client secret in the secret source as `UpstreamSecret`.
-3. **For a tenant's own provider,** connect it in the UI or through the API: `sluis integrations connect oidc --issuer https://idp.example.org --domain partner.example`. `session` writes the `TenantConnection` with the client secret sealed; the secret is read from standard input.
-4. Prove the domain with the DNS TXT record the command prints, then run `sluis integrations check oidc partner`.
-5. Choose what the connection's claims are worth: map the allow-listed claims to facts; asserted groups and roles are never read ([0033](/decisions/0033-customer-connections/#claims-and-groups)).
-
-For a Microsoft Entra directory, the operator commits one multi-tenant `Upstream`; each customer directory then gives admin consent in a browser round trip, which `adapter-upstream-oidc` completes and keeps as an `EntraConnection` of the tenant, with an `EntraConsentState` while the consent is in progress.
+3. **Declare the e-mail domains** the upstream serves in the `Upstream`, then run `sluis integrations check oidc partner`.
+4. Choose what the connection's claims are worth: map the allow-listed claims to facts; asserted groups and roles are never read ([0033](/decisions/0033-customer-connections/#claims-and-groups)).
 
 The checks on every ID token are on [Generic OIDC and peer sluis](/integrations/oidc-upstream/).
 

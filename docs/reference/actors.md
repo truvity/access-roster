@@ -77,7 +77,7 @@ Sign-in, session chains, the session cookie and the freshness of each person's a
 - **Ports:** `data`, `keys`, `audit-emit`, `fetch`.
 - **Calls:** `policy`, `signer`, `exchange`, `adapter-upstream-oidc`.
 - **Egress:** `client-document-hosts`.
-- **Key purposes:** `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
+- **Key purposes:** `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0018](/decisions/0018-sessions/), [ADR 0019](/decisions/0019-person-and-upstream-link/).
 - **Requirement areas:** [AUTHN](/requirements/authn/), [SESS](/requirements/sess/), [TOKEN](/requirements/token/), [FED](/requirements/fed/), [SUBJ](/requirements/subj/).
 - **Standards:** ST-28 OIDC Core 1.0; ST-29 OIDC Discovery; ST-03 RFC 7636 PKCE; ST-24 RFC 9470 Step-up; ST-34 Form Post response mode; ST-59 WebAuthn L2/L3; ST-30 RP-Initiated Logout; ST-31 Back-Channel Logout.
@@ -109,7 +109,7 @@ Token exchange (RFC 8693), enrolment of hosts and workloads, the front of the si
 - **Ports:** `data`, `keys`, `audit-emit`, `fetch`.
 - **Calls:** `policy`, `quota`, `signer`, `ca`, any adapter.
 - **Egress:** `proof-issuer-keys`.
-- **Key purposes:** `enrolment` (open, public-key), `data` (seal, open), `pseudonym` (mac).
+- **Key purposes:** `enrolment` (open, public-key), `data` (seal, open), `pairwise` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0021](/decisions/0021-clients/), [ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/), [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/).
 - **Requirement areas:** [EXCH](/requirements/exch/), [WORKLOAD](/requirements/workload/), [CLIENT](/requirements/client/), [SUPPLY](/requirements/supply/).
 - **Standards:** ST-07 RFC 8693 Token exchange; ST-08 RFC 8707 Resource indicators; ST-44 GitHub Actions OIDC; ST-45 K8s SA token / TokenReview; ST-46 AWS web identity; ST-61 RFC 9180 HPKE; ST-110 JWT-SVID.

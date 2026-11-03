@@ -48,7 +48,7 @@ The desired state needs three answers besides the rule: which actor computes and
 - **A container owner is reported, never removed.** A leaver still present is reported.
 - **Two modes for a container:** `extend` only adds; `strict` also removes whom the desired state does not name.
 - **Adoption is explicit and holds on conflict.** A container found by name is adopted only when the `ReconcileTarget` declares it; a container that is both bound in config and made on the console is held, and nothing changes on it.
-- **Channels bound in reviewed policy and channels made on the console are two kinds with two owners** and never mix. The first are `ReconcileTarget` (config), the second `ConsoleChannel` (durable, written by the chat adapter).
+- **Channels bound in reviewed policy and channels made on the console are two kinds with two owners** and never mix. The first are `ReconcileTarget` (durable), the second `ConsoleChannel` (durable, written by the chat adapter).
 - **A pass is audited:** its outcome, its digest and counts, and every change, including each held one ([0025](/decisions/0025-integrations/#splitting-by-credential)).
 
 ### Tests

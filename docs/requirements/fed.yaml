@@ -182,11 +182,12 @@ requirements:
     rationale: "Home-realm routing for the wrong domain is an account-takeover path."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-28, section: "3", depth: Partial}
     issues: [916]
+    superseded_by: [REQ-FED-023]
     verification:
       - {kind: integration-test, ref: "domain verification test"}
   - id: REQ-FED-007
@@ -300,7 +301,7 @@ requirements:
       - {kind: integration-test, ref: "disabled person sign-in test"}
   - id: REQ-FED-022
     area: FED
-    statement: "When domain discovery finds no verified domain, sluis MUST send the person to the client's default connection with the same response shape as for a known domain."
+    statement: "When domain discovery finds no declared domain, sluis MUST send the person to the client's default upstream with the same response shape as for a known domain."
     rationale: "The answer must not reveal whether a domain or an address is known."
     level: MUST
     source: stakeholder-ciam
@@ -313,8 +314,8 @@ requirements:
       - {kind: integration-test, ref: "response comparison for a known and an unknown domain"}
   - id: REQ-FED-023
     area: FED
-    statement: "A verified domain MUST route to exactly one connection in a customer boundary."
-    rationale: "A second claim on a verified domain would capture its sign-ins."
+    statement: "sluis config check MUST refuse two upstreams of one boundary that declare the same e-mail domain."
+    rationale: "A domain that two upstreams declare would send its sign-ins to the wrong one, and the operator declares every domain (ADR 0033)."
     level: MUST
     source: design-decision
     status: planned
@@ -322,17 +323,18 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "second claim on a verified domain is refused"}
+      - {kind: integration-test, ref: "config check negative test: two upstreams declare one domain"}
   - id: REQ-FED-024
     area: FED
     statement: "sluis MUST verify the DNS TXT record of a routable domain again at least every 24 hours."
     rationale: "A domain that changes hands must stop routing to the old owner's provider."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-FED-023]
     verification:
       - {kind: integration-test, ref: "re-verification schedule test with a moved clock"}
   - id: REQ-FED-025
@@ -341,16 +343,17 @@ requirements:
     rationale: "A lapsed proof is no proof."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-FED-023]
     verification:
       - {kind: integration-test, ref: "three failed checks stop routing"}
   - id: REQ-FED-026
     area: FED
-    statement: "sluis MUST refuse an idp_hint that names a connection the client does not allow, with invalid_request."
-    rationale: "A hint chooses among allowed connections and cannot create or widen one."
+    statement: "sluis MUST refuse an idp_hint that names an upstream the client does not allow, with invalid_request."
+    rationale: "A hint chooses among declared upstreams and cannot create or widen one."
     level: MUST
     source: design-decision
     status: planned
@@ -461,3 +464,39 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "pending sign-in cap test"}
+  - id: REQ-FED-035
+    area: FED
+    statement: "sluis config check MUST refuse a customer installation that declares more than one upstream at its front."
+    rationale: "A customer installation sees only the broker of the customer-identity product, which holds the tenants' identity providers (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [916]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: a second upstream at the front of a customer installation"}
+  - id: REQ-FED-036
+    area: FED
+    statement: "sluis MUST refuse a staff sign-in unless the upstream's organisation claim holds exactly one organisation id and exactly one Tenant records it, which is the tenant of the client."
+    rationale: "A staff sign-in whose organisation is absent, unknown, ambiguous, plural or another tenant's must not fall into a tenant by default (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [916]
+    verification:
+      - {kind: integration-test, ref: "sign-in matrix: the organisation id absent, unknown, recorded by two tenants, another tenant's, and two ids in the claim are each refused"}
+  - id: REQ-FED-037
+    area: FED
+    statement: "A person's tenant MUST be the tenant of the client they sign in to."
+    rationale: "The tenant is the controller, and an app's customers belong to it whatever organisation they have at the broker (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [916]
+    verification:
+      - {kind: integration-test, ref: "the same broker account signing in to clients of two tenants is a person of each tenant in turn"}

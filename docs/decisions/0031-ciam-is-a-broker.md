@@ -31,7 +31,7 @@ Where a customer's defaults and a tenant's changes live is settled by the storag
 
 ### What sluis requires of an upstream
 
-Any product that meets this is one more OpenID Connect connection ([0033](/decisions/0033-customer-connections/#a-pool-per-customer-boundary)); sluis has no code for a named product ([0025](/decisions/0025-integrations/#the-rule)). The tests sign in through a real identity provider run beside the installation ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), so sluis keeps no accounts even in tests.
+Any product that meets this can be the one upstream of a customer installation ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)); sluis has no code for a named product ([0025](/decisions/0025-integrations/#the-rule)). The tests sign in through a real identity provider run beside the installation ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), so sluis keeps no accounts even in tests.
 
 1. **OpenID Connect Core and discovery,** the authorization code flow with PKCE (S256), a signed ID token, and the `iss` response parameter of RFC 9207.
 2. **A subject claim that is stable and never reassigned,** at most 255 characters, named in the connection ([0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)). An e-mail address is not one.
@@ -41,13 +41,13 @@ Any product that meets this is one more OpenID Connect connection ([0033](/decis
 6. **OpenID Connect back-channel logout with `sid`,** and a way to say that an account is disabled or deleted ([0034](/decisions/0034-end-users-and-upstream-signals/#upstream-signals)).
 7. **`email_verified` truthfully,** because a policy may read it; sluis never links by it.
 8. **No linking of accounts by e-mail address,** and no merging of two accounts of one person into one `sub` unless the person links them themselves in the upstream. Two upstream accounts are two people to sluis ([0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)).
-9. **A multi-factor proof relayed from a corporate login never raises `acr` in sluis's tokens on its own.** The upstream reports what it verified itself in `acr` and `amr`, and a proof made further behind it travels as a separate claim that sluis does not read for assurance. `acr` rises only for what sluis verifies: the upstream's answer to a step-up request, mapped and capped by the connection's `assurance` ([0033](/decisions/0033-customer-connections/#connection-trust), [0017](/decisions/0017-identity-and-sign-in/#step-up)).
+9. **A multi-factor proof relayed from a corporate login never raises `acr` in sluis's tokens on its own.** The upstream reports what it verified itself in `acr` and `amr`, and a proof made further behind it travels as a separate claim that sluis does not read for assurance. `acr` in sluis's tokens is the upstream's own `acr`, mapped and capped by the connection's `assurance`; a relayed multi-factor proof never raises it above that cap ([0033](/decisions/0033-customer-connections/#connection-trust), [0017](/decisions/0017-identity-and-sign-in/#step-up)).
 
 An upstream outage stops new sign-ins and silent renewals; tokens already issued stay valid until they expire ([REQ-OPS-014](/requirements/ops/#REQ-OPS-014)). sluis states no uptime figure for the upstream.
 
 ### Configuration
 
-Where a customer's defaults and a tenant's changes live follows the storage classes ([0004](/decisions/0004-the-data-model/#storage-classes)). Defaults are config, which IaC or the publishing pipeline writes as signed documents under review: the boundary's upstreams, the client templates with the bounds on what a tenant may change, and the rate bounds. A tenant's own records are durable kinds of that tenant, written through the API by their one owner inside those bounds ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)): its connections and domains by `session`, its clients and settings by `exchange`. The customer-identity module makes those calls as a product, for its own tenant, with a grant sealed for that tenant ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). This record adds only the boundary: the module owns organisations and the tenants' screens, and sluis owns the tokens.
+Where a customer's defaults and a tenant's changes live follows the storage classes ([0004](/decisions/0004-the-data-model/#storage-classes)). Defaults are config, which IaC or the publishing pipeline writes as signed documents under review: the boundary's upstreams, the client templates with the bounds on what a tenant may change, and the rate bounds. A tenant's own records are durable kinds of that tenant, written through the API by their one owner inside those bounds ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)): its clients and settings by `exchange`. The customer-identity module makes those calls as a product, for its own tenant, with a grant sealed for that tenant ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). This record adds only the boundary: the module owns organisations and the tenants' screens, and sluis owns the tokens.
 
 ## Consequences
 
@@ -55,7 +55,7 @@ Where a customer's defaults and a tenant's changes live follows the storage clas
 - sluis depends on the upstream's availability for every sign-in and every daily renewal. The cost is accepted: the alternative is hosting accounts.
 - A product that cannot meet the contract (no stable subject, no `prompt=none`) cannot be an upstream. A product that cannot broker SAML reopens [REQ-FED-009](/requirements/fed/#REQ-FED-009).
 - The contract is a list of requirements on a product, which sluis can check only by the behaviour it sees. The checks are the strict validation of [REQ-FED-001](/requirements/fed/#REQ-FED-001) to [REQ-FED-017](/requirements/fed/#REQ-FED-017) and [REQ-CIAM-018](/requirements/ciam/#REQ-CIAM-018) and [REQ-CIAM-019](/requirements/ciam/#REQ-CIAM-019).
-- A customer's change of connection or client takes effect at once, because it is a write to a durable kind and not a change to config under review.
+- A customer's change of client takes effect at once, because it is a write to a durable kind and not a change to config under review. A change of the customer's own identity provider is made in the broker and needs nothing from sluis.
 
 ## Roads not taken
 
@@ -63,7 +63,7 @@ Where a customer's defaults and a tenant's changes live follows the storage clas
 - **Social providers connected to sluis directly.** One connector per provider, each with its own quirks and no consumer, when the upstream already brokers them.
 - **A SAML service-provider connector in sluis.** A second protocol stack to defend for a need the upstream can meet; the records stay out of scope.
 - **An adapter per named product.** It puts vendor code in core, which [0025](/decisions/0025-integrations/#the-rule) forbids; a written contract does the same without it.
-- **A customer's connections and clients as config, a pull request per customer.** One organisation's change would wait for a review and a release of the whole estate, and a tenant would appear in config, against [principle 17](/principles/#17-where-a-thing-is-written-decides-its-class).
+- **A customer's clients as config, a pull request per customer.** One organisation's change would wait for a review and a release of the whole estate, and a tenant would appear in config, against [principle 17](/principles/#17-where-a-thing-is-written-decides-its-class).
 
 ## Follow-ups
 

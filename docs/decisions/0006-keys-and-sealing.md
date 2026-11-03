@@ -1,4 +1,4 @@
-# 0006 — key@ holds a boundary's keys: it seals, opens and signs in place, with three data keys per tenant and one key per purpose and algorithm
+# 0006 — key@ holds a boundary's keys: it seals, opens and signs in place, with four data keys per tenant and one key per purpose and algorithm
 
 **Status:** Accepted
 **Date:** 2026-11-03
@@ -49,7 +49,7 @@ A key is shared between two uses only when all of these are equal: **the audienc
 - **There is one key per purpose and per algorithm.** An asymmetric key never serves two purposes, and a key that issues certificates never signs tokens. Several audiences of one purpose share its key: two audiences of the token purpose need one ES384 key, and an audience that needs RS256 gets a key of its own because the algorithm differs.
 - **The signing purposes are separate keys:** the token-signing key; an X.509 intermediate for each trust domain; the SSH user CA and the SSH host CA; the log key of each audit log. Each is a P-384 key.
 - **A boundary's one symmetric KMS key is shared by all its data keys,** each wrap under its own encryption context ([Keys per boundary on AWS](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). Sharing is safe there because the context names the boundary, the tenant and the purpose, and the key policy lets only `key@` use the key.
-- **A tenant has no authority key and no wrapping key of its own.** It has three data keys ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)). A party that needs authority keys of its own is a boundary, not a tenant ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
+- **A tenant has no authority key and no wrapping key of its own by default.** It has four data keys ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)). A tenant that is declared to keep its keys in a customer account has wrapping keys and an issuer signing key in that account ([Where a tenant's keys live](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)); any other party that needs authority keys of its own is a boundary ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
 - **Boundaries never share keys.** Two boundaries on one engine are separated by wrapping keys of their own, for example a second card per board ([0008](/decisions/0008-boundaries-and-tenants/#the-ladder)).
 - **Purposes outside the baseline are enabled on use,** each a dedicated key. A purpose an installation does not enable gets no key and no slot, and `sluis config check` refuses an enabled purpose with no key or slot and a collision of two purposes on one slot.
 
@@ -83,7 +83,7 @@ A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust dom
 
 | Key | Type | Purpose |
 |---|---|---|
-| Symmetric | AES-256 | Wraps every data key of the boundary: the tenants' `data`, `pseudonym` and `evidence` keys, and the boundary's `grant`, `cookie`, `mac` and `data` keys |
+| Symmetric | AES-256 | Wraps every data key of the boundary: the tenants' `data`, `pseudonym`, `pairwise` and `evidence` keys, and the boundary's `grant`, `cookie`, `mac` and `data` keys |
 | Token signing | P-384 | ES384 tokens ([The token-signing key](/decisions/0006-keys-and-sealing/#the-token-signing-key)) |
 | X.509 intermediate | P-384 | One per trust domain, for `ca` |
 | SSH user CA | P-384 | `ssh-ca` |
@@ -95,6 +95,17 @@ A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust dom
 - **KMS automatic rotation** applies to the symmetric key.
 - **The topology is a KMS intermediate per environment boundary,** certified through a root that ritueel holds.
 - **The key that wraps a backup archive is not the symmetric key.** It is a dedicated KMS key, enabled on use, that may live in another account, and only the restore role may decrypt with it. `key@` calls `GenerateDataKey` under it for `exporter@`, and the archive is encrypted with AES-256-GCM under the key it returns ([0010](/decisions/0010-backup-and-recovery/#the-archive-key)). It adds a seventh KMS key where an installation takes backups and does not change the baseline of 1 + 5.
+
+### Where a tenant's keys live
+
+The design supports two locations, chosen per tenant by a declaration on its `Tenant` item. Which one a customer gets is a contract or legal choice made outside the design, and nothing in the design waits on it.
+
+- **Operator-held is the default** ([REQ-KEYS-074](/requirements/keys/#REQ-KEYS-074)). The tenant's keys sit under the installation's own KMS keys, as in [Keys per boundary on AWS](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws), and its issuer signs with the token-signing key of its boundary.
+- **Customer account.** The KMS keys that wrap the tenant's `data`, `pseudonym`, `evidence` and `pairwise` keys, and the tenant's issuer signing key, live in an AWS account dedicated to that customer. The account can be registered in the operator's AWS organisation, or belong to the customer. `key@` uses those keys cross-account, through the key policy or a grant that covers exactly the operations it needs: Encrypt, Decrypt, GenerateDataKey, Sign and GetPublicKey, and no other ([REQ-KEYS-068](/requirements/keys/#REQ-KEYS-068)). sluis holds no long-lived credential for that account ([REQ-KEYS-069](/requirements/keys/#REQ-KEYS-069)).
+- **Moving a tenant into a customer account re-wraps its keys** under the customer's KMS key during the move ceremony ([REQ-KEYS-070](/requirements/keys/#REQ-KEYS-070)). Its issuer host and its `pairwise` key stay the same, so its subjects survive the move ([0032](/decisions/0032-customer-identity-installations/#moving)).
+- **Revocation fails closed, for that tenant only.** If the customer revokes or disables the grant, that tenant's seals, opens and signs stop and its calls answer `unavailable`; the other tenants are unaffected ([REQ-KEYS-071](/requirements/keys/#REQ-KEYS-071)). `key@` drops that tenant's cached data keys as soon as it sees the grant lost ([The cache](/decisions/0006-keys-and-sealing/#the-cache)). This is the customer's kill switch, so a lost grant is audited and alerted and never worked around ([REQ-SEC-032](/requirements/sec/#REQ-SEC-032), [REQ-SEC-033](/requirements/sec/#REQ-SEC-033)).
+- **Crypto-shredding.** Deleting the customer's key shreds that tenant's data and evidence, which is the customer's retention lever ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
+- **Scope.** This applies to installations on AWS, serverless and EKS. The three-board installation keeps its keys on the cards.
 
 ### Keys per board
 
@@ -157,10 +168,10 @@ sequenceDiagram
 ### Sign and Mac
 
 - **`Sign(purpose, content, grant)` signs in place** with the key of the purpose ([Keys sign in place](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). A purpose that carries an authorised effect, a mint or an artifact signature, needs the grant of [0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants).
-- **`Mac(purpose, input, grant)` makes a keyed hash with HMAC-SHA384** over a data key: `mac` (boundary) for link ids, upstream session ids, pairwise subjects and the hashed index entries of sealed kinds, or `pseudonym` (tenant) for audit pseudonyms. The caller names a label for each use, and `key@` binds the label into the input, so two uses never produce the same hash for the same input. The key never leaves `key@`.
+- **`Mac(purpose, input, grant)` makes a keyed hash with HMAC-SHA384** over a data key: `mac` (boundary) for link ids, upstream session ids and the hashed index entries of sealed kinds, `pseudonym` (tenant) for audit pseudonyms, or `pairwise` (tenant) for pairwise subjects. The caller names a label for each use, and `key@` binds the label into the input, so two uses never produce the same hash for the same input. The key never leaves `key@`.
 - **There is no `LinkKey` kind and no extra KMS key for hashing.** A KMS `GenerateMac` key would need one key for each purpose and boundary because it takes no encryption context, and would make two mechanisms for one operation.
-- **The `mac` key has no new generation in place.** Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all; replacing it is a migration that makes them again ([0019](/decisions/0019-person-and-upstream-link/#the-records)).
-- **Pairwise subjects use `mac` with a `pairwise` label and are never rotated** ([0034](/decisions/0034-end-users-and-upstream-signals/#pairwise-subjects)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
+- **The `mac` key has no new generation in place.** Link ids and upstream session ids are made under it, so a new key would change them all; replacing it is a migration that makes them again ([0019](/decisions/0019-person-and-upstream-link/#the-records)).
+- **A pairwise subject is `Mac(pairwise, the person's stable id)` over the tenant's `pairwise` key and is never rotated** ([REQ-KEYS-072](/requirements/keys/#REQ-KEYS-072), [0034](/decisions/0034-end-users-and-upstream-signals/#subjects-and-sectors)). The key moves with its tenant, re-wrapped and never replaced ([REQ-KEYS-073](/requirements/keys/#REQ-KEYS-073), [0032](/decisions/0032-customer-identity-installations/#moving)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
 
 ### Data keys
 
@@ -170,13 +181,14 @@ A data key is a software AES-256 key. `key@` makes it, keeps it only wrapped, an
 |---|---|---|
 | `data` | One per tenant | Personal and operational data of the tenant |
 | `pseudonym` | One per tenant, rolled by epoch | Keyed hashes of the tenant: audit pseudonyms |
+| `pairwise` | One per tenant, never rotated | Pairwise subjects of the tenant |
 | `evidence` | One per tenant | Audit and usage evidence of the tenant |
 | `grant` | One per boundary | Sealed grants |
 | `cookie` | One per boundary | Session cookies |
-| `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and pairwise subjects |
+| `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and the hashed index entries of sealed kinds |
 | `data` | One per boundary, tenant `-` | The sealed kinds that have no tenant in their address |
 
-- **Each tenant has three data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
+- **Each tenant has four data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
 - **A sealed kind is sealed under the `data` key of its address's tenant.** The directory kinds and the connections and apps made through a UI or API flow (`DirectoryUser`, `DirectoryGroup`, `DirectoryMembership`, `DirectoryConnection`, `MinterConnection`, `GitHubApp`, `SlackConnection`, `EntraConnection` and the desired state) belong to a tenant, the operator's own company included ([0008](/decisions/0008-boundaries-and-tenants/#tenants)), so a tenant's exit shreds them with the rest of its personal data. The desired state is sealed for the tenant that owns the container it describes, even when people of another company are in it ([0026](/decisions/0026-reconcilers/#the-desired-state)). Config is never sealed and has no tenant.
 - **A sealed kind that has no tenant in its address is sealed under the boundary's `data` key** (tenant `-`). In the registry that is `EnrolmentToken`, the key of a host's enrolment token, and `PendingEnrolment`, a host's request waiting for approval, and nothing else. The wrap has the same purpose name as the tenant's `data` key and a different address, so the two never meet.
 - **A data key is not a KMS key.** On AWS it is made by `GenerateDataKey` under the boundary's one symmetric key; on boards `key@` generates it in software. Either way only the wrapped copy is stored, and the unwrapped key lives in `key@`'s memory ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
@@ -219,7 +231,7 @@ flowchart LR
 
 ### Erasing a tenant
 
-- **A tenant's exit deletes its `data` and `pseudonym` wraps at once,** every generation and every recipient, and `key@` drops the cached entries. Every value sealed for the tenant stops opening, because the wrap was the only route to the key. A backup holds the sealed values and the wraps as they were; a restore re-applies each erasure that audit records after the archive was taken ([0010](/decisions/0010-backup-and-recovery/#roll-forward)), and an archive's own copy of a wrap leaves with the archive's retention.
+- **A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once,** every generation and every recipient, and `key@` drops the cached entries. Every value sealed for the tenant stops opening, because the wrap was the only route to the key. A backup holds the sealed values and the wraps as they were; a restore re-applies each erasure that audit records after the archive was taken ([0010](/decisions/0010-backup-and-recovery/#roll-forward)), and an archive's own copy of a wrap leaves with the archive's retention.
 - **Its `evidence` wrap is deleted when the evidence retention ends.** Evidence never shares a key with personal data and outlives it: a bill can be disputed after the customer has left, and finance keeps usage for years. The retention is declared in audit's configuration, the `AuditLog` config kind ([0029](/decisions/0029-the-audit-log/#retention)).
 - **The boundary's keys are not touched.** A tenant that leaves one boundary and stays in another keeps its keys in the other.
 - **An erasure is an audit fact,** and the tenant lifecycle is in [0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle).
@@ -274,10 +286,10 @@ flowchart LR
 
 - **A seal or an open costs a hop to `key@`,** which the cache makes a memory operation after the first use of a data key. On Lambda the hop is an invoke; its cost for session cookies was measured in [#1179](https://github.com/truvity/sluis/issues/1179): on 2026-11-03, a whole warm sign-in takes about 0.40 s at p50 and 0.49 s at p99, and about 0.29 s and 0.36 s with concurrent reads.
 - **`key@` is the one place where keys are used.** A flaw in a work actor yields what the actor is using now, not a key it could replay later. A compromised `key@` yields its cached data keys and the use of the cards or KMS, and not the stored data, which `store@` holds ([principle 16](/principles/#16-few-credential-holders)).
-- **A tenant is erased by deleting two wraps,** and the evidence outlives it by a retention that audit declares. The evidence retention must be declared and at least as long as the longest duty, and the evidence key outlives the personal-data keys by that difference.
+- **A tenant is erased by deleting three wraps,** and the evidence outlives it by a retention that audit declares. The evidence retention must be declared and at least as long as the longest duty, and the evidence key outlives the personal-data keys by that difference.
 - **A tenant's directory and connections go with it.** The directory facts and the connections and apps a tenant made, such as its directory, its account at a provider that sluis mints for and its chat workspace, are sealed under its `data` key, so its exit shreds them with its other personal data; only `EnrolmentToken` is sealed under the boundary's `data` key.
 - **The backup archive is encrypted under a key of its own,** in the approved set. Stock `age` and similar tools no longer open it, so the archive format has a reference page with test vectors. It adds a KMS key where an installation takes backups on AWS and none on a board.
-- **Each tenant adds three wraps per recipient** (three per KMS key on AWS, and a card plus the recovery recipient per board on boards). A new board costs one rewrap pass over every data key.
+- **Each tenant adds four wraps per recipient** (four per KMS key on AWS, and a card plus the recovery recipient per board on boards). A new board costs one rewrap pass over every data key.
 - **KMS sees a request per cache miss,** not per sealed value, so the KMS request volume follows the number of active (tenant, purpose) pairs and the cache's time to live.
 - **A signing key service is faster than a card.** A software key is for development and CI only.
 - **A client that needs RS256 or PS256 is served** without moving the installation off ES384, at the cost of an RSA key to hold, rotate and publish for each exception and a larger token for that audience. PS256 on a card costs seconds per signature.
@@ -307,8 +319,13 @@ flowchart LR
 - **The archive key made under the boundary's symmetric KMS key.** The restore role would become a second principal on the key that only `key@` may use, and the archive would be lost with the account.
 - **A second flow between boards for the PIN release, or none at all.** A listener from `key@` to `key@` is a second inter-node port against [0003](/decisions/0003-units-transports-and-fusion/#calls-between-nodes); dropping the release needs a person at every reboot and rolling update, against [principle 7](/principles/#7-a-person-only-where-a-person-adds-safety).
 - **A boundary-wide key for the directory and connection kinds.** An exit would not shred a tenant's directory, and `GitHubApp` of the operator would have no natural owner; a company, the operator's included, is a tenant.
-- **A KMS key, or a card slot, per tenant.** Keys and slots are few and each needs a policy; a software data key wrapped under the boundary's key gives the same erasure for no new key and no new policy. A per-tenant signing key is a customer boundary, not a tenant.
-- **One data key per tenant.** An exit would shred the evidence that has to outlive the personal data, so there are three, one per purpose.
+- **A KMS key, or a card slot, for every tenant.** Keys and slots are few and each needs a policy; a software data key wrapped under the boundary's key gives the same erasure for no new key and no new policy. A tenant gets KMS keys of its own only when it is declared to keep them in a customer account.
+- **One data key per tenant.** An exit would shred the evidence that has to outlive the personal data, so there are four, one per purpose.
+- **Pairwise subjects under the tenant's `pseudonym` key.** That key rolls every epoch, so every subject would change at each roll.
+- **Pairwise subjects under the boundary's `mac` key.** That key is shared by every tenant of the boundary, so it cannot move with one tenant without handing over the other tenants' subjects, and a promoted tenant would get new subjects.
+- **A tenant's keys in a customer account for every tenant.** It costs an account, a key policy and a cross-account call path for each tenant, and most tenants need none of it; the operator-held location is the default.
+- **A long-lived credential for a customer account.** It would be a secret that sluis holds and a customer cannot revoke by one act; a key policy or grant that the customer can withdraw is the kill switch.
+- **Working around a revoked grant.** A fallback to operator-held keys would defeat the customer's control; the tenant's calls answer `unavailable` until the customer restores the grant.
 - **Evidence under a boundary-wide key.** A tenant's evidence could never be shredded alone when its retention ends.
 - **Grants sealed with the card's key-agreement key.** Every grant would cost an ECDH on the card, about 7 a second per card; a boundary data key is cached and costs a memory operation.
 - **A KMS HMAC key for keyed hashes on AWS, and a data key on boards.** Two mechanisms for one operation, and `GenerateMac` takes no encryption context, so each purpose and boundary would need a key.

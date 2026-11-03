@@ -19,8 +19,8 @@
 //     linked kinds exist; DataKeyWrap lists the data key purposes of keys.yaml;
 //   - keys: closed fields; every algorithm declared; the AWS baseline of one symmetric key and five P-384
 //     keys; a signing or key-agreement key has exactly one using actor; the card slot plan has no
-//     collision and covers every purpose that has a slot; the data key purposes are three per tenant
-//     (data, pseudonym, evidence) and four per boundary (grant, cookie, mac, data); a sealed kind
+//     collision and covers every purpose that has a slot; the data key purposes are four per tenant
+//     (data, pseudonym, pairwise, evidence) and four per boundary (grant, cookie, mac, data); a sealed kind
 //     with no tenant is sealed under the boundary's `data` key, so its writer and readers use it;
 //   - across the three: every user of a key purpose is an actor and lists that purpose in its
 //     `key_purposes` with ops the purpose allows, and the reverse; every actor that writes a sealed
@@ -89,7 +89,7 @@ const KEY_TOP = ['schema', 'checked', 'algorithms', 'purposes', 'slot_plan', 'da
 const PURPOSE_FIELDS = ['name', 'kind', 'algorithm', 'enabled', 'ops', 'aws', 'board', 'users', 'notes'];
 const ALGO_FIELDS = ['family', 'curve', 'status', 'note'];
 const PIV_SLOTS = new Set(['9a', '9c', '9d', '9e', ...Array.from({ length: 20 }, (_, i) => (0x82 + i).toString(16))]);
-const TENANT_PURPOSES = ['data', 'pseudonym', 'evidence'];
+const TENANT_PURPOSES = ['data', 'pseudonym', 'pairwise', 'evidence'];
 const BOUNDARY_PURPOSES = ['grant', 'cookie', 'mac', 'data'];
 const ERASED = { tenant: ['tenant exit', 'end of the evidence retention'], boundary: ['never'] };
 
