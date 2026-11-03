@@ -7,6 +7,7 @@
 #   name     the module path (Go), the crate (Rust) or the package or platform API (TypeScript)
 #   for      what sluis uses it for
 #   needed_by  the record that needs the capability (the list itself is approved by review of this file)
+#   scope    optional: the actors or the use that the approval is limited to
 #   evaluated  optional: the version the choice was made at and its release date, and a floor when a
 #              security fix sets one ("floor" is the oldest version a lockfile may hold)
 #
@@ -17,45 +18,47 @@ schema: 1
 go:
   - { name: "crypto/... (standard library)", for: "ECDSA P-384, AES-256-GCM, SHA-2, HKDF, HMAC, X.509, TLS and the operating system's random generator (crypto/rand)", needed_by: "ADR 0006" }
   - { name: "golang.org/x/crypto/ssh", for: "OpenSSH keys and certificates in Go components and the CLI", needed_by: "ADR 0023" }
-  - { name: "github.com/go-piv/piv-go/v2", for: "YubiKey PIV in key-holder, and attestation verification in the CLI and the yubikey-attestation verifier", needed_by: "ADR 0012" }
+  - { name: "github.com/go-piv/piv-go/v2", for: "YubiKey PIV in key@ and its card driver, and attestation verification in the CLI and the yubikey-attestation verifier", needed_by: "ADR 0012" }
   - { name: "github.com/ProtonMail/go-crypto", for: "OpenPGP packets: the subkey request, the back-signature, detached signatures", needed_by: "ADR 0024" }
-  - { name: "filippo.io/age", for: "Backup archives and export drops (a named exception)", needed_by: "ADR 0006" }
-  - { name: "github.com/santhosh-tekuri/jsonschema/v6", for: "Validating configuration against the JSON Schema", needed_by: "ADR 0004" }
+  - { name: "github.com/santhosh-tekuri/jsonschema/v6", for: "Applying the generated JSON Schema to a configuration document before it is decoded", needed_by: "ADR 0004" }
+  - { name: "buf.build/go/protovalidate", for: "The protovalidate rules of every Protobuf message, after decoding: the authority in code (protovalidate-go)", needed_by: "ADR 0004" }
   - { name: "connectrpc.com/connect", for: "The Connect protocol, client and server", needed_by: "ADR 0002" }
   - { name: "google.golang.org/protobuf", for: "Protobuf encoding and decoding", needed_by: "ADR 0002" }
   - { name: "github.com/go-jose/go-jose/v4", for: "JWS, JWK and JWT: verifying tokens and client assertions, reading and writing key sets; never JWE", needed_by: "ADR 0017", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7 (five advisories against v4.1.6 and earlier, published 2026-10-30)" }
+  - { name: "github.com/go-jose/go-jose/v4/cipher", for: "AES key wrap (RFC 3394) of a data key for the key-agreement key of a board's card; the key-wrap function only", scope: "key@ only; AES-KW only; no JWE", needed_by: "ADR 0006", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7, as the module" }
   - { name: "github.com/zitadel/oidc/v3", for: "The OpenID Provider of session and exchange (pkg/op) and the relying party of the oidc upstream (pkg/client/rp)", needed_by: "ADR 0012", evaluated: "v3.51.16, 2026-10-15; floor v3.47.0 (advisory of 2026-08-24)" }
   - { name: "golang.org/x/oauth2", for: "The OAuth 2.0 client under the relying party of the oidc upstream", needed_by: "ADR 0017", evaluated: "v0.37.0, 2026-08-25" }
   - { name: "golang.org/x/mod/sumdb/note", for: "C2SP signed notes in writer and witness; the signer goes through the keys port", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
   - { name: "golang.org/x/mod/sumdb/tlog", for: "Hashes and tiles of a tiled log in writer and witness", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
   - { name: "filippo.io/torchwood", for: "C2SP checkpoints, cosignatures and tiles, and the tile client, in writer and witness", needed_by: "ADR 0029", evaluated: "v0.10.0, 2026-09-24 (before 1.0)" }
   - { name: "filippo.io/sunlight", for: "C2SP static-ct-api entries and checkpoints, in the issuance log of ca", needed_by: "ADR 0023", evaluated: "v0.10.2, 2026-10-26" }
-  - { name: "go.yaml.in/yaml/v3", for: "Reading the install file behind the strict profile of docs/reference/install-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
+  - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
 rust:
   - { name: "aws-lc-rs", for: "AES-256-GCM with RandomizedNonceKey, ECDSA P-384, HKDF, SHA-2 and the library's random generator", needed_by: "ADR 0006" }
   - { name: "rustls", for: "TLS, with the aws-lc-rs provider and no FIPS pin", needed_by: "ADR 0012" }
   - { name: "cedar-policy", for: "Parsing, validating and evaluating Cedar policy in policy", needed_by: "ADR 0007" }
-  - { name: "jsonschema", for: "Validating configuration against the JSON Schema", needed_by: "ADR 0004" }
-  - { name: "connectrpc", for: "The Connect protocol over Unix sockets, once spike S1 passes", needed_by: "ADR 0012" }
+  - { name: "jsonschema", for: "Applying the generated JSON Schema to a configuration document before it is decoded", needed_by: "ADR 0004" }
+  - { name: "prost-protovalidate", for: "The protovalidate rules of every Protobuf message, after decoding, in the Rust binaries. A community crate (Buf publishes none for Rust) and a named risk: pinned, and watched by the shared conformance vectors", needed_by: "ADR 0012", evaluated: "0.6.x, pinned; agreed with protovalidate-go on every document of the schema spike (#1177, 2026-11-03)" }
+  - { name: "connectrpc", for: "The Connect protocol over Unix sockets (spike S1 passed on 2026-11-01)", needed_by: "ADR 0012" }
   - { name: "zeroize", for: "Wiping secrets from memory when they are dropped", needed_by: "ADR 0012" }
   - { name: "jsonwebtoken (feature aws_lc_rs)", for: "Verifying JWS and JWT with an explicit algorithm list", needed_by: "ADR 0017", evaluated: "11.1.0, 2026-09-16" }
   - { name: "signed_note", for: "C2SP signed notes in indexer and reader; the P-384 verifier of the log key is a NoteVerifier on aws-lc-rs", needed_by: "ADR 0029", evaluated: "0.2.0, 2025-04-18 (repository changed 2026-10-27; a pinned revision needs a pull request to this file)" }
   - { name: "tlog_tiles", for: "C2SP checkpoints and tiles in indexer and reader", needed_by: "ADR 0029", evaluated: "0.2.0, 2025-04-18 (repository changed 2026-10-27; a pinned revision needs a pull request to this file)" }
-  - { name: "saphyr-parser", for: "Reading the install file behind the strict profile of docs/reference/install-file.md", needed_by: "ADR 0004", evaluated: "0.3.3, 2026-10-27" }
+  - { name: "saphyr-parser", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "0.3.3, 2026-10-27" }
   - { name: "ssh-key", for: "OpenSSH keys and certificates in ssh-ca, with a signing key that signs through the keys port", needed_by: "ADR 0023", evaluated: "0.6.7, 2024-10-15 (last stable); 0.7.0-rc.11, 2026-06-29. Condition: a stable 0.7, or 0.6.7 with the certificate interop tests, or ssh-ca in Go (rule R11)" }
   - { name: "aws-sdk-* (the AWS SDK for Rust)", for: "Calls to AWS services from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module", needed_by: "ADR 0012" }
 
 typescript:
-  - { name: "ajv (draft 2020-12 build)", for: "Validating configuration against the JSON Schema", needed_by: "ADR 0004" }
+  - { name: "ajv (draft 2020-12 build)", for: "Validating configuration against the generated JSON Schema", needed_by: "ADR 0004" }
   - { name: "WebCrypto (crypto.subtle) and WebAuthn (navigator.credentials)", for: "Cryptography and passkeys in the console's single-page application, from the browser", needed_by: "ADR 0017" }
-  - { name: "@connectrpc/connect", for: "The Connect client of the public API (connect-es)", needed_by: "ADR 0030" }
+  - { name: "@connectrpc/connect", for: "The Connect client of the audit reader's API (connect-es)", needed_by: "ADR 0028" }
   - { name: "jose", for: "Verifying tokens in the console's single-page application and in the verification demo", needed_by: "ADR 0017", evaluated: "6.2.14, 2026-10-29" }
 
 # Libraries that are not to be used, with the reason and the record that refuses them (needed_by: the record).
 refused:
   - { name: "yubikey (Rust crate)", reason: "Its own notice says it is unaudited and experimental (R7)", needed_by: "ADR 0012" }
-  - { name: "ykcs11 through cryptoki, for key-holder", reason: "It resets the card for every client when a second one appears and keeps a PIN copy that cannot be wiped", needed_by: "ADR 0012" }
+  - { name: "ykcs11 through cryptoki, for key@", reason: "It resets the card for every client when a second one appears and keeps a PIN copy that cannot be wiped", needed_by: "ADR 0012" }
   - { name: "gpg on a node", reason: "sluis builds the OpenPGP packets itself and the card signs; no gpg on a board", needed_by: "ADR 0024" }
   - { name: "A Go plugin (.so) or WebAssembly module in an actor", reason: "Plugins run out of process, always", needed_by: "ADR 0003" }
   - { name: "lestrrat-go/jwx, golang-jwt/jwt (Go)", reason: "A second JOSE library beside go-jose, which the OpenID Connect provider already needs", needed_by: "docs/reference/approved-libraries.md" }

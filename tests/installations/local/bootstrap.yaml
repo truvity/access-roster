@@ -1,0 +1,23 @@
+# The bootstrap file of store@ on the local installation (ADR 0011): the boundary `dev`, a
+# directory of signed config documents, and one rqlite node behind both engine ports.
+# Schema v1: https://sluis.id/reference/bootstrap-file/
+$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json
+boundary: dev
+start_timeout: 30s
+
+config_source: { driver: file, socket: /run/sluis/store/dev/config-source.sock }
+secret_source: { driver: credential, socket: /run/sluis/store/dev/secret-source.sock }
+durable: { driver: rqlite, socket: /run/sluis/store/dev/durable.sock }
+temp: { driver: rqlite, socket: /run/sluis/store/dev/temp.sock }
+
+# The pin of the key that signs the local config documents. The key is the test key of the
+# vectors on the signed config page; it guards nothing.
+publishers:
+  - kid: publisher-1
+    public_key: |
+      -----BEGIN PUBLIC KEY-----
+      MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdptVIkeiLoSFwBZWL2/LzRofOQCC7BA2
+      BYGuTFE2wadFKaURYGvjspVnyguB6GsAACzu7DrWqKQHCCIbBKyxDEBjjhO8P2aV
+      MqgSE/MMGEjXQqtRIMj/MKggB9rQK8MI
+      -----END PUBLIC KEY-----
+    spki_sha384: "db0b54d40d09fffd2c296f8cadfa8454b7d4f2615a893a9b2f877621132c09e00fd8f33f199abc12b2bc1248246ece58"
