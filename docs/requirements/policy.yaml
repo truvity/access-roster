@@ -190,7 +190,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1212]
     verification:
       - {kind: integration-test, ref: "any other actor asks key@ to seal a grant; refused"}
   - id: REQ-POLICY-016
@@ -202,7 +202,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1212]
     verification:
       - {kind: integration-test, ref: "two uses of one grant for a mint or a signature: the second finds the marker and is refused"}
   - id: REQ-POLICY-017
@@ -215,7 +215,7 @@ requirements:
     runtimes: all
     actors: [policy]
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: test-vectors, ref: "combine vectors: a forbid in the RegulatedPartyPolicy overrides a permit in the Policy, and the reverse"}
   - id: REQ-POLICY-018
@@ -227,7 +227,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a break-glass link is written as a temp item that expires in 1 hour by default and is refused at 25 hours"}
   - id: REQ-POLICY-019
@@ -240,6 +240,6 @@ requirements:
     runtimes: all
     actors: [policy]
     standards: []
-    features: ["design"]
+    issues: [1212]
     verification:
       - {kind: integration-test, ref: "a PredefinedPolicyLink is written; the next decision uses the recompiled set"}

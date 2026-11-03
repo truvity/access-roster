@@ -600,7 +600,7 @@ requirements:
     runtimes: all
     actors: [session]
     standards: []
-    features: ["design"]
+    issues: [1221]
     verification:
       - {kind: integration-test, ref: "a SessionChain is temp and hashed; a scan finds no refresh token value"}
   - id: REQ-SESS-045

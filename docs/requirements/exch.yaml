@@ -216,7 +216,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "a scan of the store, the logs and the audit log after a mint finds no credential value"}
   - id: REQ-EXCH-017
@@ -229,6 +229,6 @@ requirements:
     runtimes: all
     actors: [store]
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "a MinterTarget one step outside each bound in turn is refused on write"}

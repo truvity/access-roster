@@ -1108,7 +1108,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "a connection whose discovery document names host A: the adapter's call to host B is refused before it leaves the adapter"}
   - id: REQ-ISO-082
@@ -1185,7 +1185,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1213]
     verification:
       - {kind: integration-test, ref: "dependency check: no work actor binary links a config source, a secret source or a driver package"}
   - id: REQ-ISO-088
@@ -1197,7 +1197,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1213]
     verification:
       - {kind: integration-test, ref: "the generated units and roles for ca and ssh-ca are distinct on every runtime"}
   - id: REQ-ISO-089
@@ -1209,7 +1209,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1213]
     verification:
       - {kind: integration-test, ref: "a fused unit's calls between actors pass through the same interceptors as a remote call"}
   - id: REQ-ISO-090
@@ -1247,7 +1247,7 @@ requirements:
     runtimes: all
     actors: [entry]
     standards: []
-    features: ["design"]
+    issues: [1215]
     verification:
       - {kind: integration-test, ref: "a fuzzing job runs on every release candidate and its corpus is kept"}
   - id: REQ-ISO-093
@@ -1260,7 +1260,7 @@ requirements:
     runtimes: all
     actors: [entry]
     standards: []
-    features: ["design"]
+    issues: [1215]
     verification:
       - {kind: integration-test, ref: "entry has no plugin interface; a dependency check finds no dynamic loader"}
   - id: REQ-ISO-094
@@ -1273,7 +1273,7 @@ requirements:
     runtimes: all
     actors: [entry]
     standards: []
-    features: ["design"]
+    issues: [1215]
     verification:
       - {kind: integration-test, ref: "entry attempts a write to every mounted path; refused"}
 
@@ -1313,7 +1313,7 @@ requirements:
     runtimes: ["serverless"]
     actors: [entry]
     standards: []
-    features: ["design"]
+    issues: [1215]
     verification:
       - {kind: integration-test, ref: "a connection to entry from outside the sandbox is impossible; the adapter's request is served"}
   - id: REQ-ISO-099
@@ -1325,7 +1325,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1213]
     verification:
       - {kind: integration-test, ref: "the installation check refuses a fusion that names store@, key@ or exporter@ with a work actor"}
       - {kind: integration-test, ref: "the same check refuses key@ with entry"}
@@ -1386,7 +1386,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1213]
     verification:
       - {kind: integration-test, ref: "with a replica in the same cell and one in another, calls go to the local one"}
 
@@ -1400,7 +1400,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "an adapter's disk, environment and memory between calls are scanned for connection credentials"}
   - id: REQ-ISO-107
@@ -1412,7 +1412,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1214]
     verification:
       - {kind: integration-test, ref: "the call graph check: no edge from an adapter to a core actor"}
   - id: REQ-ISO-108
@@ -1424,7 +1424,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1216]
     verification:
       - {kind: integration-test, ref: "two L1 boundaries on one engine: one boundary's key@ cannot unwrap the other's data keys"}
   - id: REQ-ISO-109
@@ -1436,6 +1436,6 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1216]
     verification:
       - {kind: integration-test, ref: "promote a test tenant: its values open under the new boundary and no longer under the old; the old copy is deleted after read-back"}

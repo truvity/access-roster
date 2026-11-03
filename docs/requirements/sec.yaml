@@ -371,7 +371,7 @@ requirements:
     runtimes: all
     actors: [entry]
     standards: []
-    features: ["design"]
+    issues: [1215]
     verification:
       - {kind: integration-test, ref: "a RateWindow id is a Mac output; the source address is not in the item"}
   - id: REQ-SEC-028
@@ -383,7 +383,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1207]
     verification:
       - {kind: integration-test, ref: "a TenantClient and a TenantConnection write that raise each rate in turn are refused"}
   - id: REQ-SEC-029

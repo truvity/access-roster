@@ -462,7 +462,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "a refused Open produces an audit fact that names the caller, the purpose and the reason and no value"}
   - id: REQ-KEYS-032
@@ -503,7 +503,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "the seal API takes no nonce; two seals of one value under one key differ"}
   - id: REQ-KEYS-035
@@ -516,7 +516,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "a new tenant gets exactly three DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
   - id: REQ-KEYS-036
@@ -555,7 +555,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "a cached entry is gone after its time to live and the next open calls the card or KMS"}
   - id: REQ-KEYS-039
@@ -567,7 +567,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: test-vectors, ref: "KeyPlan vectors: a time to live at the maximum is accepted and one second over is refused"}
   - id: REQ-KEYS-040
@@ -580,7 +580,7 @@ requirements:
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; the next open is refused"}
   - id: REQ-KEYS-041
@@ -593,7 +593,7 @@ requirements:
     runtimes: ["serverless"]
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "delete a tenant's wraps; a warm key@ function opens its data no later than the time to live afterwards"}
   - id: REQ-KEYS-042
@@ -619,7 +619,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1210]
     verification:
       - {kind: integration-test, ref: "the rotation job skips the mac purpose; a replacement is a migration that makes the values again"}
   - id: REQ-KEYS-044
@@ -682,7 +682,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1211]
     verification:
       - {kind: integration-test, ref: "an installation without the release-signing purpose has no such key or slot; enabling it adds exactly one"}
   - id: REQ-KEYS-049
@@ -694,7 +694,7 @@ requirements:
     status: planned
     runtimes: ["serverless", "kubernetes"]
     standards: []
-    features: ["design"]
+    issues: [1211]
     verification:
       - {kind: integration-test, ref: "registry check: the AWS baseline of 1 + 5 holds for the generated installation"}
   - id: REQ-KEYS-050
@@ -734,7 +734,7 @@ requirements:
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "a data key has one wrap per board and one for the recovery recipient; each opens it"}
   - id: REQ-KEYS-053
@@ -747,7 +747,7 @@ requirements:
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: test-vectors, ref: "wrap vectors: a wrap copied to another address fails to unwrap"}
   - id: REQ-KEYS-054
@@ -760,7 +760,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "two key@ instances create the same data key at once; one set of wraps exists and both seal with the winner's key"}
   - id: REQ-KEYS-055
@@ -773,7 +773,7 @@ requirements:
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "add a board: every data key gains a wrap for it and no sealed value changes"}
   - id: REQ-KEYS-056
@@ -786,7 +786,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "key@ is asked to open a wrap made for the recovery recipient; it has no key to do so"}
   - id: REQ-KEYS-057
@@ -799,7 +799,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1208]
     verification:
       - {kind: integration-test, ref: "a counter set near the limit produces a new generation, and older generations still open what they sealed"}
   - id: REQ-KEYS-058
@@ -839,7 +839,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1211]
     verification:
       - {kind: integration-test, ref: "the rotation job skips the audit-log and issuance-log purposes; a compromise procedure replaces one"}
   - id: REQ-KEYS-061
@@ -877,7 +877,7 @@ requirements:
     runtimes: all
     actors: [key]
     standards: []
-    features: ["design"]
+    issues: [1211]
     verification:
       - {kind: integration-test, ref: "a boundary with ca has an issuance-log key; one without ca has none"}
   - id: REQ-KEYS-064
@@ -902,7 +902,7 @@ requirements:
     status: planned
     runtimes: all
     standards: []
-    features: ["design"]
+    issues: [1211]
     verification:
       - {kind: integration-test, ref: "the witness holds no key credential; its cosignature verifies against the witness key of its format"}
   - id: REQ-KEYS-066
