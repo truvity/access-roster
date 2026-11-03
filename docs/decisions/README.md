@@ -96,11 +96,11 @@ Records are grouped by the layer of the product they belong to: the core, then t
 |-----|----------|--------|
 | [0031](0031-ciam-is-a-broker.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
 | [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
-| [0033](0033-customer-connections.md) | A domain routes to a connection only after DNS proof, a connection has a trust level and an assurance policy, and `idp_hint` chooses only among allowed connections | Accepted |
-| [0034](0034-end-users-and-upstream-signals.md) | An end user is the same person record as anyone else, with five states, erased by deleting its records, and pairwise subjects wait for a consumer | Accepted |
-| [0035](0035-customer-pages.md) | sluis serves a short list of customer pages from templates, themed per client and localised per request, on the host of the customer boundary | Accepted |
+| [0033](0033-customer-connections.md) | Customer connections run in a pool per customer boundary, and a domain routes only after DNS proof | Accepted |
+| [0034](0034-end-users-and-upstream-signals.md) | An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase | Accepted |
+| [0035](0035-customer-pages.md) | Customer pages are few, branded per client and login domain, and localised per request | Accepted |
 | [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state | Accepted |
-| [0037](0037-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
+| [0037](0037-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the hops to store@ and key@, the engines and the audit writer, and tokens stay signed in place meanwhile | Proposed |
 | [0038](0038-fapi-2-profile.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
 
 ### Quota module (later layer)
@@ -127,7 +127,6 @@ These records are superseded: the content of each moves into the record its stat
 | [0052](0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Superseded by 0039 |
 | [0053](0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Superseded by 0039 |
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
-| [0055](0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person.md) | Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client | Superseded by 0034 |
 
 ## Where the old records went
 

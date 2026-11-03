@@ -426,7 +426,7 @@ requirements:
   - id: REQ-FED-032
     area: FED
     statement: "A logout token with a sid MUST end the sluis sessions that were started from that upstream session."
-    rationale: "The upstream's session id is the key that ties its sign-out to sluis's sessions (ADR 0055)."
+    rationale: "The upstream's session id is the key that ties its sign-out to sluis's sessions (ADR 0034)."
     level: MUST
     source: standard
     status: planned
