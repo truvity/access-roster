@@ -615,6 +615,7 @@ type MacRequest struct {
 	Label         string                 `protobuf:"bytes,3,opt,name=label,proto3" json:"label,omitempty"`     // separates uses of the same purpose
 	Input         []byte                 `protobuf:"bytes,4,opt,name=input,proto3" json:"input,omitempty"`     // the value to hash
 	Epoch         string                 `protobuf:"bytes,5,opt,name=epoch,proto3" json:"epoch,omitempty"`     // YYYYMM for pseudonym
+	Grant         []byte                 `protobuf:"bytes,6,opt,name=grant,proto3" json:"grant,omitempty"`     // the sealed grant (0006: Mac(purpose, input, grant)); not checked tonight under D-5, boundary purposes are checked by rule only
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -682,6 +683,13 @@ func (x *MacRequest) GetEpoch() string {
 		return x.Epoch
 	}
 	return ""
+}
+
+func (x *MacRequest) GetGrant() []byte {
+	if x != nil {
+		return x.Grant
+	}
+	return nil
 }
 
 // MacResponse carries the keyed hash.
@@ -960,14 +968,15 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\fSignResponse\x12#\n" +
 	"\rsignature_raw\x18\x01 \x01(\fR\fsignatureRaw\x12#\n" +
 	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer\x12\x15\n" +
-	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\x80\x01\n" +
+	"\x06key_id\x18\x03 \x01(\tR\x05keyId\"\x96\x01\n" +
 	"\n" +
 	"MacRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12\x14\n" +
 	"\x05label\x18\x03 \x01(\tR\x05label\x12\x14\n" +
 	"\x05input\x18\x04 \x01(\fR\x05input\x12\x14\n" +
-	"\x05epoch\x18\x05 \x01(\tR\x05epoch\"\x1f\n" +
+	"\x05epoch\x18\x05 \x01(\tR\x05epoch\x12\x14\n" +
+	"\x05grant\x18\x06 \x01(\fR\x05grant\"\x1f\n" +
 	"\vMacResponse\x12\x10\n" +
 	"\x03mac\x18\x01 \x01(\fR\x03mac\",\n" +
 	"\x10PublicKeyRequest\x12\x18\n" +

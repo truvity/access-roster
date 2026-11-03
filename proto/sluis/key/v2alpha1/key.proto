@@ -89,6 +89,7 @@ message MacRequest {
   string label = 3;    // separates uses of the same purpose
   bytes input = 4;     // the value to hash
   string epoch = 5;    // YYYYMM for pseudonym
+  bytes grant = 6;     // the sealed grant (0006: Mac(purpose, input, grant)); not checked tonight under D-5, boundary purposes are checked by rule only
 }
 
 // MacResponse carries the keyed hash.
