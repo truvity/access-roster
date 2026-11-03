@@ -20,19 +20,21 @@ Kubernetes appears twice here. A **workload** in a cluster proves itself to slui
 
 | Kind | What it does for Kubernetes |
 |---|---|
-| `WorkloadVerifier` | The `k8s-sa-token` verifier driver of `exchange` checks a projected ServiceAccount token against the issuing cluster's published key set and returns `cluster`, `namespace` and `name` as attributes. It holds no secret ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
+| `WorkloadVerifier` | The `k8s-sa-token` verifier driver of `exchange` checks a projected ServiceAccount token against the issuing cluster's published key set and returns `cluster`, `namespace` and `name` as attributes. It holds no secret ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). It arrives at the parity milestone. |
 
-Signing in to the API server is a client profile: each cluster is one OIDC client (`k8s:<cluster>`) that reads the `groups` claim, and sluis lists those clusters for the person.
+Kubernetes has no adapter and no connection: nothing of a cluster is stored in sluis, and no credential for a cluster exists. The published key set is cached as the temp kind `VerifierKeyCache`, for as long as HTTP caching allows and 24 hours at most.
 
-sluis does **not** call `TokenReview`, which would need a kubeconfig per cluster; a published key set needs none. Nothing in sluis depends on a cluster checking a token: break-glass recovery is passkeys only ([Break-glass recovery](/security/break-glass/)). sluis also writes no Kubernetes objects; clusters pull what they need.
+Signing in to the API server is a client profile: each cluster is one OIDC client (`k8s:<cluster>`) that reads the `groups` claim, and sluis lists those clusters for the person. sluis has no minter for Kubernetes: the API server trusts sluis as an issuer, so a service-account token is not minted ([0025](/decisions/0025-integrations/#credential-minters)).
+
+sluis does **not** call `TokenReview`, which would need a kubeconfig per cluster; a published key set needs none. Nothing in sluis depends on a cluster checking a token: break-glass recovery is passkeys only ([Break-glass recovery](/security/break-glass/)). sluis also writes no Kubernetes objects, except a Secret that exporter@ writes when an installation chooses the direct path ([0009](/decisions/0009-export/#destinations)); clusters pull what they need.
 
 ## What sluis asks the vendor for
 
-**For the verifier:** the cluster's issuer URL and the address of its public key set. A cluster is declared once; a bad row stops the verifier at start.
+**For the verifier:** the cluster's issuer URL and the address of its public key set. A cluster is declared once in `ExchangeTrust`; a row that is malformed is refused when the configuration loads, and `sluis config check` reports it before it is published.
 
 **For the API server sign-in:** nothing from the cluster. The cluster's owner points the API server at sluis's issuer URL, the client id, the username claim and the `groups` claim, and binds RBAC to the group names.
 
-The signing algorithm has to match. sluis signs with ES384 by default, and some API servers accept only RS256; the per-audience RS256 exception covers them with its own RSA key ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)).
+The signing algorithm has to match. sluis signs with ES384 by default, and some API servers accept only RS256; the per-audience RS256 exception covers them with its own RSA key ([0006](/decisions/0006-keys-and-sealing/#named-exceptions)).
 
 ## What policy controls
 
@@ -57,17 +59,15 @@ Names and keys are [illustrative](/integrations/#examples-are-illustrative).
 4. A person runs `sluis kubeconfig`; a CI job uses the exchange action with `audiences: k8s:<cluster>`.
 
 ```yaml
-# /etc/sluis/install.yaml (example)
-integrations:
-  kubernetes:
-    prod:
-      actors: [verifier]
-      issuer: https://oidc.cluster.example.org/id/EXAMPLE
-      jwks_uri: https://oidc.cluster.example.org/id/EXAMPLE/keys
-      api_server_client:
-        id: k8s:prod
-        groups_claim: groups
-        signing_alg: ES384        # or RS256 for an API server that accepts nothing else
+# ExchangeTrust and InstallationClient, config kinds (example)
+clusters:
+  prod:
+    issuer: https://oidc.cluster.example.org/id/EXAMPLE
+    jwks_uri: https://oidc.cluster.example.org/id/EXAMPLE/keys
+client:
+  id: k8s:prod
+  groups_claim: groups
+  signing_alg: ES384        # or RS256 for an API server that accepts nothing else
 ```
 
 Keep the cloud's own cluster access as the cluster's break-glass path until a policy-granted admin has used the cluster, and test it on a schedule.
