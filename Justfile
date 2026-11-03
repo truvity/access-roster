@@ -167,6 +167,47 @@ actors-write: site-install
 check-registries: site-install
     tools/checks/registries.mjs
 
+# The generated pages, each a block between markers on a page with a hand-written introduction. The
+# check fails while the block is stale; the -write recipe rewrites it. Links to decision records on the
+# page are checked too: a record or heading that does not exist is an error.
+
+# The vocabulary page, docs/concepts/index.md, from docs/glossary.yaml: the terms by category and the retired terms.
+check-glossary-page: site-install
+    tools/checks/glossary-page.mjs
+
+# Rewrite the generated block of docs/concepts/index.md.
+glossary-write: site-install
+    tools/checks/glossary-page.mjs --write
+
+# The kinds page, docs/reference/kinds.md, from the kind registry: class, scope, treatment, profile, writer,
+# readers, time to live, exportable, backed up, the layered groups and what is not data.
+check-kinds-page: site-install
+    tools/checks/kinds-page.mjs
+
+# Rewrite the generated block of docs/reference/kinds.md.
+kinds-write: site-install
+    tools/checks/kinds-page.mjs --write
+
+# The rules page, docs/reference/rules.md, from the kind registry (actor x kind x verb) and the actor registry (the call graph).
+check-rules-page: site-install
+    tools/checks/rules-page.mjs
+
+# Rewrite the generated block of docs/reference/rules.md.
+rules-write: site-install
+    tools/checks/rules-page.mjs --write
+
+# The keys page, docs/reference/keys.md, from the key registry and the actor registry: purposes per algorithm, the
+# AWS baseline, the purposes enabled on use, the data keys and the board slot plan.
+check-keys-page: site-install
+    tools/checks/keys-page.mjs
+
+# Rewrite the generated block of docs/reference/keys.md.
+keys-write: site-install
+    tools/checks/keys-page.mjs --write
+
+# Rewrite every generated page of the registries (actors, vocabulary, kinds, rules, keys).
+pages-write: actors-write glossary-write kinds-write rules-write keys-write
+
 # An exception is a path exclude or skip_records rule of the glossary's `lint` section, a rule's
 # context_allow, or `terms-allow: <id>` on the line or the line before it. `--quiet` prints the summary only.
 # The retired terms of docs/glossary.yaml in the docs and the site content: WARN mode for now (every hit
@@ -190,7 +231,7 @@ check-selftest: site-install
     tools/checks/selftest.mjs
 
 # Every repository rule.
-check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-terms check-examples check-installations check-public check-yaml-ext check-mdx-pages check-agent-links
+check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-glossary-page check-kinds-page check-rules-page check-keys-page check-terms check-examples check-installations check-public check-yaml-ext check-mdx-pages check-agent-links
 
 # Everything a pull request must pass.
 check: check-rules site-check site-workers

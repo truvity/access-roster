@@ -52,11 +52,15 @@ const TREATMENTS = ['hashed', 'sealed', 'plain'];
 const PROFILES = ['Fixed', 'Operable', 'Tenant-adjustable', '-'];
 const MODULES = ['core', 'CIAM module', 'quota module'];
 const KIND_FIELDS = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'layer', 'links', 'writer', 'readers', 'exportable', 'backed_up',
-  'ttl', 'indexes', 'purposes', 'self_scoped', 'status', 'layer_module', 'notes'];
+  'ttl', 'indexes', 'purposes', 'self_scoped', 'status', 'layer_module', 'watched_by', 'notes'];
 const KIND_REQUIRED = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'writer', 'readers', 'exportable', 'backed_up'];
 const KIND_TOP = ['schema', 'checked', 'writers_outside_sluis', 'combine_rules', 'layered_groups', 'built_in', 'not_kinds', 'kinds'];
 const OUTSIDE = ['IaC', 'pipeline'];
-// The macros of a writer or a reader; a trailing parenthesis qualifies a name and is not read.
+// The contracts an adapter implements, as a reader's qualifier `(as <contract>)` names them. The qualifier limits
+// the macro `adapter-<vendor>` to the adapters whose `contracts` list the contract (tools/checks/rules-page.mjs);
+// any other trailing parenthesis is a label and is not read.
+const AS_CONTRACT = { 'credential minter': 'CredentialMinter', provisioner: 'Provisioner', 'facts source': 'FactsSource', upstream: 'Upstream', notifier: 'Notifier' };
+// The macros of a writer or a reader.
 const MACROS = ['every actor', 'every work actor', 'self', 'the actor named in the id', 'adapter-<vendor>'];
 const CONSOLE_KINDS = ['Switch', 'LogLevelOverride'];
 // The backup job: exporter@ reads every `backed_up: yes` kind as ciphertext, whatever `readers` lists.
@@ -147,7 +151,7 @@ for (const [i, p] of (Array.isArray(keys.purposes) ? keys.purposes : []).entries
   if (!ENABLED.includes(p.enabled)) error(`${at}: enabled must be one of ${ENABLED.join(', ')}`);
   if (!isStrList(p.ops) || !p.ops.length || p.ops.some((o) => !OPS.includes(o))) error(`${at}: ops must list ${OPS.join(', ')}`);
   if (p.kind === 'signing' && !(p.ops ?? []).includes('sign')) error(`${at}: a signing key has the op sign`);
-  if (!isObj(p.aws) || typeof p.aws.key_spec !== 'string' || !['boundary', 'trust domain', 'log'].includes(p.aws.per) || typeof p.aws.baseline !== 'boolean') error(`${at}: aws needs key_spec, per (boundary | trust domain | log) and baseline (true or false)`);
+  if (!isObj(p.aws) || typeof p.aws.key_spec !== 'string' || !['boundary', 'trust domain', 'writer instance'].includes(p.aws.per) || typeof p.aws.baseline !== 'boolean') error(`${at}: aws needs key_spec, per (boundary | trust domain | writer instance) and baseline (true or false)`);
   else if (p.aws.baseline !== (p.enabled === 'baseline')) error(`${at}: aws.baseline must be ${p.enabled === 'baseline'} for an ${p.enabled} purpose`);
   if (!isObj(p.board) || typeof p.board.slot !== 'string') { error(`${at}: board.slot must be a string (a slot, spare or none)`); }
   else {
@@ -332,6 +336,16 @@ for (const [i, k] of list.entries()) {
     const r = ref(rd);
     if (r.outside || r.none) error(`${at}: reader ${rd} is not an actor`);
     else if (r.name !== undefined && !r.actor) error(`${at}: reader ${rd} is not an actor of ${ACTORS}`);
+    const q = /\(as ([^)]*)\)\s*$/.exec(String(rd));
+    if (q && !(q[1] in AS_CONTRACT)) error(`${at}: reader ${rd}: (as ${q[1]}) names no contract; use one of ${Object.keys(AS_CONTRACT).map((c) => `(as ${c})`).join(', ')}`);
+    else if (q && ref(rd).macro !== 'adapter-<vendor>') error(`${at}: reader ${rd}: (as ${q[1]}) limits the macro adapter-<vendor> only`);
+  }
+  // `watched_by` names the readers of a durable or temp kind that watch it; exporter@ watches an exportable kind
+  // without being listed, and the readers of a config kind get its changes with the snapshot.
+  if (k.watched_by !== undefined) {
+    if (!isStrList(k.watched_by) || !k.watched_by.length) error(`${at}: watched_by must be a non-empty list of readers`);
+    else if (k.class !== 'durable' && k.class !== 'temp') error(`${at}: watched_by is for a durable or temp kind; the readers of a config kind get its changes with the snapshot`);
+    else for (const wb of k.watched_by) if (!(k.readers ?? []).includes(wb)) error(`${at}: watched_by ${wb} is not one of the readers`);
   }
   if (k.exportable === 'yes' && Array.isArray(k.readers) && !k.readers.some((rd) => ref(rd).name === 'exporter')) error(`${at}: an exportable kind is read by exporter@`);
   if (k.writer === 'console' && !CONSOLE_KINDS.includes(k.name)) error(`${at}: the console writes only ${CONSOLE_KINDS.join(' and ')}; route the write to the owning actor`);

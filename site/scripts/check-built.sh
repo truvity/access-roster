@@ -11,7 +11,7 @@ fail=0
 bad() { echo "check-built: $*" >&2; fail=1; }
 
 for f in index.html 404.html llms.txt llms-full.txt sitemap-index.xml robots.txt \
-         overview/index.html architecture/index.html architecture/context/index.html \
+         overview/index.html architecture/index.html \
          decisions/index.html roadmap/index.html contributing/index.html \
          requirements/index.html requirements/matrix/index.html requirements/coverage/index.html requirements.json \
          status/index.html data/repo.json data/repo.schema.json; do
@@ -48,7 +48,7 @@ fi
 
 # Mermaid: the diagram must be a <pre class="mermaid"> that the browser script
 # draws, never a code listing that merely looks like one.
-ctx="$dist/architecture/context/index.html"
+ctx="$dist/architecture/index.html"
 if [ -s "$ctx" ]; then
   grep -q '<pre class="mermaid"' "$ctx" || bad "$ctx has no <pre class=\"mermaid\">: Mermaid is not rendering"
   if grep -q 'language-mermaid' "$ctx"; then bad "$ctx still has a language-mermaid code block"; fi

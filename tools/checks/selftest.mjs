@@ -335,6 +335,8 @@ expect('the registries as they are', 'registries', regFiles, 'pass', { has: [`${
 expect('a kind with two writers', 'registries', editKind('Person', 'writer: session', 'writer: [session, exchange]'), 'fail', { has: ['Person: writer must be one actor'] });
 expect('a writer that is no actor', 'registries', editKind('Person', 'writer: session', 'writer: sessions'), 'fail', { has: ['writer sessions is not an actor'] });
 expect('a reader that is no actor', 'registries', editKind('Person', 'readers: [session, exchange, signer]', 'readers: [session, exchanger, signer]'), 'fail', { has: ['reader exchanger is not an actor'] });
+expect('a reader qualifier that names no contract', 'registries', editKind('MinterConnection', 'adapter-<vendor> (as credential minter)', 'adapter-<vendor> (as minter)'), 'fail', { has: ['(as minter) names no contract'] });
+expect('a watcher that is not a reader', 'registries', editKind('Tenant', 'readers: [every actor]', 'readers: [every actor]\n    watched_by: [exporter@]'), 'fail', { has: ['watched_by exporter@ is not one of the readers'] });
 expect('a durable kind written by IaC', 'registries', editKind('Person', 'writer: session', 'writer: IaC'), 'fail', { has: ['sluis writes durable and temp kinds'] });
 expect('a self-scoped kind that is not declared', 'registries', editKind('Lease', '    self_scoped: true\n', ''), 'fail', { has: ['writer self needs self_scoped: true'] });
 expect('a kind the console writes beyond its two', 'registries', editKind('Person', 'writer: session', 'writer: console'), 'fail', { has: ['the console writes only Switch and LogLevelOverride'] });
@@ -374,7 +376,7 @@ expect('a sealed kind made boundary-scoped by an edit', 'registries', editKind('
 expect('DataKeyWrap with three boundary data keys', 'registries', editKind('DataKeyWrap', 'boundary: [grant, cookie, mac, data]', 'boundary: [grant, cookie, mac]'), 'fail', { has: ['DataKeyWrap.purposes must equal the data key purposes'] });
 expect('a boundary data key that is missing from keys.yaml', 'registries', editReg(KY, '    data:\n      ops: [seal, open]\n      users: [exchange, console]\n      erased: never', '    datum:\n      ops: [seal, open]\n      users: [exchange, console]\n      erased: never'), 'fail', { has: ['data_keys.boundary must be exactly grant, cookie, mac, data'] });
 expect('an actor using the archive key with an op it does not allow', 'registries', editReg(AY, '- { purpose: backup-archive, ops: [wrap] }', '- { purpose: backup-archive, ops: [wrap, seal] }'), 'fail', { has: ['backup-archive does not allow the op seal'] });
-expect('a backed-up kind that does not list exporter@ is read by the backup job', 'registries', regFiles, 'pass', { has: ['40 backed up, read by exporter@\'s backup job as ciphertext'] });
+expect('a backed-up kind that does not list exporter@ is read by the backup job', 'registries', regFiles, 'pass', { has: ['42 backed up, read by exporter@\'s backup job as ciphertext'] });
 expect('a backup job without the exporter actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporters\n    family: data'), 'fail', { has: ['the backup job\'s actor exporter is not an actor'] });
 expect('a backup job whose actor is not a data actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporter\n    family: work'), 'fail', { has: ['the backup job\'s actor is in the data family (it is work)'] });
 expect('a backup job without the data port', 'registries', editReg(AY, 'ports: [data, keys, audit-emit, destination]', 'ports: [keys, audit-emit, destination]'), 'fail', { has: ['exporter@ reads the backed-up kinds through the data port'] });
@@ -422,6 +424,58 @@ expect('a pattern that does not compile', 'terms', withGlossary({ 'docs/a.md': '
 expect('a glossary of another schema', 'terms', withGlossary({ 'docs/a.md': 'Text.\n' }, { schema: 2 }), 'fail', { has: ['schema must be 1'] });
 expect('no glossary', 'terms', { 'docs/a.md': 'Text.\n' }, 'fail', { has: ['docs/glossary.yaml is missing'] });
 expect('nothing in the scope', 'terms', { 'docs/glossary.yaml': glossary(), 'README.txt': 'x\n' }, 'fail', { has: ['empty sweep'] });
+
+// ---- C11 generated pages: the glossary, kind, rule and key pages of the repository, then one change each.
+// The fixtures are the registries, the pages and the decision records the pages link.
+const pageRecords = Object.fromEntries(readdirSync(join(repo, 'docs/decisions')).filter((f) => /^[0-9]{4}-.*\.md$/.test(f) && !f.startsWith('0000')).map((f) => [`docs/decisions/${f}`, real(`docs/decisions/${f}`)]));
+const pageFiles = (names) => ({ ...Object.fromEntries(names.map((p) => [p, real(p)])), ...pageRecords });
+const pageEdit = (files, path, from, to) => {
+  if (!files[path].includes(from)) throw new Error(`selftest fixture: ${path} lacks ${from}`);
+  return { ...files, [path]: files[path].replace(from, to) };
+};
+const GLOSSARY = 'docs/glossary.yaml';
+const glossaryPage = pageFiles([GLOSSARY, 'docs/concepts/index.md']);
+const nTerms = parseYaml(glossaryPage[GLOSSARY]).terms.length;
+expect('the vocabulary page as it is', 'glossary-page', glossaryPage, 'pass', { has: [`${nTerms} terms, no errors`] });
+expect('a definition changed, the page not rewritten', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, 'A program with one responsibility', 'A program with a single job'), 'fail', { has: ['generated block is stale', 'just glossary-write'] });
+expect('a retired term added, the page not rewritten', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '  - term: Pkl\n', '  - term: Pkl2\n'), 'fail', { has: ['generated block is stale'] });
+expect('a term in a category that is not declared', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, 'category: families\n    see: ["0002-families-of-actors"]', 'category: families2\n    see: ["0002-families-of-actors"]'), 'fail', { has: ['category families2 is not in categories'] });
+expect('a term defined twice', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '  - term: work actor\n', '  - term: family\n'), 'fail', { has: ['the term is defined twice'] });
+expect('a see that names a record that does not exist', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '"0002-families-of-actors#the-four-families", "/concepts/families/"', '"0099-gone#the-four-families", "/concepts/families/"'), 'fail', { has: ['there is no record 0099'] });
+expect('a see that names a heading the record does not have', 'glossary-page', pageEdit(glossaryPage, GLOSSARY, '"0002-families-of-actors#the-four-families", "/concepts/families/"', '"0002-families-of-actors#nowhere", "/concepts/families/"'), 'fail', { has: ['has no heading #nowhere'] });
+expect('a vocabulary page without its markers', 'glossary-page', { ...glossaryPage, 'docs/concepts/index.md': '---\ntitle: Concepts\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
+expect('no vocabulary page', 'glossary-page', { ...glossaryPage, 'docs/concepts/index.md': undefined }, 'fail', { has: ['docs/concepts/index.md is missing'] });
+expect('no glossary', 'glossary-page', { ...glossaryPage, [GLOSSARY]: undefined }, 'fail', { has: ['docs/glossary.yaml is missing'] });
+
+const KINDS_YAML = 'docs/architecture/kinds.yaml';
+const KEYS_YAML = 'docs/architecture/keys.yaml';
+const ACTORS_YAML = 'docs/architecture/actors.yaml';
+const kindsPage = pageFiles([KINDS_YAML, ACTORS_YAML, 'docs/reference/kinds.md']);
+expect('the kinds page as it is', 'kinds-page', kindsPage, 'pass', { has: [`${nKinds} kinds, no errors`] });
+expect('a kind that gains a reader, the page not rewritten', 'kinds-page', pageEdit(kindsPage, KINDS_YAML, 'readers: [session, exchange, signer]', 'readers: [session, exchange, signer, policy]'), 'fail', { has: ['generated block is stale', 'just kinds-write'] });
+expect('a time to live changed, the page not rewritten', 'kinds-page', pageEdit(kindsPage, KINDS_YAML, 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 30s, max: 10m}'), 'fail', { has: ['generated block is stale'] });
+expect('a kind of an unknown class', 'kinds-page', pageEdit(kindsPage, KINDS_YAML, '    class: secret\n', '    class: vault\n'), 'fail', { has: ['class must be one of'] });
+expect('a kind listed twice', 'kinds-page', pageEdit(kindsPage, KINDS_YAML, '  - name: TrustAnchors\n', '  - name: Boundary\n'), 'fail', { has: ['the kind is listed twice'] });
+expect('a kinds page without its markers', 'kinds-page', { ...kindsPage, 'docs/reference/kinds.md': '---\ntitle: Kinds\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
+expect('no kind registry', 'kinds-page', { ...kindsPage, [KINDS_YAML]: undefined }, 'fail', { has: ['kinds.yaml is missing'] });
+
+const rulesPage = pageFiles([KINDS_YAML, ACTORS_YAML, 'docs/reference/rules.md']);
+expect('the rules page as it is', 'rules-page', rulesPage, 'pass', { has: ['rules, no errors'] });
+expect('a reader added, the page not rewritten', 'rules-page', pageEdit(rulesPage, KINDS_YAML, 'readers: [session, exchange, signer]', 'readers: [session, exchange, signer, policy]'), 'fail', { has: ['generated block is stale', 'just rules-write'] });
+expect('a call added, the page not rewritten', 'rules-page', pageEdit(rulesPage, ACTORS_YAML, 'calls: [policy, signer, exchange, adapter-upstream-oidc]', 'calls: [policy, signer, exchange, ca, adapter-upstream-oidc]'), 'fail', { has: ['generated block is stale'] });
+expect('a reader that is neither an actor nor a macro', 'rules-page', pageEdit(rulesPage, KINDS_YAML, 'readers: [session, exchange, signer]', 'readers: [session, exchanger, signer]'), 'fail', { has: ['exchanger is neither an actor nor a known macro'] });
+expect('a rules page without its markers', 'rules-page', { ...rulesPage, 'docs/reference/rules.md': '---\ntitle: Rules\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
+expect('no actor registry for the rules', 'rules-page', { ...rulesPage, [ACTORS_YAML]: undefined }, 'fail', { has: ['actors.yaml is missing'] });
+
+const keysPage = pageFiles([KEYS_YAML, ACTORS_YAML, 'docs/reference/keys.md']);
+expect('the keys page as it is', 'keys-page', keysPage, 'pass', { has: ['key purposes, no errors'] });
+expect('a note changed, the page not rewritten', 'keys-page', pageEdit(keysPage, KEYS_YAML, 'The SSH user certificate authority.', 'The SSH user CA.'), 'fail', { has: ['generated block is stale', 'just keys-write'] });
+expect('a slot changed, the page not rewritten', 'keys-page', pageEdit(keysPage, KEYS_YAML, "'83': ssh-host", "'93': ssh-host"), 'fail', { has: ['generated block is stale'] });
+expect('a data key user added, the page not rewritten', 'keys-page', pageEdit(keysPage, KEYS_YAML, 'users: [session]\n      erased: never\n      notes: "Seals and opens the session cookie', 'users: [session, policy]\n      erased: never\n      notes: "Seals and opens the session cookie'), 'fail', { has: ['generated block is stale'] });
+expect('a purpose with an algorithm that is not declared', 'keys-page', pageEdit(keysPage, KEYS_YAML, 'algorithm: AES-256-GCM\n    enabled: baseline', 'algorithm: AES-512\n    enabled: baseline'), 'fail', { has: ['algorithm AES-512 is not declared'] });
+expect('a slot that names no purpose', 'keys-page', pageEdit(keysPage, KEYS_YAML, "'83': ssh-host", "'83': ssh-hosts"), 'fail', { has: ['ssh-hosts, which is not a purpose'] });
+expect('a keys page without its markers', 'keys-page', { ...keysPage, 'docs/reference/keys.md': '---\ntitle: Keys\n---\n\nText.\n' }, 'fail', { has: ['markers are missing'] });
+expect('no key registry', 'keys-page', { ...keysPage, [KEYS_YAML]: undefined }, 'fail', { has: ['keys.yaml is missing'] });
 
 rmSync(scratch, { recursive: true, force: true });
 if (failures) {
