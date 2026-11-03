@@ -1,12 +1,12 @@
 ---
 title: The local installation
-description: "The local installation in detail: its containers, host names, TLS, the first start and sign-in, with the measurements behind each choice."
+description: "The local installation in detail: Compose with one rqlite node, host names, TLS, the first start and sign-in, with the measurements behind each choice."
 status: target
 sidebar:
-  order: 2
+  order: 5
 ---
 
-The [local installation](/runtimes/installations/#local) is Docker Compose on one workstation, with software keys, for development, continuous integration and the integration tests ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). This page fixes what the Compose project holds, the host names it uses, how a browser comes to trust it, and what happens at the first start. Its install file is the [example file](/reference/install-file/#the-example-file-for-local). Everything outside sluis's own containers, the forwarder, the identity provider and the setup, belongs to the **harness**: files that ship beside the install file, and no code of the product (a development installation differs by configuration only, [Principles](/principles/#what-sluis-is-and-is-not)).
+The [local installation](/runtimes/#local) is Docker Compose on one workstation, with software keys and an rqlite engine of one node, for development, continuous integration and the integration tests ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). This page fixes what the Compose project holds, the host names it uses, how a browser comes to trust it, and what happens at the first start. Its bootstrap file is the example on the [bootstrap file](/reference/bootstrap-file/) page, and its configuration is a directory of signed config documents that store@ verifies against a publisher key pinned in that file, as on any installation ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). Everything outside sluis's own containers, the forwarder, the identity provider and the setup, belongs to the **harness**: files that ship beside the bootstrap file, and no code of the product (a development installation differs by configuration only, [Principles](/principles/#what-sluis-is-and-is-not)).
 
 ## Topology
 
@@ -21,14 +21,15 @@ flowchart LR
 
 | Service | Image | What it is |
 |---|---|---|
-| The actors and drivers | The release's images | One container per actor and per driver, generated from the permission manifest: the core actors, the audit actors `writer`, `indexer` and `reader`, the `oidc` upstream, and the drivers the install file names. `entry`'s container has no network |
+| The actors and drivers | The release's images | One container per actor and per driver, generated from the registries: the foundation (store@, key@ and exporter@) with their drivers, the work actors, the audit pieces `writer`, `indexer` and `reader`, `adapter-upstream-oidc`, and the drivers the bootstrap file names. `entry`'s container has no network |
+| `rqlite` | The pinned rqlite release | The engine, one node, beside store@. Its client API is on the loopback address, and the driver's container shares rqlite's network namespace (`network_mode: service:rqlite`), so the driver is its only client ([ADR 0005](/decisions/0005-the-store/#engines), [ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)) |
 | `forwarder` | Caddy, pinned by digest (v2.11.7, released 2026-10-03) | Ends TLS for every host of the project and forwards by `Host`: the sluis hosts to the socket of the `entry` that serves them, `idp.local.test` to `idp`, `app.local.test` to the harness's relying party. The only service that publishes a port, on the loopback address. Containers reach it by the host names too, as network aliases |
 | `idp` | Keycloak 26.8.1 (released 2026-10-13), from a reviewed realm-import file | The upstream identity provider, on plain HTTP behind the forwarder. Users and groups are created per test through its admin API, and the realm sends `amr` ([Sign-in](#sign-in)). Dex v2.46.1 (2026-10-21) can run in its place, for an upstream that sends no `acr`, `amr` or `auth_time` |
 | `setup` | The harness image, with the `ritueel` release and `sluis` | A one-shot service that does the [first start](#the-first-start) and exits. Every service that needs the keys or the trust files waits for it to complete |
 
-- **The forwarder is a generic reverse proxy, not a sluis component.** It is the local counterpart of Cloudflare's edge, of `cloudflared` and of the Gateway in front of the edge relay: public TLS ends at the edge, and the edge relay and `entry` stay key-less ([Deployment](/architecture/deployment/#where-entrys-listener-is-per-runtime)). Nothing depends on it being Caddy: it is TLS in, HTTP over a Unix socket out, routed by `Host`. Caddy was picked for its short configuration; nginx would do the same.
+- **The forwarder is a generic reverse proxy, not a sluis component.** It is the local counterpart of Cloudflare's edge, of `cloudflared` and of the Gateway in front of the edge relay: public TLS ends at the edge, and the edge relay and `entry` stay key-less ([Deployment](/architecture/deployment/#listeners)). Nothing depends on it being Caddy: it is TLS in, HTTP over a Unix socket out, routed by `Host`. Caddy was picked for its short configuration; nginx would do the same.
 - **The forwarder's certificate is not sluis's.** In production the edge holds a certificate that sluis did not issue. Locally it holds one from the harness's `edge` intermediate, certified by the same ritueel root as sluis's own intermediates ([TLS](#tls)).
-- **The Compose file is generated from the permission manifest,** like the systemd units, with the uids pinned ([ADR 0011](/decisions/0011-runtimes-and-installations/#consequences)). The harness services are written by hand beside it.
+- **The Compose file is generated from the registries,** like the systemd units, with the uids pinned ([ADR 0011](/decisions/0011-runtimes-and-installations/#consequences)). The harness services are written by hand beside it.
 
 ## Host names
 
@@ -76,15 +77,15 @@ The WebAuthn specification lets a page claim an RP ID that is "a registrable dom
 
 That was measured, not only read, on 2026-11-01: Chrome 156.0.8078.79, headless, with the virtual authenticator of the [DevTools protocol](https://chromedevtools.github.io/devtools-protocol/tot/WebAuthn/) (CTAP2, internal, resident keys, user verification on), against a TLS server whose chain ends in a root that was trusted in a throwaway profile. Each row is one registration followed by one assertion.
 
-| Origin | RP ID | Result |
+| Page | RP ID | Result |
 |---|---|---|
 | `https://sluis.local.test` | `local.test` | works |
 | `https://sluis.dev.local.test` | `local.test` | works: the credential is the same for both hosts |
 | `https://sluis.local.test` | `sluis.local.test` | works |
-| `https://sluis.dev.local.test` | `sluis.local.test` | refused: not a registrable suffix of the origin |
+| `https://sluis.dev.local.test` | `sluis.local.test` | refused: not a registrable suffix of the page's host |
 | `https://sluis.local.test` | `test` | refused: the registry itself |
 | `https://sluis.local.test` | `other.test` | refused |
-| `https://sluis.local.test` | `dev.local.test` | refused: not a suffix of the origin's host |
+| `https://sluis.local.test` | `dev.local.test` | refused: not a suffix of the page's host |
 | any of the above, root not trusted | | not a secure context: the certificate error stops the API before the RP ID is looked at |
 
 The last row is why TLS matters here: WebAuthn is exposed only in secure contexts, "established without errors" (the same specification), so a browser that does not trust the chain cannot test a passkey at all. `--ignore-certificate-errors` is not a substitute; a real chain tests the real path, including the intermediate's name constraints.
@@ -121,16 +122,17 @@ The chain a browser sees is `root` (ritueel's software test root), `edge` (an in
 `docker compose up` starts the project. The `setup` service runs these steps in order, and each step is skipped when its output already exists, so a second `up` changes nothing:
 
 1. **Make the root.** `ritueel init --store software --roots 1 --test-root --key-dir /ritueel/keys`, with the `ritueel.yaml` of the example directory, which declares two intermediates: `sluis-dev` and `edge`. This writes the root, the first trust products (`root-list.json` and `root-list.jws`, `ca-bundle.pem`) and the key file.
-2. **Publish the trust files.** The root list and the bundle are copied to the volume that the install file's `trust.root_list` and `trust.ca_bundle` name, and the bundle is also the trust bundle the containers read.
-3. **Ask for sluis's keys.** `sluis key request --out /requests` makes the keys of the install file that do not exist, in the `software` store, and writes `dev-x509-intermediate.csr.pem` and its proof ([Commands](/reference/cli/#the-key-commands)).
-4. **Have the intermediate certified.** `ritueel intermediate add sluis-dev --request dev-x509-intermediate --key-dir /ritueel/keys`, in the two runs of a script's ceremony: `--plan-only`, then the plan with `--confirm` and its digest ([ritueel commands](https://ritueel.id/reference/cli/#a-scripts-ceremony)). A test root asks no passphrase.
-5. **Install the answer.** `sluis key install /ritueel/dir/answers` checks the certificate against the root list and installs it. The token certificate is then issued on the node by the new intermediate, and `signer` writes the discovery document and the key set as blobs under `/var/lib/sluis/blob/signer@dev/issuer/` ([Storage](/reference/storage/#fs)).
-6. **Make the edge.** The `edge` key, request and proof, certified in the same two runs, and then the leaf for the four hosts. The forwarder starts when `leaf.pem` exists.
-7. **Check.** `sluis doctor` and `sluis key status` run and must exit 0, and the setup fetches `https://sluis.dev.local.test/.well-known/openid-configuration` and the key set through the forwarder, which proves the chain, the names and the static documents at once. It then exits 0.
+2. **Publish the trust files.** The CA bundle goes into the `TrustAnchors` config document of the project, with the root list beside it, which is optional ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-floor)). The bundle is also the trust bundle the containers read.
+3. **Sign the configuration.** The setup makes a publisher key of its own, writes its SPKI hash into the bootstrap file as the pin, and signs the config documents of the example directory with it, into `/etc/sluis/config/dev/`, the directory of the `file` driver ([Signed config](/reference/signed-config/#the-document)). store@ verifies every document against that pin before it parses it ([ADR 0005](/decisions/0005-the-store/#configuration-loading)), as it does on any installation.
+4. **Ask for sluis's keys.** `sluis key request --out /requests` makes the keys that the key plan names and that do not exist yet, in the `software` store, and writes `dev-x509-intermediate.csr.pem` and its proof ([Commands](/reference/cli/#the-key-commands)).
+5. **Have the intermediate certified.** `ritueel intermediate add sluis-dev --request dev-x509-intermediate --key-dir /ritueel/keys`, in the two runs of a script's ceremony: `--plan-only`, then the plan with `--confirm` and its digest ([ritueel commands](https://ritueel.id/reference/cli/#a-scripts-ceremony)). A test root asks no passphrase.
+6. **Install the answer.** `sluis key install /ritueel/dir/answers` checks the certificate against the anchors and installs it. The token certificate is then issued on the node by the new intermediate, and `signer` writes the key set, the kind `SigningRing`, which exporter@ publishes as a static document to its directory destination ([ADR 0009](/decisions/0009-export/#destinations)). The setup renders the discovery document from the boundary's config and publishes it beside the key set, the part that infrastructure code does in the other installations ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers), [ADR 0009](/decisions/0009-export/#what-is-exportable)).
+7. **Make the edge.** The `edge` key, request and proof, certified in the same two runs, and then the leaf for the four hosts. The forwarder starts when `leaf.pem` exists.
+8. **Check.** `sluis doctor` and `sluis key status` run and must exit 0, and the setup fetches `https://sluis.dev.local.test/.well-known/openid-configuration` and the key set through the forwarder, which proves the chain, the names and the static documents at once. It then exits 0.
 
 The services that need the keys start when `setup` completes (`service_completed_successfully`). A failure of any step stops the project at that step with the command's own exit code and message; nothing starts on a half-made root.
 
-**What persists.** The volumes hold the ritueel directory, the key file, the trust files, the software keys and the state of the drivers. `docker compose down` keeps them, and the next `up` starts with the same issuers and keys. `down -v` removes them all, and the next `up` is a first start with a new root.
+**What persists.** The volumes hold the ritueel directory, the key file, the trust files, the signed config, the software keys and the rqlite data. `docker compose down` keeps them, and the next `up` starts with the same issuers and keys. `down -v` removes them all, and the next `up` is a first start with a new root.
 
 ## Sign-in
 
@@ -150,4 +152,4 @@ Tests sign in through the upstream identity provider, never through accounts in 
 
 ## Limits
 
-The limits of the installation are on [Installations](/runtimes/installations/#local): a software key can be read by anyone who can read its volume, one node proves behaviour and not availability, and the platform controls of the other installations are not exercised. The test root is the extra limit of this page: its key is a file with no passphrase, so the trust a browser gives it lasts as long as the run and no longer.
+The limits of the installation are on [Runtimes](/runtimes/#local): a software key can be read by anyone who can read its volume, one node proves behaviour and not availability, and the platform controls of the other installations are not exercised. The test root is the extra limit of this page: its key is a file with no passphrase, so the trust a browser gives it lasts as long as the run and no longer.
