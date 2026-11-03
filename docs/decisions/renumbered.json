@@ -439,9 +439,55 @@
       "old": "0064-audit-records-are-ocsf-events-with-one-unmapped-sluis-object-and-usage-is-a-separate-stream",
       "new": "0030-audit-records-and-the-usage-stream",
       "renumbered": "2026-11-01"
+    },
+    {
+      "old": "0041-core-actors-with-one-responsibility-each",
+      "new": "0002-families-of-actors",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued",
+      "new": "0004-the-data-model",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force",
+      "new": "0005-the-store",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
-    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#how-a-per-actor-rqlite-driver-reaches-its-cluster"
+    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#how-a-per-actor-rqlite-driver-reaches-its-cluster",
+    "0002-the-design-model-actors-ports-drivers-and-contracts#ports-and-drivers": "0002-families-of-actors#ports-of-a-work-actor",
+    "0002-the-design-model-actors-ports-drivers-and-contracts#placement-is-derived": "0003-units-transports-and-fusion#units",
+    "0002-the-design-model-actors-ports-drivers-and-contracts#the-permission-manifest": "0002-families-of-actors#registries-generate-the-enforcement",
+    "0003-core-actors-with-one-responsibility-each#the-actors": "0002-families-of-actors#the-four-families",
+    "0003-core-actors-with-one-responsibility-each#names": "0002-families-of-actors#names",
+    "0003-core-actors-with-one-responsibility-each#the-console": "0002-families-of-actors#the-console",
+    "0003-core-actors-with-one-responsibility-each#the-fusion-rule": "0003-units-transports-and-fusion#fusion",
+    "0003-core-actors-with-one-responsibility-each#one-credential-holder-per-unit": "0002-families-of-actors#credential-holders",
+    "0004-drivers-listeners-and-boundary-enforcement#drivers-are-platform-started-services": "0005-the-store#drivers",
+    "0004-drivers-listeners-and-boundary-enforcement#listeners": "0003-units-transports-and-fusion#listeners",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#origins": "0004-the-data-model#storage-classes",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#sensitivities": "0004-the-data-model#treatment",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#pkl-and-json-schema": "0004-the-data-model#schemas-are-protobuf",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#reload-classes": "0005-the-store#configuration-loading",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#audit-and-telemetry-by-origin": "0004-the-data-model#what-is-not-data",
+    "0011-state-is-one-port-with-compare-and-set#the-port": "0005-the-store#the-store-api",
+    "0011-state-is-one-port-with-compare-and-set#one-writer-per-kind": "0004-the-data-model#one-writer-per-kind",
+    "0011-state-is-one-port-with-compare-and-set#leases": "0005-the-store#leases",
+    "0011-state-is-one-port-with-compare-and-set#sealed-secrets": "0004-the-data-model#treatment",
+    "0011-state-is-one-port-with-compare-and-set#drivers": "0005-the-store#drivers",
+    "0011-state-is-one-port-with-compare-and-set#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#engines",
+    "0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#three-kinds-of-configuration": "0004-the-data-model#storage-classes",
+    "0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#instances-are-issued-under-declared-templates": "0004-the-data-model#profiles",
+    "0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external#one-driver-sealed-state": "0004-the-data-model#treatment",
+    "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#a-port-config-source": "0005-the-store#configuration-loading",
+    "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#declared-versus-issued": "0004-the-data-model#storage-classes",
+    "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#failure": "0005-the-store#a-failed-reload",
+    "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#freshness-at-a-cold-start": "0005-the-store#freshness-at-a-cold-start",
+    "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#roads-not-taken": "0005-the-store#roads-not-taken",
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#three-kinds-of-configuration": "0004-the-data-model#storage-classes",
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#instances-are-issued-under-declared-templates": "0004-the-data-model#profiles"
   }
 }
