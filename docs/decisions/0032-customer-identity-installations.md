@@ -8,13 +8,13 @@ Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).
 
 ## Context
 
-[0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/) fixes the words and the scale: a boundary holds keys and a tenant is a record, an installation carries about 5 to 10 customer boundaries and thousands of tenants, and growth past a cohort is another installation. [0047](/decisions/0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/) fixes how a tenant's records are written. [0031](/decisions/0031-ciam-is-a-broker/) fixes who owns what. What none of them says is what the customer-identity installation looks like when put together, how a tenant's client is named, what a tenant holds, and what moving a tenant or a cohort does to the people in it.
+[0008](/decisions/0008-boundaries-and-tenants/) fixes the words and the scale: a boundary holds keys and a tenant is a record, an installation carries about 5 to 10 customer boundaries and thousands of tenants, and growth past a cohort is another installation. [0004](/decisions/0004-the-data-model/) fixes how a tenant's records are written. [0031](/decisions/0031-ciam-is-a-broker/) fixes who owns what. What none of them says is what the customer-identity installation looks like when put together, how a tenant's client is named, what a tenant holds, and what moving a tenant or a cohort does to the people in it.
 
 Three gaps remained.
 
 - **Group single sign-on needs a shape.** The products of a group must not each ask the person again, yet each customer boundary has an issuer of its own ([0017](/decisions/0017-identity-and-sign-in/#issuers)).
 - **Client IDs are readable and unique per issuer,** with names of 1 to 32 characters ([0017](/decisions/0017-identity-and-sign-in/#audiences)). Thousands of tenants that each have a `web` client need a rule.
-- **The NATS mapping said "an account per tenant"** ([0003](/decisions/0003-units-transports-and-fusion/#nats-jetstream)) while [REQ-ISO-025](/requirements/iso/#REQ-ISO-025) says "in its boundary's account". With a tenant now meaning a customer organisation, the first reading would be thousands of accounts.
+- **The NATS mapping said "an account per tenant"** ([0028](/decisions/0028-audit-pieces/)) while [REQ-ISO-025](/requirements/iso/#REQ-ISO-025) says "in its boundary's account". With a tenant now meaning a customer organisation, the first reading would be thousands of accounts.
 
 ## Decision
 
@@ -25,10 +25,10 @@ Three gaps remained.
 
 ### Tenants
 
-- **A tenant's records are connections, domains, clients and limits,** issued under a declared template by the customer-identity module's client ([0047](/decisions/0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/#instances-are-issued-under-declared-templates)). The template fixes the kinds of connection a tenant may add and their ceiling of trust ([0033](/decisions/0033-customer-connections/#connection-trust)), the redirect rules of its clients and its limits ([0036](/decisions/0036-volumetric-abuse/#inside-sluis)). A tenant cannot widen a claim, a ceiling or a grant.
+- **A tenant's records are connections, domains, clients and limits,** issued under a declared template by the customer-identity module's client ([0004](/decisions/0004-the-data-model/#profiles)). The template fixes the kinds of connection a tenant may add and their ceiling of trust ([0033](/decisions/0033-customer-connections/#connection-trust)), the redirect rules of its clients and its limits ([0036](/decisions/0036-volumetric-abuse/#inside-sluis)). A tenant cannot widen a claim, a ceiling or a grant.
 - **A person who signed in through a tenant's own connection is bounded to that tenant** by the connection that vouched for them: the tenant is set by the connection's owner, never by what the provider sent. A policy guard keeps such a person out of any other tenant's scope ([REQ-ISO-036](/requirements/iso/#REQ-ISO-036) is the model).
-- **sluis stores no organisation membership and no tenant claim.** Which users belong to an organisation is the customer-identity module's data ([0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#the-words)). The claim set of a token is fixed ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)); a product that needs the organisation in a token adds a claim with its first consumer.
-- **A tenant is not a transport account.** The NATS mapping is an account per boundary ([0003](/decisions/0003-units-transports-and-fusion/#nats-jetstream), [REQ-ISO-025](/requirements/iso/#REQ-ISO-025)). Thousands of tenants never become thousands of accounts.
+- **sluis stores no organisation membership and no tenant claim.** Which users belong to an organisation is the customer-identity module's data ([0008](/decisions/0008-boundaries-and-tenants/#boundaries)). The claim set of a token is fixed ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)); a product that needs the organisation in a token adds a claim with its first consumer.
+- **A tenant is not a transport account.** The NATS mapping is an account per boundary ([0028](/decisions/0028-audit-pieces/), [REQ-ISO-025](/requirements/iso/#REQ-ISO-025)). Thousands of tenants never become thousands of accounts.
 - **A tenant leaves** by disconnecting its connections, making its persons `left` ([0034](/decisions/0034-end-users-and-upstream-signals/#states)) and shredding its data key ([0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#erasure-and-export)).
 
 ### Client names
@@ -38,7 +38,7 @@ Three gaps remained.
 
 ### Moving
 
-[0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#growth-is-another-installation) says a tenant does not move up alone: one that needs keys becomes a customer boundary, and a cohort moves to an installation of its own. For the people in a move:
+[0008](/decisions/0008-boundaries-and-tenants/#scale) says a tenant does not move up alone: one that needs keys becomes a customer boundary, and a cohort moves to an installation of its own. For the people in a move:
 
 1. **The persons of the tenant or the cohort are exported from the subject lifecycle and imported with the same subjects;** the link keys are recomputed under the new installation's `link-key` ([0019](/decisions/0019-person-and-upstream-link/#the-records)). A person's `sub` does not change.
 2. **Sessions and tokens do not move.** The new issuer is a new `iss`, so the relying parties pin it and people sign in again, silently where the upstream session lasts.
@@ -55,7 +55,7 @@ Three gaps remained.
 
 ## Roads not taken
 
-- **An issuer, or a signing key, per tenant.** It is a key per tenant, which [0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#keys-and-isolation) rules out, and it would break one sign-in across the products.
+- **An issuer, or a signing key, per tenant.** It is a key per tenant, which [0008](/decisions/0008-boundaries-and-tenants/#tenants) rules out, and it would break one sign-in across the products.
 - **One customer boundary for the whole group.** All products would share an issuer and an audience space, so a token for one product would be a candidate for another's relying parties.
 - **Organisation membership stored in sluis.** It would make sluis the store of a product's user groups, which [0031](/decisions/0031-ciam-is-a-broker/) refuses.
 - **A tenant claim in every token.** Nothing reads it yet, and a claim outside the fixed set needs its own consumer.

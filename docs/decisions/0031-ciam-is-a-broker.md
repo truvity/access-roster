@@ -8,11 +8,11 @@ Proposal: [issue #1023](https://github.com/truvity/sluis/issues/1023).
 
 ## Context
 
-The customer-identity milestone is group single sign-on: the end users of several products of one group sign in once and are signed in at all of them. It is not an account store. sluis hosts no end-user accounts and stores no passwords ([REQ-CIAM-017](/requirements/ciam/#REQ-CIAM-017), [0008](/decisions/0008-boundaries-and-tenants/#the-isolation-ladder), [principles](/principles/#what-sluis-is-and-is-not)); a customer-identity product plugs in as one more OpenID Connect upstream ([OIDC upstream](/integrations/oidc-upstream/)). The account-hosting requirement records were withdrawn on that ground.
+The customer-identity milestone is group single sign-on: the end users of several products of one group sign in once and are signed in at all of them. It is not an account store. sluis hosts no end-user accounts and stores no passwords ([REQ-CIAM-017](/requirements/ciam/#REQ-CIAM-017), [0008](/decisions/0008-boundaries-and-tenants/#the-ladder), [principles](/principles/#what-sluis-is-and-is-not)); a customer-identity product plugs in as one more OpenID Connect upstream ([OIDC upstream](/integrations/oidc-upstream/)). The account-hosting requirement records were withdrawn on that ground.
 
-What was missing is the map of who does what, and what sluis needs from the upstream. Without it two teams can build the other half twice: a registration page in sluis, or a session cap in the product that sluis already enforces. The first half of [#1023](https://github.com/truvity/sluis/issues/1023) asked whether each regulated entity gets an installation and left the contract open; this record answers the contract. [0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/) answers the installation question, and [0032](/decisions/0032-customer-identity-installations/) applies it to customer identity.
+What was missing is the map of who does what, and what sluis needs from the upstream. Without it two teams can build the other half twice: a registration page in sluis, or a session cap in the product that sluis already enforces. The first half of [#1023](https://github.com/truvity/sluis/issues/1023) asked whether each regulated entity gets an installation and left the contract open; this record answers the contract. [0008](/decisions/0008-boundaries-and-tenants/) answers the installation question, and [0032](/decisions/0032-customer-identity-installations/) applies it to customer identity.
 
-Where a customer's defaults and a tenant's changes live is settled by [0047](/decisions/0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/).
+Where a customer's defaults and a tenant's changes live is settled by [0004](/decisions/0004-the-data-model/).
 
 ## Decision
 
@@ -22,7 +22,7 @@ Where a customer's defaults and a tenant's changes live is settled by [0047](/de
 |---|---|
 | Registration, e-mail and phone verification, passwords, recovery, factor enrolment and multi-factor authentication, social login, a customer's own identity provider brokered into the product, the long single sign-on session, disabling and deleting an account, answering a request about the account's data | **The upstream**, the customer-identity product |
 | Checking the upstream's ID token, the person record and its subject, the link to the upstream account, sessions of at most 24 hours, refresh, tokens for the products, admission by policy, step-up by asking the upstream to authenticate again, logout towards the products, limits, audit, and erasing and exporting what sluis itself holds | **sluis** |
-| Organisations (a group of users), creating and changing a customer organisation, its administrators, and their self-service screens | **A customer-identity module**, a product concern. sluis exposes the issued-record and template-link mechanism that it plugs into ([0047](/decisions/0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/), [0032](/decisions/0032-customer-identity-installations/#tenants)) |
+| Organisations (a group of users), creating and changing a customer organisation, its administrators, and their self-service screens | **A customer-identity module**, a product concern. sluis exposes the issued-record and template-link mechanism that it plugs into ([0004](/decisions/0004-the-data-model/), [0032](/decisions/0032-customer-identity-installations/#tenants)) |
 | What a signed-in person may do inside a product | **The product**, from the claims of the token and its own data |
 
 - **sluis never enrols, resets or changes a factor of an end user,** never offers a reset by e-mail, an anonymous reset or a reset by support staff ([REQ-CIAM-008](/requirements/ciam/#REQ-CIAM-008), [REQ-CIAM-015](/requirements/ciam/#REQ-CIAM-015), [REQ-CIAM-016](/requirements/ciam/#REQ-CIAM-016), [REQ-REG-051](/requirements/reg/#REQ-REG-051)). Passkeys at sluis belong to people who come from a directory ([0017](/decisions/0017-identity-and-sign-in/#passkeys)), not to customers.
@@ -45,7 +45,7 @@ An upstream outage stops new sign-ins and silent renewals; tokens already issued
 
 ### Configuration
 
-Where a customer's defaults and a tenant's changes live is [0047](/decisions/0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued/#customer-identity-installations): defaults are declared slots of a template, kept in project configuration and not in git, and per-tenant changes are issued records made by the customer-identity module's client under a declared template. This record adds only the boundary: the module owns organisations and tenants' screens, and sluis owns the tokens.
+Where a customer's defaults and a tenant's changes live is [0008](/decisions/0008-boundaries-and-tenants/#example-installations): defaults are declared slots of a template, kept in project configuration and not in git, and per-tenant changes are issued records made by the customer-identity module's client under a declared template. This record adds only the boundary: the module owns organisations and tenants' screens, and sluis owns the tokens.
 
 ## Consequences
 

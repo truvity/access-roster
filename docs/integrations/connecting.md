@@ -20,7 +20,7 @@ flowchart LR
 
 1. **Declare.** The operator writes what the integration may be: the organisation, the permissions, the scopes, the domains. This is *declared* data, in a reviewed file.
 2. **Ceremony.** A person with authority at the vendor (an organisation owner, a workspace owner, a Super Admin) approves, once. This step differs by vendor, and the rest of this page is about it.
-3. **Store.** What the vendor returns (a private key, a bot token, a client secret) goes straight into sluis's credential store. It is a *vendor-issued secret*: sluis holds the only copy, so it is sealed and backed up ([ADR 0005](/decisions/0005-the-store/#sealed-secrets)). It is never printed, never written into configuration, and `sluis config explain` shows only its `cred:` reference. Ids and installation numbers that come back are *issued* records (pins), checked on every later observation ([ADR 0004](/decisions/0004-the-data-model/#origins)).
+3. **Store.** What the vendor returns (a private key, a bot token, a client secret) goes straight into sluis's credential store. It is a *vendor-issued secret*: sluis holds the only copy, so it is sealed and backed up ([ADR 0004](/decisions/0004-the-data-model/#treatment)). It is never printed, never written into configuration, and `sluis config explain` shows only its `cred:` reference. Ids and installation numbers that come back are *issued* records (pins), checked on every later observation ([ADR 0004](/decisions/0004-the-data-model/#storage-classes)).
 4. **Check.** `sluis integrations check <name>` compares what was declared with what the vendor granted (drift), and runs the integration as a dry run.
 5. **Enable.** Nothing acts until the integration is enabled.
 

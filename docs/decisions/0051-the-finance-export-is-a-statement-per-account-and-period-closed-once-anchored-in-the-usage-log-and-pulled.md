@@ -12,7 +12,7 @@ Proposal: [issue #915](https://github.com/truvity/sluis/issues/915).
 
 - **A bill is disputed months later.** A rebuilt table changes when a late event arrives, so it cannot settle a dispute. Billing needs a document that was fixed at one moment and that anyone can check against the log.
 - **Events arrive late.** A spool that was down, a queue that backed up or a wrong clock all deliver usage after its period ended.
-- **A quota installation serves one platform product,** and a billing account belongs to one installation ([0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#growth-is-another-installation)); a statement therefore never combines installations.
+- **A quota installation serves one platform product,** and a billing account belongs to one installation ([0008](/decisions/0008-boundaries-and-tenants/#scale)); a statement therefore never combines installations.
 
 v1 designed, and did not build, a statement written once after a close delay of 72 hours by default, with later events flagged and not billed and corrections as credit notes (v1 "Billing and metering", on `master`). This record keeps that shape and changes the late events: they count in the next open period instead of being lost. FOCUS is a published open standard that billing systems read ([principle 5](/principles/)).
 

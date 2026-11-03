@@ -17,7 +17,7 @@ An **installation** is one concrete deployment: a [runtime](/runtimes/), a node 
 
 An installation serves one [boundary](/concepts/boundaries/) at L4, or the front of a federation with the boundaries below L4 inside it. A test installation serves no real user, trusts nothing, and lives outside the sluis host names.
 
-**Any other combination is a possible installation, allowed by the rules but not tested** ([Other installations](#other-installations)). "Installation" is not a configuration key: the install file is the installation, and the four tested ones ship as example install files to start from. The configuration layers are defaults, then the runtime, then the install file, then the overrides per environment, each overriding the one before ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema), [Configuration](/concepts/configuration/)).
+**Any other combination is a possible installation, allowed by the rules but not tested** ([Other installations](#other-installations)). "Installation" is not a configuration key: the install file is the installation, and the four tested ones ship as example install files to start from. The configuration layers are defaults, then the runtime, then the install file, then the overrides per environment, each overriding the one before ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf), [Configuration](/concepts/configuration/)).
 
 ## Reference installation shapes
 
@@ -90,7 +90,7 @@ A lease lives on the state store, with compare-and-set and a fencing token ([Dat
 
 Every installation offers the `file` source driver: it needs nothing, and on Lambda a layer is a file and on Kubernetes a mounted ConfigMap is a file. An installation offers `appconfig` when it has AWS, because the driver needs AWS credentials from the `cloud` port. Of the four tested installations, lambda and kubernetes offer it, because they have an AWS account, and local and boards do not: the boards have a Cloudflare account and no AWS. `sluis config check` refuses a source whose driver the installation does not offer, with the same check as for any other driver ([how it checks](/concepts/drivers/#how-sluis-config-check-validates-an-installation)). A possible installation outside the table follows the same rule: it offers what its dependencies allow.
 
-Which documents may come from which source is [ADR 0057](/decisions/0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force/#declared-versus-issued): the authority of a workforce installation comes from `file` or from a signed `appconfig` document, and per-customer defaults of a customer-identity installation come from `appconfig` only. The rules and the vectors are [Configuration sources](/reference/config-sources/).
+Which documents may come from which source is [ADR 0004](/decisions/0004-the-data-model/#storage-classes): the authority of a workforce installation comes from `file` or from a signed `appconfig` document, and per-customer defaults of a customer-identity installation come from `appconfig` only. The rules and the vectors are [Configuration sources](/reference/config-sources/).
 
 ## Choosing an installation
 

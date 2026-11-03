@@ -6,11 +6,11 @@ sidebar:
   order: 5
 ---
 
-An actor reaches its keys and data through ports, and the driver behind each port is a service on a Unix socket ([ADR 0002](/decisions/0002-families-of-actors/#ports-and-drivers), [ADR 0003](/decisions/0003-units-transports-and-fusion/#drivers-are-platform-started-services)). This page fixes what goes over those sockets, how a record is named and sealed, which record kinds the first working version has, and how the drivers of the local installation lay their data out on disk. Who may write which kind, and why every value is encrypted, are on [Data and secrets](/concepts/data/).
+An actor reaches its keys and data through ports, and the driver behind each port is a service on a Unix socket ([ADR 0002](/decisions/0002-families-of-actors/#ports-of-a-work-actor), [ADR 0005](/decisions/0005-the-store/#drivers)). This page fixes what goes over those sockets, how a record is named and sealed, which record kinds the first working version has, and how the drivers of the local installation lay their data out on disk. Who may write which kind, and why every value is encrypted, are on [Data and secrets](/concepts/data/).
 
 ## Port contracts
 
-Each port is one Connect service under `proto/sluis/port/<port>/v2alpha1/` ([Contracts and errors](/reference/contracts/#packages-and-files)). The port library inside the actor is the only client: it adds the scope from the actor's own identity, seals values, and never lets a request choose a scope, a key or a path ([Three layers per port](/decisions/0003-units-transports-and-fusion/#three-layers-per-port)). The driver checks the caller again by its peer uid.
+Each port is one Connect service under `proto/sluis/port/<port>/v2alpha1/` ([Contracts and errors](/reference/contracts/#packages-and-files)). The port library inside the actor is the only client: it adds the scope from the actor's own identity, seals values, and never lets a request choose a scope, a key or a path ([Three layers per port](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). The driver checks the caller again by its peer uid.
 
 ### state
 
@@ -50,8 +50,8 @@ service KeysService {
 }
 ```
 
-- **A key is addressed by its purpose**, never by a slot, an ARN or a file: `token-signing`, `x509-intermediate`, `sealing`, `log`, `ssh-user`, `ssh-host`, `enrolment`, `issuance-log`, `release-signing` ([ADR 0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)). The driver maps it to its slot or key.
-- **`Sign` carries the content, not only a digest,** for the purposes whose content `key-holder` parses before signing: a TBSCertificate for `x509-intermediate`, an OpenSSH certificate body for the SSH purposes, a JWS signing input for `token-signing`, an OpenPGP signature input for `release-signing` ([key-holder is the one mediator](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)). Content that does not parse, or falls outside the purpose's constraints, is `permission_denied`, and nothing is signed.
+- **A key is addressed by its purpose**, never by a slot, an ARN or a file: `token-signing`, `x509-intermediate`, `sealing`, `log`, `ssh-user`, `ssh-host`, `enrolment`, `issuance-log`, `release-signing` ([ADR 0006](/decisions/0006-keys-and-sealing/#the-slot-plan)). The driver maps it to its slot or key.
+- **`Sign` carries the content, not only a digest,** for the purposes whose content `key-holder` parses before signing: a TBSCertificate for `x509-intermediate`, an OpenSSH certificate body for the SSH purposes, a JWS signing input for `token-signing`, an OpenPGP signature input for `release-signing` ([key-holder is the one mediator](/decisions/0006-keys-and-sealing/#exclusive-card-access)). Content that does not parse, or falls outside the purpose's constraints, is `permission_denied`, and nothing is signed.
 - **`context` is the encryption context of a wrap,** a list of name and value pairs that must match on unwrap: `purpose=cookie`, `purpose=grant`, `purpose=secret`, or the (boundary, kind) of a data key.
 - **The access list** of `key-holder` names, for each caller actor, the purposes and operations it may use; it is generated from the manifests ([Permission manifest](/architecture/manifest/)).
 
@@ -65,12 +65,12 @@ service KeysService {
 
 ## Record keys
 
-A record key is `<boundary>/<kind>/<id>`, in the clear, so the store can index it ([ADR 0005](/decisions/0005-the-store/#the-port)).
+A record key is `<boundary>/<kind>/<id>`, in the clear, so the store can index it ([ADR 0005](/decisions/0005-the-store/#the-store-api)).
 
 - **`<boundary>` and `<kind>` come from the library**, from the actor's own identity and the kinds its manifest names; the caller passes only `<id>`.
 - **Each segment is ASCII:** lower-case letters, digits, `-`, `_` and `.`, at most 128 characters, and the whole key at most 300.
 - **`<id>` never holds personal data:** no e-mail address, name or directory account. It is a random id (128 bits, base32 without padding) or a keyed hash of a natural key. A person's record is found by the opaque subject, never by the address, and an upstream account's link by a keyed hash of the issuer and the subject claim ([ADR 0019](/decisions/0019-person-and-upstream-link/#the-records)).
-- **A kind name is singular kebab-case** (`auth-code`, not `auth_codes`) and unique within a boundary across all actors; the manifest generator refuses a kind two actors write ([One writer per kind](/decisions/0005-the-store/#one-writer-per-kind)).
+- **A kind name is singular kebab-case** (`auth-code`, not `auth_codes`) and unique within a boundary across all actors; the manifest generator refuses a kind two actors write ([One writer per kind](/decisions/0004-the-data-model/#one-writer-per-kind)).
 
 ## Record kinds of the first working version
 
@@ -99,7 +99,7 @@ The short lifetimes are defaults in code, written with the actor that owns the k
 
 ## The state envelope
 
-Every value is sealed in the port library before it reaches a driver ([Every value is encrypted](/decisions/0005-the-store/#every-value-is-encrypted)).
+Every value is sealed in the port library before it reaches a driver ([Every value is encrypted](/decisions/0006-keys-and-sealing/#seal-and-open)).
 
 ```text
 envelope = version (1 byte, 0x01)
@@ -117,11 +117,11 @@ aad      = "sluis-state-v1"
 
 - **AES-256-GCM, with a data key per (boundary, kind).** The nonce comes from the cryptographic library, never from the caller: `crypto/cipher` with a random nonce in Go, `RandomizedNonceKey` of `aws-lc-rs` in Rust ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)). Lengths are big-endian.
 - **The additional authenticated data binds the value to its place**: a value copied to another boundary, kind, key or revision fails to decrypt. The label carries the envelope's version and the revision the record's, so both readings of "version" in ADR 0005 hold. The revision is the one the write creates: a `Put` seals at revision 1, a `Cas` at the read revision plus 1.
-- **A sealed secret** uses the same envelope with `purpose=secret` in the data key's context and `"sluis-secret-v1"` as the first part of the additional data, so it is never read as an ordinary value or the other way round ([Sealed secrets](/decisions/0005-the-store/#sealed-secrets)).
+- **A sealed secret** uses the same envelope with `purpose=secret` in the data key's context and `"sluis-secret-v1"` as the first part of the additional data, so it is never read as an ordinary value or the other way round ([Sealed secrets](/decisions/0004-the-data-model/#treatment)).
 
 ### Data keys
 
-- **A data key is a `data-key` record** of the kind's writer: 32 random bytes from the operating system's generator, wrapped through the keys port under the boundary's sealing key, with the context (boundary, kind). The writer and the kind's declared readers may unwrap it; no one else can ([ADR 0005](/decisions/0005-the-store/#every-value-is-encrypted)).
+- **A data key is a `data-key` record** of the kind's writer: 32 random bytes from the operating system's generator, wrapped through the keys port under the boundary's sealing key, with the context (boundary, kind). The writer and the kind's declared readers may unwrap it; no one else can ([ADR 0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
 - **A data key is rotated after 2^30 encryptions or one year, whichever comes first.** AES-GCM with random 96-bit nonces stays within its bound on nonce collisions up to 2^32 encryptions under one key (NIST SP 800-38D, section 8.3, checked 2026-11-01); 2^30 keeps a margin of four for counting gaps.
 - **Encryptions are counted in blocks.** A process reserves 65,536 encryptions at a time with a compare-and-set on the `data-key` record, so a crash loses at most its unused block and never under-counts. When the reserved total reaches the limit, the writer makes a new data key and uses it for every new write.
 - **An old data key stays readable** until no value refers to it. A re-seal rewraps the data keys under a new sealing key without decrypting a value.

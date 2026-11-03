@@ -11,7 +11,7 @@ The [permission manifest](/architecture/#the-permission-manifest-is-the-spine) s
 Two axes are enforced separately:
 
 - **The runtime axis** decides who the process is and how the platform proves it.
-- **The backend axis** decides what the resource can refuse on its own. A backend that can tell its callers apart is used with per-actor credentials and no mediator. Only a card on a node, or a key file in development, cannot, and `key-holder` owns it ([ADR 0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)).
+- **The backend axis** decides what the resource can refuse on its own. A backend that can tell its callers apart is used with per-actor credentials and no mediator. Only a card on a node, or a key file in development, cannot, and `key-holder` owns it ([ADR 0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)).
 
 ## Enforcement per runtime
 
@@ -62,7 +62,7 @@ On a cloud VM the instance role holds only what the node agent needs (the per-ac
 
 ### Who enforces per backend
 
-AWS KMS, DynamoDB and PostgreSQL separate callers themselves (key policies, IAM leading-key conditions, roles and row-level security), and rqlite separates them per user, so each owning actor gets a cluster of its own. A card or a software key cannot, so `key-holder` enforces for it, and emits the audit record before it acts. The check per driver is in [ADR 0003](/decisions/0003-units-transports-and-fusion/#per-driver-checks).
+AWS KMS, DynamoDB and PostgreSQL separate callers themselves (key policies, IAM leading-key conditions, roles and row-level security), and rqlite separates them per user, so each owning actor gets a cluster of its own. A card or a software key cannot, so `key-holder` enforces for it, and emits the audit record before it acts. The check per driver is in [ADR 0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks).
 
 ### systemd sandboxing
 

@@ -37,7 +37,7 @@ The number of pooled processes grows with the sign-in rate and the number of cus
 ### What this changes
 
 - **[REQ-ISO-051](/requirements/iso/#REQ-ISO-051) applies to dedicated connections,** and a new record bounds the pool. **Threat T-15** is read the same way, with the pool's residual risk named in the [threat model](/security/threat-model/#integrations-policy-and-companies): a pool compromise reaches the client secrets of one customer boundary's pooled connections, which let an attacker pose as sluis at those providers' token endpoints and nothing more; it reads no directory and mints nothing.
-- **[0025](/decisions/0025-integrations/#splitting-by-credential) and [0008](/decisions/0008-boundaries-and-tenants/#what-each-boundary-owns)** gain a sentence for the pooled class.
+- **[0025](/decisions/0025-integrations/#splitting-by-credential) and [0008](/decisions/0008-boundaries-and-tenants/#the-ladder)** gain a sentence for the pooled class.
 - **The OIDC upstream page** shows `oidc@<name>` for a dedicated connection and the pool for a tenant's.
 
 ## Consequences
@@ -52,7 +52,7 @@ The number of pooled processes grows with the sign-in rate and the number of cus
 
 - **A process per connection, scaled to zero.** It keeps the old rule whole but costs a pod or a cold start per tenant and thousands of network policies.
 - **One pool for every connection of the installation.** A compromise would reach every product's connections, and a noisy product would starve the others.
-- **A key per pooled connection for `private_key_jwt`.** It is a key per tenant, which [0006](/decisions/0006-keys-and-sealing/#when-keys-are-shared-and-when-separate) rules out.
+- **A key per pooled connection for `private_key_jwt`.** It is a key per tenant, which [0006](/decisions/0006-keys-and-sealing/#key-purposes) rules out.
 - **Pooling directory connectors as well.** They hold credentials that read a company's people; the strong rule stays where the credential is strong.
 - **Letting each tenant choose pooled or dedicated.** A tenant could buy isolation by declaration, or force a pod per tenant.
 - **A static host list for the pool.** Thousands of entries to keep in a network policy that the platform enforces poorly.

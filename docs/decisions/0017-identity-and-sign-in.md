@@ -18,7 +18,7 @@ Constraints from outside:
 - AWS IAM OIDC providers check `aud` against a list of client IDs; the default `sts.amazonaws.com` is the same for every account.
 - Upstream multi-factor authentication on every sign-in is slow, and sluis cannot ask the upstream for a fresh factor on its own terms. WebAuthn, RFC 9470 (step-up) and RFC 8628 (device login) are the published answers.
 
-Tokens are standard JWS and JWT, signed by the token-signing keys of [0006](/decisions/0006-keys-and-sealing/#the-token-signing-key). The actors are those of [0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors).
+Tokens are standard JWS and JWT, signed by the token-signing keys of [0006](/decisions/0006-keys-and-sealing/#the-token-signing-key). The actors are those of [0002](/decisions/0002-families-of-actors/#the-four-families).
 
 ## Decision
 
@@ -43,7 +43,7 @@ Tokens are standard JWS and JWT, signed by the token-signing keys of [0006](/dec
 ### Subjects
 
 - **`sub` is an opaque random ID, the same at every issuer.** sluis assigns it when it first sees a person: at a directory read where the upstream has a directory, so it is known before the first sign-in, and otherwise at the person's first sign-in. The first working version signs people in through the generic OpenID Connect upstream, sign-in only, so its subjects are assigned at first sign-in ([#1106](https://github.com/truvity/sluis/issues/1106)); directory sync, and with it the subject before the first sign-in, comes in the parity milestone ([#805](https://github.com/truvity/sluis/issues/805)). It is never an e-mail address or a directory account name. An upstream account is tied to a person by the issuer and a configured subject claim, never by e-mail ([0019](/decisions/0019-person-and-upstream-link/)).
-- **The directory account and `email` are claims of their own.** Tokens carry `acr`, `amr` and `auth_time`, and `cnf.jkt` when the audience declares binding to a DPoP key; an audience that declares none gets a bearer token ([0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors), [0020](/decisions/0020-grant-vocabulary-and-token-claims/#binding)).
+- **The directory account and `email` are claims of their own.** Tokens carry `acr`, `amr` and `auth_time`, and `cnf.jkt` when the audience declares binding to a DPoP key; an audience that declares none gets a bearer token ([0002](/decisions/0002-families-of-actors/#the-four-families), [0020](/decisions/0020-grant-vocabulary-and-token-claims/#binding)).
 - **A token carries only the grants of its own boundary.** Grants are names declared in a vocabulary and narrowed per audience, continuing v1 ADR 0010; the vocabulary, the claims of a token and its lifetimes are [0020](/decisions/0020-grant-vocabulary-and-token-claims/).
 - **Workload tokens come from the same issuer.** A JWT-SVID has the boundary's URL as `iss` and the workload's `spiffe://` ID as `sub` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#spiffe-identities)).
 - **Pairwise subjects per sector exist only for a client that declares a sector,** and none does yet. The public `sub` above is what keeps one sign-in working across several sites; the pairwise design is [0034](/decisions/0034-end-users-and-upstream-signals/#pairwise-subjects).

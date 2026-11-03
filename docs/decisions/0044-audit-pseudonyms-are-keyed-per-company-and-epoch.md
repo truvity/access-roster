@@ -11,7 +11,7 @@ A person or external actor is recorded in audit under a keyed pseudonym, never b
 
 Constraints:
 
-- **Tenants have no keys of their own.** A company's data keys are wrapped under the boundary's sealing key with the company in the encryption context ([0006](/decisions/0006-keys-and-sealing/#when-keys-are-shared-and-when-separate)).
+- **Tenants have no keys of their own.** A company's data keys are wrapped under the boundary's sealing key with the company in the encryption context ([0006](/decisions/0006-keys-and-sealing/#key-purposes)).
 - **Subjects are already opaque.** `sub` is a random identifier that sluis assigns, never an e-mail address ([0017](/decisions/0017-identity-and-sign-in/#subjects)); it is still personal data, because it links to a person.
 - **Rotation trades two things.** A pseudonym that never changes lets anyone who reads the envelopes follow one person for years; one that changes often makes an investigation across periods depend on reversal.
 - **The algorithms stay within the approved set** ([0006](/decisions/0006-keys-and-sealing/#algorithms)).

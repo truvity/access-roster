@@ -18,7 +18,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 - **A PIN, a passphrase or a secret is never a flag or an environment variable.** It is typed at the terminal, or read from a file descriptor the caller names (`--secret-fd N`). A command that needs one and has no terminal and no descriptor exits 2.
 - **Offline by default.** Only `--live`, `sluis login` and `sluis token` talk to a running sluis; `config check`, `config explain`, `doctor` and the key commands read the host.
 - **Colour** is off when standard output is not a terminal, with `--no-color`, or when `NO_COLOR` is set.
-- **Errors name a path, never a value** ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)): `clients.example-app.redirects[0]: not an https URL`, not the URL.
+- **Errors name a path, never a value** ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)): `clients.example-app.redirects[0]: not an https URL`, not the URL.
 
 ## Global flags
 

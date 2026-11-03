@@ -21,7 +21,7 @@ Two facts about real upstreams shape the key. An e-mail address is reused, renam
 - **The subject claim is configured per upstream, with the default `sub`.** The install file key is `subject_claim` ([Install file](/reference/install-file/#upstreams)). Google uses `sub`; Microsoft Entra needs `oid`.
 - **There is no fallback.** An ID token without the configured claim, or with a value that is not a string of at most 255 characters, is refused ([0025](/decisions/0025-integrations/#the-upstream-contract)). sluis never tries another claim, and never reads the e-mail address, `preferred_username` or `upn` as an identity. `sluis config check` refuses a `subject_claim` that names one of those mutable claims.
 - **E-mail never links, matches or merges.** It is a claim that the person's token may carry when the scope asks for it ([REQ-TOKEN-006](/requirements/token/#REQ-TOKEN-006)).
-- **The first link of an issuer pins the claim.** The pin is an issued record. If an upstream's configured claim later differs from its pin, sluis refuses the sign-in: a contradicted pin is refused, never learned again ([0004](/decisions/0004-the-data-model/#origins)). Changing the claim of an upstream that has links is a migration, not a setting.
+- **The first link of an issuer pins the claim.** The pin is an issued record. If an upstream's configured claim later differs from its pin, sluis refuses the sign-in: a contradicted pin is refused, never learned again ([0004](/decisions/0004-the-data-model/#storage-classes)). Changing the claim of an upstream that has links is a migration, not a setting.
 - **Two upstream accounts are two people.** sluis does not merge them, whether they differ by upstream or by tenant. Moving an installation to another upstream therefore makes new people; merging is a deliberate operator act that is out of scope until a consumer needs it.
 
 ### The records
@@ -39,7 +39,7 @@ The writer of every kind below is `session` of the front installation, which sig
 - **The subject is 128 random bits from the operating system's generator, written in lower-case base32 without padding.** It is the key of the `person` record, it is the `sub` of every token at every issuer, and it is never reused.
 - **The WebAuthn user handle is 32 random bytes stored on the person,** not derived from anything ([REQ-SUBJ-029](/requirements/subj/#REQ-SUBJ-029)).
 - **A key holds no personal data.** The key of a link is `HMAC-SHA-256` under the `link-key`, over the issuer and the claim value, truncated to 128 bits and written in base32 ([Record keys](/reference/storage/#record-keys)). The `link-key` is made once, by a create-only `Put`, so concurrent first starts agree on one; it is never rotated, because a new key would orphan every link. Sealing hides the values; this hides the keys.
-- **No origin is mixed.** What sluis issued (the person and the link) and what an operator chose (a hold) are two kinds with one writer each, and what a directory reports is a third origin ([0004](/decisions/0004-the-data-model/#origins)).
+- **No origin is mixed.** What sluis issued (the person and the link) and what an operator chose (a hold) are two kinds with one writer each, and what a directory reports is a third origin ([0004](/decisions/0004-the-data-model/#storage-classes)).
 
 ### Assigning a subject
 
@@ -66,20 +66,20 @@ A person has four states, and the state is computed from the records, never stor
 ### What policy sees
 
 - **For a person, `policy` receives the subject, the declared name of the upstream, the claims of the upstream's allow-list (the e-mail address and whether it was verified, a display name), `acr`, `amr`, `auth_time`, the freshness of the authentication, and the person's state.** An absent `acr`, `amr` or `auth_time` is unknown ([0025](/decisions/0025-integrations/#what-an-integration-may-return)).
-- **Internal groups are declared** ([0004](/decisions/0004-the-data-model/#origins)). In the first working version a declared binding names a person by the pair that links them, the upstream's declared name and the claim value, because an operator cannot know the random subject before the first sign-in and the e-mail address does not identify. A binding may name a directory group at the parity milestone.
+- **Internal groups are declared** ([0004](/decisions/0004-the-data-model/#storage-classes)). In the first working version a declared binding names a person by the pair that links them, the upstream's declared name and the claim value, because an operator cannot know the random subject before the first sign-in and the e-mail address does not identify. A binding may name a directory group at the parity milestone.
 
 ### Directory facts (parity)
 
-- **A directory is a `FactsSource`** ([0025](/decisions/0025-integrations/#the-contracts)). It reads the people, groups and memberships of one tenant and keeps them as learned facts, with the time observed and a maximum age, in its own namespace. Learned facts never configure ([0004](/decisions/0004-the-data-model/#origins)).
+- **A directory is a `FactsSource`** ([0025](/decisions/0025-integrations/#the-contracts)). It reads the people, groups and memberships of one tenant and keeps them as learned facts, with the time observed and a maximum age, in its own namespace. Learned facts never configure ([0004](/decisions/0004-the-data-model/#storage-classes)).
 - **A person's fact carries the value that the upstream will present in its subject claim** (Google's user id, Entra's object id), the suspended and deleted flags, and the directory's own id. The directory id is a pin: a later pass that contradicts it is refused.
-- **The pass is a pull.** A full snapshot runs on an interval (default 15 minutes), and a push from the vendor is a notification that starts a pull ([0004](/decisions/0004-the-data-model/#origins)).
+- **The pass is a pull.** A full snapshot runs on an interval (default 15 minutes), and a push from the vendor is a notification that starts a pull ([0004](/decisions/0004-the-data-model/#storage-classes)).
 - **Staleness is bounded and fails closed.** When the directory cannot be read, sluis serves the cached facts up to the freshness window (default 1 hour, maximum 24 hours in code, set per installation), then refuses refresh and exchange ([0017](/decisions/0017-identity-and-sign-in/#directory-outages)). A person the directory disabled is refused at once, whatever the window.
 - **An unreadable directory is never an empty one.** A failed pass is not a snapshot and counts for nothing. A person is `left` only after being absent from `N` consecutive successful full snapshots (default 3), and a snapshot that lacks more than half of the people sluis knows is held and reported, not applied.
 
 ## Consequences
 
 - One person has one subject at every issuer, found by the same pair whichever sign-in path reaches it, and the record fits a directory without change: the directory adds a way to create the person earlier and a state, not a new key.
-- No key in the state store, and no claim in the tokens, reveals an e-mail address or an upstream id. The cost is the `link-key`: losing it orphans every link, so it is backed up and rolled forward like any issued record ([0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin)).
+- No key in the state store, and no claim in the tokens, reveals an e-mail address or an upstream id. The cost is the `link-key`: losing it orphans every link, so it is backed up and rolled forward like any issued record ([0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 - A person who has two upstream accounts, or whose installation changes upstream, is two people. Their grants, passkeys and sessions do not carry over.
 - Delete and listing by prefix are not in the first working version ([Storage](/reference/storage/#state)), so a person cannot be looked up by anything but the pair, which is what sign-in needs.
 - The first working version cannot see an upstream-side removal until the next upstream sign-in or the session limit. That is the price of sign-in only, and the directory removes it at parity.
@@ -92,7 +92,7 @@ A person has four states, and the state is computed from the records, never stor
 - **A list of claims to try in order.** The same account could present different claims at different times and become two people.
 - **The upstream's subject as the sluis subject.** It leaks an upstream id into every token and log line, and two upstreams could collide.
 - **Merging accounts automatically.** Any rule that merges on a shared attribute is the e-mail road again.
-- **One `person` kind with a state field.** It would have two writers, `session` and the facts source, which [0004](/decisions/0004-the-data-model/#origins) forbids for learned and operator-set data of one object.
+- **One `person` kind with a state field.** It would have two writers, `session` and the facts source, which [0004](/decisions/0004-the-data-model/#storage-classes) forbids for learned and operator-set data of one object.
 - **Assigning subjects only at a directory read.** The first working version has no directory.
 - **A separate people actor.** It would add a process and a second holder of the sealing key for records that `session` already writes with the passkeys.
 - **The unkeyed hash of the pair as the record key.** A reader of the store's keys could test whether a known upstream id is a user.

@@ -213,7 +213,7 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 | The reasons | The ids of the determining policies, each with its annotations |
 | The grants | For a person: the full set of held grants, after the ladder |
 | The snapshot | The digest of the policy set, the vocabulary and the links, and the version of the schema, for the audit record |
-| The sealed grant | On `allow` only: the mint grant, or for `artifact.sign` the signing grant, sealed under the environment's sealing key ([ADR 0006](/decisions/0006-keys-and-sealing/#grants-are-sealed-not-signed)) |
+| The sealed grant | On `allow` only: the mint grant, or for `artifact.sign` the signing grant, sealed under the environment's sealing key ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)) |
 
 The `proto/` file is written with the first code. Every decision is audited with its reasons and the snapshot digest.
 
@@ -232,7 +232,7 @@ The `proto/` file is written with the first code. Every decision is audited with
 
 ## Template links
 
-A template is declared policy, in a policy file, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are the one operator-set part of policy ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#template-links), [ADR 0004](/decisions/0004-the-data-model/#origins)). In the first version the templates bind an account to a grant, or revoke a grant from an account.
+A template is declared policy, in a policy file, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are the one operator-set part of policy ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#template-links), [ADR 0004](/decisions/0004-the-data-model/#storage-classes)). In the first version the templates bind an account to a grant, or revoke a grant from an account.
 
 ### Making a link
 
@@ -504,5 +504,5 @@ With `--live`, the operator-set records are read as well, and a link whose templ
 - **An action `session.step_up`.** It would split "may this person have this token" from "is the authentication enough for it" into two questions with two sets of policies that can disagree. One `forbid` with `unless` keeps them in one.
 - **Dates and durations in Cedar's `datetime` extension for freshness.** It would put a clock into `policy`, which has none, and a request would no longer answer the same on another day. Seconds counted by the asker keep the vectors fixed.
 - **A link kind per asking actor.** Two writers cannot share a kind, and a binding applies to both `token.issue` and `token.exchange`, which are decided after the grants are found. One kind owned by `session`, read by `exchange`, keeps one link in one place.
-- **`policy`, `console` or `exchange` as the owner of the links.** `policy` has no state port ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)); `console` never writes a record ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)); `exchange` is the second reader, and one writer for a kind is enough.
+- **`policy`, `console` or `exchange` as the owner of the links.** `policy` has no state port ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)); `console` never writes a record ([ADR 0004](/decisions/0004-the-data-model/#one-writer-per-kind)); `exchange` is the second reader, and one writer for a kind is enough.
 - **Ignoring a link that does not apply.** The request would go through without a `forbid` that an operator meant to have in force.
