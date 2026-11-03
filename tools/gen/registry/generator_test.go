@@ -254,7 +254,7 @@ func TestUIDsAppendOnly(t *testing.T) {
 		t.Fatalf("origin/main does not exist, so the uid list cannot be compared (run `just registry-check`, which fetches it): %v %s", err, out)
 	}
 	// "origin/main:<path>" names a blob; ls-tree says whether main has the file without reading it.
-	tree, err := exec.Command("git", "ls-tree", "--name-only", "origin/main", uidsFile).Output() // #nosec G204 -- a constant path
+	tree, err := exec.Command("git", "ls-tree", "--full-tree", "--name-only", "origin/main", uidsFile).Output() // #nosec G204 -- a constant path
 	if err != nil {
 		t.Fatalf("git ls-tree origin/main: %v", err)
 	}
