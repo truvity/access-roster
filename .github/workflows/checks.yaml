@@ -128,18 +128,42 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: devbox run -- just check-messages
 
+  # The code gate: the Go module and the Cargo workspace (`just check-code`: contracts and
+  # registry drift when those recipes exist, lint, tests). Not path-filtered, like the rest.
+  code:
+    name: 'code (Go and Rust: proto, registry, lint, test)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: code-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            code-${{ runner.os }}-
+      - run: devbox run -- just check-code
+
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules]
+    needs: [site, v1, workers, workflows, rules, code]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }}
         run: |
-          echo "site v1 workers workflows rules: $RESULTS"
+          echo "site v1 workers workflows rules code: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done

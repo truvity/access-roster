@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["kits/rust/*", "actors/*", "drivers/*/*"]
+# The Go executables live beside the Rust ones (ADR 0012 per-actor table); Cargo must skip them.
+exclude = [
+  "actors/key", "actors/session", "actors/exchange", "actors/writer", "actors/adapter-upstream-oidc",
+  "drivers/key/software",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"          # the release version is stamped at build time (ADR 0013, One version)
+license = "MIT"
+publish = false
+rust-version = "1.99"
+
+[workspace.lints.rust]
+unsafe_code = "deny"        # a crate that needs peer credentials uses the kit's one audited call site
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
