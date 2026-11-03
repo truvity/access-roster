@@ -33,7 +33,7 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
 - **Strict:** `unevaluatedProperties: false` on every object, so an unknown key is an error that names its path; format assertions are on. An error never shows the value.
 - **`$schema`** may name the `$id` above, for editors. A file that names another `$id` is refused.
 - **Names** of boundaries, upstreams and clients are lower-case kebab-case, 1 to 32 characters, starting with a letter: they appear in unit names, sockets and record keys (`<actor>@<boundary>`).
-- **Durations** are ISO 8601 duration strings, the JSON Schema `duration` format ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)): `PT90S`, `PT15M`, `PT12H` or `P30D`. A string such as `90s` is refused. Every duration field also has a `pattern` beside the format, because the two validators disagree on some valid strings: Go accepts `PT1H1S` and Rust refuses it, so the pattern decides (MEASURED 2026-11-02). A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
+- **Durations** are written with a unit: `90s`, `15m`, `12h` or `30d` ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)); the loader converts them to a Duration, and the generated schema checks the pattern. An ISO 8601 string such as `PT90S` is refused. A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
 - **The profile's vectors** (measured 2026-11-01 and again 2026-11-02 with `go.yaml.in/yaml/v3` v3.0.6 and `saphyr-parser` 0.3.3; the conformance kit starts from them):
 
   | Document | Verdict |
@@ -82,7 +82,7 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
 |---|---|---|
 | `host` | yes | The host of the group issuer. The issuer URL is `https://<host>`, with no path ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)) |
 | `rp_id` | yes | The passkey relying-party ID: the registrable parent domain of the front host and every boundary host ([ADR 0017](/decisions/0017-identity-and-sign-in/#passkeys)) |
-| `token_ttl` | no | The default lifetime of the access and ID tokens of the group issuer, a duration. Default and maximum `PT1H`; it can only be shortened ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#lifetimes)) |
+| `token_ttl` | no | The default lifetime of the access and ID tokens of the group issuer, a duration. Default and maximum `1h`; it can only be shortened ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#lifetimes)) |
 
 ### `boundaries`
 
