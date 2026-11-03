@@ -1,5 +1,9 @@
 ## Unreleased
 
+## v1.80.2
+
+A patch release: a wrapped signing key is published 12 hours before it signs instead of 15 minutes, so a verifier that caches the key set for an hour no longer refuses the new key's tokens after each daily rotation; and the key set and the metadata documents carry `Cache-Control: public, max-age=300`. Also dependency updates (`sigstore-go` v1.4.0) and CI tooling. Upgrade notes: an installation that sets `signingKey.kmsWrapped.prepublish` keeps its value; raise it to at least its verifiers' longest key-set cache, or remove it.
+
 ### Fixed
 
 - **A wrapped signing key is published 12 hours before it signs, not 15 minutes.** `signingKey.kmsWrapped.prepublish` unset was `signingKey.activationDelay` (15m), so a verifier that caches the key set for longer (an hour is common) rejected every token signed with the new key for up to the rest of its cache after each daily rotation, with "no keys found" for the new `kid`; the key set and the tokens were correct throughout. Unset is now half of `rotateEvery` (12h with the default 24h), never shorter than `activationDelay`: longer than any key-set cache seen, and still below `rotateEvery`, which the start requires. `retain` is unchanged (`lifetimes.token` plus 5m): a verifier's cache does not lengthen it, since a cached copy holds more keys, not fewer. The key set now holds two keys per algorithm at a time (four with ES384 and RS256) instead of mostly one, three per algorithm only while `retain` is longer than `rotateEvery` minus `prepublish`. A key already pending keeps the activation it was recorded with; the next rotation is published 12h ahead. **Upgrade:** an installation that sets `prepublish` keeps its value; raise it to at least the longest key-set cache of its verifiers, or remove it.

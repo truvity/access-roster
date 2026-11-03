@@ -26,8 +26,8 @@ require (
 	github.com/redis/go-redis/v9 v9.23.0
 	github.com/rs/cors v1.11.1
 	github.com/truvity/policy v1.55.0
-	github.com/truvity/sluis/audit/sdk v1.80.1
-	github.com/truvity/sluis/storage v1.80.1
+	github.com/truvity/sluis/audit/sdk v1.80.2
+	github.com/truvity/sluis/storage v1.80.2
 	github.com/urfave/cli/v3 v3.14.0
 	github.com/zitadel/oidc/v3 v3.51.16
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0
