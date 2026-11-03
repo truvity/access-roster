@@ -6,12 +6,12 @@ sidebar:
   order: 5
 ---
 
-sluis gives credentials to people and to machines. A person comes from an upstream directory and gets an opaque subject. A machine, whether a host, a pod, a CI job or one of sluis's own actors, presents a proof and gets a short-lived credential under a SPIFFE ID. The records are [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/) for issuers and subjects and [ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/) for workload identity and enrolment. The threats they answer are on the [threat model](/security/threat-model/#machine-identity-enrolment-and-trust).
+sluis gives credentials to people and to machines. A person comes from an upstream directory and gets an opaque subject. A machine, whether a host, a pod, a CI job or one of sluis's own actors, presents a proof and gets a short-lived credential under a SPIFFE ID. The records are [ADR 0017](/decisions/0017-identity-and-sign-in/) for issuers and subjects and [ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/) for workload identity and enrolment. The threats they answer are on the [threat model](/security/threat-model/#machine-identity-enrolment-and-trust).
 
 ## A person's subject
 
-- **`sub` is an opaque random id, the same at every issuer.** sluis assigns it when it first sees a person: at a directory read where the upstream has a directory, so it is known before the first sign-in, and otherwise at the first sign-in, which is how the first working version works. An upstream account is tied to the person by the issuer and a configured subject claim (`sub`, or `oid` for Microsoft Entra), never by e-mail ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/)). The subject is never an e-mail address or a directory account name, so it survives a rename and keeps personal data out of log lines.
-- **The directory account and `email` are claims of their own**, beside `acr`, `amr` and `auth_time`. A token for an audience that declares DPoP also carries `cnf.jkt`; DPoP comes later ([ADR 0055](/decisions/0055-fapi-2-is-a-profile-a-client-declares/)).
+- **`sub` is an opaque random id, the same at every issuer.** sluis assigns it when it first sees a person: at a directory read where the upstream has a directory, so it is known before the first sign-in, and otherwise at the first sign-in, which is how the first working version works. An upstream account is tied to the person by the issuer and a configured subject claim (`sub`, or `oid` for Microsoft Entra), never by e-mail ([ADR 0019](/decisions/0019-person-and-upstream-link/)). The subject is never an e-mail address or a directory account name, so it survives a rename and keeps personal data out of log lines.
+- **The directory account and `email` are claims of their own**, beside `acr`, `amr` and `auth_time`. A token for an audience that declares DPoP also carries `cnf.jkt`; DPoP comes later ([ADR 0038](/decisions/0038-fapi-2-profile/)).
 - **A person disabled in the directory, or held by an operator, is refused at once**, whatever the cached state.
 - What happens to a subject over its life, and pairwise subjects per sector for customers, are for the subject-lifecycle decision record (planned, [#1024](https://github.com/truvity/sluis/issues/1024)).
 
@@ -66,7 +66,7 @@ Each kind of proof is a **verifier driver** in `exchange`. A verifier holds publ
 
 An actor that talks to a cloud, such as the audit `writer` writing to a bucket, needs that cloud's credentials. Every actor uses its own; sluis brokers credentials and does not proxy data.
 
-**Where the platform gives an identity, sluis uses it.** On serverless it is the function's role. On Kubernetes it is a projected ServiceAccount token per container, with one audience per role; EKS Pod Identity serves pods that hold a single actor, and `sluis-node` is only a fallback ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#kubernetes)).
+**Where the platform gives an identity, sluis uses it.** On serverless it is the function's role. On Kubernetes it is a projected ServiceAccount token per container, with one audience per role; EKS Pod Identity serves pods that hold a single actor, and `sluis-node` is only a fallback ([ADR 0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 
 **On a self-hosted node, the node agent fills the gap.** `sluis-node` reads the caller's uid from the peer credentials of its Unix socket, maps it to an actor, and issues that actor a short-lived **workload JWT** signed with the node's **workload-issuer key**, a key of its own in a slot of its own, never shared with `signer`'s token-signing key ([the card slot map](/concepts/keys/#the-card-slot-map)). The caller cannot name another actor. The token's `sub` is the actor instance, `<actor>@<boundary>` ([Naming](/concepts/actors/#naming)), and lasts about an hour.
 
@@ -80,7 +80,7 @@ An actor that talks to a cloud, such as the audit `writer` writing to a bucket, 
 | GCP | Workload Identity Federation | ES256 |
 | Azure | A federated credential on an Entra application | RS256 |
 
-GCP and Azure need an algorithm other than P-384; the key that signs workload tokens for that cloud is a key of its own, a named exception of [ADR 0012](/decisions/0012-cryptography-and-authority-keys/#named-exceptions). Cloudflare has no federation for R2: its cloud driver holds a parent token of the boundary, stored sealed, and mints R2 temporary credentials scoped to a bucket and a prefix.
+GCP and Azure need an algorithm other than P-384; the key that signs workload tokens for that cloud is a key of its own, a named exception of [ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions). Cloudflare has no federation for R2: its cloud driver holds a parent token of the boundary, stored sealed, and mints R2 temporary credentials scoped to a bucket and a prefix.
 
 ### An actor getting AWS credentials
 
@@ -106,7 +106,7 @@ The driver, under the actor's own uid, asks for a token whose audience is the ro
 
 ## Joining a host
 
-A host enrols with the same mechanism and receives a host X.509-SVID from `ca`. A replacement sluis node enrols the same way, which is how a new state-cluster member gets its identity; its intermediate is certified separately, through the hand-off to ritueel ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-hand-off)).
+A host enrols with the same mechanism and receives a host X.509-SVID from `ca`. A replacement sluis node enrols the same way, which is how a new state-cluster member gets its identity; its intermediate is certified separately, through the hand-off to ritueel ([ADR 0013](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
 
 | Case | How the host proves itself | Notes |
 |---|---|---|
@@ -135,7 +135,7 @@ sequenceDiagram
   X-->>H: certificate and bundle
 ```
 
-The enrolment API has start, poll, renew over mutual TLS, leave, and bundle; `entry` routes it and `exchange` carries it out. Policy has four actions: `host.enrol`, `host.renew`, `enrol-token.create` and `enrolment.approve`. Every step is audited, and a pending request notifies the people who may approve it. The client is `sluis-host enroll`, which keeps the host key in a card, then a TPM, then a file. ACME for host TLS certificates comes after the first release ([#978](https://github.com/truvity/sluis/issues/978)); until then a host sends a CSR to `ca` ([ADR 0008](/decisions/0008-certificate-authorities-for-x509-ssh-and-databases/)).
+The enrolment API has start, poll, renew over mutual TLS, leave, and bundle; `entry` routes it and `exchange` carries it out. Policy has four actions: `host.enrol`, `host.renew`, `enrol-token.create` and `enrolment.approve`. Every step is audited, and a pending request notifies the people who may approve it. The client is `sluis-host enroll`, which keeps the host key in a card, then a TPM, then a file. ACME for host TLS certificates comes after the first release ([#978](https://github.com/truvity/sluis/issues/978)); until then a host sends a CSR to `ca` ([ADR 0023](/decisions/0023-certificate-authorities/)).
 
 ### The enrolment token never travels
 
@@ -151,7 +151,7 @@ A joining host is given the **SPKI hashes of the roots' public keys** and refuse
 
 ## The trust bundle
 
-A boundary's **trust bundle** is a static document in SPIFFE format: the certificates a host of that boundary trusts, including the enrolment certificate. It is not signed by an online key. Each certificate in it verifies itself by chaining through the boundary's intermediate to a root in the **root list**, and the root list is signed by a root at ritueel and carries a trust sequence that only increases ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). There is one bundle per environment.
+A boundary's **trust bundle** is a static document in SPIFFE format: the certificates a host of that boundary trusts, including the enrolment certificate. It is not signed by an online key. Each certificate in it verifies itself by chaining through the boundary's intermediate to a root in the **root list**, and the root list is signed by a root at ritueel and carries a trust sequence that only increases ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#root-pins-and-the-root-list)). There is one bundle per environment.
 
 ### Trust sync
 

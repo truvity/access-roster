@@ -1,5 +1,5 @@
 # The local installation: Docker Compose on one workstation, software keys, one node
-# (ADR 0018). Install-file schema v1: https://sluis.id/reference/install-file/
+# (ADR 0011). Install-file schema v1: https://sluis.id/reference/install-file/
 $schema: https://sluis.id/schema/install/v1/install.schema.json
 runtime: bare-metal
 environment: development

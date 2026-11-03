@@ -1,4 +1,4 @@
-// The status page's groups at build time (/status/, ADR 0020): the board as read during the
+// The status page's groups at build time (/status/, ADR 0014): the board as read during the
 // build (src/lib/project.ts) joined with the repository facts the build publishes as
 // /data/repo.json (src/lib/repo.ts). The rules are in src/lib/status-groups.ts, which the
 // Worker's live block applies to the board in KV and the deployed /data/repo.json.

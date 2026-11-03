@@ -225,13 +225,13 @@ const edit = (path, from, to) => {
   if (!actorFiles[path].includes(from)) throw new Error(`selftest fixture: ${path} lacks ${from}`);
   return { ...actorFiles, [path]: actorFiles[path].replace(from, to) };
 };
-const a0014 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0014-'));
-const a0007 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0007-'));
+const a0014 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0012-'));
+const a0007 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0022-'));
 expect('the repository as it is', 'actors', actorFiles, 'pass', { has: ['20 actors'] });
 expect('a label that is not actor:<name>', 'actors', edit('docs/architecture/actors.yaml', 'label: actor:signer', 'label: signer'), 'fail', { has: ['label must be actor:signer'] });
 expect('a record naming an unknown actor', 'actors', edit('docs/requirements/policy.yaml', 'actors: [policy]', 'actors: [decider]'), 'fail', { has: ['decider is not an actor'] });
 expect('a record outside the actor\'s areas', 'actors', edit('docs/requirements/policy.yaml', 'actors: [policy]', 'actors: [signer]'), 'fail', { has: ['area POLICY is not a requirement area of signer'] });
-expect('a language that ADR 0014 does not give', 'actors', edit(a0014, '| `policy` | Rust |', '| `policy` | Go |'), 'fail', { has: ['language Rust, but ADR 0014 says "Go"'] });
+expect('a language that ADR 0012 does not give', 'actors', edit(a0014, '| `policy` | Rust |', '| `policy` | Go |'), 'fail', { has: ['language Rust, but ADR 0012 says "Go"'] });
 expect('an instance name that is no actor', 'actors', edit(a0007, '`exchange@<boundary>`', '`exchanger@<boundary>`'), 'fail', { has: ['names exchanger'] });
 expect('a role the registry lacks', 'actors', edit('site/src/data/explorer/architecture.yaml', '  quota:\n    status: decided', '  meter:\n    status: decided'), 'fail', { has: ['role meter is not an actor', 'quota actor must be drawn'] });
 expect('a stale generated page', 'actors', edit('docs/reference/actors.md', '| core | Go (R4) |', '| core | Go |'), 'fail', { has: ['generated block is stale'] });

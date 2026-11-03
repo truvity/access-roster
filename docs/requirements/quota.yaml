@@ -456,7 +456,7 @@ requirements:
   - id: REQ-QUOTA-036
     area: QUOTA
     statement: "When a billing period closes, quota MUST write a statement for each billing account as an entry of the usage log, naming the checkpoint of the usage log that it was computed from."
-    rationale: "A statement in the log is portable evidence that survives the exit of the company (ADR 0032)."
+    rationale: "A statement in the log is portable evidence that survives the exit of the company (ADR 0048)."
     level: MUST
     source: design-decision
     status: planned

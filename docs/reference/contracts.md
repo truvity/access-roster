@@ -6,7 +6,7 @@ sidebar:
   order: 4
 ---
 
-Every major component of sluis is a ConnectRPC contract, written in Protobuf under `proto/`, even when caller and callee share a process ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#contracts)). This page is the rule book every `proto/` file and every HTTP endpoint follows. The endpoints themselves are on [System context](/architecture/context/#the-external-api-surface); the services each actor serves are in its [permission manifest](/architecture/manifest/).
+Every major component of sluis is a ConnectRPC contract, written in Protobuf under `proto/`, even when caller and callee share a process ([ADR 0002](/decisions/0002-families-of-actors/#contracts)). This page is the rule book every `proto/` file and every HTTP endpoint follows. The endpoints themselves are on [System context](/architecture/context/#the-external-api-surface); the services each actor serves are in its [permission manifest](/architecture/manifest/).
 
 ## Packages and files
 
@@ -25,7 +25,7 @@ Every major component of sluis is a ConnectRPC contract, written in Protobuf und
 
 ## Versions
 
-- **`v2alpha1` until v2.0.0.** Before the first v2 release a contract may change in any pre-release; nothing outside one release depends on it, because every artifact of a release is compatible only with that release ([ADR 0019](/decisions/0019-release-train-packaging-and-distribution/#compatibility-between-releases)).
+- **`v2alpha1` until v2.0.0.** Before the first v2 release a contract may change in any pre-release; nothing outside one release depends on it, because every artifact of a release is compatible only with that release ([ADR 0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases)).
 - **`v2` from v2.0.0, frozen under the compatibility rule.** A field, a method, a service or an enum value may be added; nothing may be removed, renamed, renumbered or changed in meaning. A breaking change is a new package version beside the old one, for a deprecation window.
 - **CI checks `proto/` for breaking changes** against the last release once `v2` exists ([GOVERNANCE.md](https://github.com/truvity/sluis/blob/main/GOVERNANCE.md)).
 
@@ -34,22 +34,22 @@ Every major component of sluis is a ConnectRPC contract, written in Protobuf und
 | Surface | Who calls it | How | Where it is defined |
 |---|---|---|---|
 | OAuth and OpenID Connect endpoints | Browsers, clients, relying parties | Plain HTTP on the issuer's origin, not Connect: `entry` parses and routes each request to `session` or `exchange` | The standards ([Endpoints](/architecture/context/#oidc-and-oauth-endpoints)) |
-| Discovery and the key set | Anyone | Static documents in a bucket of the boundary ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers)) | The standards |
+| Discovery and the key set | Anyone | Static documents in a bucket of the boundary ([ADR 0017](/decisions/0017-identity-and-sign-in/#issuers)) | The standards |
 | Public Connect services: the console API, Quota, the signing API | The console's single-page application, declared clients, CI jobs | Connect over HTTPS through `entry`, JSON or binary Protobuf | `proto/`, published as generated OpenAPI |
 | Internal services: actor to actor | The callers the call graph allows | Connect over a Unix socket with peer credentials, a Lambda invoke, or HTTPS with mutual TLS between boundaries; binary Protobuf | `proto/` |
 | Port contracts | An actor's port library | Connect over the driver's Unix socket | `proto/sluis/port/` ([Storage](/reference/storage/#port-contracts)) |
 | Integration contracts | Core actors | As internal services | `proto/sluis/integration/` ([Integration contracts](/architecture/components/#integration-contracts)) |
 
-- **`entry` serves no business logic of its own.** It validates each request against closed parameter lists generated from these contracts and from the standards, and forwards it to the owning actor ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-actors)).
+- **`entry` serves no business logic of its own.** It validates each request against closed parameter lists generated from these contracts and from the standards, and forwards it to the owning actor ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)).
 - **An internal service is never reachable through `entry`.** The generated routing table lists the public methods only; any other path is refused as unknown.
-- **The call graph is default deny.** A caller may call a method only if both manifests name the edge; one interceptor in every process enforces it ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#the-permission-manifest)).
+- **The call graph is default deny.** A caller may call a method only if both manifests name the edge; one interceptor in every process enforces it ([ADR 0002](/decisions/0002-families-of-actors/#the-permission-manifest)).
 
 ## Every call
 
 - **A deadline.** Every call carries one (`Connect-Timeout-Ms`); a method without one gets the default its contract declares. A callee never extends its caller's deadline, and passes what is left to the calls it makes.
 - **A correlation id.** `entry` gives every request a random 128-bit id (UUID version 4), returns it in the `Sluis-Correlation-Id` response header, and passes it in the metadata of every internal call that request causes. Every audit record of the request carries it, so a support question with the id finds the records. A client cannot choose it; one it sends is ignored.
-- **Trace context.** W3C Trace Context headers are passed on; only internal actors use a remote parent, and the telemetry rules are [ADR 0022](/decisions/0022-telemetry-is-opentelemetry-with-fixed-conventions/). A span never carries what an audit record says ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)).
-- **Idempotency.** Every public method that changes something takes a `request_id` field, chosen by the client; `entry` also accepts an `Idempotency-Key` header and copies it in, and refuses both with different values. A request id is scoped to the client and the method and remembered for 24 hours with its outcome. A repeat returns the first outcome; a reused id with another payload is refused (`failed_precondition`); a repeat while the first is still running is `aborted` (HTTP 409) ([ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/#quota)).
+- **Trace context.** W3C Trace Context headers are passed on; only internal actors use a remote parent, and the telemetry rules are [ADR 0016](/decisions/0016-telemetry/). A span never carries what an audit record says ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **Idempotency.** Every public method that changes something takes a `request_id` field, chosen by the client; `entry` also accepts an `Idempotency-Key` header and copies it in, and refuses both with different values. A request id is scoped to the client and the method and remembered for 24 hours with its outcome. A repeat returns the first outcome; a reused id with another payload is refused (`failed_precondition`); a repeat while the first is still running is `aborted` (HTTP 409) ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
 - **Pagination by cursor.** A list method takes `page_size` (at most the maximum its contract declares) and `page_token`, and returns `next_page_token`, empty on the last page. A token is opaque, bound to the query that made it and to the caller, and expires; a token used with another query is `invalid_argument`.
 
 ## Errors
@@ -94,7 +94,7 @@ A refusal tells a caller what to do, never why someone else may do more:
 - **Inside sluis** the `Refusal` detail travels with the error, so the calling actor can act on it.
 - **At `entry`** the detail is removed. A public caller gets the code, a fixed message for that code and the correlation id, nothing that names a client, an audience, a group, a grant or a policy rule. The reason goes into the audit record of the refusal.
 - **A refused and an unknown object look the same:** an audience the caller may not use and one that does not exist give the same answer ([System context](/architecture/context/#token-exchange-and-mint)).
-- **Errors never show a value** of configuration or of a request, only the path of the field ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)).
+- **Errors never show a value** of configuration or of a request, only the path of the field ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
 
 ### OAuth and OpenID Connect endpoints
 
@@ -110,4 +110,4 @@ These endpoints answer in the error format of their standard, as clients impleme
 
 ## Open items
 
-None on this page: what it fixes follows from ADR 0002, ADR 0010, ADR 0017, v1's uniform refusals ([#796](https://github.com/truvity/sluis/issues/796)) and the standards. The list of `Refusal` reasons is written with the first contract that needs one, in `proto/sluis/type/`.
+None on this page: what it fixes follows from ADR 0002, ADR 0004, ADR 0030, v1's uniform refusals ([#796](https://github.com/truvity/sluis/issues/796)) and the standards. The list of `Refusal` reasons is written with the first contract that needs one, in `proto/sluis/type/`.

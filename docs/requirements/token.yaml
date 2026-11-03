@@ -480,7 +480,7 @@ requirements:
   - id: REQ-TOKEN-033
     area: TOKEN
     statement: "An access token and an ID token MUST carry in groups only the held grants whose scope and thing appear among the pairs of the audience's requires."
-    rationale: "A relying party must not read a grant meant for another system (ADR 0028)."
+    rationale: "A relying party must not read a grant meant for another system (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -492,7 +492,7 @@ requirements:
   - id: REQ-TOKEN-034
     area: TOKEN
     statement: "sluis MUST NOT issue a claim that is not in the declared claim set of its token type."
-    rationale: "A fixed set lets the claims be tested as a whole and keeps configuration from widening a token (ADR 0028)."
+    rationale: "A fixed set lets the claims be tested as a whole and keeps configuration from widening a token (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -516,7 +516,7 @@ requirements:
   - id: REQ-TOKEN-036
     area: TOKEN
     statement: "The access and ID tokens of a person MUST default to a lifetime of 1 hour."
-    rationale: "The default is v1's, so relying parties tuned to it keep working (ADR 0028)."
+    rationale: "The default is v1's, so relying parties tuned to it keep working (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -528,7 +528,7 @@ requirements:
   - id: REQ-TOKEN-037
     area: TOKEN
     statement: "A token's exp MUST be no later than the earliest of the issuer's token_ttl, the client's ttl_cap, the end of its session and the end of the exchanged proof."
-    rationale: "A token must never outlive what it came from (ADR 0028)."
+    rationale: "A token must never outlive what it came from (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -552,7 +552,7 @@ requirements:
   - id: REQ-TOKEN-039
     area: TOKEN
     statement: "sluis MUST issue a token without cnf for an audience that does not declare binding."
-    rationale: "The relying parties of v1 parity accept bearer tokens only (ADR 0028)."
+    rationale: "The relying parties of v1 parity accept bearer tokens only (ADR 0020)."
     level: MUST
     source: design-decision
     status: planned
@@ -564,7 +564,7 @@ requirements:
   - id: REQ-TOKEN-040
     area: TOKEN
     statement: "An access token for an audience of profile fapi2 MUST be sender-constrained by DPoP or mutual TLS."
-    rationale: "The profile demands bound tokens (ADR 0055)."
+    rationale: "The profile demands bound tokens (ADR 0038)."
     level: MUST
     source: standard
     status: planned

@@ -112,7 +112,7 @@ requirements:
   - id: REQ-UX-009
     area: UX
     statement: "A console request that changes anything MUST be refused for a person who holds the viewer role only."
-    rationale: "The viewer role reads and cannot write (ADR 0040)."
+    rationale: "The viewer role reads and cannot write (ADR 0027)."
     level: MUST
     source: design-decision
     status: planned
@@ -124,7 +124,7 @@ requirements:
   - id: REQ-UX-010
     area: UX
     statement: "Every console page that shows a configured value MUST show its origin and, for a declared value, that it is locked."
-    rationale: "An operator must see why a field cannot be changed and where it comes from (ADR 0040)."
+    rationale: "An operator must see why a field cannot be changed and where it comes from (ADR 0027)."
     level: MUST
     source: design-decision
     status: planned
@@ -136,7 +136,7 @@ requirements:
   - id: REQ-UX-011
     area: UX
     statement: "A console role MUST be a grant of the declared vocabulary that the console has no action to assign."
-    rationale: "Authority is declared only (ADR 0040)."
+    rationale: "Authority is declared only (ADR 0027)."
     level: MUST
     source: design-decision
     status: planned
@@ -148,7 +148,7 @@ requirements:
   - id: REQ-UX-012
     area: UX
     statement: "The locale of a page MUST be chosen from ui_locales, then the product default, then Accept-Language, then English."
-    rationale: "The request carries the best signal of a person's language (ADR 0052)."
+    rationale: "The request carries the best signal of a person's language (ADR 0035)."
     level: MUST
     source: design-decision
     status: planned

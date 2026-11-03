@@ -11,7 +11,7 @@ The [permission manifest](/architecture/#the-permission-manifest-is-the-spine) s
 Two axes are enforced separately:
 
 - **The runtime axis** decides who the process is and how the platform proves it.
-- **The backend axis** decides what the resource can refuse on its own. A backend that can tell its callers apart is used with per-actor credentials and no mediator. Only a card on a node, or a key file in development, cannot, and `key-holder` owns it ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#key-holder-is-the-one-mediator)).
+- **The backend axis** decides what the resource can refuse on its own. A backend that can tell its callers apart is used with per-actor credentials and no mediator. Only a card on a node, or a key file in development, cannot, and `key-holder` owns it ([ADR 0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)).
 
 ## Enforcement per runtime
 
@@ -27,7 +27,7 @@ The tested installations read as their runtime's row, with these details:
 
 | Installation | What differs |
 | ------------ | ------------ |
-| **local** (bare-metal, Docker Compose on a workstation) | Software keys by default; nothing is production. A dedicated development card is opt-in: only the `key-holder` container reaches it, through the host's smart-card service, and `key-holder` has the card to itself ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)). Containers run as their actors' uids and mount only the sockets their manifest allows; no systemd sandboxing, nftables or Landlock |
+| **local** (bare-metal, Docker Compose on a workstation) | Software keys by default; nothing is production. A dedicated development card is opt-in: only the `key-holder` container reaches it, through the host's smart-card service, and `key-holder` has the card to itself ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). Containers run as their actors' uids and mount only the sockets their manifest allows; no systemd sandboxing, nftables or Landlock |
 | **boards** (bare-metal, three single-board computers, a YubiKey per node) | `key-holder` for each node's card; one rqlite cluster per owning actor, with the Raft ports over mutual TLS between peers. No cloud credential for the board-only parts. Landlock is missing on the current board image's kernel, so the other layers carry the load ([Bare-metal](/runtimes/bare-metal/)) |
 | **lambda**, **kubernetes** | As their runtime rows |
 
@@ -35,13 +35,13 @@ A bare-metal node on a cloud VM is a possible installation, not a tested one: th
 
 ### Workload identity
 
-On bare-metal the node agent issues a short-lived **workload JWT per actor**, from the uid it reads off the socket's peer credentials, and each cloud driver exchanges it for that cloud's credentials. Platform-native identity is used where it exists: the function role on Lambda, a projected ServiceAccount token on Kubernetes. The issuer, the per-cloud exchange and its algorithms are on [Identity](/concepts/identity/) ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
+On bare-metal the node agent issues a short-lived **workload JWT per actor**, from the uid it reads off the socket's peer credentials, and each cloud driver exchanges it for that cloud's credentials. Platform-native identity is used where it exists: the function role on Lambda, a projected ServiceAccount token on Kubernetes. The issuer, the per-cloud exchange and its algorithms are on [Identity](/concepts/identity/) ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
 
 ### IAM per actor
 
 Each actor has its own IAM role (a function role on serverless, a role that trusts the cluster's issuer and the container's token audience on Kubernetes), generated from its manifest. The trust relationship differs by runtime; the permissions policy is the same in all of them.
 
-KMS key policies name one actor's role each. There is one symmetric key per environment boundary with an encryption context for every sealing use, mint grants included, and one `ECC_NIST_P384` key per enabled signing purpose, because KMS allows one usage per key and `kms:Sign` takes no encryption context ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#keys-sign-in-place)). A generated key policy for the audit log key (an example; `<account-id>` and `<install>` are placeholders):
+KMS key policies name one actor's role each. There is one symmetric key per environment boundary with an encryption context for every sealing use, mint grants included, and one `ECC_NIST_P384` key per enabled signing purpose, because KMS allows one usage per key and `kms:Sign` takes no encryption context ([ADR 0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). A generated key policy for the audit log key (an example; `<account-id>` and `<install>` are placeholders):
 
 ```json
 {
@@ -62,7 +62,7 @@ On a cloud VM the instance role holds only what the node agent needs (the per-ac
 
 ### Who enforces per backend
 
-AWS KMS, DynamoDB and PostgreSQL separate callers themselves (key policies, IAM leading-key conditions, roles and row-level security), and rqlite separates them per user, so each owning actor gets a cluster of its own. A card or a software key cannot, so `key-holder` enforces for it, and emits the audit record before it acts. The check per driver is in [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#per-driver-checks).
+AWS KMS, DynamoDB and PostgreSQL separate callers themselves (key policies, IAM leading-key conditions, roles and row-level security), and rqlite separates them per user, so each owning actor gets a cluster of its own. A card or a software key cannot, so `key-holder` enforces for it, and emits the audit record before it acts. The check per driver is in [ADR 0003](/decisions/0003-units-transports-and-fusion/#per-driver-checks).
 
 ### systemd sandboxing
 
@@ -112,14 +112,14 @@ The test that proves isolation is generated from the manifests: for every pair o
 
 ## Listeners
 
-A TCP port can be reached by anything that can route to it; a Unix socket only by a process that can open the file, and the receiver learns the caller's uid. sluis uses Unix sockets everywhere except for the one API that has to be public ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#listeners)).
+A TCP port can be reached by anything that can route to it; a Unix socket only by a process that can open the file, and the receiver learns the caller's uid. sluis uses Unix sockets everywhere except for the one API that has to be public ([ADR 0003](/decisions/0003-units-transports-and-fusion/#listeners)).
 
 ### The rule
 
 - **`entry`'s public API is the only listener that faces the edge,** and `entry` authenticates every request itself. On bare-metal it is a Unix socket that `cloudflared` forwards to, and `entry` runs with `PrivateNetwork=yes` and no network at all. On Kubernetes it is a Unix socket too, and the key-less edge relay in the pod forwards to it. Only where the edge cannot reach a Unix socket, inside the Lambda sandbox, is it TCP on `127.0.0.1`.
-- **An audit front has an `entry` of its own**, on its own host (`sluis-audit.example.com`), and it is its front's only edge listener ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#the-audit-front)).
+- **An audit front has an `entry` of its own**, on its own host (`sluis-audit.example.com`), and it is its front's only edge listener ([ADR 0028](/decisions/0028-audit-pieces/#the-audit-front)).
 - **Every other actor and every driver listens on Unix sockets only,** one socket per instance, `/run/sluis/<actor>/<boundary>.sock`. A key-holding actor and a driver never get a TCP listener.
-- **Reachability is generated from the manifest, by group on a host and by mount on Kubernetes.** On a host every socket is mode 0660 with a group that is the set of actors allowed to call it. On Kubernetes supplementary groups are set per pod, not per container, so each callee has its own volume for its socket directory, mounted read-only into exactly the containers the call graph allows ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#kubernetes)).
+- **Reachability is generated from the manifest, by group on a host and by mount on Kubernetes.** On a host every socket is mode 0660 with a group that is the set of actors allowed to call it. On Kubernetes supplementary groups are set per pod, not per container, so each callee has its own volume for its socket directory, mounted read-only into exactly the containers the call graph allows ([ADR 0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 - **The callee checks the caller.** It reads the peer's credentials with `SO_PEERCRED`, maps the uid to an actor and checks the call graph, default deny. The pid is not used on Kubernetes, where containers have separate PID namespaces. `key-holder` goes further: each caller has a socket of its own, in a directory only that caller can open.
 
 On Kubernetes the key-less **edge relay** listens on the pod address and forwards to `entry`'s socket, so that a Gateway API implementation or an Ingress controller can route to the pod; `entry` itself is never bound to the pod address. A `cloudflared` sidecar is a supported mode, with no inbound listener at all. The kubelet probes `entry` with an `exec` probe inside its container.
@@ -161,7 +161,7 @@ The listener is public by design, and the actor each request is routed to authen
 
 | Runtime and installation | Listener | Who connects |
 | ------------------------ | -------- | ------------ |
-| bare-metal: local | A Unix socket on a shared volume; `entry`'s container has no network | The forwarder, a Compose service (a generic reverse proxy that ends TLS) that mounts the socket and publishes a port for the developer's browser or the test harness ([The local installation](/runtimes/local/)). Production installations never publish one ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)) |
+| bare-metal: local | A Unix socket on a shared volume; `entry`'s container has no network | The forwarder, a Compose service (a generic reverse proxy that ends TLS) that mounts the socket and publishes a port for the developer's browser or the test harness ([The local installation](/runtimes/local/)). Production installations never publish one ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)) |
 | bare-metal: boards, or a virtual machine | A Unix socket | `cloudflared` on the same host, a tunnel to the public hostname |
 | serverless: lambda | `127.0.0.1:<port>` inside the function's sandbox, a micro-VM that holds only sluis's own processes | The Lambda Web Adapter, pinned and vendored into sluis's own layer; API Gateway in front |
 | kubernetes | A Unix socket in the pod | The edge relay in the same pod (the default), or a `cloudflared` sidecar |
@@ -172,7 +172,7 @@ The console's single-page application is served by each runtime's static host: a
 
 ### Traffic between nodes
 
-Traffic between nodes and installations is a short, named list, each flow over mutual TLS with a certificate per peer, declared in the manifest and admitted by the firewall from the declared peers only ([ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#listeners)):
+Traffic between nodes and installations is a short, named list, each flow over mutual TLS with a certificate per peer, declared in the manifest and admitted by the firewall from the declared peers only ([ADR 0003](/decisions/0003-units-transports-and-fusion/#listeners)):
 
 - the state clusters' Raft and HTTP ports, one cluster per (boundary, owning actor), each with its own port from a port scheme;
 - the `peer` witness's co-signature of another node's log checkpoints;
@@ -194,7 +194,7 @@ Some guarantees cannot be matched without hardware isolation per process. They a
 | **The node agent is a trusted base** | It can obtain credentials for every actor on its node | Keep it tiny and audited; no parsing of caller input beyond a fixed protocol |
 | **The mediating driver is one door** | A compromised `key-holder` can use, not extract, every key on its card | One small process with the card to itself, no network, a socket per caller, content-aware signing, a rate limit, fuzzed decoding, an audit record before every action |
 | **One PIN per card** | A PIV card has no per-slot caller separation. Unattended signing needs a touch policy of never, so physical theft of a powered host is use | `key-holder` is the only process that opens the card; a stolen board is replaced and its certificate revoked by ritueel, which holds the roots offline |
-| **A compromised writer with no witness** | It can get a rewritten checkpoint signed. A compliance lock stops overwriting, not a split view | A `peer` or `external` witness exposes a split view; `sluis config check` warns when there is none ([ADR 0016](/decisions/0016-the-audit-log/#witnesses)) |
+| **A compromised writer with no witness** | It can get a rewritten checkpoint signed. A compliance lock stops overwriting, not a split view | A `peer` or `external` witness exposes a split view; `sluis config check` warns when there is none ([ADR 0029](/decisions/0029-the-audit-log/#witnesses)) |
 | **A cluster is one trust domain** | A compromised node reads replicated state | The blast radius is the installation, not the estate |
 | **Shared egress address** | One NAT means no per-actor source identity at the network layer. A proxy is a software control | Make the proxy mandatory by firewall |
 | **Account or key-admin compromise** on AWS | A KMS key policy cannot hide use from the account root or a key administrator | The control-plane actions are denied to every actor, and every use of the account's emergency access is audited |

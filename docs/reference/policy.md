@@ -6,11 +6,11 @@ sidebar:
   order: 7
 ---
 
-`policy` decides every question of the form "does this person hold this grant", "may this person have a token for this client" and "may this workflow have the release key sign" ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/)). It has no state and no network, so everything it needs arrives in the request. This page fixes what the request holds, the Cedar schema the policy is written against, how the grants of a person are found, how an operator's template links reach `policy`, and one policy file with test vectors. Who calls `policy` is in the [actor registry](/reference/actors/#policy); the install-file keys that name the files are [`policy`](/reference/install-file/#policy).
+`policy` decides every question of the form "does this person hold this grant", "may this person have a token for this client" and "may this workflow have the release key sign" ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)). It has no state and no network, so everything it needs arrives in the request. This page fixes what the request holds, the Cedar schema the policy is written against, how the grants of a person are found, how an operator's template links reach `policy`, and one policy file with test vectors. Who calls `policy` is in the [actor registry](/reference/actors/#policy); the install-file keys that name the files are [`policy`](/reference/install-file/#policy).
 
 ## The schema is sluis's, the policy is the operator's
 
-- **One schema, version 1, fixed by sluis and embedded in `policy`.** An operator writes policy against it and cannot add a type, an action or an attribute. This keeps every request checkable: `policy` validates each request against the schema and refuses one that does not fit, and every policy file against it at load and at every reload ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/#decision)).
+- **One schema, version 1, fixed by sluis and embedded in `policy`.** An operator writes policy against it and cannot add a type, an action or an attribute. This keeps every request checkable: `policy` validates each request against the schema and refuses one that does not fit, and every policy file against it at load and at every reload ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#decision)).
 - **No namespace.** The names below are the whole vocabulary; nothing an operator writes can collide with them.
 - **Adding is compatible.** A type, an action, an optional attribute or a new optional context name may be added in a release; removing or changing one is a new schema version beside this one, as for the install file ([Install file](/reference/install-file/)).
 - **The file is** [`policy-schema.cedarschema`](https://github.com/truvity/sluis/blob/main/docs/reference/policy-schema.cedarschema), in the Cedar schema syntax of Cedar 4.14.0 (language version 4.6, checked on 2026-11-01). This copy is checked against that file (`just check-examples`).
@@ -22,7 +22,7 @@ sidebar:
 // and cannot add types, actions or attributes. Every request is validated against it.
 
 // An upstream account, named by the upstream's declared name and the value of the upstream's
-// subject claim: `<upstream>/<claim value>` (ADR 0027). An operator can name an account before
+// subject claim: `<upstream>/<claim value>` (ADR 0019). An operator can name an account before
 // its first sign-in, which the random subject of a person does not allow. `org` is the company
 // that owns the upstream.
 entity Account = {
@@ -30,7 +30,7 @@ entity Account = {
   org: String,
 };
 
-// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0028). `sensitive` is true
+// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). `sensitive` is true
 // when its scope is sensitive.
 entity Grant = {
   scope: String,
@@ -40,7 +40,7 @@ entity Grant = {
 };
 
 // A person, known by the opaque `sub` of the issuer, and linked to the upstream account they
-// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0027: an
+// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0019: an
 // operator holds a person on the console). `grants` is not sent by the asking actor: `policy`
 // finds it with the action "grant.hold" and adds it before it decides any other action.
 entity Person in [Account] = {
@@ -103,7 +103,7 @@ action "token.exchange" appliesTo {
   context: Authentication,
 };
 
-// A workload asks for a signature by a signing key (ADR 0029). The context is the SHA-384 of the
+// A workload asks for a signature by a signing key (ADR 0045). The context is the SHA-384 of the
 // content in lower-case hex, and its length in bytes.
 action "artifact.sign" appliesTo {
   principal: Workload,
@@ -133,18 +133,18 @@ The types follow the [actor registry](/reference/actors/) and the [record kinds]
 
 | Type | What it is | Facts sent by | Id |
 |---|---|---|---|
-| `Account` | An account of an upstream, named by the pair that links a person: the upstream's declared name and the value of its subject claim ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#linking-an-upstream-account)) | `session` or `exchange`, from the `upstream-link` of the person | `<upstream>/<claim value>`, such as `workforce/u-1001`; never an e-mail address |
-| `Person` | A person who signed in, `in` the `Account` they are linked by | The asker, from the session and the `person` record | The opaque subject ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#the-records)) |
-| `Grant` | A grant of the vocabulary, with its scope, thing, role and whether the scope is sensitive | `policy`, from the vocabulary | `<scope>:<thing>:<role>`, such as `dev:example-app:user` ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary)) |
+| `Account` | An account of an upstream, named by the pair that links a person: the upstream's declared name and the value of its subject claim ([ADR 0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)) | `session` or `exchange`, from the `upstream-link` of the person | `<upstream>/<claim value>`, such as `workforce/u-1001`; never an e-mail address |
+| `Person` | A person who signed in, `in` the `Account` they are linked by | The asker, from the session and the `person` record | The opaque subject ([ADR 0019](/decisions/0019-person-and-upstream-link/#the-records)) |
+| `Grant` | A grant of the vocabulary, with its scope, thing, role and whether the scope is sensitive | `policy`, from the vocabulary | `<scope>:<thing>:<role>`, such as `dev:example-app:user` ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)) |
 | `Client` | A client of an issuer, and the resource of a token request | The asker, from the install file's [`clients`](/reference/install-file/#clients) and `boundaries.<name>.clients` | `<boundary>/<client id>`, such as `dev/example-app`; the group issuer's clients are under `front` |
 | `Boundary` | An environment boundary, and the place a link lives in | The asker, from [`boundaries`](/reference/install-file/#boundaries) | The boundary's name; `front` for the group issuer |
 | `Workload` | A workload that proved its identity: in the first version a GitHub Actions job, checked by the `github-oidc` verifier | `exchange`, from the verified proof | `<verifier>/<proof subject>` |
-| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)) |
+| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)) |
 
-- **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#what-policy-sees)). `Account.org` is the `org` key of the account's upstream in the install file, the company that owns it ([Install file](/reference/install-file/#upstreams)), and `Person.org` is the `org` of the account the person is linked by, so it is the company claim of [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers). The asker reads it from the install file and never from the upstream's answer, and no policy file sets it.
+- **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([ADR 0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)). `Account.org` is the `org` key of the account's upstream in the install file, the company that owns it ([Install file](/reference/install-file/#upstreams)), and `Person.org` is the `org` of the account the person is linked by, so it is the company claim of [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers). The asker reads it from the install file and never from the upstream's answer, and no policy file sets it.
 - **`state` is `live` or `held`.** An operator's `person-hold` is a tighten-only action that takes effect at once; `session` sends the state, and the first `forbid` of the example refuses a person who is not live. Lifting a hold gives back only what the policy grants.
-- **A client's id carries its issuer.** Client ids are unique per issuer, not across issuers ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the install file's `requires`, a set of `Grant`.
-- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
+- **A client's id carries its issuer.** Client ids are unique per issuer, not across issuers ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the install file's `requires`, a set of `Grant`.
+- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
 
 ### What comes with parity
 
@@ -152,10 +152,10 @@ Each of these is added by the record or pull request that first asks about it, a
 
 | Added | By | Because |
 |---|---|---|
-| `Group`, and a binding that names a directory group | Directory sync ([#805](https://github.com/truvity/sluis/issues/805)) | The first working version reads no directory; internal groups are accounts ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#what-policy-sees)) |
-| `Host` and the action `cert.issue` | Host enrolment ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/)) | Their first asker is `exchange` with a host proof |
+| `Group`, and a binding that names a directory group | Directory sync ([#805](https://github.com/truvity/sluis/issues/805)) | The first working version reads no directory; internal groups are accounts ([ADR 0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)) |
+| `Host` and the action `cert.issue` | Host enrolment ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/)) | Their first asker is `exchange` with a host proof |
 | `Resource` | Declared resources ([#979](https://github.com/truvity/sluis/issues/979)) | A resource is a declared URL with its own `requires`, which schema v1 of the install file does not have |
-| Attributes for the claims of a token | The per-audience claim override ([#788](https://github.com/truvity/sluis/issues/788)) | The first version issues the fixed set of [ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#the-claims-of-a-token) |
+| Attributes for the claims of a token | The per-audience claim override ([#788](https://github.com/truvity/sluis/issues/788)) | The first version issues the fixed set of [ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token) |
 
 ## Actions
 
@@ -164,7 +164,7 @@ Each of these is added by the record or pull request that first asks about it, a
 | `grant.hold` | `Person` | `Grant` | `policy`, for itself | Whether this person holds this grant. The bindings of the policy files are written on this action |
 | `token.issue` | `Person` | `Client` | `session` | Whether this person may have a token for this client, at a code exchange or a refresh |
 | `token.exchange` | `Person` | `Client` | `exchange` | Whether this person's token may become a token for this client, as when `sluis login` exchanges the group issuer's token at a boundary |
-| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)) |
+| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)) |
 | `policy.link` | `Person` (the operator) | `Boundary` | `session`, for a write that `console` routed | Whether this operator may link this template, with these slot values, in this boundary |
 
 There is no separate action for step-up. A request that needs a fresher or stronger authentication is denied by a policy that says so ([below](#step-up)), which keeps the one question "may this person have this token" in one place.
@@ -179,7 +179,7 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 | `amr` | `Set<String>` | The methods used, with the values of RFC 8176 (`pwd`, `mfa`, `hwk`) |
 | `auth_age` | `Long` | Seconds since the person last authenticated for this boundary, counted by the asker from the session's `auth_time` |
 
-- **An absent name is unknown.** An upstream such as Dex sends no `acr`, `amr` or `auth_time` ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)), and sluis never fills one in ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#the-claims-of-a-token)). The asker leaves the names out, and a policy tests `context has amr` before it reads `context.amr` and treats absence as "not shown": a rule that requires multi-factor authentication is then not met.
+- **An absent name is unknown.** An upstream such as Dex sends no `acr`, `amr` or `auth_time` ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), and sluis never fills one in ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)). The asker leaves the names out, and a policy tests `context has amr` before it reads `context.amr` and treats absence as "not shown": a rule that requires multi-factor authentication is then not met.
 - **`policy` has no clock.** The asker counts `auth_age`, so a request and its answer are the same on any day, which is what makes the vectors below repeatable ([principle 6](/principles/#6-generic-products-joined-by-a-contract)).
 - **The values of `acr` are the installation's.** The example uses `urn:example:acr:mfa`.
 
@@ -187,12 +187,12 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 
 ## How a person's grants are found
 
-[ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary) has grants, not groups, as what a person holds, and `policy` is where facts become grants. `policy` decides a request about a person in two steps:
+[ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary) has grants, not groups, as what a person holds, and `policy` is where facts become grants. `policy` decides a request about a person in two steps:
 
 1. **Find the grants.** For every grant of the vocabulary, `policy` asks `grant.hold` for the person, with the bindings and links of the policy as they stand. It then adds every grant that a held role implies, by the ladder of the vocabulary, on the same scope and thing, and puts the full set into `Person.grants`.
 2. **Decide the action** with the person's grants in the entity. The standard rule `principal has grants && resource.requires.containsAny(principal.grants)` is the Cedar form of "at least one required grant".
 
-- **The answer carries the full set** of held grants, so that the asker narrows the `groups` claim to the audience's `<scope>:<thing>` pairs ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#the-claims-of-a-token)); admission was decided on the full set.
+- **The answer carries the full set** of held grants, so that the asker narrows the `groups` claim to the audience's `<scope>:<thing>` pairs ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)); admission was decided on the full set.
 - **A sensitive grant is held only by a binding that names it in full.** A grant of a sensitive scope counts as held only when a determining policy has that grant as its resource, `resource == Grant::"prod:example-app:admin"`; `policy` reads the scope of the determining policies for this ([REQ-POLICY-011](/requirements/policy/#REQ-POLICY-011)). A wildcard written as a condition on `resource.scope` or `resource.role` can give any other grant, and Cedar alone would give it a sensitive one too.
 - **The loader tries each binding.** It evaluates every static policy on `grant.hold` for a probe person of the account the policy names against every grant of the vocabulary, and refuses a policy that no grant satisfies ("a wildcard that expands to nothing", [REQ-POLICY-012](/requirements/policy/#REQ-POLICY-012)) and one that satisfies several roles of one scope and thing at once (a wildcard in the role position). A grant name that is not in the vocabulary, as a `Grant::"…"` in a policy file, is refused at load with the path ([REQ-POLICY-010](/requirements/policy/#REQ-POLICY-010)).
 - **The vocabulary is a file beside the policy,** [`policy/vocabulary.yaml`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/vocabulary.yaml) in the example, named by `policy.vocabulary`. Its shape is on [Vocabulary](/reference/vocabulary/). `policy` builds the `Grant` entities from it: one for every scope, thing and role the file declares, with `sensitive` taken from the scope.
@@ -213,7 +213,7 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 | The reasons | The ids of the determining policies, each with its annotations |
 | The grants | For a person: the full set of held grants, after the ladder |
 | The snapshot | The digest of the policy set, the vocabulary and the links, and the version of the schema, for the audit record |
-| The sealed grant | On `allow` only: the mint grant, or for `artifact.sign` the signing grant, sealed under the environment's sealing key ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#grants-are-sealed-not-signed)) |
+| The sealed grant | On `allow` only: the mint grant, or for `artifact.sign` the signing grant, sealed under the environment's sealing key ([ADR 0006](/decisions/0006-keys-and-sealing/#grants-are-sealed-not-signed)) |
 
 The `proto/` file is written with the first code. Every decision is audited with its reasons and the snapshot digest.
 
@@ -224,7 +224,7 @@ The `proto/` file is written with the first code. Every decision is audited with
 
 ## Step-up
 
-[ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#step-up) has `policy` decide which clients need multi-factor authentication and how fresh it must be, and the asker answer with RFC 9470. The two meet in an annotation:
+[ADR 0017](/decisions/0017-identity-and-sign-in/#step-up) has `policy` decide which clients need multi-factor authentication and how fresh it must be, and the asker answer with RFC 9470. The two meet in an annotation:
 
 - **A `forbid` that expresses a step-up rule carries `@step_up("acr_values=<values> max_age=<seconds>")`,** the values RFC 9470 puts in `insufficient_user_authentication`.
 - **When the determining policies of a `deny` include one with `@step_up`,** `session` answers `insufficient_user_authentication` with those values and the person signs in again. When there is none, the answer is a plain refusal, and it looks the same for an unknown and a refused client ([Contracts and errors](/reference/contracts/#oauth-and-openid-connect-endpoints)).
@@ -232,7 +232,7 @@ The `proto/` file is written with the first code. Every decision is audited with
 
 ## Template links
 
-A template is declared policy, in a policy file, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are the one operator-set part of policy ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/#template-links), [ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)). In the first version the templates bind an account to a grant, or revoke a grant from an account.
+A template is declared policy, in a policy file, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are the one operator-set part of policy ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#template-links), [ADR 0004](/decisions/0004-the-data-model/#origins)). In the first version the templates bind an account to a grant, or revoke a grant from an account.
 
 ### Making a link
 
@@ -254,7 +254,7 @@ A template is declared policy, in a policy file, with `?principal` and `?resourc
 
 ### The grants of one tenant
 
-A company is a tenant: its accounts and its grants carry its `org`, and its administrators may bind accounts of their own `org` to grants in their own scope, with no review of the operator's and no change to the policy files. The delegation policy of the example below does this in one policy; the vectors show what it allows and what it refuses. In the example a company's scope has the company's name, which is the convention the delegation policy states ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/#grant-names-and-the-vocabulary): a scope is an environment, a company or `all`).
+A company is a tenant: its accounts and its grants carry its `org`, and its administrators may bind accounts of their own `org` to grants in their own scope, with no review of the operator's and no change to the policy files. The delegation policy of the example below does this in one policy; the vectors show what it allows and what it refuses. In the example a company's scope has the company's name, which is the convention the delegation policy states ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary): a scope is an environment, a company or `all`).
 
 ## A worked example
 
@@ -262,7 +262,7 @@ The local installation's [example install file](/reference/install-file/#the-exa
 
 <!-- example: tests/installations/local/policy/vocabulary.yaml -->
 ```yaml
-# The grant vocabulary of the local installation (ADR 0028). Schema v1:
+# The grant vocabulary of the local installation (ADR 0020). Schema v1:
 # https://sluis.id/reference/vocabulary/
 #
 # A grant is <scope>:<thing>:<role>. Every scope has every thing, and every role of a thing exists
@@ -293,7 +293,7 @@ The policy has the held-person rule, four bindings, the standard rule, one step-
 
 // ---- A held person gets nothing --------------------------------------------------------
 
-// An operator's hold takes effect at once and outlasts every binding (ADR 0027).
+// An operator's hold takes effect at once and outlasts every binding (ADR 0019).
 @id("person-not-live")
 forbid (principal is Person, action, resource)
 when { principal.state != "live" };
@@ -498,11 +498,11 @@ With `--live`, the operator-set records are read as well, and a link whose templ
 - **Entities loaded from the install file by `policy`.** It would give `policy` a view of the clients, but `policy` would then read configuration that only `session`, `exchange` and `signer` read ([Install file](/reference/install-file/#top-level-keys)), and a request could not be judged from itself. The asker sends the slice.
 - **A schema the operator extends.** A type or an attribute of an operator's own would let a policy depend on facts no actor sends, and a reload could change what a request means. A new attribute is a release.
 - **A Cedar namespace for sluis's names.** It makes every policy longer to write and protects against a collision that no operator can cause.
-- **Grants as group names.** A group is a directory's word and the first version has no directory; a grant is a name of the vocabulary that a binding gives to an account, and the token carries it ([ADR 0028](/decisions/0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience/)).
-- **A person named by subject or e-mail address in a binding.** The subject does not exist before the first sign-in, and an address is reused and renamed ([ADR 0027](/decisions/0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim/#roads-not-taken)).
+- **Grants as group names.** A group is a directory's word and the first version has no directory; a grant is a name of the vocabulary that a binding gives to an account, and the token carries it ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/)).
+- **A person named by subject or e-mail address in a binding.** The subject does not exist before the first sign-in, and an address is reused and renamed ([ADR 0019](/decisions/0019-person-and-upstream-link/#roads-not-taken)).
 - **Wildcards as a pattern language of their own, outside Cedar.** It would be a second grammar to validate beside Cedar's. A wildcard is a condition on the `Grant` attributes, and the loader's probe holds it to the rules of [REQ-POLICY-011](/requirements/policy/#REQ-POLICY-011) and [REQ-POLICY-012](/requirements/policy/#REQ-POLICY-012).
 - **An action `session.step_up`.** It would split "may this person have this token" from "is the authentication enough for it" into two questions with two sets of policies that can disagree. One `forbid` with `unless` keeps them in one.
 - **Dates and durations in Cedar's `datetime` extension for freshness.** It would put a clock into `policy`, which has none, and a request would no longer answer the same on another day. Seconds counted by the asker keep the vectors fixed.
 - **A link kind per asking actor.** Two writers cannot share a kind, and a binding applies to both `token.issue` and `token.exchange`, which are decided after the grants are found. One kind owned by `session`, read by `exchange`, keeps one link in one place.
-- **`policy`, `console` or `exchange` as the owner of the links.** `policy` has no state port ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/)); `console` never writes a record ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#one-writer-per-kind)); `exchange` is the second reader, and one writer for a kind is enough.
+- **`policy`, `console` or `exchange` as the owner of the links.** `policy` has no state port ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)); `console` never writes a record ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)); `exchange` is the second reader, and one writer for a kind is enough.
 - **Ignoring a link that does not apply.** The request would go through without a `forbid` that an operator meant to have in force.

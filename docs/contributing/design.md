@@ -23,7 +23,7 @@ The principles that come up most in design work:
 | 8. Nothing without a consumer | See [below](#nothing-without-a-consumer) |
 | 9. Measure before deciding, and date the measurement | See [below](#measure-and-date) |
 
-Roots live in the separate project ritueel, and sluis holds intermediates only ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/)).
+Roots live in the separate project ritueel, and sluis holds intermediates only ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/)).
 
 ## Ask only real conflicts
 
@@ -79,4 +79,4 @@ The steps are in "Design phase" of `docs/decisions/README.md`, and the `new-deci
 
 ## Milestones are an order
 
-The milestones are an order, not a wish list: first working version, then v1 parity, then CIAM upstream, then quota ([Roadmap](/roadmap/)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#delivery-order) sets which installation is built when.
+The milestones are an order, not a wish list: first working version, then v1 parity, then CIAM upstream, then quota ([Roadmap](/roadmap/)). Design is finished milestone by milestone, and the code for a milestone starts after its design is. Inside the order, [ADR 0011](/decisions/0011-runtimes-and-installations/#delivery-order) sets which installation is built when.

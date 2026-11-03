@@ -6,7 +6,7 @@ sidebar:
   order: 9
 ---
 
-SSH is a **client profile** like [PostgreSQL](/integrations/postgresql/): sluis calls nothing outside. The **`ssh-ca` actor** holds two SSH certificate authority keys, one for user certificates and one for host certificates, each with a slot of its own on a card ([the card slot map](/concepts/keys/#the-card-slot-map)) or a key of its own in KMS. An installation that issues no SSH certificates has neither. `ssh-ca` is separate from the X.509 `ca` because it is a different authority, and each environment boundary has its own ([Boundaries](/concepts/boundaries/)). The record is [ADR 0008](/decisions/0008-certificate-authorities-for-x509-ssh-and-databases/#ssh); the work is [#925](https://github.com/truvity/sluis/issues/925) and, for the host service, [#971](https://github.com/truvity/sluis/issues/971).
+SSH is a **client profile** like [PostgreSQL](/integrations/postgresql/): sluis calls nothing outside. The **`ssh-ca` actor** holds two SSH certificate authority keys, one for user certificates and one for host certificates, each with a slot of its own on a card ([the card slot map](/concepts/keys/#the-card-slot-map)) or a key of its own in KMS. An installation that issues no SSH certificates has neither. `ssh-ca` is separate from the X.509 `ca` because it is a different authority, and each environment boundary has its own ([Boundaries](/concepts/boundaries/)). The record is [ADR 0023](/decisions/0023-certificate-authorities/#ssh); the work is [#925](https://github.com/truvity/sluis/issues/925) and, for the host service, [#971](https://github.com/truvity/sluis/issues/971).
 
 ## What it's for
 
@@ -36,7 +36,7 @@ Each prefix is a kind, so kinds cannot collide, and each host trusts one sluis C
 
 ## The break-glass SSH CA
 
-Break-glass SSH access comes from an **offline SSH CA that ritueel makes and holds** ([ritueel](https://ritueel.id)), never from sluis: an emergency certificate from sluis would be useless when sluis is down, which is when it is needed. Hosts trust a list of SSH CA keys that ritueel publishes, signed by a root and carrying a version that only increases; a host refuses a list with a lower version ([#1072](https://github.com/truvity/sluis/issues/1072)). sluis's own `ssh-user` and `ssh-host` keys are anchors in that list, not a chain ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#keys-sign-in-place)).
+Break-glass SSH access comes from an **offline SSH CA that ritueel makes and holds** ([ritueel](https://ritueel.id)), never from sluis: an emergency certificate from sluis would be useless when sluis is down, which is when it is needed. Hosts trust a list of SSH CA keys that ritueel publishes, signed by a root and carrying a version that only increases; a host refuses a list with a lower version ([#1072](https://github.com/truvity/sluis/issues/1072)). sluis's own `ssh-user` and `ssh-host` keys are anchors in that list, not a chain ([ADR 0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)).
 
 The `bg:` lines are written at install from that list and are never touched by the principals bundle, so they keep working when the bundle is stale. For a pet host, break-glass is this CA; cattle are replaced instead. Recovery of sluis itself is a different thing, with passkeys ([Break-glass recovery](/security/break-glass/)).
 

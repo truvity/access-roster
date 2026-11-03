@@ -322,7 +322,7 @@ requirements:
   - id: REQ-CLIENT-023
     area: CLIENT
     statement: "sluis MUST NOT offer the client credentials grant."
-    rationale: "A machine proves what it is with a workload proof and holds no client secret (ADR 0007)."
+    rationale: "A machine proves what it is with a workload proof and holds no client secret (ADR 0022)."
     level: MUST
     source: design-decision
     status: out-of-scope
@@ -335,7 +335,7 @@ requirements:
   - id: REQ-CLIENT-024
     area: CLIENT
     statement: "A token or authorization request that names more than one resource MUST be refused."
-    rationale: "A token has one audience and one resource (ADR 0038)."
+    rationale: "A token has one audience and one resource (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -347,7 +347,7 @@ requirements:
   - id: REQ-CLIENT-025
     area: CLIENT
     statement: "The entitlement to a resource MUST be checked again at every refresh of a session that was started for it."
-    rationale: "A group the person has left must not keep a token alive (ADR 0038)."
+    rationale: "A group the person has left must not keep a token alive (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -359,7 +359,7 @@ requirements:
   - id: REQ-CLIENT-026
     area: CLIENT
     statement: "sluis MUST refuse a client metadata document whose client_id differs from the URL that it was fetched from."
-    rationale: "A document must describe the client that presented it (ADR 0038)."
+    rationale: "A document must describe the client that presented it (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -371,7 +371,7 @@ requirements:
   - id: REQ-CLIENT-027
     area: CLIENT
     statement: "sluis MUST refuse a client metadata document that names a token endpoint authentication method other than none or holds a client secret."
-    rationale: "A client that is identified by a URL is public (ADR 0038)."
+    rationale: "A client that is identified by a URL is public (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -383,7 +383,7 @@ requirements:
   - id: REQ-CLIENT-028
     area: CLIENT
     statement: "sluis MUST ignore the kind, the requires, the lifetime cap and the session class in a client metadata document."
-    rationale: "A document must not widen what its client may have (ADR 0038)."
+    rationale: "A document must not widen what its client may have (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -395,7 +395,7 @@ requirements:
   - id: REQ-CLIENT-029
     area: CLIENT
     statement: "sluis MUST fetch a client metadata document without following a redirect."
-    rationale: "A fetch of a URL that a stranger names must stay bounded (ADR 0038)."
+    rationale: "A fetch of a URL that a stranger names must stay bounded (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -407,7 +407,7 @@ requirements:
   - id: REQ-CLIENT-030
     area: CLIENT
     statement: "sluis MUST advertise support for client ID metadata documents only while at least one origin is allow-listed."
-    rationale: "Discovery must not promise what the installation refuses (ADR 0038)."
+    rationale: "Discovery must not promise what the installation refuses (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -419,7 +419,7 @@ requirements:
   - id: REQ-CLIENT-031
     area: CLIENT
     statement: "The resource-proxy sidecar MUST remove the caller's Authorization header before it forwards a request."
-    rationale: "The upstream server must not receive a token that was issued for the proxy's resource (ADR 0038)."
+    rationale: "The upstream server must not receive a token that was issued for the proxy's resource (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -431,7 +431,7 @@ requirements:
   - id: REQ-CLIENT-032
     area: CLIENT
     statement: "The resource-proxy sidecar MUST refuse a token whose audience is not the registered client of its resource."
-    rationale: "A token for another resource must not open this one (ADR 0038)."
+    rationale: "A token for another resource must not open this one (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -443,7 +443,7 @@ requirements:
   - id: REQ-CLIENT-033
     area: CLIENT
     statement: "sluis MUST show the value of a generated client secret only to the operator who generated or rotated it, once."
-    rationale: "A secret that can be read again is a secret that can be stolen again (ADR 0038)."
+    rationale: "A secret that can be read again is a secret that can be stolen again (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned
@@ -455,7 +455,7 @@ requirements:
   - id: REQ-CLIENT-034
     area: CLIENT
     statement: "sluis MUST refuse a client metadata document response larger than 64 KiB."
-    rationale: "A fetch of a URL that a stranger names must stay bounded (ADR 0038)."
+    rationale: "A fetch of a URL that a stranger names must stay bounded (ADR 0021)."
     level: MUST
     source: design-decision
     status: planned

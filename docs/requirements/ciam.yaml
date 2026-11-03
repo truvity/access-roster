@@ -63,7 +63,7 @@ requirements:
   - id: REQ-CIAM-003
     area: CIAM
     statement: "An installation MAY declare sectors, each a name that is mixed into the pairwise subject of the clients that name it."
-    rationale: "Pairwise subjects separate relying parties that must not correlate a person, and the key is one per boundary (ADR 0050)."
+    rationale: "Pairwise subjects separate relying parties that must not correlate a person, and the key is one per boundary (ADR 0034)."
     level: MAY
     source: stakeholder-ciam
     status: planned
@@ -233,7 +233,7 @@ requirements:
   - id: REQ-CIAM-017
     area: CIAM
     statement: "sluis MUST NOT host end-user accounts or store end-user passwords, except for the operator break-glass recovery passkeys."
-    rationale: "A boundary for a regulated entity holds no store of that entity's end-user accounts (ADR 0005), and a customer-identity product plugs in as an upstream."
+    rationale: "A boundary for a regulated entity holds no store of that entity's end-user accounts (ADR 0008), and a customer-identity product plugs in as an upstream."
     level: MUST
     source: design-decision
     status: out-of-scope
@@ -246,7 +246,7 @@ requirements:
   - id: REQ-CIAM-018
     area: CIAM
     statement: "sluis MUST NOT serve a registration, password, factor-enrolment or account-recovery page for an end user."
-    rationale: "The customer-identity product owns the account, and sluis only brokers the sign-in (ADR 0046)."
+    rationale: "The customer-identity product owns the account, and sluis only brokers the sign-in (ADR 0031)."
     level: MUST
     source: design-decision
     status: planned
@@ -258,7 +258,7 @@ requirements:
   - id: REQ-CIAM-019
     area: CIAM
     statement: "sluis MUST NOT offer a direct connector for a social-identity provider."
-    rationale: "A social provider is reached through the upstream product, so sluis has no consumer for a connector of its own (ADR 0046)."
+    rationale: "A social provider is reached through the upstream product, so sluis has no consumer for a connector of its own (ADR 0031)."
     level: MUST
     source: design-decision
     status: planned

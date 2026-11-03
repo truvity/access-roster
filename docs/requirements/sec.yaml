@@ -278,7 +278,7 @@ requirements:
   - id: REQ-SEC-020
     area: SEC
     statement: "sluis MUST bound the sign-in starts of each connection with a token bucket kept in its state."
-    rationale: "One tenant's burst must cost that tenant (ADR 0053)."
+    rationale: "One tenant's burst must cost that tenant (ADR 0036)."
     level: MUST
     source: design-decision
     status: planned

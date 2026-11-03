@@ -6,12 +6,12 @@ sidebar:
   order: 1
 ---
 
-The registry lists every [actor](/concepts/actors/) of sluis: the core actors, the Quota and audit actors, the platform actors and the integration kinds ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-actors)). Its source is [`docs/architecture/actors.yaml`](https://github.com/truvity/sluis/blob/main/docs/architecture/actors.yaml), and the tables below are generated from it. The executable, the ports and the calls of the actors the [architecture explorer](/architecture/explorer/) draws come from the explorer's data, so each fact has one source.
+The registry lists every [actor](/concepts/actors/) of sluis: the core actors, the Quota and audit actors, the platform actors and the integration kinds ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)). Its source is [`docs/architecture/actors.yaml`](https://github.com/truvity/sluis/blob/main/docs/architecture/actors.yaml), and the tables below are generated from it. The executable, the ports and the calls of the actors the [architecture explorer](/architecture/explorer/) draws come from the explorer's data, so each fact has one source.
 
 `just check-actors` (`tools/checks/actors.mjs`) keeps the registry true. It fails when:
 
 - an ADR an actor lists does not name it, or an ADR names an actor instance (`<actor>@<boundary>`) that the registry does not know;
-- the table of core actors in ADR 0003, or the language and rule in the [per-actor table of ADR 0014](/decisions/0014-the-language-follows-the-executable/#per-actor-table), disagree with the registry;
+- the table of core actors in ADR 0041, or the language and rule in the [per-actor table of ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table), disagree with the registry;
 - the explorer draws a role that is not an actor, or misses a core, Quota or audit actor;
 - a requirement record's optional `actors:` names something that is not an actor, or an actor whose requirement areas do not include the record's area;
 - the label of an actor is not `actor:<name>`, or the tables below are stale (`just actors-write` rewrites them).
@@ -53,12 +53,12 @@ None. The workload-issuer key of `sluis-node` is a key of its own in slot `86`, 
 
 Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns the step; it holds nothing.
 
-- **Language:** Rust, rule R2 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Gated by spikes S1, S3 and S10; the fallback candidate is Go first.
+- **Language:** Rust, rule R2 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Gated by spikes S1, S3 and S10; the fallback candidate is Go first.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. The only actor with a public listener: a Unix socket on bare-metal and Kubernetes, loopback TCP on serverless.
 - **Keys:** none.
 - **Ports:** transport. On local: transport: `spool`.
 - **Calls:** `session`, `exchange`, `console`, `ssh-ca`, `facts-source`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/), [ADR 0005](/decisions/0005-boundaries-and-the-isolation-ladder/), [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0008](/decisions/0008-boundaries-and-tenants/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0011](/decisions/0011-runtimes-and-installations/).
 - **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/).
 - **Standards:** NC-05 HTTP security headers and cookies: HSTS (RFC 6797), CSP, cookie prefixes; ST-97 ConnectRPC / gRPC / Protobuf.
 - **Issues:** [#958](https://github.com/truvity/sluis/issues/958), [#941](https://github.com/truvity/sluis/issues/941), [#796](https://github.com/truvity/sluis/issues/796); label `actor:entry`.
@@ -67,12 +67,12 @@ Parses each request, validates it against closed parameter lists generated from 
 
 Sign-in, session records, the session cookie and the freshness of each person's authentication per boundary (step-up).
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `sealing`, slot `9d`: wrap, unwrap; purpose=cookie (the cookie-sealing key). `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds.
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** `upstream`, `policy`, `signer`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/), [ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0004](/decisions/0004-the-data-model/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [AUTHN](/requirements/authn/), [SESS](/requirements/sess/), [TOKEN](/requirements/token/), [FED](/requirements/fed/).
 - **Standards:** ST-28 OIDC Core 1.0; ST-29 OIDC Discovery; ST-03 RFC 7636 PKCE; ST-24 RFC 9470 Step-up; ST-34 Form Post response mode; ST-59 WebAuthn L2/L3; ST-30 RP-Initiated Logout; ST-31 Back-Channel Logout.
 - **Issues:** [#959](https://github.com/truvity/sluis/issues/959), [#775](https://github.com/truvity/sluis/issues/775), [#776](https://github.com/truvity/sluis/issues/776), [#777](https://github.com/truvity/sluis/issues/777), [#778](https://github.com/truvity/sluis/issues/778), [#885](https://github.com/truvity/sluis/issues/885), [#979](https://github.com/truvity/sluis/issues/979), [#1081](https://github.com/truvity/sluis/issues/1081), [#793](https://github.com/truvity/sluis/issues/793); label `actor:session`.
@@ -81,12 +81,12 @@ Sign-in, session records, the session cookie and the freshness of each person's 
 
 The operator API, as the browser's backend: it checks the operator's delegation and routes each operator-set write to the actor that owns the record kind.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; the single-page application is TypeScript.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; the single-page application is TypeScript.
 - **Placement:** in the front installation; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** none.
 - **Ports:** transport. On local: transport: `spool`.
 - **Calls:** `session`, `exchange`, `facts-source`, `reader`, `provisioner`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0004](/decisions/0004-the-data-model/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [UX](/requirements/ux/), [OPS](/requirements/ops/).
 - **Standards:** ST-97 ConnectRPC / gRPC / Protobuf.
 - **Issues:** [#960](https://github.com/truvity/sluis/issues/960), [#831](https://github.com/truvity/sluis/issues/831), [#832](https://github.com/truvity/sluis/issues/832); label `actor:console`.
@@ -95,12 +95,12 @@ The operator API, as the browser's backend: it checks the operator's delegation 
 
 Token exchange (RFC 8693), enrolment of hosts and workloads, the front of the signing API, and the verifiers of proofs.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `enrolment`, slot from the spare range: unwrap; opens an HPKE-sealed enrolment request. `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds.
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** `policy`, `quota`, `signer`, `ca`, `credential-minter`, `notifier`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/).
 - **Requirement areas:** [EXCH](/requirements/exch/), [WORKLOAD](/requirements/workload/), [CLIENT](/requirements/client/), [SUPPLY](/requirements/supply/).
 - **Standards:** ST-07 RFC 8693 Token exchange; ST-08 RFC 8707 Resource indicators; ST-44 GitHub Actions OIDC; ST-45 K8s SA token / TokenReview; ST-46 AWS web identity; ST-61 RFC 9180 HPKE; ST-110 JWT-SVID.
 - **Issues:** [#961](https://github.com/truvity/sluis/issues/961), [#782](https://github.com/truvity/sluis/issues/782), [#783](https://github.com/truvity/sluis/issues/783), [#784](https://github.com/truvity/sluis/issues/784), [#785](https://github.com/truvity/sluis/issues/785), [#965](https://github.com/truvity/sluis/issues/965), [#966](https://github.com/truvity/sluis/issues/966), [#890](https://github.com/truvity/sluis/issues/890); label `actor:exchange`.
@@ -109,12 +109,12 @@ Token exchange (RFC 8693), enrolment of hosts and workloads, the front of the si
 
 Signs tokens under a signing policy with the token-signing key, checking the issuer, the audience, the lifetime and the algorithm, and signs artifacts with the release-signing key for a grant that policy sealed.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; gated by spikes S1 and S10.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; gated by spikes S1 and S10.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. Never fused with entry (the fusion rule).
 - **Keys:** `token-signing`, slot `9a`: sign, public-key. `release-signing`, slot `85`: sign, public-key; the OpenPGP release subkey, for a signing grant. `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds. `sealing`, slot `9d`: unwrap; purpose=grant (opens the signing grant of an artifact signature).
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/).
 - **Requirement areas:** [KEYS](/requirements/keys/), [TOKEN](/requirements/token/), [SUPPLY](/requirements/supply/).
 - **Standards:** ST-49 RFC 7515 JWS; ST-50 RFC 7517 JWKS; ST-51 RFC 7518 JWA; ST-52 RFC 7519 JWT; ST-13 RFC 9068 JWT access tokens; ST-83 RFC 9580 OpenPGP.
 - **Issues:** [#962](https://github.com/truvity/sluis/issues/962), [#774](https://github.com/truvity/sluis/issues/774), [#890](https://github.com/truvity/sluis/issues/890); label `actor:signer`.
@@ -123,12 +123,12 @@ Signs tokens under a signing policy with the token-signing key, checking the iss
 
 The decision point: a declared Cedar policy maps facts to grants; it has no state and no network, and seals mint grants.
 
-- **Language:** Rust, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Rust, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `sealing`, slot `9d`: wrap; purpose=grant.
 - **Ports:** keys, transport. On local: keys: `software`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0007](/decisions/0007-policy-and-sealed-grants/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [POLICY](/requirements/policy/).
 - **Standards:** NC-12 Cedar policy language.
 - **Issues:** [#892](https://github.com/truvity/sluis/issues/892), [#786](https://github.com/truvity/sluis/issues/786), [#787](https://github.com/truvity/sluis/issues/787), [#852](https://github.com/truvity/sluis/issues/852), [#1008](https://github.com/truvity/sluis/issues/1008); label `actor:policy`.
@@ -137,12 +137,12 @@ The decision point: a declared Cedar policy maps facts to grants; it has no stat
 
 The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS certificates and database client certificates, each logged in its issuance log.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `x509-intermediate`, slot `9c`: sign, public-key. `issuance-log`, slot from the spare range: sign. `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds.
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0008](/decisions/0008-certificate-authorities-for-x509-ssh-and-databases/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0023](/decisions/0023-certificate-authorities/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [PKI](/requirements/pki/), [DB](/requirements/db/).
 - **Standards:** ST-62 RFC 5280 X.509/CRL; ST-69 C2SP static-ct-api; ST-109 X.509-SVID.
 - **Issues:** [#913](https://github.com/truvity/sluis/issues/913), [#969](https://github.com/truvity/sluis/issues/969), [#926](https://github.com/truvity/sluis/issues/926), [#978](https://github.com/truvity/sluis/issues/978); label `actor:ca`.
@@ -151,12 +151,12 @@ The X.509 certificate authority: host and workload SVIDs, sluis's own mutual-TLS
 
 The SSH certificate authority, for user and host certificates that carry identity only.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `ssh-user`, slot `82`: sign, public-key. `ssh-host`, slot `83`: sign, public-key. `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds.
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** `policy`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0008](/decisions/0008-certificate-authorities-for-x509-ssh-and-databases/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0023](/decisions/0023-certificate-authorities/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [SSH](/requirements/ssh/).
 - **Standards:** ST-65 OpenSSH certificates; ST-66 OpenSSH KRL.
 - **Issues:** [#925](https://github.com/truvity/sluis/issues/925), [#1072](https://github.com/truvity/sluis/issues/1072); label `actor:ssh-ca`.
@@ -165,12 +165,12 @@ The SSH certificate authority, for user and host certificates that carry identit
 
 Rate limits, caps and balances, with compare-and-set on the state port; it meters by default and enforces per policy rule.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** beside sluis, or on its own; any number of instances; on bare-metal, serverless, kubernetes. Runs beside sluis, sharing its driver instances, or in an installation of its own.
 - **Keys:** `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds and the companies' usage data keys.
 - **Ports:** state, transport. On local: state: `embedded`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0041](/decisions/0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled/), [ADR 0042](/decisions/0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client/), [ADR 0043](/decisions/0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people/), [ADR 0044](/decisions/0044-a-meter-has-a-name-a-unit-and-a-kind-and-a-usage-event-belongs-to-the-period-of-its-event-time/), [ADR 0045](/decisions/0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0051](/decisions/0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled/), [ADR 0039](/decisions/0039-quota-allowance/), [ADR 0052](/decisions/0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people/), [ADR 0040](/decisions/0040-meters-and-usage-evidence/), [ADR 0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/).
 - **Requirement areas:** [QUOTA](/requirements/quota/).
 - **Standards:** NC-15 Idempotency: IETF Idempotency-Key draft (`X-Request-ID` is not an RFC).
 - **Issues:** [#915](https://github.com/truvity/sluis/issues/915), [#1026](https://github.com/truvity/sluis/issues/1026); label `actor:quota`.
@@ -179,12 +179,12 @@ Rate limits, caps and balances, with compare-and-set on the state port; it meter
 
 Seals the records it takes from the transport into its audit log and usage log in the blob, and has key-holder sign each checkpoint.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; exactly one instance; on bare-metal, serverless, kubernetes. Exactly one writer per log; a cluster keeps one log per node.
 - **Keys:** `log`, slot `84`: sign. `sealing`, slot `9d`: wrap, unwrap; the audit tenants' data keys and its own record kinds.
 - **Ports:** keys, transport, blob, state. On local: keys: `software`, transport: `spool`, blob: `fs`, state: `embedded`.
 - **Calls:** `witness`.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/), [ADR 0016](/decisions/0016-the-audit-log/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/), [ADR 0029](/decisions/0029-the-audit-log/).
 - **Requirement areas:** [AUDIT](/requirements/audit/).
 - **Standards:** ST-71 C2SP signed-note; ST-72 C2SP tlog-checkpoint; ST-73 C2SP tlog-cosignature; ST-75 C2SP tlog-tiles; ST-114 OCSF 1.x.
 - **Issues:** [#837](https://github.com/truvity/sluis/issues/837), [#838](https://github.com/truvity/sluis/issues/838), [#1121](https://github.com/truvity/sluis/issues/1121); label `actor:writer`.
@@ -193,12 +193,12 @@ Seals the records it takes from the transport into its audit log and usage log i
 
 Cosigns each new checkpoint the writer sends once it is consistent with the last one it cosigned; optional everywhere.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. On the boards the other nodes are a node's peer witnesses.
 - **Keys:** `witness`, slot none (not a card key): sign; its own key, Ed25519 or ML-DSA-44 as tlog-cosignature requires (a named exception).
 - **Ports:** keys, state, transport. On local: keys: `software`, state: `embedded`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0016](/decisions/0016-the-audit-log/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0029](/decisions/0029-the-audit-log/).
 - **Requirement areas:** [AUDIT](/requirements/audit/).
 - **Standards:** ST-73 C2SP tlog-cosignature; ST-74 C2SP tlog-witness.
 - **Issues:** [#955](https://github.com/truvity/sluis/issues/955); label `actor:witness`.
@@ -207,12 +207,12 @@ Cosigns each new checkpoint the writer sends once it is consistent with the last
 
 Follows each audit log of its boundary by signed checkpoint and applies the entries to the search index; the index's only writer.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** one per boundary; exactly one instance; on bare-metal, serverless, kubernetes.
 - **Keys:** `sealing`, slot `9d`: unwrap; a declared reader of each company's audit data key.
 - **Ports:** state, blob, transport. On local: state: `embedded`, blob: `fs`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/).
 - **Requirement areas:** [AUDIT](/requirements/audit/).
 - **Standards:** ST-72 C2SP tlog-checkpoint; ST-75 C2SP tlog-tiles.
 - **Issues:** [#839](https://github.com/truvity/sluis/issues/839), [#1122](https://github.com/truvity/sluis/issues/1122); label `actor:indexer`.
@@ -221,12 +221,12 @@ Follows each audit log of its boundary by signed checkpoint and applies the entr
 
 Answers audit queries from the search index, filtered by the caller's grant, and records each read.
 
-- **Language:** Rust, rule R11 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
+- **Language:** Rust, rule R11 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. With a sqlite index on a cluster it runs on the indexer's node.
 - **Keys:** none.
 - **Ports:** state, blob, transport. On local: state: `embedded`, blob: `fs`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/), [ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/).
 - **Requirement areas:** [AUDIT](/requirements/audit/).
 - **Standards:** ST-114 OCSF 1.x.
 - **Issues:** [#839](https://github.com/truvity/sluis/issues/839), [#985](https://github.com/truvity/sluis/issues/985), [#1122](https://github.com/truvity/sluis/issues/1122); label `actor:reader`.
@@ -235,12 +235,12 @@ Answers audit queries from the search index, filtered by the caller's grant, and
 
 The one mediating driver: owns a node's card (or the software key files) exclusively and serves each caller its own socket, with a peer-uid check and content-aware signing.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/). Go with piv-go: the named exception to R3.
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/). Go with piv-go: the named exception to R3.
 - **Placement:** one per node; exactly one instance; on bare-metal. No key-holder with a cloud key service: KMS key policies take its place.
 - **Keys:** `every enabled purpose`, slot `9a, 9c, 9d, 82 to 95`: sign, public-key, wrap, unwrap; for the callers its access list names.
 - **Ports:** none.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/), [ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0006](/decisions/0006-keys-and-sealing/), [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [KEYS](/requirements/keys/), [SEC](/requirements/sec/).
 - **Standards:** NC-10 PIV (NIST SP 800-73) and OpenPGP card on YubiKey; ST-83 RFC 9580 OpenPGP.
 - **Issues:** [#951](https://github.com/truvity/sluis/issues/951), [#1067](https://github.com/truvity/sluis/issues/1067), [#914](https://github.com/truvity/sluis/issues/914); label `actor:key-holder`.
@@ -249,12 +249,12 @@ The one mediating driver: owns a node's card (or the software key files) exclusi
 
 The node agent: issues each local actor a short-lived workload JWT, from its uid by peer credentials, signed with the node's hardware key.
 
-- **Language:** Rust, rule R3 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Rust, rule R3 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per node; exactly one instance; on bare-metal. On Kubernetes only as a fallback; none on serverless.
 - **Keys:** `workload-issuer`, slot `86`: sign; the node's workload JWTs.
 - **Ports:** keys.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/), [ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/), [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Requirement areas:** [WORKLOAD](/requirements/workload/).
 - **Standards:** ST-110 JWT-SVID; ST-46 AWS web identity.
 - **Issues:** [#870](https://github.com/truvity/sluis/issues/870); label `actor:sluis-node`.
@@ -263,12 +263,12 @@ The node agent: issues each local actor a short-lived workload JWT, from its uid
 
 Federates sign-in from an upstream identity provider and returns facts; it never decides.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** none.
 - **Ports:** secrets, transport. On local: transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0017](/decisions/0017-identity-and-sign-in/).
 - **Requirement areas:** [FED](/requirements/fed/).
 - **Standards:** ST-28 OIDC Core 1.0; ST-29 OIDC Discovery.
 - **Issues:** [#916](https://github.com/truvity/sluis/issues/916), [#807](https://github.com/truvity/sluis/issues/807); label `actor:upstream`.
@@ -277,12 +277,12 @@ Federates sign-in from an upstream identity provider and returns facts; it never
 
 Returns directory facts (users, groups, teams) and writes them as learned records of its own.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per vendor tenant and credential; exactly one instance; on bare-metal, serverless, kubernetes. Its reconciler declares instances: exactly 1 (ADR 0002).
 - **Keys:** `sealing`, slot `9d`: wrap, unwrap; the data keys of its own record kinds.
 - **Ports:** secrets, state, transport. On local: state: `embedded`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/), [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/).
+- **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/).
 - **Requirement areas:** [FED](/requirements/fed/).
 - **Standards:** ST-42 SCIM 7643/7644.
 - **Issues:** [#805](https://github.com/truvity/sluis/issues/805), [#806](https://github.com/truvity/sluis/issues/806), [#808](https://github.com/truvity/sluis/issues/808); label `actor:facts-source`.
@@ -291,12 +291,12 @@ Returns directory facts (users, groups, teams) and writes them as learned record
 
 Mints a short-lived downstream credential for a grant that policy sealed, and nothing the grant does not cover.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** `sealing`, slot `9d`: unwrap; purpose=grant.
 - **Ports:** keys, secrets, transport. On local: keys: `software`, transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/), [ADR 0012](/decisions/0012-cryptography-and-authority-keys/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/), [ADR 0006](/decisions/0006-keys-and-sealing/).
 - **Requirement areas:** [EXCH](/requirements/exch/).
 - **Standards:** ST-07 RFC 8693 Token exchange.
 - **Issues:** [#811](https://github.com/truvity/sluis/issues/811), [#816](https://github.com/truvity/sluis/issues/816), [#817](https://github.com/truvity/sluis/issues/817); label `actor:credential-minter`.
@@ -305,12 +305,12 @@ Mints a short-lived downstream credential for a grant that policy sealed, and no
 
 Pulls a digest-addressed desired state that core publishes and reconciles an external system to it.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per vendor tenant and credential; exactly one instance; on bare-metal, serverless, kubernetes.
 - **Keys:** none.
 - **Ports:** secrets, transport. On local: transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/).
 - **Requirement areas:** none.
 - **Standards:** none.
 - **Issues:** [#1018](https://github.com/truvity/sluis/issues/1018); label `actor:provisioner`.
@@ -319,12 +319,12 @@ Pulls a digest-addressed desired state that core publishes and reconciles an ext
 
 Sends notifications, such as an enrolment waiting for approval.
 
-- **Language:** Go, rule R4 of [ADR 0014](/decisions/0014-the-language-follows-the-executable/).
+- **Language:** Go, rule R4 of [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes.
 - **Keys:** none.
 - **Ports:** secrets, transport. On local: transport: `spool`.
 - **Calls:** none.
-- **Decisions:** [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/).
+- **Decisions:** [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/).
 - **Requirement areas:** none.
 - **Standards:** none.
 - **Issues:** [#899](https://github.com/truvity/sluis/issues/899); label `actor:notifier`.

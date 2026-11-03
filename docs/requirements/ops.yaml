@@ -142,7 +142,7 @@ requirements:
     area: OPS
     split_from: REQ-OPS-006
     statement: "When a dependency needed for a decision is unavailable, sluis MUST NOT take a weaker path."
-    rationale: "Fail closed with bounded impact; cached group membership inside its bounded staleness window is not a weaker path, and past the window the request is refused (ADR 0006)."
+    rationale: "Fail closed with bounded impact; cached group membership inside its bounded staleness window is not a weaker path, and past the window the request is refused (ADR 0017)."
     level: MUST
     source: stakeholder-ciam
     status: planned
@@ -318,7 +318,7 @@ requirements:
   - id: REQ-OPS-025
     area: OPS
     statement: "An instance record MUST be issued only under a declared template, by a caller that a declared delegation policy permits."
-    rationale: "Run-time self-service stays inside what a reviewer has read (ADR 0031)."
+    rationale: "Run-time self-service stays inside what a reviewer has read (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -330,7 +330,7 @@ requirements:
   - id: REQ-OPS-026
     area: OPS
     statement: "The audit record of an issued instance MUST name the caller, the template, the slot values apart from secrets and the delegation that permitted it."
-    rationale: "Without them a reviewer cannot tell why an instance exists (ADR 0031)."
+    rationale: "Without them a reviewer cannot tell why an instance exists (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -342,7 +342,7 @@ requirements:
   - id: REQ-OPS-027
     area: OPS
     statement: "An instance record MUST be refused when a slot value lies outside the bound that its template declares."
-    rationale: "An instance must not hold more authority than its template carries (ADR 0031)."
+    rationale: "An instance must not hold more authority than its template carries (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -354,7 +354,7 @@ requirements:
   - id: REQ-OPS-028
     area: OPS
     statement: "A snapshot with a per-customer default outside the bound that its template declares MUST be refused while the version in force stays."
-    rationale: "A default carries no authority, so it may not exceed its bound (ADR 0031)."
+    rationale: "A default carries no authority, so it may not exceed its bound (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -366,7 +366,7 @@ requirements:
   - id: REQ-OPS-029
     area: OPS
     statement: "Declared configuration MUST be applied from the configuration service of its runtime as a whole versioned snapshot, swapped atomically and audited with its digest."
-    rationale: "The reviewed commit and the applied configuration must be matchable (ADR 0031)."
+    rationale: "The reviewed commit and the applied configuration must be matchable (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -378,7 +378,7 @@ requirements:
   - id: REQ-OPS-030
     area: OPS
     statement: "Before the first relying party moves from v1, the cutover inventory MUST list every relying party of the v1 issuer and every consumer that keys on its sub, aud or groups claim."
-    rationale: "A consumer keyed on v1's e-mail sub breaks when the subject becomes opaque (ADR 0033)."
+    rationale: "A consumer keyed on v1's e-mail sub breaks when the subject becomes opaque (ADR 0015)."
     level: MUST
     source: v1-parity
     status: planned
@@ -390,7 +390,7 @@ requirements:
   - id: REQ-OPS-031
     area: OPS
     statement: "A reconciler pass MUST change an external system only while its process holds the lease for that target."
-    rationale: "Two processes acting on one target would fight (ADR 0037)."
+    rationale: "Two processes acting on one target would fight (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -402,7 +402,7 @@ requirements:
   - id: REQ-OPS-032
     area: OPS
     statement: "A provisioner MUST refuse a change that carries a fencing token lower than one it has seen."
-    rationale: "A paused holder must not write over its successor (ADR 0037)."
+    rationale: "A paused holder must not write over its successor (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -414,7 +414,7 @@ requirements:
   - id: REQ-OPS-033
     area: OPS
     statement: "A reconciler pass in dry run MUST NOT change the external system."
-    rationale: "An operator reads a dry run before enabling a target (ADR 0037)."
+    rationale: "An operator reads a dry run before enabling a target (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -426,7 +426,7 @@ requirements:
   - id: REQ-OPS-034
     area: OPS
     statement: "A second reconciler pass on an unchanged desired state and an unchanged external system MUST make no change."
-    rationale: "A pass that is not idempotent flaps and floods the vendor and the audit log (ADR 0037)."
+    rationale: "A pass that is not idempotent flaps and floods the vendor and the audit log (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -438,7 +438,7 @@ requirements:
   - id: REQ-OPS-035
     area: OPS
     statement: "A reconciler MUST NOT remove a member when the directory fact about that member is unavailable or stale."
-    rationale: "An unreadable directory must not look like an empty one (ADR 0037)."
+    rationale: "An unreadable directory must not look like an empty one (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -450,7 +450,7 @@ requirements:
   - id: REQ-OPS-036
     area: OPS
     statement: "A reconciler MUST hold a pass that would remove more than half of a container's members until an operator confirms it."
-    rationale: "A directory error or a policy mistake must not empty a team unseen (ADR 0037)."
+    rationale: "A directory error or a policy mistake must not empty a team unseen (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -462,7 +462,7 @@ requirements:
   - id: REQ-OPS-037
     area: OPS
     statement: "A provisioner outcome MUST carry a reason from the closed list, never vendor error text."
-    rationale: "Vendor text could leak a tenant's data into a caller's response (ADR 0037)."
+    rationale: "Vendor text could leak a tenant's data into a caller's response (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -560,7 +560,7 @@ requirements:
   - id: REQ-OPS-045
     area: OPS
     statement: "The configuration loader MUST refuse a source document that holds a key outside the paths its source owns."
-    rationale: "A publisher writes only its own scope (ADR 0010)."
+    rationale: "A publisher writes only its own scope (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -635,7 +635,7 @@ requirements:
   - id: REQ-OPS-051
     area: OPS
     statement: "`sluis config check` MUST refuse a per-customer default from any source that is not a service source."
-    rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0031)."
+    rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0047)."
     level: MUST
     source: design-decision
     status: planned
@@ -684,7 +684,7 @@ requirements:
   - id: REQ-OPS-055
     area: OPS
     statement: "sluis MUST NOT write to a configuration service."
-    rationale: "Declared configuration is delivered read-only (ADR 0010)."
+    rationale: "Declared configuration is delivered read-only (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -708,7 +708,7 @@ requirements:
   - id: REQ-OPS-057
     area: OPS
     statement: "The configuration schema MUST give every path of declared configuration a reload class, `live` or `restart`, by an annotation on the path or on its nearest ancestor, with `restart` at the root."
-    rationale: "One rule says what a reload may change, and a key that nobody has classified is the safe one (ADR 0010)."
+    rationale: "One rule says what a reload may change, and a key that nobody has classified is the safe one (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -720,7 +720,7 @@ requirements:
   - id: REQ-OPS-058
     area: OPS
     statement: "sluis MUST refuse a configuration reload that changes a path of class `restart`, as a whole, while the version in force stays."
-    rationale: "A half-applied snapshot is a document that nobody reviewed or published (ADR 0010)."
+    rationale: "A half-applied snapshot is a document that nobody reviewed or published (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -768,7 +768,7 @@ requirements:
   - id: REQ-OPS-062
     area: OPS
     statement: "A field marked tighten-only MUST have the reload class `live`."
-    rationale: "A brake must not wait for a restart (ADR 0010)."
+    rationale: "A brake must not wait for a restart (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned

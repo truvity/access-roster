@@ -6,7 +6,7 @@ sidebar:
   order: 0
 ---
 
-A **runtime** is the kind of place sluis runs: how processes are started and what they can rely on. There are three ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#runtime-kinds)). The word "environment" keeps its usual meaning: development, staging or production.
+A **runtime** is the kind of place sluis runs: how processes are started and what they can rely on. There are three ([ADR 0011](/decisions/0011-runtimes-and-installations/#runtime-kinds)). The word "environment" keeps its usual meaning: development, staging or production.
 
 - **[bare-metal](/runtimes/bare-metal/)** covers physical hosts, virtual machines such as EC2, and local Docker. systemd, or a container runtime for local Docker, starts the processes.
 - **[serverless](/runtimes/serverless/)** covers AWS Lambda and similar platforms. The platform runs a function per event. Lambda's own term is written "Lambda runtime" in these pages, to keep the two apart.
@@ -50,7 +50,7 @@ The four tested installations name the default drivers for their runtime. Pick b
 - **[lambda](/runtimes/installations/#lambda):** AWS Lambda, a function per actor. No hosts to patch.
 - **[kubernetes](/runtimes/installations/#kubernetes):** a container per actor on Amazon EKS, with AWS KMS. For a team that already runs a cluster.
 
-The key mode follows from the installation, not from a switch: KMS on lambda and kubernetes, a YubiKey on boards, software keys on local. The code carries the floor: the `software` keys driver refuses to start in production and warns in staging, and configuration picks only among the modes the floor allows ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#floors-in-code)).
+The key mode follows from the installation, not from a switch: KMS on lambda and kubernetes, a YubiKey on boards, software keys on local. The code carries the floor: the `software` keys driver refuses to start in production and warns in staging, and configuration picks only among the modes the floor allows ([ADR 0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
 
 ## Pages in this section
 

@@ -44,7 +44,7 @@ An id is `REQ-<AREA>-<nnn>`, for example `REQ-AUTHN-002`.
 | `statement` | One sentence ending in a period with exactly one of MUST, MUST NOT, SHOULD, SHOULD NOT, MAY. Names a role (sluis, an operator, a relying party), never a person or a company. |
 | `rationale` | One sentence ending in a period. |
 | `level` | MUST, SHOULD or MAY; equals the class of the keyword (MUST NOT counts as MUST). |
-| `source` | Where the requirement comes from (not the data origin of ADR 0010), a category: `v1-parity`, `stakeholder-ciam`, `stakeholder-integrator`, `security-review`, `design-decision`, `standard`. |
+| `source` | Where the requirement comes from (not the data origin of ADR 0004), a category: `v1-parity`, `stakeholder-ciam`, `stakeholder-integrator`, `security-review`, `design-decision`, `standard`. |
 | `status` | `done` (implemented, and `tests` names the passing tests), `planned` (an agreed feature or design covers it), `partial` (the plan is weaker), `open` (needs a decision or has no plan), `out-of-scope` (a boundary kept as a refusal), `withdrawn`. |
 | `runtimes` | `all`, or a list of `bare-metal`, `serverless`, `kubernetes`. |
 | `standards` | `{id, section, depth}`: an id from `standards.yaml`, the section, and `Full` or `Partial`. |

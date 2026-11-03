@@ -1,4 +1,4 @@
-// The live status documents in KV (ADR 0020), and the view the status API and the status
+// The live status documents in KV (ADR 0014), and the view the status API and the status
 // page's live block make of them.
 //
 // - `board`: the project board and the latest workflow run of each workflow on `main`,

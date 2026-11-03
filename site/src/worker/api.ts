@@ -1,4 +1,4 @@
-// The routes of the Worker (ADR 0020), all under /api/:
+// The routes of the Worker (ADR 0014), all under /api/:
 //
 //   GET  /api/status        the live status as JSON (src/worker/status.ts)
 //   GET  /api/status/live/  the status page's live block, an HTML fragment drawn by the

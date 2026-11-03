@@ -152,7 +152,7 @@ requirements:
   - id: REQ-OBS-012
     area: OBS
     statement: "An actor that receives requests from outside sluis MUST NOT use a remote parent trace context from those requests."
-    rationale: "An outside caller must not choose trace ids or force sampling (ADR 0022)."
+    rationale: "An outside caller must not choose trace ids or force sampling (ADR 0016)."
     level: MUST
     source: design-decision
     status: planned
@@ -165,7 +165,7 @@ requirements:
   - id: REQ-OBS-013
     area: OBS
     statement: "A metric attribute MUST NOT carry a subject, a request id or a certificate serial."
-    rationale: "Metric attributes must have bounded cardinality (ADR 0022)."
+    rationale: "Metric attributes must have bounded cardinality (ADR 0016)."
     level: MUST
     source: design-decision
     status: planned
@@ -178,7 +178,7 @@ requirements:
   - id: REQ-OBS-014
     area: OBS
     statement: "An audit record made within a traced request MUST carry that request's W3C trace id in metadata.correlation_uid."
-    rationale: "The audit log and the traces can then be joined without either repeating the other (ADR 0022)."
+    rationale: "The audit log and the traces can then be joined without either repeating the other (ADR 0016)."
     level: MUST
     source: design-decision
     status: planned
@@ -191,7 +191,7 @@ requirements:
   - id: REQ-OBS-015
     area: OBS
     statement: "A log line on stderr MUST be one JSON object with the field names of the OpenTelemetry log data model."
-    rationale: "One format lets every collector read every executable (ADR 0022)."
+    rationale: "One format lets every collector read every executable (ADR 0016)."
     level: MUST
     source: design-decision
     status: planned

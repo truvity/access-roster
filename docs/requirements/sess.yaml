@@ -349,7 +349,7 @@ requirements:
   - id: REQ-SESS-025
     area: SESS
     statement: "Every session MUST have a class, human or agent, that is fixed when the session is created."
-    rationale: "The classes differ in their limits and in what ends them (ADR 0023)."
+    rationale: "The classes differ in their limits and in what ends them (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -362,7 +362,7 @@ requirements:
   - id: REQ-SESS-026
     area: SESS
     statement: "sluis MUST NOT issue a refresh token for a client-credentials grant or a workload exchange."
-    rationale: "A machine client has no session; it presents its credential again (ADR 0023)."
+    rationale: "A machine client has no session; it presents its credential again (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -375,7 +375,7 @@ requirements:
   - id: REQ-SESS-027
     area: SESS
     statement: "A human session MUST end at its absolute limit from its start, whatever its activity."
-    rationale: "Use must not extend a person's sign-in (v1 ADR 0001, ADR 0023)."
+    rationale: "Use must not extend a person's sign-in (v1 ADR 0001, ADR 0018)."
     level: MUST
     source: v1-parity
     status: planned
@@ -388,7 +388,7 @@ requirements:
   - id: REQ-SESS-028
     area: SESS
     statement: "A step-up re-authentication MUST NOT extend a session's absolute limit."
-    rationale: "Step-up refreshes freshness, not the sign-in (ADR 0023)."
+    rationale: "Step-up refreshes freshness, not the sign-in (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -401,7 +401,7 @@ requirements:
   - id: REQ-SESS-029
     area: SESS
     statement: "A person's sign-out MUST NOT end that person's agent sessions."
-    rationale: "A background agent must not break silently when its person closes a browser (ADR 0023)."
+    rationale: "A background agent must not break silently when its person closes a browser (ADR 0018)."
     level: MUST
     source: v1-parity
     status: planned
@@ -414,7 +414,7 @@ requirements:
   - id: REQ-SESS-030
     area: SESS
     statement: "Revoking a consent MUST end at once every agent session that the consent started."
-    rationale: "An agent acts only while its person allows it (ADR 0023)."
+    rationale: "An agent acts only while its person allows it (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -427,7 +427,7 @@ requirements:
   - id: REQ-SESS-031
     area: SESS
     statement: "An agent session MUST NOT outlive the absolute lifetime of the consent that started it."
-    rationale: "An agent's lifetime is bounded by its consent (ADR 0023)."
+    rationale: "An agent's lifetime is bounded by its consent (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -440,7 +440,7 @@ requirements:
   - id: REQ-SESS-032
     area: SESS
     statement: "sluis MUST refuse a new agent session past the cap of concurrent agent sessions for that person and client."
-    rationale: "A client that starts a session on every run must not pile up live grants (ADR 0023)."
+    rationale: "A client that starts a session on every run must not pile up live grants (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -453,7 +453,7 @@ requirements:
   - id: REQ-SESS-033
     area: SESS
     statement: "A boundary MUST NOT extend a session beyond the absolute limit of the session that seeded it."
-    rationale: "A limit at one boundary is worthless if another can extend it (ADR 0023)."
+    rationale: "A limit at one boundary is worthless if another can extend it (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -466,7 +466,7 @@ requirements:
   - id: REQ-SESS-034
     area: SESS
     statement: "sluis MUST let a person list and revoke each of their agent sessions."
-    rationale: "A person must see what acts on their behalf (ADR 0023)."
+    rationale: "A person must see what acts on their behalf (ADR 0018)."
     level: MUST
     source: v1-parity
     status: planned
@@ -479,7 +479,7 @@ requirements:
   - id: REQ-SESS-035
     area: SESS
     statement: "At the absolute limit of a human session, sluis MUST authenticate the person at the upstream again, first with prompt=none, instead of extending the session."
-    rationale: "The upstream holds the long session and sluis keeps the 24-hour cap (ADR 0023)."
+    rationale: "The upstream holds the long session and sluis keeps the 24-hour cap (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -491,7 +491,7 @@ requirements:
   - id: REQ-SESS-036
     area: SESS
     statement: "sluis MUST answer a step-up for a person who signs in through a customer upstream by re-authentication at that upstream with the acr_values and max_age that policy asked for."
-    rationale: "sluis hosts no end-user factors (ADR 0023)."
+    rationale: "sluis hosts no end-user factors (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -503,7 +503,7 @@ requirements:
   - id: REQ-SESS-037
     area: SESS
     statement: "sluis MUST NOT enrol a factor for, or ask for a passkey of, a person who signs in through a customer upstream."
-    rationale: "sluis hosts no end-user accounts or factors (ADR 0023, REQ-CIAM-017)."
+    rationale: "sluis hosts no end-user accounts or factors (ADR 0018, REQ-CIAM-017)."
     level: MUST
     source: design-decision
     status: planned
@@ -528,7 +528,7 @@ requirements:
   - id: REQ-SESS-039
     area: SESS
     statement: "A status of suspended or an erasure MUST end the agent sessions of the person as well as their human sessions."
-    rationale: "An agent session never outlives the person (ADR 0023)."
+    rationale: "An agent session never outlives the person (ADR 0018)."
     level: MUST
     source: design-decision
     status: planned
@@ -565,7 +565,7 @@ requirements:
   - id: REQ-SESS-042
     area: SESS
     statement: "sluis MUST NOT renew a session silently through a connection of trust level internal."
-    rationale: "A workforce sign-in needs the periodic full sign-in with multi-factor authentication (ADR 0006)."
+    rationale: "A workforce sign-in needs the periodic full sign-in with multi-factor authentication (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -577,7 +577,7 @@ requirements:
   - id: REQ-SESS-043
     area: SESS
     statement: "A boundary's entry MUST sign a browser in at the group issuer with the authorization code flow and PKCE, using its registered client."
-    rationale: "A boundary trusts a browser sign-in only when the group issuer authenticated the person, at an exact redirect that no other client can claim (ADR 0006)."
+    rationale: "A boundary trusts a browser sign-in only when the group issuer authenticated the person, at an exact redirect that no other client can claim (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned

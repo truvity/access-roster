@@ -6,7 +6,7 @@ sidebar:
   order: 5
 ---
 
-Every actor has one **permission manifest**. It states what the actor may read and write, which keys and secrets it may use, which sockets it listens on, which actors it calls and which may call it, and which hosts it may reach; nothing that enforces least privilege is written by hand, because the manifest generates it ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#the-permission-manifest), [Architecture](/architecture/#the-permission-manifest-is-the-spine)). This page fixes the manifest's format and its generators ([#863](https://github.com/truvity/sluis/issues/863)).
+Every actor has one **permission manifest**. It states what the actor may read and write, which keys and secrets it may use, which sockets it listens on, which actors it calls and which may call it, and which hosts it may reach; nothing that enforces least privilege is written by hand, because the manifest generates it ([ADR 0002](/decisions/0002-families-of-actors/#the-permission-manifest), [Architecture](/architecture/#the-permission-manifest-is-the-spine)). This page fixes the manifest's format and its generators ([#863](https://github.com/truvity/sluis/issues/863)).
 
 ## Files
 
@@ -18,7 +18,7 @@ manifest/
   generated/           the JSON of every manifest and the JSON Schema of the format
 ```
 
-- **One Pkl module per actor**, named as in the [actor registry](/reference/actors/). Pkl runs at build time only; the build writes each manifest as JSON and the format's JSON Schema under `manifest/generated/`, and the generators read only that JSON ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#pkl-and-json-schema)). Generated files are committed, and CI fails on a stale one.
+- **One Pkl module per actor**, named as in the [actor registry](/reference/actors/). Pkl runs at build time only; the build writes each manifest as JSON and the format's JSON Schema under `manifest/generated/`, and the generators read only that JSON ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)). Generated files are committed, and CI fails on a stale one.
 - **The registry and the manifests agree.** Every actor of the registry that has an executable has a manifest, and the generator refuses a manifest of an actor the registry lacks.
 - **An integration kind has one manifest per kind**; an integration instance (`github@<org>`) adds its declared egress hosts and its secrets from the install file, within what the kind's manifest allows.
 
@@ -27,9 +27,9 @@ manifest/
 | Field | Meaning |
 |---|---|
 | `actor` | The actor's name |
-| `instances` | `any`, or `exactly 1`, which needs a lease with more than one node ([ADR 0002](/decisions/0002-the-design-model-actors-ports-drivers-and-contracts/#placement-is-derived)) |
+| `instances` | `any`, or `exactly 1`, which needs a lease with more than one node ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)) |
 | `ports` | For each port it uses: `required` or `optional`, and the capability flags it needs (`compare-and-set` on state, a lock mode on blob) |
-| `records` | The record kinds it reads or writes: `kind`, `access` (`write` or `read`), and for a written kind its `origin`, `durability` and whether it `accepts_operator_set` ([ADR 0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#origins)) |
+| `records` | The record kinds it reads or writes: `kind`, `access` (`write` or `read`), and for a written kind its `origin`, `durability` and whether it `accepts_operator_set` ([ADR 0004](/decisions/0004-the-data-model/#origins)) |
 | `keys` | The key purposes it uses: `purpose`, the operations (`sign`, `public-key`, `wrap`, `unwrap`) and, for a wrap or an unwrap, the encryption `context` |
 | `secrets` | The secret names it reads or writes behind the `secrets` port |
 | `listens` | Its sockets: `api` for every actor, and `public` for `entry` only |
@@ -42,19 +42,19 @@ manifest/
 | Thing | Name | Defined on |
 |---|---|---|
 | A record kind | singular kebab-case, unique per boundary | [Storage](/reference/storage/#record-keys) |
-| A key purpose | the purposes of ADR 0012 (`token-signing`, `sealing`, …) | [Storage](/reference/storage/#keys) |
+| A key purpose | the purposes of ADR 0006 (`token-signing`, `sealing`, …) | [Storage](/reference/storage/#keys) |
 | A service | `sluis.<actor>.v2alpha1.<Name>Service` | [Contracts and errors](/reference/contracts/#packages-and-files) |
-| A socket | `/run/sluis/<actor>/<boundary>.sock` for `api`; `/run/sluis/entry/<boundary>-public.sock` for `public` | [ADR 0004](/decisions/0004-drivers-listeners-and-boundary-enforcement/#listeners) |
-| An instance | `<actor>@<boundary>`, the same in every layer | [ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#names) |
+| A socket | `/run/sluis/<actor>/<boundary>.sock` for `api`; `/run/sluis/entry/<boundary>-public.sock` for `public` | [ADR 0003](/decisions/0003-units-transports-and-fusion/#listeners) |
+| An instance | `<actor>@<boundary>`, the same in every layer | [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#names) |
 
 ### Rules the generator enforces
 
-- **One writer per kind:** two manifests that both write one kind are refused ([ADR 0011](/decisions/0011-state-is-one-port-with-compare-and-set/#one-writer-per-kind)).
+- **One writer per kind:** two manifests that both write one kind are refused ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)).
 - **Both ends of every edge:** a call is allowed only when the caller's `calls` and the callee's `called_by` both name it, so neither side can grant itself a caller or a callee.
-- **Only `entry` listens publicly,** and a manifest that uses an authority key never has a `public` socket ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-fusion-rule)).
-- **`policy` has no `records`, no `egress` and no `calls`** ([ADR 0009](/decisions/0009-policy-is-cedar-in-a-rust-actor/)).
-- **A purpose used to sign has exactly one user actor**; a purpose used to wrap and unwrap, such as `sealing`, may have several, each with its own context ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#when-keys-are-shared-and-when-separate)).
-- **A fused unit's manifest is the union of its actors'**, and it is refused when it holds a key and a `public` socket together ([The fusion rule](/decisions/0003-core-actors-with-one-responsibility-each/#the-fusion-rule)).
+- **Only `entry` listens publicly,** and a manifest that uses an authority key never has a `public` socket ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-fusion-rule)).
+- **`policy` has no `records`, no `egress` and no `calls`** ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)).
+- **A purpose used to sign has exactly one user actor**; a purpose used to wrap and unwrap, such as `sealing`, may have several, each with its own context ([ADR 0006](/decisions/0006-keys-and-sealing/#when-keys-are-shared-and-when-separate)).
+- **A fused unit's manifest is the union of its actors'**, and it is refused when it holds a key and a `public` socket together ([The fusion rule](/decisions/0041-core-actors-with-one-responsibility-each/#the-fusion-rule)).
 
 ## An example: `signer`
 
@@ -86,10 +86,10 @@ called_by {
 
 ## The uid table
 
-- **`manifest/uids.pkl` pins one uid per actor and per driver,** the same in the Compose file and in the chart ([ADR 0018](/decisions/0018-runtimes-installations-and-delivery-order/#the-local-installation)). A uid is never reused, even for a retired actor.
-- **On bare-metal the packages make named system users,** `sluis-<actor>-<boundary>`, so the uid table applies to images only ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#names)).
+- **`manifest/uids.pkl` pins one uid per actor and per driver,** the same in the Compose file and in the chart ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). A uid is never reused, even for a retired actor.
+- **On bare-metal the packages make named system users,** `sluis-<actor>-<boundary>`, so the uid table applies to images only ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#names)).
 
-- **A uid for each boundary's instance in containers.** An instance of each boundary has its own uid on bare-metal (L2, [The isolation ladder](/decisions/0005-boundaries-and-the-isolation-ladder/#the-isolation-ladder)), and so it has in containers: the uid of `<actor>@<boundary>` is the actor's pinned base uid plus 1000 times the number that the install file declares for the boundary (`boundaries.<name>.uid_block`, an integer from 0 to 54, unique in the file). The base uids are in the range 10000 to 10999, so no two instances of any actors share a uid and the peer-uid check on a shared socket tells `ca@dev` from `ca@prod`. The number is stable when a boundary is added and is never reused after a boundary is removed. A one-boundary installation, such as the local installation of the first working version, declares block 0 and so runs on the base uids. Callers differ between boundaries, so the instances are kept apart ([principle 3](/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule)).
+- **A uid for each boundary's instance in containers.** An instance of each boundary has its own uid on bare-metal (L2, [The isolation ladder](/decisions/0008-boundaries-and-tenants/#the-isolation-ladder)), and so it has in containers: the uid of `<actor>@<boundary>` is the actor's pinned base uid plus 1000 times the number that the install file declares for the boundary (`boundaries.<name>.uid_block`, an integer from 0 to 54, unique in the file). The base uids are in the range 10000 to 10999, so no two instances of any actors share a uid and the peer-uid check on a shared socket tells `ca@dev` from `ca@prod`. The number is stable when a boundary is added and is never reused after a boundary is removed. A one-boundary installation, such as the local installation of the first working version, declares block 0 and so runs on the base uids. Callers differ between boundaries, so the instances are kept apart ([principle 3](/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule)).
 
 ## Generators
 

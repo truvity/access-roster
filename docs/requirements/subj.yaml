@@ -498,7 +498,7 @@ requirements:
   - id: REQ-SUBJ-037
     area: SUBJ
     statement: "sluis MUST identify an upstream account by the issuer of the ID token and the value of the upstream's subject claim."
-    rationale: "One pair identifies an account whichever path reaches it (ADR 0027)."
+    rationale: "One pair identifies an account whichever path reaches it (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned
@@ -510,7 +510,7 @@ requirements:
   - id: REQ-SUBJ-038
     area: SUBJ
     statement: "The subject claim of an upstream MUST be the claim its configuration names, or sub when it names none."
-    rationale: "Microsoft Entra needs oid because its sub differs per application, and Google uses sub (ADR 0027)."
+    rationale: "Microsoft Entra needs oid because its sub differs per application, and Google uses sub (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned
@@ -546,7 +546,7 @@ requirements:
   - id: REQ-SUBJ-041
     area: SUBJ
     statement: "sluis MUST refuse a sign-in through an upstream whose configured subject claim differs from the claim pinned when the issuer's first person was linked."
-    rationale: "A changed claim would make every known person look new, so a contradicted pin is refused (ADR 0027)."
+    rationale: "A changed claim would make every known person look new, so a contradicted pin is refused (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned
@@ -570,7 +570,7 @@ requirements:
   - id: REQ-SUBJ-043
     area: SUBJ
     statement: "sluis MUST refuse sign-in, refresh, exchange and step-up for a person under an operator hold."
-    rationale: "A hold is a tighten-only action and takes effect at once (ADR 0027)."
+    rationale: "A hold is a tighten-only action and takes effect at once (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned
@@ -594,7 +594,7 @@ requirements:
   - id: REQ-SUBJ-045
     area: SUBJ
     statement: "sluis MUST mark a directory person as left only after the person is absent from the configured number of consecutive successful full snapshots."
-    rationale: "One missing read must not remove a person (ADR 0027)."
+    rationale: "One missing read must not remove a person (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned
@@ -630,7 +630,7 @@ requirements:
   - id: REQ-SUBJ-048
     area: SUBJ
     statement: "The state of a person MUST be one of live, held, suspended, left or erased."
-    rationale: "One defined state machine replaces the account states that were withdrawn (ADR 0050)."
+    rationale: "One defined state machine replaces the account states that were withdrawn (ADR 0034)."
     level: MUST
     source: design-decision
     status: planned
@@ -677,7 +677,7 @@ requirements:
       - {kind: integration-test, ref: "stale token and refresh test after an erasure"}
   - id: REQ-SUBJ-052
     area: SUBJ
-    statement: "The schema MUST NOT mark a field personal in any record kind outside the end-user inventory of ADR 0050."
+    statement: "The schema MUST NOT mark a field personal in any record kind outside the end-user inventory of ADR 0034."
     rationale: "The inventory is what an erasure and an export must cover."
     level: MUST
     source: design-decision
@@ -727,7 +727,7 @@ requirements:
   - id: REQ-SUBJ-056
     area: SUBJ
     statement: "A status call MUST name a person by connection and subject-claim value, never by e-mail address."
-    rationale: "An e-mail address identifies no one (ADR 0027)."
+    rationale: "An e-mail address identifies no one (ADR 0019)."
     level: MUST
     source: design-decision
     status: planned

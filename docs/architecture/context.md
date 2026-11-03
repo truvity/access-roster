@@ -52,7 +52,7 @@ flowchart LR
 | **Directory and team systems** | The source of facts: who is in which group or team. sluis reads and reconciles them, and policy maps the facts to grants |
 | **Downstream systems** | Cloud APIs, GitHub and chat workspaces receive the credentials sluis mints and the desired state it provisions |
 | **Platform** | KMS or YubiKey, blob, transport and state hold keys, records, objects and messages |
-| **Root custody** | [ritueel](https://ritueel.id) holds the roots offline, certifies sluis's intermediates and publishes the root list. sluis holds intermediates only and never generates a root ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#sluis-holds-no-root)) |
+| **Root custody** | [ritueel](https://ritueel.id) holds the roots offline, certifies sluis's intermediates and publishes the root list. sluis holds intermediates only and never generates a root ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#sluis-holds-no-root)) |
 
 ## The external API surface
 
@@ -66,7 +66,7 @@ Served on the origin root of the public host, for example `https://sluis.example
 | -------- | --------------- | ------ |
 | Discovery | `GET /.well-known/openid-configuration`, `GET /.well-known/oauth-authorization-server` | Anyone. Public, CORS-open, no credentials |
 | Key set | `GET /keys` | Anyone. Public |
-| Authorization | `GET /authorize` (PKCE `S256` only, `response_mode=query` or `form_post` ([ADR 0006](/decisions/0006-identity-issuers-audiences-and-sign-in/)), `resource`, `prompt`) | A browser |
+| Authorization | `GET /authorize` (PKCE `S256` only, `response_mode=query` or `form_post` ([ADR 0017](/decisions/0017-identity-and-sign-in/)), `resource`, `prompt`) | A browser |
 | Sign-in | `GET /login`, `GET /login/<provider>/start`, `GET /authorize/callback` | A browser, bound to the request by a `__Host-` cookie |
 | Token | `POST /token` with `authorization_code` or `refresh_token` | A client, public with PKCE or confidential with a secret. Refresh tokens are single use |
 | UserInfo | `GET\|POST /userinfo` | A bearer of a live sign-in |
@@ -90,7 +90,7 @@ Both are `POST /token` with `grant_type=urn:ietf:params:oauth:grant-type:token-e
 
 ### Console API
 
-Connect services (JSON or protobuf over HTTP) under the console mount, package `sluis.console.v2alpha1` until v2.0.0 ([Contracts and errors](/reference/contracts/#packages-and-files)), served by the `console` actor through `entry`. Console calls use the same-origin HttpOnly session cookie, and the browser holds no token. A workload may call them with its own platform token; some services also accept a CLI bearer. Roles are viewer and operator, optionally scoped to one directory. An operator-set write is carried out by the actor that owns the record kind, which validates it, and it is audited under the signed-in person's name ([ADR 0003](/decisions/0003-core-actors-with-one-responsibility-each/#the-console)). The single-page application is a separate artifact on the same origin ([The console's static host](/architecture/deployment/#the-consoles-static-host)).
+Connect services (JSON or protobuf over HTTP) under the console mount, package `sluis.console.v2alpha1` until v2.0.0 ([Contracts and errors](/reference/contracts/#packages-and-files)), served by the `console` actor through `entry`. Console calls use the same-origin HttpOnly session cookie, and the browser holds no token. A workload may call them with its own platform token; some services also accept a CLI bearer. Roles are viewer and operator, optionally scoped to one directory. An operator-set write is carried out by the actor that owns the record kind, which validates it, and it is audited under the signed-in person's name ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-console)). The single-page application is a separate artifact on the same origin ([The console's static host](/architecture/deployment/#the-consoles-static-host)).
 
 The services are `SessionService` (list and revoke sessions), `AccessService` (`WhoAmI`, `Explain`, the effective policy, recovery status, group search), `BackupService` (status, history, run a backup, preview a restore), and one service per integration (connect, reconnect, probe, refresh, disconnect; for Cloudflare, list, rotate and revoke minted presets).
 
@@ -98,7 +98,7 @@ Browser redirect routes under `/connect/<integration>/` complete the provider fl
 
 ### Audit read
 
-The audit trail is served by the audit installation's own front: its own `entry` on a sibling host (`sluis-audit.example.com`), the `reader` as its API, and its own `session` and `console`. A sluis console reaches it with an exchanged token of at most five minutes, bound to the console's certificate ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/#the-audit-front)). Independent verification does not call sluis: an auditor fetches the sealed batches, the log's public key and any witness co-signatures from the bucket, and checks the chain.
+The audit trail is served by the audit installation's own front: its own `entry` on a sibling host (`sluis-audit.example.com`), the `reader` as its API, and its own `session` and `console`. A sluis console reaches it with an exchanged token of at most five minutes, bound to the console's certificate ([ADR 0028](/decisions/0028-audit-pieces/#the-audit-front)). Independent verification does not call sluis: an auditor fetches the sealed batches, the log's public key and any witness co-signatures from the bucket, and checks the chain.
 
 ### Operator and automation
 
@@ -121,8 +121,8 @@ These operations are new in v2; their paths and RPC names are fixed when each is
 - certificates for workloads, people and hosts: a Connect call for cert-manager's external-issuer library, and `sluis pki` and `sluis ssh`;
 - static publication: public `GET` of CA certificates, CRLs, trust bundles, SSH CA keys and the key revocation list;
 - the audit receiver (`SinkService.Send`) and the witness protocol (a checkpoint out, a cosignature back);
-- quota: admit, confirm, cancel and top-up calls for metered operations ([ADR 0017](/decisions/0017-audit-records-the-usage-stream-and-quota/#quota)).
-- the signing API: `SigningService.SignDetached`, a Connect call served by `exchange` through `entry`, for a caller with a CI identity token ([ADR 0029](/decisions/0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)).
+- quota: admit, confirm, cancel and top-up calls for metered operations ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
+- the signing API: `SigningService.SignDetached`, a Connect call served by `exchange` through `entry`, for a caller with a CI identity token ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)).
 
 ## Resources each use case touches
 

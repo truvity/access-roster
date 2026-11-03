@@ -86,7 +86,7 @@ site-v1 tag='':
 # Everything the Site workflow builds: the site and v1 under /v1/.
 site-all: site-check site-v1
 
-# The Cloudflare Workers build (ADR 0020), as the deploy job of site.yaml makes it, and
+# The Cloudflare Workers build (ADR 0014), as the deploy job of site.yaml makes it, and
 # a dry-run deploy that uploads nothing and needs no Cloudflare credential: the strict
 # build for the Worker into site/dist/client, v1 under /v1/ when v1-src holds a v1 tag
 # (see site-v1), the build checks (headers, redirects, Git LFS), the Worker's tests and

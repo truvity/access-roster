@@ -20,7 +20,7 @@ Kubernetes appears twice here. A **workload** in a cluster proves itself to slui
 
 | Kind | What it does for Kubernetes |
 |---|---|
-| `WorkloadVerifier` | The `k8s-sa-token` verifier driver of `exchange` checks a projected ServiceAccount token against the issuing cluster's published key set and returns `cluster`, `namespace` and `name` as attributes. It holds no secret ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
+| `WorkloadVerifier` | The `k8s-sa-token` verifier driver of `exchange` checks a projected ServiceAccount token against the issuing cluster's published key set and returns `cluster`, `namespace` and `name` as attributes. It holds no secret ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
 
 Signing in to the API server is a client profile: each cluster is one OIDC client (`k8s:<cluster>`) that reads the `groups` claim, and sluis lists those clusters for the person.
 
@@ -32,7 +32,7 @@ sluis does **not** call `TokenReview`, which would need a kubeconfig per cluster
 
 **For the API server sign-in:** nothing from the cluster. The cluster's owner points the API server at sluis's issuer URL, the client id, the username claim and the `groups` claim, and binds RBAC to the group names.
 
-The signing algorithm has to match. sluis signs with ES384 by default, and some API servers accept only RS256; the per-audience RS256 exception covers them with its own RSA key ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#named-exceptions)).
+The signing algorithm has to match. sluis signs with ES384 by default, and some API servers accept only RS256; the per-audience RS256 exception covers them with its own RSA key ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)).
 
 ## What policy controls
 

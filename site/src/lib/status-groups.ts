@@ -1,4 +1,4 @@
-// The rows of the status page (/status/, ADR 0020): one group per option of the project's
+// The rows of the status page (/status/, ADR 0014): one group per option of the project's
 // `Product milestone` field, in the field's order, then "Not in a milestone".
 //
 // - An issue belongs to the group of its own milestone value.

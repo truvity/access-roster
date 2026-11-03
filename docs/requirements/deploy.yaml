@@ -87,7 +87,7 @@ requirements:
     area: DEPLOY
     split_from: REQ-DEPLOY-003
     statement: "On bare-metal the public API MUST listen on a Unix socket only, with no TCP address bound by entry."
-    rationale: "Only the edge connector reaches entry, and entry runs with no network (ADR 0004)."
+    rationale: "Only the edge connector reaches entry, and entry runs with no network (ADR 0003)."
     level: MUST
     source: design-decision
     status: planned
@@ -183,7 +183,7 @@ requirements:
   - id: REQ-DEPLOY-014
     area: DEPLOY
     statement: "sluis MUST render IAM policies, the function and schedule map, units and chart values as plain files that need no sluis library to apply."
-    rationale: "The rendered artifacts are the contract, so any tool can apply them (ADR 0033)."
+    rationale: "The rendered artifacts are the contract, so any tool can apply them (ADR 0015)."
     level: MUST
     source: design-decision
     status: planned
@@ -195,7 +195,7 @@ requirements:
   - id: REQ-DEPLOY-015
     area: DEPLOY
     statement: "The Pulumi library MUST live in a Go module of its own and consume the rendered artifacts only."
-    rationale: "The product must not depend on one infrastructure-as-code tool (ADR 0033)."
+    rationale: "The product must not depend on one infrastructure-as-code tool (ADR 0015)."
     level: MUST
     source: v1-parity
     status: planned

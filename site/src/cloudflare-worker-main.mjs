@@ -1,5 +1,5 @@
 // Names the Worker's code, src/worker/index.ts, as `main` in the Worker configuration the
-// build generates (ADR 0020).
+// build generates (ADR 0014).
 //
 // Every page of the site is prerendered, so the Cloudflare adapter builds an assets-only
 // Worker: the configuration it writes has no `main`, even when wrangler.jsonc names one,

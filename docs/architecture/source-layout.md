@@ -8,7 +8,7 @@ sidebar:
 
 ## Languages
 
-**One executable, one language.** Go is the default; Rust is used at the unauthenticated edge, in the trusted base, in the cloud drivers and on the smallest boards. The rules and the reasoning are in [ADR 0014](/decisions/0014-the-language-follows-the-executable/); this table follows its [per-actor table](/decisions/0014-the-language-follows-the-executable/#per-actor-table).
+**One executable, one language.** Go is the default; Rust is used at the unauthenticated edge, in the trusted base, in the cloud drivers and on the smallest boards. The rules and the reasoning are in [ADR 0012](/decisions/0012-the-language-follows-the-executable/); this table follows its [per-actor table](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
 
 | Component | Language | Why |
 |---|---|---|
@@ -27,7 +27,7 @@ sidebar:
 | The `sluis` CLI, the cert-manager issuer | Go | Not resident on a board |
 | The console's single-page application | TypeScript | |
 
-PKCS#11 is used only by the later YubiHSM 2 and Nitrokey drivers, whose language is chosen with them. Every Rust choice is [gated by its spike](/decisions/0014-the-language-follows-the-executable/#the-spikes-are-gates): S1 and S10 for every Rust component, and S3 for `entry` as well. A gate does not stop work: the component is built against its contract meanwhile, and when a spike fails, the fallback for that component is chosen from the candidates in ADR 0014.
+PKCS#11 is used only by the later YubiHSM 2 and Nitrokey drivers, whose language is chosen with them. Every Rust choice is [gated by its spike](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates): S1 and S10 for every Rust component, and S3 for `entry` as well. A gate does not stop work: the component is built against its contract meanwhile, and when a spike fails, the fallback for that component is chosen from the candidates in ADR 0012.
 
 Tokens are standard JWS and JWT, so any language verifies them against the published key set. An actor can move between languages because every contract is ConnectRPC and every integration and driver is out of process: the language is chosen per executable, and the contracts do not change.
 

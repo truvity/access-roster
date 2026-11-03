@@ -1,17 +1,17 @@
 # 0056 — A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill
 
-**Status:** Accepted
+**Status:** Superseded by 0010
 **Layer:** core
-**Date:** 2026-11-02
+**Date:** 2026-11-03
 
 Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 ## Context
 
-[0030](/decisions/0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run) puts the customer-identity installation in one region of one cloud provider, chosen per installation in its install file, makes a later residency region an installation of its own that shares nothing, and accepts that a regional outage stops signing. It sets no recovery time or recovery point and leaves them to the backup record. What is still missing for a customer-facing installation is how residency is checked, what survives a regional outage, and how a recovery promise is earned.
+[0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run) puts the customer-identity installation in one region of one cloud provider, chosen per installation in its install file, makes a later residency region an installation of its own that shares nothing, and accepts that a regional outage stops signing. It sets no recovery time or recovery point and leaves them to the backup record. What is still missing for a customer-facing installation is how residency is checked, what survives a regional outage, and how a recovery promise is earned.
 
 - **Residency needs a check.** The sealing key is multi-Region plus a replica ([Keys](/concepts/keys/#aws-kms-layout)), and a backup archive has a copy; both leave the region unless something refuses it. [REQ-OPS-007](/requirements/ops/#REQ-OPS-007) and the region guard ([#1061](https://github.com/truvity/sluis/issues/1061)) are the check.
-- **A regional outage should not make verification fail.** Relying parties verify tokens against the discovery document and key set, which [0006](/decisions/0006-identity-issuers-audiences-and-sign-in/#issuers) makes static documents in a bucket.
+- **A regional outage should not make verification fail.** Relying parties verify tokens against the discovery document and key set, which [0017](/decisions/0017-identity-and-sign-in/#issuers) makes static documents in a bucket.
 - **There is no number.** No page states a recovery time or point, and no restore has been timed ([principle 9](/principles/#9-measure-before-deciding-and-date-the-measurement)).
 
 ## Decision
@@ -28,7 +28,7 @@ Proposal: [issue #1142](https://github.com/truvity/sluis/issues/1142).
 
 ### Recovery
 
-- **An installation publishes its recovery point and recovery time and proves them.** For the loss of the state, of a bucket and of the region it states how much issued durable data may be lost and how long recovery takes, and a recovery drill measures both: at least once a year and after any change to the backup or restore path. The result is published with its date and versions. The restore follows [Backup](/concepts/backup/) and the order of [0010](/decisions/0010-configuration-and-data-pkl-schema-origins-and-sensitivities/#backup-and-restore-by-origin).
+- **An installation publishes its recovery point and recovery time and proves them.** For the loss of the state, of a bucket and of the region it states how much issued durable data may be lost and how long recovery takes, and a recovery drill measures both: at least once a year and after any change to the backup or restore path. The result is published with its date and versions. The restore follows [Backup](/concepts/backup/) and the order of [0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin).
 - **The targets before the first drill are decided.** The maintainer decided them on 2026-11-02 ([#1142](https://github.com/truvity/sluis/issues/1142)). Each is a target and not a measurement, and the first drill replaces it with the measured figure. No page promises a recovery time that no drill has measured.
 - **The targets cover the customer-identity installation and the serverless workforce installation.** The boards installation is best effort and states no target; it publishes a figure only after a drill has measured one.
 

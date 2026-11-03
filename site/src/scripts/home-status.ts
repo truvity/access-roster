@@ -1,5 +1,5 @@
 // The figures of the home page's status block (src/components/home/HomeStatus.astro), read
-// from the site's status API (/api/status, ADR 0020) in place of the build-time ones. The
+// from the site's status API (/api/status, ADR 0014) in place of the build-time ones. The
 // answer is JSON from this origin and is written with textContent, never as markup. On any
 // failure the build-time figures stay and the note under them says where they come from.
 const root = document.querySelector<HTMLElement>('[data-home-status]');

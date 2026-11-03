@@ -4,7 +4,7 @@
 
 // ---- A held person gets nothing --------------------------------------------------------
 
-// An operator's hold takes effect at once and outlasts every binding (ADR 0027).
+// An operator's hold takes effect at once and outlasts every binding (ADR 0019).
 @id("person-not-live")
 forbid (principal is Person, action, resource)
 when { principal.state != "live" };

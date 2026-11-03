@@ -34,7 +34,7 @@ site/scripts/check-csp.mjs "$dist" || bad "the Content-Security-Policy does not 
 # On the Workers target: the redirects of astro.config.mjs are a _redirects file, and
 # the Worker configuration is there; and neither workers.dev nor preview URLs may be on.
 # The Worker's code is named, runs first for /api/* only (so static pages never invoke
-# it), and has its cron (ADR 0020).
+# it), and has its cron (ADR 0014).
 if [ -f "$dist/wrangler.json" ]; then
   grep -q '^/shapes/ ' "$dist/_redirects" 2>/dev/null || bad "the Workers build has no _redirects with the renamed pages"
   grep -q '"workers_dev":false' "$dist/wrangler.json" || bad "wrangler.json does not set workers_dev false"

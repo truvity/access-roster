@@ -49,6 +49,8 @@ v2 is a clean start. During the v2 design phase, before the first v2 release, th
 
 On 2026-11-01, before any code was written, the maintainer had the 32 records accepted until then merged into the 20 below and renumbered from 0001, so that each rule is stated once and no accepted record holds an open part. The old numbers and slugs are in [renumbered.json](renumbered.json) and in the table at the end; the site redirects each old address to the record that took it over.
 
+On 2026-11-03 the records were renumbered a second time, without any change of content, so that the numbers follow the design rewrite. The old slugs of both days are in [renumbered.json](renumbered.json); an "ADR NNNN" in an issue or a commit from before 2026-11-03 means the number the record had then.
+
 ## Index
 
 Records are grouped by the layer of the product they belong to: the core, then the two later modules ([roadmap](../roadmap.md)). Each record's `Layer` line says which.
@@ -58,72 +60,79 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0001](0001-v1-and-v2-lines.md) | v1 and v2 are two lines that coexist until v2 replaces v1 | Accepted |
-| [0002](0002-the-design-model-actors-ports-drivers-and-contracts.md) | The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement | Accepted; amended by 0057 |
-| [0003](0003-core-actors-with-one-responsibility-each.md) | Core is a few actors with one responsibility each: a slim entry, session, console, exchange, signer, policy, ca and ssh-ca | Accepted |
-| [0004](0004-drivers-listeners-and-boundary-enforcement.md) | Drivers are platform-started services on Unix sockets, listeners are few and named, and every port is enforced in three layers | Accepted |
-| [0005](0005-boundaries-and-the-isolation-ladder.md) | Boundaries are environments, companies and customer boundaries on an isolation ladder, and a boundary on its own runtime is an installation federated by declared trust | Accepted |
-| [0006](0006-identity-issuers-audiences-and-sign-in.md) | Each boundary has its own issuer, a token has one audience, and people sign in with passkeys and step-up | Accepted |
-| [0007](0007-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE: proofs are exchanged for short-lived credentials, and hosts enrol the same way | Accepted |
-| [0008](0008-certificate-authorities-for-x509-ssh-and-databases.md) | The ca and ssh-ca actors are the X.509 and SSH certificate authorities, SSH uses only sluis's own CA, and databases get short-lived client certificates | Accepted |
-| [0009](0009-policy-is-cedar-in-a-rust-actor.md) | Policy is written in Cedar and evaluated by a Rust policy actor | Accepted |
-| [0010](0010-configuration-and-data-pkl-schema-origins-and-sensitivities.md) | Configuration is defined once in Pkl and shipped as JSON Schema, and every record kind has an origin and every field a sensitivity | Accepted |
-| [0011](0011-state-is-one-port-with-compare-and-set.md) | State is one port with compare-and-set; one writer owns each record kind, enforced by the backend; every value is encrypted; clusters replicate with rqlite | Accepted |
-| [0012](0012-cryptography-and-authority-keys.md) | Cryptography uses P-384 by default, and authority keys are born in their store, sign in place and rotate by rule | Accepted |
-| [0013](0013-the-hand-off-to-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
-| [0014](0014-the-language-follows-the-executable.md) | The language follows the executable: Go by default, Rust at the edge, in the trusted base, in cloud drivers and on the smallest boards | Accepted |
-| [0015](0015-audit-pieces-transport-search-and-front.md) | Audit is four pieces joined by a transport port, search is an index fed from the log, and an audit installation has its own front | Accepted |
-| [0016](0016-the-audit-log.md) | The audit log is a C2SP tiled log in a blob, sealed in batches by its one writer, with a lock mode, company encryption and a declared retention | Accepted |
-| [0017](0017-audit-records-the-usage-stream-and-quota.md) | Audit records are OCSF events with one `unmapped.sluis` object, usage is a separate stream from the same call, and quota is idempotent and strict | Accepted |
-| [0018](0018-runtimes-installations-and-delivery-order.md) | Runtimes are three kinds, four installations are tested, and delivery goes local first, then boards, Lambda and Kubernetes in parallel | Accepted |
-| [0019](0019-release-train-packaging-and-distribution.md) | One repository, one version, one release train, and packaging follows the runtime | Accepted |
-| [0020](0020-the-site-is-static-on-cloudflare-workers.md) | The site is static on Cloudflare Workers, deployed by GitHub Actions, with a live status API | Accepted |
-| [0021](0021-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Accepted |
-| [0022](0022-telemetry-is-opentelemetry-with-fixed-conventions.md) | Telemetry is OpenTelemetry used directly, with one log format, W3C trace context, fixed span and metric names, and a generated attribute allowlist | Accepted |
-| [0023](0023-sessions-have-three-classes-with-limits-per-class.md) | Sessions have three classes: a person's sessions end at an absolute limit, an agent's end with its consent, and a machine client has no session | Accepted |
-| [0024](0024-break-glass-recovery-uses-passkeys-only.md) | Break-glass recovery uses passkeys only: two attested hardware keys and one pinned synced passkey, a recovery scope, an alert on every use and a quarterly drill | Accepted |
-| [0025](0025-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Accepted |
-| [0026](0026-integrations-return-facts-or-carry-out-effects-that-core-authorised.md) | Integrations return facts or carry out effects that core authorised, never decide, and are split by credential | Accepted |
-| [0027](0027-a-person-is-tied-to-an-upstream-account-by-issuer-and-subject-claim.md) | A person is tied to an upstream account by the issuer and a configured subject claim, never by e-mail, and a directory only adds facts | Accepted |
-| [0028](0028-grants-come-from-a-declared-vocabulary-and-a-token-carries-fixed-claims-for-one-audience.md) | Grants come from a declared vocabulary, a token carries a fixed set of claims narrowed to its one audience, and token lifetimes have defaults and caps | Accepted |
-| [0029](0029-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Accepted |
-| [0030](0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record.md) | Tenancy and scale: a boundary is the unit of keys and isolation, a tenant is a record without keys, and growth past a cohort is another installation | Accepted |
-| [0031](0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued.md) | Declared and issued configuration: authority is declared and delivered through a configuration service, and instances are issued at run time under declared templates | Accepted |
-| [0032](0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Accepted |
-| [0033](0033-evolution-and-compatibility-n-and-n-1-inside-a-major-and-parallel-cutover.md) | Evolution and compatibility: N and N-1 inside a major version, a parallel cutover from v1, and neutral artifacts as the deliverable | Accepted |
-| [0034](0034-a-backup-is-an-age-encrypted-tar-of-canonical-json-per-kind-and-restores-onto-any-driver.md) | A backup is an age-encrypted tar of canonical JSON per record kind, with two recipients, and a restore writes it onto any driver | Accepted |
-| [0035](0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external.md) | The secrets port has one driver, sealed state, and the export port publishes only kinds marked external | Accepted |
-| [0036](0036-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Accepted |
-| [0037](0037-a-reconciler-manages-membership-only-one-per-target-under-a-lease-through-the-provisioner-contract.md) | A reconciler manages membership only, one per target under a lease, through the Provisioner contract | Accepted |
-| [0038](0038-clients-are-declared-resources-map-to-a-client-and-self-described-clients-are-admitted-only-from-allow-listed-origins.md) | Clients are declared, a resource maps to a registered client, and a self-described client is admitted only from an allow-listed origin | Accepted |
-| [0039](0039-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Accepted |
-| [0040](0040-console-roles-are-declared-grants-and-its-pages-are-organised-by-the-origin-of-what-they-show.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
-| [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Accepted |
-| [0057](0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force.md) | Configuration sources are a port: sources own disjoint paths, authority is signed, and a failing source keeps the version in force | Accepted |
+| [0002](0002-families-of-actors.md) | The design model: actors declare ports, drivers declare requirements, placement is derived, and a permission manifest per actor generates the enforcement | Accepted; amended by 0057 |
+| [0003](0003-units-transports-and-fusion.md) | Drivers are platform-started services on Unix sockets, listeners are few and named, and every port is enforced in three layers | Accepted |
+| [0004](0004-the-data-model.md) | Configuration is defined once in Pkl and shipped as JSON Schema, and every record kind has an origin and every field a sensitivity | Accepted |
+| [0005](0005-the-store.md) | State is one port with compare-and-set; one writer owns each record kind, enforced by the backend; every value is encrypted; clusters replicate with rqlite | Accepted |
+| [0006](0006-keys-and-sealing.md) | Cryptography uses P-384 by default, and authority keys are born in their store, sign in place and rotate by rule | Accepted |
+| [0007](0007-policy-and-sealed-grants.md) | Policy is written in Cedar and evaluated by a Rust policy actor | Accepted |
+| [0008](0008-boundaries-and-tenants.md) | Boundaries are environments, companies and customer boundaries on an isolation ladder, and a boundary on its own runtime is an installation federated by declared trust | Accepted |
+| [0009](0009-export.md) | The secrets port has one driver, sealed state, and the export port publishes only kinds marked external | Accepted |
+| [0010](0010-backup-and-recovery.md) | A backup is an age-encrypted tar of canonical JSON per record kind, with two recipients, and a restore writes it onto any driver | Accepted |
+| [0011](0011-runtimes-and-installations.md) | Runtimes are three kinds, four installations are tested, and delivery goes local first, then boards, Lambda and Kubernetes in parallel | Accepted |
+| [0012](0012-the-language-follows-the-executable.md) | The language follows the executable: Go by default, Rust at the edge, in the trusted base, in cloud drivers and on the smallest boards | Accepted |
+| [0013](0013-release-train-packaging-and-distribution.md) | One repository, one version, one release train, and packaging follows the runtime | Accepted |
+| [0014](0014-the-site-is-static-on-cloudflare-workers.md) | The site is static on Cloudflare Workers, deployed by GitHub Actions, with a live status API | Accepted |
+| [0015](0015-evolution-and-compatibility.md) | Evolution and compatibility: N and N-1 inside a major version, a parallel cutover from v1, and neutral artifacts as the deliverable | Accepted |
+| [0016](0016-telemetry.md) | Telemetry is OpenTelemetry used directly, with one log format, W3C trace context, fixed span and metric names, and a generated attribute allowlist | Accepted |
+| [0017](0017-identity-and-sign-in.md) | Each boundary has its own issuer, a token has one audience, and people sign in with passkeys and step-up | Accepted |
+| [0018](0018-sessions.md) | Sessions have three classes: a person's sessions end at an absolute limit, an agent's end with its consent, and a machine client has no session | Accepted |
+| [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by the issuer and a configured subject claim, never by e-mail, and a directory only adds facts | Accepted |
+| [0020](0020-grant-vocabulary-and-token-claims.md) | Grants come from a declared vocabulary, a token carries a fixed set of claims narrowed to its one audience, and token lifetimes have defaults and caps | Accepted |
+| [0021](0021-clients.md) | Clients are declared, a resource maps to a registered client, and a self-described client is admitted only from an allow-listed origin | Accepted |
+| [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE: proofs are exchanged for short-lived credentials, and hosts enrol the same way | Accepted |
+| [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the X.509 and SSH certificate authorities, SSH uses only sluis's own CA, and databases get short-lived client certificates | Accepted |
+| [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
+| [0025](0025-integrations.md) | Integrations return facts or carry out effects that core authorised, never decide, and are split by credential | Accepted |
+| [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease, through the Provisioner contract | Accepted |
+| [0027](0027-the-console.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
+| [0028](0028-audit-pieces.md) | Audit is four pieces joined by a transport port, search is an index fed from the log, and an audit installation has its own front | Accepted |
+| [0029](0029-the-audit-log.md) | The audit log is a C2SP tiled log in a blob, sealed in batches by its one writer, with a lock mode, company encryption and a declared retention | Accepted |
+| [0030](0030-audit-records-and-the-usage-stream.md) | Audit records are OCSF events with one `unmapped.sluis` object, usage is a separate stream from the same call, and quota is idempotent and strict | Accepted |
 
 ### CIAM module (later layer)
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0046](0046-ciam-is-a-broker-the-upstream-owns-accounts-and-sluis-owns-sessions-and-tokens.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
-| [0047](0047-a-customer-identity-installation-is-a-front-a-few-customer-boundaries-and-key-less-tenants.md) | A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
-| [0048](0048-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Accepted |
-| [0049](0049-a-domain-routes-only-after-dns-proof-and-a-connection-has-a-trust-level.md) | A domain routes to a connection only after DNS proof, a connection has a trust level and an assurance policy, and `idp_hint` chooses only among allowed connections | Accepted |
-| [0050](0050-an-end-user-is-a-person-record-with-five-states-erased-by-deleting-its-records.md) | An end user is the same person record as anyone else, with five states, erased by deleting its records, and pairwise subjects wait for a consumer | Accepted |
-| [0051](0051-upstream-signals-end-sessions-and-suspend-or-erase-a-person.md) | Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client | Accepted |
-| [0052](0052-customer-pages-are-few-themed-per-client-and-localised-per-request.md) | sluis serves a short list of customer pages from templates, themed per client and localised per request, on the host of the customer boundary | Accepted |
-| [0053](0053-volumetric-abuse-is-stopped-at-the-edge-and-sluis-bounds-what-one-source-can-cost.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state | Accepted |
-| [0054](0054-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
-| [0055](0055-fapi-2-is-a-profile-a-client-declares.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
+| [0031](0031-ciam-is-a-broker.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
+| [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
+| [0033](0033-customer-connections.md) | A domain routes to a connection only after DNS proof, a connection has a trust level and an assurance policy, and `idp_hint` chooses only among allowed connections | Accepted |
+| [0034](0034-end-users-and-upstream-signals.md) | An end user is the same person record as anyone else, with five states, erased by deleting its records, and pairwise subjects wait for a consumer | Accepted |
+| [0035](0035-customer-pages.md) | sluis serves a short list of customer pages from templates, themed per client and localised per request, on the host of the customer boundary | Accepted |
+| [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state | Accepted |
+| [0037](0037-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the state drivers and the audit writer, and tokens stay signed in place meanwhile | Proposed |
+| [0038](0038-fapi-2-profile.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
 
 ### Quota module (later layer)
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0041](0041-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Proposed |
-| [0042](0042-plan-templates-are-declared-and-accounts-are-issued-at-run-time-by-a-declared-client.md) | Plan templates are declared, and an account is an issued record that a declared client creates at run time | Accepted |
-| [0043](0043-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Proposed |
-| [0044](0044-a-meter-has-a-name-a-unit-and-a-kind-and-a-usage-event-belongs-to-the-period-of-its-event-time.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
-| [0045](0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Proposed |
+| [0039](0039-quota-allowance.md) | Plan templates are declared, and an account is an issued record that a declared client creates at run time | Accepted |
+| [0040](0040-meters-and-usage-evidence.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
+
+### Being merged
+
+These records are superseded: the content of each moves into the record its status names, and the pull request that moves it deletes the file.
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [0041](0041-core-actors-with-one-responsibility-each.md) | Core is a few actors with one responsibility each: a slim entry, session, console, exchange, signer, policy, ca and ssh-ca | Superseded by 0002 |
+| [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
+| [0043](0043-break-glass-recovery-uses-passkeys-only.md) | Break-glass recovery uses passkeys only: two attested hardware keys and one pinned synced passkey, a recovery scope, an alert on every use and a quarterly drill | Superseded by 0017 |
+| [0044](0044-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Superseded by 0029 |
+| [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
+| [0046](0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record.md) | Tenancy and scale: a boundary is the unit of keys and isolation, a tenant is a record without keys, and growth past a cohort is another installation | Superseded by 0008 |
+| [0047](0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued.md) | Declared and issued configuration: authority is declared and delivered through a configuration service, and instances are issued at run time under declared templates | Superseded by 0004 |
+| [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
+| [0049](0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Superseded by 0025 |
+| [0050](0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Superseded by 0029 |
+| [0051](0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Superseded by 0039 |
+| [0052](0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Superseded by 0039 |
+| [0053](0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Superseded by 0039 |
+| [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
+| [0055](0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person.md) | Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client | Superseded by 0034 |
+| [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Superseded by 0010 |
+| [0057](0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force.md) | Configuration sources are a port: sources own disjoint paths, authority is signed, and a failing source keeps the version in force | Superseded by 0005 |
 
 ## Where the old records went
 
@@ -131,34 +140,34 @@ The records before 2026-11-01, by their old number and slug. An "ADR NNNN" in an
 
 | Old | Old slug | Now |
 |-----|----------|-----|
-| 0002 | `actors-declare-ports-placement-is-derived` | [0002](0002-the-design-model-actors-ports-drivers-and-contracts.md) |
-| 0003 | `runtimes-are-runtime-kinds` | [0018](0018-runtimes-installations-and-delivery-order.md) |
-| 0004 | `audit-is-four-pieces-joined-by-a-transport-port` | [0015](0015-audit-pieces-transport-search-and-front.md) |
-| 0005 | `three-zoom-levels-contracts-and-a-permission-manifest` | [0002](0002-the-design-model-actors-ports-drivers-and-contracts.md) |
-| 0007 | `core-is-a-few-actors-with-one-responsibility-each` | [0003](0003-core-actors-with-one-responsibility-each.md) |
-| 0008 | `drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp` | [0004](0004-drivers-listeners-and-boundary-enforcement.md) |
-| 0009 | `one-installation-per-boundary` | [0005](0005-boundaries-and-the-isolation-ladder.md) |
-| 0010 | `cryptography-uses-p384-by-default-with-named-exceptions` | [0012](0012-cryptography-and-authority-keys.md) |
-| 0011 | `authority-keys-sign-in-place-and-never-leave-their-store` | [0012](0012-cryptography-and-authority-keys.md) |
-| 0012 | `machine-identity-follows-spiffe-proofs-are-exchanged-for-short-lived-credentials` | [0007](0007-workload-identity-and-host-enrolment.md) |
-| 0013 | `ca-and-ssh-ca-are-the-certificate-authorities-and-ssh-uses-only-sluis-own-ca` | [0008](0008-certificate-authorities-for-x509-ssh-and-databases.md) |
-| 0014 | `policy-is-written-in-cedar-and-evaluated-by-a-rust-actor` | [0009](0009-policy-is-cedar-in-a-rust-actor.md) |
-| 0015 | `configuration-is-defined-once-in-pkl-and-shipped-as-json-schema` | [0010](0010-configuration-and-data-pkl-schema-origins-and-sensitivities.md) |
-| 0016 | `data-has-an-origin-and-a-sensitivity` | [0010](0010-configuration-and-data-pkl-schema-origins-and-sensitivities.md) |
-| 0017 | `state-is-one-port-with-compare-and-set-and-clusters-replicate-with-rqlite` | [0011](0011-state-is-one-port-with-compare-and-set.md) |
-| 0021 | `the-audit-log-is-sealed-batches-in-a-blob-with-a-lock-mode` | [0016](0016-the-audit-log.md) |
-| 0022 | `search-is-an-index-fed-from-the-log-and-the-index-is-one-driver-with-provisioning-modes` | [0015](0015-audit-pieces-transport-search-and-front.md) |
-| 0023 | `quotas-api-is-idempotent-and-its-data-follows-the-origin-model` | [0017](0017-audit-records-the-usage-stream-and-quota.md) |
-| 0029 | `one-repository-one-version-one-release-train-and-packaging-follows-the-runtime` | [0019](0019-release-train-packaging-and-distribution.md) |
-| 0031 | `intermediates-and-the-hand-off-to-root-custody` | [0013](0013-the-hand-off-to-root-custody-and-the-signing-api.md) |
-| 0033 | `database-access-uses-short-lived-credentials` | [0008](0008-certificate-authorities-for-x509-ssh-and-databases.md) |
-| 0038 | `the-local-installation-is-docker-compose-with-one-container-per-actor` | [0018](0018-runtimes-installations-and-delivery-order.md) |
-| 0039 | `delivery-goes-local-first-then-boards-lambda-and-kubernetes-in-parallel` | [0018](0018-runtimes-installations-and-delivery-order.md) |
-| 0048 | `passkeys-step-up-and-device-login` | [0006](0006-identity-issuers-audiences-and-sign-in.md) |
-| 0058 | `boundaries-are-enforced-in-three-layers-per-port-and-every-state-value-is-encrypted` | [0004](0004-drivers-listeners-and-boundary-enforcement.md) |
-| 0059 | `each-boundary-has-its-own-issuer-and-tokens-carry-one-audience` | [0006](0006-identity-issuers-audiences-and-sign-in.md) |
-| 0060 | `the-language-follows-the-executable` | [0014](0014-the-language-follows-the-executable.md) |
-| 0061 | `optional-openid-plans-form-post-is-supported-ciba-comes-later` | [0006](0006-identity-issuers-audiences-and-sign-in.md) |
-| 0062 | `audit-front-is-a-slim-entry-the-reader-as-its-api-and-a-console-of-its-own` | [0015](0015-audit-pieces-transport-search-and-front.md) |
-| 0063 | `the-site-is-static-on-cloudflare-workers-with-a-live-status-api` | [0020](0020-the-site-is-static-on-cloudflare-workers.md) |
-| 0064 | `audit-records-are-ocsf-events-with-one-unmapped-sluis-object-and-usage-is-a-separate-stream` | [0017](0017-audit-records-the-usage-stream-and-quota.md) |
+| 0002 | `actors-declare-ports-placement-is-derived` | [0002](0002-families-of-actors.md) |
+| 0003 | `runtimes-are-runtime-kinds` | [0011](0011-runtimes-and-installations.md) |
+| 0004 | `audit-is-four-pieces-joined-by-a-transport-port` | [0028](0028-audit-pieces.md) |
+| 0005 | `three-zoom-levels-contracts-and-a-permission-manifest` | [0002](0002-families-of-actors.md) |
+| 0007 | `core-is-a-few-actors-with-one-responsibility-each` | [0041](0041-core-actors-with-one-responsibility-each.md) |
+| 0008 | `drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp` | [0003](0003-units-transports-and-fusion.md) |
+| 0009 | `one-installation-per-boundary` | [0008](0008-boundaries-and-tenants.md) |
+| 0010 | `cryptography-uses-p384-by-default-with-named-exceptions` | [0006](0006-keys-and-sealing.md) |
+| 0011 | `authority-keys-sign-in-place-and-never-leave-their-store` | [0006](0006-keys-and-sealing.md) |
+| 0012 | `machine-identity-follows-spiffe-proofs-are-exchanged-for-short-lived-credentials` | [0022](0022-workload-identity-and-host-enrolment.md) |
+| 0013 | `ca-and-ssh-ca-are-the-certificate-authorities-and-ssh-uses-only-sluis-own-ca` | [0023](0023-certificate-authorities.md) |
+| 0014 | `policy-is-written-in-cedar-and-evaluated-by-a-rust-actor` | [0007](0007-policy-and-sealed-grants.md) |
+| 0015 | `configuration-is-defined-once-in-pkl-and-shipped-as-json-schema` | [0004](0004-the-data-model.md) |
+| 0016 | `data-has-an-origin-and-a-sensitivity` | [0004](0004-the-data-model.md) |
+| 0017 | `state-is-one-port-with-compare-and-set-and-clusters-replicate-with-rqlite` | [0005](0005-the-store.md) |
+| 0021 | `the-audit-log-is-sealed-batches-in-a-blob-with-a-lock-mode` | [0029](0029-the-audit-log.md) |
+| 0022 | `search-is-an-index-fed-from-the-log-and-the-index-is-one-driver-with-provisioning-modes` | [0028](0028-audit-pieces.md) |
+| 0023 | `quotas-api-is-idempotent-and-its-data-follows-the-origin-model` | [0030](0030-audit-records-and-the-usage-stream.md) |
+| 0029 | `one-repository-one-version-one-release-train-and-packaging-follows-the-runtime` | [0013](0013-release-train-packaging-and-distribution.md) |
+| 0031 | `intermediates-and-the-hand-off-to-root-custody` | [0024](0024-root-custody-and-the-signing-api.md) |
+| 0033 | `database-access-uses-short-lived-credentials` | [0023](0023-certificate-authorities.md) |
+| 0038 | `the-local-installation-is-docker-compose-with-one-container-per-actor` | [0011](0011-runtimes-and-installations.md) |
+| 0039 | `delivery-goes-local-first-then-boards-lambda-and-kubernetes-in-parallel` | [0011](0011-runtimes-and-installations.md) |
+| 0048 | `passkeys-step-up-and-device-login` | [0017](0017-identity-and-sign-in.md) |
+| 0058 | `boundaries-are-enforced-in-three-layers-per-port-and-every-state-value-is-encrypted` | [0003](0003-units-transports-and-fusion.md) |
+| 0059 | `each-boundary-has-its-own-issuer-and-tokens-carry-one-audience` | [0017](0017-identity-and-sign-in.md) |
+| 0060 | `the-language-follows-the-executable` | [0012](0012-the-language-follows-the-executable.md) |
+| 0061 | `optional-openid-plans-form-post-is-supported-ciba-comes-later` | [0017](0017-identity-and-sign-in.md) |
+| 0062 | `audit-front-is-a-slim-entry-the-reader-as-its-api-and-a-console-of-its-own` | [0028](0028-audit-pieces.md) |
+| 0063 | `the-site-is-static-on-cloudflare-workers-with-a-live-status-api` | [0014](0014-the-site-is-static-on-cloudflare-workers.md) |
+| 0064 | `audit-records-are-ocsf-events-with-one-unmapped-sluis-object-and-usage-is-a-separate-stream` | [0030](0030-audit-records-and-the-usage-stream.md) |

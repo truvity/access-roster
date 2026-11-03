@@ -255,7 +255,7 @@ requirements:
   - id: REQ-SUPPLY-019
     area: SUPPLY
     statement: "The signing API MUST refuse a request whose content is empty or longer than 4 MiB with invalid_argument."
-    rationale: "An OpenPGP signature needs the data, so a digest alone cannot be signed (ADR 0029)."
+    rationale: "An OpenPGP signature needs the data, so a digest alone cannot be signed (ADR 0045)."
     level: MUST
     source: design-decision
     status: planned
@@ -267,7 +267,7 @@ requirements:
   - id: REQ-SUPPLY-020
     area: SUPPLY
     statement: "The signing API MUST return a version 4 OpenPGP signature of type 0x00 with ECDSA on P-384 and SHA-384, whose hashed subpackets are the creation time and the issuer fingerprint and whose unhashed subpacket is the issuer key id."
-    rationale: "This is the packet rule that the release keyring and the verifiers read (ADR 0029)."
+    rationale: "This is the packet rule that the release keyring and the verifiers read (ADR 0045)."
     level: MUST
     source: design-decision
     status: planned
@@ -292,7 +292,7 @@ requirements:
   - id: REQ-SUPPLY-022
     area: SUPPLY
     statement: "The signing API MUST answer failed_precondition when the OpenPGP binding of the release subkey is absent or expired."
-    rationale: "A subkey that no primary vouches for must not sign (ADR 0029)."
+    rationale: "A subkey that no primary vouches for must not sign (ADR 0045)."
     level: MUST
     source: design-decision
     status: planned
@@ -328,7 +328,7 @@ requirements:
   - id: REQ-SUPPLY-025
     area: SUPPLY
     statement: "The contract vectors of the previous release of the same major version MUST pass against the actors of the current release."
-    rationale: "A rolling deployment runs two neighbouring releases at once (ADR 0033)."
+    rationale: "A rolling deployment runs two neighbouring releases at once (ADR 0015)."
     level: MUST
     source: design-decision
     status: planned
@@ -340,7 +340,7 @@ requirements:
   - id: REQ-SUPPLY-026
     area: SUPPLY
     statement: "A field of a stored record kind MUST NOT be removed in the release that stops writing it."
-    rationale: "A rollback and a mixed window both need the previous release to read what the current one wrote (ADR 0033)."
+    rationale: "A rollback and a mixed window both need the previous release to read what the current one wrote (ADR 0015)."
     level: MUST
     source: design-decision
     status: planned
@@ -352,7 +352,7 @@ requirements:
   - id: REQ-SUPPLY-027
     area: SUPPLY
     statement: "The contract vectors of the current release MUST pass against the artifacts of the previous release of the same major version."
-    rationale: "A newer writer must stay readable by an older reader during a rollout and a rollback (ADR 0033)."
+    rationale: "A newer writer must stay readable by an older reader during a rollout and a rollback (ADR 0015)."
     level: MUST
     source: design-decision
     status: planned

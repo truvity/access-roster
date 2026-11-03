@@ -1,4 +1,4 @@
-# The grant vocabulary of the local installation (ADR 0028). Schema v1:
+# The grant vocabulary of the local installation (ADR 0020). Schema v1:
 # https://sluis.id/reference/vocabulary/
 #
 # A grant is <scope>:<thing>:<role>. Every scope has every thing, and every role of a thing exists

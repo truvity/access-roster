@@ -18,7 +18,7 @@ GitHub plays the most kinds of integration. A verifier driver checks Actions ide
 
 | Kind | What it does for GitHub |
 |---|---|
-| `WorkloadVerifier` | The `github-oidc` verifier driver of `exchange` checks an Actions identity token against GitHub's key set and returns attributes: `repository`, `ref`, `job_workflow_ref`, `environment`, `visibility`, owner and repository ids. It holds no secret. It is in the first working version, for the callers of the signing API ([ADR 0007](/decisions/0007-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
+| `WorkloadVerifier` | The `github-oidc` verifier driver of `exchange` checks an Actions identity token against GitHub's key set and returns attributes: `repository`, `ref`, `job_workflow_ref`, `environment`, `visibility`, owner and repository ids. It holds no secret. It is in the first working version, for the callers of the signing API ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). |
 | `FactsSource` | Reports organisation members, team members and maintainers. |
 | `CredentialMinter` | Mints an installation token for a catalogued App, for a mint grant that `policy` sealed. |
 | `Provisioner` | Makes the organisation's teams equal the desired state core publishes: invites, adds, promotes and removes. |

@@ -6,7 +6,7 @@ sidebar:
   order: 1
 ---
 
-A sluis release publishes every artifact from `https://distribution.sluis.id/`, a Cloudflare R2 bucket, with no redirects. GitHub Releases holds the same files as the immutable record. Every artifact of a release carries the same version and ships together. The design is [ADR 0019](/decisions/0019-release-train-packaging-and-distribution/); how to check what you downloaded is [Release signing](/distribution/release-signing/).
+A sluis release publishes every artifact from `https://distribution.sluis.id/`, a Cloudflare R2 bucket, with no redirects. GitHub Releases holds the same files as the immutable record. Every artifact of a release carries the same version and ships together. The design is [ADR 0013](/decisions/0013-release-train-packaging-and-distribution/); how to check what you downloaded is [Release signing](/distribution/release-signing/).
 
 ## Supported platforms
 
@@ -20,7 +20,7 @@ A sluis release publishes every artifact from `https://distribution.sluis.id/`, 
 - **The systemd floor is 252,** the version in Amazon Linux 2023. Generated units may rely on what 252 provides, such as `LoadCredentialEncrypted=` and `ExecPaths=`.
 - **Serverless and Kubernetes have no host distribution.** An executable that needs cgo is built against the oldest supported glibc, so the same binary runs in a package and in an image.
 - **A board image older than the floor is a declared exception,** not a supported platform: its units use plain `LoadCredential=` where `LoadCredentialEncrypted=` is missing, and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist ([#881](https://github.com/truvity/sluis/issues/881)). Key material is never affected: it stays in the card.
-- **No FIPS build in v2.0.** Every platform gets the same build, and the algorithms stay in the FIPS-approved set so that a variant can be added when a customer needs it ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#algorithms), [Keys](/concepts/keys/)).
+- **No FIPS build in v2.0.** Every platform gets the same build, and the algorithms stay in the FIPS-approved set so that a variant can be added when a customer needs it ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms), [Keys](/concepts/keys/)).
 
 ## Packaging per runtime
 
@@ -59,14 +59,14 @@ Examples of driver packages:
 
 | Package | Dependencies and contents |
 |---|---|
-| `sluis-driver-yubikey-piv` | Depends on pcscd and pcsc-lite. On a node the card service serves `key-holder` only ([ADR 0012](/decisions/0012-cryptography-and-authority-keys/#exclusive-card-access)) |
+| `sluis-driver-yubikey-piv` | Depends on pcscd and pcsc-lite. On a node the card service serves `key-holder` only ([ADR 0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)) |
 | `sluis-driver-rqlite` | Ships `rqlited` under `vendor/` and the `sluis-rqlite@.service` template |
 | `sluis-driver-aws` | The one Rust `aws` driver executable |
 
 - **`sluis-server`, the audit packages and `sluis-quota` depend on no driver package,** so a host that runs only the audit log or only Quota installs neither the core actors nor an unused driver.
 - **Meta-packages exist only for the bare-metal installations that install from packages.** The local installation runs images and uses software keys by default, so it needs no package and no driver package.
 - **Template units only.** The packages ship `sluis-<actor>@.service` and `sluis-<actor>@.socket` and a systemd generator that reads `/etc/sluis/install.yaml` and creates the instances ([Bare-metal](/runtimes/bare-metal/)). sluis generates no per-installation packages.
-- **The console is a separate artifact,** a bundle of static files built once per release and served on the same origin as the API: a directory from `sluis-console` on bare-metal, the bucket behind the API gateway on serverless, its own Deployment on Kubernetes. The audit console is a bundle of its own on the same train, served on the audit front's origin ([ADR 0015](/decisions/0015-audit-pieces-transport-search-and-front/), [#985](https://github.com/truvity/sluis/issues/985)).
+- **The console is a separate artifact,** a bundle of static files built once per release and served on the same origin as the API: a directory from `sluis-console` on bare-metal, the bucket behind the API gateway on serverless, its own Deployment on Kubernetes. The audit console is a bundle of its own on the same train, served on the audit front's origin ([ADR 0028](/decisions/0028-audit-pieces/), [#985](https://github.com/truvity/sluis/issues/985)).
 - **Root ceremonies are not part of sluis.** They belong to [ritueel](https://ritueel.id). The release keyring package that apt and dnf verify with is built with ritueel's tools and published in sluis's own repositories, once the roots exist ([Release signing](/distribution/release-signing/#the-openpgp-release-key)).
 
 ## The R2 layout
@@ -115,7 +115,7 @@ gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/sluis-release.asc
 ```
 
-`$basearch` is `x86_64` or `aarch64`. `repo_gpgcheck=1` verifies the signed `repomd.xml`, which carries each package's checksum. Header signatures on each rpm come later ([ADR 0013](/decisions/0013-the-hand-off-to-root-custody-and-the-signing-api/#the-signing-api)); then the file sets `gpgcheck=1` as well. Before the metadata is signed, verify downloaded `.rpm` files against `SHA256SUMS`.
+`$basearch` is `x86_64` or `aarch64`. `repo_gpgcheck=1` verifies the signed `repomd.xml`, which carries each package's checksum. Header signatures on each rpm come later ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)); then the file sets `gpgcheck=1` as well. Before the metadata is signed, verify downloaded `.rpm` files against `SHA256SUMS`.
 
 ## Binaries
 
@@ -162,4 +162,4 @@ GitHub Releases is the immutable record. Each release holds the same files as th
 
 ## Compatibility
 
-The artifacts of one release are built, tested and shipped together, and each also works with those of the previous release of the same major version, so a rolling deployment can run two neighbouring releases at once and a rollback needs no migration ([ADR 0033](/decisions/0033-evolution-and-compatibility-n-and-n-1-inside-a-major-and-parallel-cutover/#n-and-n-1-inside-a-major-version)). Between releases, compatibility follows semantic versioning ([ADR 0019](/decisions/0019-release-train-packaging-and-distribution/#compatibility-between-releases), [#1022](https://github.com/truvity/sluis/issues/1022)).
+The artifacts of one release are built, tested and shipped together, and each also works with those of the previous release of the same major version, so a rolling deployment can run two neighbouring releases at once and a rollback needs no migration ([ADR 0015](/decisions/0015-evolution-and-compatibility/#n-and-n-1-inside-a-major-version)). Between releases, compatibility follows semantic versioning ([ADR 0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases), [#1022](https://github.com/truvity/sluis/issues/1022)).
