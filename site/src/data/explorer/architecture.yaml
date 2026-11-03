@@ -194,7 +194,7 @@ runtimes:
     process: pod
     per_actor_line: sidecar of each actor's pod
     role:
-      unit: "Pod {id} (Deployment)"
+      unit: "Pod {id}"
       identity: "ServiceAccount {id}"
       id_short: "SA {id}"
       listen: "the pod address: gRPC, admitted by a NetworkPolicy from the callers only"
@@ -239,7 +239,7 @@ edges_kinds:
     sub: key-less edge relay container
     line2: "edge relay"
     line3: "unix socket"
-    does: "A key-less container in entry's pod. It listens on the pod address, so a Gateway API implementation or an Ingress controller can route to it, and forwards to entry's Unix socket in a shared volume. entry itself stays socket-only. A cloudflared sidecar is a supported mode."
+    does: "A key-less container in entry's pod. It listens on the pod address, so the cluster's gateway can route to it, and forwards to entry's Unix socket in a shared volume. entry itself stays socket-only. A cloudflared sidecar is a supported mode."
     listen: The pod address, reached by the gateway or the ingress controller.
     transport: Unix socket (a volume shared in the pod)
     status: decided

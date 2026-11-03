@@ -254,7 +254,6 @@ requirements:
     issues: [876]
     verification:
       - {kind: integration-test, ref: "chart corpus: every actor Service sets trafficDistribution PreferClose"}
-      - {kind: integration-test, ref: "with a ready replica in the caller's cell and one in another, calls go to the local one"}
   - id: REQ-DEPLOY-020
     area: DEPLOY
     statement: "On Kubernetes a PodDisruptionBudget MUST keep a cell's replicas up during a drain."
@@ -295,7 +294,7 @@ requirements:
   - id: REQ-DEPLOY-023
     area: DEPLOY
     statement: "The chart MUST render no Role, RoleBinding, ClusterRole or ClusterRoleBinding, except those that exporter@ needs on the direct path."
-    rationale: "sluis writes no Kubernetes object other than an exported Secret, so it needs no access to the API (ADR 0011, Kubernetes; ADR 0009, Destinations)."
+    rationale: "Each unit has no RBAC objects (ADR 0003, Units); the one object sluis writes is exporter@'s Secret on the direct path (ADR 0009, Destinations)."
     level: MUST
     source: design-decision
     status: planned

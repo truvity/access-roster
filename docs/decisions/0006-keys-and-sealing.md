@@ -79,7 +79,7 @@ The generated [keys page](/reference/keys/) lists every purpose with its algorit
 
 ### Keys per boundary on AWS
 
-A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key. The lambda and kubernetes installations use this layout alike ([0011](/decisions/0011-runtimes-and-installations/#installations)); on Kubernetes every key policy names `key@`'s role alone.
+A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key. The lambda and kubernetes installations use this layout alike ([0011](/decisions/0011-runtimes-and-installations/#installations)).
 
 | Key | Type | Purpose |
 |---|---|---|

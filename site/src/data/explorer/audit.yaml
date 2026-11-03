@@ -117,7 +117,7 @@ shapes:
     witness: "optional: peer or external"
     blob: "an S3 bucket"
     lock: "lock mode compliance (Object Lock)"
-    cluster: "each project's writer runs as a pod, one at a time, and correctness comes from create-if-absent on the bucket; a separate audit installation, from the chart's audit-install preset, may hold the audit side"
+    cluster: "each project's writer runs as a pod, one replica, and correctness comes from create-if-absent on the bucket; a separate audit installation, from the chart's audit-install preset, may hold the audit side"
     index_placement: "postgres in the cnpg mode, a CloudNativePG cluster in the same Kubernetes cluster (ADR 0028); the reader can run in any pod that reaches the database"
 
 # The rows the blob store's detail panel adds to its backend and lock mode: the
@@ -229,7 +229,7 @@ nodes:
     title: writer
     l2_lambda: Lambda function
     l3_lambda: SQS event source
-    l2_kubernetes: Pod, one at a time
+    l2_kubernetes: Pod, one replica
     l3_kubernetes: JetStream consumer
     does: "One per project: takes the project's records from the transport, validates them, removes duplicates and rolls a batch; seals each record at key@ under its tenant's evidence key; writes the batch's entry bundles and tiles; has key@ sign the checkpoint with the log key and writes it; registers the batch in its state in the bucket; and asks the witnesses to cosign. Each log has exactly one writer and a cluster keeps one log per node. On serverless a reserved concurrency of 1 is an optimisation; everywhere the blob store's create-if-absent is the fence."
     holds: Receive and ack on the transport; create-if-absent on its own project's bucket; its state in that bucket; Seal under the evidence key, and Sign with its log key, at key@
