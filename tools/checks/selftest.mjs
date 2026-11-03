@@ -8,12 +8,14 @@
 // usage: tools/checks/selftest.mjs
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..', '..');
+const { parse: parseYaml } = createRequire(join(repo, 'site', 'package.json'))('yaml');
 const scratch = mkdtempSync(join(tmpdir(), 'sluis-checks-'));
 let failures = 0;
 let cases = 0;
@@ -40,10 +42,10 @@ function fixture(files, commits = []) {
 
 // Run `check` on `files`; `want` is 'pass' or 'fail'; `has`/`lacks` are strings the output must
 // or must not contain (case-insensitive).
-function expect(name, check, files, want, { env = {}, has = [], lacks = [], commits = [], script = join(here, `${check}.mjs`), target = '' } = {}) {
+function expect(name, check, files, want, { env = {}, has = [], lacks = [], commits = [], script = join(here, `${check}.mjs`), target = '', args = [] } = {}) {
   cases++;
   const dir = fixture(files, commits);
-  const res = spawnSync(process.execPath, [script, join(dir, target)], {
+  const res = spawnSync(process.execPath, [script, ...args, join(dir, target)], {
     encoding: 'utf8',
     env: { ...process.env, PUBLIC_CONTENT_DENYLIST: '', REQUIRE_DENYLIST: '', PR_TITLE: '', PR_BODY: '', BASE: 'base', ...env },
   });
@@ -214,28 +216,62 @@ expect('a code path to a missing file', 'agent-links', { ...docs, '.claude/skill
 expect('a subagent file with a missing path', 'agent-links', { ...docs, '.claude/agents/docs.md': 'Edit `docs/contributing/gone.md`.\n' }, 'fail', { has: ['.claude/agents/docs.md:1: docs/contributing/gone.md does not exist'] });
 expect('an agent file with no pointer', 'agent-links', { ...docs, 'AGENTS.md': 'Be careful.\n' }, 'fail', { has: ['empty sweep'] });
 
-// ---- C7 actors: the repository's own registry, explorer, ADRs, requirements and page, then one change each
+// ---- C7 actors: the repository's own registry, explorer, requirements and page, with stub decision
+// records that name every actor, then one change each
 const real = (p) => readFileSync(join(repo, p), 'utf8');
-const actorFiles = Object.fromEntries([
-  'docs/architecture/actors.yaml', 'site/src/data/explorer/architecture.yaml', 'docs/reference/actors.md',
-  'docs/requirements/index.yaml', 'docs/requirements/standards.yaml', 'docs/requirements/policy.yaml',
-  ...readdirSync(join(repo, 'docs/decisions')).filter((f) => /^[0-9]{4}-.*\.md$/.test(f)).map((f) => `docs/decisions/${f}`),
-].map((p) => [p, real(p)]));
+const registry = parseYaml(real('docs/architecture/actors.yaml'));
+const everyActor = [...registry.actors, ...registry.platform];
+// One stub record per number the registry lists; the language record has the per-actor table.
+const stubRecords = () => {
+  const numbers = new Set(everyActor.flatMap((a) => a.adrs));
+  const names = everyActor.map((a) => `\`${a.name}\``).join(' ');
+  const table = ['| Component | Language | Rule |', '|---|---|---|',
+    ...registry.actors.map((a) => `| ${a.language_row ?? `\`${a.name}\``} | ${a.language} | ${a.language_rule} |`)].filter((r, i, all) => all.indexOf(r) === i).join('\n');
+  // The stubs take the file names of the real records, so that the links on the generated page agree.
+  const realNames = readdirSync(join(repo, 'docs/decisions')).filter((f) => /^[0-9]{4}-.*\.md$/.test(f));
+  const fileName = (n) => realNames.find((f) => f.startsWith(`${n}-`)) ?? `${n}-${n === '0012' ? 'the-language-follows-the-executable' : 'stub'}.md`;
+  return Object.fromEntries([...numbers].map((n) => [
+    `docs/decisions/${fileName(n)}`,
+    `# ${n}\n\n${names}\n\n${n === '0012' ? `### Per-actor table\n\n${table}\n\n` : ''}Text.\n`,
+  ]));
+};
+const actorFiles = {
+  ...Object.fromEntries([
+    'docs/architecture/actors.yaml', 'site/src/data/explorer/architecture.yaml', 'docs/reference/actors.md',
+    'docs/requirements/index.yaml', 'docs/requirements/standards.yaml', 'docs/requirements/policy.yaml',
+  ].map((p) => [p, real(p)])),
+  ...stubRecords(),
+};
 const edit = (path, from, to) => {
   if (!actorFiles[path].includes(from)) throw new Error(`selftest fixture: ${path} lacks ${from}`);
   return { ...actorFiles, [path]: actorFiles[path].replace(from, to) };
 };
-const a0012 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0012-'));
-const a0022 = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0022-'));
-expect('the repository as it is', 'actors', actorFiles, 'pass', { has: ['20 actors'] });
-expect('a label that is not actor:<name>', 'actors', edit('docs/architecture/actors.yaml', 'label: actor:signer', 'label: signer'), 'fail', { has: ['label must be actor:signer'] });
+const lang = Object.keys(actorFiles).find((p) => p.includes('the-language-follows-the-executable'));
+const stub = Object.keys(actorFiles).find((p) => p.startsWith('docs/decisions/0002-'));
+const actorsYaml = 'docs/architecture/actors.yaml';
+const nActors = registry.actors.length;
+expect('the repository as it is', 'actors', actorFiles, 'pass', { has: [`${nActors} actors, no errors`], lacks: ['warning'] });
+expect('a label that is not actor:<name>', 'actors', edit(actorsYaml, 'label: actor:signer', 'label: signer'), 'fail', { has: ['label must be actor:signer'] });
 expect('a record naming an unknown actor', 'actors', edit('docs/requirements/policy.yaml', 'actors: [policy]', 'actors: [decider]'), 'fail', { has: ['decider is not an actor'] });
 expect('a record outside the actor\'s areas', 'actors', edit('docs/requirements/policy.yaml', 'actors: [policy]', 'actors: [signer]'), 'fail', { has: ['area POLICY is not a requirement area of signer'] });
-expect('a language that ADR 0012 does not give', 'actors', edit(a0012, '| `policy` | Rust |', '| `policy` | Go |'), 'fail', { has: ['language Rust, but ADR 0012 says "Go"'] });
-expect('an instance name that is no actor', 'actors', edit(a0022, '`exchange@<boundary>`', '`exchanger@<boundary>`'), 'fail', { has: ['names exchanger'] });
-expect('a role the registry lacks', 'actors', edit('site/src/data/explorer/architecture.yaml', '  quota:\n    status: decided', '  meter:\n    status: decided'), 'fail', { has: ['role meter is not an actor', 'quota actor must be drawn'] });
-expect('a stale generated page', 'actors', edit('docs/reference/actors.md', '| core | Go (R4) |', '| core | Go |'), 'fail', { has: ['generated block is stale'] });
-expect('no registry', 'actors', { ...actorFiles, 'docs/architecture/actors.yaml': undefined }, 'fail', { has: ['actors.yaml is missing'] });
+expect('a work actor that holds a credential', 'actors', edit(actorsYaml, 'family: work\n    holder: false', 'family: work\n    holder: true'), 'fail', { has: ['a work actor holds no credential at rest'] });
+expect('a holder that says nothing about what it holds', 'actors', edit(actorsYaml, '    holds: ["the card PIN, or the permission to use the cloud key service"]\n', ''), 'fail', { has: ['says what it holds'] });
+expect('a work actor without a keys port', 'actors', edit(actorsYaml, 'ports: [data, keys, audit-emit, listener]', 'ports: [data, audit-emit, listener]'), 'fail', { has: ['a work actor has a keys port'] });
+expect('a work actor with a port of the data family', 'actors', edit(actorsYaml, 'ports: [data, keys, audit-emit, fetch]', 'ports: [data, keys, audit-emit, fetch, durable]'), 'fail', { has: ['a port is never shared between families'] });
+expect('store with three ports downward', 'actors', edit(actorsYaml, 'ports: [config-source, secret-source, durable, temp, keys, audit-emit]', 'ports: [config-source, secret-source, durable, keys, audit-emit]'), 'fail', { has: ['exactly four ports downward'] });
+expect('a call to key', 'actors', edit(actorsYaml, 'calls: [session, exchange, console, ssh-ca, adapter-<vendor>]', 'calls: [session, key]'), 'fail', { has: ['calls key'] });
+expect('a call to an unknown actor', 'actors', edit(actorsYaml, 'calls: [policy, signer, adapter-upstream-oidc]', 'calls: [policy, signr]'), 'fail', { has: ['calls signr, which is not an actor'] });
+expect('an egress class that is not declared', 'actors', edit(actorsYaml, 'egress: [client-document-hosts]', 'egress: [anywhere]'), 'fail', { has: ['egress class anywhere is not declared'] });
+expect('an egress class that nothing uses', 'actors', edit(actorsYaml, 'egress_classes:\n', 'egress_classes:\n  never-used: "Nothing reaches it."\n'), 'fail', { has: ['never-used is declared and no actor uses it'] });
+expect('an unknown op in key_purposes', 'actors', edit(actorsYaml, '- { purpose: pseudonym, ops: [mac] }', '- { purpose: pseudonym, ops: [hash] }'), 'fail', { has: ['ops must list'] });
+expect('a record the actor lists that does not exist', 'actors', edit(actorsYaml, "adrs: ['0002', '0006', '0012', '0021', '0022', '0024']", "adrs: ['0002', '0006', '0012', '0021', '0022', '0024', '0099']"), 'fail', { has: ['ADR 0099 is not a record'] });
+expect('a record that does not name the actor: a warning', 'actors', edit(stub, '`entry`', '`entr`'), 'pass', { has: ['warning', 'does not name the actor', 'entry: ADR 0002'] });
+expect('a record that does not name the actor: an error when strict', 'actors', edit(stub, '`entry`', '`entr`'), 'fail', { args: ['--strict-adrs'], has: ['entry: ADR 0002'] });
+expect('a language that the language record does not give', 'actors', edit(lang, '| `policy` | Rust |', '| `policy` | Go |'), 'fail', { args: ['--strict-adrs'], has: ['language Rust, but the language record says "Go"'] });
+expect('an instance name that is no actor', 'actors', edit(stub, 'Text.', 'See `exchanger@prod`.'), 'fail', { args: ['--strict-adrs'], has: ['names exchanger'] });
+expect('a role the registry lacks', 'actors', edit('site/src/data/explorer/architecture.yaml', '  quota:\n    status: decided', '  meter:\n    status: decided'), 'fail', { has: ['role meter is not an actor'] });
+expect('a stale generated page', 'actors', edit('docs/reference/actors.md', '| work | no | Rust (R2) |', '| work | no | Rust |'), 'fail', { has: ['generated block is stale'] });
+expect('no registry', 'actors', { ...actorFiles, [actorsYaml]: undefined }, 'fail', { has: ['actors.yaml is missing'] });
 
 // ---- C8 examples: a block on a page equals the file it names
 const exPage = (body) => `---\ntitle: x\n---\n\n<!-- example: tests/x/install.yaml -->\n\`\`\`yaml\n${body}\`\`\`\n`;
@@ -270,6 +306,116 @@ expect('a scope name with a colon', 'installations', instFiles(instYaml(), vocab
 expect('a client requiring an undeclared grant', 'installations', instFiles(instYaml(undefined, '[dev:app:owner]'), vocabYaml()), 'fail', { has: ['requires[0] is not a grant the vocabulary declares'], lacks: ['owner'] });
 expect('a policy file naming an undeclared grant', 'installations', instFiles(instYaml(), vocabYaml(), { 'tests/installations/x/policy/x.cedar': 'permit (principal, action, resource == Grant::"prod:app:root");\n' }), 'fail', { has: ['grant name number 1 is not a grant'], lacks: ['root'] });
 expect('no installations', 'installations', { 'README.md': 'x\n' }, 'fail', { has: ['empty sweep'] });
+
+// ---- C10 registries: the kind, key and actor registries of the repository, then one change each
+const regFiles = Object.fromEntries(['kinds', 'keys', 'actors'].map((n) => [`docs/architecture/${n}.yaml`, real(`docs/architecture/${n}.yaml`)]));
+const nKinds = parseYaml(regFiles['docs/architecture/kinds.yaml']).kinds.length;
+const editReg = (path, from, to) => {
+  if (!regFiles[path].includes(from)) throw new Error(`selftest fixture: ${path} lacks ${from}`);
+  return { ...regFiles, [path]: regFiles[path].replace(from, to) };
+};
+// An edit inside the block of one kind.
+const editKind = (kind, from, to) => {
+  const path = 'docs/architecture/kinds.yaml';
+  const text = regFiles[path];
+  const start = text.indexOf(`  - name: ${kind}\n`);
+  if (start < 0) throw new Error(`selftest fixture: no kind ${kind}`);
+  const end = text.indexOf('\n  - name:', start + 1);
+  const block = text.slice(start, end < 0 ? undefined : end);
+  if (!block.includes(from)) throw new Error(`selftest fixture: kind ${kind} lacks ${from}`);
+  return { ...regFiles, [path]: text.slice(0, start) + block.replace(from, to) + (end < 0 ? '' : text.slice(end)) };
+};
+const KY = 'docs/architecture/keys.yaml';
+const AY = 'docs/architecture/actors.yaml';
+expect('the registries as they are', 'registries', regFiles, 'pass', { has: [`${nKinds} kinds`] });
+expect('a kind with two writers', 'registries', editKind('Person', 'writer: session', 'writer: [session, exchange]'), 'fail', { has: ['Person: writer must be one actor'] });
+expect('a writer that is no actor', 'registries', editKind('Person', 'writer: session', 'writer: sessions'), 'fail', { has: ['writer sessions is not an actor'] });
+expect('a reader that is no actor', 'registries', editKind('Person', 'readers: [session, exchange, signer]', 'readers: [session, exchanger, signer]'), 'fail', { has: ['reader exchanger is not an actor'] });
+expect('a durable kind written by IaC', 'registries', editKind('Person', 'writer: session', 'writer: IaC'), 'fail', { has: ['sluis writes durable and temp kinds'] });
+expect('a self-scoped kind that is not declared', 'registries', editKind('Lease', '    self_scoped: true\n', ''), 'fail', { has: ['writer self needs self_scoped: true'] });
+expect('a kind the console writes beyond its two', 'registries', editKind('Person', 'writer: session', 'writer: console'), 'fail', { has: ['the console writes only Switch and LogLevelOverride'] });
+expect('a temp kind without a time to live', 'registries', editKind('AuthCode', '    ttl: {default: 60s, max: 10m}\n', ''), 'fail', { has: ['AuthCode: a temp kind has a time to live with a default and a max'] });
+expect('a temp kind without a maximum', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 60s}'), 'fail', { has: ['a default and a max'] });
+expect('a config kind with a tenant scope', 'registries', editKind('Boundary', 'scope: boundary', 'scope: boundary+tenant'), 'fail', { has: ['Boundary: a config kind has no tenant scope'] });
+expect('a secret kind that is sealed', 'registries', editKind('UpstreamSecret', 'treatment: plain', 'treatment: sealed'), 'fail', { has: ['a secret kind is plain'] });
+expect('a secret kind written by the pipeline', 'registries', editKind('UpstreamSecret', 'writer: IaC', 'writer: pipeline'), 'fail', { has: ['a secret kind is written by IaC'] });
+expect('a temp kind that is backed up', 'registries', editKind('AuthCode', 'backed_up: no', 'backed_up: yes'), 'fail', { has: ['only a durable kind is backed up'] });
+expect('an exportable kind the exporter does not read', 'registries', editKind('Crl', 'readers: [exporter@]', 'readers: [ca]'), 'fail', { has: ['an exportable kind is read by exporter@'] });
+expect('a kind served by another family than its writer', 'registries', editKind('Person', 'serves: work', 'serves: keys'), 'fail', { has: ['serves keys, but its writer session is in the family work'] });
+expect('a linked kind that does not exist', 'registries', editKind('Upstream', 'links: [UpstreamSecret]', 'links: [UpstreamSecrets]'), 'fail', { has: ['links UpstreamSecrets, which is not a kind'] });
+expect('a sealed kind whose writer cannot seal', 'registries', editKind('Person', 'writer: session', 'writer: policy'), 'fail', { has: ['Person is sealed, but its writer policy has no data key seal'] });
+expect('a sealed kind whose reader cannot open', 'registries', editKind('Person', 'readers: [session, exchange, signer]', 'readers: [session, exchange, signer, quota]'), 'fail', { has: ['its reader quota has no data key open'] });
+expect('DataKeyWrap with other data key purposes than keys.yaml', 'registries', editKind('DataKeyWrap', 'per_tenant: [data, pseudonym, evidence]', 'per_tenant: [data, evidence]'), 'fail', { has: ['DataKeyWrap.purposes must equal the data key purposes'] });
+expect('a baseline that is not 1 symmetric and 5 P-384 keys', 'registries', editReg(KY, '  - name: ssh-host\n    kind: signing\n    algorithm: ES384\n    enabled: baseline\n    ops: [sign, public-key]\n    aws: { key_spec: ECC_NIST_P384', '  - name: ssh-host\n    kind: signing\n    algorithm: ES384\n    enabled: baseline\n    ops: [sign, public-key]\n    aws: { key_spec: ECC_NIST_P256'), 'fail', { has: ['the AWS baseline is 1 symmetric key and 5 P-384 keys'] });
+expect('two purposes in one card slot', 'registries', editReg(KY, "board: { slot: '83' }", "board: { slot: '82' }"), 'fail', { has: ['slot 82 is also the slot of ssh-user'] });
+expect('a slot that the plan gives to another purpose', 'registries', editReg(KY, "'83': ssh-host", "'83': ssh-user"), 'fail', { has: ['slot_plan.slots.83 is ssh-user'] });
+expect('a signing key with two using actors', 'registries', editReg(KY, '    users: [signer]\n    notes: "Signs tokens.', '    users: [signer, ca]\n    notes: "Signs tokens.'), 'fail', { has: ['exactly one using actor'] });
+expect('a key purpose with an algorithm that is not declared', 'registries', editReg(KY, 'algorithm: AES-256-GCM\n    enabled: baseline', 'algorithm: AES-512\n    enabled: baseline'), 'fail', { has: ['algorithm AES-512 is not declared'] });
+expect('a user that is no actor', 'registries', editReg(KY, 'users: [ssh-ca]\n    notes: "The SSH user', 'users: [ssh-cas]\n    notes: "The SSH user'), 'fail', { has: ['user ssh-cas is not an actor'] });
+expect('an actor using a purpose keys.yaml lacks', 'registries', editReg(AY, '- { purpose: grant, ops: [seal] }', '- { purpose: grnt, ops: [seal] }'), 'fail', { has: ['the key purpose grnt is not in docs/architecture/keys.yaml'] });
+expect('an actor using an op the purpose does not allow', 'registries', editReg(AY, '- { purpose: x509-intermediate, ops: [sign, public-key] }', '- { purpose: x509-intermediate, ops: [sign, seal] }'), 'fail', { has: ['x509-intermediate does not allow the op seal'] });
+expect('a user that does not list the purpose', 'registries', editReg(KY, '    cookie:\n      ops: [seal, open]\n      users: [session]', '    cookie:\n      ops: [seal, open]\n      users: [session, policy]'), 'fail', { has: ['policy is a user, but its key_purposes'] });
+expect('an actor using a purpose it is no user of', 'registries', editReg(KY, 'users: [session, ca, adapter-github]', 'users: [session, ca]'), 'fail', { has: ['does not list adapter-github as a user of mac'] });
+expect('a temp kind whose default is above its maximum', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 11m, max: 10m}'), 'fail', { has: ['AuthCode: ttl.default 11m is above ttl.max 10m'] });
+expect('a default above its maximum, in other units', 'registries', editKind('PendingEnrolment', 'ttl: {default: 7d, max: 30d}', 'ttl: {default: 721h, max: 30d}'), 'fail', { has: ['PendingEnrolment: ttl.default 721h is above ttl.max 30d'] });
+expect('a temp kind whose maximum is 0s', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 0s, max: 0s}'), 'fail', { has: ['AuthCode: ttl.max is 0s'] });
+expect('a temp kind whose maximum is a bare 0', 'registries', editKind('Lease', 'ttl: {default: 30s, max: 10m}', 'ttl: {default: 30s, max: 0}'), 'fail', { has: ['Lease: ttl.max is 0'] });
+expect('a maximum above the decided one', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 60s, max: 11m}'), 'fail', { has: ['AuthCode: ttl.max 11m is above the decided maximum 10m'] });
+expect('a directory fact kept longer than the decided maximum', 'registries', editKind('DirectoryUser', 'max: 7d', 'max: 8d'), 'fail', { has: ['DirectoryUser: ttl.max 8d is above the decided maximum 7d'] });
+expect('a decided maximum that is not a duration', 'registries', editKind('Lease', 'ttl: {default: 30s, max: 10m}', 'ttl: {default: 30s, max: long}'), 'fail', { has: ['Lease: ttl.max must be a duration, at most the decided maximum 10m'] });
+expect('a maximum below the decided one is fine', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 60s, max: 5m}'), 'pass');
+expect('a PIN release kept longer than the decided maximum', 'registries', editKind('PinRelease', 'max: 15m', 'max: 16m'), 'fail', { has: ['PinRelease: ttl.max 16m is above the decided maximum 15m'] });
+expect('a sealed kind with no tenant, whose reader has no boundary data key', 'registries', editKind('EnrolmentToken', 'readers: [exchange]', 'readers: [exchange, session]'), 'fail', { has: ['EnrolmentToken is sealed and has no tenant', 'does not list session'] });
+expect('a sealed kind made boundary-scoped by an edit', 'registries', editKind('Person', 'scope: boundary+tenant', 'scope: boundary'), 'fail', { has: ['Person is sealed and has no tenant', 'does not list session'] });
+expect('DataKeyWrap with three boundary data keys', 'registries', editKind('DataKeyWrap', 'boundary: [grant, cookie, mac, data]', 'boundary: [grant, cookie, mac]'), 'fail', { has: ['DataKeyWrap.purposes must equal the data key purposes'] });
+expect('a boundary data key that is missing from keys.yaml', 'registries', editReg(KY, '    data:\n      ops: [seal, open]\n      users: [exchange]\n      erased: never', '    datum:\n      ops: [seal, open]\n      users: [exchange]\n      erased: never'), 'fail', { has: ['data_keys.boundary must be exactly grant, cookie, mac, data'] });
+expect('an actor using the archive key with an op it does not allow', 'registries', editReg(AY, '- { purpose: backup-archive, ops: [wrap] }', '- { purpose: backup-archive, ops: [wrap, seal] }'), 'fail', { has: ['backup-archive does not allow the op seal'] });
+expect('a backed-up kind that does not list exporter@ is read by the backup job', 'registries', regFiles, 'pass', { has: ['40 backed up, read by exporter@\'s backup job as ciphertext'] });
+expect('a backup job without the exporter actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporters\n    family: data'), 'fail', { has: ['the backup job\'s actor exporter is not an actor'] });
+expect('a backup job whose actor is not a data actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporter\n    family: work'), 'fail', { has: ['the backup job\'s actor is in the data family (it is work)'] });
+expect('a backup job without the data port', 'registries', editReg(AY, 'ports: [data, keys, audit-emit, destination]', 'ports: [keys, audit-emit, destination]'), 'fail', { has: ['exporter@ reads the backed-up kinds through the data port'] });
+expect('no key registry', 'registries', { ...regFiles, [KY]: undefined }, 'fail', { has: ['keys.yaml is missing'] });
+
+// ---- C11 terms: the glossary's lint section, in warn mode and in error mode
+const glossary = (extra = {}) => `schema: ${extra.schema ?? 1}
+checked: "2026-11-03"
+categories: {families: "Families"}
+terms:
+  - {term: family, definition: "One of four groups.", category: families}
+retired:
+  - {id: key-holder, term: key-holder, replacement: "key@", allowed_in: []}
+  - {id: origin, term: origin, replacement: "storage class", allowed_in: []}${extra.retired ?? ''}
+lint:
+  scope: {include: ["docs/**/*.md", "docs/**/*.yaml"], exclude: ["docs/glossary.yaml", "docs/old/**"]}
+  skip_records: [{files: "docs/requirements/*.yaml", where: {status: withdrawn}}]
+  case_insensitive: true
+  strip_before_match: ['\\]\\([^)]*\\)']
+  rules:
+    - {id: key-holder, pattern: '\\bkey[- ]holders?\\b'}
+    - {id: origin, pattern: '\\borigins?\\b', context_allow: '(CORS|same-origin)'}${extra.rules ?? ''}
+`;
+const withGlossary = (docs, extra) => ({ 'docs/glossary.yaml': glossary(extra), ...docs });
+const req = (status) => `requirements:\n  - id: REQ-X-001\n    status: ${status}\n    statement: "The key-holder MUST sign."\n  - id: REQ-X-002\n    status: planned\n    statement: "Fine."\n`;
+expect('no hit', 'terms', withGlossary({ 'docs/a.md': 'The key service seals.\n' }), 'pass', { has: ['0 hits in 0 files', 'warn mode, exit 0'] });
+expect('a hit in warn mode', 'terms', withGlossary({ 'docs/a.md': 'Ask the key-holder.\n' }), 'pass', { has: ['docs/a.md:1: retired term "key-holder" (key-holder): use key@', '1 hits in 1 files', 'warn mode'] });
+expect('a hit in error mode', 'terms', withGlossary({ 'docs/a.md': 'Ask the key-holder.\n' }), 'fail', { args: ['--error'], has: ['docs/a.md:1: retired term', '1 retired terms'] });
+expect('a hit with TERMS_MODE=error', 'terms', withGlossary({ 'docs/a.md': 'Ask the key holders.\n' }), 'fail', { env: { TERMS_MODE: 'error' }, has: ['docs/a.md:1'] });
+expect('the match is case-insensitive and whole-word', 'terms', withGlossary({ 'docs/a.md': 'The KEY-HOLDER and a monkey-holder.\n' }), 'pass', { has: ['1 hits in 1 files'] });
+expect('a link target is not prose', 'terms', withGlossary({ 'docs/a.md': 'See [the keys](/decisions/0006-key-holder-and-origins/) page.\n' }), 'pass', { has: ['0 hits'] });
+expect('a hit that the rule\'s context_allow lets through', 'terms', withGlossary({ 'docs/a.md': 'The CORS origin header.\nThe origin of the data.\n' }), 'pass', { has: ['docs/a.md:2:', '1 hits in 1 files'], lacks: ['docs/a.md:1:'] });
+expect('a terms-allow marker on the line before', 'terms', withGlossary({ 'docs/a.md': '<!-- terms-allow: key-holder -->\nThe key-holder stood in the road.\n' }), 'pass', { args: ['--error'], has: ['1 terms-allow marker', 'docs/a.md:1: terms-allow key-holder', 'no retired terms'] });
+expect('a terms-allow marker for another term', 'terms', withGlossary({ 'docs/a.md': '<!-- terms-allow: origin -->\nThe key-holder.\n' }), 'fail', { args: ['--error'], has: ['docs/a.md:2:'] });
+expect('a terms-allow marker with a comma list', 'terms', withGlossary({ 'docs/a.md': 'The key-holder at its origin. terms-allow: origin, key-holder\n' }), 'pass', { args: ['--error'] });
+expect('a terms-allow marker with an unknown id', 'terms', withGlossary({ 'docs/a.md': '<!-- terms-allow: mediator -->\nText.\n' }), 'fail', { has: ['terms-allow names mediator'] });
+expect('an excluded path', 'terms', withGlossary({ 'docs/old/a.md': 'The key-holder.\n', 'docs/b.md': 'Text.\n' }), 'pass', { args: ['--error'] });
+expect('a withdrawn record is skipped, an active one is not', 'terms', withGlossary({ 'docs/requirements/x.yaml': req('withdrawn') + req('planned').replace('requirements:\n', '') }), 'pass', { has: ['x.yaml:10:', '1 hits'], lacks: ['x.yaml:4:'] });
+expect('a file outside the include globs', 'terms', withGlossary({ 'docs/a.md': 'Text.\n', 'tools/a.mjs': '// the key-holder\n' }), 'pass', { args: ['--error'] });
+expect('a rule for a term that is not retired', 'terms', withGlossary({ 'docs/a.md': 'Text.\n' }, { rules: "\n    - {id: mediator, pattern: '\\\\bmediator\\\\b'}" }), 'fail', { has: ['lint.rules[2] (mediator): id is not a retired id'] });
+expect('a retired term without a rule', 'terms', withGlossary({ 'docs/a.md': 'Text.\n' }, { retired: '\n  - {id: pkl, term: Pkl, replacement: "Protobuf", allowed_in: []}' }), 'fail', { has: ['retired term pkl has no rule'] });
+expect('a pattern that does not compile', 'terms', withGlossary({ 'docs/a.md': 'Text.\n' }, { rules: "\n    - {id: key-holder, pattern: '(open'}" }), 'fail', { has: ['pattern'] });
+expect('a glossary of another schema', 'terms', withGlossary({ 'docs/a.md': 'Text.\n' }, { schema: 2 }), 'fail', { has: ['schema must be 1'] });
+expect('no glossary', 'terms', { 'docs/a.md': 'Text.\n' }, 'fail', { has: ['docs/glossary.yaml is missing'] });
+expect('nothing in the scope', 'terms', { 'docs/glossary.yaml': glossary(), 'README.txt': 'x\n' }, 'fail', { has: ['empty sweep'] });
 
 rmSync(scratch, { recursive: true, force: true });
 if (failures) {

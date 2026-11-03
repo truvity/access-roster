@@ -147,15 +147,32 @@ check-mdx-pages:
 check-agent-links:
     tools/checks/agent-links.mjs
 
-# The actor registry, docs/architecture/actors.yaml, against the ADRs that name actors, the
-# architecture explorer's data, the requirement records' `actors:` and the generated tables on
-# docs/reference/actors.md. Each actor has the GitHub label `actor:<name>` that the registry lists.
-check-actors: site-install
-    tools/checks/actors.mjs
+# The actor registry, docs/architecture/actors.yaml: the four families, the credential holders, the
+# ports, calls and egress, against the decision records that name actors, the architecture explorer's
+# roles, the requirement records' `actors:` and the generated tables on docs/reference/actors.md. Each
+# actor has the GitHub label `actor:<name>` that the registry lists. A decision record that does not name
+# an actor only warns; `--strict-adrs` makes it an error.
+check-actors *args: site-install
+    tools/checks/actors.mjs {{ args }}
 
 # Rewrite the generated tables on docs/reference/actors.md from the registry.
 actors-write: site-install
     tools/checks/actors.mjs --write
+
+# The kind registry (docs/architecture/kinds.yaml), the key registry (docs/architecture/keys.yaml) and the
+# actor registry against each other: one writer per kind except the declared self-scoped kinds, every writer
+# and reader an actor, a time to live on every temp kind, no tenant scope on a config or secret kind, the AWS
+# baseline of one symmetric key and five P-384 keys, and the card slot plan without a collision.
+# Every key purpose an actor uses is defined in keys.yaml with the ops it allows.
+check-registries: site-install
+    tools/checks/registries.mjs
+
+# An exception is a path exclude or skip_records rule of the glossary's `lint` section, a rule's
+# context_allow, or `terms-allow: <id>` on the line or the line before it. `--quiet` prints the summary only.
+# The retired terms of docs/glossary.yaml in the docs and the site content: WARN mode for now (every hit
+# is printed, exit 0); `just check-terms --error` fails on a hit, the mode from the end of the rewrite.
+check-terms *args: site-install
+    tools/checks/terms.mjs {{ args }}
 
 # Example files shown on a page (a fenced block after `<!-- example: <path> -->` in docs/) equal
 # the files themselves, such as the local installation's example install file.
@@ -173,7 +190,7 @@ check-selftest: site-install
     tools/checks/selftest.mjs
 
 # Every repository rule.
-check-rules: check-selftest check-decisions check-requirements check-actors check-examples check-installations check-public check-yaml-ext check-mdx-pages check-agent-links
+check-rules: check-selftest check-decisions check-requirements check-actors check-registries check-terms check-examples check-installations check-public check-yaml-ext check-mdx-pages check-agent-links
 
 # Everything a pull request must pass.
 check: check-rules site-check site-workers
