@@ -229,15 +229,15 @@ A directory adapter asks for the members of the targets its directory feeds, onc
 
 | In the request | |
 |---|---|
-| The targets | For each target: its id, the tenant that owns its container, and the sources its `ReconcileTarget` lists |
+| The connection | The directory connection and its tenant; policy reads the targets' ReconcileTarget itself |
 | The facts | The directory groups and memberships of the connection that the adapter read, each with its age, as a slice of entities. The adapter counts the age; `policy` has no clock |
 
 | In the answer | |
 |---|---|
-| The members | For each target, the vendor identifiers of the people the connection's groups are to put in it, as opaque references |
+| The members | For each target, named with the tenant that owns its container, the vendor identifiers of the people the connection's groups are to put in it, as opaque references |
 | The missing declarations | For each target that is owned by another company, whether the connection's company allows its group to be provisioned there; a target without the allowance is listed and gets no member |
 | The reasons and the digest | As for a decision |
-| The sealed grant | For each owner's tenant that has a target with members, the grant for writing the part into that tenant, only for a pair that both sides declared |
+| The sealed grant | For each owner's tenant of a target both sides declared, the grant for writing its part, an empty part included |
 
 - **The answer is the decision, and the adapter only writes it.** The adapter adds, removes and reorders no member ([0025](/decisions/0025-integrations/#the-rule)).
 - **A fact that has passed its `max_age` is stale,** and a target whose answer rests on it is listed as such, so that the adapter writes no part for it.
