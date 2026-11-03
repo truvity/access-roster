@@ -42,7 +42,7 @@ There are no build profiles: the runtime decides the packaging, and every artifa
   - **the foundation:** `sluis-store`, `sluis-key` and `sluis-exporter`, each with its actor and its units;
   - **`sluis-driver-<name>`,** one per driver executable, with its system dependencies, for example `sluis-driver-yubikey-piv` on pcscd and `sluis-driver-rqlite` shipping `rqlited` under `vendor/`. A driver package depends on the package of its owner. It installs no service for an operator to start: the owner's unit starts the driver and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units));
   - **the identity module:** `sluis-identity` (the work actors other than `quota`, the first-party adapters included) and `sluis-console`;
-  - **the audit module:** `sluis-audit-writer` and `sluis-audit-search`;
+  - **the audit module:** `sluis-audit-writer`, which ships the writer and the witness, and `sluis-audit-search`;
   - **the quota module:** `sluis-quota`;
   - **`sluis-host`.**
 - **A module package depends on the foundation packages and on no other module,** and no package depends on a driver package it does not use. A host that runs the foundation with the audit module only installs no work actor of the identity module and no driver it does not run.

@@ -31,6 +31,7 @@ v1 exported typed credential documents to OpenBao and wrote Kubernetes objects. 
 
 - **A destination is a config kind, `ExportDestination`,** with one driver per destination type, private to exporter@ ([0005](/decisions/0005-the-store/#drivers)). exporter@ holds the destination credentials; no work actor does, and store@ does not.
 - **A store of record** (AWS SSM or OpenBao) receives values that a cluster reads through External Secrets with its own identity. sluis never holds the cluster's identity.
+- **A directory** receives public material at static paths on a file system, as a bucket does: the local installation uses it, and a forwarder serves the files. Like a bucket, it never receives `ClientSecretExport` or a sealed kind, and the configuration check refuses that pairing.
 - **A bucket** receives public material at static addresses: the key set, certificate chains, revocation lists and the trust bundle. A bucket never receives `ClientSecretExport`; the configuration check refuses that pairing.
 - **A single cluster may receive a Kubernetes Secret directly,** written by exporter@ alone and only when the installation chooses the direct path. exporter@'s cluster credential is limited to writing the named Secrets in the named namespaces, and the threat model lists it.
 - **The amended rule:** sluis writes no Kubernetes object, except an exported Secret written by exporter@ when an installation chooses the direct path. Cluster tools such as cert-manager, trust-manager and External Secrets stay its clients and distributors.

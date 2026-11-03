@@ -52,7 +52,7 @@ SPIFFE is the published standard for workload identity: the ID format, the trust
 - **One workload issuer per boundary.** Its key set holds one workload-issuer key per node, beside the token-signing keys. Per-node issuers are an option only for a fleet whose nodes run different sets of actors, where a cloud role can then trust only the nodes that run its actor.
 - **An adapter exchanges the token for that cloud's credentials** (for example `AssumeRoleWithWebIdentity`), and the role's trust policy pins `sub` to the actor and its boundary.
 - **Every actor uses its own credentials, and nothing mediates the data path.** sluis brokers credentials; it does not proxy data. The node's per-actor tokens, cloud token exchange, database client certificates and NATS credentials from sluis are all forms of this.
-- **Where the platform gives an identity, sluis uses it:** the function's role on Lambda, and on Kubernetes the service-account token or SPIFFE mutual TLS of [0003](/decisions/0003-units-transports-and-fusion/#transports) and the rules of [0011](/decisions/0011-runtimes-and-installations/#kubernetes).
+- **Where the platform gives an identity, sluis uses it:** the function's role on Lambda, and on Kubernetes the service-account token of [0003](/decisions/0003-units-transports-and-fusion/#transports) and the rules of [0011](/decisions/0011-runtimes-and-installations/#kubernetes).
 
 ### Trust domains
 
