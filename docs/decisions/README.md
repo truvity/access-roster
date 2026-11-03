@@ -129,12 +129,12 @@ The records before 2026-11-01, by their old number and slug. An "ADR NNNN" in an
 | 0012 | `machine-identity-follows-spiffe-proofs-are-exchanged-for-short-lived-credentials` | [0022](0022-workload-identity-and-host-enrolment.md) |
 | 0013 | `ca-and-ssh-ca-are-the-certificate-authorities-and-ssh-uses-only-sluis-own-ca` | [0023](0023-certificate-authorities.md) |
 | 0014 | `policy-is-written-in-cedar-and-evaluated-by-a-rust-actor` | [0007](0007-policy-and-sealed-grants.md) |
-| 0015 | `configuration-is-defined-once-in-pkl-and-shipped-as-json-schema` | [0004](0004-the-data-model.md) |
-| 0016 | `data-has-an-origin-and-a-sensitivity` | [0004](0004-the-data-model.md) |
+| 0015 | `configuration-is-defined-once-in-pkl-and-shipped-as-json-schema` | [0004](0004-the-data-model.md) <!-- terms-allow: pkl (old slug) --> |
+| 0016 | `data-has-an-origin-and-a-sensitivity` | [0004](0004-the-data-model.md) <!-- terms-allow: origin, sensitivity (old slug) --> |
 | 0017 | `state-is-one-port-with-compare-and-set-and-clusters-replicate-with-rqlite` | [0005](0005-the-store.md) |
 | 0021 | `the-audit-log-is-sealed-batches-in-a-blob-with-a-lock-mode` | [0029](0029-the-audit-log.md) |
 | 0022 | `search-is-an-index-fed-from-the-log-and-the-index-is-one-driver-with-provisioning-modes` | [0028](0028-audit-pieces.md) |
-| 0023 | `quotas-api-is-idempotent-and-its-data-follows-the-origin-model` | [0030](0030-audit-records-and-the-usage-stream.md) |
+| 0023 | `quotas-api-is-idempotent-and-its-data-follows-the-origin-model` | [0030](0030-audit-records-and-the-usage-stream.md) <!-- terms-allow: origin (old slug) --> |
 | 0029 | `one-repository-one-version-one-release-train-and-packaging-follows-the-runtime` | [0013](0013-release-train-packaging-and-distribution.md) |
 | 0031 | `intermediates-and-the-hand-off-to-root-custody` | [0024](0024-root-custody-and-the-signing-api.md) |
 | 0033 | `database-access-uses-short-lived-credentials` | [0023](0023-certificate-authorities.md) |

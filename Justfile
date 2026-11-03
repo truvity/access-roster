@@ -210,10 +210,9 @@ pages-write: actors-write glossary-write kinds-write rules-write keys-write
 
 # An exception is a path exclude or skip_records rule of the glossary's `lint` section, a rule's
 # context_allow, or `terms-allow: <id>` on the line or the line before it. `--quiet` prints the summary only.
-# The retired terms of docs/glossary.yaml in the docs and the site content: WARN mode for now (every hit
-# is printed, exit 0); `just check-terms --error` fails on a hit, the mode from the end of the rewrite.
+# The retired terms of docs/glossary.yaml in the docs and the site content, in ERROR mode: a hit fails the run.
 check-terms *args: site-install
-    tools/checks/terms.mjs {{ args }}
+    tools/checks/terms.mjs --error {{ args }}
 
 # Example files shown on a page (a fenced block after `<!-- example: <path> -->` in docs/) equal
 # the files themselves, such as the local installation's example install file.

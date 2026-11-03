@@ -4,7 +4,7 @@
 // is an inline script holding a random id and an encrypted token that change on every
 // build, which a hash-listed Content-Security-Policy (public/_headers) cannot allow.
 //
-// The fragment comes from this origin and holds no script. It is parsed into a <template>,
+// The fragment comes from this site and holds no script. It is parsed into a <template>,
 // so nothing in it runs. On any failure the snapshot stays, and the note above it says so.
 const root = document.querySelector<HTMLElement>('[data-live-src]');
 const body = root?.querySelector<HTMLElement>('[data-live-body]');

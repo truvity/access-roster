@@ -897,7 +897,7 @@ retired:
     replacement: "the one generic store service and typed clients"
     allowed_in: ["roads not taken of the store record"]
 
-# The retired-terms check: `just check-terms` (tools/checks/terms.mjs), run by `just check`.
+# The retired-terms check: `just check-terms` (tools/checks/terms.mjs, error mode), run by `just check`.
 lint:
   scope:
     include: ["docs/**/*.md", "docs/**/*.mdx", "docs/**/*.yaml", "site/src/**/*.{astro,ts,yaml,md}", "*.md", ".claude/**/*.md", "proto/**/*.proto"]

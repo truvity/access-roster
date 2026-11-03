@@ -35,7 +35,7 @@ Every record keeps the options it did not take, one line each: the option in bol
 
 ### One rule, stated once
 
-A rule lives in one place: a record, or a reference page with test vectors that the record links. A page with vectors can carry the rule in detail (the format of a token, a signed document, an install file) while the record keeps the reasoning and links the page. Do not restate the rule in a second record; link its heading.
+A rule lives in one place: a record, or a reference page with test vectors that the record links. A page with vectors can carry the rule in detail (the format of a token, a signed document, the bootstrap file) while the record keeps the reasoning and links the page. Do not restate the rule in a second record; link its heading.
 
 ### Rewriting a record
 

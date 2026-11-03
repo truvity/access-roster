@@ -8,7 +8,7 @@ Read "Changing the site" and "The site" in `docs/contributing/tools.md`, and "Mo
 Before you change it:
 
 - [ ] HSTS: the header is one year, `includeSubDomains`, `preload`. It is never lowered, and no name of the domain is served over plain HTTP.
-- [ ] CSP: the policy in `site/public/_headers` stays exact. `'self'` plus the two Cloudflare Web Analytics origins (`https://static.cloudflareinsights.com` in `script-src`, `https://cloudflareinsights.com` in `connect-src`), and the inline scripts by hash. `site/scripts/check-csp.mjs` prints the hashes to paste.
+- [ ] CSP: the policy in `site/public/_headers` stays exact. `'self'` plus the two Cloudflare Web Analytics hosts (`https://static.cloudflareinsights.com` in `script-src`, `https://cloudflareinsights.com` in `connect-src`), and the inline scripts by hash. `site/scripts/check-csp.mjs` prints the hashes to paste.
 - [ ] No remote assets: no remote font, script, image or style. Inline SVG; embedded, CC0, nominative icons.
 - [ ] A moved or renamed page has its line in `redirects` in `site/astro.config.mjs`, pointing at the final page, in the same pull request.
 - [ ] A page is `.md`; `.mdx` is only for a page that places components ("Page format" in `docs/contributing/pages.md`, checked by `just check-mdx-pages`).

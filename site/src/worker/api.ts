@@ -51,11 +51,11 @@ async function status(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method not allowed' }, 405, { allow: 'GET, HEAD' });
   const live = await liveStatus(env, request.url);
   if (!live) return json({ error: 'no live status yet; the build-time snapshot is on https://sluis.id/status/' }, 503, { 'retry-after': '300' });
-  return json(statusJson(live), 200, { 'cache-control': STATUS_CACHE, 'access-control-allow-origin': '*' });
+  return json(statusJson(live), 200, { 'cache-control': STATUS_CACHE, 'access-control-allow-origin': '*' }); // terms-allow: origin (the CORS header name)
 }
 
 // The fragment is fetched by the page's own script and inserted, never navigated to; if it
-// is, it is a bare HTML document under a policy that allows nothing but this origin's styles.
+// is, it is a bare HTML document under a policy that allows nothing but this site's styles.
 async function liveBlock(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') return json({ error: 'method not allowed' }, 405, { allow: 'GET, HEAD' });
   const live = await liveStatus(env, request.url);
