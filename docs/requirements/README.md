@@ -36,7 +36,7 @@ An id is `REQ-<AREA>-<nnn>`, for example `REQ-AUTHN-002`.
 - A longer record that is cut into clauses keeps its id for the first clause. Each further clause gets the next free id in the same area
   and `split_from: <original id>`. Clauses sit next to their parent in the file, so ids are not always in order.
 - A rule that moves to another area is withdrawn in its old area and written as a new record in its new area, because the area prefix equals the file. The old record's `superseded_by` names the new one. The data model and the store moved to `DATA` this way (decisions 0004 and 0005).
-- An area whose records are all withdrawn is marked `retired: true` in `index.yaml`. It keeps its file and its ids, and the site leaves it out of the area lists. `just site-lint` refuses `retired: true` on an area that still has a record that is not withdrawn.
+- An area whose records are all withdrawn is marked `retired: true` in `index.yaml`. It keeps its file and its ids, and the site leaves it out of the area lists. `SECRETS` is retired. `just site-lint` refuses `retired: true` on an area that still has a record that is not withdrawn.
 - Records are not merged. A record that no longer applies gets `status: withdrawn` and `superseded_by: [ids]`. A record about a subject that moved to another product (root custody moved to ritueel on 2026-11-01) gets `status: withdrawn` and `moved_to` instead.
 
 ## Record fields

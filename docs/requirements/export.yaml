@@ -4,27 +4,29 @@ area: EXPORT
 requirements:
   - id: REQ-EXPORT-001
     area: EXPORT
-    statement: "sluis MUST publish only a small typed set of public or per-consumer documents."
-    rationale: "An export is a disclosure."
+    statement: "sluis MUST publish only the exportable kinds as documents of a small typed set."
+    rationale: "A small typed set keeps what leaves sluis reviewable (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter]
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [798]
     verification:
-      - {kind: test-vectors, ref: "port suite export"}
+      - {kind: test-vectors, ref: "exportable-kind vectors"}
   - id: REQ-EXPORT-003
     area: EXPORT
     split_from: REQ-EXPORT-001
-    statement: "Each export MUST be authorised."
-    rationale: "An export is a disclosure."
+    statement: "Each export MUST be authorised by exporter@'s rule on the kind and, for a sealed value, by a grant."
+    rationale: "An export is a read of sluis data by a holder, so it needs both checks (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter]
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [798]
@@ -37,11 +39,12 @@ requirements:
     rationale: "An export is a disclosure."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [798]
+    superseded_by: [REQ-EXPORT-017]
     verification:
       - {kind: integration-test, ref: "export audit test"}
   - id: REQ-EXPORT-002
@@ -50,12 +53,13 @@ requirements:
     rationale: "The consumer, not sluis, decrypts."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [798]
+    superseded_by: [REQ-EXPORT-011, REQ-EXPORT-013]
     verification:
       - {kind: test-vectors, ref: "age vectors"}
   - id: REQ-EXPORT-005
@@ -65,12 +69,13 @@ requirements:
     rationale: "The consumer, not sluis, decrypts."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [798]
+    superseded_by: [REQ-EXPORT-010]
     verification:
       - {kind: integration-test, ref: "recipient-only test"}
   - id: REQ-EXPORT-006
@@ -79,18 +84,34 @@ requirements:
     rationale: "The consumer decrypts with a key that sluis never sees."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [798]
+    superseded_by: [REQ-EXPORT-013, REQ-EXPORT-011]
     verification:
       - {kind: manual, ref: "documentation review"}
   - id: REQ-EXPORT-007
     area: EXPORT
-    statement: "The export port MUST refuse a document of a record kind that the schema does not mark external."
-    rationale: "Whether a value may leave sluis is a property of its kind (ADR 0009)."
+    statement: "exporter@ MUST refuse a document of a kind that the kind registry does not mark exportable."
+    rationale: "The mark is a property of the kind and is set in review (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: test-vectors, ref: "exports of marked and unmarked kinds"}
+
+  # ---- exporter@ and the exportable kinds (decision 0009)
+  - id: REQ-EXPORT-008
+    area: EXPORT
+    statement: "The kind registry MUST mark exactly seven kinds exportable: SigningRing, KeyCertificate, TrustAnchors, Crl, Krl, TrustBundle and ClientSecretExport."
+    rationale: "What may leave sluis is decided in review as a property of the kind and not at run time (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
@@ -98,4 +119,145 @@ requirements:
     standards: []
     issues: [1014]
     verification:
-      - {kind: test-vectors, ref: "exports of marked and unmarked kinds"}
+      - {kind: test-vectors, ref: "registry check: exactly SigningRing, KeyCertificate, TrustAnchors, Crl, Krl, TrustBundle and ClientSecretExport are marked exportable"}
+  - id: REQ-EXPORT-009
+    area: EXPORT
+    statement: "The kind registry MUST mark a kind exportable only when a consumer is named and a rule lets exporter@ read it."
+    rationale: "Nothing leaves sluis without a consumer (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: an exportable kind without a named consumer fails"}
+  - id: REQ-EXPORT-010
+    area: EXPORT
+    statement: "exporter@ MUST be the only holder of the credentials of export destinations."
+    rationale: "A destination needs a credential, and it belongs to one holder of the data family and to no work actor (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "actor registry check: no other actor holds a destination credential; on Lambda only the exporter role reaches a destination"}
+  - id: REQ-EXPORT-011
+    area: EXPORT
+    statement: "`sluis config check` MUST refuse an ExportDestination that sends ClientSecretExport to a bucket."
+    rationale: "A bucket receives public material at static addresses and never a secret (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1014, 864]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: a bucket destination for ClientSecretExport"}
+  - id: REQ-EXPORT-012
+    area: EXPORT
+    statement: "`sluis config check` MUST refuse an ExportDestination whose address is also read as a secret source."
+    rationale: "sluis must never read back what it wrote, so no value has two writers (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1014, 864]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: a destination that is also a secret source"}
+  - id: REQ-EXPORT-013
+    area: EXPORT
+    statement: "exporter@ MUST open a sealed value at key@ with its own grant, sealed for the tenant of the value."
+    rationale: "The grant check applies to the exporter like every other actor (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "an export of ClientSecretExport with no grant, and with a grant for another tenant; each refused"}
+  - id: REQ-EXPORT-014
+    area: EXPORT
+    statement: "exporter@ MUST run a full reconcile at start and once a day."
+    rationale: "A missed change or an edit made at the destination is corrected within a day (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "edit a destination by hand and delete one of its documents; the next reconcile restores both"}
+  - id: REQ-EXPORT-015
+    area: EXPORT
+    statement: "exporter@ MUST keep the resume point of each destination in the temp kind ExportCursor."
+    rationale: "Losing the cursor costs a full reconcile and not data (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "delete the ExportCursor items; exporter@ resumes with a full reconcile and loses no document"}
+  - id: REQ-EXPORT-016
+    area: EXPORT
+    statement: "exporter@ MUST remove from a destination what it wrote for a value that no longer exists."
+    rationale: "A revoked key or a deleted client secret must not stay at its destination (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "delete an exportable item; the next reconcile removes its document"}
+  - id: REQ-EXPORT-017
+    area: EXPORT
+    statement: "exporter@ MUST record every write to a destination and every refusal as an audit fact."
+    rationale: "A refusal is an alarm and not a retry loop, and an operator must see why (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "each write and each refusal produces a fact; a refusal raises an alarm"}
+  - id: REQ-EXPORT-018
+    area: EXPORT
+    statement: "sluis MUST NOT write a Kubernetes object, except a Secret that exporter@ writes when an installation chooses the direct path."
+    rationale: "Cluster tools stay its clients and distributors, and the cluster credential of exporter@ is limited to the named Secrets (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1014]
+    verification:
+      - {kind: integration-test, ref: "the RBAC of exporter@ allows writing the named Secrets in the named namespaces only"}
+      - {kind: integration-test, ref: "no other actor holds a cluster write permission"}
+  - id: REQ-EXPORT-019
+    area: EXPORT
+    statement: "An export MUST NOT carry a secret for a vendor that sluis could mint a scoped credential for."
+    rationale: "A minted credential is short-lived and scoped, and a stored secret is neither (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: no exportable kind holds a vendor secret that a minter can mint"}
