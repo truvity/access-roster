@@ -706,7 +706,7 @@ kinds:
     exportable: no
     backed_up: yes
     layer_module: quota module
-    notes: "Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add | set | write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the version, and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update."
+    notes: "Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add | set | write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the units (a delta), and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update."
 
   - name: AdmitRecord
     serves: work
