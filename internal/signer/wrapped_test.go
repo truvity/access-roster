@@ -92,7 +92,7 @@ func newSpy(t *testing.T) *spyKeys {
 
 const (
 	testRotate     = 24 * time.Hour
-	testPrepublish = 15 * time.Minute
+	testPrepublish = DefaultWrappedPrepublish
 	testRetain     = time.Hour + KeyOverlapSkew
 )
 
@@ -124,6 +124,8 @@ type wrapEnv struct {
 	clock  *wrapClock
 	algs   []jose.SignatureAlgorithm
 	deny   bool // the lease is always held by someone else
+	// retain replaces testRetain when set.
+	retain time.Duration
 	// failWrites makes the shared state refuse the key ring's entry writes.
 	failWrites bool
 }
@@ -156,9 +158,13 @@ func newWrapEnv(t *testing.T, algs ...jose.SignatureAlgorithm) *wrapEnv {
 }
 
 func (e *wrapEnv) config() WrappedConfig {
+	retain := testRetain
+	if e.retain > 0 {
+		retain = e.retain
+	}
 	return WrappedConfig{
 		Algorithms:  e.algs,
-		RotateEvery: testRotate, Prepublish: testPrepublish, Retain: testRetain, Interval: 30 * time.Second,
+		RotateEvery: testRotate, Prepublish: testPrepublish, Retain: retain, Interval: 30 * time.Second,
 	}
 }
 
@@ -684,6 +690,88 @@ func TestWrappedCoexistsWithKeysOfOtherSources(t *testing.T) {
 	r.maintain()
 	if contains(r.published(jose.ES384), foreign.ID()) {
 		t.Error("the other source's key was never retired")
+	}
+}
+
+// Unset, the pre-publish is half the rotation, so a key is in the key set for
+// half a day before it signs, and never shorter than the activation delay.
+func TestWrappedPrepublishDefaultsToHalfTheRotation(t *testing.T) {
+	if DefaultWrappedPrepublish != 12*time.Hour {
+		t.Errorf("DefaultWrappedPrepublish = %s, want 12h", DefaultWrappedPrepublish)
+	}
+	for _, tc := range []struct{ rotate, floor, want time.Duration }{
+		{24 * time.Hour, DefaultKeyActivationDelay, 12 * time.Hour},
+		{MaxWrappedRotateEvery, DefaultKeyActivationDelay, 84 * time.Hour},
+		{time.Hour, DefaultKeyActivationDelay, 30 * time.Minute},
+		{20 * time.Minute, DefaultKeyActivationDelay, DefaultKeyActivationDelay},
+		{24 * time.Hour, 13 * time.Hour, 13 * time.Hour},
+	} {
+		got := WrappedPrepublishDefault(tc.rotate, tc.floor)
+		if got != tc.want {
+			t.Errorf("WrappedPrepublishDefault(%s, %s) = %s, want %s", tc.rotate, tc.floor, got, tc.want)
+		}
+		c := WrappedConfig{Algorithms: []jose.SignatureAlgorithm{jose.ES384}, RotateEvery: tc.rotate, Prepublish: got, Retain: testRetain}
+		if err := c.Validate(DefaultTokenLifetime); err != nil {
+			t.Errorf("rotateEvery %s with the default pre-publish %s: %v", tc.rotate, got, err)
+		}
+	}
+}
+
+// Over days of daily rotation with the default schedule, every key is in the
+// key set for the whole pre-publish before it signs, a replaced key stays for
+// the whole retention, and the key set holds at most two keys per algorithm
+// (three while the retention is longer than the other half of the period).
+func TestWrappedKeySetOverManyRotations(t *testing.T) {
+	const step = 10 * time.Minute
+	for _, tc := range []struct {
+		retain time.Duration
+		most   int
+	}{
+		{testRetain, 2},
+		{25 * time.Hour, 3},
+	} {
+		t.Run(tc.retain.String(), func(t *testing.T) {
+			env := newWrapEnv(t, jose.ES384)
+			env.retain = tc.retain
+			r := env.start(t)
+			firstSeen := map[string]time.Time{}
+			replacedAt := map[string]time.Time{}
+			active := r.rings.Active(jose.ES384).ID()
+			most := 0
+			for elapsed := time.Duration(0); elapsed <= 5*testRotate; elapsed += step {
+				r.maintain()
+				now := env.clock.now()
+				published := r.published(jose.ES384)
+				most = max(most, len(published))
+				for _, id := range published {
+					if _, ok := firstSeen[id]; !ok {
+						firstSeen[id] = now
+					}
+				}
+				for id, at := range replacedAt {
+					if !contains(published, id) {
+						if gone := now.Sub(at); gone < tc.retain {
+							t.Errorf("%s left the key set %s after it was replaced, within the retention", id, gone)
+						}
+						delete(replacedAt, id)
+					}
+				}
+				if id := r.rings.Active(jose.ES384).ID(); id != active {
+					if ahead := now.Sub(firstSeen[id]); ahead < testPrepublish {
+						t.Errorf("%s signs %s after it was published, under the pre-publish", id, ahead)
+					}
+					replacedAt[active] = now
+					active = id
+				}
+				env.clock.advance(step)
+			}
+			if most != tc.most {
+				t.Errorf("at most %d keys published at once, want %d", most, tc.most)
+			}
+			if env.kms.Generated < 5 {
+				t.Errorf("generated %d keys in five periods", env.kms.Generated)
+			}
+		})
 	}
 }
 

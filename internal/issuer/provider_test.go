@@ -190,3 +190,55 @@ func TestServedACRValuesFollowTheConformanceAccount(t *testing.T) {
 		}
 	}
 }
+
+// The public documents' `Cache-Control` goes on a successful GET or HEAD of
+// exactly those paths, and nowhere else: an error is not worth keeping, and a
+// `Cache-Control` the handler chose is its own.
+func TestPublicDocumentsAreCachedOnlyWhenServed(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, method, path string
+		status             int
+		own                string
+		want               string
+	}{
+		{"the key set", http.MethodGet, "/keys", http.StatusOK, "", "public, max-age=300"},
+		{"HEAD", http.MethodHead, "/keys", http.StatusOK, "", "public, max-age=300"},
+		{"discovery", http.MethodGet, "/.well-known/openid-configuration", http.StatusOK, "", "public, max-age=300"},
+		{"RFC 8414, issuer path", http.MethodGet, "/.well-known/oauth-authorization-server/tenant", http.StatusOK, "", "public, max-age=300"},
+		{"RFC 8414 without the issuer's path", http.MethodGet, "/.well-known/oauth-authorization-server", http.StatusOK, "", ""},
+		{"an error", http.MethodGet, "/keys", http.StatusInternalServerError, "", ""},
+		{"not modified", http.MethodGet, "/keys", http.StatusNotModified, "", ""},
+		{"the handler's own", http.MethodGet, "/keys", http.StatusOK, "no-cache", "no-cache"},
+		{"OPTIONS", http.MethodOptions, "/keys", http.StatusOK, "", ""},
+		{"another path", http.MethodGet, "/authorize", http.StatusOK, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			handler := publicDocuments("https://issuer.example/tenant", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.own != "" {
+					w.Header().Set("Cache-Control", tc.own)
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte("{}"))
+			}))
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(tc.method, tc.path, nil))
+			if got := recorder.Header().Get("Cache-Control"); got != tc.want {
+				t.Errorf("Cache-Control = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	// A handler that writes the body without a status is a 200.
+	handler := publicDocuments("https://issuer.example", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("{}"))
+	}))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil))
+	if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=300" {
+		t.Errorf("an implicit 200: Cache-Control = %q", got)
+	}
+}

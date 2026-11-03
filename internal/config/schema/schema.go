@@ -363,7 +363,7 @@ func serveSchema() m {
 				"algorithms": m{"type": "array", "minItems": 1, "uniqueItems": true, "items": m{"enum": []string{"ES384", "RS256"}},
 					"description": "The algorithms signed with, the first the installation default. Unset is ES384 and RS256. EdDSA is not supported yet."},
 				"rotateEvery": duration("How often a new key pair is generated for each algorithm. Longer than `prepublish`, at most 168h.", "24h"),
-				"prepublish":  duration("How long a new key is published before anything signs with it: longer than a verifier caches the key set (Envoy's jwt_authn: 10m). Unset is `activationDelay`.", "15m"),
+				"prepublish":  duration("How long a new key is published before anything signs with it: longer than any verifier caches the key set (Envoy's jwt_authn: 10m; an hour is common), and shorter than `rotateEvery`. Unset is half of `rotateEvery`, and never shorter than `activationDelay`.", "12h"),
 				"retain":      duration("How long a replaced key stays published: at least `lifetimes.token` plus a skew margin. Unset is `overlap`.", ""),
 			}, "stateSecret"),
 			"additionalFiles": list("Every OTHER algorithm this installation signs with at once, one file per algorithm.", str("A key file.")),
