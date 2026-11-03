@@ -75,11 +75,11 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0014](0014-the-site-is-static-on-cloudflare-workers.md) | The site is static on Cloudflare Workers, deployed by GitHub Actions, with a live status API | Accepted |
 | [0015](0015-evolution-and-compatibility.md) | Evolution and compatibility: N and N-1 inside a major version, a parallel cutover from v1, and neutral artifacts as the deliverable | Accepted |
 | [0016](0016-telemetry.md) | Telemetry is OpenTelemetry used directly, with one log format, W3C trace context, fixed span and metric names, and a generated attribute allowlist | Accepted |
-| [0017](0017-identity-and-sign-in.md) | Each boundary has its own issuer, a token has one audience, and people sign in with passkeys and step-up | Accepted |
-| [0018](0018-sessions.md) | Sessions have three classes: a person's sessions end at an absolute limit, an agent's end with its consent, and a machine client has no session | Accepted |
-| [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by the issuer and a configured subject claim, never by e-mail, and a directory only adds facts | Accepted |
-| [0020](0020-grant-vocabulary-and-token-claims.md) | Grants come from a declared vocabulary, a token carries a fixed set of claims narrowed to its one audience, and token lifetimes have defaults and caps | Accepted |
-| [0021](0021-clients.md) | Clients are declared, a resource maps to a registered client, and a self-described client is admitted only from an allow-listed origin | Accepted |
+| [0017](0017-identity-and-sign-in.md) | Each boundary has its own issuer, a token has one audience, people sign in with passkeys and step-up, and break-glass recovery uses passkeys held in config | Accepted |
+| [0018](0018-sessions.md) | Sessions have three classes with limits per class, and session chains are temp kinds | Accepted |
+| [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by issuer and subject claim | Accepted |
+| [0020](0020-grant-vocabulary-and-token-claims.md) | Grant names come from a declared vocabulary, and a token carries fixed claims for one audience | Accepted |
+| [0021](0021-clients.md) | Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts | Accepted |
 | [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE: proofs are exchanged for short-lived credentials, and hosts enrol the same way | Accepted |
 | [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the X.509 and SSH certificate authorities, SSH uses only sluis's own CA, and databases get short-lived client certificates | Accepted |
 | [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
@@ -117,7 +117,6 @@ These records are superseded: the content of each moves into the record its stat
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
-| [0043](0043-break-glass-recovery-uses-passkeys-only.md) | Break-glass recovery uses passkeys only: two attested hardware keys and one pinned synced passkey, a recovery scope, an alert on every use and a quarterly drill | Superseded by 0017 |
 | [0044](0044-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Superseded by 0029 |
 | [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
