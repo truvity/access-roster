@@ -54,7 +54,7 @@ The verbs:
 
 - **An item has a version.** The store sets it: 1 at create, plus 1 at each change. An update names the version it read. For a lease the version is the fencing token ([Leases](/decisions/0005-the-store/#leases)).
 - **An item has an expiry** when its kind has a TTL ([Time to live](/decisions/0005-the-store/#time-to-live)).
-- **Item keys and the sealed envelope** are on the [store API](/reference/store-api/) reference page, with the wire contract.
+- **Item keys and the sealed envelope** are on the store API reference page, with the wire contract.
 
 ### Typed clients
 
@@ -73,7 +73,7 @@ trait Kind {
 
 ### Rules
 
-- **A rule is one line of the kind registry:** an actor may use a verb on a kind. The store checks the rule on every call, before it touches data, and denies by default. The rules are generated from the kind registry and the actor registry ([0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)); the matrix is the generated page [Rules](/reference/rules/).
+- **A rule is one line of the kind registry:** an actor may use a verb on a kind. The store checks the rule on every call, before it touches data, and denies by default. The rules are generated from the kind registry and the actor registry ([0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)); the matrix is the generated page Rules.
 - **The store learns the caller from the transport** (a peer uid, a Lambda role, a service-account token or a SPIFFE identity, [0003](/decisions/0003-units-transports-and-fusion/#transports)). Fused work actors present one identity, and the store applies the union of their rules ([0003](/decisions/0003-units-transports-and-fusion/#fusion)).
 - **A rule may limit an actor to ids under its own name,** as for the tunables, the log settings and a self-scoped kind ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)).
 - **The store also checks, on every write:**
@@ -101,7 +101,7 @@ trait Kind {
 - **The platform starts a driver; nobody execs it.** On boards it is a systemd service beside its owner's unit, on Lambda an extension of the holder's function, and on Kubernetes a native sidecar container in the holder's pod, with its socket on an emptyDir and the cloud token mounted only into the driver container ([0003](/decisions/0003-units-transports-and-fusion/#units)).
 - **Each port has one contract and one CLI:** `serve`, `check`, `version` and `conformance`. `check` verifies the driver's configuration and reach; `conformance` runs the port's suite against the driver. A driver passes the suite or it is not a driver, and the in-memory engine passes it too.
 - **A driver sees items only,** and never knows what a kind means. An item is a key, a version, bytes, a TTL and index entries.
-- **The item contract of the durable and temp drivers has four calls:** `Get` (an item by key), `Query` (items by key prefix, paged), `Transact` (puts and deletes with conditions, all or none) and `TailLog` (the change log from a sequence). The config source and the secret source have one call, `Read`, which returns bytes and a version label, and a capability flag `watch`: `none`, `notify` or `poll`. A config source driver returns bytes and never parses them. The exact messages are on the [store API](/reference/store-api/) reference page.
+- **The item contract of the durable and temp drivers has four calls:** `Get` (an item by key), `Query` (items by key prefix, paged), `Transact` (puts and deletes with conditions, all or none) and `TailLog` (the change log from a sequence). The config source and the secret source have one call, `Read`, which returns bytes and a version label, and a capability flag `watch`: `none`, `notify` or `poll`. A config source driver returns bytes and never parses them. The exact messages are on the store API reference page.
 - **A `Transact` with one item and one condition is one conditional update,** not a transaction. A counter that many callers change, such as an allowance, depends on it: a conditional update of one hot DynamoDB item reaches about 1,000 a second, about ten times the estimated peak of a busy allowance, and a transaction does not (measured 2026-11-02; [0039](/decisions/0039-quota-allowance/)).
 - **Each port has one driver until a second real installation needs another;** that driver arrives with that installation (principle 10). `sluis config check` refuses a driver that does not fit the runtime, such as `rqlite` on serverless.
 
@@ -142,7 +142,7 @@ trait Kind {
 
 #### Signed config documents
 
-- **Config reaches the store as signed config documents,** one per config kind, holding all the items of the kind. A document is a JWS in general JSON serialisation (RFC 7515, section 7.2); its payload is the exact bytes of the reviewed file. The protected header carries the `kid` of the publisher key and a sequence number `seq`. The format and the test vectors are on the [signed config](/reference/signed-config/) reference page.
+- **Config reaches the store as signed config documents,** one per config kind, holding all the items of the kind. A document is a JWS in general JSON serialisation (RFC 7515, section 7.2); its payload is the exact bytes of the reviewed file. The protected header carries the `kid` of the publisher key and a sequence number `seq`. The format and the test vectors are on the signed config reference page.
 - **The store verifies the signature before it parses a byte.** It accepts a signature only from a publisher key pinned in the bootstrap file, and refuses any other algorithm than ES384, and any `crit`, `jku`, `x5u` or embedded `jwk`. The signature proves the publisher and the bytes; that the commit was reviewed is the branch protection of the repository.
 - **A document may carry several signatures.** A regulated party's policy carries the publisher's and the party's, and the store requires both.
 - **A sequence number that must grow** stops a running store from taking an older document than the one in force. It protects a running process only ([Freshness at a cold start](/decisions/0005-the-store/#freshness-at-a-cold-start)).
@@ -179,7 +179,7 @@ trait Kind {
 
 - **The bootstrap file is the one local file store@ reads at start.** It holds the boundary, one destination per storage class, the driver sockets, and the public keys of the publishers with which the first config is verified, each shown with its SPKI hash, which is the pin. It is the only setting whose change needs a restart; a change of a publisher key is a restart of store@.
 - **It holds no credential.** The credentials of store@ (the engine login, access to the secret source) are platform-provided: a systemd credential, an IAM role or a service account ([0004](/decisions/0004-the-data-model/#what-is-not-data)).
-- **It is not a kind,** and its schema is generated from Protobuf like every external config ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). Its keys and checks are on the [bootstrap file](/reference/bootstrap-file/) reference page. store@ refuses a file that another uid can write.
+- **It is not a kind,** and its schema is generated from Protobuf like every external config ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). Its keys and checks are on the bootstrap file reference page. store@ refuses a file that another uid can write.
 - **The pin is the trust anchor of config.** It needs no signed document to verify the first one, so config cannot choose its own publisher.
 
 ### Secret sources
@@ -204,7 +204,7 @@ trait Kind {
 - An audit piece cannot cold-start without store@, which also loads its documents. It already depends on the store through key@, whose key wraps are kinds, so a loader of its own would buy no independence.
 - A signed document is not fresh at a cold start: the residual is stated under [Freshness at a cold start](/decisions/0005-the-store/#freshness-at-a-cold-start).
 - A secret-source value is visible to store@: accepted, and stated in the threat model.
-- The pages that follow are [Store API](/reference/store-api/), [Bootstrap file](/reference/bootstrap-file/), [Signed config](/reference/signed-config/) and [Data](/concepts/data/).
+- The pages that follow are Store API, Bootstrap file, Signed config and [Data](/concepts/data/).
 
 ## Roads not taken
 

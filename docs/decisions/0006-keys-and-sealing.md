@@ -63,7 +63,7 @@ A key is shared between two uses only when all of these are equal: **the audienc
 | Workload issuer of `sluis-node` | P-384 | Boards only | `sluis-node`, which signs through `key@` |
 | Each named exception: PS256, RS256, ES256, Ed25519 and the NATS nkeys | As named | Where the exception is configured | The actor that signs for it |
 
-The generated [keys page](/reference/keys/) lists every purpose with its algorithm, its key type on AWS, its slot on a board and the actor that asks for it.
+The generated keys page lists every purpose with its algorithm, its key type on AWS, its slot on a board and the actor that asks for it.
 
 ### Keys sign in place
 
@@ -147,7 +147,7 @@ sequenceDiagram
 
 - **To write, the actor asks `key@` for `Seal(address, value, grant)`, then writes the result.** The actor validates a sealed field before it seals it, because the store cannot read it.
 - **To read, the actor asks for `Open(address, sealed, grant)`.** `key@` returns the plaintext to the caller only.
-- **The value is sealed under the data key of the address's boundary, tenant and purpose** ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)), with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open, and a value that has to move to another address is opened and sealed again. The byte layout of the envelope is on the [store API page](/reference/store-api/).
+- **The value is sealed under the data key of the address's boundary, tenant and purpose** ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)), with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open, and a value that has to move to another address is opened and sealed again. The byte layout of the envelope is on the store API page.
 - **`key@` checks three things on every Seal and Open:** the caller's identity, by the transport ([0003](/decisions/0003-units-transports-and-fusion/#transports)); the caller's rule for the purpose and the operation, generated from the actor registry ([0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)); and the grant, which must be sealed for the address's tenant, name the operation and not be expired ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A refusal is an audit fact.
 - **Opens are batched.** A call may carry many opens, so that a request that needs several values, such as a session cookie and a person's records, pays one hop. The per-request cost of opening session cookies at `key@` is measured in the Lambda latency spike ([#1179](https://github.com/truvity/sluis/issues/1179)).
 - **Session cookies are sealed and opened at `key@` on every request,** under the boundary's `cookie` data key. `session` never holds that key ([0018](/decisions/0018-sessions/)).
