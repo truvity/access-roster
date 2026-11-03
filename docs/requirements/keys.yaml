@@ -4,19 +4,21 @@ area: KEYS
 requirements:
   - id: REQ-KEYS-001
     area: KEYS
-    statement: "Every private-key operation MUST go through the signing port."
-    rationale: "One port makes drivers swappable and auditable."
+    statement: "Every private-key operation MUST go through key@."
+    rationale: "One holder is where the rules, the audit and the content checks sit."
     level: MUST
     source: v1-parity
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: ST-89, section: "6", depth: Full}
       - {id: ST-88, section: "1", depth: Full}
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [800]
     verification:
-      - {kind: test-vectors, ref: "port suite"}
+      - {kind: integration-test, ref: "actor registry check: no actor other than key@ holds a PIN or a KMS permission"}
+      - {kind: integration-test, ref: "business code that imports a key-management SDK fails the import lint"}
   - id: REQ-KEYS-013
     area: KEYS
     split_from: REQ-KEYS-001
@@ -167,17 +169,18 @@ requirements:
       - {kind: integration-test, ref: "rotation test"}
   - id: REQ-KEYS-008
     area: KEYS
-    statement: "A software key driver MUST be refused in a production installation."
-    rationale: "Software keys are for development only."
+    statement: "The software driver of key@ MUST refuse to start when the boundary's environment is production."
+    rationale: "A development configuration loaded on the wrong board must not make a software key a production authority key."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [867]
     verification:
-      - {kind: integration-test, ref: "config-check negative test"}
+      - {kind: integration-test, ref: "the software driver is started with a production boundary and refuses; started in staging it warns"}
   - id: REQ-KEYS-009
     area: KEYS
     statement: "Keys with different purposes MUST be separate keys."
@@ -269,8 +272,8 @@ requirements:
       - {kind: manual, ref: "release matrix review"}
   - id: REQ-KEYS-011
     area: KEYS
-    statement: "An alarm MUST be raised when a value is decrypted with a retired key version outside a planned re-seal."
-    rationale: "Key misuse is silent without alarms."
+    statement: "An alarm MUST be raised when a value is opened with a retired data key generation outside a planned re-seal."
+    rationale: "An old generation that still opens something is a sign of a missed re-seal or a stolen key."
     level: MUST
     source: security-review
     status: planned
@@ -279,7 +282,7 @@ requirements:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [800, 836]
     verification:
-      - {kind: integration-test, ref: "alert-rule test (retired key version)"}
+      - {kind: integration-test, ref: "alert-rule test (retired data key generation)"}
   - id: REQ-KEYS-019
     area: KEYS
     split_from: REQ-KEYS-011
@@ -289,6 +292,7 @@ requirements:
     source: security-review
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [836, 951]
@@ -329,13 +333,14 @@ requirements:
     rationale: "Backup data keys are wrapped through the port so that no driver-specific code touches them."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-89, section: "6", depth: Partial}
       - {id: NC-10, section: "PIV", depth: Partial}
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [800, 834]
+    superseded_by: [REQ-KEYS-032, REQ-KEYS-033]
     verification:
       - {kind: test-vectors, ref: "port suite keys (wrap and unwrap round trip)"}
   - id: REQ-KEYS-022
@@ -373,6 +378,7 @@ requirements:
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards: []
     issues: [800]
     verification:
@@ -388,4 +394,527 @@ requirements:
     standards: []
     issues: [914, 870]
     verification:
-      - {kind: integration-test, ref: "the key-holder access list names sluis-node for the workload-issuer purpose and signer for the token-signing purpose, with different slots"}
+      - {kind: integration-test, ref: "the key@ rules name sluis-node for the workload-issuer purpose and signer for the token-signing purpose, with different slots"}
+
+  # ---- key@: seal, open, sign and mac (decision 0006)
+  - id: REQ-KEYS-028
+    area: KEYS
+    statement: "key@ MUST be the only actor that holds a card PIN or a KMS permission on a key of the boundary other than the backup archive key."
+    rationale: "Every authority key, wrapping key and data key is then reachable through one holder whose rules say who may ask for what (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: integration-test, ref: "actor registry check: key@ is the only actor whose holds list names a PIN or a KMS permission"}
+      - {kind: integration-test, ref: "on Lambda only the role of the key@ function can call KMS on the boundary's symmetric and signing keys"}
+  - id: REQ-KEYS-029
+    area: KEYS
+    statement: "key@ MUST refuse a Seal, Open, Sign or Mac whose caller has no rule for the purpose and the operation."
+    rationale: "The rules are generated from the actor registry, so a compromised actor cannot ask for a purpose it was not given (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800, 951]
+    verification:
+      - {kind: test-vectors, ref: "the generated key rules matrix: every actor, purpose and operation not listed is refused"}
+      - {kind: integration-test, ref: "an actor asks for another actor's purpose; refused and audited"}
+  - id: REQ-KEYS-067
+    area: KEYS
+    statement: "key@ MUST let a product's emitter ask only for Mac under the tenant's `pseudonym` key."
+    rationale: "A product is not a sluis actor, and its one key operation is the pseudonym of a subject before a record leaves its process (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1120]
+    verification:
+      - {kind: integration-test, ref: "the emitter's platform identity: Mac under pseudonym accepted; Mac under another purpose, Seal and Open refused"}
+  - id: REQ-KEYS-030
+    area: KEYS
+    statement: "key@ MUST refuse a Seal or an Open whose grant does not name the tenant of the address or the operation, or has expired."
+    rationale: "The grant check is the second of two independent checks between an actor and a tenant's sealed value (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: integration-test, ref: "Seal and Open with no grant, with an expired grant, with a grant for another tenant and for another operation; each refused"}
+      - {kind: integration-test, ref: "the store's rule switched off: the grant check alone still refuses"}
+  - id: REQ-KEYS-031
+    area: KEYS
+    statement: "key@ MUST record every refusal as an audit fact."
+    rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a refused Open produces an audit fact that names the caller, the purpose and the reason and no value"}
+  - id: REQ-KEYS-032
+    area: KEYS
+    statement: "key@ MUST keep a data key only wrapped and open it only in its own memory."
+    rationale: "A data key stored or sent in the clear would give its holder every value sealed under it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: integration-test, ref: "a scan of the store, the logs and the audit log for the bytes of a data key finds none"}
+      - {kind: integration-test, ref: "no API of key@ returns a data key"}
+  - id: REQ-KEYS-033
+    area: KEYS
+    statement: "key@ MUST seal a value with AES-256-GCM under the data key of the address's boundary, tenant and purpose, with the full address as authenticated data."
+    rationale: "A value copied to another row, kind, tenant or boundary then no longer opens, so a flaw that lets an actor write somewhere does not let it read what it moved (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: test-vectors, ref: "Wycheproof AES-GCM vectors"}
+      - {kind: integration-test, ref: "a ciphertext moved to another key of the same kind, copied to the same address in another boundary or to another tenant fails to open"}
+  - id: REQ-KEYS-034
+    area: KEYS
+    statement: "The nonce of an AES-256-GCM seal MUST come from the cryptographic library and never from the caller."
+    rationale: "A caller-chosen nonce repeats and breaks the confidentiality and integrity of every value under that key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the seal API takes no nonce; two seals of one value under one key differ"}
+  - id: REQ-KEYS-035
+    area: KEYS
+    statement: "Each tenant MUST have exactly three data keys, data, pseudonym and evidence."
+    rationale: "Purposes never share a key, so a tenant's exit can delete personal data and keep evidence (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a new tenant gets exactly three DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
+  - id: REQ-KEYS-036
+    area: KEYS
+    statement: "A tenant's exit MUST delete its data and pseudonym wraps at once, every generation and every recipient."
+    rationale: "The wrap is the only route to the key, so every value sealed for the tenant stops opening (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "after the exit every value sealed for the tenant fails to open and key@ has dropped its cached entries"}
+  - id: REQ-KEYS-037
+    area: KEYS
+    statement: "key@ MUST delete the evidence wrap of an exited tenant when its evidence retention ends and not before."
+    rationale: "Evidence outlives personal data, so a bill or a dispute can be answered after the exit (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1015]
+    verification:
+      - {kind: integration-test, ref: "a delete of the evidence wrap before the retention ends is refused; after it, the wrap is deleted"}
+  - id: REQ-KEYS-038
+    area: KEYS
+    statement: "key@ MUST cache an opened data key only with a time to live per entry."
+    rationale: "A cached key opens without a card or KMS call, and its time to live is the erasure delay on Lambda (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a cached entry is gone after its time to live and the next open calls the card or KMS"}
+  - id: REQ-KEYS-039
+    area: KEYS
+    statement: "`sluis config check` MUST refuse a cache time to live in the KeyPlan that is longer than the built-in maximum."
+    rationale: "A plan may shorten a limit and never lengthen it past the maximum in code (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "KeyPlan vectors: a time to live at the maximum is accepted and one second over is refused"}
+  - id: REQ-KEYS-040
+    area: KEYS
+    statement: "On boards key@ MUST drop a cached data key when its DataKeyWrap is deleted."
+    rationale: "Without the drop a deleted tenant's data would open until the entry expired (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "delete the wrap of a tenant while its key is cached; the next open is refused"}
+  - id: REQ-KEYS-041
+    area: KEYS
+    statement: "On serverless the data of a deleted tenant MUST stop opening within the cache time to live after its wraps are deleted."
+    rationale: "Nothing is pushed to a warm function, so the time to live is the longest time a deleted tenant's data can still be opened (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "delete a tenant's wraps; a warm key@ function opens its data no later than the time to live afterwards"}
+  - id: REQ-KEYS-042
+    area: KEYS
+    statement: "Mac MUST be HMAC-SHA384 over a data key, with the label that the caller names bound into the input by key@."
+    rationale: "Two uses then never give the same keyed hash for the same input, and the key never leaves key@ (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: test-vectors, ref: "Mac vectors: one input under two labels gives two values; the label is bound by key@"}
+  - id: REQ-KEYS-043
+    area: KEYS
+    statement: "key@ MUST NOT make a new generation of the mac data key in place."
+    rationale: "Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the rotation job skips the mac purpose; a replacement is a migration that makes the values again"}
+  - id: REQ-KEYS-044
+    area: KEYS
+    statement: "key@ MUST listen on Unix sockets only, one per caller, each in a directory that only its caller can open."
+    rationale: "A socket that another uid can open is a path around the rules (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [866, 914]
+    verification:
+      - {kind: test-vectors, ref: "a process under another uid opens ca@prod's key@ socket; refused by the directory permissions"}
+  - id: REQ-KEYS-045
+    area: KEYS
+    statement: "key@ MUST refuse a connection whose peer uid is not the uid its socket was made for."
+    rationale: "The permission check and the peer check are two walls around the same socket (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: test-vectors, ref: "directory permissions off, the socket left world-writable: uid B connects to uid A's socket; refused by the peer-uid check"}
+  - id: REQ-KEYS-046
+    area: KEYS
+    statement: "The slot plan MUST give every purpose and algorithm a card slot of its own."
+    rationale: "A slot shared by two purposes would share a key between them (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "registry check: the default slot plan has no collision; a plan with two purposes on one slot fails"}
+  - id: REQ-KEYS-047
+    area: KEYS
+    statement: "`sluis config check` MUST refuse an enabled key purpose that has no key or slot."
+    rationale: "A purpose without a key would fall back to something weaker at the first request (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [914, 864]
+    verification:
+      - {kind: test-vectors, ref: "KeyPlan vectors: an enabled purpose with no slot on a board and with no key on AWS"}
+  - id: REQ-KEYS-048
+    area: KEYS
+    statement: "A key purpose outside the baseline MUST get a key and a slot only when an installation enables it."
+    rationale: "A purpose that is not enabled costs no key, no slot and no review (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an installation without the release-signing purpose has no such key or slot; enabling it adds exactly one"}
+  - id: REQ-KEYS-049
+    area: KEYS
+    statement: "The KMS baseline of a boundary on AWS with one trust domain and one log MUST be one symmetric key and five P-384 keys, with each purpose enabled on use adding a key of its own."
+    rationale: "Data keys are not KMS keys, so a new tenant adds none and the baseline stays small and countable (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless", "kubernetes"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: the AWS baseline of 1 + 5 holds for the generated installation"}
+  - id: REQ-KEYS-050
+    area: KEYS
+    statement: "The key policy of the symmetric KMS key of a boundary MUST name the role of key@ alone."
+    rationale: "Every other actor reaches a key through key@, whose rules say who may ask for which purpose (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: test-vectors, ref: "generated key policies for the symmetric key: every Allow statement names the key@ role"}
+      - {kind: integration-test, ref: "the role of any other actor calls KMS; refused"}
+  - id: REQ-KEYS-051
+    area: KEYS
+    statement: "key@ MUST call GenerateDataKey under the boundary's symmetric key with the encryption context of boundary, tenant and purpose, and store only the wrapped copy."
+    rationale: "The context binds a wrap to its tenant and purpose in the key service itself (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless", "kubernetes"]
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: integration-test, ref: "a wrapped data key unwrapped with another tenant in the context; refused"}
+  - id: REQ-KEYS-052
+    area: KEYS
+    statement: "On boards key@ MUST wrap each data key for the key-agreement key of each board's card and for the recovery recipient."
+    rationale: "Any board opens it with its own card, and the loss of all cards does not lose the data (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a data key has one wrap per board and one for the recovery recipient; each opens it"}
+  - id: REQ-KEYS-053
+    area: KEYS
+    statement: "A board wrap MUST use ECDH on P-384, HKDF-SHA384 and AES key wrap, bound to the wrap's own address."
+    rationale: "A wrap that is not bound to its address could be moved to another row or tenant (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "wrap vectors: a wrap copied to another address fails to unwrap"}
+  - id: REQ-KEYS-054
+    area: KEYS
+    statement: "key@ MUST write all wraps of a new data key as conditional creates in one atomic write."
+    rationale: "When two key@ instances make a key at once, one wins and the other discards its key and reads the winner's (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "two key@ instances create the same data key at once; one set of wraps exists and both seal with the winner's key"}
+  - id: REQ-KEYS-055
+    area: KEYS
+    statement: "Adding a card or a board MUST rewrap each data key for its public key."
+    rationale: "A rewrap needs the recipient's public key only and touches no sealed value (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "add a board: every data key gains a wrap for it and no sealed value changes"}
+  - id: REQ-KEYS-056
+    area: KEYS
+    statement: "The private half of the recovery recipient MUST NOT exist inside sluis."
+    rationale: "Using it is a ceremony, so no actor, not even key@, can open a wrap made for it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "key@ is asked to open a wrap made for the recovery recipient; it has no key to do so"}
+  - id: REQ-KEYS-057
+    area: KEYS
+    statement: "key@ MUST make a new generation of a data key before the count of seals under it reaches the limit for random nonces."
+    rationale: "A busy kind would otherwise exhaust the AES-GCM nonce space of one key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a counter set near the limit produces a new generation, and older generations still open what they sealed"}
+  - id: REQ-KEYS-058
+    area: KEYS
+    statement: "key@ MUST NOT retry a wrong card PIN."
+    rationale: "The card blocks after three attempts and then needs the PUK (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "a card that answers wrong PIN is tried once; a second attempt is made only on an operator's new PIN"}
+  - id: REQ-KEYS-059
+    area: KEYS
+    statement: "A locked key@ that gets its PIN from an unlocked peer MUST receive it only as a PinRelease sealed to a one-time key of its own request."
+    rationale: "The PIN then crosses only the Raft port inside the store's replication and adds no listener (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "reboot one board with its peers up: it unlocks through PinRelease with no new listener"}
+      - {kind: test-vectors, ref: "a PinRelease opened with another request's key fails"}
+  - id: REQ-KEYS-060
+    area: KEYS
+    statement: "A log key MUST rotate only on compromise."
+    rationale: "A log is one continuous history, and its signatures must verify for the life of the log (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the rotation job skips the audit-log and issuance-log purposes; a compromise procedure replaces one"}
+  - id: REQ-KEYS-061
+    area: KEYS
+    statement: "An authority key MUST be used to sign only inside its key store."
+    rationale: "A key that leaves its store can no longer be stopped by it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [800]
+    verification:
+      - {kind: integration-test, ref: "no call returns authority key material; a card or KMS signs each digest itself"}
+  - id: REQ-KEYS-062
+    area: KEYS
+    statement: "sluis-node MUST sign its workload tokens through key@ with the workload-issuer purpose and hold no key credential."
+    rationale: "key@ has exclusive access to the card, so nothing else signs on a board (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "sluis-node holds no card or KMS credential and its signature is made by key@ in the workload-issuer slot"}
+  - id: REQ-KEYS-063
+    area: KEYS
+    statement: "The issuance log of ca MUST be signed with the issuance-log key purpose, a P-384 key enabled on use in every boundary that runs ca."
+    rationale: "The issuance log is a third log kind of the audit writer and has its own audience and lifetime (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a boundary with ca has an issuance-log key; one without ca has none"}
+  - id: REQ-KEYS-064
+    area: KEYS
+    statement: "The release-signing key MUST exist in the release boundary only."
+    rationale: "A release-signing key in any other boundary would widen who could sign a release (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [890]
+    verification:
+      - {kind: integration-test, ref: "registry check: the release-signing purpose is enabled in one boundary only"}
+  - id: REQ-KEYS-065
+    area: KEYS
+    statement: "The witness MUST sign its cosignatures through key@ with a witness key per format."
+    rationale: "A witness key authorises nothing else and serves no other purpose, and the format fixes its algorithm (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the witness holds no key credential; its cosignature verifies against the witness key of its format"}
+  - id: REQ-KEYS-066
+    area: KEYS
+    statement: "The published key set MUST be exported by exporter@ from the SigningRing kind that signer writes."
+    rationale: "The key set is public material that stays readable while the issuer's compute is down, so it leaves through the one holder of destinations (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "a rotation writes a new SigningRing; the exported key set carries the new key and the old one for the overlap"}

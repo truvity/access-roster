@@ -8,18 +8,19 @@ requirements:
     rationale: "One recipient is a single point of loss."
     level: MUST
     source: v1-parity
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
     issues: [834]
+    superseded_by: [REQ-BACKUP-049, REQ-BACKUP-007]
     verification:
       - {kind: test-vectors, ref: "age vectors"}
   - id: REQ-BACKUP-006
     area: BACKUP
     split_from: REQ-BACKUP-001
-    statement: "A backup archive MUST be readable with stock age and tar tools."
-    rationale: "An operator must be able to recover with no sluis binary."
+    statement: "The format of an archive MUST be specified with test vectors so that a tool outside sluis opens it once the archive key is unwrapped."
+    rationale: "An operator must be able to recover with no sluis binary (ADR 0010)."
     level: MUST
     source: v1-parity
     status: planned
@@ -28,7 +29,7 @@ requirements:
       - {id: ST-95, section: "age", depth: Full}
     issues: [834]
     verification:
-      - {kind: integration-test, ref: "stock-tool restore test"}
+      - {kind: test-vectors, ref: "archive format vectors read by a stock decryption tool and tar"}
   - id: REQ-BACKUP-007
     area: BACKUP
     split_from: REQ-BACKUP-001
@@ -45,22 +46,23 @@ requirements:
       - {kind: integration-test, ref: "recipient-count test"}
   - id: REQ-BACKUP-002
     area: BACKUP
-    statement: "A backup MUST NOT contain key material of the keys port, refresh tokens or long-lived sessions."
-    rationale: "Keys of the keys port never leave their store, and bearer credentials must not travel in archives."
+    statement: "An archive MUST NOT contain a refresh token, a code or a session."
+    rationale: "Sessions and codes are temp kinds, so everyone signs in again after a restore (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter]
     standards:
       - {id: ST-95, section: "age", depth: Partial}
     issues: [834, 835]
     verification:
-      - {kind: integration-test, ref: "archive content scan"}
+      - {kind: integration-test, ref: "archive content scan for temp kinds"}
   - id: REQ-BACKUP-008
     area: BACKUP
     split_from: REQ-BACKUP-002
-    statement: "A restore MUST invalidate all refresh tokens and sessions."
-    rationale: "Secrets and bearer credentials must not travel in archives."
+    statement: "After a restore everyone MUST sign in again, because sessions and codes are not in the archive."
+    rationale: "Bearer credentials must not travel in archives (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -69,7 +71,7 @@ requirements:
       - {id: ST-95, section: "age", depth: Partial}
     issues: [834, 835]
     verification:
-      - {kind: integration-test, ref: "post-restore invalidation test"}
+      - {kind: integration-test, ref: "post-restore test: every session and refresh token from before the restore is refused"}
   - id: REQ-BACKUP-003
     area: BACKUP
     statement: "A restore MUST verify the integrity of every object before writing."
@@ -191,21 +193,22 @@ requirements:
       - {kind: integration-test, ref: "rehearsal test"}
   - id: REQ-BACKUP-014
     area: BACKUP
-    statement: "After a restore, state MUST be rolled forward from the audit log for the record kinds whose audit records carry enough data."
-    rationale: "Roll-forward replaces a backup of fast-changing data."
+    statement: "After a restore, state MUST be rolled forward from the audit log by the merge rule of each kind."
+    rationale: "The archive is as old as its time and the audit log is not (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [store]
     standards:
       - {id: ST-78, section: "8785", depth: Partial}
     issues: [835, 841]
     verification:
-      - {kind: integration-test, ref: "roll-forward restore test"}
+      - {kind: integration-test, ref: "roll-forward restore test for each merge rule"}
   - id: REQ-BACKUP-015
     area: BACKUP
-    statement: "Roll-forward after a restore MUST cover revocations, approvals, consents and the issued parts of clients."
-    rationale: "These kinds change between backups and must not revert, while a grant is a sealed, short-lived output of policy and not a durable record (ADR 0006)."
+    statement: "Roll-forward after a restore MUST cover revocations, approvals, consents and the clients that a tenant created."
+    rationale: "These kinds change between backups and must not revert, while a grant is a sealed, short-lived output of policy and not a durable record (ADR 0010, ADR 0007)."
     level: MUST
     source: design-decision
     status: planned
@@ -218,8 +221,8 @@ requirements:
   - id: REQ-BACKUP-027
     area: BACKUP
     split_from: REQ-BACKUP-015
-    statement: "Roll-forward after a restore MUST cover operator-set records."
-    rationale: "Operator-set records change between backups and must not revert."
+    statement: "Roll-forward after a restore MUST cover the kinds with profile Operable."
+    rationale: "Run-time changes of an operator change between backups and must not revert (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -227,12 +230,12 @@ requirements:
     standards: []
     issues: [835]
     verification:
-      - {kind: integration-test, ref: "operator-set roll-forward test"}
+      - {kind: integration-test, ref: "Operable-kind roll-forward test"}
   - id: REQ-BACKUP-028
     area: BACKUP
     split_from: REQ-BACKUP-015
-    statement: "Roll-forward after a restore MUST cover quota balances and top-ups."
-    rationale: "A restored balance without the debits since the archive would grant free overage."
+    statement: "Roll-forward after a restore MUST set each allowance from the fact with the highest version after the archive."
+    rationale: "A restored allowance without the admits since the archive would grant free units (ADR 0039)."
     level: MUST
     source: design-decision
     status: planned
@@ -240,7 +243,7 @@ requirements:
     standards: []
     issues: [835]
     verification:
-      - {kind: integration-test, ref: "quota balance roll-forward test"}
+      - {kind: integration-test, ref: "allowance roll-forward test from the facts of admits and pushes"}
   - id: REQ-BACKUP-029
     area: BACKUP
     split_from: REQ-BACKUP-015
@@ -282,63 +285,67 @@ requirements:
       - {kind: integration-test, ref: "restore-without-ledger test"}
   - id: REQ-BACKUP-017
     area: BACKUP
-    statement: "The data key of a backup archive MUST be wrapped through the keys port."
-    rationale: "One wrapping path works on every runtime."
+    statement: "exporter@ MUST wrap the archive key for the restore role and for the offline recovery recipient."
+    rationale: "One wrapping path works on every runtime, and the job never holds a key that opens an archive (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter, key]
     standards:
       - {id: ST-95, section: "age", depth: Partial}
       - {id: ST-89, section: "6", depth: Partial}
     issues: [834]
     verification:
-      - {kind: integration-test, ref: "wrap and unwrap round trip test"}
+      - {kind: integration-test, ref: "wrap and unwrap round trip for both recipients"}
   - id: REQ-BACKUP-018
     area: BACKUP
-    statement: "On AWS the data key of a backup archive MUST be wrapped by a KMS encrypt operation whose encryption context names the backup."
-    rationale: "The context binds the wrapped key to its backup."
+    statement: "On AWS key@ MUST make the archive key with GenerateDataKey under a dedicated KMS key enabled on use."
+    rationale: "The dedicated key may live in another account, and only the restore role may unwrap the copy (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: ST-89, section: "6", depth: Partial}
     issues: [834]
     verification:
-      - {kind: integration-test, ref: "encryption-context test"}
+      - {kind: integration-test, ref: "the archive key of a test installation is wrapped by the dedicated key; the header holds the wrapped copy"}
   - id: REQ-BACKUP-019
     area: BACKUP
-    statement: "On a hardware-token installation the data key of a backup archive MUST be wrapped by the hardware token."
-    rationale: "The token is the key custodian where no cloud key service exists."
+    statement: "On boards the archive key MUST be wrapped by ECDH P-384 for the key-agreement public keys named in the plan, which key@ gives exporter@ as public keys only."
+    rationale: "The job can then wrap the key without being able to unwrap it (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: ["bare-metal"]
+    actors: [exporter, key]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [834]
     verification:
-      - {kind: integration-test, ref: "hardware-token wrap test"}
+      - {kind: integration-test, ref: "exporter@ wraps an archive key for the plan's public keys and cannot unwrap it"}
   - id: REQ-BACKUP-020
     area: BACKUP
-    statement: "A backup archive MUST have at least one offline operator hardware-token recipient for break-glass."
-    rationale: "A recipient that is offline survives the loss of the online key path."
+    statement: "A backup archive MUST have the offline recovery recipient among its recipients."
+    rationale: "A recipient that is offline survives the loss of the online key path (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter]
     standards:
       - {id: ST-95, section: "age", depth: Full}
       - {id: NC-10, section: "PIV", depth: Partial}
     issues: [834]
     verification:
-      - {kind: test-vectors, ref: "age vectors"}
+      - {kind: test-vectors, ref: "archive format vectors with the recovery recipient's wrap"}
       - {kind: integration-test, ref: "offline recipient restore test"}
   - id: REQ-BACKUP-021
     area: BACKUP
-    statement: "On AWS only the restore role MUST be able to decrypt a backup data key."
-    rationale: "A narrow decrypt grant limits who can read a backup."
+    statement: "On AWS only the restore role MUST be able to unwrap an archive key."
+    rationale: "A narrow unwrap grant limits who can read a backup (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -390,28 +397,30 @@ requirements:
       - {kind: integration-test, ref: "lock-mode check"}
   - id: REQ-BACKUP-024
     area: BACKUP
-    statement: "The backup function and the restore function SHOULD run as separate actors with separate identities."
-    rationale: "Separate identities limit what a stolen backup identity can do."
-    level: SHOULD
+    statement: "The backup job of exporter@ and the restore command of store@ MUST run under separate identities."
+    rationale: "Separate identities limit what a stolen backup identity can do (ADR 0010)."
+    level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter, store]
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [835]
     verification:
-      - {kind: manual, ref: "actor identity review"}
+      - {kind: integration-test, ref: "the restore identity can write what it restores and cannot write the backup bucket; the backup identity cannot restore"}
   - id: REQ-BACKUP-025
     area: BACKUP
     statement: "The restore actor SHOULD be able to run while the entry and signer actors are down."
     rationale: "Restore is needed exactly when the service is unavailable."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [835]
+    superseded_by: [REQ-BACKUP-055]
     verification:
       - {kind: integration-test, ref: "restore-with-services-down test"}
   - id: REQ-BACKUP-026
@@ -429,8 +438,8 @@ requirements:
       - {kind: manual, ref: "backup scope review"}
   - id: REQ-BACKUP-031
     area: BACKUP
-    statement: "A restore MUST NOT loosen a tighten-only switch."
-    rationale: "A tighten-only switch is merged as a union, so an older archive cannot reopen what an operator closed."
+    statement: "A restore MUST NOT undo a tightening that was made after the archive was taken."
+    rationale: "A revocation, a switch turned on, a hold, a shorter lifetime and a suspension made later are applied again (principle 12) (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -438,15 +447,16 @@ requirements:
     standards: []
     issues: [835]
     verification:
-      - {kind: integration-test, ref: "tighten-only restore merge test"}
+      - {kind: integration-test, ref: "tightening roll-forward test: each tightening kind survives a restore of an older archive"}
   - id: REQ-BACKUP-032
     area: BACKUP
-    statement: "A backup MUST contain vendor-issued and operator-set secrets only in sealed form."
-    rationale: "The backup side must not read secrets, and a restore must not need a vendor ceremony."
+    statement: "An archive MUST hold a generated or received secret only as a hash or as ciphertext."
+    rationale: "The backup side must not read secrets, and a restore must not need a vendor ceremony (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [exporter]
     standards:
       - {id: ST-95, section: "age", depth: Partial}
     issues: [834]
@@ -458,11 +468,12 @@ requirements:
     rationale: "A sealed archive is only as recoverable as its sealing key, and with recipients held apart, one of them an offline hardware token (REQ-BACKUP-001, REQ-BACKUP-020), a lost sealing key is a restore and not a root ceremony (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
     issues: [835, 1015]
+    superseded_by: [REQ-BACKUP-047]
     verification:
       - {kind: integration-test, ref: "escrow restore rehearsal"}
   - id: REQ-BACKUP-034
@@ -484,11 +495,12 @@ requirements:
     rationale: "A list kept by hand drifts from the record kinds."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [834, 864]
+    superseded_by: [REQ-BACKUP-045]
     verification:
       - {kind: integration-test, ref: "generated backup list test"}
   - id: REQ-BACKUP-037
@@ -497,10 +509,11 @@ requirements:
     rationale: "An archive must not undo the shred of a company's audit key (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1015]
+    superseded_by: [REQ-BACKUP-048, REQ-BACKUP-047, REQ-BACKUP-038]
     verification:
       - {kind: integration-test, ref: "an archive of an installation with a shredded company holds no copy of the company's audit or usage key"}
   - id: REQ-BACKUP-038
@@ -529,7 +542,7 @@ requirements:
       - {kind: integration-test, ref: "a production installation without an archive retention is refused"}
   - id: REQ-BACKUP-040
     area: BACKUP
-    statement: "A backup archive MUST be a tar file whose entries are a manifest and one RFC 8785 canonical JSON file for each boundary and record kind."
+    statement: "An archive MUST be a tar file whose entries are a manifest and one file per boundary and kind, with one RFC 8785 canonical JSON item per line sorted by address."
     rationale: "A stable form can be compared byte for byte and read without sluis (ADR 0010)."
     level: MUST
     source: design-decision
@@ -541,8 +554,8 @@ requirements:
       - {kind: test-vectors, ref: "archive golden files"}
   - id: REQ-BACKUP-041
     area: BACKUP
-    statement: "A restore onto a driver other than the one that was backed up MUST yield the record counts and digests that the manifest states for every kind."
-    rationale: "The archive is logical, so a restore is also the way to move state between drivers (ADR 0010)."
+    statement: "A restore onto an engine other than the one that was backed up MUST yield the item counts and digests that the manifest states for every kind."
+    rationale: "The archive is logical, so a restore is also the way to move state between engines (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -550,7 +563,7 @@ requirements:
     standards: []
     issues: [1015, 835]
     verification:
-      - {kind: integration-test, ref: "a backup on one state driver restored on another, compared with the manifest"}
+      - {kind: integration-test, ref: "a backup on one engine restored on another, compared with the manifest"}
   - id: REQ-BACKUP-042
     area: BACKUP
     statement: "A restore MUST refuse a destination that already holds records of the restored kinds unless the operator asks to overwrite."
@@ -587,3 +600,240 @@ requirements:
     issues: [1015]
     verification:
       - {kind: test-vectors, ref: "manifests with an unknown format version"}
+
+  # ---- the archive, the job and the restore command (decision 0010)
+  - id: REQ-BACKUP-045
+    area: BACKUP
+    statement: "An archive MUST contain only the kinds that the kind registry marks backed up."
+    rationale: "Config, secret and temp kinds and MaintenanceMode have another copy or may be lost, and a new kind appears in the next archive without a change to the job (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834, 1015]
+    verification:
+      - {kind: integration-test, ref: "an archive holds every durable authoritative kind and no config, secret or temp kind"}
+      - {kind: integration-test, ref: "a kind added to the registry appears in the next archive with no change to the backup job"}
+  - id: REQ-BACKUP-046
+    area: BACKUP
+    statement: "The backup job MUST read items as the store holds them, with sealed values still sealed and hashed values still hashes."
+    rationale: "The job opens nothing and the store opens nothing, so an archive adds no place where plaintext exists (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834]
+    verification:
+      - {kind: integration-test, ref: "an archive scan finds only ciphertext for sealed kinds and only hashes for hashed kinds"}
+      - {kind: integration-test, ref: "the actor registry gives exporter@ no Open purpose for tenant data"}
+  - id: REQ-BACKUP-047
+    area: BACKUP
+    statement: "An archive MUST include the DataKeyWrap items as ciphertext."
+    rationale: "With the archive, the recovery recipient opens every wrap when all cards and KMS keys are lost (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1015]
+    verification:
+      - {kind: integration-test, ref: "a restore into an empty installation with the recovery recipient opens every sealed value of the archive"}
+  - id: REQ-BACKUP-048
+    area: BACKUP
+    statement: "An archive MUST NOT hold an authority key or a wrapping key."
+    rationale: "Keys never leave their store, and an archive is a copy that outlives the installation (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834, 1015]
+    verification:
+      - {kind: integration-test, ref: "archive content scan for key material of the key stores"}
+  - id: REQ-BACKUP-049
+    area: BACKUP
+    statement: "An archive MUST be one tar encrypted as a whole with AES-256-GCM under an archive key made for that archive."
+    rationale: "A key for the moment of writing limits what the loss of one archive key can expose (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834]
+    verification:
+      - {kind: test-vectors, ref: "archive format vectors with the archive key unwrapped"}
+      - {kind: integration-test, ref: "an archive written twice has two archive keys"}
+  - id: REQ-BACKUP-050
+    area: BACKUP
+    statement: "The manifest of an archive MUST name the format version, the release that wrote it, the boundary, the time, the digest of the config snapshot, the schema version, the count and SHA-384 digest of every kind's file and the fingerprints of the recipients."
+    rationale: "A restore decides from the manifest how to read each kind and proves what it wrote (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1015]
+    verification:
+      - {kind: test-vectors, ref: "archive golden files: the manifest fields of a known state"}
+  - id: REQ-BACKUP-051
+    area: BACKUP
+    statement: "The backup MUST be a job of exporter@ that runs on a schedule under a lease."
+    rationale: "One holder of a bucket credential makes the archive, and a second copy of the job must not run at once (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834, 956]
+    verification:
+      - {kind: integration-test, ref: "two exporter@ instances run the schedule; one archive is written per interval"}
+  - id: REQ-BACKUP-052
+    area: BACKUP
+    statement: "The backup job MUST write the archive with a bucket credential that can add an object and cannot read, replace or delete one."
+    rationale: "A compromised job must not be able to read or destroy earlier archives (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [834]
+    verification:
+      - {kind: integration-test, ref: "with the job's credential: put succeeds; get, overwrite and delete are refused by the bucket policy"}
+  - id: REQ-BACKUP-053
+    area: BACKUP
+    statement: "`sluis config check` MUST refuse a production installation whose BackupPlan declares no schedule."
+    rationale: "A default would be a number that no principle can justify (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1015, 864]
+    verification:
+      - {kind: integration-test, ref: "a production installation without a schedule is refused"}
+  - id: REQ-BACKUP-054
+    area: BACKUP
+    statement: "Each archive MUST be announced by the audit fact backup.completed, which carries the archive's digest and the recipients' fingerprints."
+    rationale: "A restore uses the fact under a witnessed checkpoint to prove the provenance of an archive (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [1015]
+    verification:
+      - {kind: integration-test, ref: "after a backup the audit log holds the fact with the digest of the object in the bucket"}
+  - id: REQ-BACKUP-055
+    area: BACKUP
+    statement: "A restore MUST be started by an operator through the command of store@ and by no work actor and not by the console."
+    rationale: "A restore overwrites state, so it must work while entry and signer are down and cannot be reached from a request path (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [835]
+    verification:
+      - {kind: integration-test, ref: "the console and every work actor call the restore; refused"}
+      - {kind: integration-test, ref: "a restore with entry and signer stopped completes"}
+  - id: REQ-BACKUP-056
+    area: BACKUP
+    statement: "A restore MUST write MaintenanceMode before it writes any restored item."
+    rationale: "The mode refuses other writes and stops sign-in, survives a crash and is lifted last (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [835]
+    verification:
+      - {kind: integration-test, ref: "a restore interrupted after the first item leaves the installation in maintenance"}
+  - id: REQ-BACKUP-058
+    area: BACKUP
+    statement: "A restore MUST write through the store of its target."
+    rationale: "The target may use another engine than the source, and the rules of the store apply to what a restore writes (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [835]
+    verification:
+      - {kind: integration-test, ref: "a restore from an rqlite archive into a DynamoDB installation passes the counts and digests of the manifest"}
+  - id: REQ-BACKUP-059
+    area: BACKUP
+    statement: "The restore of a board archive on AWS MUST use the recovery recipient's rewrap of the archive key."
+    rationale: "No KMS key can unwrap an archive key that was wrapped for a card (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [835]
+    verification:
+      - {kind: integration-test, ref: "a board archive restored on a test AWS installation after the recovery recipient rewrapped its key"}
+  - id: REQ-BACKUP-060
+    area: BACKUP
+    statement: "A restore MUST NOT modify its source installation."
+    rationale: "The old installation stays as it was, so a rollback is pointing back at it (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [835]
+    verification:
+      - {kind: integration-test, ref: "the source installation is compared before and after a restore; unchanged"}
+  - id: REQ-BACKUP-061
+    area: BACKUP
+    statement: "The kind registry MUST declare a merge rule for roll-forward for every backed-up kind."
+    rationale: "The roll-forward applies the audit facts since the archive by the merge rule of each kind (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a backed-up kind without a merge rule fails"}
+  - id: REQ-BACKUP-062
+    area: BACKUP
+    statement: "A recovery drill MUST record the audit fact restore.rehearsed."
+    rationale: "The result of a rehearsal is published with its date and versions (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1142]
+    verification:
+      - {kind: integration-test, ref: "a rehearsal restore into an empty scratch installation writes the fact and compares counts and digests with the manifest"}
+  - id: REQ-BACKUP-063
+    area: BACKUP
+    statement: "Public key material MUST be served through a content delivery network with a stale-if-error window."
+    rationale: "Tokens already issued keep verifying while the region is down (ADR 0010)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1142]
+    verification:
+      - {kind: integration-test, ref: "the server behind the discovery document and key set is stopped; the network still serves them within the window"}

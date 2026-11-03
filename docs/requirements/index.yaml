@@ -29,7 +29,7 @@ catalogue:
     AUDIT: {title: "Audit log", file: audit.yaml}
     QUOTA: {title: "Quota and metering", file: quota.yaml}
     DATA: {title: "The data model and the store", file: data.yaml}
-    SECRETS: {title: "Secrets", file: secrets.yaml}
+    SECRETS: {title: "Secrets", file: secrets.yaml, retired: true}
     EXPORT: {title: "Export", file: export.yaml}
     BACKUP: {title: "Backup and restore", file: backup.yaml}
     OBS: {title: "Observability", file: obs.yaml}
