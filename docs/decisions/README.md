@@ -84,7 +84,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the certificate authorities; every leaf has a fixed profile and a short lifetime | Accepted |
 | [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
 | [0025](0025-integrations.md) | Integrations are adapters, work actors that return facts or carry out authorised effects, hold nothing at rest, and mint only for declared targets | Accepted |
-| [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease | Proposed |
+| [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease | Accepted |
 | [0027](0027-the-console.md) | The console checks delegation and routes writes, and its pages follow the storage class and profile of what they show | Accepted |
 | [0028](0028-audit-pieces.md) | Audit is four pieces joined by a transport, search is an index fed from the log, and an audit installation has its own front | Accepted |
 | [0029](0029-the-audit-log.md) | The audit log is a tiled log in a blob, sealed by its one writer, with pseudonyms, lifecycle tiers and per-tenant keys | Accepted |

@@ -107,7 +107,7 @@ Systems that sluis serves but never calls (databases, hosts, cert-manager, GitOp
 
 A credential minter and a provisioner are effectors by nature, so two conditions keep them from deciding anything:
 
-1. **Core decides, the adapter executes.** An adapter receives a **grant** that `policy` decided and key@ sealed: the decision, the policy digest and the hash of the scope ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). It refuses a scope the grant does not cover and cannot lengthen the lifetime. A provisioner reconciles to a desired state that core publishes as data; for a pass that no caller started it asks `policy` for a grant of its own ([0025](/decisions/0025-integrations/#how-core-authorises-an-effect)).
+1. **Core decides, the adapter executes.** An adapter receives a **grant** that `policy` decided and key@ sealed: the decision, the policy digest and the hash of the scope ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). It refuses a scope the grant does not cover and cannot lengthen the lifetime. A provisioner reconciles to a desired state that a directory adapter wrote as data from `policy`'s answer; for a pass that no caller started it asks `policy` for a grant of its own ([0025](/decisions/0025-integrations/#how-core-authorises-an-effect)).
 2. **Business limits live in core.** Caller caps, mint rates and which group may hold which role are policy or quota, checked before the adapter is called. An adapter enforces only technical limits: the vendor's API rate and maximum lifetime.
 
 The mint flow, in two steps. Step 1: `exchange` verifies the proof and asks `policy`.
