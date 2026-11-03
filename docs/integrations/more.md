@@ -1,6 +1,6 @@
 ---
 title: More integrations
-description: Slack, the Outline wiki, GoAlert and Telegram, the v1 parity integrations that keep channels, a wiki and an on-call tool in step with the directory.
+description: Slack, a wiki, GoAlert and Telegram: the v1 parity integrations that keep chat channels, wiki groups and an on-call tool in step with the directory.
 status: target
 sidebar:
   order: 20
@@ -30,12 +30,12 @@ Chat is the worked example of linked kinds ([0004](/decisions/0004-the-data-mode
 
 Channels bound in reviewed policy and channels made on the console are two kinds with two owners and never mix ([0026](/decisions/0026-reconcilers/#safety)).
 
-## Outline wiki
+## Wiki
 
-An Outline wiki's admins, groups, members, collections and grants follow the directory. A new employee reads the collections their group is bound to on day one; a leaver is suspended when the directory stops vouching for them; a *strict* collection loses grants and direct members the policy does not name. Risky settings, such as public sharing or a document shared with someone the directory does not serve, are reported, not silently changed. A pass that would remove over half of a group or a collection's grants, demote more than one admin (or the last), or suspend more than three accounts waits for an operator.
+A wiki's admins, groups, members, collections and grants follow the directory. A new employee reads the collections their group is bound to on day one; a leaver is suspended when the directory stops vouching for them; a *strict* collection loses grants and direct members the policy does not name. Risky settings, such as public sharing or a document shared with someone the directory does not serve, are reported, not silently changed. A pass that would remove over half of a group or a collection's grants, demote more than one admin (or the last), or suspend more than three accounts waits for an operator.
 
 - **Kind:** `Provisioner`.
-- **Needs:** an API key of an Outline admin, as a credential. Outline has no service accounts, so the key belongs to a person: use a dedicated admin account and put it on the ignore list, so the controller never demotes the account it runs as. The controller refuses a key whose user is not an admin, calls only the users, groups and collections API, and reaches the wiki over HTTPS only.
+- **Needs:** an API key of a wiki admin, as a credential. The wiki product has no service accounts, so the key belongs to a person: use a dedicated admin account and put it on the ignore list, so the controller never demotes the account it runs as. The controller refuses a key whose user is not an admin, calls only the users, groups and collections API, and reaches the wiki over HTTPS only.
 - **Parity:** [#815](https://github.com/truvity/sluis/issues/815).
 
 ## GoAlert

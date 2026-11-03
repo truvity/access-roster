@@ -56,7 +56,7 @@ What sluis depends on for state, secrets, blobs, keys, scheduling and audit tran
 
 ## Integrations
 
-Connectors to directories, GitHub, Slack, Outline and Cloudflare.
+Connectors to directories, GitHub, Slack, a wiki and Cloudflare.
 
 | Feature | What v1 does | v1 documentation |
 |---|---|---|
@@ -70,7 +70,7 @@ Connectors to directories, GitHub, Slack, Outline and Cloudflare.
 | **[Slack policy channels](https://github.com/truvity/sluis/issues/812)** | Slack channels bound in git to internal groups, with holds and breakers. **v2:** a provisioner with `extend` and `strict` channels and holds, under the same contract as the other reconcilers ([ADR 0026](/decisions/0026-reconcilers/#safety)). | [How does a Slack pass decide?](/v1/concepts/sluis/slack-pass/) |
 | **[Slack console channels and Slack Connect channels](https://github.com/truvity/sluis/issues/813)** | Console-managed and Slack Connect channels fed by directory groups. **v2:** console channels are durable data written by the chat adapter and policy channels are config, never mixed ([ADR 0026](/decisions/0026-reconcilers/#safety)). | [Manage Slack channels on the console](/v1/guides/sluis/connect/slack-console-channels/) |
 | **[Slack workspace connection and Apps catalogue](https://github.com/truvity/sluis/issues/814)** | A Slack workspace connected from the console, with a catalogue of Slack Apps. | [Connect a Slack workspace](/v1/guides/sluis/connect/slack-workspace/) |
-| **[Outline workspace controller](https://github.com/truvity/sluis/issues/815)** | An Outline wiki's admins, groups, collections and grants kept in step with the policy. **v2:** a provisioner under the shared contract and its conformance suite ([ADR 0026](/decisions/0026-reconcilers/#tests)). | [Outline reference](/v1/reference/sluis/outline/) |
+| **[Wiki workspace controller](https://github.com/truvity/sluis/issues/815)** | A wiki's admins, groups, collections and grants kept in step with the policy. **v2:** a provisioner under the shared contract and its conformance suite ([ADR 0026](/decisions/0026-reconcilers/#tests)). | [Wiki reference (v1)](/v1/reference/sluis/outline/) |
 | **[Cloudflare API tokens](https://github.com/truvity/sluis/issues/816)** | Short-lived Cloudflare API tokens cloned from a disabled prototype under policy, with caps per caller. **v2:** a minter for a declared prototype with a refusal floor in code ([ADR 0025](/decisions/0025-integrations/#credential-minters)). | [Mint short-lived Cloudflare tokens and R2 credentials](/v1/guides/sluis/cloudflare-tokens/) |
 | **[Cloudflare R2 credentials](https://github.com/truvity/sluis/issues/817)** | R2 access keys from a preset's prototype, as an AWS credential-process answer. **v2:** a minter for a declared R2 prototype ([ADR 0025](/decisions/0025-integrations/#credential-minters)). | [Mint short-lived Cloudflare tokens and R2 credentials](/v1/guides/sluis/cloudflare-tokens/) |
 
