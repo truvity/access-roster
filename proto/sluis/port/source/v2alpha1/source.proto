@@ -1,0 +1,54 @@
+// The source contract of the config and secret ports (store-api.md "The source contract").
+syntax = "proto3";
+
+package sluis.port.source.v2alpha1;
+
+import "google/protobuf/duration.proto";
+
+// SourceService is served by the file, appconfig, credential and ssm drivers.
+service SourceService {
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);  // watch: NONE, NOTIFY or POLL
+  rpc Read(ReadRequest) returns (ReadResponse);                          // name -> bytes and a version label
+  rpc Watch(SourceWatchRequest) returns (stream SourceWatchResponse);    // NOTIFY drivers: a newer version exists
+}
+
+// Watch is how a source tells that a newer version exists.
+enum Watch {
+  WATCH_UNSPECIFIED = 0;  // not set
+  NONE = 1;               // never (a Lambda layer)
+  NOTIFY = 2;             // the driver pushes (the file driver watching its directory)
+  POLL = 3;               // the reader asks again after poll_after (the appconfig driver)
+}
+
+// CapabilitiesRequest asks what a source can do.
+message CapabilitiesRequest {}
+
+// CapabilitiesResponse says what a source can do.
+message CapabilitiesResponse {
+  Watch watch = 1;  // how the source reports a newer version
+}
+
+// ReadRequest reads one named value.
+message ReadRequest {
+  string name = 1;           // a config kind's segment, or the name of a secret
+  string if_none_match = 2;  // a version label the caller holds
+}
+
+// ReadResponse is the bytes and their version label.
+message ReadResponse {
+  bool unchanged = 1;                       // true when the value is still at if_none_match
+  bytes data = 2;                           // the bytes, never parsed by the driver
+  string version = 3;                       // a label, not a number: a file's digest, an AppConfig version
+  google.protobuf.Duration poll_after = 4;  // POLL drivers: when to ask again
+}
+
+// SourceWatchRequest asks to be told when a name has a newer version.
+message SourceWatchRequest {
+  string name = 1;  // the name to watch
+}
+
+// SourceWatchResponse says a newer version exists.
+message SourceWatchResponse {
+  string name = 1;     // the name that changed
+  string version = 2;  // its new version label
+}

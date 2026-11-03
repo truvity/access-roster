@@ -1,0 +1,99 @@
+// The item contract of the durable and temp ports (store-api.md "The item contract").
+syntax = "proto3";
+
+package sluis.port.item.v2alpha1;
+
+import "google/protobuf/timestamp.proto";
+import "sluis/type/v2alpha1/type.proto";
+
+// ItemService is served by the rqlite and dynamodb drivers.
+service ItemService {
+  rpc Get(ItemGetRequest) returns (ItemGetResponse);                // key -> item; not_found if absent or expired
+  rpc Query(QueryRequest) returns (QueryResponse);                  // items by key prefix, or by index entry, paged
+  rpc Transact(TransactRequest) returns (TransactResponse);         // conditions, puts and deletes, all or none
+  rpc TailLog(TailLogRequest) returns (stream TailLogResponse);     // the change log from a sequence
+}
+
+// DriverItem is an item as a driver keeps it; the driver never knows what a kind means.
+message DriverItem {
+  bytes key = 1;                                          // the address as text
+  uint64 version = 2;                                     // set by the driver: 1 at creation, plus 1 at each change
+  bytes value = 3;                                        // the bytes store@ gave
+  google.protobuf.Timestamp expires_at = 4;               // set by store@, never by the engine
+  repeated sluis.type.v2alpha1.IndexEntry indexes = 5;    // the declared indexes
+}
+
+// ItemGetRequest reads one item by key.
+message ItemGetRequest {
+  bytes key = 1;           // the address as text
+  bool linearizable = 2;   // true: a linearizable read; false: a follower read is fine
+}
+
+// ItemGetResponse is the item.
+message ItemGetResponse {
+  DriverItem item = 1;  // the item
+}
+
+// QueryRequest lists items by key prefix, or by index entry.
+message QueryRequest {
+  bytes prefix = 1;        // the key prefix
+  string index = 2;        // a declared index, or empty to list by prefix
+  bytes index_value = 3;   // the value to match under that index
+  int32 page_size = 4;     // the page size
+  bytes page_token = 5;    // opaque
+}
+
+// QueryResponse is one page of items.
+message QueryResponse {
+  repeated DriverItem items = 1;  // the items of the page
+  bytes next_page_token = 2;      // empty on the last page
+}
+
+// TransactRequest is a set of conditions, puts and deletes, applied all or none.
+message TransactRequest {
+  repeated Condition conditions = 1;  // every one must hold
+  repeated Put puts = 2;              // the items to write
+  repeated Delete deletes = 3;        // the items to remove
+}
+
+// Condition is what must hold for a key before the transaction applies.
+message Condition {
+  bytes key = 1;          // the key
+  oneof expect {
+    bool absent = 2;      // the key must not exist
+    uint64 version = 3;   // the key must be at this version
+  }
+}
+
+// Put writes one item.
+message Put {
+  bytes key = 1;                                          // the key
+  bytes value = 2;                                        // the bytes to keep
+  google.protobuf.Timestamp expires_at = 3;               // set by store@, never by the engine
+  repeated sluis.type.v2alpha1.IndexEntry indexes = 4;    // the declared indexes
+  bool log = 5;                                           // also write a change-log row in the same transaction
+}
+
+// Delete removes one item.
+message Delete {
+  bytes key = 1;   // the key
+  bool log = 2;    // also write a change-log row in the same transaction
+}
+
+// TransactResponse carries the puts as written.
+message TransactResponse {
+  repeated DriverItem items = 1;  // the puts as written, with their versions
+}
+
+// TailLogRequest asks for the change log from a sequence.
+message TailLogRequest {
+  uint64 from_sequence = 1;  // 0 = from now
+}
+
+// TailLogResponse is one row of the change log.
+message TailLogResponse {
+  uint64 sequence = 1;   // the row's sequence
+  bytes key = 2;         // the key that changed
+  uint64 version = 3;    // its version after the change
+  bool deleted = 4;      // true when the change was a delete
+}

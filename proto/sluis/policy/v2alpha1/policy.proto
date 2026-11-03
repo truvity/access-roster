@@ -1,0 +1,79 @@
+// The policy service (policy.md "What a decision holds").
+syntax = "proto3";
+
+package sluis.policy.v2alpha1;
+
+// PolicyService decides, and seals the grant of an allow.
+service PolicyService {
+  rpc Decide(DecideRequest) returns (DecideResponse);
+}
+
+// EntityRef names a Cedar entity.
+message EntityRef {
+  string type = 1;  // the Cedar type, e.g. Person or Client
+  string id = 2;    // the entity id, e.g. a subject or "example-app"
+}
+
+// Authentication is the context of how the person signed in; absent means unknown (policy.md "Context").
+message Authentication {
+  optional string acr = 1;       // the authentication context class, if known
+  repeated string amr = 2;       // the authentication methods
+  bool amr_present = 3;          // true when the upstream said anything about amr, even an empty list
+  optional int64 auth_age = 4;   // seconds since the person authenticated, if known
+}
+
+// PersonFacts are what policy knows about the person asking.
+message PersonFacts {
+  string subject = 1;               // the opaque subject
+  repeated string accounts = 2;     // "<upstream>/<subject claim value>"
+  string state = 3;                 // the person's state
+}
+
+// ClientFacts are what policy knows about the client asking.
+message ClientFacts {
+  string id = 1;                    // the client id
+  repeated string requires = 2;     // what the client requires of a sign-in
+}
+
+// ActorFacts are what policy knows about an actor asking; the audit pieces are principals (decision D-6).
+message ActorFacts {
+  string name = 1;  // the actor's name
+}
+
+// DecideRequest asks a question of policy.
+message DecideRequest {
+  string action = 1;                        // "token.issue", "token.exchange", "audit.seal", "audit.index" or "audit.read"
+  EntityRef principal = 2;                  // who asks
+  EntityRef resource = 3;                   // what it asks about
+  string tenant = 4;                        // the tenant the question is about; "*" only for audit.index and audit.read
+  Authentication context = 5;               // how the person signed in
+  PersonFacts person = 6;                   // facts about the person, if the principal is one
+  ClientFacts client = 7;                   // facts about the client, if there is one
+  ActorFacts actor = 8;                     // facts about the actor, if the principal is one
+  repeated string grant_store_verbs = 9;    // what the asker needs the grant to allow; policy narrows, never widens
+  repeated string grant_key_ops = 10;       // the key operations the asker needs the grant to allow
+}
+
+// Decision is the verdict.
+enum Decision {
+  DECISION_UNSPECIFIED = 0;  // not set
+  ALLOW = 1;                 // the action is allowed
+  DENY = 2;                  // the action is not allowed
+}
+
+// Reason names a policy that decided.
+message Reason {
+  string policy_id = 1;                  // the policy that matched
+  string layer = 2;                      // the layer the policy came from
+  map<string, string> annotations = 3;   // the policy's annotations
+}
+
+// DecideResponse is the decision.
+message DecideResponse {
+  Decision decision = 1;               // ALLOW or DENY
+  repeated Reason reasons = 2;         // the policies that decided
+  repeated string grant_names = 3;     // the full held set after the ladder (policy.md "How a person's grants are found")
+  string digest = 4;                   // SHA-384 hex of the effective set, the vocabulary and the schema version
+  bytes sealed_grant = 5;              // on ALLOW only
+  string decision_id = 6;              // UUIDv7, also in the audit record of the decision
+}

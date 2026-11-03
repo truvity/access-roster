@@ -1,0 +1,25 @@
+// The exchange service: token exchange (RFC 8693).
+syntax = "proto3";
+
+package sluis.exchange.v2alpha1;
+
+import "sluis/type/v2alpha1/type.proto";
+
+// ExchangeService serves the token endpoint's exchange grant that entry routes to it.
+service ExchangeService {
+  rpc Token(TokenExchangeRequest) returns (sluis.type.v2alpha1.HttpReply);
+}
+
+// TokenExchangeRequest is the token exchange request (RFC 8693 section 2.1).
+message TokenExchangeRequest {
+  string grant_type = 1;            // "urn:ietf:params:oauth:grant-type:token-exchange"
+  string subject_token = 2;         // the token being exchanged
+  string subject_token_type = 3;    // the type of the subject token
+  string audience = 4;              // the audience wanted
+  string resource = 5;              // the resource wanted
+  string scope = 6;                 // the scope wanted
+  string requested_token_type = 7;  // the type of token wanted
+  string client_id = 8;             // the client
+  string actor_token = 9;           // the token of the actor, if any
+  string actor_token_type = 10;     // the type of the actor token
+}

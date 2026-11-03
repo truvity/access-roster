@@ -1,0 +1,35 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  ignore_only:
+    # The enum values are the words of the records (store-api.md, policy.md): CREATE,
+    # LINEARIZABLE, ALLOW, NONE. A prefix would change every consumer's spelling.
+    ENUM_VALUE_PREFIX:
+      - proto/sluis/store/v2alpha1/store.proto
+      - proto/sluis/policy/v2alpha1/policy.proto
+      - proto/sluis/port/source/v2alpha1/source.proto
+    # The OAuth endpoints answer with the shared HttpReply (contracts.md "Surfaces"),
+    # and the blob, item and source contracts name their messages after the contract.
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/sluis/session/v2alpha1/session.proto
+      - proto/sluis/exchange/v2alpha1/exchange.proto
+      - proto/sluis/port/item/v2alpha1/item.proto
+      - proto/sluis/port/source/v2alpha1/source.proto
+      - proto/sluis/port/blob/v2alpha1/blob.proto
+      - proto/sluis/port/keystore/v2alpha1/keystore.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/sluis/session/v2alpha1/session.proto
+      - proto/sluis/exchange/v2alpha1/exchange.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - proto/sluis/port/item/v2alpha1/item.proto
+      - proto/sluis/port/source/v2alpha1/source.proto
+      - proto/sluis/port/blob/v2alpha1/blob.proto
+      - proto/sluis/port/keystore/v2alpha1/keystore.proto
+      - proto/sluis/exchange/v2alpha1/exchange.proto
+# The contracts are v2alpha1 and may change in any pre-release (contracts.md "Versions"):
+# breaking checks are off until v2 exists.
+breaking:
+  use: []

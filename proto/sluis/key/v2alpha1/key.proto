@@ -1,0 +1,121 @@
+// The key service, served by key@ (0006 "Seal and open", "Sign and Mac"), and the kind DataKeyWrap.
+syntax = "proto3";
+
+package sluis.key.v2alpha1;
+
+import "sluis/type/v2alpha1/type.proto";
+
+// KeyService seals, opens, signs and macs; key material never leaves key@.
+service KeyService {
+  rpc Seal(SealRequest) returns (SealResponse);
+  rpc Open(OpenRequest) returns (OpenResponse);                    // batched (0006 "Opens are batched")
+  rpc SealGrant(SealGrantRequest) returns (SealGrantResponse);     // policy only
+  rpc OpenGrant(OpenGrantRequest) returns (OpenGrantResponse);     // store@, signer, ca, minters
+  rpc Sign(SignRequest) returns (SignResponse);                    // content-aware per purpose (0006 "Keys sign in place")
+  rpc Mac(MacRequest) returns (MacResponse);
+  rpc PublicKey(PublicKeyRequest) returns (PublicKeyResponse);
+}
+
+// SealRequest seals a value under the data key of a purpose.
+message SealRequest {
+  string purpose = 1;                        // a purpose name from the key registry (keys.yaml), not an enum
+  sluis.type.v2alpha1.Address address = 2;   // the address the value is bound to (the envelope's additional authenticated data)
+  bytes plaintext = 3;                       // the value to seal
+  bytes grant = 4;                           // the sealed grant; required for a tenant purpose of a tenant address
+}
+
+// SealResponse carries the envelope.
+message SealResponse {
+  bytes envelope = 1;  // store-api.md "The sealed envelope"
+}
+
+// OpenItem is one envelope to open.
+message OpenItem {
+  string purpose = 1;                        // a purpose name from the key registry
+  sluis.type.v2alpha1.Address address = 2;   // the address the envelope was bound to
+  bytes envelope = 3;                        // the envelope to open
+}
+
+// OpenRequest opens a batch of envelopes.
+message OpenRequest {
+  repeated OpenItem items = 1;  // at most 64
+  bytes grant = 2;              // the sealed grant; required for a tenant purpose of a tenant address
+}
+
+// OpenResponse carries the plaintexts.
+message OpenResponse {
+  repeated bytes plaintexts = 1;  // same order as the items; all or none
+}
+
+// SealGrantRequest asks key@ to seal a grant that policy decided.
+message SealGrantRequest {
+  sluis.type.v2alpha1.Grant grant = 1;  // the decision to seal
+}
+
+// SealGrantResponse carries the sealed grant.
+message SealGrantResponse {
+  bytes sealed_grant = 1;  // the grant sealed under purpose grant
+}
+
+// OpenGrantRequest asks key@ to open a sealed grant.
+message OpenGrantRequest {
+  bytes sealed_grant = 1;  // a grant sealed by SealGrant
+}
+
+// OpenGrantResponse carries the grant.
+message OpenGrantResponse {
+  sluis.type.v2alpha1.Grant grant = 1;  // the opened grant
+}
+
+// SignRequest signs content under the key of a purpose.
+message SignRequest {
+  string purpose = 1;    // a purpose name from the key registry, e.g. token-signing or audit-log
+  bytes content = 2;     // the content key@ checks and signs
+  string algorithm = 3;  // "ES384"
+  bytes grant = 4;       // only for purposes that carry an effect
+}
+
+// SignResponse carries the signature in both encodings.
+message SignResponse {
+  bytes signature_raw = 1;  // raw r||s (JWS)
+  bytes signature_der = 2;  // ASN.1 DER (signed notes)
+  string key_id = 3;        // the signing key's RFC 7638 thumbprint, base64url
+}
+
+// MacRequest computes a keyed hash.
+message MacRequest {
+  string purpose = 1;  // mac, pseudonym or pairwise
+  string tenant = 2;   // the tenant whose key is used
+  string label = 3;    // separates uses of the same purpose
+  bytes input = 4;     // the value to hash
+  string epoch = 5;    // YYYYMM for pseudonym
+  bytes grant = 6;     // the sealed grant (0006: Mac(purpose, input, grant)); not checked tonight under D-5, boundary purposes are checked by rule only
+}
+
+// MacResponse carries the keyed hash.
+message MacResponse {
+  bytes mac = 1;  // HMAC-SHA384, 48 bytes
+}
+
+// PublicKeyRequest asks for the public key of a purpose.
+message PublicKeyRequest {
+  string purpose = 1;  // a purpose name from the key registry
+}
+
+// PublicKeyResponse carries the public key.
+message PublicKeyResponse {
+  bytes spki_der = 1;       // the public key, SubjectPublicKeyInfo in DER
+  string key_id = 2;        // RFC 7638 thumbprint, base64url
+  string algorithm = 3;     // e.g. "ES384"
+  repeated bytes x5c = 4;   // the certificate chain, DER, when the purpose has one
+}
+
+// DataKeyWrap is the kind of a wrapped data key (0006 "DataKeyWrap"): id <purpose>/<generation>/<recipient>,
+// durable, plain (already ciphertext).
+message DataKeyWrap {
+  string purpose = 1;            // the purpose the data key belongs to
+  uint32 generation = 2;         // the data key's generation
+  string recipient = 3;          // the key@ that may unwrap it
+  bytes ephemeral_public = 4;    // SEC1 uncompressed P-384 point of the ECDH-ES sender key
+  bytes wrapped_key = 5;         // AES-KW (RFC 3394) of the 32-byte data key under HKDF-SHA384(shared secret)
+}

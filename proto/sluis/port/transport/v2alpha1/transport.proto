@@ -1,0 +1,52 @@
+// The audit transport (0028 "Transport"); a spool tonight.
+syntax = "proto3";
+
+package sluis.port.transport.v2alpha1;
+
+// TransportService carries audit messages from emitters to the writer.
+service TransportService {
+  rpc Emit(EmitRequest) returns (EmitResponse);                    // emitters; caller known by peer uid
+  rpc Receive(ReceiveRequest) returns (stream ReceiveResponse);    // the writer only
+  rpc Ack(AckRequest) returns (AckResponse);                       // the writer only
+}
+
+// AuditMessage is one audit record with its usage records.
+message AuditMessage {
+  string uid = 1;                // metadata.uid (UUIDv7)
+  bytes record = 2;              // the record as RFC 8785 bytes
+  repeated bytes usage = 3;      // the usage records of the same event
+}
+
+// EmitRequest hands a message to the transport.
+message EmitRequest {
+  AuditMessage message = 1;  // the message
+  bool blocking = 2;         // answer only once fsync'd (0029 "Sealing")
+}
+
+// EmitResponse says the transport has the message.
+message EmitResponse {}
+
+// ReceiveRequest opens the stream of deliveries.
+message ReceiveRequest {
+  uint32 max_batch = 1;  // the most deliveries in one response
+}
+
+// Delivery is one message handed to the writer.
+message Delivery {
+  uint64 delivery_id = 1;     // what the writer acknowledges
+  string emitter = 2;         // "<actor>@<boundary>" from the peer uid
+  AuditMessage message = 3;   // the message
+}
+
+// ReceiveResponse is a batch of deliveries.
+message ReceiveResponse {
+  repeated Delivery deliveries = 1;  // the batch
+}
+
+// AckRequest acknowledges deliveries once they are sealed.
+message AckRequest {
+  repeated uint64 delivery_ids = 1;  // the deliveries sealed
+}
+
+// AckResponse says the acknowledgement is recorded.
+message AckResponse {}
