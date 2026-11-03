@@ -35,6 +35,8 @@ An id is `REQ-<AREA>-<nnn>`, for example `REQ-AUTHN-002`.
 - The area prefix equals the `area` field and the file it sits in.
 - A longer record that is cut into clauses keeps its id for the first clause. Each further clause gets the next free id in the same area
   and `split_from: <original id>`. Clauses sit next to their parent in the file, so ids are not always in order.
+- A rule that moves to another area is withdrawn in its old area and written as a new record in its new area, because the area prefix equals the file. The old record's `superseded_by` names the new one. The data model and the store moved to `DATA` this way (decisions 0004 and 0005).
+- An area whose records are all withdrawn is marked `retired: true` in `index.yaml`. It keeps its file and its ids, and the site leaves it out of the area lists. `just site-lint` refuses `retired: true` on an area that still has a record that is not withdrawn.
 - Records are not merged. A record that no longer applies gets `status: withdrawn` and `superseded_by: [ids]`. A record about a subject that moved to another product (root custody moved to ritueel on 2026-11-01) gets `status: withdrawn` and `moved_to` instead.
 
 ## Record fields
@@ -44,14 +46,14 @@ An id is `REQ-<AREA>-<nnn>`, for example `REQ-AUTHN-002`.
 | `statement` | One sentence ending in a period with exactly one of MUST, MUST NOT, SHOULD, SHOULD NOT, MAY. Names a role (sluis, an operator, a relying party), never a person or a company. |
 | `rationale` | One sentence ending in a period. |
 | `level` | MUST, SHOULD or MAY; equals the class of the keyword (MUST NOT counts as MUST). |
-| `source` | Where the requirement comes from (not the data origin of ADR 0004), a category: `v1-parity`, `stakeholder-ciam`, `stakeholder-integrator`, `security-review`, `design-decision`, `standard`. |
+| `source` | Where the requirement comes from (not the storage class of ADR 0004), a category: `v1-parity`, `stakeholder-ciam`, `stakeholder-integrator`, `security-review`, `design-decision`, `standard`. |
 | `status` | `done` (implemented, and `tests` names the passing tests), `planned` (an agreed feature or design covers it), `partial` (the plan is weaker), `open` (needs a decision or has no plan), `out-of-scope` (a boundary kept as a refusal), `withdrawn`. |
 | `runtimes` | `all`, or a list of `bare-metal`, `serverless`, `kubernetes`. |
 | `standards` | `{id, section, depth}`: an id from `standards.yaml`, the section, and `Full` or `Partial`. |
 | `features` | Optional: `parity` (part of v1 parity, no single issue) or `design` (specified, no issue yet). Issue numbers go in `issues`, never here. |
 | `issues` | Optional: the numbers of the truvity/sluis issues that deliver the record, for example `[915]`. Unique positive integers, at least one when present. The issues' Product milestone places the record on the status page. |
 | `tests` | The repository paths of the files that hold the passing tests, for example `[core/authn/authorize_test.go]`. Required when `status` is `done`, optional otherwise. Each path is relative to the repository root, names an existing file, and the file names the record's id. |
-| `actors` | Optional: the actors that implement the record, by their names in the [actor registry](../architecture/actors.yaml), for example `[policy]`. Each must be an actor whose requirement areas include the record's area; `just check-actors` checks it. |
+| `actors` | Optional: the actors that implement the record, by their names in the [actor registry](../architecture/actors.yaml), for example `[policy]`. Each must be an actor whose requirement areas include the record's area; `just check-actors` checks it. A withdrawn record keeps no `actors`. |
 | `verification` | `{kind, ref}`; `kind` is `conformance-suite`, `test-vectors`, `integration-test` or `manual`. Every MUST needs at least one. |
 | `gap` | Required for an `open` or `partial` record: a key of `gaps` in `index.yaml` that says what is missing. |
 | `manual_reason` | Required for a MUST verified by manual review only; forbidden otherwise. |

@@ -548,7 +548,7 @@ Idempotency of an admit by operation id; rebuilt from usage facts after a restor
 
 Id is the subject (random, opaque). Claims for tokens are sealed for the tenant.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), [`signer`](/reference/actors/#signer); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -557,7 +557,7 @@ Id is the subject (random, opaque). Claims for tokens are sealed for the tenant.
 
 Id is a keyed hash (key@ Mac, purpose `mac`) of (issuer, subject claim value); holds the subject, the issuer and the claim name.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -575,7 +575,7 @@ The subject claim first used for an issuer; a contradiction is refused.
 
 An operator holds a person (who, when, why); the console routes the write to session. The reason is free text, so sealed. Operable and tenant-scoped: a hold is written by an operator about one tenant's person.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -584,7 +584,7 @@ An operator holds a person (who, when, why); the console routes the write to ses
 
 A hold on erasure for a tenant, or for the whole boundary with tenant `-`. Its reason is free text, so sealed.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -593,7 +593,7 @@ A hold on erasure for a tenant, or for the whole boundary with tenant `-`. Its r
 
 The status an upstream reported (suspended, erased).
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module CIAM module; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module CIAM module; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -602,7 +602,7 @@ The status an upstream reported (suspended, erased).
 
 A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), the time and the kind of an erasure; keeps a restore from bringing a person back. Compare-only, so hashed.
 
-- **Class:** durable; scope boundary+tenant; hashed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; hashed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -611,7 +611,7 @@ A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), t
 
 An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key and the sign count, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -648,7 +648,7 @@ The certificate chain the root custodian returned for each key purpose (intermed
 
 Serial (the id), profile, requester, validity, public-key hash. The requester and the subject are personal, so sealed; by_subject_hash holds a keyed hash (key@ Mac, purpose `mac`) and by_expiry a date.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`ca`](/reference/actors/#ca).
 - **Readers:** [`ca`](/reference/actors/#ca), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -666,7 +666,7 @@ Serial (the id), profile, requester, validity, public-key hash. The requester an
 
 Serial (the id), principals and validity. The principals are account and person names, so sealed. Written by ssh-ca, a separate actor from ca.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`ssh-ca`](/reference/actors/#ssh-ca).
 - **Readers:** [`ssh-ca`](/reference/actors/#ssh-ca), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -758,7 +758,7 @@ Id `default` (the tenant) or a tenant client.
 
 A tenant's template links; the template must exist in config (checked on write). A link names a template and a group, a role or an account (an account is &lt;upstream>/&lt;claim value>, a vendor user id), so it is sealed. policy opens it to build the effective policy set.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family. Holds personal data.
 - **Writer:** [`exchange`](/reference/actors/#exchange).
 - **Readers:** [`policy`](/reference/actors/#policy), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -815,7 +815,7 @@ Pins: app id and installation id per organisation, first seen. A connection made
 
 The link between a person and their GitHub account, made when the person authorises the link App as themselves: the person, the GitHub user id and the permissions the person granted. It is its own kind, apart from UpstreamLink, which ties a person to the account that signs them in. It holds a vendor user id, so sealed. Written by session once adapter-github has returned the verified GitHub account; the person may narrow or revoke it, and it is lost when the person leaves.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`adapter-github`](/reference/actors/#adapter-github); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -874,7 +874,7 @@ A mint target of a tenant: a cloud role, a prototype token, a DNS zone or a GitH
 
 The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API.
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Tenant-adjustable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** adapter-&lt;vendor> (as provisioner), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -905,7 +905,7 @@ A domain, the DNS proof token and its last checks; routes only once proved.
 
 A change the breaker held, and the operator's confirmation of it (an act, recorded by the reconciler that owns the target).
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** adapter-&lt;vendor> (as provisioner), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -915,7 +915,7 @@ A change the breaker held, and the operator's confirmation of it (an act, record
 
 Channels made on the console; channels bound in policy are ReconcileTarget (config). Two kinds, two owners. Written by the chat adapter (`adapter-slack` or another).
 
-- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family.
+- **Class:** durable; scope boundary+tenant; sealed; profile Operable; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** adapter-&lt;vendor> (as provisioner), [`console`](/reference/actors/#console); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
@@ -990,7 +990,7 @@ With its PKCE challenge; spent by a conditional update, so it works once.
 
 Interactive or agent chain: the hash of the current refresh token and its spent markers, class, client, sid, times, freshness per boundary, and the agent's consent (recorded on the chain). Listed and revocable by the person.
 
-- **Class:** temp; scope boundary+tenant; hashed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary+tenant; hashed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), [`console`](/reference/actors/#console).
 - **Exportable:** no; **backed up:** no.
@@ -1151,7 +1151,7 @@ OAuth-style state of a manifest flow in progress; 1 h is the vendor's manifest c
 
 An enrolment waiting for manual approval: the host's name, the requester and the short code, sealed under the boundary's `data` key (tenant `-`). Lost means the host asks again.
 
-- **Class:** temp; scope boundary; sealed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`exchange`](/reference/actors/#exchange).
 - **Readers:** [`exchange`](/reference/actors/#exchange), [`console`](/reference/actors/#console).
 - **Exportable:** no; **backed up:** no.
@@ -1171,7 +1171,7 @@ The fresh server nonce the enrolment HMAC covers.
 
 A learned fact: rebuildable by a re-sync, so temp with a long TTL (24 h default, 7 d at most). Holds names and addresses, so sealed. Tenant-scoped: a directory is read through a connection of that tenant. Id carries the vendor's own organisation.
 
-- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), adapter-&lt;vendor> (as facts source).
 - **Exportable:** no; **backed up:** no.
@@ -1182,7 +1182,7 @@ A learned fact: rebuildable by a re-sync, so temp with a long TTL (24 h default,
 
 Group and team names are vendor free text, so sealed. Tenant-scoped, as DirectoryUser is.
 
-- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), adapter-&lt;vendor> (as facts source).
 - **Exportable:** no; **backed up:** no.
@@ -1192,7 +1192,7 @@ Group and team names are vendor free text, so sealed. Tenant-scoped, as Director
 
 Holds vendor user ids, so sealed; the two indexes hold keyed hashes (key@ Mac, purpose `mac`) of the group and user ids. Tenant-scoped, as DirectoryUser is.
 
-- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** adapter-&lt;vendor>.
 - **Readers:** [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange), adapter-&lt;vendor> (as facts source).
 - **Exportable:** no; **backed up:** no.
@@ -1203,7 +1203,7 @@ Holds vendor user ids, so sealed; the two indexes hold keyed hashes (key@ Mac, p
 
 The digest-addressed desired state a reconciler pulls (who should be in which team or channel). Names users, so sealed. Tenant-scoped. Planned: the kind and its writer arrive with the reconciler milestone.
 
-- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Status: planned.
+- **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data. Status: planned.
 - **Writer:** none yet (planned kind).
 - **Readers:** adapter-&lt;vendor> (as provisioner).
 - **Exportable:** no; **backed up:** no.

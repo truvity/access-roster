@@ -120,7 +120,7 @@ actors:
       - { purpose: mac, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0003', '0008', '0011', '0012', '0017']
-    requirement_areas: [SEC, ISO]
+    requirement_areas: [SEC, ISO, QUOTA]
     standards: [NC-05, ST-97]
     label: actor:entry
     issues: [958, 941, 796]
@@ -141,7 +141,7 @@ actors:
       - { purpose: mac, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0012', '0017', '0018', '0019']
-    requirement_areas: [AUTHN, SESS, TOKEN, FED]
+    requirement_areas: [AUTHN, SESS, TOKEN, FED, SUBJ]
     standards: [ST-28, ST-29, ST-03, ST-24, ST-34, ST-59, ST-30, ST-31]
     label: actor:session
     issues: [959, 775, 776, 777, 778, 885, 979, 1081, 793]
@@ -161,7 +161,7 @@ actors:
       - { purpose: data, ops: [open] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0012', '0027']
-    requirement_areas: [UX, OPS]
+    requirement_areas: [UX, OPS, DATA]
     standards: [ST-97]
     label: actor:console
     issues: [960, 831, 832]
@@ -382,7 +382,7 @@ actors:
       - { purpose: grant, ops: [open] }
       - { purpose: backup-archive, ops: [unwrap] }
     adrs: ['0002', '0004', '0005', '0010', '0012']
-    requirement_areas: [ISO, OPS, SECRETS]
+    requirement_areas: [ISO, OPS, DATA, BACKUP, EXCH]
     standards: []
     label: actor:store
     issues: []
@@ -426,7 +426,7 @@ actors:
       - { purpose: grant, ops: [open] }
       - { purpose: pin-release, ops: [sign, public-key] }
     adrs: ['0002', '0006', '0010', '0012']
-    requirement_areas: [KEYS, SEC]
+    requirement_areas: [KEYS, SEC, ISO, BACKUP, AUDIT]
     standards: [NC-10, ST-83]
     label: actor:key
     issues: [951, 1067, 914]

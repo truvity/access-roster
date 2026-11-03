@@ -33,7 +33,7 @@ const stats = [
   row('Open or partial requirements', waiting),
 ];
 
-const perArea = c.areas.map((a) => {
+const perArea = c.activeAreas.map((a) => {
   const m = a.reqs.filter((r) => r.level === 'MUST');
   return {
     a,

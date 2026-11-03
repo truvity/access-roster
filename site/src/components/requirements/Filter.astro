@@ -7,7 +7,7 @@ import { catalogue } from '../../lib/requirements';
 const c = catalogue();
 const v = c.vocabulary;
 const fields = [
-  ['area', 'Area', c.areas.map((a) => a.code)],
+  ['area', 'Area', c.activeAreas.map((a) => a.code)],
   ['level', 'Level', v.level],
   ['status', 'Status', v.status],
   ['source', 'Source', v.source],

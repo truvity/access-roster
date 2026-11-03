@@ -13,7 +13,7 @@ export interface Req {
   standards: StandardRef[]; features: ('parity' | 'design')[]; issues?: number[]; tests?: string[]; verification: Verification[]; actors?: string[];
   gap?: string; manual_reason?: string; superseded_by?: string[]; moved_to?: string;
 }
-export interface Area { code: string; title: string; file: string; reqs: Req[] }
+export interface Area { code: string; title: string; file: string; retired: boolean; reqs: Req[] }
 export interface Standard { id: string; name: string; group: string; register: boolean; url?: string }
 
 export const ISSUES = 'https://github.com/truvity/sluis/issues/';
@@ -40,7 +40,7 @@ const read = (name: string) => parse(readFileSync(resolve(dir, name), 'utf8'));
 export interface Catalogue {
   title: string; checked: string; gaps: Record<string, string>;
   vocabulary: { level: string[]; source: string[]; status: string[]; runtimes: string[]; verification: string[]; depth: string[] };
-  areas: Area[]; areaByCode: Map<string, Area>; reqs: Req[]; byId: Map<string, Req>;
+  areas: Area[]; activeAreas: Area[]; areaByCode: Map<string, Area>; reqs: Req[]; byId: Map<string, Req>;
   standards: Standard[]; standardById: Map<string, Standard>;
 }
 
@@ -48,16 +48,16 @@ let cached: Catalogue | undefined;
 export function catalogue(): Catalogue {
   if (cached) return cached;
   const { catalogue: c } = read('index.yaml');
-  const areas: Area[] = Object.entries<{ title: string; file: string }>(c.areas).map(([code, a]) => {
+  const areas: Area[] = Object.entries<{ title: string; file: string; retired?: boolean }>(c.areas).map(([code, a]) => {
     // features is optional in the YAML (issue numbers live in issues); the pages and requirements.json always see a list.
     const reqs: Req[] = read(a.file).requirements.map((r: Req) => ({ ...r, features: r.features ?? [] }));
-    return { code, title: a.title, file: a.file, reqs };
+    return { code, title: a.title, file: a.file, retired: a.retired === true, reqs };
   });
   const reqs = areas.flatMap((a) => a.reqs);
   const standards: Standard[] = read('standards.yaml').standards;
   cached = {
     title: c.title, checked: c.checked, gaps: c.gaps, vocabulary: c.vocabulary,
-    areas, areaByCode: new Map(areas.map((a) => [a.code, a])), reqs, byId: new Map(reqs.map((r) => [r.id, r])),
+    areas, activeAreas: areas.filter((a) => !a.retired), areaByCode: new Map(areas.map((a) => [a.code, a])), reqs, byId: new Map(reqs.map((r) => [r.id, r])),
     standards, standardById: new Map(standards.map((s) => [s.id, s])),
   };
   return cached;
@@ -90,7 +90,7 @@ export function exportJson() {
       status: Object.fromEntries(count(c.reqs, (r) => r.status)),
       source: Object.fromEntries(count(c.reqs, (r) => r.source)),
     },
-    areas: c.areas.map((a) => ({ code: a.code, title: a.title, requirements: a.reqs.length })),
+    areas: c.areas.map((a) => ({ code: a.code, title: a.title, retired: a.retired, requirements: a.reqs.length })),
     standards: c.standards,
     requirements: c.reqs.map((r) => ({ ...r, url: `https://sluis.id${reqPath(r)}` })),
   };

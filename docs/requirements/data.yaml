@@ -1,0 +1,1246 @@
+# DATA: The data model and the store (decisions 0004 and 0005).
+# Each record states one rule of the kind registry, the address, the storage classes, treatment, profiles and the
+# direction rule, the one generic store service, watch, drivers, engines, time to live, leases, configuration
+# loading, the bootstrap file or secret sources. The rules that moved here from ISO, OPS and SECRETS are
+# withdrawn there and name the record here in `superseded_by`.
+schema: 1
+area: DATA
+requirements:
+
+  # ---- the kind registry
+  - id: REQ-DATA-001
+    area: DATA
+    statement: "store@ MUST refuse to read or write a kind that the kind registry does not declare."
+    rationale: "A kind outside the registry has no schema, class, writer or rule, so nothing could be checked about it (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a get, a write and a watch of an undeclared kind name are refused with a code that names the registry"}
+  - id: REQ-DATA-002
+    area: DATA
+    statement: "The kind registry MUST give every kind exactly one storage class, one treatment and one profile or none for protocol state."
+    rationale: "A kind with two classes would have two writers and two backup rules, and where a thing is written decides its class (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a kind with two classes, no treatment or an unknown profile fails the check"}
+  - id: REQ-DATA-003
+    area: DATA
+    statement: "The kind registry MUST name exactly one writer for every kind, except the restore command of store@ and the declared self-scoped kinds."
+    rationale: "One writer per kind is what lets the store refuse every other caller and lets a reviewer find the owner of a rule (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a kind with two writers, or a writer that is not an actor, fails the check"}
+  - id: REQ-DATA-004
+    area: DATA
+    statement: "store@ MUST refuse a write to a kind by any caller other than the kind's one writer, except the restore command of store@ and the actor named in the id of a self-scoped kind."
+    rationale: "A compromised work actor must not be able to write what its rules refuse (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an actor that is not the writer of a kind creates, updates and deletes an item; each is refused with the rule's code"}
+      - {kind: test-vectors, ref: "the generated rules matrix against the registry"}
+  - id: REQ-DATA-005
+    area: DATA
+    statement: "store@ MUST let an actor write an item of a declared self-scoped kind only when the id starts with that actor's name."
+    rationale: "Lease, ReplayGuard and SpentGrant have many writers, and the id prefix keeps one writer per item (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "actor X writes a Lease whose id starts with actor Y's name; refused"}
+  - id: REQ-DATA-006
+    area: DATA
+    statement: "The registry check MUST fail a temp kind that has no default and maximum time to live."
+    rationale: "A temp item with no expiry would grow without bound and be neither temporary nor lost (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a temp kind without a TTL fails"}
+  - id: REQ-DATA-007
+    area: DATA
+    statement: "The registry check MUST fail a config kind or a secret kind that has a tenant scope."
+    rationale: "A tenant never appears in config, so a tenant's change never waits for a review (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a config kind scoped to boundary and tenant fails"}
+  - id: REQ-DATA-008
+    area: DATA
+    statement: "The registry check MUST fail a durable or temp kind that holds personal data or free text and is declared plain."
+    rationale: "Treatment follows the data, so personal data is sealed, or hashed when it is compare-only (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a kind marked `personal: true` with treatment plain fails; the same kind sealed or hashed passes"}
+  - id: REQ-DATA-009
+    area: DATA
+    statement: "The registry check MUST fail a writer or reader of a kind that is not an actor name of the actor registry, except IaC or the publishing pipeline as the writer of a config or secret kind."
+    rationale: "A rule over a name that no actor has is a rule nobody enforces (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a reader named after a product or a person fails"}
+  - id: REQ-DATA-010
+    area: DATA
+    statement: "store@ MUST answer a list only by tenant and kind or by an index that the kind declares."
+    rationale: "A new question is a new declared index, reviewed with the kind, and there is no query language and no SQL (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a list by an undeclared index is refused; no call accepts a query string"}
+
+  # ---- the address
+  - id: REQ-DATA-011
+    area: DATA
+    statement: "Every address MUST have the form boundary, tenant or dash, kind and id."
+    rationale: "Only two scope dimensions exist, and the flat address is what makes a prefix rule and a sealed value bound to its address possible (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "address vectors: well-formed and malformed addresses, a config address with a tenant segment"}
+  - id: REQ-DATA-012
+    area: DATA
+    statement: "An id MUST NOT contain personal data."
+    rationale: "Ids appear in indexes, logs and addresses that are not sealed, so personal data in an id cannot be erased by shredding a key (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: a kind marked `personal: true` is never plain, so a personal value is sealed or hashed and not in the clear"}
+      - {kind: integration-test, ref: "an id made from a natural key is a keyed hash made at key@"}
+  - id: REQ-DATA-013
+    area: DATA
+    statement: "store@ MUST derive the boundary of a call from its own bootstrap file and the caller from the transport, and never from a field of the request."
+    rationale: "A scope taken from the request would let any caller name another boundary's data (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [851]
+    verification:
+      - {kind: test-vectors, ref: "actor X passes boundary prod-b in a request field; the call is scoped to X's own boundary and prod-b is never reached"}
+      - {kind: test-vectors, ref: "actor X names another actor in a field; the rule applied is X's"}
+  - id: REQ-DATA-014
+    area: DATA
+    statement: "Settings that hold for a whole installation MUST be one signed config document that is written, with the same content, into every boundary's config source."
+    rationale: "An installation is not a scope, and a boundary that read another's config would share its fate (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "two boundaries load the same installation-wide document from their own sources; a read of a document from another boundary's source is impossible by the bootstrap file"}
+
+  # ---- storage classes and treatment
+  - id: REQ-DATA-015
+    area: DATA
+    statement: "sluis MUST NOT write a config kind or a secret kind."
+    rationale: "Where a thing is written decides its class, and a value with two writers would have two classes (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the permission of store@ on its config source and secret source holds no write action; a write call to a config kind is refused"}
+      - {kind: integration-test, ref: "IAM policy test: no write action on a configuration profile or a secret parameter"}
+  - id: REQ-DATA-016
+    area: DATA
+    statement: "store@ MUST serve a secret kind only to the readers that the kind lists."
+    rationale: "A secret source holds values in the clear for whoever may read it, so the store is the second check (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an actor that is not a listed reader of a secret kind asks for it; refused"}
+  - id: REQ-DATA-017
+    area: DATA
+    statement: "store@ MUST fetch a secret-source value on first use, hold it in memory only, and never write it to disk, an audit fact, a log line or a span."
+    rationale: "A secret that reaches a file or a log is copied beyond the reach of its source (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a secret is read and the disk, the audit log, the logs and the traces are scanned for its value"}
+  - id: REQ-DATA-018
+    area: DATA
+    statement: "A secret kind MUST be linked to the config kind it serves."
+    rationale: "The linked kinds carry the difference between an app definition and its secret, each in one class (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a config kind that names a secret missing from the source fails the load; a secret kind with no config kind fails the registry check"}
+  - id: REQ-DATA-019
+    area: DATA
+    statement: "store@ MUST keep a sealed value as the ciphertext the writing actor produced and a hashed value as the hash the writing actor computed."
+    rationale: "The store never seals or opens, so a compromised store yields no sealed data (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "store@ has no key purpose and no key credential in the actor registry"}
+      - {kind: integration-test, ref: "a dump of the engine holds ciphertext and hashes only for sealed and hashed kinds"}
+  - id: REQ-DATA-020
+    area: DATA
+    statement: "store@ MUST validate the envelope of a sealed value and nothing of its content."
+    rationale: "The store cannot read a sealed field, so the writing actor validates before it seals (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "envelope vectors: a truncated, a mislabelled and a well-formed sealed value"}
+  - id: REQ-DATA-021
+    area: DATA
+    statement: "A secret that sluis generates or receives MUST be stored as a sealed durable or temp kind, or as a hashed one when it is compare-only."
+    rationale: "A generated secret is ordinary data, and the secret class is only for values that IaC writes into a source (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a generated client secret is stored as a hash; a received provider token is stored sealed; neither appears in the secret class"}
+  - id: REQ-DATA-022
+    area: DATA
+    statement: "An exportable generated secret MUST be stored twice, as a hash to verify it and as a sealed copy to export it."
+    rationale: "The sealed copy exists only for a consumer that is named, so a secret nobody reads stays unrecoverable (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a client marked exportable has a ClientSecret hash and a ClientSecretExport copy; a client not marked has the hash only"}
+  - id: REQ-DATA-023
+    area: DATA
+    statement: "An index entry of a sealed kind MUST be a keyed hash made at key@ or a date."
+    rationale: "An index is readable by the store, so it must not undo the sealing of the value (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the index entries of a sealed kind are scanned for the plaintext of the sealed fields"}
+
+  # ---- profiles, layers and the direction rule
+  - id: REQ-DATA-024
+    area: DATA
+    statement: "store@ MUST refuse every run-time write to a kind with profile Fixed."
+    rationale: "A Fixed kind changes only by a reviewed, signed document, and a change at run time would bypass the review (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a write by the console, an operator and a tenant admin to a Fixed kind is refused"}
+  - id: REQ-DATA-025
+    area: DATA
+    statement: "store@ MUST refuse a write to a Tenant-adjustable kind that lies outside the bounds that config or the built-in layer declares."
+    rationale: "A tenant or a product writing for its tenant must hold no authority that the template did not carry (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "a tenant write that raises each bounded field in turn is refused; a write on the bound is accepted"}
+  - id: REQ-DATA-026
+    area: DATA
+    statement: "store@ MUST accept a write to a Tenant-adjustable kind only into the tenant that the sealed grant names."
+    rationale: "A product writes through the same path as a tenant admin and may reach only its own tenant (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a write into tenant B with a grant sealed for tenant A is refused"}
+  - id: REQ-DATA-027
+    area: DATA
+    statement: "store@ MUST refuse a write to a tenant-scoped kind, other than key@'s own writes of DataKeyWrap, unless the caller carries a grant sealed for that tenant that allows the verb."
+    rationale: "The store's rule and the grant are one of the two independent checks between an actor and a tenant's data (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a write with no grant, with an expired grant and with a grant for another tenant; each refused"}
+      - {kind: integration-test, ref: "a write to a boundary-scoped address is checked by the rule alone"}
+  - id: REQ-DATA-028
+    area: DATA
+    statement: "store@ MUST refuse a write that loosens a layered kind past what the layer below allows."
+    rationale: "A higher layer tightens freely and loosens only as far as the layer below grants (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a tenant lifetime longer than config, a link outside its template and a method config forbids; each refused"}
+  - id: REQ-DATA-029
+    area: DATA
+    statement: "A run-time loosening MUST be written to a temp kind with an expiry."
+    rationale: "A loosening that lasts turns a temporary measure into a standing back door (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a break-glass link written to the durable link kind is refused; written to the temp kind it expires within its maximum"}
+  - id: REQ-DATA-030
+    area: DATA
+    statement: "A tightening MUST take effect at once and survive a restart and a restore."
+    rationale: "A revocation or a suspension that waits or lapses is not a control (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a suspension is in force on the next call and is still in force after a restart and a restore"}
+  - id: REQ-DATA-031
+    area: DATA
+    statement: "The store MUST compose the layers of a layered kind by the combine rule of its group, which is union with forbid wins for policies, shortest wins for lifetimes, intersection for sign-in methods and the unexpired override for log levels."
+    rationale: "One effective value per group keeps every reader on the same answer (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "combine vectors per group, including a forbid in the lowest layer"}
+  - id: REQ-DATA-032
+    area: DATA
+    statement: "A read of a layered kind MUST return the effective value and, for each field, the layer that set it and its version."
+    rationale: "A decision audit and an operator must see why a value is what it is (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an effective read of the policy group returns every layer's part with its version"}
+  - id: REQ-DATA-033
+    area: DATA
+    statement: "The most specific layer of branding MUST win, bounded by what config allows."
+    rationale: "Branding has no tighter or looser direction, so only its bounds are checked (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a tenant client brand overrides the boundary default; a brand outside the allowed hosts is refused"}
+  - id: REQ-DATA-034
+    area: DATA
+    statement: "store@ MUST refuse a write that names a linked item that does not exist where the registry says the link is checked at write."
+    rationale: "A link to a missing template would carry authority that no reviewer saw (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a PolicyLink that names a template absent from config is refused"}
+  - id: REQ-DATA-035
+    area: DATA
+    statement: "A tenant's connection to a provider, and its own connection to its identity provider, MUST be a durable tenant-scoped kind with its credential sealed."
+    rationale: "Who connects decides: a tenant never appears in config, and a customer's single sign-on change does not wait for review (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: the connection kinds are durable, tenant-scoped and sealed"}
+      - {kind: integration-test, ref: "a TenantConnection written through the API is accepted without a config change"}
+  - id: REQ-DATA-036
+    area: DATA
+    statement: "The console MUST route every write except those of Switch and LogLevelOverride to the owning actor."
+    rationale: "The owning actor validates a write with its own logic, so the console cannot become a second writer (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [console]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the console's write rules over the store name exactly two kinds; a write of any other kind from the console is refused"}
+
+  # ---- schemas
+  - id: REQ-DATA-037
+    area: DATA
+    statement: "The JSON Schema of the bootstrap file, of Helm values and of external configs MUST be generated from the Protobuf messages."
+    rationale: "One source keeps the types, the validation and the editors' schemas from drifting apart (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864, 1177]
+    verification:
+      - {kind: integration-test, ref: "CI regenerates the JSON Schema from the messages and fails on a difference from the committed golden file"}
+  - id: REQ-DATA-038
+    area: DATA
+    statement: "Every binary MUST validate a document against its embedded schema before decoding it."
+    rationale: "Decoding an unvalidated document first lets an unknown key or a bad value reach code before a check (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864, 1177]
+    verification:
+      - {kind: test-vectors, ref: "documents with an unknown key, a wrong type and a retired field are refused before any decoder runs"}
+  - id: REQ-DATA-039
+    area: DATA
+    statement: "The Go and Rust protovalidate validators MUST give the same verdict on every shared conformance vector."
+    rationale: "A validator that disagrees across languages makes two actors read the same document differently (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1177]
+    verification:
+      - {kind: test-vectors, ref: "the shared protovalidate vector set run by both validators"}
+  - id: REQ-DATA-040
+    area: DATA
+    statement: "A published schema identifier MUST never change."
+    rationale: "An external tool pins the identifier, so changing what it names breaks it without notice (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "a schema change that breaks compatibility fails CI unless it carries a new identifier"}
+  - id: REQ-DATA-041
+    area: DATA
+    statement: "A document with an unknown key MUST be refused with an error that names the path and never shows the value."
+    rationale: "An error that shows a value could leak a secret, and a silent unknown key hides a typo (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: test-vectors, ref: "unknown-key vectors per config kind: the error names the path and holds no value"}
+  - id: REQ-DATA-042
+    area: DATA
+    statement: "A retired field in a signed config document MUST be refused."
+    rationale: "Strictness comes from the schema, and a reviewed document can be fixed and published again where a stored item cannot (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a config document with a retired field fails the load with an error that names the path"}
+  - id: REQ-DATA-043
+    area: DATA
+    statement: "A retired field in an item that sluis wrote MUST be read, ignored and never written again."
+    rationale: "Refusing a retired field in stored data would make an installed item unreadable (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a stored item with a retired field is read and rewritten without it"}
+  - id: REQ-DATA-044
+    area: DATA
+    statement: "A duration in a configuration file MUST be written as a number with a unit, such as `900s`, `15m`, `12h` or `30d`."
+    rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1177]
+    verification:
+      - {kind: test-vectors, ref: "duration vectors in a configuration file: 900s, 15m, 12h and 30d accepted, 'PT15M', bare numbers and unknown units refused"}
+
+  - id: REQ-DATA-095
+    area: DATA
+    split_from: REQ-DATA-044
+    statement: "A duration in a value that is not a configuration file MUST be a proto3 JSON duration, such as `30s`."
+    rationale: "Values outside configuration files are read by Protobuf tooling, which knows only the proto3 JSON form (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1177]
+    verification:
+      - {kind: test-vectors, ref: "duration vectors in a value file: 30s accepted, 15m, 'PT30S' and bare numbers refused"}
+  # ---- the store service and its rules
+  - id: REQ-DATA-045
+    area: DATA
+    statement: "store@ MUST serve one generic store service with the calls Get, List, Write and Watch, each carrying a kind name and bytes."
+    rationale: "One service for every kind keeps the wire small, and the rules of the registry give the isolation that a service per kind would only repeat (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "store service conformance: a new kind is added to the registry and served with no new method"}
+  - id: REQ-DATA-046
+    area: DATA
+    statement: "store@ MUST decode every write against the registry and validate it against the kind's schema, the envelope only for a sealed kind, before it applies the write."
+    rationale: "The store is the one place that sees every write, so it is where a malformed item must stop (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a write with a wrong type, an unknown key and an out-of-range value is refused and nothing is stored"}
+  - id: REQ-DATA-047
+    area: DATA
+    statement: "store@ MUST deny a call unless the caller's rule for the kind and verb allows it, checked before the call touches data."
+    rationale: "A rule the caller can skip is not a control, and an unlisted call must fail (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [851]
+    verification:
+      - {kind: test-vectors, ref: "the rules matrix: every actor, kind and verb not listed is refused"}
+      - {kind: integration-test, ref: "the matrix is generated from the kind registry and the actor registry and the drift test passes"}
+  - id: REQ-DATA-048
+    area: DATA
+    statement: "store@ MUST learn the caller from the transport and apply the union of the rules of fused actors that present one identity."
+    rationale: "Only the transport identity cannot be forged by the request (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a process under another uid, a Lambda role and a service account each get the rules of their own identity only"}
+  - id: REQ-DATA-049
+    area: DATA
+    statement: "store@ MUST apply the writes of one batch all or none."
+    rationale: "A flow over several items is idempotent steps with a recovery marker, so there are no interactive transactions (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a batch with one invalid item changes nothing; a batch that mixes the kinds of two writers is refused"}
+  - id: REQ-DATA-050
+    area: DATA
+    statement: "store@ MUST refuse an update whose if_version is not the item's current version."
+    rationale: "A compare-and-set on the version is what makes concurrent writers safe (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "two updates at one version: the second is refused; a create at an existing address is refused"}
+  - id: REQ-DATA-051
+    area: DATA
+    statement: "While MaintenanceMode is set, store@ MUST refuse every write except those of the restore command."
+    rationale: "A restore must not race with live writes, and a failed restore must stay in maintenance (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "with the mode set, a write from every work actor is refused and a restore write is accepted"}
+  - id: REQ-DATA-052
+    area: DATA
+    statement: "store@ MUST record every refusal as an audit fact that names the code of the rule."
+    rationale: "An operator must see which rule refused a call, and a pattern of refusals is a signal (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a refused write returns the rule's code and the audit log holds the fact without the value"}
+  - id: REQ-DATA-053
+    area: DATA
+    statement: "A typed client MUST build the address from the boundary it is connected to, the tenant and id the caller passes, and the kind's name."
+    rationale: "The client is generated from the kind's message, and the identity belongs to the transport (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [861]
+    verification:
+      - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: addresses for every registry kind equal the golden addresses"}
+  - id: REQ-DATA-054
+    area: DATA
+    statement: "store@ MUST set every timestamp of an item itself."
+    rationale: "An engine that does not rewrite non-deterministic defaults would let a replica compute its own time (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "items written through two nodes carry timestamps set by store@"}
+
+  # ---- watch, time to live and leases
+  - id: REQ-DATA-055
+    area: DATA
+    statement: "store@ MUST write a change-log row in the same transaction as each change of a kind that some actor may watch."
+    rationale: "A watcher must neither miss a change nor see one that did not happen (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "a crash between a change and its log row is impossible: kill the engine mid-write and compare the log with the table"}
+  - id: REQ-DATA-056
+    area: DATA
+    statement: "store@ MUST write no change-log row for a kind that nobody may watch."
+    rationale: "A hot counter such as an allowance stays one conditional update (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an admit against an allowance writes one item and no log row"}
+  - id: REQ-DATA-057
+    area: DATA
+    statement: "store@ MUST refuse a watch from a resume point that the change log no longer holds, with an error distinct from every other, so that the watcher lists the kind again."
+    rationale: "A silent gap in the stream is a missed change (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a watch from a purged sequence returns the distinct error; a list then catches up"}
+  - id: REQ-DATA-058
+    area: DATA
+    statement: "When the store swaps a snapshot, it MUST deliver each changed config kind to the watchers of that kind."
+    rationale: "Config has no change log, and policy and exporter@ must act on a change (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a snapshot swap that changes one config kind notifies its watchers and no others"}
+  - id: REQ-DATA-059
+    area: DATA
+    statement: "On serverless the store MUST answer a re-read with an unchanged reply when the ETag matches."
+    rationale: "A function cannot hold a stream, so freshness costs one small reply (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a re-read with the current ETag returns unchanged and carries no body"}
+  - id: REQ-DATA-060
+    area: DATA
+    statement: "store@ MUST return an item past its expiry as absent whatever the engine still holds."
+    rationale: "Correctness cannot depend on when a sweeper runs (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "an item is read after its expiry before the sweeper has run; absent"}
+      - {kind: integration-test, ref: "a create at an expired address succeeds"}
+  - id: REQ-DATA-061
+    area: DATA
+    statement: "store@ MUST refuse a write to a temp kind that asks for a time to live longer than the kind's maximum."
+    rationale: "A tunable may shorten a TTL and never lengthen it past the maximum (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a temp write with a TTL one second over the maximum is refused; at the maximum it is accepted"}
+  - id: REQ-DATA-062
+    area: DATA
+    statement: "A sweeper MUST remove expired items, except those of the Lease kind."
+    rationale: "The sweep only frees space, and a lease must keep growing its version (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "expired items disappear from the engine within the sweep interval; an expired Lease stays"}
+  - id: REQ-DATA-063
+    area: DATA
+    statement: "The kind Lease MUST be a temp kind whose version is a fencing token that grows each time the lease changes hands."
+    rationale: "A fencing token lets a write be refused when its holder lost the lease (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [956]
+    verification:
+      - {kind: integration-test, ref: "two takers race for one lease: one wins; the version grows at each takeover"}
+      - {kind: conformance-suite, ref: "lease conformance on every engine"}
+  - id: REQ-DATA-064
+    area: DATA
+    statement: "store@ MUST let an expired lease be taken over by a conditional update of the same item."
+    rationale: "A swept lease would restart its version and break the fencing token (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [956]
+    verification:
+      - {kind: integration-test, ref: "a lease expires, is taken over, and its version is one higher than before"}
+  - id: REQ-DATA-065
+    area: DATA
+    statement: "A lease MUST be taken only by a background job."
+    rationale: "Request paths need no lock, and a self-scoped id keeps one writer per item (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the kind registry's rules let only reconcilers, scheduled adapters and the backup job write a Lease"}
+
+  # ---- drivers and engines
+  - id: REQ-DATA-066
+    area: DATA
+    statement: "A driver MUST be a separate binary behind one port that only its owner can open."
+    rationale: "A driver holds a credential, and a socket another actor could open would be a second holder (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [862]
+    verification:
+      - {kind: integration-test, ref: "a process of a work actor opens the socket of a driver; refused by the file permissions and the unit"}
+  - id: REQ-DATA-067
+    area: DATA
+    statement: "Every driver MUST offer the commands serve, check, version and conformance."
+    rationale: "One contract and one command line per port is what lets an installation check a driver before it runs (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [862, 851]
+    verification:
+      - {kind: conformance-suite, ref: "each shipped driver runs its four commands; check reports a bad configuration without starting"}
+  - id: REQ-DATA-069
+    area: DATA
+    statement: "A durable or temp driver MUST see items only: a key, a version, bytes, a time to live and index entries."
+    rationale: "A driver that interpreted kinds would be a second place where rules could differ (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [862]
+    verification:
+      - {kind: integration-test, ref: "the driver contract has the calls Get, Query, Transact and TailLog and no call that names a kind"}
+  - id: REQ-DATA-070
+    area: DATA
+    statement: "A config source driver MUST return the bytes and a version label without parsing them."
+    rationale: "Verification must run over the exact bytes before anything is parsed (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "a driver returns a document that is not valid JSON unchanged"}
+  - id: REQ-DATA-071
+    area: DATA
+    statement: "A Transact with one item and one condition MUST be applied as one conditional update and not as a transaction."
+    rationale: "A hot counter such as an allowance reaches its peak only with a conditional update (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [915]
+    verification:
+      - {kind: integration-test, ref: "a conditional update of one hot item on each driver reaches the rate recorded in the load test"}
+  - id: REQ-DATA-072
+    area: DATA
+    statement: "`sluis config check` MUST refuse a driver that does not fit the runtime of the installation."
+    rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: rqlite on serverless is refused"}
+  - id: REQ-DATA-073
+    area: DATA
+    statement: "A boundary at level L3 or above MUST have an engine of its own."
+    rationale: "The engine is the physical separation the ladder adds at L3 (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a boundary at L3 and one at L2 on the same installation: the first has its own table or cluster, the second a prefix of its parent's"}
+  - id: REQ-DATA-074
+    area: DATA
+    statement: "The client API of rqlite MUST listen on the loopback address only."
+    rationale: "Another listener on a board would be a path around store@ (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "a connection to the client API from another address, and from a process other than the driver, is refused"}
+  - id: REQ-DATA-075
+    area: DATA
+    statement: "A read that decides authority MUST be linearizable."
+    rationale: "A follower can be stale by about 50 ms, and an authority decision on stale data is a wrong decision (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [store]
+    standards: []
+    issues: [952]
+    verification:
+      - {kind: integration-test, ref: "a write is acknowledged and read at once through a follower with the authority option; the write is seen"}
+
+  # ---- configuration loading
+  - id: REQ-DATA-076
+    area: DATA
+    statement: "store@ MUST verify the signature of a signed config document over the received bytes before it parses any of them."
+    rationale: "A parser reached by an unsigned document is an attack surface (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: unsigned, tampered bytes and a wrong key, each refused before parsing"}
+  - id: REQ-DATA-077
+    area: DATA
+    statement: "store@ MUST accept a signature only from a publisher key pinned in the bootstrap file."
+    rationale: "The pin is the trust anchor of config, so config cannot choose its own publisher (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: another algorithm, a forbidden header and a key not in the pin"}
+  - id: REQ-DATA-078
+    area: DATA
+    statement: "store@ MUST refuse any signing algorithm other than ES384 and any crit, jku, x5u or embedded jwk header in a signed config document."
+    rationale: "A narrow header closes the confusions of JWS that fetch a key or choose an algorithm from the document itself (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: RS256, none, a crit header, a jku and an embedded jwk"}
+  - id: REQ-DATA-079
+    area: DATA
+    statement: "store@ MUST require every signature on a document that carries several."
+    rationale: "Neither party can change the policy alone (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: a RegulatedPartyPolicy with one of its two signatures removed, in turn"}
+  - id: REQ-DATA-080
+    area: DATA
+    statement: "A running store MUST refuse a signed config document whose sequence number is lower than the one in force."
+    rationale: "An older document would silently undo a reviewed change (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "signed document vectors: a validly signed document with a lower sequence number"}
+  - id: REQ-DATA-081
+    area: DATA
+    statement: "At a cold start store@ MUST take the latest validly signed document whatever its sequence number."
+    rationale: "A store with nothing in force has nothing to compare with, and a persisted mark would be one more state to lose (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "a cold start with a document of a lower sequence than a previous run starts and runs it"}
+      - {kind: integration-test, ref: "no file or item holds a sequence mark after a run"}
+  - id: REQ-DATA-082
+    area: DATA
+    statement: "store@ MUST validate the whole set of documents of a boundary, including links, bounds and templates, and swap the snapshot atomically."
+    rationale: "A document applied alone would run a set that nobody reviewed as a whole (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "a set whose second document breaks a link to the first is refused whole; the snapshot in force is unchanged"}
+  - id: REQ-DATA-083
+    area: DATA
+    statement: "At a cold start store@ MUST refuse to start when a config source is unreachable or when a document is unsigned, badly signed, malformed or invalid, naming the document."
+    rationale: "There is no cached copy, no default and no fallback to a weaker source (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "start with an unreachable source, an unsigned document and an invalid one on each tested installation; each refuses and names the document"}
+  - id: REQ-DATA-084
+    area: DATA
+    statement: "When a reload fails, store@ MUST keep the snapshot in force, refuse the new snapshot whole, audit the refusal once per refused digest and raise an alarm."
+    rationale: "Applying the part that validates would run a document that nobody reviewed (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "a reload with one bad document in a set of three applies none of them and raises one audit fact per digest"}
+  - id: REQ-DATA-085
+    area: DATA
+    statement: "Each start and each reload MUST be an audit fact that names, for each document, its kind, its sequence number and the SHA-384 of its payload."
+    rationale: "A reviewer matches the fact to the digest of the file at the commit and sees a lag (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "the audit fact of a start names kind, seq and digest equal to sha384sum of each file"}
+  - id: REQ-DATA-086
+    area: DATA
+    statement: "Every config change except a change of the bootstrap file MUST reload as a whole snapshot with no restart."
+    rationale: "A change that applied in parts would run a set that nobody reviewed as a whole (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "change one document of every config kind in turn; each takes effect on the reload with no restart"}
+  - id: REQ-DATA-087
+    area: DATA
+    statement: "The bootstrap file MUST hold the boundary, one destination per storage class, the driver sockets and the SPKI-pinned publisher keys."
+    rationale: "The credentials of store@ are platform-provided, and the file is the one local setting that config cannot change (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [864, 1157]
+    verification:
+      - {kind: test-vectors, ref: "bootstrap file vectors: a file that lacks the boundary, a class destination, a driver socket or a publisher pin is refused"}
+      - {kind: integration-test, ref: "the file names exactly one destination for each of the four classes"}
+  - id: REQ-DATA-088
+    area: DATA
+    statement: "The bootstrap file MUST NOT hold a credential."
+    rationale: "The credentials of store@ are platform-provided, as a systemd credential, a role or a service account (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [864, 1157]
+    verification:
+      - {kind: test-vectors, ref: "bootstrap file vectors: any field that carries a secret value is refused"}
+  - id: REQ-DATA-089
+    area: DATA
+    statement: "store@ MUST refuse a bootstrap file that another uid can write."
+    rationale: "Whoever can write the file can choose the publisher keys that anchor config (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "a bootstrap file with group or world write permission or another owner; store@ refuses to start"}
+  - id: REQ-DATA-090
+    area: DATA
+    statement: "`sluis config check` MUST run the same validation of a config set as store@ does at load, offline."
+    rationale: "CI must refuse in review what the store would refuse at run time (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864, 1157]
+    verification:
+      - {kind: test-vectors, ref: "the validation vectors run through the check and through the store give the same verdict"}
+  - id: REQ-DATA-091
+    area: DATA
+    statement: "The Go and Rust loaders of signed config MUST give the same verdict on every signed-document vector."
+    rationale: "Two languages read the same documents, and a disagreement would let a document pass in one and fail in the other (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: test-vectors, ref: "the signed-document vector set run by both loaders"}
+  - id: REQ-DATA-092
+    area: DATA
+    statement: "A config source driver MUST declare its watch capability as none, notify or poll."
+    rationale: "A change must reach the store without a restart where the platform can say so (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "a ConfigMap swap is seen by the file driver; the appconfig driver polls at the interval the service returns; a Lambda layer reports none"}
+  - id: REQ-DATA-093
+    area: DATA
+    statement: "A serverless store MUST apply a changed config document of an appconfig source at the first invocation after the poll interval, without a new function version."
+    rationale: "A function has no timer, so the poll happens at an invocation (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    actors: [store]
+    standards: []
+    issues: [1157]
+    verification:
+      - {kind: integration-test, ref: "change a document in the config service; the next invocation after the interval serves the new snapshot"}
+
+  # ---- what is not data
+  - id: REQ-DATA-096
+    area: DATA
+    statement: "sluis MUST NOT offer a general-purpose secret store to other parties."
+    rationale: "sluis keeps only its own secrets and its integrations', and an export is a typed set of public material, not a secrets engine (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: out-of-scope
+    runtimes: all
+    standards: []
+    issues: [798]
+    manual_reason: "A scope boundary is checked by reading the store API and the kind registry."
+    verification:
+      - {kind: manual, ref: "scope review of the store API and the kind registry"}
+  - id: REQ-DATA-094
+    area: DATA
+    statement: "An authority key, a wrapping key, an opened data key and a sealed grant MUST NOT be a kind or an item that the store holds."
+    rationale: "These live in a key store, in the memory of key@, or in flight, and a copy in the store would be a second place to protect (ADR 0004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the kind registry holds no kind for these; a scan of the engine finds no key material or grant"}

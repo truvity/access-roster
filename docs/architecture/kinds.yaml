@@ -29,6 +29,12 @@
 #               are signed or held by the secret source). A kind that holds personal data or free text
 #               (names, principals, vendor user ids, reasons, requesters) is sealed, or hashed when it is
 #               compare-only; plain is only for values that are neither secret nor personal.
+#   personal    true on a durable or temp kind that holds personal data: names, e-mail addresses, subject ids,
+#               source addresses, device names, or free text a person types. A reviewed flag, set by hand
+#               and read by the registry check: a personal kind is sealed, or hashed when it is compare-only,
+#               and never plain (ADR 0004, "Treatment"). Absent means false. A config kind carries no flag:
+#               config is the operator's reviewed document and may name people (first-admin allow-list,
+#               policy bindings, break-glass passkeys), so the rule covers what sluis stores
 #   profile     Fixed | Operable | Tenant-adjustable for settings; "-" for state that only its writer
 #               creates in the course of its job (a profile classifies settings, not protocol state).
 #               Operable: an operator writes it at run time; it may be boundary- or tenant-scoped (a
@@ -721,6 +727,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: session
     readers: [session, exchange, signer]
@@ -733,6 +740,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: session
     readers: [session, exchange]
@@ -757,6 +765,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Operable
     writer: session
     readers: [session, exchange, console]
@@ -769,6 +778,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Operable
     writer: session
     readers: [session, console]
@@ -781,6 +791,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: session
     readers: [session, exchange]
@@ -794,6 +805,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: hashed
+    personal: true
     profile: "-"
     writer: session
     readers: [session]
@@ -806,6 +818,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: session
     readers: [session]
@@ -855,6 +868,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: ca
     readers: [ca, console]
@@ -880,6 +894,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: ssh-ca
     readers: [ssh-ca, console]
@@ -1005,6 +1020,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Tenant-adjustable
     layer: {group: PolicySet, layer: tenant}
     writer: exchange
@@ -1083,6 +1099,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: "-"
     writer: session
     readers: [session, adapter-github]
@@ -1161,6 +1178,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Tenant-adjustable
     links: [DirectoryConnection, SlackConnection, GitHubInstallation]
     writer: adapter-<vendor>
@@ -1203,6 +1221,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Operable
     writer: adapter-<vendor>
     readers: [adapter-<vendor> (as provisioner), console]
@@ -1216,6 +1235,7 @@ kinds:
     scope: boundary+tenant
     class: durable
     treatment: sealed
+    personal: true
     profile: Operable
     writer: adapter-<vendor>
     readers: [adapter-<vendor> (as provisioner), console]
@@ -1267,6 +1287,7 @@ kinds:
     scope: boundary+tenant
     class: temp
     treatment: hashed
+    personal: true
     profile: "-"
     writer: session
     readers: [session, exchange, console]
@@ -1483,6 +1504,7 @@ kinds:
     scope: boundary
     class: temp
     treatment: sealed
+    personal: true
     profile: "-"
     writer: exchange
     readers: [exchange, console]
@@ -1509,6 +1531,7 @@ kinds:
     scope: boundary+tenant
     class: temp
     treatment: sealed
+    personal: true
     profile: "-"
     writer: adapter-<vendor>
     readers: [session, exchange, adapter-<vendor> (as facts source)]
@@ -1523,6 +1546,7 @@ kinds:
     scope: boundary+tenant
     class: temp
     treatment: sealed
+    personal: true
     profile: "-"
     writer: adapter-<vendor>
     readers: [session, exchange, adapter-<vendor> (as facts source)]
@@ -1536,6 +1560,7 @@ kinds:
     scope: boundary+tenant
     class: temp
     treatment: sealed
+    personal: true
     profile: "-"
     writer: adapter-<vendor>
     readers: [session, exchange, adapter-<vendor> (as facts source)]
@@ -1550,6 +1575,7 @@ kinds:
     scope: boundary+tenant
     class: temp
     treatment: sealed
+    personal: true
     profile: "-"
     writer: none yet (planned kind)
     status: planned

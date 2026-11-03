@@ -1,10 +1,11 @@
 # sluis requirements catalogue: index. Declares the vocabularies and the areas.
 # One file per area sits beside this file (<area>.yaml, lower case). Ids are stable and never reused.
 # No person, company, estate or ticket names appear in these files; the site lint enforces it.
+# An area with `retired: true` has only withdrawn records: it keeps its file and its ids, and the site leaves it out of the area lists.
 schema: 1
 catalogue:
   title: "sluis requirements"
-  checked: "2026-10-31"
+  checked: "2026-11-03"
   vocabulary:
     level: [MUST, SHOULD, MAY]
     source: [v1-parity, stakeholder-ciam, stakeholder-integrator, security-review, design-decision, standard]
@@ -27,6 +28,7 @@ catalogue:
     DB: {title: "Database access", file: db.yaml}
     AUDIT: {title: "Audit log", file: audit.yaml}
     QUOTA: {title: "Quota and metering", file: quota.yaml}
+    DATA: {title: "The data model and the store", file: data.yaml}
     SECRETS: {title: "Secrets", file: secrets.yaml}
     EXPORT: {title: "Export", file: export.yaml}
     BACKUP: {title: "Backup and restore", file: backup.yaml}

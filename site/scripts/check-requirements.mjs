@@ -22,6 +22,7 @@
 //   L17 an out-of-scope record is a MUST NOT or a MAY and has a verification
 //   L18 a done record names its evidence: `tests` lists repository paths, each a file that exists
 //       inside the repository and that names the record's id (a test carries its id in its name)
+//   L19 an area with `retired: true` in index.yaml has only withdrawn records; it keeps its file and its ids
 //   ISS a planned or partial record links the issues that deliver it (one warning with the count;
 //       the summary line gives the count per area). The schema checks the numbers themselves.
 //   COV the coverage figures on docs/standards/conformance.md equal the catalogue: the share of
@@ -174,6 +175,13 @@ for (const [name, doc] of files) {
     byId.set(r.id, r);
     reqs.push(r);
   }
+}
+
+// L19: a retired area keeps its file and its ids and has only withdrawn records
+for (const [code, a] of Object.entries(cat.areas)) {
+  if (!a.retired) continue;
+  const live = (files.get(a.file)?.requirements ?? []).filter((r) => r.status !== 'withdrawn');
+  if (live.length) E(`L19 area ${code}: retired, but ${live.length} record(s) are not withdrawn (${live.slice(0, 3).map((r) => r.id).join(', ')})`);
 }
 
 // ---- per-record rules

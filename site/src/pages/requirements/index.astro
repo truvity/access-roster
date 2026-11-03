@@ -16,7 +16,7 @@ const perArea = (code: string, f: (r: (typeof c.reqs)[number]) => boolean) => c.
   description="The sluis v2 requirements catalogue: one testable clause per record, traced to standards, features and verification. Filter by area, level or status."
 >
   <p>
-    This catalogue holds <strong>{c.reqs.length} requirements</strong> in {c.areas.length} areas. Each is one clause with one RFC 2119
+    This catalogue holds <strong>{c.reqs.length} requirements</strong> in {c.activeAreas.length} areas. Each is one clause with one RFC 2119
     keyword and one testable behaviour, written for a role (sluis, an operator, a relying party) and not for a person. Each is traced to
     the standards it implements, the features that deliver it and the way it is verified. The files are in
     <a href={SOURCE}><code>docs/requirements/</code></a>; this site is generated from them, and test tools read
@@ -50,7 +50,7 @@ const perArea = (code: string, f: (r: (typeof c.reqs)[number]) => boolean) => c.
         <tr><th>Area</th><th>Title</th><th>Total</th><th>MUST</th><th>done</th><th>planned</th><th>partial</th><th>open</th><th>out of scope</th></tr>
       </thead>
       <tbody>
-        {c.areas.map((a) => (
+        {c.activeAreas.map((a) => (
           <tr>
             <td data-label="Area"><a href={areaPath(a.code)}>{a.code}</a></td>
             <td data-label="Title">{a.title}</td>
