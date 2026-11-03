@@ -38,7 +38,7 @@ const dir = resolve(process.cwd(), '../docs/requirements');
 const read = (name: string) => parse(readFileSync(resolve(dir, name), 'utf8'));
 
 export interface Catalogue {
-  title: string; checked: string; gaps: Record<string, string>; glossary: Record<string, string>;
+  title: string; checked: string; gaps: Record<string, string>;
   vocabulary: { level: string[]; source: string[]; status: string[]; runtimes: string[]; verification: string[]; depth: string[] };
   areas: Area[]; areaByCode: Map<string, Area>; reqs: Req[]; byId: Map<string, Req>;
   standards: Standard[]; standardById: Map<string, Standard>;
@@ -56,7 +56,7 @@ export function catalogue(): Catalogue {
   const reqs = areas.flatMap((a) => a.reqs);
   const standards: Standard[] = read('standards.yaml').standards;
   cached = {
-    title: c.title, checked: c.checked, gaps: c.gaps, glossary: c.glossary, vocabulary: c.vocabulary,
+    title: c.title, checked: c.checked, gaps: c.gaps, vocabulary: c.vocabulary,
     areas, areaByCode: new Map(areas.map((a) => [a.code, a])), reqs, byId: new Map(reqs.map((r) => [r.id, r])),
     standards, standardById: new Map(standards.map((s) => [s.id, s])),
   };

@@ -83,13 +83,13 @@ export const answers = {
 export const secure: { name: string; href: string }[] = [
   { name: 'Intermediates only', href: '/principles/#what-sluis-is-and-is-not' },
   { name: 'Keys born in their store', href: '/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it' },
-  { name: 'No tenant keys', href: '/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule' },
+  { name: 'No tenant authority keys', href: '/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule' },
   { name: 'A signed audit trail', href: '/concepts/audit/' },
   { name: 'Short-lived credentials', href: '/concepts/identity/' },
   { name: 'Verify, never trust', href: '/principles/#4-verify-never-trust-a-claim' },
 ];
 
-// The eleven principles of docs/principles.md, in its order, with who shares each.
+// The sixteen principles of docs/principles.md, in its order, with who shares each.
 export const principles: { name: string; href: string; who: 'shared' | 'part' | 'sluis' }[] = [
   { name: 'A key is born in its store and never leaves it', href: '#1-a-key-is-born-in-its-store-and-never-leaves-it', who: 'shared' },
   { name: 'Trust is layered, and redundancy is not a defence against compromise', href: '#2-trust-is-layered-and-redundancy-is-not-a-defence-against-compromise', who: 'shared' },
@@ -100,8 +100,13 @@ export const principles: { name: string; href: string; who: 'shared' | 'part' | 
   { name: 'A person only where a person adds safety', href: '#7-a-person-only-where-a-person-adds-safety', who: 'shared' },
   { name: 'Nothing without a consumer', href: '#8-nothing-without-a-consumer', who: 'shared' },
   { name: 'Measure before deciding, and date the measurement', href: '#9-measure-before-deciding-and-date-the-measurement', who: 'shared' },
-  { name: 'One product, many shapes', href: '#10-one-product-many-shapes', who: 'sluis' },
+  { name: 'One product, many installations', href: '#10-one-product-many-installations', who: 'sluis' },
   { name: 'Public by default, private where it protects', href: '#11-public-by-default-private-where-it-protects', who: 'shared' },
+  { name: 'A loosening is temporary, a tightening is durable', href: '#12-a-loosening-is-temporary-a-tightening-is-durable', who: 'shared' },
+  { name: 'Few credential holders', href: '#13-few-credential-holders', who: 'sluis' },
+  { name: 'Where a thing is written decides its class', href: '#14-where-a-thing-is-written-decides-its-class', who: 'sluis' },
+  { name: 'Plaintext lives only where it is used, behind two independent checks', href: '#15-plaintext-lives-only-where-it-is-used-behind-two-independent-checks', who: 'sluis' },
+  { name: 'One model, many transports', href: '#16-one-model-many-transports', who: 'sluis' },
 ];
 
 // The first screen: the three pains side by side, each with its one-line headline, a

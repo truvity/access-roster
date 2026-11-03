@@ -11,7 +11,7 @@ const perArea = (code: string, f: (r: (typeof c.reqs)[number]) => boolean) => c.
 
 <ReqLayout
   current="overview"
-  jump={[['counts', 'Counts'], ['areas', 'Areas'], ['all', 'All requirements'], ['glossary', 'Glossary'], ['ids', 'Ids and statuses']]}
+  jump={[['counts', 'Counts'], ['areas', 'Areas'], ['all', 'All requirements'], ['ids', 'Ids and statuses']]}
   title="Requirements"
   description="The sluis v2 requirements catalogue: one testable clause per record, traced to standards, features and verification. Filter by area, level or status."
 >
@@ -72,10 +72,7 @@ const perArea = (code: string, f: (r: (typeof c.reqs)[number]) => boolean) => c.
   <Filter />
   <ReqTable reqs={c.reqs} filterable />
 
-  <h2 id="glossary">Glossary</h2>
-  <dl class="rq-glossary">
-    {Object.entries(c.glossary).map(([term, text]) => (<><dt>{term}</dt><dd>{text}</dd></>))}
-  </dl>
+  <p>The terms are defined in the <a href="/concepts/">vocabulary</a>.</p>
 
   <h2 id="ids">How ids and statuses work</h2>
   <p>

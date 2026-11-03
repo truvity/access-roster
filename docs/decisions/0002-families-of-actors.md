@@ -65,7 +65,7 @@ flowchart LR
 - **`ca` and `ssh-ca` are two actors.** An SSH CA is a different authority from an X.509 CA, with a different key, format and relying parties, so a flaw in one does not sign for the other. An installation does not fuse them, because that would undo the separation ([0003](/decisions/0003-units-transports-and-fusion/#fusion)).
 - **`signer`, `policy`, `ca` and `ssh-ca` run per boundary** ([0008](/decisions/0008-boundaries-and-tenants/#boundaries)).
 - **`entry` is hardened as the edge it is.** It is written in a memory-safe language ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)), is fuzzed against its closed parameter lists, loads no plugins and runs on a read-only file system. It has no outbound network. Its listener is in [0003](/decisions/0003-units-transports-and-fusion/#listeners).
-- **An adapter is the work actor of an integration.** It returns facts or carries out effects that core authorised, never decides, and serves one vendor tenant and credential ([0025](/decisions/0025-integrations/)).
+- **An adapter is the work actor of an integration.** It returns facts or carries out effects that core authorised, never decides, and serves one vendor, opening each tenant's connection credential at key@ for each call ([0025](/decisions/0025-integrations/)).
 
 ### Credential holders
 
@@ -107,7 +107,7 @@ flowchart LR
   | first part of the id of a self-scoped kind | `ca` |
   | SPIFFE ID | `spiffe://prod.<td>/sluis/ca`, in the boundary's own trust domain |
 
-- **An adapter is named `adapter-<vendor>@<boundary>`,** for example `adapter-github@prod`. It serves one vendor tenant and credential, and [0025](/decisions/0025-integrations/) says how the instances of one vendor are told apart.
+- **An adapter is named `adapter-<vendor>@<boundary>`,** for example `adapter-github@prod`. It serves one vendor and opens each tenant's connection credential at key@ for each call, and [0025](/decisions/0025-integrations/) says how the instances of one vendor are told apart.
 - **In prose, `store@`, `key@` and `exporter@` mean the holder of the boundary under discussion.** The audit pieces are named in [0028](/decisions/0028-audit-pieces/).
 - **A rename is a change of the actor registry,** and the matching names in every layer follow from it.
 

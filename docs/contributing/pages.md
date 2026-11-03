@@ -12,7 +12,7 @@ The pages on this site describe the **target state** of sluis v2: what it is mea
 
 Docs live next to the thing they describe: the format of the decision records is in `docs/decisions/`, the format of the requirements in `docs/requirements/`, and a page about a part of sluis sits in that part's section of the site. When the thing changes, its docs change in the same pull request.
 
-A fact is stated once, on the page that owns it, and the other pages link there ([Design principles](/principles/), [How we design](/contributing/design/#state-each-rule-once)). State the design as plain fact and link the decision record for the reasoning; history stays in git and the records. v1 behaviour is described only on the [v1 parity checklist](/features/).
+A fact is stated once, on the page that owns it, and the other pages link there ([Design principles](/principles/), [How we design](/contributing/design/#state-each-rule-once)). The terms of the model are defined once in [`docs/glossary.yaml`](https://github.com/truvity/sluis/blob/main/docs/glossary.yaml) and shown at [the vocabulary](/concepts/). State the design as plain fact and link the decision record for the reasoning; history stays in git and the records. v1 behaviour is described only on the [v1 parity checklist](/features/).
 
 ### Moving a page
 

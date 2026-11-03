@@ -1,4 +1,4 @@
-# sluis requirements catalogue: index. Declares the vocabularies, the areas and the glossary.
+# sluis requirements catalogue: index. Declares the vocabularies and the areas.
 # One file per area sits beside this file (<area>.yaml, lower case). Ids are stable and never reused.
 # No person, company, estate or ticket names appear in these files; the site lint enforces it.
 schema: 1
@@ -49,24 +49,3 @@ catalogue:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
     proposed-design: "The design is proposed in research and not yet decided."
-  glossary:
-    "actor": "A process with one responsibility, for example the entry, signer, policy, ca or quota actor."
-    "port": "An abstract interface with capability flags, such as keys, state, lease, blob, transport, index, witness, cloud, secrets, export or config-source."
-    "driver": "An implementation of a port. A driver declares what it needs: a long-running process, a disk, a node count, a dependency."
-    "runtime": "The kind of platform that starts the processes: bare-metal, serverless or kubernetes."
-    "installation": "One concrete deployment: a runtime, a node count, available dependencies and one driver per port."
-    "origin": "Where a record kind comes from: declared, operator-set, learned, derived or issued. Not the same as a requirement's source."
-    "operator-set": "A lasting choice a person makes on the console, the CLI or the API, stored as a record and written by the actor that owns its kind."
-    "sensitivity": "How a field may be shown: public, internal, personal or secret, plus a free-text flag."
-    "tested installation": "One of the four installations the project tests: local, boards, lambda, kubernetes. Any other combination is possible but untested."
-    "hub installation": "In an account-hosting setup, the installation that holds customer accounts and issues pairwise subjects."
-    "context installation": "In an account-hosting setup, an installation of one regulated entity. It has its own issuer, keys, subjects and sessions, and gets sign-in silently from the hub."
-    "accounts module": "The module of a hub installation that holds the account registry and runs registration, passkey and recovery ceremonies."
-    "sector": "A group of relying parties that share one pairwise subject for a person."
-    "fallback credential vault": "An external identity provider that holds an optional fallback password and one-time-password factor and knows only a pseudonym."
-    "boundary": "The unit of keys and isolation: an environment (machine plane), a company (identity plane) or, on demand, a customer boundary of one company in one environment."
-    "customer boundary": "A boundary of one company in one environment with its own keys and issuer, for the customers of a company or a product who sign in through sluis. Formerly called a product boundary."
-    "tenant": "A division inside a boundary that has settings of its own, such as an audit, directory or quota tenant. A record kept apart by code only (L0); it has no key of its own."
-    "isolation level": "How much a boundary has of its own, from L0 (tenant, code only) through L1 (keys), L2 (process), L3 (store) to L4 (runtime: own cluster, account or hosts)."
-    "isolation layer": "One of three independent checks per port: layer 1 is the port library in the actor, layer 2 the driver's or backend's check of the caller, layer 3 physical separation at L3 or L4."
-    "control plane": "The external system through which operators and support issue signed administrative intents."

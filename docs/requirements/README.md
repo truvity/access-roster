@@ -6,7 +6,7 @@ generates its pages from them and test tools read the same data.
 
 | File | Content |
 |---|---|
-| `index.yaml` | The vocabularies, the areas, the gap keys and the glossary. The only place that declares them. |
+| `index.yaml` | The vocabularies, the areas and the gap keys. The only place that declares them. |
 | `<area>.yaml` | The requirements of one area, named by the lower-case area code (`authn.yaml`). |
 | `standards.yaml` | The standards register as data: the ids (`ST-nn`, `NC-nn`) that records cite. |
 | `requirements.schema.json` | JSON Schema 2020-12 for `index.yaml` and every area file. Objects are closed. |

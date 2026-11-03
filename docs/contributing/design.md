@@ -18,10 +18,12 @@ The principles that come up most in design work:
 |---|---|
 | 1. A key is born in its store and never leaves it | A transition makes a new key that the old one vouches for; it never moves the old key |
 | 2. Redundancy is not a defence against compromise | Copies protect against loss; a compromise is answered by revocation and a transition |
-| 3. Keys are shared, rotated and given to tenants by rule | Asymmetric signing keys are never shared; a tenant has no key of its own |
+| 3. Keys are shared, rotated and given to tenants by rule | Asymmetric keys are never shared across purposes or algorithms; a tenant has data keys, never an authority key |
 | 4. Verify; never trust a claim | A proof is checked; a check that cannot run is reported as not run, never as passed |
 | 8. Nothing without a consumer | See [below](#nothing-without-a-consumer) |
 | 9. Measure before deciding, and date the measurement | See [below](#measure-and-date) |
+| 13. Few credential holders | A work actor holds nothing at rest |
+| 15. Plaintext lives only where it is used, behind two independent checks | The store never seals or opens |
 
 Roots live in the separate project ritueel, and sluis holds intermediates only ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/)).
 

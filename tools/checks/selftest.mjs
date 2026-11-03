@@ -125,7 +125,7 @@ const vocabulary = /^ {2}vocabulary:\n(?: {4}.*\n)+/m.exec(reqIndex)[0];
 const catalogueFiles = (record, extra = {}) => ({
   'docs/requirements/requirements.schema.json': readFileSync(join(repo, 'docs/requirements/requirements.schema.json'), 'utf8'),
   'docs/requirements/standards.yaml': 'standards:\n  - {id: ST-01, name: "Example standard", group: "Example", register: false}\n',
-  'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml}\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n  glossary:\n    term: "A glossary entry of the scratch catalogue."\n`,
+  'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml}\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n`,
   'docs/requirements/ex.yaml': `schema: 1\narea: EX\nrequirements:\n  - id: REQ-EX-001\n    area: EX\n    statement: "An example MUST do one thing."\n    rationale: "The scratch catalogue needs one record."\n    level: MUST\n    source: design-decision\n    runtimes: all\n    standards: []\n    verification:\n      - {kind: integration-test, ref: "the example test"}\n${record}`,
   ...extra,
 });
