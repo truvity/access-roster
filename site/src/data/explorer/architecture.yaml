@@ -1,4 +1,4 @@
-# Data for the architecture explorer (docs/architecture/explorer.mdx).
+# Data for the identity explorer (docs/architecture/identity-explorer.mdx).
 #
 # The facts live here and the component only renders them. Today the file is
 # written by hand from the design; 

@@ -137,7 +137,9 @@ export default defineConfig({
     '/contributing/requirements/': '/contributing/decisions/',
     '/contributing/research/': '/contributing/decisions/#spikes-and-research',
     '/contributing/writing/': '/contributing/pages/#writing-style',
-    // The pages merged on 2026-11-03 (wave 2 of the v2 design).
+    // The pages merged on 2026-11-03 (wave 2 of the v2 design). The architecture
+    // explorer became the identity explorer the same day.
+    '/architecture/explorer/': '/architecture/identity-explorer/',
     '/architecture/context/': '/architecture/',
     '/architecture/source-layout/': '/architecture/components/#source-layout',
     '/architecture/manifest/': '/reference/rules/',
@@ -263,7 +265,7 @@ export default defineConfig({
           // So are the status page and /data/repo.json. The home page is MDX too, so a link to
           // it ('/') fails the same way.
           exclude: [
-            '/', '/v1/', '/v1/**', '/decisions/', '/decisions/**', '/architecture/explorer/', '/architecture/audit-explorer/',
+            '/', '/v1/', '/v1/**', '/decisions/', '/decisions/**', '/architecture/identity-explorer/', '/architecture/audit-explorer/',
             '/requirements/', '/requirements/**', '/status/', '/data/**',
           ],
         }),

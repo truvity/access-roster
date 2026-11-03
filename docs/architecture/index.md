@@ -62,8 +62,8 @@ Three consequences follow:
 | This page | L1 | Who uses sluis, the external API surface, and the use case by resource matrix |
 | [Components and units](/architecture/components/) | L2, L3 | The four families, the foundation and the modules, the ports, the call graph, one writer per kind, the fusion rule, packaging, the units on each installation and the source layout |
 | [Deployment and listeners](/architecture/deployment/) | L3 | What enforces the registries on each installation, what accepts connections and where, and the residual risk |
-| [Architecture explorer](/architecture/explorer/) | L1 to L3 | An interactive view of the actors and their calls |
-| [Audit explorer](/architecture/audit-explorer/) | L2 | An interactive view of the audit pipeline |
+| [Identity explorer](/architecture/identity-explorer/) | L1 to L3 | An interactive view of the identity module on the shared foundation: the actors and their calls |
+| [Audit explorer](/architecture/audit-explorer/) | L2 | An interactive view of the audit module on the shared foundation: the audit pipeline |
 
 Related: [Concepts](/concepts/) explains the vocabulary ([families](/concepts/families/), [data](/concepts/data/), [keys](/concepts/keys/)), [Integrations](/integrations/) the integration model, and [Runtimes](/runtimes/) where sluis runs. To try sluis rather than read about it, follow the [single-node install](/tutorials/single-node-install/).
 

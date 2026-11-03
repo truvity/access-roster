@@ -182,7 +182,7 @@ A YubiKey 5 Nano signs P-384 in about 147 ms, about 7 signatures a second per ca
 
 ## The call graph
 
-The tables under [Actors](#actors) list the graph's edges; the views below draw them. A solid arrow is a synchronous ConnectRPC call; a dashed arrow is asynchronous. The graph is declared once in the actor registry and compiled into every binary, where one interceptor refuses a caller that is not listed (**default deny**). Each transport enforces it a second time: socket groups and sandboxes on boards, invoke resource policies on Lambda, NetworkPolicies on Kubernetes ([0003](/decisions/0003-units-transports-and-fusion/#the-call-graph)). The [architecture explorer](/architecture/explorer/) draws it per installation. Every actor also calls store@ and key@ through its ports; those edges are left out of the views below, apart from View 4.
+The tables under [Actors](#actors) list the graph's edges; the views below draw them. A solid arrow is a synchronous ConnectRPC call; a dashed arrow is asynchronous. The graph is declared once in the actor registry and compiled into every binary, where one interceptor refuses a caller that is not listed (**default deny**). Each transport enforces it a second time: socket groups and sandboxes on boards, invoke resource policies on Lambda, NetworkPolicies on Kubernetes ([0003](/decisions/0003-units-transports-and-fusion/#the-call-graph)). The [identity explorer](/architecture/identity-explorer/) draws it per installation. Every actor also calls store@ and key@ through its ports; those edges are left out of the views below, apart from View 4.
 
 ### View 1: sign-in and exchange
 
