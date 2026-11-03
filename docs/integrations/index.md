@@ -1,90 +1,112 @@
 ---
 title: Integrations
-description: "How vendors plug into sluis: six kinds of integration, the rule that they never decide, client profiles, and a page per system sluis connects to."
+description: "How vendors plug into sluis: adapters, tenant connections, the rule that integrations never decide, client profiles, and a page per system sluis connects to."
 status: target
 sidebar:
   order: 0
 ---
 
-An **integration** connects sluis to something outside it: a sign-in provider, a directory, a cloud, a chat workspace. Each integration actor is its own process and holds only its own vendor credential: one process per vendor tenant and per credential, named `<vendor>[-<capability>]@<tenant>`. Sign-in and the directory of one workspace tenant are two credentials and so two processes, `google-signin@<company>` and `google-directory@<company>` ([ADR 0002](/decisions/0002-families-of-actors/#names)).
+An **integration** connects sluis to something outside it: a sign-in provider, a directory, a cloud, a chat workspace. Each vendor is served by one **adapter**, a work actor named `adapter-<vendor>@<boundary>` ([0002](/decisions/0002-families-of-actors/#names)). An adapter holds no credential at rest. It reads a tenant's **connection** (its directory, its chat workspace, its code host, its account at a provider), asks key@ to open the sealed credential for each call, makes the call and keeps nothing ([0025](/decisions/0025-integrations/#adapters-and-connections)).
 
 This page is the model and the index; the [setup patterns](/integrations/connecting/) describe the vendor ceremonies once.
 
 ## Six kinds of integration
 
-Five kinds are integration actors, each a ConnectRPC contract over one shared base contract. The sixth, the workload verifier, is a verifier driver of `exchange` that holds public material only ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
+Five kinds are contracts that an adapter implements, each a ConnectRPC service over one shared base contract. The sixth, the workload verifier, is a verifier driver of `exchange` that holds public material only ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
 
 | Kind | It answers or does | Examples |
 |---|---|---|
 | `Upstream` | Sign-in with an upstream identity provider | A workspace identity provider, a generic OIDC provider |
 | `FactsSource` | Supplies directory facts: users, groups, teams | A workspace directory, GitHub teams |
-| `CredentialMinter` | Mints a downstream credential for a grant that core sealed | GitHub installation tokens, Cloudflare API tokens |
+| `CredentialMinter` | Mints a downstream credential for a grant that `policy` sealed | GitHub installation tokens, Cloudflare API tokens |
 | `Provisioner` | Reconciles an external system to a desired state that core publishes | GitHub teams, Slack channels |
-| `Notifier` | Sends a message | A chat app, an on-call tool |
+| `Notifier` | Sends a message | A chat app |
 | `WorkloadVerifier` | Verifies a token a workload presents and returns what it proves | GitHub Actions, Kubernetes ServiceAccounts, AWS roles |
 
-Every vendor-shaped value travels as an opaque reference or a namespaced attribute (for example a subject in namespace `github` with an id only the integration understands). Core never parses what an integration returns. Each integration declares its attribute names and types, so a policy file is validated at load time without core knowing the vendor.
+Every vendor-shaped value travels as an opaque reference or a namespaced attribute (for example a subject in namespace `github` with an id only the adapter understands). Core never parses what an adapter returns. Each adapter declares its attribute names and types, so a policy file is validated at load time without core knowing the vendor ([0025](/decisions/0025-integrations/#what-an-integration-may-return)).
 
 ## Facts or core-authorized effects, never decisions
 
 > Integrations return facts, or carry out effects that core has already authorized. They never decide.
 
-[ADR 0002](/decisions/0002-families-of-actors/#the-four-families) states the rule; [ADR 0025](/decisions/0025-integrations/) fixes the contract every integration is built against: what an integration may return, how core authorises an effect, and the split by credential.
+[0002](/decisions/0002-families-of-actors/#work-actors) states the rule; [0025](/decisions/0025-integrations/#the-rule) fixes the contract every adapter is built against: what an adapter may return, how core authorises an effect, and the split by credential.
 
 - A **FactsSource** or **WorkloadVerifier** returns facts. Whether a fact entitles anyone to anything is `policy`'s question.
-- A **CredentialMinter** carries out an effect. It receives a **mint grant that `policy` sealed under the sealing key**, opens it (which fails for a grant from any other environment), and mints exactly what the grant says. It decides nothing about whether to mint ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
-- A **Provisioner** pulls a desired state **addressed by its digest** and reconciles to it. It does not choose what the state should be.
+- A **CredentialMinter** carries out an effect. It receives a **mint grant that `policy` sealed**, opens it at key@ (which fails for a grant of another boundary or another tenant), and mints exactly what the grant says. It decides nothing about whether to mint ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). What it returns goes to the caller and is recorded nowhere.
+- A **Provisioner** pulls a desired state **addressed by its digest** and reconciles to it. It does not choose what the state should be ([0026](/decisions/0026-reconcilers/#the-contract)).
+- **Work that no caller starts** has no grant to bring, such as a scheduled directory re-sync or a reconcile pass. The adapter asks `policy` for a grant for that pass, for one tenant at a time. The grant is short-lived like any other ([0025](/decisions/0025-integrations/#adapters-and-connections)).
 
-Caps and rate limits live in core, in `policy` and `quota`, so a minter never holds a rule about how much is too much.
+Caps and rate limits live in core, in `policy` and `quota`, so an adapter never holds a rule about how much is too much.
 
 ```mermaid
 sequenceDiagram
-  participant C as entry
+  participant C as exchange
   participant P as policy
-  participant M as CredentialMinter
+  participant M as adapter
+  participant K as key@
   participant V as Vendor API
   C->>P: caller's facts, request
   P-->>C: sealed mint grant
   C->>M: grant and request
-  M->>M: open grant, check expiry and nonce
+  M->>K: open connection credential
   M->>V: mint, narrowed to the grant
   V-->>M: short-lived credential
   M-->>C: credential
 ```
 
-## Core calls integrations, never the reverse
+## Apps and connections
 
-`session` calls its upstreams, `exchange` its verifiers, minters and notifiers, `console` the integrations that own operator-set kinds, and `entry` only routes a push notification. An integration never calls a core actor; what it needs from core, such as a provisioner's desired state, core publishes as data in a read-only prefix.
+An integration has two parts that are stored differently ([0004](/decisions/0004-the-data-model/#the-upstream-criterion)).
 
-Three invariants are tested, so the rule survives changes: core packages never import vendor packages; there is no edge from an integration to a core component; policy matchers have no vendor-specific fields.
+| Part | Class | Made by | Examples |
+|---|---|---|---|
+| **App definition** that serves the whole installation | Config, with its secret in a secret source | Hand or IaC, on the vendor's side and in a reviewed file | `Upstream` and `UpstreamSecret`; `SlackApp` and `SlackAppSecret`; `Integration` and `IntegrationSecret`; `MinterBounds` |
+| **Connection** of one tenant to a provider | Durable, per tenant, credential sealed | The tenant or the operator, through the UI or the API | `DirectoryConnection`, `EntraConnection`, `GitHubApp`, `GitHubInstallation`, `SlackConnection`, `MinterConnection`, `TenantConnection` |
+| **Mint targets** of a tenant | Durable, Tenant-adjustable, inside the bounds of `MinterBounds` | The tenant admin, through the UI or the API | `MinterTarget` |
+| **A flow in progress** | Temp | The adapter that runs the flow | `SlackInstallState`, `GitHubManifestState`, `EntraConsentState` |
+| **Directory facts** read through a connection | Temp, sealed, 24 hours by default and 7 days at most | The adapter | `DirectoryUser`, `DirectoryGroup`, `DirectoryMembership` |
+
+- **Who connects decides.** A tenant's own connection is never config committed by the operator, so a customer's change does not wait for review ([0004](/decisions/0004-the-data-model/#who-connects-decides)). The company that runs the installation is a tenant too, so its own connections are durable.
+- **An IaC tool may create a connection by calling the API.** What it writes is durable data of the tenant, not config.
+- **The adapter that completes a connect flow writes the connection,** under ids that start with its own name. `session` writes a tenant's own sign-in connection ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)).
+- **An installation-wide credential stays in a secret source,** and only the adapter named in the registry reads it ([0005](/decisions/0005-the-store/#secret-sources)). The kinds are in the [kind registry](/reference/kinds/).
+
+## Core calls adapters, never the reverse
+
+`session` calls its upstream adapter, `exchange` its minters and notifiers, and `console` the adapters whose flows it starts or whose kinds it routes writes to. `entry` only routes a push notification. An adapter calls no work actor other than `policy`; what it needs from core, such as a provisioner's desired state, core publishes as data that the adapter reads through its data port.
+
+Three invariants are tested, so the rule survives changes ([0025](/decisions/0025-integrations/#the-rule)).
 
 ## Client profiles
 
-Many things that look like integrations call no external system: databases, SSH hosts, cert-manager, GitOps consoles, MCP servers. They are clients of sluis, and sluis calls nothing outside for them. Each is a **client profile**: configuration for how that client signs in and what it may ask for, with no process, no credential and no manifest of its own, checked by [`sluis config check`](/concepts/configuration/) like the rest of the configuration.
+Many things that look like integrations call no external system: databases, SSH hosts, cert-manager, GitOps consoles, MCP servers. They are clients of sluis, and sluis calls nothing outside for them. Each is a **client profile**: configuration for how that client signs in and what it may ask for, with no process and no credential of its own, checked by `sluis config check` like the rest of the configuration ([0005](/decisions/0005-the-store/#configuration-loading)).
 
 The AWS and Kubernetes pages sit between the two: the integration part is the workload verifier, and the rest is configuring the account or cluster to trust sluis.
 
-## Isolation and permissions
+## Isolation
 
-An integration declares its configuration block and the permissions it needs in a descriptor. The installer never grants more than the descriptor asks, and never accepts a descriptor above the installation's admission policy: no authority keys for a third-party integration, and outbound access only to the hosts it declares. Because each integration is a separate process with its own user and credential, a compromised connector to one vendor does not reach another vendor's token. On Kubernetes each integration is a pod with its own egress NetworkPolicy ([ADR 0011](/decisions/0011-runtimes-and-installations/#kubernetes)); the other runtimes are on [Runtimes](/runtimes/).
+- **An adapter reaches only the hosts it declares,** and the actor registry grants it no more key purposes than it needs. The limit is a per-uid egress rule on boards and a network policy on Kubernetes ([0003](/decisions/0003-units-transports-and-fusion/#units)).
+- **One adapter serves every tenant of a vendor in a boundary,** and keeps no tenant's credential at rest. A flaw in it reaches the credential it is using at that moment, not the other tenants' connections ([0025](/decisions/0025-integrations/#splitting-by-credential)).
+- **A credential is a connection.** Sign-in and the directory of one workspace are two credentials, so two connections that fail, rotate and leave on their own.
+- On Kubernetes each adapter is a pod with its own egress policy ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)); the other runtimes are on [Runtimes](/runtimes/).
 
 ## The integrations
 
-Every page has the same parts: what it's for, the kinds it plays, what sluis asks the vendor for, what policy controls, what is audited, and setup. v1 behaviour and the parity issues are on the [v1 parity checklist](/features/).
+Every page has the same parts: what it is for, the kinds it plays, what sluis asks the vendor for, what policy controls, what is audited, and setup. v1 behaviour and the parity issues are on the [v1 parity checklist](/features/).
+
+The first working version has the `Integration` and `Upstream` contracts, served by `adapter-upstream-oidc`. The other contracts arrive with their first consumer at the parity milestone ([0025](/decisions/0025-integrations/#the-first-working-version)).
 
 | Page | Kinds | The use cases it serves |
 |---|---|---|
 | [GitHub](/integrations/github/) | `WorkloadVerifier`, `FactsSource`, `CredentialMinter`, `Provisioner` | A CI job gets a token for one repository that lives minutes; teams follow the directory. |
 | [Google Workspace](/integrations/google-workspace/) | `Upstream`, `FactsSource` | People sign in with the account they have; policy names directory groups. |
-| [Generic OIDC and peer sluis](/integrations/oidc-upstream/) | `Upstream`, `FactsSource`; a peer adds `WorkloadVerifier` and `CredentialMinter` | A partner signs in with their own provider; another sluis vouches for its people. |
-| [Cloudflare](/integrations/cloudflare/) | `CredentialMinter` | A job gets a DNS token for one zone, or R2 credentials for one bucket, for an hour. |
-| [AWS](/integrations/aws/) | `WorkloadVerifier`, plus accounts that trust sluis | People and CI jobs assume roles without stored keys; a Lambda function proves itself. |
+| [Generic OIDC and peer sluis](/integrations/oidc-upstream/) | `Upstream`; a peer adds `WorkloadVerifier` | A partner signs in with their own provider; another sluis vouches for its people. |
+| [AWS and Cloudflare](/integrations/cloud/) | `WorkloadVerifier` (AWS), `CredentialMinter` (Cloudflare) | People and CI jobs assume roles without stored keys; a job gets a DNS token for one zone for an hour. |
 | [Kubernetes API server](/integrations/kubernetes/) | `WorkloadVerifier`, plus clusters that trust sluis | `kubectl` with directory groups in RBAC; a ServiceAccount calls another cluster. |
-| [PostgreSQL](/integrations/postgresql/) | Client profile on `ca` | A database session with a short-lived client certificate. |
-| [SSH](/integrations/ssh/) | Client profile on `ssh-ca` | Host logins with SSH certificates; clients trust a host CA. |
+| [PostgreSQL and SSH](/integrations/infrastructure-access/) | Client profiles on `ca` and `ssh-ca` | A database session or a host login with a short-lived certificate. |
 | [Applications and gateways](/integrations/applications/) | Client profiles | Consoles, applications, gateways and MCP servers trust sluis; cert-manager gets certificates. |
-| [More integrations](/integrations/more/) | `Provisioner`, `FactsSource`, `Notifier` | Slack channels, a team wiki and an on-call tool follow the directory. |
+| [More integrations](/integrations/more/) | `Provisioner`, `FactsSource`, `Notifier` | Chat channels, a team wiki and an on-call tool follow the directory. |
 
 ## Examples are illustrative
 
-The commands of the first working version are on [Commands](/reference/cli/) and the keys of the install file on [Install file](/reference/install-file/); those pages are decided. A command or a configuration key on these pages that they do not list belongs to the parity milestone: it shows the shape, not a decided name, until it is designed ([#1097](https://github.com/truvity/sluis/issues/1097)).
+The commands of the first working version are on [Commands](/reference/cli/) and the keys of the bootstrap file on [Bootstrap file](/reference/bootstrap-file/); those pages are decided. A command or a configuration key on these pages that they do not list belongs to the parity milestone: it shows the shape, not a decided name, until it is designed ([#1097](https://github.com/truvity/sluis/issues/1097)).
