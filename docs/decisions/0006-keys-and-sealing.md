@@ -87,7 +87,7 @@ A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust dom
 | X.509 intermediate | P-384 | One per trust domain, for `ca` |
 | SSH user CA | P-384 | `ssh-ca` |
 | SSH host CA | P-384 | `ssh-ca` |
-| Audit log | P-384 | One per audit log; a log key rotates only on compromise ([Rotation](/decisions/0006-keys-and-sealing/#rotation)) |
+| Audit log | P-384 | One per writer instance, for its audit log and its usage log; a log key rotates only on compromise ([Rotation](/decisions/0006-keys-and-sealing/#rotation)) |
 
 - **The symmetric key's policy names `key@`'s role alone.** `kms:Sign` takes no encryption context, so a P-384 key is protected by its key policy, which also names `key@` only. Every other actor reaches a key through `key@`, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). On Lambda only the role of the `key@` function may reach KMS ([principle 16](/principles/#16-few-credential-holders)).
 - **A data key is made with `GenerateDataKey` under the symmetric key,** with the encryption context {boundary, tenant, purpose}, and only the wrapped copy is stored ([DataKeyWrap](/decisions/0006-keys-and-sealing/#datakeywrap)). The tenant is `-` for the boundary's own purposes. The data key is not a KMS key, so a new tenant costs no KMS key and no key policy.
@@ -149,7 +149,7 @@ sequenceDiagram
 - **To read, the actor asks for `Open(address, sealed, grant)`.** `key@` returns the plaintext to the caller only.
 - **The value is sealed under the data key of the address's boundary, tenant and purpose** ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)), with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open, and a value that has to move to another address is opened and sealed again. The byte layout of the envelope is on the store API page.
 - **`key@` checks three things on every Seal and Open:** the caller's identity, by the transport ([0003](/decisions/0003-units-transports-and-fusion/#transports)); the caller's rule for the purpose and the operation, generated from the actor registry ([0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)); and the grant, which must be sealed for the address's tenant, name the operation and not be expired ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A refusal is an audit fact.
-- **Opens are batched.** A call may carry many opens, so that a request that needs several values, such as a session cookie and a person's records, pays one hop. The per-request cost of opening session cookies at `key@` is measured in the Lambda latency spike ([#1179](https://github.com/truvity/sluis/issues/1179)).
+- **Opens are batched.** A call may carry many opens, so that a request that needs several values, such as a session cookie and a person's records, pays one hop. The per-request cost of opening session cookies at `key@` was measured in the Lambda latency spike ([#1179](https://github.com/truvity/sluis/issues/1179)): on 2026-11-03, a whole warm sign-in takes about 0.40 s at p50 and 0.49 s at p99, and about 0.29 s and 0.36 s with concurrent reads.
 - **Session cookies are sealed and opened at `key@` on every request,** under the boundary's `cookie` data key. `session` never holds that key ([0018](/decisions/0018-sessions/)).
 
 ### Sign and Mac
@@ -157,6 +157,7 @@ sequenceDiagram
 - **`Sign(purpose, content, grant)` signs in place** with the key of the purpose ([Keys sign in place](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). A purpose that carries an authorised effect, a mint or an artifact signature, needs the grant of [0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants).
 - **`Mac(purpose, input, grant)` makes a keyed hash with HMAC-SHA384** over a data key: `mac` (boundary) for link ids, upstream session ids, pairwise subjects and the hashed index entries of sealed kinds, or `pseudonym` (tenant) for audit pseudonyms. The caller names a label for each use, and `key@` binds the label into the input, so two uses never produce the same hash for the same input. The key never leaves `key@`.
 - **There is no `LinkKey` kind and no extra KMS key for hashing.** A KMS `GenerateMac` key would need one key for each purpose and boundary because it takes no encryption context, and would make two mechanisms for one operation.
+- **The `mac` key has no new generation in place.** Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all; replacing it is a migration that makes them again ([0019](/decisions/0019-person-and-upstream-link/#the-records)).
 - **Pairwise subjects use `mac` with a `pairwise` label and are never rotated** ([0034](/decisions/0034-end-users-and-upstream-signals/#pairwise-subjects)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
 
 ### Data keys
@@ -175,7 +176,7 @@ A data key is a software AES-256 key. `key@` makes it, keeps it only wrapped, an
 
 - **Each tenant has three data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
 - **A sealed kind is sealed under the `data` key of its address's tenant.** The directory kinds and the connections and apps made through a UI or API flow (`DirectoryUser`, `DirectoryGroup`, `DirectoryMembership`, `DirectoryConnection`, `MinterConnection`, `GitHubApp`, `SlackConnection`, `EntraConnection` and the desired state) belong to a tenant, the operator's own company included ([0008](/decisions/0008-boundaries-and-tenants/#tenants)), so a tenant's exit shreds them with the rest of its personal data. Config is never sealed and has no tenant.
-- **A sealed kind that has no tenant in its address is sealed under the boundary's `data` key** (tenant `-`). In the registry that is `EnrolmentToken`, the key of a host's enrolment token, and nothing else. The wrap has the same purpose name as the tenant's `data` key and a different address, so the two never meet.
+- **A sealed kind that has no tenant in its address is sealed under the boundary's `data` key** (tenant `-`). In the registry that is `EnrolmentToken`, the key of a host's enrolment token, and `PendingEnrolment`, a host's request waiting for approval, and nothing else. The wrap has the same purpose name as the tenant's `data` key and a different address, so the two never meet.
 - **A data key is not a KMS key.** On AWS it is made by `GenerateDataKey` under the boundary's one symmetric key; on boards `key@` generates it in software. Either way only the wrapped copy is stored, and the unwrapped key lives in `key@`'s memory ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
 - **A generation counts a data key's rotations.** The envelope of every sealed value names the purpose and the generation that sealed it, so an older generation keeps opening what it sealed ([Rotation](/decisions/0006-keys-and-sealing/#rotation)).
 - **Which actor may use which purpose is a rule of `key@`:** the rules say who may Seal, Open or Mac with each. The audit pieces use `pseudonym` and `evidence` through the same rules ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
@@ -266,7 +267,7 @@ flowchart LR
 
 ## Consequences
 
-- **A seal or an open costs a hop to `key@`,** which the cache makes a memory operation after the first use of a data key. On Lambda the hop is an invoke; its cost for session cookies is measured in [#1179](https://github.com/truvity/sluis/issues/1179).
+- **A seal or an open costs a hop to `key@`,** which the cache makes a memory operation after the first use of a data key. On Lambda the hop is an invoke; its cost for session cookies was measured in [#1179](https://github.com/truvity/sluis/issues/1179): on 2026-11-03, a whole warm sign-in takes about 0.40 s at p50 and 0.49 s at p99, and about 0.29 s and 0.36 s with concurrent reads.
 - **`key@` is the one place where keys are used.** A flaw in a work actor yields what the actor is using now, not a key it could replay later. A compromised `key@` yields its cached data keys and the use of the cards or KMS, and not the stored data, which `store@` holds ([principle 16](/principles/#16-few-credential-holders)).
 - **A tenant is erased by deleting two wraps,** and the evidence outlives it by a retention that audit declares. The evidence retention must be declared and at least as long as the longest duty, and the evidence key outlives the personal-data keys by that difference.
 - **A tenant's directory and connections go with it.** The directory facts and the connections and apps a tenant made, such as its directory, its account at a provider that sluis mints for and its chat workspace, are sealed under its `data` key, so its exit shreds them with its other personal data; only `EnrolmentToken` is sealed under the boundary's `data` key.
@@ -314,5 +315,4 @@ flowchart LR
 
 ## Follow-ups
 
-- The per-request cost of opening session cookies at `key@` on Lambda: [#1179](https://github.com/truvity/sluis/issues/1179).
 - More card and KMS drivers (PKCS#11 for YubiHSM 2 and Nitrokey HSM 2) and post-quantum tokens and certificates: Later, [#1029](https://github.com/truvity/sluis/issues/1029).

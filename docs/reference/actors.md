@@ -39,9 +39,9 @@ None. The workload-issuer key of `sluis-node` is a key of its own in slot `86`, 
 | [`ca`](#ca) | work | no | Go (R4) | one per boundary | `actor:ca` |
 | [`ssh-ca`](#ssh-ca) | work | no | Rust (R11) | one per boundary | `actor:ssh-ca` |
 | [`quota`](#quota) | work | no | Rust (R11) | beside sluis, or on its own | `actor:quota` |
-| [`adapter-upstream-oidc`](#adapter-upstream-oidc) | work | no | Go (R4) | one per vendor tenant and credential | `actor:adapter-upstream-oidc` |
-| [`adapter-github`](#adapter-github) | work | no | Go (R4) | one per vendor tenant and credential | `actor:adapter-github` |
-| [`adapter-slack`](#adapter-slack) | work | no | Go (R4) | one per vendor tenant and credential | `actor:adapter-slack` |
+| [`adapter-upstream-oidc`](#adapter-upstream-oidc) | work | no | Go (R4) | one per boundary | `actor:adapter-upstream-oidc` |
+| [`adapter-github`](#adapter-github) | work | no | Go (R4) | one per boundary | `actor:adapter-github` |
+| [`adapter-slack`](#adapter-slack) | work | no | Go (R4) | one per boundary | `actor:adapter-slack` |
 | [`store`](#store) | data | yes | Rust (R11) | one per boundary | `actor:store` |
 | [`exporter`](#exporter) | data | yes | Rust (R11) | one per boundary | `actor:exporter` |
 | [`key`](#key) | keys | yes | Go (R4) | one per boundary | `actor:key` |
@@ -59,9 +59,9 @@ Parses each request, validates it against closed parameter lists generated from 
 - **Language:** Rust, rule R2 of the [language record](/decisions/0012-the-language-follows-the-executable/). Gated by spikes S1, S3 and S10; the fallback candidate is Go first.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. The only actor reachable from outside: a Unix socket on bare-metal and Kubernetes, loopback TCP on serverless.
 - **Ports:** `data`, `keys`, `audit-emit`, `listener`.
-- **Calls:** `session`, `exchange`, `console`, `ssh-ca`, any adapter.
+- **Calls:** `session`, `exchange`, `console`, `ssh-ca`, `quota`, any adapter.
 - **Egress:** none.
-- **Key purposes:** `pseudonym` (mac).
+- **Key purposes:** `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0008](/decisions/0008-boundaries-and-tenants/), [ADR 0011](/decisions/0011-runtimes-and-installations/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/).
 - **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/).
 - **Standards:** NC-05 HTTP security headers and cookies: HSTS (RFC 6797), CSP, cookie prefixes; ST-97 ConnectRPC / gRPC / Protobuf.
@@ -75,7 +75,7 @@ Sign-in, session chains, the session cookie and the freshness of each person's a
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `audit-emit`, `fetch`.
-- **Calls:** `policy`, `signer`, `adapter-upstream-oidc`.
+- **Calls:** `policy`, `signer`, `exchange`, `adapter-upstream-oidc`.
 - **Egress:** `client-document-hosts`.
 - **Key purposes:** `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0018](/decisions/0018-sessions/), [ADR 0019](/decisions/0019-person-and-upstream-link/).
@@ -91,7 +91,7 @@ The operator API, as the browser's backend: it checks the operator's delegation 
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off; the single-page application is TypeScript.
 - **Placement:** in the front installation; any number of instances; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `audit-emit`.
-- **Calls:** `session`, `exchange`, `reader`, any adapter.
+- **Calls:** `session`, `exchange`, `policy`, `reader`, any adapter.
 - **Egress:** none.
 - **Key purposes:** `data` (open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0027](/decisions/0027-the-console/).
@@ -187,7 +187,7 @@ Keeps the allowance of each tenant, counts it down with a conditional update, re
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** beside sluis, or on its own; any number of instances; on bare-metal, serverless, kubernetes. Runs beside sluis, sharing its store, or in an installation of its own.
 - **Ports:** `data`, `keys`, `audit-emit`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** none.
 - **Key purposes:** `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0039](/decisions/0039-quota-allowance/), [ADR 0040](/decisions/0040-meters-and-usage-evidence/).
@@ -202,9 +202,9 @@ Federates sign-in from an upstream identity provider: it does the code exchange 
 - **Family:** work; holds no credential at rest.
 - **Contracts:** `Upstream`.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
-- **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes.
+- **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `audit-emit`, `provider-api`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `upstream-idp`.
 - **Key purposes:** `data` (open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/), [ADR 0025](/decisions/0025-integrations/).
@@ -219,9 +219,9 @@ Reads directory facts from GitHub, mints short-lived GitHub credentials for a gr
 - **Family:** work; holds no credential at rest.
 - **Contracts:** `FactsSource`, `CredentialMinter`, `Provisioner`.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
-- **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes. A background job (the reconciler, a scheduled re-sync) takes a lease, so one runs at a time.
+- **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. A background job (the reconciler, a scheduled re-sync) takes a lease, so one runs at a time.
 - **Ports:** `data`, `keys`, `audit-emit`, `provider-api`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `github-api`.
 - **Key purposes:** `grant` (open), `data` (seal, open), `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0025](/decisions/0025-integrations/), [ADR 0026](/decisions/0026-reconcilers/).
@@ -236,9 +236,9 @@ Sends notifications such as an enrolment waiting for approval, and reconciles ch
 - **Family:** work; holds no credential at rest.
 - **Contracts:** `Provisioner`, `Notifier`.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
-- **Placement:** one per vendor tenant and credential; any number of instances; on bare-metal, serverless, kubernetes. A background job (the reconciler) takes a lease, so one runs at a time.
+- **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. A background job (the reconciler) takes a lease, so one runs at a time.
 - **Ports:** `data`, `keys`, `audit-emit`, `provider-api`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `slack-api`.
 - **Key purposes:** `data` (seal, open), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0025](/decisions/0025-integrations/), [ADR 0026](/decisions/0026-reconcilers/).
@@ -300,9 +300,9 @@ Seals the records it takes from the transport into its audit log and usage log i
 
 - **Family:** audit; a credential holder: write access to its log in the audit blob.
 - **Language:** Go, rule R4 of the [language record](/decisions/0012-the-language-follows-the-executable/).
-- **Placement:** one per boundary; exactly one instance; on bare-metal, serverless, kubernetes. Exactly one writer per log; a cluster keeps one log per node.
+- **Placement:** one per boundary; exactly one instance; on bare-metal, serverless, kubernetes. One writer per project; exactly one writer per log; a cluster keeps one log per node and project.
 - **Ports:** `data`, `keys`, `blob`, `transport`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `audit-blob`, `audit-transport`.
 - **Key purposes:** `audit-log` (sign, public-key), `issuance-log` (sign, public-key), `evidence` (seal).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/), [ADR 0029](/decisions/0029-the-audit-log/).
@@ -334,7 +334,7 @@ Follows each audit log of its boundary by signed checkpoint and applies the entr
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** one per boundary; exactly one instance; on bare-metal, serverless, kubernetes.
 - **Ports:** `data`, `keys`, `blob`, `transport`, `index`, `audit-emit`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `audit-blob`, `search-index`.
 - **Key purposes:** `evidence` (open).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/).
@@ -350,7 +350,7 @@ Answers audit queries from the search index, filtered by the caller's grant, and
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust unless its design names a serious trade-off.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. With a sqlite index on a cluster it runs on the indexer's node.
 - **Ports:** `data`, `keys`, `blob`, `index`, `audit-emit`.
-- **Calls:** none.
+- **Calls:** `policy`.
 - **Egress:** `audit-blob`, `search-index`.
 - **Key purposes:** `pseudonym` (mac), `evidence` (open).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0028](/decisions/0028-audit-pieces/), [ADR 0029](/decisions/0029-the-audit-log/).
@@ -373,5 +373,17 @@ The node agent: issues each local actor a short-lived workload token, from its u
 - **Requirement areas:** [WORKLOAD](/requirements/workload/).
 - **Standards:** ST-110 JWT-SVID; ST-46 AWS web identity.
 - **Issues:** [#870](https://github.com/truvity/sluis/issues/870); label `actor:sluis-node`.
+
+### External callers
+
+Callers of an actor that are not sluis actors. Each is known by a platform identity, holds nothing and has no ports.
+
+#### `product-emitter`
+
+The emitter library inside a product, which asks key for the keyed hash of a subject before an audit record leaves the product's process.
+
+- **Identity:** The product's own platform identity.
+- **Key purposes:** `pseudonym` (mac).
+- **Decisions:** [ADR 0029](/decisions/0029-the-audit-log/).
 
 <!-- END GENERATED -->

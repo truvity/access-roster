@@ -22,7 +22,7 @@
 #               write through the API is durable data, not config. A provider app definition that serves
 #               the whole installation (SlackApp, Upstream) and its secret stay config and secret and have
 #               no tenant.
-#               A sealed kind that still has no tenant (EnrolmentToken) is sealed under the boundary's
+#               A sealed kind that still has no tenant (EnrolmentToken, PendingEnrolment) is sealed under the boundary's
 #               `data` key (tenant `-`).
 #   class       config | secret | durable | temp
 #   treatment   hashed | sealed | plain   (sealed is the default; config and secret kinds: plain, they
@@ -678,7 +678,7 @@ kinds:
     purposes:
       per_tenant: [data, pseudonym, evidence]
       boundary: [grant, cookie, mac, data]
-    notes: "Id <purpose>/<generation>/<recipient>. Each tenant has three data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data` and `pseudonym` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
+    notes: "Id <purpose>/<generation>/<recipient>. Each tenant has three data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data` and `pseudonym` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
 
   - name: Tenant
     serves: work
@@ -691,7 +691,7 @@ kinds:
     exportable: no
     backed_up: yes
     indexes: [by_name]
-    notes: "Name, state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). exchange owns what a tenant has configured."
+    notes: "Name (a slug of lower-case letters, digits and hyphens, not free text; a display name is TenantBranding's, sealed), state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). exchange owns what a tenant has configured."
 
   - name: Allowance
     serves: work
@@ -784,7 +784,7 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: "-"
     writer: session
     readers: [session, exchange]
@@ -797,25 +797,25 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: hashed
     profile: "-"
     writer: session
     readers: [session]
     exportable: no
     backed_up: yes
-    notes: "Subject, time and kind of an erasure; keeps a restore from bringing a person back."
+    notes: "A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), the time and the kind of an erasure; keeps a restore from bringing a person back. Compare-only, so hashed."
 
   - name: StaffPasskey
     serves: work
-    scope: boundary
+    scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: "-"
     writer: session
     readers: [session]
     exportable: no
     backed_up: yes
-    notes: "An operator's or staff member's passkey on the shared sign-in domain: public key, hash of the credential id, sign count. End-user passkeys belong to the upstream."
+    notes: "An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key and the sign count, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream."
 
   - name: SigningRing
     serves: work
@@ -896,7 +896,7 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: "-"
     writer: ssh-ca
     readers: [ssh-ca]
@@ -915,7 +915,7 @@ kinds:
     exportable: no
     backed_up: yes
     ttl: {field: expires_at}
-    notes: "The HKDF-derived HMAC key of a single-use or reusable enrolment token (never the token). The one sealed kind with no tenant: it is sealed under the boundary's `data` key (tenant `-`)."
+    notes: "The HKDF-derived HMAC key of a single-use or reusable enrolment token (never the token). A sealed kind with no tenant, with PendingEnrolment: it is sealed under the boundary's `data` key (tenant `-`)."
 
   - name: SeenInstanceIdentity
     serves: work
@@ -933,11 +933,11 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: Tenant-adjustable
     links: [ClientSecret, ClientSecretExport, TenantBranding, ClientTemplate]
     writer: exchange
-    readers: [entry, session, exchange, signer, console]
+    readers: [session, exchange, signer, console]
     exportable: no
     backed_up: yes
     indexes: [by_client_id]
@@ -971,7 +971,7 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: Tenant-adjustable
     layer: {group: Branding, layer: tenant}
     writer: exchange
@@ -1015,7 +1015,7 @@ kinds:
     readers: [policy, console]
     exportable: no
     backed_up: yes
-    notes: "A tenant's template links; the template must exist in config (checked on write)."
+    notes: "A tenant's template links; the template must exist in config (checked on write). A link names a template and a group or a role, never a person, so it stays plain."
 
   - name: PredefinedPolicyLink
     serves: work
@@ -1071,7 +1071,7 @@ kinds:
     serves: work
     scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: "-"
     writer: adapter-github
     readers: [adapter-github]
@@ -1175,9 +1175,9 @@ kinds:
 
   - name: HeldChange
     serves: work
-    scope: boundary
+    scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: Operable
     writer: adapter-<vendor>
     readers: [adapter-<vendor> (as provisioner), console]
@@ -1188,9 +1188,9 @@ kinds:
 
   - name: ConsoleChannel
     serves: work
-    scope: boundary
+    scope: boundary+tenant
     class: durable
-    treatment: plain
+    treatment: sealed
     profile: Operable
     writer: adapter-<vendor>
     readers: [adapter-<vendor> (as provisioner), console]
@@ -1341,7 +1341,7 @@ kinds:
     exportable: no
     backed_up: no
     ttl: {default: "the window", max: 1h}
-    notes: "Protective token buckets per connection, client, session and source address (not quota). On boards each window write is a Raft commit."
+    notes: "Protective token buckets per connection, client and source address (not quota); counts only. The id of a source-address bucket is a keyed hash (key@ Mac, boundary `mac` key) with tenant `-`, never the address. On boards each window write is a Raft commit."
 
   - name: Lease
     serves: work
@@ -1411,7 +1411,7 @@ kinds:
     exportable: no
     backed_up: no
     ttl: {default: 1h, max: 24h}
-    notes: "A link to a predefined policy that loosens, such as break-glass recovery; it expires, and policy recompiles when it does."
+    notes: "A link to a predefined policy that loosens, such as break-glass recovery; it names the policy and a group, a role or a session chain (random ids), never a person, so it stays plain; it expires, and policy recompiles when it does."
 
   - name: SlackInstallState
     serves: work
@@ -1455,14 +1455,14 @@ kinds:
     serves: work
     scope: boundary
     class: temp
-    treatment: plain
+    treatment: sealed
     profile: "-"
     writer: exchange
     readers: [exchange, console]
     exportable: no
     backed_up: no
     ttl: {default: 7d, max: 30d}
-    notes: "An enrolment waiting for manual approval; lost means the host asks again."
+    notes: "An enrolment waiting for manual approval: the host's name, the requester and the short code, sealed under the boundary's `data` key (tenant `-`). Lost means the host asks again."
 
   - name: EnrolmentNonce
     serves: work

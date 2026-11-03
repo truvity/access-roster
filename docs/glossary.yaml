@@ -736,13 +736,13 @@ terms:
     see: ["0029-the-audit-log"]
 
   - term: usage fact
-    definition: "An audit-family record of one admit, deny or top-up, with its evidence; the billing log of a product is built from these outside sluis."
+    definition: "A usage entry: a meter reading that an action carries, or quota's admit, refusal or push, built from the same call as its audit record; the billing log of a product is built from these outside sluis."
     category: audit
     see: ["0040-meters-and-usage-evidence"]
     avoid: ["usage event (for a billed statement)", "finance export"]
 
   - term: audit log
-    definition: "The tamper-evident, tiled log that a writer seals into the audit blob: one log per boundary, one writer per log."
+    definition: "The tamper-evident, tiled log that a project's writer seals into the project's bucket: one writer per log, and a log per log kind and node."
     category: audit
     see: ["0029-the-audit-log", "/concepts/audit/"]
     avoid: ["audit trail (as a component)"]
