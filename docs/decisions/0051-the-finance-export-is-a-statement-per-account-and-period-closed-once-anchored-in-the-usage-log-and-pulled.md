@@ -41,7 +41,7 @@ v1 designed, and did not build, a statement written once after a close delay of 
 
 - **A period is a UTC calendar month and closes after a grace period.** Recommended, and the starting value of the install file's declared `close_after`: 72 hours after the period ends. The grace is the same value that bounds how old an event's own time may be ([0040](/decisions/0040-meters-and-usage-evidence/#the-period-of-an-event)). Both are open product facts, below.
 - **At the close instant plus one seal interval,** quota takes, for each usage log of the boundary, the latest checkpoint it has verified ([0029](/decisions/0029-the-audit-log/#sealing)), and sums the entries that checkpoint covers and that belong to the period. Everything recorded before the close instant is sealed by then.
-- **A period does not close while an event of it waits in the outbox,** or while a usage log's writer cannot be reached ([0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/#the-writer-is-down)). The close waits, and an alarm tells the operator that it waits.
+- **A period does not close while an event of it waits in the outbox,** or while a usage log's writer cannot be reached ([0053](/decisions/0039-quota-allowance/#consistency-under-load)). The close waits, and an alarm tells the operator that it waits.
 - **The statement is appended once.** Quota sends it as one message, an audit record of the close and a usage event that holds the statement, and keeps a marker for the boundary, account and period in the same atomic batch as the message (the outbox of [0030](/decisions/0030-audit-records-and-the-usage-stream/#usage-is-derived-from-the-same-event-once)). A second run of the close finds the marker and sends the stored message again, which the writer removes as a duplicate. The log is append-only, so nothing edits or deletes a closed statement.
 - **A recomputation gives the same bytes.** From the checkpoints and entry ranges a statement names, quota recomputes the statement byte for byte, so a changed statement is detected.
 
@@ -53,12 +53,12 @@ v1 designed, and did not build, a statement written once after a close delay of 
 ### Late events and corrections
 
 - **An event whose own period is closed counts in the earliest open period** and is flagged with the period it belongs to; so is an event whose time is out of bounds. The statement of the open period shows both on late lines. Which events belong to which period is [0040](/decisions/0040-meters-and-usage-evidence/#the-period-of-an-event).
-- **A correction is an `Adjust` in an open period** ([0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). A closed statement is never rewritten and never reopened. A credit for a disputed bill is an adjustment line on the next statement.
+- **A correction is an `Adjust` in an open period** ([0030](/decisions/0039-quota-allowance/#the-allowance)). A closed statement is never rewritten and never reopened. A credit for a disputed bill is an adjustment line on the next statement.
 
 ### Delivery is a pull
 
 - **Quota serves statements on its contract** (Connect, unary): one call lists the closed periods of an account, and one gets a statement. It reads the statement from the usage log, as one of the two readers of that log ([0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#two-classes-of-data-two-keys)). The reply is the canonical document with its proof, or its table form as NDJSON or CSV with FOCUS names. A period that is still open returns the running totals, marked provisional, and is not a statement.
-- **Each call is authorised per account** by `policy`, for the billing system's service identity and for a person with the grant ([0052](/decisions/0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people/#service-callers)).
+- **Each call is authorised per account** by `policy`, for the billing system's service identity and for a person with the grant ([0052](/decisions/0039-quota-allowance/#the-push)).
 - **A statement is kept as long as the usage log is.** Its retention is the usage retention, which is declared with no default and has to cover the duty of finance ([0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#two-classes-of-data-two-keys)).
 
 ### Open product facts: the billing calendar

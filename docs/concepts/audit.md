@@ -129,7 +129,7 @@ The lock mode comes from the blob backend: `compliance` on AWS S3, `removable` o
 - **Each log declares its retention, and a production log must** ([ADR 0029](/decisions/0029-the-audit-log/#retention)). There is no built-in default, and the audit log and the usage log declare theirs separately. S3 applies it as per-object retention, R2 as the bucket lock rule, `fs` through an expiry sweeper that may delete expired objects only. Try a period in governance mode first: a wrong period locked in compliance mode cannot be shortened.
 - **Legal holds stay outside sluis.** A hold is placed and lifted with the store's own means, under cloud IAM or a break-glass role, and recorded as an audit record under the name of the person who did it. Nothing in sluis stops a company-key shred during a hold, so the shred procedure checks for a standing hold first, and on a store with no hold flag (R2, `fs`) the operator suspends expiry for the held range by hand.
 
-Compliance profiles (floors that `sluis config check` enforces) and lifecycle tiers (only cold, immutable objects move, and never the lock) are [ADR 0050](/decisions/0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces/).
+Compliance profiles (floors that `sluis config check` enforces) and lifecycle tiers (only cold, immutable objects move, and never the lock) are [ADR 0029](/decisions/0029-the-audit-log/).
 
 :::note[Proposed]
 Which audit installation receives the audit of the workforce installation is a product fact that the design cannot set. It fixes the queue wiring, the audit data keys and the profiles that apply there, and is tracked in [#1143](https://github.com/truvity/sluis/issues/1143). Until it is decided, the serverless shape is specified up to the queue.
@@ -142,7 +142,7 @@ There is one audit log per environment boundary (per node on a cluster), and eac
 - **Each entry is an envelope in clear plus the record, encrypted with HPKE (RFC 9180) to the company's audit data key.** The record is encrypted with a key per (company, batch), sealed to the public part of that key, so the writer cannot read back what it wrote. The private part is held only wrapped under the boundary's sealing key: a company has no key of its own in a key store ([Keys](/concepts/keys/#aws-kms-layout)). A machine-plane record is encrypted to the boundary's own audit data key, and a usage entry has the same form but is encrypted to the company's usage data key, a key of its own with the lifetime of the usage retention.
 - **The envelope** (record id, time, company, class, outcome and actor type, with OCSF names) is a projection of the record, so a reader that decrypts can catch a writer that lies in it. The operator's own view of a company's records is the envelope.
 - **The tree hashes the whole entry, ciphertext included.** A company that leaves has its slice exported and its audit data key deleted; its records stay in the log, sealed and verifiable, and nobody can read them again. Its usage data key is kept until the usage retention ends, so billing evidence outlives the personal data ([ADR 0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/)).
-- **The erasure of one person is met by the pseudonym.** A person or external actor is a keyed pseudonym, never a name or an e-mail address; the mapping from a pseudonym to the person lives outside the log, and erasure deletes it. There are no per-subject keys in 2.0. Pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, so they rotate monthly, and only the company's own audit role reverses one ([ADR 0044](/decisions/0044-audit-pseudonyms-are-keyed-per-company-and-epoch/)).
+- **The erasure of one person is met by the pseudonym.** A person or external actor is a keyed pseudonym, never a name or an e-mail address; the mapping from a pseudonym to the person lives outside the log, and erasure deletes it. There are no per-subject keys in 2.0. Pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, so they rotate monthly, and only the company's own audit role reverses one ([ADR 0029](/decisions/0029-the-audit-log/)).
 
 ## Search
 
@@ -156,7 +156,7 @@ There is one audit log per environment boundary (per node on a cluster), and eac
 
 ## Quota
 
-**Quota** is the quota engine and its state, and it meters by default and enforces per policy rule, for chosen subjects or audiences ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). Enforcement is strict in 2.0, by compare-and-set on the state port; whether to relax it is decided after the load test of the mint path. Its API is `Admit`, `Confirm`, `Cancel`, `TopUp`, `Adjust` and `Balance`: every changing call is idempotent by a `request_id`, amounts are signed 64-bit integers in a declared unit, balance effects live in the usage log and only quota writes them, and an enforcing rule must declare what happens when its balance runs out and when quota is unreachable.
+**Quota** is the quota engine and its state, and it meters by default and enforces per policy rule, for chosen subjects or audiences ([ADR 0030](/decisions/0039-quota-allowance/#the-allowance)). Enforcement is strict in 2.0, by compare-and-set on the state port; whether to relax it is decided after the load test of the mint path. Its API is `Admit`, `Confirm`, `Cancel`, `TopUp`, `Adjust` and `Balance`: every changing call is idempotent by a `request_id`, amounts are signed 64-bit integers in a declared unit, balance effects live in the usage log and only quota writes them, and an enforcing rule must declare what happens when its balance runs out and when quota is unreachable.
 
 - **Plans are declared and accounts are issued.** A declared client creates an account at run time under a declared plan ([ADR 0039](/decisions/0039-quota-allowance/)).
 - **A meter has a name, a unit and a kind, and never changes;** only declared outcomes bill, and an event belongs to the period of its own time within a stated skew ([ADR 0040](/decisions/0040-meters-and-usage-evidence/)).
@@ -165,8 +165,8 @@ There is one audit log per environment boundary (per node on a cluster), and eac
 These are proposed records. Their open parts are tracked in [#915](https://github.com/truvity/sluis/issues/915) and [#1026](https://github.com/truvity/sluis/issues/1026).
 
 - **Billing pulls a statement** per account and period, closed once and anchored in the usage log ([ADR 0051](/decisions/0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled/)).
-- **Services call over mutual TLS with their SVID, and people with exchanged tokens;** a quota installation has no console until a consumer exists ([ADR 0052](/decisions/0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people/)).
-- **Consistency and failure are measured per state driver** before enforcement is switched on ([ADR 0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/)).
+- **Services call over mutual TLS with their SVID, and people with exchanged tokens;** a quota installation has no console until a consumer exists ([ADR 0039](/decisions/0039-quota-allowance/)).
+- **Consistency and failure are measured per state driver** before enforcement is switched on ([ADR 0039](/decisions/0039-quota-allowance/)).
 :::
 
 ## The audit front

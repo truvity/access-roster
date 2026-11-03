@@ -1674,7 +1674,7 @@ requirements:
   - id: REQ-AUDIT-127
     area: AUDIT
     statement: "A pseudonym MUST be computed with HMAC-SHA384 under a data key of its boundary, company and epoch."
-    rationale: "A keyed function cannot be reversed from a list of subjects without the key (ADR 0044)."
+    rationale: "A keyed function cannot be reversed from a list of subjects without the key (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1687,7 +1687,7 @@ requirements:
   - id: REQ-AUDIT-128
     area: AUDIT
     statement: "An emitter MUST replace a subject with its pseudonym before the record leaves the emitting process."
-    rationale: "No transport, spool or writer then holds a raw subject (ADR 0044)."
+    rationale: "No transport, spool or writer then holds a raw subject (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1700,7 +1700,7 @@ requirements:
   - id: REQ-AUDIT-129
     area: AUDIT
     statement: "The pseudonym key of a company MUST change at the start of every UTC month."
-    rationale: "Pseudonyms rotate so the operator's view links a person within a month only (REQ-AUDIT-038, ADR 0044)."
+    rationale: "Pseudonyms rotate so the operator's view links a person within a month only (REQ-AUDIT-038, ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1713,7 +1713,7 @@ requirements:
   - id: REQ-AUDIT-130
     area: AUDIT
     statement: "The reader MUST refuse to reverse a pseudonym for anyone without the company's reversal permission."
-    rationale: "Only the company's own audit role may link a pseudonym to a subject (ADR 0044)."
+    rationale: "Only the company's own audit role may link a pseudonym to a subject (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1726,7 +1726,7 @@ requirements:
   - id: REQ-AUDIT-131
     area: AUDIT
     statement: "Every reversal of a pseudonym MUST produce an audit record under the asking person's name."
-    rationale: "A reversal is a use of personal data that must be visible (ADR 0044)."
+    rationale: "A reversal is a use of personal data that must be visible (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1787,7 +1787,7 @@ requirements:
   - id: REQ-AUDIT-136
     area: AUDIT
     statement: "sluis config check MUST refuse, in a production boundary, a log retention below the floor of a declared compliance profile, naming the profile."
-    rationale: "A profile is a floor that the installation must not go below (ADR 0050)."
+    rationale: "A profile is a floor that the installation must not go below (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1799,7 +1799,7 @@ requirements:
   - id: REQ-AUDIT-137
     area: AUDIT
     statement: "sluis config check MUST refuse, in a production boundary, a lock mode below the floor of a declared compliance profile unless the witness that the profile allows in its place is declared."
-    rationale: "A profile that demands an immutable log must not run on a removable one unwitnessed (ADR 0050)."
+    rationale: "A profile that demands an immutable log must not run on a removable one unwitnessed (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1811,7 +1811,7 @@ requirements:
   - id: REQ-AUDIT-138
     area: AUDIT
     statement: "A transition of an audit object to a colder storage class MUST NOT change the object's lock or retention."
-    rationale: "A tier saves cost and must never shorten evidence (ADR 0050)."
+    rationale: "A tier saves cost and must never shorten evidence (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1823,7 +1823,7 @@ requirements:
   - id: REQ-AUDIT-139
     area: AUDIT
     statement: "The checkpoints, the partial tiles and the hash tiles above level 0 of an audit log MUST stay in the hot storage class."
-    rationale: "A proof and the newest entries must never wait for a retrieval (ADR 0050)."
+    rationale: "A proof and the newest entries must never wait for a retrieval (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1835,7 +1835,7 @@ requirements:
   - id: REQ-AUDIT-140
     area: AUDIT
     statement: "The audit reader MUST answer a read of an object in a cold storage class with a pending state, not by holding the request until the retrieval ends."
-    rationale: "A request must not hang for hours on an archive (ADR 0050)."
+    rationale: "A request must not hang for hours on an archive (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned

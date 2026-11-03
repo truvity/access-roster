@@ -86,9 +86,9 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0025](0025-integrations.md) | Integrations return facts or carry out effects that core authorised, never decide, and are split by credential | Accepted |
 | [0026](0026-reconcilers.md) | A reconciler manages membership only, one per target under a lease, through the Provisioner contract | Accepted |
 | [0027](0027-the-console.md) | Console roles are declared grants, and its pages are organised by the origin of what they show | Accepted |
-| [0028](0028-audit-pieces.md) | Audit is four pieces joined by a transport port, search is an index fed from the log, and an audit installation has its own front | Accepted |
-| [0029](0029-the-audit-log.md) | The audit log is a C2SP tiled log in a blob, sealed in batches by its one writer, with a lock mode, company encryption and a declared retention | Accepted |
-| [0030](0030-audit-records-and-the-usage-stream.md) | Audit records are OCSF events with one `unmapped.sluis` object, usage is a separate stream from the same call, and quota is idempotent and strict | Accepted |
+| [0028](0028-audit-pieces.md) | Audit is four pieces joined by a transport, search is an index fed from the log, and an audit installation has its own front | Accepted |
+| [0029](0029-the-audit-log.md) | The audit log is a tiled log in a blob, sealed by its one writer, with pseudonyms, lifecycle tiers and per-tenant keys | Accepted |
+| [0030](0030-audit-records-and-the-usage-stream.md) | Audit records are OCSF events with one `unmapped.sluis` object, and usage is a separate stream from the same call | Accepted |
 
 ### CIAM module (later layer)
 
@@ -99,7 +99,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0033](0033-customer-connections.md) | Customer connections run in a pool per customer boundary, and a domain routes only after DNS proof | Accepted |
 | [0034](0034-end-users-and-upstream-signals.md) | An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase | Accepted |
 | [0035](0035-customer-pages.md) | Customer pages are few, branded per client and login domain, and localised per request | Accepted |
-| [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket in its own state | Accepted |
+| [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket kept as a temp kind | Accepted |
 | [0037](0037-capacity-is-measured-before-it-is-promised.md) | Capacity is measured before it is promised: a dated spike of the signing path, the hops to store@ and key@, the engines and the audit writer, and tokens stay signed in place meanwhile | Accepted |
 | [0038](0038-fapi-2-profile.md) | FAPI 2.0 is a profile a client declares, with PAR, DPoP, private-key client authentication and its own signing algorithm, and sender constraint is declared per audience | Accepted |
 
@@ -107,7 +107,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0039](0039-quota-allowance.md) | Plan templates are declared, and an account is an issued record that a declared client creates at run time | Accepted |
+| [0039](0039-quota-allowance.md) | Quota holds an allowance per tenant that the product pushes, counts it down, refuses at zero and records every fact | Proposed |
 | [0040](0040-meters-and-usage-evidence.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
 
 ### Being merged
@@ -117,14 +117,10 @@ These records are superseded: the content of each moves into the record its stat
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
-| [0044](0044-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Superseded by 0029 |
 | [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
 | [0049](0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Superseded by 0025 |
-| [0050](0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Superseded by 0029 |
 | [0051](0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Superseded by 0039 |
-| [0052](0052-a-quota-installation-is-fronted-by-service-identity-for-services-and-exchanged-tokens-for-people.md) | A quota installation is fronted by service identity for services and by exchanged tokens for people, and has no console until a consumer exists | Superseded by 0039 |
-| [0053](0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Superseded by 0039 |
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
 
 ## Where the old records went

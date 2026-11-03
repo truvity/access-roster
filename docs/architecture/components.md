@@ -54,7 +54,7 @@ The core actors are fixed by [ADR 0002](/decisions/0002-families-of-actors/#the-
 | `reader` | Read-only access to the index and the log | Nothing; every read is audited | `policy`, for the caller's grant | The audit front's `entry`; a console |
 | `quota` | No key | Quota balances, reservations and request ids | Nothing but its state driver | `exchange` and other metered callers |
 
-One writer per log and one log per node are on [Audit](/concepts/audit/#exactly-one-writer-per-log). Quota meters by default, enforces per policy rule, counts each call once by its request id, and is strict in 2.0; whether to relax enforcement is decided after the load test ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
+One writer per log and one log per node are on [Audit](/concepts/audit/#exactly-one-writer-per-log). Quota meters by default, enforces per policy rule, counts each call once by its request id, and is strict in 2.0; whether to relax enforcement is decided after the load test ([ADR 0030](/decisions/0039-quota-allowance/#the-allowance)).
 
 ### Platform processes
 
@@ -136,7 +136,7 @@ A port is the narrowest interface that every driver can honour and every user ne
 | Port | Operations | Notes |
 | ---- | ---------- | ----- |
 | **keys** | `sign`, `public-key`, `wrap`, `unwrap` | Callers name a key purpose, never an ARN or a slot. A key never leaves its store |
-| **state** | `get`, `put` (create if absent), `cas`, atomic batches | Strong and local reads. The library scopes every call to `<boundary>/<kind>/…` from the actor's own identity and encrypts every value ([ADR 0006](/decisions/0006-keys-and-sealing/#seal-and-open)). Delete, listing by prefix and watch are tracked in [#1009](https://github.com/truvity/sluis/issues/1009); a conditional adjust only if the quota load test needs it ([ADR 0053](/decisions/0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on/#the-load-test)) |
+| **state** | `get`, `put` (create if absent), `cas`, atomic batches | Strong and local reads. The library scopes every call to `<boundary>/<kind>/…` from the actor's own identity and encrypts every value ([ADR 0006](/decisions/0006-keys-and-sealing/#seal-and-open)). Delete, listing by prefix and watch are tracked in [#1009](https://github.com/truvity/sluis/issues/1009); a conditional adjust only if the quota load test needs it ([ADR 0039](/decisions/0039-quota-allowance/#consistency-under-load)) |
 | **lease** | `acquire`, `renew` | Named leases with fencing tokens, on the state store, one per target ([ADR 0005](/decisions/0005-the-store/#leases)) |
 | **blob** | `put-once`, `get`, `list` | A lock mode (none, removable, compliance). Create-if-absent is what fences the audit writer, so a backend without it is not supported ([ADR 0029](/decisions/0029-the-audit-log/#the-write-once-fence)); Garage is backlog ([#982](https://github.com/truvity/sluis/issues/982)). One `s3-compatible` driver serves S3 and R2 |
 | **transport** | `put`, `receive`, `ack`, or a stream | How a record gets from an emitter to the writer: direct, or a queue (spool, SQS, NATS JetStream) ([ADR 0028](/decisions/0028-audit-pieces/#transport)) |

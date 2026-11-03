@@ -40,7 +40,7 @@ Two ports carry flags that an actor can require, so that "any driver for this po
 
 An actor states the lock mode it needs; the audit log's rule is on [Audit](/concepts/audit/#lock-modes-retention-and-legal-holds).
 
-**State `cas`.** An actor that changes a record more than one caller can reach requires compare-and-set. Quota's balances are the main case: strict enforcement is compare-and-set on the mint path ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
+**State `cas`.** An actor that changes a record more than one caller can reach requires compare-and-set. Quota's balances are the main case: strict enforcement is compare-and-set on the mint path ([ADR 0030](/decisions/0039-quota-allowance/#the-allowance)).
 
 ### Create-if-absent
 

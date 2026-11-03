@@ -9,7 +9,7 @@ Proposal: [issue #1016](https://github.com/truvity/sluis/issues/1016).
 
 sluis keeps two kinds of data that live for different times.
 
-- **Personal data** has to end when a person or a company leaves: audit records carry pseudonyms of people ([0044](/decisions/0044-audit-pseudonyms-are-keyed-per-company-and-epoch/)), and a company that leaves has its audit data key deleted ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
+- **Personal data** has to end when a person or a company leaves: audit records carry pseudonyms of people ([0044](/decisions/0029-the-audit-log/)), and a company that leaves has its audit data key deleted ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
 - **Evidence** has to last as long as a duty needs it. A bill can be disputed after the customer has left, and finance keeps usage for years. Today usage entries are encrypted to the company's audit data key, so the exit shred makes them unreadable, and the evidence ends with the personal data (REQ-AUDIT-097).
 
 Principle 3 keeps keys apart where lifetimes differ, and principle 1 says a key never leaves its store. Three more things need one answer for the parity, customer-identity and quota milestones: how a person's erasure and export work, what a backup may hold, and what happens to v1's audit and billing history, whose retention outlives v1.
@@ -33,12 +33,12 @@ Principle 3 keeps keys apart where lifetimes differ, and principle 1 says a key 
 
 - **When a billing period closes, `quota` writes a statement for each billing account as an entry of the usage log** (REQ-QUOTA-036). It holds the amounts per meter and names the checkpoint of the usage log that it was computed from. It holds no personal data and no price.
 - **The log key signs it with the rest of the batch,** and the witnesses cosign the checkpoint. The entry's clear envelope carries the statement's SHA-384 digest, so the holder of a statement can recompute the digest and check inclusion against a cosigned checkpoint with standard tools, without the usage key and after the company has left.
-- **A statement is written once.** A correction is an `Adjust` in the next period, not a rewrite ([0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). The close rule, which is the calendar, the grace and the treatment of late events, belongs to the finance export ([#915](https://github.com/truvity/sluis/issues/915)).
+- **A statement is written once.** A correction is an `Adjust` in the next period, not a rewrite ([0030](/decisions/0039-quota-allowance/#the-allowance)). The close rule, which is the calendar, the grace and the treatment of late events, belongs to the finance export ([#915](https://github.com/truvity/sluis/issues/915)).
 
 ### Erasure and export
 
 - **Erasure of a company is the shred of its audit key.** Its records stay in the log, sealed and verifiable, and nobody can read them again ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
-- **Erasure of a person deletes their records and the mapping from their pseudonyms to them** ([0044](/decisions/0044-audit-pseudonyms-are-keyed-per-company-and-epoch/)), so their audit records name no one. There are no per-subject keys in 2.0.
+- **Erasure of a person deletes their records and the mapping from their pseudonyms to them** ([0044](/decisions/0029-the-audit-log/)), so their audit records name no one. There are no per-subject keys in 2.0.
 - **Export of a person's data comes from the subject lifecycle record** ([#1024](https://github.com/truvity/sluis/issues/1024)), never from decrypting the audit log.
 
 ### Backups

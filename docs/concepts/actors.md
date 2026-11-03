@@ -35,7 +35,7 @@ The set of actors is the same on every runtime. What runs where, what each actor
 | `witness` | Co-signs the checkpoints it has seen; optional |
 | `indexer` | Builds the search index from the log store |
 | `reader` | Serves audit queries from the index, and audits every read |
-| `quota` | The engine of the Quota piece: rate limits, caps and metering, beside sluis or on its own ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)) |
+| `quota` | The engine of the Quota piece: rate limits, caps and metering, beside sluis or on its own ([ADR 0030](/decisions/0039-quota-allowance/#the-allowance)) |
 | Integration actors | Upstream, facts source, credential minter, provisioner and notifier: one process per vendor tenant and credential ([Integrations](/integrations/)) |
 
 The audit actors and their pieces are explained on [Audit](/concepts/audit/). The verifiers of proofs are not actors: they are verifier drivers of `exchange`.
