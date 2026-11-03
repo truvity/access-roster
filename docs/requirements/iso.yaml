@@ -1439,3 +1439,69 @@ requirements:
     issues: [1216]
     verification:
       - {kind: integration-test, ref: "promote a test tenant: its values open under the new boundary and no longer under the old; the old copy is deleted after read-back"}
+
+  # ---- Kubernetes: calls between pods, drivers and the edge (decision 0003)
+  - id: REQ-ISO-111
+    area: ISO
+    statement: "On Kubernetes a NetworkPolicy per callee MUST admit ingress only from the pods of the callee's allowed callers."
+    rationale: "The cluster then enforces the call graph a second time, outside the process (ADR 0003, The call graph)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [949, 876]
+    verification:
+      - {kind: integration-test, ref: "the deny matrix on kind: a pod that the call graph does not allow cannot open a connection to the callee, and an allowed caller can"}
+  - id: REQ-ISO-112
+    area: ISO
+    statement: "On Kubernetes a callee MUST accept a call only with a projected service-account token whose audience is its own and whose caller the call graph allows."
+    rationale: "A pod that the network admits must still be a caller the graph allows (ADR 0003, Transports)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [949, 876]
+    verification:
+      - {kind: integration-test, ref: "a call with a token of an allowed caller but another callee's audience is refused"}
+      - {kind: integration-test, ref: "a call with a token of the right audience from a caller the graph does not list is refused"}
+  - id: REQ-ISO-113
+    area: ISO
+    statement: "On Kubernetes a driver MUST run as a native sidecar container in its holder's pod, with its socket on an emptyDir."
+    rationale: "The socket then never leaves the pod, and only the holder's container and the driver mount it (ADR 0003, Units; ADR 0005, Drivers)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    actors: [store, key]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: every driver is an init container with restartPolicy Always in the pod of its holder, and no driver is a pod of its own"}
+  - id: REQ-ISO-114
+    area: ISO
+    statement: "On Kubernetes entry MUST listen on a Unix socket only and be reached through an edge relay container in its own pod."
+    rationale: "entry then has no TCP listener, and a gateway can still route to the pod (ADR 0003, Listeners)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    actors: [entry]
+    standards: []
+    issues: [876, 1215]
+    verification:
+      - {kind: integration-test, ref: "a connection to entry's pod address is refused on every port; a request through the relay reaches entry's socket"}
+  - id: REQ-ISO-115
+    area: ISO
+    statement: "The edge relay container MUST hold no key and no credential."
+    rationale: "A relay that faces the network and holds nothing yields nothing when it is flawed (ADR 0003, Listeners)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    actors: [entry]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: the relay container mounts no token, no secret and no key volume"}

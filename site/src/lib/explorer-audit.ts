@@ -1,7 +1,7 @@
 // Builds the audit explorer's model, per tested installation, from src/data/explorer/audit.yaml.
 // Ports, drivers and runtimes come from architecture.yaml so the two explorers
 // agree. Nothing here states a fact about audit. A "shape" in this file is a
-// tested installation (local, boards, lambda) of a runtime; a "role" is an actor.
+// tested installation (local, boards, lambda, kubernetes) of a runtime; a "role" is an actor.
 import { parse } from 'yaml';
 import raw from '../data/explorer/audit.yaml?raw';
 import { data as arch, statuses } from './explorer-arch';
@@ -30,9 +30,8 @@ export function shapes(): AuditShape[] {
 function build(sh: any): AuditShape {
   const rt = arch.runtimes[sh.runtime];
   const au = data.shapes[sh.id];
-  const ok = data.transport_kinds[sh.ports.transport === 'sqs' ? 'sqs' : 'spool'];
-  const cluster = sh.nodes > 1;
-  const lambda = sh.runtime === 'lambda';
+  const ok = data.transport_kinds[sh.ports.transport] ?? data.transport_kinds.spool;
+  const cluster = sh.nodes === 'N' || sh.nodes > 1;
   const nodes: MapNode[] = [];
   const nameOf: Record<string, string> = {};
   const defs = data.nodes;
@@ -50,8 +49,9 @@ function build(sh: any): AuditShape {
 
     if (n.role) {
       const rid = n.role;
-      if (lambda && n.l2_lambda) { l2 = n.l2_lambda; l3 = n.l3_lambda; }
-      else if (lambda && n.l3_lambda) { l3 = n.l3_lambda; }
+      // `l2_<runtime>` and `l3_<runtime>` override a node's lines on that runtime template (lambda, kubernetes).
+      if (n[`l2_${sh.runtime}`]) { l2 = n[`l2_${sh.runtime}`]; l3 = n[`l3_${sh.runtime}`]; }
+      else if (n[`l3_${sh.runtime}`]) { l3 = n[`l3_${sh.runtime}`]; }
       else if (!n.l2 || n.role === 'entry') {
         if (n.role !== 'entry') { l2 = fill(rt.role.id_short, { id: rid }); l3 = fill(rt.role.sock_short, { id: rid }); }
       }
@@ -85,7 +85,7 @@ function build(sh: any): AuditShape {
         rows.push({ k: 'Unit', v: fill(tpl.unit, { driver: did, id: did }), code: true });
         rows.push({ k: 'Listens', v: fill(tpl.listen, { driver: did, id: did }), code: true });
       } else {
-        rows.push({ k: 'Listens', v: `${fill(rt.role_driver.listen, { driver: 'aws', role: '<role>' })}, one per role that uses it`, code: true });
+        rows.push({ k: 'Listens', v: `${fill(rt.role_driver.listen, { driver: String(d.binary).replace(/^drivers\//, ''), role: '<role>' })}, one per role that uses it`, code: true });
       }
       if (n.port === 'transport') {
         rows.push({ k: 'Durable means', v: ok.durable });

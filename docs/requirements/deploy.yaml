@@ -204,3 +204,103 @@ requirements:
     issues: [845]
     verification:
       - {kind: integration-test, ref: "the main module builds with the library module removed, and the library imports no internal package"}
+
+  # ---- Kubernetes: pods, cells and the chart (decisions 0003 and 0011)
+  - id: REQ-DEPLOY-016
+    area: DEPLOY
+    statement: "On Kubernetes every namespace of sluis MUST run at the restricted Pod Security level."
+    rationale: "A pod that the cluster already restricts has fewer rights to lose (ADR 0011, Kubernetes)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: the namespace enforces the restricted level, and every pod of every preset is admitted under it"}
+  - id: REQ-DEPLOY-017
+    area: DEPLOY
+    statement: "On Kubernetes the pods of a cell MUST be co-scheduled on one node by pod affinity."
+    rationale: "A call inside a cell then stays on the node (ADR 0003, Cells)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: the pods of a cell carry a pod affinity to each other; on kind they land on one node"}
+  - id: REQ-DEPLOY-018
+    area: DEPLOY
+    statement: "On Kubernetes the cells MUST be spread across nodes and zones."
+    rationale: "One node or zone down then takes one cell and not the installation (ADR 0003, Cells)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: a spread constraint or anti-affinity between cells; on a multi-node kind cluster two cells land on two nodes"}
+  - id: REQ-DEPLOY-019
+    area: DEPLOY
+    statement: "On Kubernetes the Service of an actor MUST use trafficDistribution PreferClose."
+    rationale: "A call then stays in its cell when a replica there is ready (ADR 0003, Cells)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: every actor Service sets trafficDistribution PreferClose"}
+      - {kind: integration-test, ref: "with a ready replica in the caller's cell and one in another, calls go to the local one"}
+  - id: REQ-DEPLOY-020
+    area: DEPLOY
+    statement: "On Kubernetes a PodDisruptionBudget MUST keep a cell's replicas up during a drain."
+    rationale: "A drain must not take an actor's last ready replica (ADR 0003, Cells)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: every actor has a PodDisruptionBudget"}
+      - {kind: integration-test, ref: "a node drain on kind keeps at least one ready replica of each actor"}
+  - id: REQ-DEPLOY-021
+    area: DEPLOY
+    statement: "A rolling update on Kubernetes MUST NOT remove a replica before its replacement is ready."
+    rationale: "Sign-in then stays up through a release (ADR 0003, Cells; ADR 0015)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "a rolling upgrade on kind with a request loop: no request fails"}
+  - id: REQ-DEPLOY-022
+    area: DEPLOY
+    statement: "The chart MUST ship the requests and limits of every container as values measured under load."
+    rationale: "A guessed limit either evicts a pod or wastes the node (ADR 0003, Cells; ADR 0037)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876, 878]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: every container sets requests and limits, and each value names the measurement it came from"}
+  - id: REQ-DEPLOY-023
+    area: DEPLOY
+    statement: "The chart MUST render no Role, RoleBinding, ClusterRole or ClusterRoleBinding, except those that exporter@ needs on the direct path."
+    rationale: "sluis writes no Kubernetes object other than an exported Secret, so it needs no access to the API (ADR 0011, Kubernetes; ADR 0009, Destinations)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: the render of every preset holds no RBAC object, and with the direct path the Role names only the exported Secrets"}

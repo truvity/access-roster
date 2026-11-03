@@ -78,7 +78,7 @@ The design, the code and the reasons are public. What stays private is what prot
 
 Every installation runs the same actors and the same holders; what differs is the driver behind each holder's port. `store@` has four ports, one per storage class, `exporter@` one per destination, and `key@` one for its card or KMS. A driver is private to its owner (`store@`, `key@` or `exporter@`; `key@`'s card and KMS driver included), and only its owner can open its socket. Each port has one driver until a second real installation needs another, and that driver arrives with that installation. sluis is built against these reference installations: a self-hosted installation on three small boards, a workforce installation on serverless, a customer-identity installation on Kubernetes, and a local one-node installation for development. See [Installations](/runtimes/), [ADR 0005](/decisions/0005-the-store/#drivers) and [ADR 0011](/decisions/0011-runtimes-and-installations/).
 
-*Questions it settles:* may an installation add a driver "for later"? (No.) Does a work actor ever see a driver? (No.) Does Lambda run different actors from the boards? (No.)
+*Questions it settles:* may an installation add a driver "for later"? (No.) Does a work actor ever see a driver? (No.) Do Lambda or Kubernetes run different actors from the boards? (No.)
 
 ## 12. A loosening is temporary, a tightening is durable
 

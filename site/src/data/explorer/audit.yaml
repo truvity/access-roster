@@ -67,6 +67,7 @@ transport_kinds:
     bound: "Stream retention and storage on the NATS service"
     instance: "per-actor: each producer connects under its own credential"
     dependency: "a NATS service (3 nodes to replicate)"
+    mode_label: "queue, NATS JetStream (the installation default on Kubernetes)"
     status: decided
   direct:
     driver: direct
@@ -111,6 +112,13 @@ shapes:
     cluster: "managed by the platform; each project's writer runs with a reserved concurrency of 1 on a standard SQS queue, and correctness comes from create-if-absent on the bucket"
     index_placement: "postgres on Aurora by default (ADR 0028), reached through RDS Proxy with IAM authentication; the indexer and the reader run in the VPC"
     note: "The default index here is postgres on Aurora (ADR 0028), reached through RDS Proxy with IAM authentication and one database role per actor kind. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log. The search index is a rebuildable cache; the log in the blob is the record."
+  kubernetes:
+    log_key: "one KMS key per writer instance, whose key policy names key@'s role alone; key@ lets only the writer use it"
+    witness: "optional: peer or external"
+    blob: "an S3 bucket"
+    lock: "lock mode compliance (Object Lock)"
+    cluster: "each project's writer runs as a pod, one at a time, and correctness comes from create-if-absent on the bucket; a separate audit installation, from the chart's audit-install preset, may hold the audit side"
+    index_placement: "postgres in the cnpg mode, a CloudNativePG cluster in the same Kubernetes cluster (ADR 0028); the reader can run in any pod that reaches the database"
 
 # The rows the blob store's detail panel adds to its backend and lock mode: the
 # layout is the same on every installation (records 0029, 0039).
@@ -221,6 +229,8 @@ nodes:
     title: writer
     l2_lambda: Lambda function
     l3_lambda: SQS event source
+    l2_kubernetes: Pod, one at a time
+    l3_kubernetes: JetStream consumer
     does: "One per project: takes the project's records from the transport, validates them, removes duplicates and rolls a batch; seals each record at key@ under its tenant's evidence key; writes the batch's entry bundles and tiles; has key@ sign the checkpoint with the log key and writes it; registers the batch in its state in the bucket; and asks the witnesses to cosign. Each log has exactly one writer and a cluster keeps one log per node. On serverless a reserved concurrency of 1 is an optimisation; everywhere the blob store's create-if-absent is the fence."
     holds: Receive and ack on the transport; create-if-absent on its own project's bucket; its state in that bucket; Seal under the evidence key, and Sign with its log key, at key@
     never: The log key itself (key@ signs for it); Open of any record; the index; any way to hand a record back to a caller
@@ -234,6 +244,8 @@ nodes:
     l3: tlog-witness
     l2_lambda: optional
     l3_lambda: peer or external
+    l2_kubernetes: optional
+    l3_kubernetes: peer or external
     does: "Cosigns each new checkpoint the writer sends it, once it has checked that the checkpoint is consistent with the last one it cosigned, so that the writer alone cannot choose which history an auditor sees. A witness is an actor of the audit family with its own drivers: none, peer or external. It is optional everywhere, and sluis config check warns when there is none (ADR 0029)."
     extra_rows:
       - { k: Drivers, v: "none, peer, external. It speaks tlog-witness and signs tlog-cosignature." }
@@ -264,6 +276,8 @@ nodes:
     l3: derived placement
     l2_lambda: Lambda function
     l3_lambda: postgres on Aurora
+    l2_kubernetes: Pod
+    l3_kubernetes: postgres (cnpg)
     does: "Search, the reader: the audit API. Answers search from the search index and a single record from the blob, and records each read. Where it runs is derived from the port and driver rules: with a sqlite index on a cluster, the reader runs on the indexer's node; with an rqlite or postgres index it can run on any node. On serverless it can run with a postgres index."
     holds: Read on the blob and the search index; Open under the evidence key at key@ with the grant of the call; Mac for a pseudonym
     never: Write on the blob or the index; Seal; any signing key
@@ -350,6 +364,7 @@ flows:
         variants:
           - { shapes: [local, boards], text: "The spool keeps a directory per producer uid, so it knows which actor appended." }
           - { shapes: [lambda], text: "Each actor sends under its own IAM role." }
+          - { shapes: [kubernetes], text: "Each actor publishes under its own NATS credential, and the broker refuses a publish outside the actor's project subjects." }
       - title: entry records the exchange and answers
         nodes: [entry, transport, client]
         edges: ["entry>transport"]
@@ -357,6 +372,7 @@ flows:
         variants:
           - { shapes: [local, boards], text: "Durable means the record was appended to the local spool and fsync'd." }
           - { shapes: [lambda], text: "Durable means SQS accepted the message." }
+          - { shapes: [kubernetes], text: "Durable means the JetStream stream accepted the message." }
       - title: The writer takes the records
         nodes: [writer, transport]
         edges: ["writer>transport"]
@@ -375,6 +391,7 @@ flows:
           - { shapes: [local], text: "A software key signs, through key@." }
           - { shapes: [boards], text: "The board's own card signs for that board's log. The other boards' keys are never used for it." }
           - { shapes: [lambda], text: "One KMS key, whose key policy names key@ only. There is one log of each kind per project; the writer function's role is the isolation." }
+          - { shapes: [kubernetes], text: "One KMS key per writer instance, whose key policy names key@ only; key@ lets only the writer use it." }
       - title: The batch is registered
         nodes: [writer, blobdrv, archive, transport]
         edges: ["writer>blobdrv", "blobdrv>archive"]
@@ -386,7 +403,7 @@ flows:
         variants:
           - { shapes: [boards], text: "The other two boards are this log's peer witnesses (2-of-3). Each board is also a witness for the other two." }
           - { shapes: [local], text: "No witness. An external witness is possible." }
-          - { shapes: [lambda], text: "Optional: a peer or an external witness." }
+          - { shapes: [lambda, kubernetes], text: "Optional: a peer or an external witness." }
       - title: The indexer updates the search index
         nodes: [indexer, blobdrv, archive, index]
         edges: ["indexer>blobdrv", "indexer>index", "blobdrv>archive"]
@@ -394,6 +411,7 @@ flows:
         variants:
           - { shapes: [boards], text: "The index is rqlite (ADR 0028), replicated across the boards, so the reader can run on any board. The reader merges the three logs of a project by recorded time." }
           - { shapes: [lambda], text: "The index here is postgres on Aurora, reached through RDS Proxy." }
+          - { shapes: [kubernetes], text: "The index here is postgres in the cnpg mode, a CloudNativePG cluster in the same Kubernetes cluster." }
   - id: search
     title: An auditor searches
     why: The reader answers from the search index; the read is itself audited.
@@ -408,6 +426,7 @@ flows:
         text: entry calls the reader on its socket. The reader asks policy for a grant, and the grant becomes one more term of the query, not a check beside it.
         variants:
           - { shapes: [lambda], text: "The call is a Lambda invoke." }
+          - { shapes: [kubernetes], text: "The call is gRPC to the reader's pod, with a projected service-account token and behind a NetworkPolicy." }
       - title: The query runs on the index
         nodes: [read, index]
         edges: ["read>index"]
