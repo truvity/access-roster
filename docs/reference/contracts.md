@@ -40,15 +40,15 @@ Every major component of sluis is a ConnectRPC contract, written in Protobuf und
 | Port contracts | An actor's port library | Connect over the driver's Unix socket | `proto/sluis/port/` ([Storage](/reference/storage/#port-contracts)) |
 | Integration contracts | Core actors | As internal services | `proto/sluis/integration/` ([Integration contracts](/architecture/components/#integration-contracts)) |
 
-- **`entry` serves no business logic of its own.** It validates each request against closed parameter lists generated from these contracts and from the standards, and forwards it to the owning actor ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)).
+- **`entry` serves no business logic of its own.** It validates each request against closed parameter lists generated from these contracts and from the standards, and forwards it to the owning actor ([ADR 0002](/decisions/0002-families-of-actors/#the-four-families)).
 - **An internal service is never reachable through `entry`.** The generated routing table lists the public methods only; any other path is refused as unknown.
-- **The call graph is default deny.** A caller may call a method only if both manifests name the edge; one interceptor in every process enforces it ([ADR 0002](/decisions/0002-families-of-actors/#the-permission-manifest)).
+- **The call graph is default deny.** A caller may call a method only if both manifests name the edge; one interceptor in every process enforces it ([ADR 0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)).
 
 ## Every call
 
 - **A deadline.** Every call carries one (`Connect-Timeout-Ms`); a method without one gets the default its contract declares. A callee never extends its caller's deadline, and passes what is left to the calls it makes.
 - **A correlation id.** `entry` gives every request a random 128-bit id (UUID version 4), returns it in the `Sluis-Correlation-Id` response header, and passes it in the metadata of every internal call that request causes. Every audit record of the request carries it, so a support question with the id finds the records. A client cannot choose it; one it sends is ignored.
-- **Trace context.** W3C Trace Context headers are passed on; only internal actors use a remote parent, and the telemetry rules are [ADR 0016](/decisions/0016-telemetry/). A span never carries what an audit record says ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **Trace context.** W3C Trace Context headers are passed on; only internal actors use a remote parent, and the telemetry rules are [ADR 0016](/decisions/0016-telemetry/). A span never carries what an audit record says ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 - **Idempotency.** Every public method that changes something takes a `request_id` field, chosen by the client; `entry` also accepts an `Idempotency-Key` header and copies it in, and refuses both with different values. A request id is scoped to the client and the method and remembered for 24 hours with its outcome. A repeat returns the first outcome; a reused id with another payload is refused (`failed_precondition`); a repeat while the first is still running is `aborted` (HTTP 409) ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)).
 - **Pagination by cursor.** A list method takes `page_size` (at most the maximum its contract declares) and `page_token`, and returns `next_page_token`, empty on the last page. A token is opaque, bound to the query that made it and to the caller, and expires; a token used with another query is `invalid_argument`.
 
@@ -94,7 +94,7 @@ A refusal tells a caller what to do, never why someone else may do more:
 - **Inside sluis** the `Refusal` detail travels with the error, so the calling actor can act on it.
 - **At `entry`** the detail is removed. A public caller gets the code, a fixed message for that code and the correlation id, nothing that names a client, an audience, a group, a grant or a policy rule. The reason goes into the audit record of the refusal.
 - **A refused and an unknown object look the same:** an audience the caller may not use and one that does not exist give the same answer ([System context](/architecture/context/#token-exchange-and-mint)).
-- **Errors never show a value** of configuration or of a request, only the path of the field ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **Errors never show a value** of configuration or of a request, only the path of the field ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 
 ### OAuth and OpenID Connect endpoints
 

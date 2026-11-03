@@ -380,7 +380,7 @@ roles:
     name: entry
     kind: actor
     binary: actors/entry
-    does: "Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns it: session for sign-in and sessions, exchange for token exchange and enrolment, console for the operator API, ssh-ca for SSH certificates. It sits behind the edge connector and is the only actor whose API faces the edge. It is written in a memory-safe language, fuzzed, loads no plugin and runs on a read-only file system (ADR 0041)."
+    does: "Parses each request, validates it against closed parameter lists generated from the contracts, and routes it to the actor that owns it: session for sign-in and sessions, exchange for token exchange and enrolment, console for the operator API, ssh-ca for SSH certificates. It sits behind the edge connector and is the only actor whose API faces the edge. It is written in a memory-safe language, fuzzed, loads no plugin and runs on a read-only file system (ADR 0002)."
     holds: "Nothing: no key, no secret, no state and no outbound network"
     uses: [transport]
     workload_jwt: false

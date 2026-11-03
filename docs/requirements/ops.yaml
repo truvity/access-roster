@@ -318,7 +318,7 @@ requirements:
   - id: REQ-OPS-025
     area: OPS
     statement: "An instance record MUST be issued only under a declared template, by a caller that a declared delegation policy permits."
-    rationale: "Run-time self-service stays inside what a reviewer has read (ADR 0047)."
+    rationale: "Run-time self-service stays inside what a reviewer has read (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -330,7 +330,7 @@ requirements:
   - id: REQ-OPS-026
     area: OPS
     statement: "The audit record of an issued instance MUST name the caller, the template, the slot values apart from secrets and the delegation that permitted it."
-    rationale: "Without them a reviewer cannot tell why an instance exists (ADR 0047)."
+    rationale: "Without them a reviewer cannot tell why an instance exists (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -342,7 +342,7 @@ requirements:
   - id: REQ-OPS-027
     area: OPS
     statement: "An instance record MUST be refused when a slot value lies outside the bound that its template declares."
-    rationale: "An instance must not hold more authority than its template carries (ADR 0047)."
+    rationale: "An instance must not hold more authority than its template carries (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -354,7 +354,7 @@ requirements:
   - id: REQ-OPS-028
     area: OPS
     statement: "A snapshot with a per-customer default outside the bound that its template declares MUST be refused while the version in force stays."
-    rationale: "A default carries no authority, so it may not exceed its bound (ADR 0047)."
+    rationale: "A default carries no authority, so it may not exceed its bound (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -366,7 +366,7 @@ requirements:
   - id: REQ-OPS-029
     area: OPS
     statement: "Declared configuration MUST be applied from the configuration service of its runtime as a whole versioned snapshot, swapped atomically and audited with its digest."
-    rationale: "The reviewed commit and the applied configuration must be matchable (ADR 0047)."
+    rationale: "The reviewed commit and the applied configuration must be matchable (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -512,7 +512,7 @@ requirements:
   - id: REQ-OPS-041
     area: OPS
     statement: "`sluis config check` MUST refuse a configuration source whose driver the installation does not offer."
-    rationale: "An installation without AWS has no AppConfig, and the refusal names the missing dependency (ADR 0057)."
+    rationale: "An installation without AWS has no AppConfig, and the refusal names the missing dependency (ADR 0005)."
     level: MUST
     source: design-decision
     status: planned
@@ -635,7 +635,7 @@ requirements:
   - id: REQ-OPS-051
     area: OPS
     statement: "`sluis config check` MUST refuse a per-customer default from any source that is not a service source."
-    rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0047)."
+    rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -780,7 +780,7 @@ requirements:
   - id: REQ-OPS-063
     area: OPS
     statement: "A lambda function MUST apply a changed `live` path from an `appconfig` source at the first invocation after the poll interval, without a new function version."
-    rationale: "A lambda installation gets live policy and clients from the configuration service, because a layer cannot change under a running function (ADR 0057)."
+    rationale: "A lambda installation gets live policy and clients from the configuration service, because a layer cannot change under a running function (ADR 0005)."
     level: MUST
     source: design-decision
     status: planned
@@ -792,7 +792,7 @@ requirements:
   - id: REQ-OPS-064
     area: OPS
     statement: "The loader MUST reload a `file` source when its file is replaced, including the swap of a mounted ConfigMap."
-    rationale: "The `file` driver signals by notify, so a replaced file is seen without a poll (ADR 0057)."
+    rationale: "The `file` driver signals by notify, so a replaced file is seen without a poll (ADR 0005)."
     level: MUST
     source: design-decision
     status: planned
@@ -804,7 +804,7 @@ requirements:
   - id: REQ-OPS-065
     area: OPS
     statement: "The audit record of a start or reload MUST name the SHA-384 of the payload of each source and, for a signed source, its sequence number."
-    rationale: "A reviewer finds an older signed document at a cold start by comparing the digest and the sequence number with the reviewed branch (ADR 0057)."
+    rationale: "A reviewer finds an older signed document at a cold start by comparing the digest and the sequence number with the reviewed branch (ADR 0005)."
     level: MUST
     source: design-decision
     status: planned

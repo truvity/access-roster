@@ -93,7 +93,7 @@ Each line is filled when the measurement exists, with its date and versions, and
 | The outbox bound, by count and by age, and the warning level | The depth that the longest writer outage the installation tolerates would build at its peak rate, with the state's capacity as a ceiling | The measured relay and drain rates, and the state driver's item and table limits |
 | The quiet window after a restore, or durable reservations instead | The window, as above | The measured cost of a durable reservation on each driver: if it is small, drop the window |
 | The ceiling on a reused grant, 60 seconds in 0043 | Keep 60 seconds | The measured cost of a policy decision per call |
-| The account capacity of an installation | Thousands of accounts, the scale of [0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#the-scale-to-design-for), with headroom | The measured size and speed of a table with that many accounts |
+| The account capacity of an installation | Thousands of accounts, the scale of [0008](/decisions/0008-boundaries-and-tenants/#scale), with headroom | The measured size and speed of a table with that many accounts |
 
 ## Consequences
 

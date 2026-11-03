@@ -16,7 +16,7 @@ Forces:
 - **A certificate that carries authority leaks it.** A certificate listing every host group grows with the organisation, shows the topology, and hits OpenSSH's cap of 256 principals. `sshd` reads `AuthorizedPrincipalsFile` per account at each login, so the host can hold the authority and the certificate only the identity.
 - **Not every device can run a service.** Baseboard controllers and KVM appliances run OpenSSH and nothing else; some routers do not support OpenSSH certificates.
 - **PostgreSQL's `cert` method trusts its CA file** and maps a name to a role, so a workload certificate whose common name equals a role would log in as that role. PostgreSQL 14 and later match the whole subject with `clientname=DN`, and check revocation only when a CRL is configured.
-- **The keys are decided elsewhere.** Each boundary has one X.509 intermediate and separate SSH user and host CA keys, all in `key-holder` or KMS ([0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)); the intermediates are certified through the hand-off to ritueel ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
+- **The keys are decided elsewhere.** Each boundary has one X.509 intermediate and separate SSH user and host CA keys, all in `key-holder` or KMS ([0006](/decisions/0006-keys-and-sealing/#the-slot-plan)); the intermediates are certified through the hand-off to ritueel ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
 
 ## Decision
 
@@ -25,7 +25,7 @@ Forces:
 - **`ca@<boundary>` is the X.509 authority and `ssh-ca@<boundary>` the SSH authority.** They are separate actors because they hold different keys and serve different relying parties. Their language follows [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
 - **Each boundary has its own.** A host trusts exactly one sluis SSH CA, its environment's, plus the break-glass CA.
 - **Issuance is bound to the requester.** The subject is the authenticated requester: a person's key from their sign-in, a workload from its exchanged proof, a host from its enrolment ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). A request cannot name someone else.
-- **`key-holder` signs only what each purpose allows**: for `ca` a parseable TBSCertificate within its constraints, for `ssh-ca` an OpenSSH certificate body ([0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)).
+- **`key-holder` signs only what each purpose allows**: for `ca` a parseable TBSCertificate within its constraints, for `ssh-ca` an OpenSSH certificate body ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)).
 - **Serials are random 128-bit numbers, and no ledger is kept** ([0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)).
 
 ### X.509
@@ -65,11 +65,11 @@ Forces:
 - **People and machines use the flows they already have.** The `sluis` CLI requests a certificate for a key on the person's machine and starts the database tool with the standard libpq variables; a machine presents its workload proof in a token exchange. In Kubernetes, certificates reach pods first through the cert-manager issuer (namespace identity, key in a Secret), then through the `sluis agent` sidecar (identity per pod, shipped as an image and a snippet).
 - **The wiring of a particular database stays outside sluis.** `pg_hba` lines, ident maps, roles and grants live in that database's own repository; sluis documents the scheme and prints reference snippets.
 - **RDS and Aurora use IAM authentication, outside sluis.** sluis makes no RDS token and holds no database credential; a small helper makes the token from AWS credentials that sluis provides through `credential_process`.
-- **sluis's own data in PostgreSQL** follows the row-level security rules of [0003](/decisions/0003-units-transports-and-fusion/#postgresql-row-level-security).
+- **sluis's own data in PostgreSQL** follows the row-level security rules of [0028](/decisions/0028-audit-pieces/).
 
 ### Issuance log and revocation
 
-- **Every X.509 certificate is logged.** `ca` writes each certificate into a C2SP `static-ct-api` issuance log, witnessed like the audit log ([0029](/decisions/0029-the-audit-log/#witnesses)). The log has its own signing purpose ([0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)).
+- **Every X.509 certificate is logged.** `ca` writes each certificate into a C2SP `static-ct-api` issuance log, witnessed like the audit log ([0029](/decisions/0029-the-audit-log/#witnesses)). The log has its own signing purpose ([0006](/decisions/0006-keys-and-sealing/#the-slot-plan)).
 - **Short lifetimes are the main control; `ca` publishes a static CRL** behind them, and a database that configures the CRL checks it.
 - **Every certificate is audited:** the requester, the profile, the role where there is one, the serial, the validity and the public key hash.
 

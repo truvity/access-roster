@@ -23,7 +23,7 @@ Principle 3 keeps keys apart where lifetimes differ, and principle 1 says a key 
 | **Personal data** | Audit entries (pseudonymised), the mapping from a pseudonym to a person, a person's records | The company's audit data key, wrapped under the boundary's sealing key | At exit: the key is shredded. At a person's erasure: their records and the mapping are deleted |
 | **Evidence** | Usage events and period statements | The company's usage data key, wrapped under the same sealing key | At the end of the usage log's declared retention |
 
-- **Evidence and personal data never share a key.** The company has two data keys, an audit key and a usage key, both wrapped under the sealing key, and neither is a key in the key store ([0006](/decisions/0006-keys-and-sealing/#when-keys-are-shared-and-when-separate), REQ-AUDIT-133).
+- **Evidence and personal data never share a key.** The company has two data keys, an audit key and a usage key, both wrapped under the sealing key, and neither is a key in the key store ([0006](/decisions/0006-keys-and-sealing/#key-purposes), REQ-AUDIT-133).
 - **A usage event carries no personal data:** no pseudonym, subject, e-mail address or free text. It names the account, the meter, the amount, the time and the request (REQ-AUDIT-132).
 - **A usage entry is encrypted to the company's usage key** (REQ-AUDIT-097). Its readers are `quota` and the finance export, and nothing else; the indexer does not read it ([REQ-AUDIT-098](/requirements/audit/#REQ-AUDIT-098)).
 - **Exit shreds the audit key and keeps the usage key** until the usage retention ends (REQ-AUDIT-134, REQ-AUDIT-135). Both retentions are declared, and neither binds the other ([0029](/decisions/0029-the-audit-log/#retention)).
@@ -43,7 +43,7 @@ Principle 3 keeps keys apart where lifetimes differ, and principle 1 says a key 
 
 ### Backups
 
-- **An archive is encrypted to at least two recipients held apart, one of them offline** ([0005](/decisions/0005-the-store/#sealed-secrets), [REQ-BACKUP-001](/requirements/backup/#REQ-BACKUP-001), [REQ-BACKUP-020](/requirements/backup/#REQ-BACKUP-020)).
+- **An archive is encrypted to at least two recipients held apart, one of them offline** ([0004](/decisions/0004-the-data-model/#treatment), [REQ-BACKUP-001](/requirements/backup/#REQ-BACKUP-001), [REQ-BACKUP-020](/requirements/backup/#REQ-BACKUP-020)).
 - **Keys never leave their stores, and an archive holds wrapped data only.** It holds no authority key and no sealing key. The one escrow copy it carries is of the data keys of sealed secrets, never of a company's audit or usage key (REQ-BACKUP-037), so an archive cannot undo a shred.
 - **Each installation declares how long it keeps an archive,** and `sluis config check` refuses a production installation without it (REQ-BACKUP-039). An erasure reaches the copies in archives when they expire.
 - **A restore re-applies every shred and erasure that the audit log records after the archive was taken** (REQ-BACKUP-038), so restoring an old archive does not bring back erased data.

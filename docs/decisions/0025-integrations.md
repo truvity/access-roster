@@ -7,7 +7,7 @@ Proposal: [issue #997](https://github.com/truvity/sluis/issues/997).
 
 ## Context
 
-[0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors) says that integration actors return facts or carry out effects that core has authorised, are split by credential, and are named `<vendor>[-<capability>]@<tenant>`. It does not say what an integration may return, how core authorises an effect before it runs, or what each kind of integration is called over its socket. Every integration built after this one, and the sign-in of the first working version, is written against that contract.
+[0002](/decisions/0002-families-of-actors/#the-four-families) says that integration actors return facts or carry out effects that core has authorised, are split by credential, and are named `<vendor>[-<capability>]@<tenant>`. It does not say what an integration may return, how core authorises an effect before it runs, or what each kind of integration is called over its socket. Every integration built after this one, and the sign-in of the first working version, is written against that contract.
 
 The forces are the ones that made `policy` a separate actor ([0007](/decisions/0007-policy-and-sealed-grants/)). A vendor connector is the part of sluis that holds a third party's credential and speaks a third party's protocol; if it also decides who gets what, the decision hides in vendor code that no policy file shows. Vendor error text, vendor identifiers and vendor structs in core would tie core to each vendor. A connector that holds the credentials of several companies would let one company's compromise reach another's.
 
@@ -50,7 +50,7 @@ The workload verifier is not an integration actor but a verifier driver of `exch
 
 ### How core authorises an effect
 
-- **A mint is authorised by a grant that `policy` sealed.** The grant carries the decision, the digest of the policy and the hash of the scope, under the sealing key with `purpose=grant` in the encryption context ([0006](/decisions/0006-keys-and-sealing/#grants-are-sealed-not-signed)). The minter opens it, which fails for a grant of another environment, refuses a scope the grant does not cover and cannot lengthen the lifetime. `exchange` has `quota` admit the operation before it calls the minter.
+- **A mint is authorised by a grant that `policy` sealed.** The grant carries the decision, the digest of the policy and the hash of the scope, under the sealing key with `purpose=grant` in the encryption context ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). The minter opens it, which fails for a grant of another environment, refuses a scope the grant does not cover and cannot lengthen the lifetime. `exchange` has `quota` admit the operation before it calls the minter.
 - **A reconciliation is authorised by a desired state that core published.** The provisioner reads it by its digest from a read-only prefix that core writes; it never asks core a question and cannot choose what the state should be.
 - **A notification is authorised by core composing it.** The caller names a template and its parameters and a destination that declared configuration allows; the notifier sends that and nothing else.
 - **Business limits live in core.** Caller caps, mint rates and which group may hold which role are policy and quota, checked before an integration is called. An integration enforces only technical limits: the vendor's API rate and maximum lifetime.
@@ -60,8 +60,8 @@ The workload verifier is not an integration actor but a verifier driver of `exch
 
 - **One integration process holds one vendor tenant's credential for one capability.** Sign-in and the directory of one workspace tenant are two credentials and so two processes (`google-signin@acme` and `google-directory@acme`); two companies' connectors to the same vendor are two processes. A company's connector then fails, rotates and leaves on its own. The one exception is a customer organisation's own OpenID Connect provider, which holds only a client credential and runs in the pool of its customer boundary ([0054](/decisions/0054-customer-connections-run-in-a-pool-per-customer-boundary/)).
 - **An integration declares the hosts it may reach and the permissions it needs,** and the installer grants no more. Outbound access is limited to the declared hosts: `network_mode: none` locally except for them, an egress policy on Kubernetes ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
-- **A push is a notification, then a pull.** A small notification reaches `entry`, which routes it to the integration; the integration reads the full state from the vendor's API, and a periodic full pass runs as well ([0004](/decisions/0004-the-data-model/#origins)).
-- **Each integration audits what it does:** a facts pass with its digest and counts, a sign-in with its outcome, an effect with its outcome and handle ([0004](/decisions/0004-the-data-model/#audit-and-telemetry-by-origin)).
+- **A push is a notification, then a pull.** A small notification reaches `entry`, which routes it to the integration; the integration reads the full state from the vendor's API, and a periodic full pass runs as well ([0004](/decisions/0004-the-data-model/#storage-classes)).
+- **Each integration audits what it does:** a facts pass with its digest and counts, a sign-in with its outcome, an effect with its outcome and handle ([0004](/decisions/0004-the-data-model/#what-is-not-data)).
 
 ### The first working version
 
@@ -71,7 +71,7 @@ The workload verifier is not an integration actor but a verifier driver of `exch
 
 - A flaw in a connector reaches one vendor tenant's credential and the facts it can return. It cannot grant, because it holds no policy, and it cannot mint beyond a grant, because it opens only grants that `policy` sealed.
 - Policy and core stay free of vendors: a new vendor is a new process with a `Describe` document, and no core package changes.
-- The cost is one process per vendor tenant and capability, and a typed contract per kind to keep compatible. Small machines rely on the fusion rule of [0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-fusion-rule).
+- The cost is one process per vendor tenant and capability, and a typed contract per kind to keep compatible. Small machines rely on the fusion rule of [0003](/decisions/0003-units-transports-and-fusion/#fusion).
 - Treating an unreachable directory as `UNAVAILABLE` means a directory outage is felt as refusals after the freshness window, not as everyone silently losing access ([0017](/decisions/0017-identity-and-sign-in/#directory-outages)).
 - The requirement records for the integrations stay with their areas: the upstream's checks are REQ-FED-001 to REQ-FED-016.
 

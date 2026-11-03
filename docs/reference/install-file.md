@@ -29,11 +29,11 @@ A path inside the file (a policy file, the root list, the CA bundle) is relative
   6. **No tab character.** A tab anywhere is refused, so write `\t` inside a double-quoted string.
   7. **Flow collections (`[...]` and `{...}`) nest at most 64 levels deep.** The Rust reader stops at about 250 levels and the Go reader at 10,000, so the profile sets the limit.
   8. **An error names the path or the line and column, never the value.** The reader's own messages are not shown, because some print the source line. A syntax error names its kind only, because the two readers place it differently; every other error of the profile has the same line and column in both.
-- **The schema is JSON Schema draft 2020-12** with the `$id` `https://sluis.id/schema/install/v1/install.schema.json`, generated from the Pkl sources in `schema/` and embedded in every binary that reads the file ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **The schema is JSON Schema draft 2020-12** with the `$id` `https://sluis.id/schema/install/v1/install.schema.json`, generated from the Pkl sources in `schema/` and embedded in every binary that reads the file ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 - **Strict:** `unevaluatedProperties: false` on every object, so an unknown key is an error that names its path; format assertions are on. An error never shows the value.
 - **`$schema`** may name the `$id` above, for editors. A file that names another `$id` is refused.
 - **Names** of boundaries, upstreams and clients are lower-case kebab-case, 1 to 32 characters, starting with a letter: they appear in unit names, sockets and record keys (`<actor>@<boundary>`).
-- **Durations** are ISO 8601 duration strings, the JSON Schema `duration` format ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)): `PT90S`, `PT15M`, `PT12H` or `P30D`. A string such as `90s` is refused. Every duration field also has a `pattern` beside the format, because the two validators disagree on some valid strings: Go accepts `PT1H1S` and Rust refuses it, so the pattern decides (MEASURED 2026-11-02). A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
+- **Durations** are ISO 8601 duration strings, the JSON Schema `duration` format ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)): `PT90S`, `PT15M`, `PT12H` or `P30D`. A string such as `90s` is refused. Every duration field also has a `pattern` beside the format, because the two validators disagree on some valid strings: Go accepts `PT1H1S` and Rust refuses it, so the pattern decides (MEASURED 2026-11-02). A maximum, such as the one hour of `token_ttl`, is not expressible by the format and is checked by `sluis config check` ([below](#what-sluis-config-check-checks)).
 - **The profile's vectors** (measured 2026-11-01 and again 2026-11-02 with `go.yaml.in/yaml/v3` v3.0.6 and `saphyr-parser` 0.3.3; the conformance kit starts from them):
 
   | Document | Verdict |
@@ -90,8 +90,8 @@ A mapping from the boundary's name to its declaration. Every boundary below L4 i
 
 | Field | Required | Meaning |
 |---|---|---|
-| `kind` | yes | `environment` or `company` ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundary-kinds)). A `company` boundary is what an upstream's [`org`](#upstreams) names. The customer kind comes with the CIAM upstream milestone |
-| `level` | yes | `L0` to `L3`; L4 is a separate install file ([The isolation ladder](/decisions/0008-boundaries-and-tenants/#the-isolation-ladder)) |
+| `kind` | yes | `environment` or `company` ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundaries)). A `company` boundary is what an upstream's [`org`](#upstreams) names. The customer kind comes with the CIAM upstream milestone |
+| `level` | yes | `L0` to `L3`; L4 is a separate install file ([The isolation ladder](/decisions/0008-boundaries-and-tenants/#the-ladder)) |
 | `host` | environment boundaries only | The host of the boundary's issuer, a sibling of the front host under `rp_id`. A company boundary has no issuer |
 | `uid_block` | yes | An integer from 0 to 54, unique in the file. In containers the uid of `<actor>@<boundary>` is the actor's pinned base uid plus 1000 times this number ([The uid table](/architecture/manifest/#the-uid-table)). Never reused after a boundary is removed |
 | `token_ttl` | no | The default lifetime of the access and ID tokens of this boundary's issuer, as for [`front`](#front) |
@@ -120,16 +120,16 @@ A mapping from an actor's name, as in the [actor registry](/reference/actors/), 
 |---|---|---|
 | `log_level` | `info` | `debug`, `info`, `warn` or `error`, for the actor's log on standard error |
 
-Telemetry is not configured here: it is the standard `OTEL_*` environment variables only ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+Telemetry is not configured here: it is the standard `OTEL_*` environment variables only ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 
 ### `upstreams`
 
-A mapping from an upstream's name to its declaration. Each upstream is one integration process, `<vendor>[-<capability>]@<tenant>` ([ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/#names)), owned by one company ([ADR 0008](/decisions/0008-boundaries-and-tenants/#what-each-boundary-owns)). An installation whose people all belong to one organisation declares that organisation as a company boundary too.
+A mapping from an upstream's name to its declaration. Each upstream is one integration process, `<vendor>[-<capability>]@<tenant>` ([ADR 0002](/decisions/0002-families-of-actors/#names)), owned by one company ([ADR 0008](/decisions/0008-boundaries-and-tenants/#the-ladder)). An installation whose people all belong to one organisation declares that organisation as a company boundary too.
 
 | Field | Required | Meaning |
 |---|---|---|
 | `kind` | yes | The integration that serves it. The first working version has `oidc`, the generic OpenID Connect upstream, sign-in only, with subjects assigned at the first sign-in ([#1106](https://github.com/truvity/sluis/issues/1106), [ADR 0017](/decisions/0017-identity-and-sign-in/#subjects)) |
-| `org` | yes | The company that owns the upstream: the name of a [`company` boundary](#boundaries) of this file. Every person who signs in through the upstream, and every account it names, has this `org`, which is the company claim of a token and the company scope of a policy. It is declared here and nowhere else: an upstream cannot send it, and a policy cannot set it ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundary-kinds), [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers), [Policy](/reference/policy/#entity-types)) |
+| `org` | yes | The company that owns the upstream: the name of a [`company` boundary](#boundaries) of this file. Every person who signs in through the upstream, and every account it names, has this `org`, which is the company claim of a token and the company scope of a policy. It is declared here and nowhere else: an upstream cannot send it, and a policy cannot set it ([ADR 0008](/decisions/0008-boundaries-and-tenants/#boundaries), [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers), [Policy](/reference/policy/#entity-types)) |
 | `issuer` | yes | The upstream's issuer URL |
 | `subject_claim` | no | The ID-token claim whose value, with the issuer, identifies the person: default `sub`. Microsoft Entra needs `oid`, because its `sub` differs per application. A mutable claim (`email`, `preferred_username`, `upn`, `name`) is refused, and so is a change while the upstream has links ([ADR 0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)) |
 | `client_id` | yes | sluis's client ID at the upstream |
@@ -137,7 +137,7 @@ A mapping from an upstream's name to its declaration. Each upstream is one integ
 
 ### `clients`
 
-A mapping from a client ID to its declaration, for the group issuer; `boundaries.<name>.clients` has the same shape for a boundary's issuer. Client IDs are readable, unique per issuer and the same in every environment ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)). Clients are declared only: authority is never operator-set ([ADR 0004](/decisions/0004-the-data-model/#origins)). The fields are v1's client model, cut to what the first working version reads; the rest comes at parity: the profiles, the added fields, `resources` and `client_documents` are [ADR 0021](/decisions/0021-clients/).
+A mapping from a client ID to its declaration, for the group issuer; `boundaries.<name>.clients` has the same shape for a boundary's issuer. Client IDs are readable, unique per issuer and the same in every environment ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)). Clients are declared only: authority is never operator-set ([ADR 0004](/decisions/0004-the-data-model/#storage-classes)). The fields are v1's client model, cut to what the first working version reads; the rest comes at parity: the profiles, the added fields, `resources` and `client_documents` are [ADR 0021](/decisions/0021-clients/).
 
 | Field | Required | Meaning |
 |---|---|---|
@@ -167,7 +167,7 @@ The install file can list more sources of declared configuration in an optional 
 
 ## Which keys reload
 
-Every path of the install file, and of every source document, is `live` or `restart` ([ADR 0004](/decisions/0004-the-data-model/#reload-classes)). A `live` path is applied on reload without a restart. A change to a `restart` path is refused at reload, as a whole with every other change in the snapshot, and applied only by a restart. The class is the annotation `x-sluis-reload` in the schema; a path with no annotation of its own has the class of its parent, and the root is `restart`. The question for each path is whether changing it needs a new process, a new key handle or a new connection pool.
+Every path of the install file, and of every source document, is `live` or `restart` ([ADR 0005](/decisions/0005-the-store/#configuration-loading)). A `live` path is applied on reload without a restart. A change to a `restart` path is refused at reload, as a whole with every other change in the snapshot, and applied only by a restart. The class is the annotation `x-sluis-reload` in the schema; a path with no annotation of its own has the class of its parent, and the root is `restart`. The question for each path is whether changing it needs a new process, a new key handle or a new connection pool.
 
 | Path | Class | Why |
 |---|---|---|
@@ -204,7 +204,7 @@ Areas that join the schema later follow the same question, and the pull request 
 
 ## Which keys a file enables
 
-A key purpose that an installation does not enable gets no key ([ADR 0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.
+A key purpose that an installation does not enable gets no key ([ADR 0006](/decisions/0006-keys-and-sealing/#the-slot-plan)). Schema v1 enables, per environment boundary, the X.509 intermediate, the token-signing key and the sealing key. The other purposes are enabled by the keys that use them, which come later: the SSH CA keys with `ssh-ca`, the release-signing subkey with the signing API ([#890](https://github.com/truvity/sluis/issues/890)), the enrolment key with host enrolment. The card slot map override is read by the `yubikey-piv` driver and arrives with it.
 
 ## What `sluis config check` checks
 

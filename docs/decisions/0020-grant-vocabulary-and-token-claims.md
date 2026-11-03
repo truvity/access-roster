@@ -11,7 +11,7 @@ Proposal: [issue #999](https://github.com/truvity/sluis/issues/999).
 
 v1 answered these in a policy document (v1 ADR 0010, on `master`): grants named `<scope>:<thing>:<role>`, an optional declared vocabulary with role ladders and sensitive scopes, a `groups` claim narrowed to the audience's needs, and token lifetimes with a default and a cap per client. Relying parties already depend on the shape: AWS roles, the Kubernetes API server and Argo CD read the `groups` claim, and some of them split a group name on `:`. The parity milestone keeps those relying parties working ([#787](https://github.com/truvity/sluis/issues/787), [#788](https://github.com/truvity/sluis/issues/788)); the first working version needs the rules they stand on.
 
-Authority is declared only ([0004](/decisions/0004-the-data-model/#origins)): a claim of a token is never taken from anything an operator or a vendor sends at run time.
+Authority is declared only ([0004](/decisions/0004-the-data-model/#storage-classes)): a claim of a token is never taken from anything an operator or a vendor sends at run time.
 
 ## Decision
 
@@ -22,7 +22,7 @@ Authority is declared only ([0004](/decisions/0004-the-data-model/#origins)): a 
 - **A role ladder is explicit and does not inherit across scopes.** `admin: [operator]` means that holding `<scope>:<thing>:admin` holds `<scope>:<thing>:operator` too, transitively and on the same scope and thing. `all:x:admin` never implies `dev:x:admin`. A role may not cover more scopes than a role it implies; a role may be narrowed to some scopes.
 - **A scope can be `sensitive`.** A wildcard never reaches a sensitive scope: a sensitive scope is named in full or not granted.
 - **A wildcard `*` is allowed only in the scope or the thing position of a declared group binding.** It is refused in `requires`, in a token's claims, in lifetimes and in the role position, and a wildcard that expands to nothing fails the load.
-- **An undeclared name is refused at load,** with an error that names the path and never the value ([0004](/decisions/0004-the-data-model/#pkl-and-json-schema)). The grants of a person are therefore always names of the vocabulary, and the policy files, the client `requires` and the bindings are checked against it by `sluis config check`.
+- **An undeclared name is refused at load,** with an error that names the path and never the value ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). The grants of a person are therefore always names of the vocabulary, and the policy files, the client `requires` and the bindings are checked against it by `sluis config check`.
 
 ### The claims of a token
 
@@ -54,7 +54,7 @@ A token carries a fixed set of claims. A claim outside the set is not issued, an
 
 ### Binding
 
-- **Binding is declared per audience, and the default is a bearer token.** An audience that declares DPoP or mutual TLS gets a bound token with `cnf`; an audience that does not gets a bearer token without `cnf`. The parity relying parties (AWS web identity, the Kubernetes API server, Argo CD) accept bearer JWTs only ([0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)). The first working version issues bearer tokens and always binds authorization codes with PKCE; DPoP and mutual TLS follow in [#912](https://github.com/truvity/sluis/issues/912).
+- **Binding is declared per audience, and the default is a bearer token.** An audience that declares DPoP or mutual TLS gets a bound token with `cnf`; an audience that does not gets a bearer token without `cnf`. The parity relying parties (AWS web identity, the Kubernetes API server, Argo CD) accept bearer JWTs only ([0002](/decisions/0002-families-of-actors/#the-four-families)). The first working version issues bearer tokens and always binds authorization codes with PKCE; DPoP and mutual TLS follow in [#912](https://github.com/truvity/sluis/issues/912).
 
 ### Lifetimes
 

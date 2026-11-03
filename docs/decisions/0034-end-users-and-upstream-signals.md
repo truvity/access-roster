@@ -45,7 +45,7 @@ An end user is a `person` like any other, with the same records and the same com
 | Audit records | Pseudonyms only ([0044](/decisions/0044-audit-pseudonyms-are-keyed-per-company-and-epoch/)) | Linked through the person record |
 | `tombstone` | The subject, the time and the kind of erasure | None once the links are gone |
 
-No other kind carries a field marked personal; the schema check refuses one ([0004](/decisions/0004-the-data-model/#sensitivities)). sluis holds no e-mail address, name, phone number or password at rest.
+No other kind carries a field marked personal; the schema check refuses one ([0004](/decisions/0004-the-data-model/#treatment)). sluis holds no e-mail address, name, phone number or password at rest.
 
 ### Erasure
 

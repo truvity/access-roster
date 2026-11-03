@@ -30,11 +30,11 @@ Each boundary declares a level. Each level adds to the one before it.
 | **L3 store** | Its own state store (an rqlite cluster, a DynamoDB table), bucket and queue |
 | **L4 runtime** | Its own Kubernetes cluster, cloud account or hosts, and a separate install file joined by declared trust |
 
-A **tenant**, such as an audit, directory or quota tenant, or a customer organisation, is L0: a record kept apart by code only, with no key of its own, and never a substitute for a boundary. Every environment on a cloud runtime runs at least at L2; companies run at **L2 plus sealed data**, in the front installation. A driver whose backend cannot check its callers is allowed at L3 and above only ([ADR 0003](/decisions/0003-units-transports-and-fusion/#three-layers-per-port)). An actor instance carries its boundary in its name, `<actor>@<boundary>` ([Naming](/concepts/actors/#naming)).
+A **tenant**, such as an audit, directory or quota tenant, or a customer organisation, is L0: a record kept apart by code only, with no key of its own, and never a substitute for a boundary. Every environment on a cloud runtime runs at least at L2; companies run at **L2 plus sealed data**, in the front installation. A driver whose backend cannot check its callers is allowed at L3 and above only ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). An actor instance carries its boundary in its name, `<actor>@<boundary>` ([Naming](/concepts/actors/#naming)).
 
 ## Tenants and scale
 
-Keys and isolation belong to a boundary and to nothing smaller ([ADR 0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/)). An installation is designed for about **5 to 10 customer boundaries** and **thousands of tenants** in them. The install file's `uid_block` runs from 0 to 54, so one file declares at most 55 boundaries of all kinds, which is enough. A tenant that needs keys, an issuer or a failure domain of its own is a customer boundary; a cohort that must be separate moves to an installation of its own. A billing account belongs to one installation.
+Keys and isolation belong to a boundary and to nothing smaller ([ADR 0008](/decisions/0008-boundaries-and-tenants/)). An installation is designed for about **5 to 10 customer boundaries** and **thousands of tenants** in them. The install file's `uid_block` runs from 0 to 54, so one file declares at most 55 boundaries of all kinds, which is enough. A tenant that needs keys, an issuer or a failure domain of its own is a customer boundary; a cohort that must be separate moves to an installation of its own. A billing account belongs to one installation.
 
 Installations run in one region of one cloud provider for now, chosen per installation in its install file, and a later residency region is another installation that shares nothing.
 
@@ -116,7 +116,7 @@ The reference choices for a federation of several companies and environments, be
 | Topic | Choice |
 |---|---|
 | Subjects | A subject per directory account, plus a declared link between the subjects of one person. Grants are not inherited across the link. An SSH certificate carries the person key |
-| Keys | Keys and intermediates per environment, certified through the hand-off to ritueel ([ADR 0013](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)) |
+| Keys | Keys and intermediates per environment, certified through the hand-off to ritueel ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)) |
 | State | One engine with a prefix per boundary, replaced by a store of its own at L3 and above |
 | Policy | One source, compiled per environment; the environment's sealing key seals its grants. **Company ceilings** are Cedar `forbid` guards: no grant on another company's scope unless declared cross-company |
 | Audit | A log per environment, with its own front. Each company reads it as a tenant with its own data key |

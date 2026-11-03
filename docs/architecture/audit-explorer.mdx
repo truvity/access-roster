@@ -20,7 +20,7 @@ Audit uses the sluis ports plus `witness`, the only port it adds. The same actor
 
 Select a box to see what it holds, what it never holds and who it calls. Choose a flow to step through it: each step lights the lines it uses, in order. Every actor listens on Unix sockets; [the architecture explorer](/architecture/explorer/) shows the sockets and processes of each installation.
 
-Where Search (the indexer, the search index and the reader) and Quota run is derived from the port and driver rules ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)). Quota meters by default and enforces per policy rule ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). The witness is optional everywhere ([ADR 0029](/decisions/0029-the-audit-log/#witnesses)).
+Where Search (the indexer, the search index and the reader) and Quota run is derived from the port and driver rules ([ADR 0003](/decisions/0003-units-transports-and-fusion/#units)). Quota meters by default and enforces per policy rule ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota)). The witness is optional everywhere ([ADR 0029](/decisions/0029-the-audit-log/#witnesses)).
 
 <AuditExplorer part="map" />
 

@@ -58,7 +58,7 @@ ls /usr/libexec/sluis/actors
 audit-indexer  audit-reader  audit-witness  audit-writer  ca  console  entry  exchange  policy  session  signer  ssh-ca
 ```
 
-These are the [core actors](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors) and the audit actors; the install file decides which of them run.
+These are the [core actors](/decisions/0002-families-of-actors/#the-four-families) and the audit actors; the install file decides which of them run.
 
 ## 4. Run `sluis doctor`
 

@@ -26,7 +26,7 @@ A workforce directory is pulled, so sluis learns that a person was removed ([001
 ### Disable and delete
 
 - **A person's status arrives as a call to sluis,** `suspend`, `resume` and `erase`, made over workload identity by a declared client of the customer boundary, in practice the customer-identity module or a small adapter that listens to the upstream's own events. The call names the person by connection and subject-claim value, never by e-mail address. It is audited under the client's name.
-- **`suspend` and `erase` take effect at once** (tighten-only, [0004](/decisions/0004-the-data-model/#origins)): a suspended person is refused everywhere and every session, agent sessions included, ends. **`resume` lifts only `suspended`,** never a hold an operator set, and gives back only what declared policy grants. The states are those of [0034](/decisions/0034-end-users-and-upstream-signals/#states); the status is a `person-status` record, observed from outside and written by the status operation's owner, not by the operator-set hold.
+- **`suspend` and `erase` take effect at once** (tighten-only, [0004](/decisions/0004-the-data-model/#storage-classes)): a suspended person is refused everywhere and every session, agent sessions included, ends. **`resume` lifts only `suspended`,** never a hold an operator set, and gives back only what declared policy grants. The states are those of [0034](/decisions/0034-end-users-and-upstream-signals/#states); the status is a `person-status` record, observed from outside and written by the status operation's owner, not by the operator-set hold.
 - **The standard channel is a second source of the same fact,** not another mechanism. When an upstream transmits OpenID Shared Signals events (CAEP `account-disabled`, `account-enabled`, `account-purged`), a receiver turns them into the same `person-status` fact. It is built with its first upstream that transmits them ([REQ-CIAM-006](/requirements/ciam/#REQ-CIAM-006) is the transmitting side).
 - **A connection with no status source gets no agent sessions.** Agent sessions must end when the person is disabled ([0018](/decisions/0018-sessions/#agent-sessions)), and sluis can promise that only where it can be told. A human session needs no source: its bound is the 24 hours and the silent renewal that fails once the upstream refuses the account ([0018](/decisions/0018-sessions/#customers)).
 
@@ -52,7 +52,7 @@ A workforce directory is pulled, so sluis learns that a person was removed ([001
 - **Treating back-channel logout as disable.** A logout ends a session, not an account; a person who signed out would be locked out.
 - **Ending agent sessions on logout.** It would break background agents at every sign-out, which [0018](/decisions/0018-sessions/#agent-sessions) refuses.
 - **A pull of the upstream's user list.** That is the directory, which a customer-identity product need not offer and which makes sluis a copy of the accounts.
-- **Letting the module set an operator hold.** Its suspension would mix an observed status with an operator's lasting choice, which [0004](/decisions/0004-the-data-model/#origins) keeps apart.
+- **Letting the module set an operator hold.** Its suspension would mix an observed status with an operator's lasting choice, which [0004](/decisions/0004-the-data-model/#storage-classes) keeps apart.
 
 ## Follow-ups
 

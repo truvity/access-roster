@@ -7,7 +7,7 @@ Proposal: [issue #998](https://github.com/truvity/sluis/issues/998).
 
 ## Context
 
-`session@<boundary>` keeps the session records, the session cookie and each person's freshness per boundary ([0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)). The requirements say that a refresh token ends at sign-out, at an idle limit and at an absolute limit (REQ-SESS-015), with one idle and one absolute limit for every refresh token.
+`session@<boundary>` keeps the session records, the session cookie and each person's freshness per boundary ([0002](/decisions/0002-families-of-actors/#the-four-families)). The requirements say that a refresh token ends at sign-out, at an idle limit and at an absolute limit (REQ-SESS-015), with one idle and one absolute limit for every refresh token.
 
 Three kinds of caller hold tokens, and they differ in what a limit can measure and in who may end them:
 
@@ -38,7 +38,7 @@ Principle 3 keeps things apart where their audience, lifetime and revocation dif
 - **No interactive idle timer.** An agent session has an inactivity expiry on its refresh token (default 14 days) and an absolute lifetime from the consent (default 30 days, maximum 90 days). Its access tokens last at most 30 minutes (maximum 1 hour).
 - **It never outlives the person or the consent.** Revoking the consent, the directory disabling the person, an operator's revoke, and refresh-token reuse each end it at once. Every refresh re-checks the consent and the person's state.
 - **Refresh tokens rotate** at every use, as for every class (REQ-SESS-001).
-- **Tokens are narrow:** one resource per token (RFC 8707), with the scopes the consent names for that resource. They are sender-constrained by DPoP where the client supports it, when DPoP arrives ([0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)).
+- **Tokens are narrow:** one resource per token (RFC 8707), with the scopes the consent names for that resource. They are sender-constrained by DPoP where the client supports it, when DPoP arrives ([0002](/decisions/0002-families-of-actors/#the-four-families)).
 - **The person's sign-out does not end agent sessions,** and the sign-out page says so.
 - **Each agent session is listed and revocable by the person,** in the console, and recorded in audit as a record kind of its own, separate from human sessions.
 - **Concurrent agent sessions are capped per person and client:** a default of 5 and a maximum of 20, set per installation. A new consent past the cap is refused; the person revokes one first.

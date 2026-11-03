@@ -19,7 +19,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 | `github.com/go-piv/piv-go/v2` | YubiKey PIV in `key-holder`; attestation verification | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
 | `github.com/ProtonMail/go-crypto` | OpenPGP packets: the subkey request, the back-signature, detached signatures | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off) |
 | `filippo.io/age` | Backup archives and export drops, a named exception | [ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions) |
-| `github.com/santhosh-tekuri/jsonschema/v6` | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema) |
+| `github.com/santhosh-tekuri/jsonschema/v6` | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `connectrpc.com/connect`, `google.golang.org/protobuf` | The Connect protocol and Protobuf | [ADR 0002](/decisions/0002-families-of-actors/#contracts) |
 | `github.com/go-jose/go-jose/v4` | JWS, JWK and JWT: verifying tokens and client assertions, reading and writing key sets; never JWE | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
 | `github.com/zitadel/oidc/v3` | The OpenID Provider of `session` and `exchange` (`pkg/op`) and the relying party of the `oidc` upstream (`pkg/client/rp`) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
@@ -27,7 +27,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 | `golang.org/x/mod/sumdb/note`, `golang.org/x/mod/sumdb/tlog` | C2SP signed notes, and the hashes and tiles of a tiled log, in `writer` and `witness` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
 | `filippo.io/torchwood` | C2SP checkpoints, cosignatures and tiles, and the tile client, in `writer` and `witness` | [ADR 0029](/decisions/0029-the-audit-log/#witnesses) |
 | `filippo.io/sunlight` | C2SP `static-ct-api` entries and checkpoints, in the issuance log of `ca` | [ADR 0023](/decisions/0023-certificate-authorities/#issuance-log-and-revocation) |
-| `go.yaml.in/yaml/v3` | Reading the install file, through the strict profile of [the install file](/reference/install-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema) |
+| `go.yaml.in/yaml/v3` | Reading the install file, through the strict profile of [the install file](/reference/install-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 
 Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)).
 
@@ -38,12 +38,12 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384, HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
 | `rustls` | TLS, with the `aws-lc-rs` provider and no FIPS pin | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `cedar-policy` | Cedar policy in `policy` | [ADR 0007](/decisions/0007-policy-and-sealed-grants/) |
-| `jsonschema` | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema) |
+| `jsonschema` | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `connectrpc` | The Connect protocol over Unix sockets, once spike S1 passes | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates) |
 | `zeroize` | Wiping secrets from memory | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#context) |
 | `jsonwebtoken`, with its `aws_lc_rs` feature | Verifying JWS and JWT, with an explicit algorithm list | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
 | `signed_note`, `tlog_tiles` | C2SP signed notes, checkpoints and tiles in `indexer` and `reader`; the P-384 verifier of the log key is a `NoteVerifier` on `aws-lc-rs` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
-| `saphyr-parser` | Reading the install file, through the strict profile of [the install file](/reference/install-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema) |
+| `saphyr-parser` | Reading the install file, through the strict profile of [the install file](/reference/install-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `ssh-key` | OpenSSH keys and certificates in `ssh-ca`, with a signing key that signs through the `keys` port; chosen with a condition, see [below](#rust-openssh-certificates) | [ADR 0023](/decisions/0023-certificate-authorities/#ssh) |
 | The AWS SDK for Rust | AWS calls from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 
@@ -51,7 +51,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 
 | Library | For | Needed by |
 |---|---|---|
-| `ajv`, its draft 2020-12 build | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema) |
+| `ajv`, its draft 2020-12 build | Configuration against the JSON Schema | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | WebCrypto and WebAuthn, the browser's | Cryptography and passkeys in the console's single-page application | [ADR 0017](/decisions/0017-identity-and-sign-in/#passkeys) |
 | `@connectrpc/connect` (connect-es) | The Connect client of the public API | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#quota) |
 | `jose` | Verifying tokens in the console's single-page application and in the verification demo | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
@@ -63,7 +63,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | The `yubikey` crate | Its own notice says it is unaudited and experimental (rule R7) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#roads-not-taken) |
 | `ykcs11` through `cryptoki`, for `key-holder` | It resets the card for every client when a second one appears, and keeps a PIN copy that cannot be wiped | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#roads-not-taken) |
 | `gpg` on a node | sluis builds the OpenPGP packets itself and the card signs | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off) |
-| A Go plugin or a WebAssembly module in an actor | Plugins run out of process, always | [ADR 0003](/decisions/0003-units-transports-and-fusion/#drivers-are-platform-started-services) |
+| A Go plugin or a WebAssembly module in an actor | Plugins run out of process, always | [ADR 0005](/decisions/0005-the-store/#drivers) |
 
 ## Adding a library
 
@@ -112,7 +112,7 @@ Each row is a question that stood open until then. The versions are the latest r
 
 Both readers were run on 2026-11-01 and again on 2026-11-02 (`go.yaml.in/yaml/v3` v3.0.6 and `saphyr-parser` 0.3.3): the readers as they come on a dozen documents, and the two behind the strict profile of [the install file](/reference/install-file/#format) on the 15 documents of its vector table of 2026-11-01 (14 rows, one of which holds two documents), and on 2026-11-02 on 105 profile vectors, those 15 and 90 edge cases.
 
-- **As they come, no reader refuses what the profile refuses.** `go.yaml.in/yaml/v3` and `goccy/go-yaml` v1.19.2 accept anchors, aliases, merge keys, tags and a second document, and read `010` as the number 8. `serde-saphyr` 2.0.0 reads the plain words `y` and `yes` as `true` and `010` as a float; `saphyr` reads `yes` as a string. Only a duplicate key is refused by every reader. `goccy/go-yaml` and `serde-saphyr` print the offending source line in their errors, which breaks the rule that an error never shows a value ([ADR 0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **As they come, no reader refuses what the profile refuses.** `go.yaml.in/yaml/v3` and `goccy/go-yaml` v1.19.2 accept anchors, aliases, merge keys, tags and a second document, and read `010` as the number 8. `serde-saphyr` 2.0.0 reads the plain words `y` and `yes` as `true` and `010` as a float; `saphyr` reads `yes` as a string. Only a duplicate key is refused by every reader. `goccy/go-yaml` and `serde-saphyr` print the offending source line in their errors, which breaks the rule that an error never shows a value ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 - **Behind the profile, the two give the same verdict on all 15 documents and on all 105 profile vectors (MEASURED 2026-11-02).** Finding the edge cases added six cases to the page's first five rules, each by a disagreement of the two readers, and the page now carries them. The profile is a walk over the nodes of the reader, about 75 lines in Go and 90 in Rust: Go uses the `Node` tree of `go.yaml.in/yaml/v3`, and Rust uses the event stream of `saphyr-parser`, which exposes anchors, aliases and tags that a typed reader hides. [P6](/principles/#6-generic-products-joined-by-a-contract) applies: the contract is the profile and its vectors, not shared code.
 - **`go.yaml.in/yaml/v3` and `saphyr-parser` because** they are the parsers the maintained readers sit on: `go.yaml.in/yaml/v3` is maintained by the YAML organisation at `github.com/yaml/go-yaml` (v3.0.6, 2026-10-13, and already in the dependencies of the OpenID Connect library above), and `saphyr-parser` 0.3.3 (2026-10-27) is a YAML 1.2 event parser. `serde_yaml` is deprecated and `serde_yml` is marked unmaintained.
 

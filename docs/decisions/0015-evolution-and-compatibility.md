@@ -25,7 +25,7 @@ Principle 6 joins products by a contract with vectors; principle 1 says v1's key
 - **Rollback is the previous release.** N-1 reads what N wrote, so going back needs no migration.
 - **Contract vectors in CI enforce it** (principle 6, REQ-SUPPLY-025, REQ-SUPPLY-027). The vectors of the previous release run against the current actors, and the current vectors run against the previous release's artifacts, for messages, records and documents. Protocol contracts are also checked for breaking changes ([GOVERNANCE.md](https://github.com/truvity/sluis/blob/main/GOVERNANCE.md)).
 - **A major version may break N-1.** It ships with an upgrade note and, where stored data changes, a tool that migrates it, and it may need a stop.
-- **The rule holds from v2.0.0.** Between alphas anything may change, as 0019 says. The configuration schema keeps its own rule: a published `$id` never changes ([0004](/decisions/0004-the-data-model/#pkl-and-json-schema)).
+- **The rule holds from v2.0.0.** Between alphas anything may change, as 0019 says. The configuration schema keeps its own rule: a published `$id` never changes ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 - **This replaces 0019's lockstep sentence.** [0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases) carries the rule in its short form: one release is built and shipped together, and also works with the previous release of its major.
 
 ### Cutover from v1
@@ -33,7 +33,7 @@ Principle 6 joins products by a contract with vectors; principle 1 says v1's key
 - **v1 and v2 run in parallel, and relying parties move one at a time.** v2 comes up on its own issuer hosts. Each relying party, such as a cluster API server, a cloud identity provider, a GitOps tool, a console or a CI system, is rewired and switched alone. v1 keeps serving the others until the last has moved, and a move is undone by pointing that relying party back.
 - **v2 never takes over v1's issuer.** v1's keys never move (principle 1), the v2 chain comes from the root custodian, and each boundary has its own issuer host ([0008](/decisions/0008-boundaries-and-tenants/)).
 - **An inventory comes first.** Before the first relying party moves, a list names every relying party of the v1 issuer and every consumer that keys on v1's `sub`, `aud` or `groups` format (REQ-OPS-030). A consumer keyed on the e-mail `sub` is re-keyed to v2's opaque `sub` before it moves.
-- **No state is carried.** What happens to each thing follows its origin in [0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin): declared configuration is converted by a tool (policy to Cedar, clients and vocabulary to the v2 files), learned data is learned again, durable issued records are issued again for each workload, vendor-issued secrets are connected again, and sessions are not carried, so everyone signs in again.
+- **No state is carried.** What happens to each thing follows its origin in [0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds): declared configuration is converted by a tool (policy to Cedar, clients and vocabulary to the v2 files), learned data is learned again, durable issued records are issued again for each workload, vendor-issued secrets are connected again, and sessions are not carried, so everyone signs in again.
 - **v1's audit and billing history follows [0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#v1s-history).**
 
 ### Deliverables

@@ -989,7 +989,7 @@ requirements:
   - id: REQ-ISO-075
     area: ISO
     statement: "A customer boundary MUST have an issuer host and keys of its own, shared with no other boundary."
-    rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0046)."
+    rationale: "Its customers' tokens and data must not depend on, or be reachable through, another boundary (ADR 0008)."
     level: MUST
     source: design-decision
     status: planned

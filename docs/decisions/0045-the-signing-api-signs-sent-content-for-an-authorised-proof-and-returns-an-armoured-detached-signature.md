@@ -13,18 +13,18 @@ Three facts about the formats shape the contract:
 
 - **An OpenPGP signature cannot be made from a digest alone.** The signature hashes the data, then its own version, type, algorithm and hashed subpackets, then a trailer (RFC 9580, section 5.2.4). The signer has to see the data. A release signs the checksum file, which is small; the large files are covered by the checksums in it.
 - **A key signs only what it is for.** A second signature format under the same key would let a chosen input for one format pass as a signature in the other, which is why signing keys are never shared across purposes ([principle 3](/principles/#3-keys-are-shared-rotated-and-given-to-tenants-by-rule)).
-- **`signer` must not be a signing oracle for whoever reaches it** ([0041](/decisions/0041-core-actors-with-one-responsibility-each/#the-actors)). The caller is a CI job on the internet's side of `entry`, so the decision to sign has to come from `policy` and reach `signer` in a form that only `policy` can make.
+- **`signer` must not be a signing oracle for whoever reaches it** ([0002](/decisions/0002-families-of-actors/#the-four-families)). The caller is a CI job on the internet's side of `entry`, so the decision to sign has to come from `policy` and reach `signer` in a form that only `policy` can make.
 
 ## Decision
 
 ### Who does what
 
 - **The signing API is a public Connect service of `exchange`,** reached through `entry`. `exchange` already verifies proofs (the `github-oidc` verifier driver is in the first working version, [0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)), asks `policy`, and calls `signer`; no new edge is needed.
-- **The release-signing key belongs to `signer`,** the actor that signs, as a purpose of its own beside the token-signing key ([0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)). The two keys are never shared and have one user actor each.
+- **The release-signing key belongs to `signer`,** the actor that signs, as a purpose of its own beside the token-signing key ([0006](/decisions/0006-keys-and-sealing/#the-slot-plan)). The two keys are never shared and have one user actor each.
 - **The flow is four steps:**
   1. The caller sends the content with its proof, a GitHub Actions identity token, in the `Authorization` header.
   2. `exchange` verifies the proof and asks `policy` to decide the action `artifact.sign` on the resource `SigningKey` `release-signing`, with the verified attributes of the job (repository, ref, workflow, environment) and the digest and length of the content as context.
-  3. `policy` seals a **signing grant**: the decision, the policy digest, the key purpose, the SHA-384 of the content, the caller, and an expiry 60 seconds ahead, under the sealing key with `purpose=grant` ([0006](/decisions/0006-keys-and-sealing/#grants-are-sealed-not-signed)).
+  3. `policy` seals a **signing grant**: the decision, the policy digest, the key purpose, the SHA-384 of the content, the caller, and an expiry 60 seconds ahead, under the sealing key with `purpose=grant` ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
   4. `exchange` passes the grant and the content to `signer`. `signer` opens the grant, refuses unless the key purpose, the content hash and the expiry match, builds the signature and signs in place through the keys port.
 
 ### The request and the response
@@ -73,7 +73,7 @@ message SignDetachedResponse {
 
 - A flaw in the parser of `entry` or in `exchange` can ask `signer` only for a signature that `policy` sealed for exactly that content, within a minute. To sign something else an attacker needs `policy` to agree, as for a credential.
 - The policy sees the job's repository, ref and workflow, which is what a release key needs: "this workflow, on this ref, may sign" is a Cedar permit, not code.
-- The cost is a second key in `signer`, a slot on a node card ([0006](/decisions/0006-keys-and-sealing/#the-card-slot-map)) and a key policy that lets `signer` open grants. The OpenPGP packet code exists in `signer` and in ritueel's tools, and the two share a test matrix of `gpg`, `gpgv`, `sqv`, apt and rpm ([0024](/decisions/0024-root-custody-and-the-signing-api/#consequences)).
+- The cost is a second key in `signer`, a slot on a node card ([0006](/decisions/0006-keys-and-sealing/#the-slot-plan)) and a key policy that lets `signer` open grants. The OpenPGP packet code exists in `signer` and in ritueel's tools, and the two share a test matrix of `gpg`, `gpgv`, `sqv`, apt and rpm ([0024](/decisions/0024-root-custody-and-the-signing-api/#consequences)).
 - A caller that must sign a large file signs its checksum file. That is how the packaging tools work already.
 - Requirements: REQ-SUPPLY-016 is reworded for content, and [REQ-SUPPLY-019](/requirements/supply/#REQ-SUPPLY-019) to [REQ-SUPPLY-024](/requirements/supply/#REQ-SUPPLY-024) are added.
 

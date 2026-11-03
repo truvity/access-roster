@@ -18,7 +18,7 @@ The node count is an attribute of the installation, not of the runtime: bare-met
 - The node agent (`sluis-node`) issues each actor a short-lived workload JWT and, on a cloud VM, is the only process that holds the instance role and brokers per-actor credentials.
 - The permission manifest generates the units: `User=`, a private state directory, the credentials an actor may read, and socket modes and groups for the callers it allows.
 - **Hardening per unit:** `ProtectSystem=strict`, `NoNewPrivileges=`, an empty `CapabilityBoundingSet=` and `SystemCallFilter=@system-service`. Every actor that needs no network, `entry`, `policy` and `signer` among them, gets `PrivateNetwork=yes` and `RestrictAddressFamilies=AF_UNIX`. Integrations reach their providers through the egress proxy.
-- `key-holder` fronts the node's YubiKey with one socket per caller, a peer-uid check and content-aware signing ([ADR 0003](/decisions/0003-units-transports-and-fusion/#key-holder-is-the-one-mediator)). State has no mediator: each owning actor has its own rqlite cluster, and the unit of its driver reaches the cluster's TCP client port through a narrow network rule ([ADR 0005](/decisions/0005-the-store/#how-a-per-actor-rqlite-driver-reaches-its-cluster)).
+- `key-holder` fronts the node's YubiKey with one socket per caller, a peer-uid check and content-aware signing ([ADR 0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). State has no mediator: each owning actor has its own rqlite cluster, and the unit of its driver reaches the cluster's TCP client port through a narrow network rule ([ADR 0005](/decisions/0005-the-store/#engines)).
 - Integration actors run only when the installation uses them.
 
 ## Supported distributions and the systemd floor

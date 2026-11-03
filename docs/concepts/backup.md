@@ -6,7 +6,7 @@ sidebar:
   order: 8
 ---
 
-A backup exists for the day an installation is lost or hostile, and it is deliberately small. sluis backs up the **authoritative state that nothing else can recreate**, and rebuilds everything else after a restore. What goes in and what a restore does follow from each record kind's [origin](/concepts/data/#origins-and-sensitivity) ([ADR 0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin)).
+A backup exists for the day an installation is lost or hostile, and it is deliberately small. sluis backs up the **authoritative state that nothing else can recreate**, and rebuilds everything else after a restore. What goes in and what a restore does follow from each record kind's [origin](/concepts/data/#origins-and-sensitivity) ([ADR 0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 
 ## What is backed up
 
@@ -42,7 +42,7 @@ The archive records its own existence in the audit log: a `backup.completed` rec
 The archive is encrypted with a fresh data key, and the data key is wrapped for **at least two recipients held apart**, one of them an **offline operator hardware token** for break-glass ([REQ-BACKUP-001](/requirements/backup/#REQ-BACKUP-001), [REQ-BACKUP-020](/requirements/backup/#REQ-BACKUP-020)). The archive is age-encrypted, a named exception to sluis's algorithm rules ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). The offline recipient is a public key, for example an `age-plugin-yubikey` recipient, whose identity sits on a card that is in no node; it lets an operator open an archive when the installation, the cloud account or the node is gone.
 
 - **The key that wraps a backup archive is not the sealing key** ([ADR 0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). On AWS it may live in another account, and only the restore role may decrypt with it. The archive and its key preferably live in a separate account, because the backup exists for the case where the primary account is lost or hostile.
-- **Sealed values stay sealed.** When a data key is sealed, an escrow copy of it is encrypted to the archive's recipients ([ADR 0005](/decisions/0005-the-store/#sealed-secrets)). Losing the sealing key is a restore from those recipients; it needs no ceremony and copies no key out of its store.
+- **Sealed values stay sealed.** When a data key is sealed, an escrow copy of it is encrypted to the archive's recipients ([ADR 0004](/decisions/0004-the-data-model/#treatment)). Losing the sealing key is a restore from those recipients; it needs no ceremony and copies no key out of its store.
 - **An archive holds wrapped data only.** It holds no authority key and no sealing key, and its one escrow copy is of the data keys of sealed secrets, never of a company's audit or usage key, so an archive cannot undo a shred ([ADR 0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#backups)).
 - **The backup side holds public material and a wrap permission only**, so a compromised backup job cannot read earlier archives.
 - **An installation declares how long it keeps an archive.** An erasure reaches the copies in archives when they expire, and a restore re-applies every shred and erasure that the audit log records after the archive was taken.
@@ -51,11 +51,11 @@ The format of the archive (an age-encrypted tar with a manifest and canonical JS
 
 ## Recovery targets
 
-An installation states how much issued durable data it may lose (the recovery point) and how long recovery takes (the recovery time) for the loss of the state, of a bucket and of the region, and a recovery drill measures both. The targets, the installations they cover and the drill that replaces each with a measured figure are decided in [ADR 0056](/decisions/0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery/#recovery); this page does not repeat them. The schedule, the number of archives kept and the rehearsal period are declared per installation and have no default. Installations run in one region for now, and a regional outage stops signing there ([ADR 0046](/decisions/0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record/#where-installations-run)).
+An installation states how much issued durable data it may lose (the recovery point) and how long recovery takes (the recovery time) for the loss of the state, of a bucket and of the region, and a recovery drill measures both. The targets, the installations they cover and the drill that replaces each with a measured figure are decided in [ADR 0010](/decisions/0010-backup-and-recovery/#restore); this page does not repeat them. The schedule, the number of archives kept and the rehearsal period are declared per installation and have no default. Installations run in one region for now, and a regional outage stops signing there ([ADR 0011](/decisions/0011-runtimes-and-installations/#installations)).
 
 ## Restoring
 
-A restore is started by an operator, never by the console, so that it works when `entry` and `signer` are down. It runs as its own actor with its own identity ([ADR 0010](/decisions/0010-backup-and-recovery/#the-restore)). The order follows [ADR 0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin):
+A restore is started by an operator, never by the console, so that it works when `entry` and `signer` are down. It runs as its own actor with its own identity ([ADR 0010](/decisions/0010-backup-and-recovery/#restore)). The order follows [ADR 0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds):
 
 1. **Maintenance mode.** Every actor refuses writes and sign-in stops. A failure at any later step leaves maintenance mode on. The restore preview lists every secret written since the archive was taken, with an alarm: audit never carries secrets, so those cannot be rolled forward and have to be rotated or reconnected.
 2. **Provenance check.** The archive is accepted only if the audit log has a `backup.completed` record carrying its digest, under a checkpoint that a witness has cosigned where the installation has one. When the log cannot be reached, the operator can override, and the override is recorded first.

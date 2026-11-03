@@ -9,7 +9,7 @@ Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
 sluis v2 is written in two languages. `policy` is Rust because Cedar's engine is a Rust crate ([0007](/decisions/0007-policy-and-sealed-grants/)), and the cloud drivers for AWS, GCP and Azure are Rust. Two toolchains, a Rust kit for Connect over Unix sockets, configuration and the conformance suite are a cost already paid, so moving one more component to Rust costs that component's code, not a second toolchain.
 
-The unit of choice is the executable. Every component boundary is a ConnectRPC contract ([0002](/decisions/0002-families-of-actors/#contracts)), every driver is its own service on a Unix socket ([0003](/decisions/0003-units-transports-and-fusion/#drivers-are-platform-started-services)), and the executable a unit starts is the only code in its process. A driver's language is independent of its caller's, and a wrong choice can be reversed one component at a time.
+The unit of choice is the executable. Every component boundary is a ConnectRPC contract ([0002](/decisions/0002-families-of-actors/#contracts)), every driver is its own service on a Unix socket ([0005](/decisions/0005-the-store/#drivers)), and the executable a unit starts is the only code in its process. A driver's language is independent of its caller's, and a wrong choice can be reversed one component at a time.
 
 The research of 2026-10-30 found:
 
@@ -81,7 +81,7 @@ A conditional verdict holds once its spike passes. The table above fixes the lan
 | S3 ([#941](https://github.com/truvity/sluis/issues/941)) | A slim `entry` prototype in both languages, behind the tunnel client and the Lambda Web Adapter, with limits, timeouts and 24 hours of fuzzing; p99 latency, memory, cold start, binary size | `entry` |
 | S10 ([#947](https://github.com/truvity/sluis/issues/947)) | GoReleaser with a Cargo workspace: every Rust binary for two architectures, with SBOM and provenance like the Go artefacts, and Lambda zips within the layer limits | Every Rust component |
 
-Spikes S2 ([#940](https://github.com/truvity/sluis/issues/940)), S4 ([#942](https://github.com/truvity/sluis/issues/942)), S5 ([#943](https://github.com/truvity/sluis/issues/943)), S6 ([#944](https://github.com/truvity/sluis/issues/944)) and S7 ([#945](https://github.com/truvity/sluis/issues/945)) are done (results above) and in [0004](/decisions/0004-the-data-model/#pkl-and-json-schema) for configuration.
+Spikes S2 ([#940](https://github.com/truvity/sluis/issues/940)), S4 ([#942](https://github.com/truvity/sluis/issues/942)), S5 ([#943](https://github.com/truvity/sluis/issues/943)), S6 ([#944](https://github.com/truvity/sluis/issues/944)) and S7 ([#945](https://github.com/truvity/sluis/issues/945)) are done (results above) and in [0004](/decisions/0004-the-data-model/#schemas-are-protobuf) for configuration.
 
 ### Fallbacks are candidates
 

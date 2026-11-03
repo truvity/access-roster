@@ -37,7 +37,7 @@ Every leaf has a random 128-bit serial, `basicConstraints` critical with CA fals
 | Token signing (non-CA) | none | Subject `CN=token-signing, OU=<actor>@<boundary>`; no SAN | To the issuing intermediate's `notAfter` | The intermediate's `notAfter` |
 | Workload X.509-SVID | `serverAuth`, `clientAuth` | Exactly one URI SAN, the workload's SPIFFE ID; empty subject | 1 hour | 24 hours |
 | Host X.509-SVID | `serverAuth`, `clientAuth` | The host's URI SAN, plus its declared or derived DNS names ([0023](/decisions/0023-certificate-authorities/#ssh)) | 24 hours | 7 days |
-| sluis mutual TLS | `serverAuth`, `clientAuth` | Exactly one URI SAN, the actor's SPIFFE ID ([Names](/decisions/0041-core-actors-with-one-responsibility-each/#names)) | 24 hours | 24 hours |
+| sluis mutual TLS | `serverAuth`, `clientAuth` | Exactly one URI SAN, the actor's SPIFFE ID ([Names](/decisions/0002-families-of-actors/#names)) | 24 hours | 24 hours |
 | Database client | `clientAuth` only | Subject `CN=<role>, OU=<requester>, O=sluis-database`; no SAN | Set by policy | 12 hours |
 | cert-manager | `serverAuth`, and `clientAuth` when requested | DNS and URI names taken from the requester's identity, never from the request alone | The requested duration | 90 days |
 

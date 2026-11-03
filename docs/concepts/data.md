@@ -10,7 +10,7 @@ sluis keeps records: sessions, directory facts, operator-set configuration, quot
 
 ## Origins and sensitivity
 
-Every stored **record kind** declares one **origin**, and every field one **sensitivity**, in the configuration schema. Together they decide where a value lives, who may write it, whether it is in a backup, what a restore does with it, whether it may leave sluis, and what an audit record, a log line or a span may say about it. The backup list, the deny matrix, the telemetry allowlist and the audit redaction are generated from them ([ADR 0004](/decisions/0004-the-data-model/#origins)).
+Every stored **record kind** declares one **origin**, and every field one **sensitivity**, in the configuration schema. Together they decide where a value lives, who may write it, whether it is in a backup, what a restore does with it, whether it may leave sluis, and what an audit record, a log line or a span may say about it. The backup list, the deny matrix, the telemetry allowlist and the audit redaction are generated from them ([ADR 0004](/decisions/0004-the-data-model/#storage-classes)).
 
 To classify a record kind, ask in order; the first "yes" is its origin.
 
@@ -35,7 +35,7 @@ A field may also carry a **free-text** flag, for text a person typed: it never e
 
 ## One writer per record kind
 
-Every **record kind** has exactly one **record writer**: one actor that may create and change it. Other actors may read it if their manifest says so. The port library scopes every call to `<boundary>/<kind>/…` from the actor's own identity, and the store checks the actor's own credential: a file per actor uid on `embedded`, an `execute` user for the owner and `query`-only users for readers on `rqlite`, a `dynamodb:LeadingKeys` condition per role on DynamoDB ([ADR 0005](/decisions/0005-the-store/#one-writer-per-kind)). There is no state mediator in between.
+Every **record kind** has exactly one **record writer**: one actor that may create and change it. Other actors may read it if their manifest says so. The port library scopes every call to `<boundary>/<kind>/…` from the actor's own identity, and the store checks the actor's own credential: a file per actor uid on `embedded`, an `execute` user for the owner and `query`-only users for readers on `rqlite`, a `dynamodb:LeadingKeys` condition per role on DynamoDB ([ADR 0004](/decisions/0004-the-data-model/#one-writer-per-kind)). There is no state mediator in between.
 
 Examples; the record kinds of the first working version, with their writers, origins and lifetimes, are on [Storage](/reference/storage/#record-kinds-of-the-first-working-version), and the full list is generated from the manifests:
 
@@ -54,7 +54,7 @@ When two processes seem to need to write one record, the record is split instead
 
 ## Every value is encrypted
 
-**Every state value is encrypted in the port library**, before it reaches any driver, whatever its sensitivity. A store, its replicas and its backups hold ciphertext and record keys only ([ADR 0005](/decisions/0005-the-store/#every-value-is-encrypted)).
+**Every state value is encrypted in the port library**, before it reaches any driver, whatever its sensitivity. A store, its replicas and its backups hold ciphertext and record keys only ([ADR 0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
 
 - **AES-256-GCM, with a data key per (boundary, record kind).** It is wrapped under the boundary's sealing key through the `keys` port, and a data key is rotated before its AES-GCM usage limit.
 - **The sealing key is one per environment boundary**: on AWS a symmetric KMS key with an encryption context per use, on a card the P-384 ECDH key in slot `9d` ([Keys](/concepts/keys/#the-card-slot-map)). Tenants have no key of their own, only data keys wrapped under it; grants and the session cookie key are wrapped under it with their own purpose.
@@ -108,7 +108,7 @@ sluis holds secrets because it has to: a GitHub App key that the vendor issued t
 
 ### Where a secret comes from
 
-A secret's origin decides who wrote it and whether it is backed up ([ADR 0004](/decisions/0004-the-data-model/#origins)):
+A secret's origin decides who wrote it and whether it is backed up ([ADR 0004](/decisions/0004-the-data-model/#storage-classes)):
 
 | Origin | Example | Lives in | In a backup |
 |---|---|---|---|
@@ -119,7 +119,7 @@ A secret's origin decides who wrote it and whether it is backed up ([ADR 0004](/
 
 ### Sealed state
 
-A **`sealed-state`** driver is a `secrets` driver that keeps its ciphertext in `state`. Sealed state is allowed on every runtime ([ADR 0005](/decisions/0005-the-store/#sealed-secrets)) and is the one `secrets` store in 2.0 ([ADR 0009](/decisions/0009-export/#one-driver-sealed-state)).
+A **`sealed-state`** driver is a `secrets` driver that keeps its ciphertext in `state`. Sealed state is allowed on every runtime ([ADR 0004](/decisions/0004-the-data-model/#treatment)) and is the one `secrets` store in 2.0 ([ADR 0004](/decisions/0004-the-data-model/#treatment)).
 
 - **A sealed value uses the same envelope as every value**, with `purpose=secret` in the encryption context and the additional authenticated data, so it cannot be read as an ordinary value or the other way round.
 - **Each version of a secret is one immutable item**, and the record that names the current version changes by compare-and-set, so a rotated secret can overlap with its predecessor.
@@ -130,7 +130,7 @@ Nobody outside sluis can read sealed state, so an exported value goes out throug
 
 ### The export port
 
-Exports are **typed and versioned**: a document has a kind, a schema and a version, and a breaking change is a new version written beside the old one for a deprecation window. Whether a value may leave sluis is a property of its kind: a kind marked external is published through `export` ([ADR 0004](/decisions/0004-the-data-model/#backup-and-restore-by-origin)).
+Exports are **typed and versioned**: a document has a kind, a schema and a version, and a breaking change is a new version written beside the old one for a deprecation window. Whether a value may leave sluis is a property of its kind: a kind marked external is published through `export` ([ADR 0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 
 | Class | Example | Channel |
 |---|---|---|

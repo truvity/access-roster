@@ -6,7 +6,7 @@ sidebar:
   order: 1
 ---
 
-sluis is not one program. An **actor** is a process with one responsibility, and it declares the [ports](/concepts/drivers/) it requires. The actor is the unit of least privilege: its own OS user and systemd unit on bare metal, its own function on serverless, its own container on Kubernetes. What it may touch is written once, in its [permission manifest](/architecture/), and generated into IAM policies, key policies, driver access lists, systemd units and network rules. A compromise of one actor gives the attacker that actor's credentials and nothing else. The record is [ADR 0041](/decisions/0041-core-actors-with-one-responsibility-each/).
+sluis is not one program. An **actor** is a process with one responsibility, and it declares the [ports](/concepts/drivers/) it requires. The actor is the unit of least privilege: its own OS user and systemd unit on bare metal, its own function on serverless, its own container on Kubernetes. What it may touch is written once, in its [permission manifest](/architecture/), and generated into IAM policies, key policies, driver access lists, systemd units and network rules. A compromise of one actor gives the attacker that actor's credentials and nothing else. The record is [ADR 0002](/decisions/0002-families-of-actors/).
 
 The set of actors is the same on every runtime. What runs where, what each actor holds and what it calls is tabled in [Components](/architecture/components/).
 
@@ -102,7 +102,7 @@ Fusion never grants an actor something it did not already have, and keeps every 
 
 ## Where an actor runs is derived
 
-No table says where each actor runs. Placement follows from the ports an actor requires and the drivers behind them, and `sluis config check` enforces it ([ADR 0002](/decisions/0002-families-of-actors/#placement-is-derived)):
+No table says where each actor runs. Placement follows from the ports an actor requires and the drivers behind them, and `sluis config check` enforces it ([ADR 0003](/decisions/0003-units-transports-and-fusion/#units)):
 
 - An actor runs where all its required ports are reachable; its drivers run beside it and are spoken to over a Unix socket.
 - A driver's requirements move the actor: a `yubikey-piv` keys driver puts `signer`, `policy`, `ca` and `ssh-ca` on a node with a card, and is refused on serverless.
