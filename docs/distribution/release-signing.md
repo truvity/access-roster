@@ -90,7 +90,7 @@ The OpenPGP key is a dedicated sluis release identity, not anyone's personal key
 
 ### How releases are signed
 
-sluis signs as a service. CI proves its GitHub OIDC identity to the signing API, policy decides which repository, branch or workflow may use which key, sluis signs in place and records the signature in the audit log, and the key is never shown. CI holds no release signing key of its own. The project's releases are the API's first user; its contract is [ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/), and the release work is [#874](https://github.com/truvity/sluis/issues/874). A file too large to send is covered by its checksum, and the checksum file is what is signed.
+sluis signs as a service. CI proves its GitHub OIDC identity to the signing API, policy decides which repository, branch or workflow may use which key, sluis signs in place and records the signature in the audit log, and the key is never shown. CI holds no release signing key of its own. The project's releases are the API's first user; its contract is [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/), and the release work is [#874](https://github.com/truvity/sluis/issues/874). A file too large to send is covered by its checksum, and the checksum file is what is signed.
 
 ### What verifiers need
 

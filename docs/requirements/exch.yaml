@@ -172,7 +172,7 @@ requirements:
   - id: REQ-EXCH-013
     area: EXCH
     statement: "A credential minter MUST refuse a request for a target or a catalogue entry that the install file does not declare, with the reason NOT_FOUND."
-    rationale: "A minter serves only what an operator declared (ADR 0049)."
+    rationale: "A minter serves only what an operator declared (ADR 0025)."
     level: MUST
     source: design-decision
     status: planned
@@ -184,7 +184,7 @@ requirements:
   - id: REQ-EXCH-014
     area: EXCH
     statement: "A credential minter MUST refuse a catalogue entry that grants administration of tokens, billing, account settings, memberships or identity providers at its vendor."
-    rationale: "The minting credential is the sharpest edge of an integration, so the floor is in code (ADR 0049)."
+    rationale: "The minting credential is the sharpest edge of an integration, so the floor is in code (ADR 0025)."
     level: MUST
     source: design-decision
     status: planned
@@ -196,7 +196,7 @@ requirements:
   - id: REQ-EXCH-015
     area: EXCH
     statement: "A credential minter MUST NOT return a credential that outlasts the least of the lifetime of its grant, the policy cap and the vendor's maximum."
-    rationale: "A minted credential is never longer-lived than what authorised it (ADR 0049)."
+    rationale: "A minted credential is never longer-lived than what authorised it (ADR 0025)."
     level: MUST
     source: design-decision
     status: planned

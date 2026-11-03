@@ -494,6 +494,16 @@
       "old": "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on",
       "new": "0039-quota-allowance",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature",
+      "new": "0024-root-custody-and-the-signing-api",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs",
+      "new": "0025-integrations",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {

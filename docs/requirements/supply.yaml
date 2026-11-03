@@ -255,7 +255,7 @@ requirements:
   - id: REQ-SUPPLY-019
     area: SUPPLY
     statement: "The signing API MUST refuse a request whose content is empty or longer than 4 MiB with invalid_argument."
-    rationale: "An OpenPGP signature needs the data, so a digest alone cannot be signed (ADR 0045)."
+    rationale: "An OpenPGP signature needs the data, so a digest alone cannot be signed (ADR 0024)."
     level: MUST
     source: design-decision
     status: planned
@@ -267,7 +267,7 @@ requirements:
   - id: REQ-SUPPLY-020
     area: SUPPLY
     statement: "The signing API MUST return a version 4 OpenPGP signature of type 0x00 with ECDSA on P-384 and SHA-384, whose hashed subpackets are the creation time and the issuer fingerprint and whose unhashed subpacket is the issuer key id."
-    rationale: "This is the packet rule that the release keyring and the verifiers read (ADR 0045)."
+    rationale: "This is the packet rule that the release keyring and the verifiers read (ADR 0024)."
     level: MUST
     source: design-decision
     status: planned
@@ -292,7 +292,7 @@ requirements:
   - id: REQ-SUPPLY-022
     area: SUPPLY
     statement: "The signing API MUST answer failed_precondition when the OpenPGP binding of the release subkey is absent or expired."
-    rationale: "A subkey that no primary vouches for must not sign (ADR 0045)."
+    rationale: "A subkey that no primary vouches for must not sign (ADR 0024)."
     level: MUST
     source: design-decision
     status: planned

@@ -91,7 +91,7 @@ The kinds that the actors of the first working version write. Each has one write
 | `person-hold` | `session` | operator-set | none | yes | That an operator holds a person: who, when and why; set and lifted on the console |
 | `signing-ring` | `signer` | issued, durable | none | yes | The token keys the key set publishes, each with its `x5c` chain |
 | `issued-certificate` | `ca` | issued, durable | the certificate's expiry | yes | The serial, profile, requester, validity and public-key hash of a certificate |
-| `openpgp-binding` | `signer` | issued, durable | none | yes | The primary's certification of the release subkey that `sluis key install` stored, with its expiry; the signing API refuses when it is absent or expired ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#when-the-api-refuses-to-sign)) |
+| `openpgp-binding` | `signer` | issued, durable | none | yes | The primary's certification of the release subkey that `sluis key install` stored, with its expiry; the signing API refuses when it is absent or expired ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#when-the-api-refuses-to-sign)) |
 | `data-key` | the writer of the kind it serves | issued, durable | none | yes | A data key of one (boundary, kind), wrapped under the sealing key, with its encryption count |
 | `policy-link-set` | `session` | operator-set, durable | none | no | The template links of the boundary, as one set under the fixed id `links`, changed by compare-and-set; `exchange` reads it ([Policy](/reference/policy/#template-links)) |
 

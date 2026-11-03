@@ -122,7 +122,7 @@ These operations are new in v2; their paths and RPC names are fixed when each is
 - static publication: public `GET` of CA certificates, CRLs, trust bundles, SSH CA keys and the key revocation list;
 - the audit receiver (`SinkService.Send`) and the witness protocol (a checkpoint out, a cosignature back);
 - quota: admit, confirm, cancel and top-up calls for metered operations ([ADR 0030](/decisions/0039-quota-allowance/#the-allowance)).
-- the signing API: `SigningService.SignDetached`, a Connect call served by `exchange` through `entry`, for a caller with a CI identity token ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)).
+- the signing API: `SigningService.SignDetached`, a Connect call served by `exchange` through `entry`, for a caller with a CI identity token ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/)).
 
 ## Resources each use case touches
 

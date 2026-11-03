@@ -103,7 +103,7 @@ action "token.exchange" appliesTo {
   context: Authentication,
 };
 
-// A workload asks for a signature by a signing key (ADR 0045). The context is the SHA-384 of the
+// A workload asks for a signature by a signing key (ADR 0024). The context is the SHA-384 of the
 // content in lower-case hex, and its length in bytes.
 action "artifact.sign" appliesTo {
   principal: Workload,
@@ -139,12 +139,12 @@ The types follow the [actor registry](/reference/actors/) and the [record kinds]
 | `Client` | A client of an issuer, and the resource of a token request | The asker, from the install file's [`clients`](/reference/install-file/#clients) and `boundaries.<name>.clients` | `<boundary>/<client id>`, such as `dev/example-app`; the group issuer's clients are under `front` |
 | `Boundary` | An environment boundary, and the place a link lives in | The asker, from [`boundaries`](/reference/install-file/#boundaries) | The boundary's name; `front` for the group issuer |
 | `Workload` | A workload that proved its identity: in the first version a GitHub Actions job, checked by the `github-oidc` verifier | `exchange`, from the verified proof | `<verifier>/<proof subject>` |
-| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)) |
+| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#who-does-what)) |
 
 - **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([ADR 0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)). `Account.org` is the `org` key of the account's upstream in the install file, the company that owns it ([Install file](/reference/install-file/#upstreams)), and `Person.org` is the `org` of the account the person is linked by, so it is the company claim of [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers). The asker reads it from the install file and never from the upstream's answer, and no policy file sets it.
 - **`state` is `live` or `held`.** An operator's `person-hold` is a tighten-only action that takes effect at once; `session` sends the state, and the first `forbid` of the example refuses a person who is not live. Lifting a hold gives back only what the policy grants.
 - **A client's id carries its issuer.** Client ids are unique per issuer, not across issuers ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the install file's `requires`, a set of `Grant`.
-- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/#who-does-what)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
+- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#who-does-what)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
 
 ### What comes with parity
 
@@ -164,7 +164,7 @@ Each of these is added by the record or pull request that first asks about it, a
 | `grant.hold` | `Person` | `Grant` | `policy`, for itself | Whether this person holds this grant. The bindings of the policy files are written on this action |
 | `token.issue` | `Person` | `Client` | `session` | Whether this person may have a token for this client, at a code exchange or a refresh |
 | `token.exchange` | `Person` | `Client` | `exchange` | Whether this person's token may become a token for this client, as when `sluis login` exchanges the group issuer's token at a boundary |
-| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([ADR 0045](/decisions/0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature/)) |
+| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/)) |
 | `policy.link` | `Person` (the operator) | `Boundary` | `session`, for a write that `console` routed | Whether this operator may link this template, with these slot values, in this boundary |
 
 There is no separate action for step-up. A request that needs a fresher or stronger authentication is denied by a policy that says so ([below](#step-up)), which keeps the one question "may this person have this token" in one place.
