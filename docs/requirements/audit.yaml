@@ -127,16 +127,17 @@ requirements:
       - {kind: integration-test, ref: "offline verification test"}
   - id: REQ-AUDIT-006
     area: AUDIT
-    statement: "Each sealed period MUST be signed over its root with a key from the signing port."
-    rationale: "A sealed period is the unit of evidence."
+    statement: "Each sealed period MUST be signed over its root through key@."
+    rationale: "Every audit signature is made by the one holder of the log key."
     level: MUST
     source: v1-parity
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Full}
       - {id: ST-53, section: "3", depth: Full}
     issues: [838]
+    superseded_by: [REQ-AUDIT-040]
     verification:
       - {kind: test-vectors, ref: "seal vectors"}
   - id: REQ-AUDIT-025
@@ -185,8 +186,8 @@ requirements:
   - id: REQ-AUDIT-027
     area: AUDIT
     split_from: REQ-AUDIT-007
-    statement: "An installation with more than one node or with elastic nodes MUST guarantee one writer per log, by a lease or by a create-if-absent fence on the log store."
-    rationale: "Two writers fork the chain, and on Lambda the blob fence, not the reserved concurrency of 1, is what refuses the second writer."
+    statement: "An installation with more than one node or with elastic nodes MUST guarantee one writer per log by a create-if-absent fence on the log store."
+    rationale: "The fence of each log is its blob and not a lease, so a second writer cannot fork the log (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -196,7 +197,6 @@ requirements:
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [837]
     verification:
-      - {kind: test-vectors, ref: "port suite lease"}
       - {kind: test-vectors, ref: "port suite blob create-if-absent fence"}
   - id: REQ-AUDIT-008
     area: AUDIT
@@ -484,8 +484,8 @@ requirements:
       - {kind: integration-test, ref: "erasure test"}
   - id: REQ-AUDIT-019
     area: AUDIT
-    statement: "Audit records MUST carry enough data to roll state forward after a restore for the record kinds that need it."
-    rationale: "Roll-forward replaces a backup of fast-changing data."
+    statement: "Audit records MUST carry enough data to roll state forward after a restore for the kinds that need it."
+    rationale: "Roll-forward applies the audit facts since the archive by the merge rule of each kind (ADR 0010)."
     level: MUST
     source: design-decision
     status: planned
@@ -551,12 +551,13 @@ requirements:
       - {kind: integration-test, ref: "no-witness installation test"}
   - id: REQ-AUDIT-040
     area: AUDIT
-    statement: "The audit writer MUST obtain checkpoint signatures from the key-holder."
-    rationale: "Only the key-holder touches the log key."
+    statement: "The audit writer MUST obtain checkpoint signatures from key@."
+    rationale: "Only key@ touches the log key (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [writer]
     standards:
       - {id: ST-49, section: "7515", depth: Partial}
     issues: [838]
@@ -564,12 +565,13 @@ requirements:
       - {kind: integration-test, ref: "checkpoint signing test"}
   - id: REQ-AUDIT-041
     area: AUDIT
-    statement: "The key-holder access list MUST allow only the audit writer to use the log key."
-    rationale: "Restricting the key to the writer replaces a separate notary."
+    statement: "The rules of key@ MUST let only the writer instance that owns a log key use it."
+    rationale: "A log key used by another actor could sign a checkpoint that the writer never made (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [838, 951]
@@ -578,7 +580,7 @@ requirements:
   - id: REQ-AUDIT-042
     area: AUDIT
     statement: "sluis MUST NOT run a separate notary actor for audit checkpoints."
-    rationale: "The notary is folded into the key-holder access list."
+    rationale: "The notary is folded into the rules of key@, which signs every checkpoint (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
@@ -750,22 +752,22 @@ requirements:
       - {kind: integration-test, ref: "blocking emit durability test"}
   - id: REQ-AUDIT-055
     area: AUDIT
-    statement: "Each audit log entry MUST be a clear envelope plus the record encrypted with HPKE to its company's audit tenant key, or to the boundary's own audit key for a machine-plane record."
-    rationale: "A shred must leave a company's records unreadable while the operator still sees the envelope."
+    statement: "Each audit log entry MUST be a clear envelope plus the record sealed by key@ under its tenant's evidence key."
+    rationale: "The envelope lets a reader route without opening, and the evidence key outlives the personal data (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [writer]
     standards:
       - {id: ST-61, section: "5", depth: Partial}
     issues: [840]
     verification:
-      - {kind: test-vectors, ref: "HPKE test vectors"}
-      - {kind: integration-test, ref: "entry envelope test"}
+      - {kind: integration-test, ref: "an entry opens under the tenant's evidence key and under no other key"}
   - id: REQ-AUDIT-056
     area: AUDIT
     statement: "The leaf hash of an audit log MUST cover the whole entry, ciphertext included."
-    rationale: "A log must still verify after a company's key is shredded."
+    rationale: "A log must still verify after its records stop opening (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -865,17 +867,17 @@ requirements:
       - {kind: integration-test, ref: "hold record test"}
   - id: REQ-AUDIT-064
     area: AUDIT
-    statement: "The company shred procedure MUST check for a standing legal hold on that company's audit records before the key is destroyed."
-    rationale: "Nothing in sluis stops a shred during a hold, so the procedure has to."
+    statement: "Before key@ deletes a tenant's evidence wrap, the deletion MUST check for a standing legal hold on the logs that hold the tenant's entries."
+    rationale: "A legal hold on the logs must stop the end of the tenant's evidence while it stands (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards: []
     issues: [973, 837]
-    manual_reason: "The check is a step of the promotion runbook, which an operator runs."
     verification:
-      - {kind: manual, ref: "runbook review"}
+      - {kind: integration-test, ref: "a tenant whose evidence retention has ended with a standing hold on a log: the evidence wrap is not deleted"}
   - id: REQ-AUDIT-065
     area: AUDIT
     statement: "On the boards a scheduled job of the audit installation, not the writer, MUST copy new audit log objects to the off-site R2 copy at least every hour, create-if-absent."
@@ -918,20 +920,21 @@ requirements:
       - {kind: integration-test, ref: "searchable fields test"}
   - id: REQ-AUDIT-068
     area: AUDIT
-    statement: "Shredding a company's audit tenant key MUST purge that company's rows from the search index and exclude them from every later rebuild."
-    rationale: "The index holds readable copies, so a shred is complete only when it reaches them."
+    statement: "A tenant's exit MUST purge the tenant's rows from the search index and exclude them from every later rebuild."
+    rationale: "A purged index must not bring a tenant's rows back at the next rebuild (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [indexer]
     standards: []
     issues: [839]
     verification:
-      - {kind: integration-test, ref: "index purge after shred test"}
+      - {kind: integration-test, ref: "exit a tenant, then rebuild: no row of the tenant is in the index"}
   - id: REQ-AUDIT-069
     area: AUDIT
-    statement: "A `postgres` search index MUST enforce row-level security on its company column."
-    rationale: "The database's own check backs the reader's grant filter."
+    statement: "A `postgres` search index MUST enforce row-level security on its project, log kind and tenant columns."
+    rationale: "The index database is a second place where one tenant's rows could be read as another's (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
@@ -981,12 +984,13 @@ requirements:
       - {kind: integration-test, ref: "get with proof test"}
   - id: REQ-AUDIT-073
     area: AUDIT
-    statement: "The reader MUST ask `policy` for a grant on every call and apply it as a mandatory filter of the query."
-    rationale: "Least privilege per company is enforced in one policy language."
+    statement: "The reader MUST ask `policy` for a grant on every call, naming the projects, log kinds and tenants, and apply it as a mandatory filter of the query."
+    rationale: "Least privilege per tenant is enforced in one policy language (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [reader]
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [839]
@@ -1055,8 +1059,8 @@ requirements:
       - {kind: integration-test, ref: "audit session cookie test"}
   - id: REQ-AUDIT-079
     area: AUDIT
-    statement: "A write from the audit console MUST go through the audit installation's `console` actor to the actor that owns its record kind, never through the reader."
-    rationale: "The reader stays read-only, and each owner validates its own writes."
+    statement: "A write from the audit console MUST go through the audit installation's `console` actor to the actor that owns its kind, never through the reader."
+    rationale: "The reader stays read-only, and each owner validates its own writes (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
@@ -1093,7 +1097,7 @@ requirements:
       - {kind: integration-test, ref: "cross-console token test"}
   - id: REQ-AUDIT-082
     area: AUDIT
-    statement: "The audit front MUST accept only tokens of the issuer of the environment boundary whose log it holds."
+    statement: "The audit front MUST accept only tokens of an issuer of its own boundary or, in audit alone, of the product's issuer that config declares as the trusted token source."
     rationale: "A token for one environment's log must not open another's."
     level: MUST
     source: design-decision
@@ -1105,7 +1109,7 @@ requirements:
       - {kind: integration-test, ref: "audit front issuer test"}
   - id: REQ-AUDIT-083
     area: AUDIT
-    statement: "The audit console MUST show the log's health: the age of the latest checkpoint, the witness cosignatures, the index lag and the lag of the off-site copy."
+    statement: "The audit console MUST show the health of each project's logs: the age of the latest checkpoint, the witness cosignatures and the index lag."
     rationale: "Integrity problems must be visible to the people who read the log, not only in metrics."
     level: MUST
     source: design-decision
@@ -1130,7 +1134,7 @@ requirements:
   - id: REQ-AUDIT-085
     area: AUDIT
     statement: "The audit front's host MUST be a sibling of its boundary's sluis host, never a child of it or a path on it."
-    rationale: "A sibling inherits no cookie scope, and one origin per host holds."
+    rationale: "A sibling inherits no cookie scope, and one origin per host holds (ADR 0028)."
     level: MUST
     source: design-decision
     status: planned
@@ -1139,7 +1143,7 @@ requirements:
       - {id: ST-59, section: "5.1.4.1", depth: Partial}
     issues: [985]
     verification:
-      - {kind: integration-test, ref: "audit host origin test"}
+      - {kind: integration-test, ref: "audit host web origin test"}
   - id: REQ-AUDIT-086
     area: AUDIT
     statement: "Every audit record MUST be an OCSF 1.x event of core classes, with the profile of the sluis extension and no `unmapped` object."
@@ -1235,12 +1239,13 @@ requirements:
       - {kind: integration-test, ref: "export format test"}
   - id: REQ-AUDIT-093
     area: AUDIT
-    statement: "The writer MUST write the usage part of a message to a usage log that has its own prefix or bucket, checkpoints and retention, apart from the audit log."
-    rationale: "Billing data keeps its own format, retention and readers, apart from security records."
+    statement: "The writer MUST write the usage part of a message to a usage log that has its own prefix, checkpoints and retention, apart from the audit log, in its project's bucket."
+    rationale: "Usage is read by finance without the audit log, so it needs its own prefix, checkpoints and retention (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [writer]
     standards:
       - {id: ST-75, section: "1", depth: Partial}
     issues: [837, 915]
@@ -1248,12 +1253,13 @@ requirements:
       - {kind: integration-test, ref: "two log kinds test"}
   - id: REQ-AUDIT-094
     area: AUDIT
-    statement: "The writer MUST register the sealed batches of the audit log and of the usage log, the removed duplicate ids and its transport cursor in one atomic state batch."
-    rationale: "One registration keeps the two logs consistent without a dual write."
+    statement: "The writer MUST register the sealed batches of the audit log and of the usage log, the removed duplicate ids and its transport cursor in one conditional write of its state in the project's bucket."
+    rationale: "A crash leaves all of it or none of it, and the writer's state never lives in the store (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [writer]
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [1121, 837]
@@ -1292,11 +1298,12 @@ requirements:
     rationale: "Evidence must outlive the shred of the company's personal data, so it has a key of its own (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-61, section: "5", depth: Partial}
     issues: [837]
+    superseded_by: [REQ-AUDIT-150]
     verification:
       - {kind: integration-test, ref: "usage entry encryption test"}
   - id: REQ-AUDIT-098
@@ -1496,12 +1503,13 @@ requirements:
       - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
   - id: REQ-AUDIT-113
     area: AUDIT
-    statement: "The writer MUST refuse an audit record whose `unmapped.sluis` object does not validate against the JSON Schema that the build generates from the action table."
-    rationale: "OCSF cannot type the object, so sluis's own schema must, and the writer stays authoritative."
+    statement: "The writer MUST refuse an audit record whose `unmapped.sluis` object does not validate against the schema in its project's AuditCatalogue."
+    rationale: "OCSF cannot type the object, so sluis's own schema must, and the writer stays authoritative (ADR 0030)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [writer]
     standards: []
     issues: [1121, 1120]
     verification:
@@ -1509,7 +1517,7 @@ requirements:
   - id: REQ-AUDIT-114
     area: AUDIT
     statement: "The build MUST generate the JSON Schema of the audit records, `unmapped.sluis` included, from the action table in code."
-    rationale: "One source keeps the table, the schema and the generated types from drifting apart."
+    rationale: "One source keeps the table, the schema and the generated types from drifting apart (ADR 0030)."
     level: MUST
     source: design-decision
     status: planned
@@ -1648,8 +1656,8 @@ requirements:
       - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
   - id: REQ-AUDIT-125
     area: AUDIT
-    statement: "The writer MUST sign the batch heads of the audit log and of the usage log with the same log key, the one key of that writer."
-    rationale: "Both logs of a writer have one audience and one lifetime, so a second key would add a policy and a slot for nothing, and each writer has its own key."
+    statement: "One log key per writer instance MUST sign the checkpoints of its project's audit log and usage log."
+    rationale: "Both logs of a writer have one audience and one lifetime, so a second key would add a policy and a slot for nothing (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1673,12 +1681,13 @@ requirements:
       - {kind: test-vectors, ref: "a checkpoint of the usage log presented as a checkpoint of the audit log; refused"}
   - id: REQ-AUDIT-127
     area: AUDIT
-    statement: "A pseudonym MUST be computed with HMAC-SHA384 under a data key of its boundary, company and epoch."
+    statement: "A pseudonym MUST be computed by key@ with Mac, HMAC-SHA384, under the tenant's pseudonym data key of its epoch."
     rationale: "A keyed function cannot be reversed from a list of subjects without the key (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [key]
     standards:
       - {id: NC-06, section: "HMAC", depth: Partial}
     issues: [1120]
@@ -1699,7 +1708,7 @@ requirements:
       - {kind: integration-test, ref: "spool and transport scan for raw subjects"}
   - id: REQ-AUDIT-129
     area: AUDIT
-    statement: "The pseudonym key of a company MUST change at the start of every UTC month."
+    statement: "The pseudonym key of a tenant MUST start a new epoch at the start of every UTC month."
     rationale: "Pseudonyms rotate so the operator's view links a person within a month only (REQ-AUDIT-038, ADR 0029)."
     level: MUST
     source: design-decision
@@ -1712,8 +1721,8 @@ requirements:
       - {kind: integration-test, ref: "epoch change test with a moved clock"}
   - id: REQ-AUDIT-130
     area: AUDIT
-    statement: "The reader MUST refuse to reverse a pseudonym for anyone without the company's reversal permission."
-    rationale: "Only the company's own audit role may link a pseudonym to a subject (ADR 0029)."
+    statement: "The reader MUST refuse to reverse a pseudonym for anyone without the tenant's reversal permission."
+    rationale: "Only the tenant's own audit role may link a pseudonym to a subject (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1738,8 +1747,8 @@ requirements:
       - {kind: integration-test, ref: "reversal audit record test"}
   - id: REQ-AUDIT-132
     area: AUDIT
-    statement: "A usage event MUST NOT carry a field whose sensitivity is personal."
-    rationale: "Evidence carries no personal data, so it can outlive a shred (ADR 0029)."
+    statement: "A usage event MUST NOT carry a field that holds personal data."
+    rationale: "Usage facts outlive the tenant's personal data, so they must hold none (ADR 0030)."
     level: MUST
     source: design-decision
     status: planned
@@ -1754,10 +1763,11 @@ requirements:
     rationale: "Keys with different lifetimes are not shared (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [837]
+    superseded_by: [REQ-AUDIT-150]
     verification:
       - {kind: integration-test, ref: "the audit key does not decrypt a usage entry, and the usage key does not decrypt an audit entry"}
   - id: REQ-AUDIT-134
@@ -1766,10 +1776,11 @@ requirements:
     rationale: "Exit ends the personal data and keeps the evidence (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [837, 973]
+    superseded_by: [REQ-KEYS-036, REQ-KEYS-037, REQ-AUDIT-150]
     verification:
       - {kind: integration-test, ref: "after a shred the usage entries of the company are still readable by quota"}
   - id: REQ-AUDIT-135
@@ -1778,15 +1789,16 @@ requirements:
     rationale: "A bill can be disputed until the billing retention ends (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [837, 1016]
+    superseded_by: [REQ-KEYS-037]
     verification:
       - {kind: integration-test, ref: "a deletion of a usage key before its retention ends is refused"}
   - id: REQ-AUDIT-136
     area: AUDIT
-    statement: "sluis config check MUST refuse, in a production boundary, a log retention below the floor of a declared compliance profile, naming the profile."
+    statement: "sluis config check MUST refuse, in a production boundary, a log retention below the floor of the compliance profile that the project declares in AuditLog, naming the profile."
     rationale: "A profile is a floor that the installation must not go below (ADR 0029)."
     level: MUST
     source: design-decision
@@ -1798,7 +1810,7 @@ requirements:
       - {kind: test-vectors, ref: "installations with a retention below each profile floor"}
   - id: REQ-AUDIT-137
     area: AUDIT
-    statement: "sluis config check MUST refuse, in a production boundary, a lock mode below the floor of a declared compliance profile unless the witness that the profile allows in its place is declared."
+    statement: "sluis config check MUST refuse, in a production boundary, a lock mode below the floor of the compliance profile that the project declares in AuditLog unless the witness that the profile allows in its place is declared."
     rationale: "A profile that demands an immutable log must not run on a removable one unwitnessed (ADR 0029)."
     level: MUST
     source: design-decision
@@ -1844,3 +1856,263 @@ requirements:
     issues: [837]
     verification:
       - {kind: integration-test, ref: "a read of a cold object"}
+
+  # ---- projects, evidence keys and access (decisions 0028 and 0029)
+  - id: REQ-AUDIT-141
+    area: AUDIT
+    statement: "A project's writer MUST write only its own project's bucket and sign only with its own log key."
+    rationale: "A flaw in one project's writer then cannot write or sign for another (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [837]
+    verification:
+      - {kind: integration-test, ref: "the writer of project A attempts a put to project B's bucket and a sign with project B's log key; both refused"}
+  - id: REQ-AUDIT-142
+    area: AUDIT
+    statement: "An audit piece MUST NOT write the billing prefix of a project's bucket."
+    rationale: "The billing log is the product's and sluis neither builds nor reads it (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [837, 915]
+    verification:
+      - {kind: integration-test, ref: "the credentials of every audit piece hold no write action on the billing prefix"}
+  - id: REQ-AUDIT-143
+    area: AUDIT
+    statement: "Every credential that reaches a project's bucket MUST be scoped to that bucket and, for a person's direct read, to the prefixes of the log kinds that person was granted."
+    rationale: "The blob store's own access control is the second of two independent checks on audit access (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [837, 985]
+    verification:
+      - {kind: integration-test, ref: "a person granted usage reads usage/ and is refused audit/ and billing/ by the bucket policy"}
+  - id: REQ-AUDIT-144
+    area: AUDIT
+    statement: "The reader MUST serve a call only under a grant that covers the call's project, log kind and tenant."
+    rationale: "Cedar decides every call on project, log kind and tenant, and the grant is a mandatory filter of the query (ADR 0028, ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [reader]
+    standards: []
+    issues: [839]
+    verification:
+      - {kind: integration-test, ref: "a search under a grant for tenant A returns no record of tenant B; a call naming another project is refused"}
+  - id: REQ-AUDIT-145
+    area: AUDIT
+    statement: "The search index MUST be partitioned by project and log kind."
+    rationale: "A partition is a boundary the index itself enforces, apart from the grant (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [indexer]
+    standards: []
+    issues: [839]
+    verification:
+      - {kind: integration-test, ref: "a query in one partition never returns a row of another"}
+  - id: REQ-AUDIT-146
+    area: AUDIT
+    statement: "The writer MUST refuse a record whose release has no published AuditCatalogue."
+    rationale: "The release identifies the action table, so a log needs no copy of it, and a record of an unknown release cannot be validated (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [1121, 1120]
+    verification:
+      - {kind: integration-test, ref: "a record from a release whose catalogue is not published is quarantined"}
+  - id: REQ-AUDIT-147
+    area: AUDIT
+    statement: "The build MUST publish the AuditCatalogue document of a release, together with its schemas, before that release emits."
+    rationale: "A product release then needs no writer upgrade (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1120]
+    verification:
+      - {kind: integration-test, ref: "a release pipeline run publishes the catalogue document and the writer validates the first record of the release"}
+  - id: REQ-AUDIT-148
+    area: AUDIT
+    statement: "The writer MUST refuse a record whose metadata.product.name its project does not declare."
+    rationale: "A project's log must hold only the records of the product that the AuditLog declares for it (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [1121]
+    verification:
+      - {kind: integration-test, ref: "a record naming a product the project does not declare is refused"}
+  - id: REQ-AUDIT-149
+    area: AUDIT
+    statement: "The audit pieces MUST read AuditLog, AuditWitnesses and AuditCatalogue through the data port as config kinds that store@ loads and verifies."
+    rationale: "Under the foundation audit already depends on store@, so a loader of its own buys no independence (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [837]
+    verification:
+      - {kind: integration-test, ref: "an audit piece starts with a changed AuditLog and receives it from store@ on the snapshot swap"}
+  - id: REQ-AUDIT-150
+    area: AUDIT
+    statement: "The writer MUST have key@ seal every audit and usage entry under the tenant's evidence key and never under its data key."
+    rationale: "Evidence never shares a key with personal data and outlives it, so an exit deletes everything personal and keeps the evidence (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [837]
+    verification:
+      - {kind: integration-test, ref: "the data key of the tenant does not open an entry; the evidence key does"}
+      - {kind: integration-test, ref: "after the tenant's exit the entries still open under the evidence key until the evidence retention ends"}
+  - id: REQ-AUDIT-159
+    area: AUDIT
+    statement: "The writer MUST ask `policy` for a grant for each batch of one tenant's records before key@ seals the batch."
+    rationale: "No caller brings a grant to the writer, so it asks for its own and key@ checks it like any other (ADR 0029, ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [1120]
+    verification:
+      - {kind: integration-test, ref: "a batch sealed without a grant, or with a grant for another tenant, is refused at key@"}
+  - id: REQ-AUDIT-160
+    area: AUDIT
+    statement: "The indexer MUST open a record at key@ only under a grant that it asks `policy` for on each pass."
+    rationale: "The indexer runs with no caller, so its pass carries its own grant, and it may open and never seal (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [indexer]
+    standards: []
+    issues: [1120]
+    verification:
+      - {kind: integration-test, ref: "an indexer pass with an expired grant, or with none, opens nothing; a Seal by the indexer is refused"}
+  - id: REQ-AUDIT-151
+    area: AUDIT
+    statement: "The key@ rules MUST let the writer Seal under the evidence key and give it no Open."
+    rationale: "A writer that cannot decrypt what it wrote holds nothing to leak (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [837]
+    verification:
+      - {kind: test-vectors, ref: "the generated key rules matrix: writer has seal on evidence and no open"}
+      - {kind: integration-test, ref: "the writer asks key@ to Open an entry; refused"}
+  - id: REQ-AUDIT-152
+    area: AUDIT
+    statement: "A record that concerns no tenant MUST be sealed under the evidence key of the operator's own tenant."
+    rationale: "Every sealed entry has a tenant key, and the operator's company is a tenant (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a machine-plane record is sealed under the operator tenant's evidence key"}
+  - id: REQ-AUDIT-153
+    area: AUDIT
+    statement: "A reader that opens an entry MUST check that the clear envelope agrees with the record."
+    rationale: "A writer that lies in the envelope is then caught by the first reader that opens the record (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [reader]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "entries whose envelope differs from the record in one field each are reported"}
+  - id: REQ-AUDIT-154
+    area: AUDIT
+    statement: "In audit alone a record for a tenant the boundary does not know MUST be held in the transport and raise an alarm."
+    rationale: "A mistyped tenant id must never create a tenant (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a record for an unpushed tenant stays in the queue and an alarm is raised; after the push it is written"}
+  - id: REQ-AUDIT-155
+    area: AUDIT
+    statement: "In audit alone the reader MUST verify a search token against the issuer that config declares as the trusted token source."
+    rationale: "Policy decides from the token's claims, so the token's source must be one the operator chose (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [reader]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a token from an undeclared issuer is refused; one from the declared issuer yields a grant"}
+  - id: REQ-AUDIT-156
+    area: AUDIT
+    statement: "In audit alone the push of a tenant by a product MUST be idempotent by request id."
+    rationale: "A product retries a push until it succeeds, and a repeat must change nothing (ADR 0028)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the same push twice creates one tenant and one set of data keys"}
+
+  # ---- the time of a usage fact (decision 0040)
+  - id: REQ-AUDIT-157
+    area: AUDIT
+    statement: "A usage fact MUST count at its time of use when that time is not earlier than the recorded time by more than 72 hours and not later by more than 5 minutes, and otherwise at its recorded time."
+    rationale: "A wrong clock, or a replay of old events, cannot place usage in a span it was not used in (ADR 0040)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [841, 915]
+    verification:
+      - {kind: test-vectors, ref: "time rule vectors at 72 hours back, 5 minutes forward and one second beyond each"}
+  - id: REQ-AUDIT-158
+    area: AUDIT
+    statement: "A reader MUST mark a fact that it counts at its recorded time as time_adjusted."
+    rationale: "A fact moved by the rule shows as moved (ADR 0040)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [841, 915]
+    verification:
+      - {kind: integration-test, ref: "a fact outside the bounds is counted at its recorded time and flagged"}
