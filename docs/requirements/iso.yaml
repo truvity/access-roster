@@ -1,9 +1,10 @@
 # ISO: Isolation between boundaries, actors, companies and tenants.
 # Each record is a control from the threat model (docs/security/threat-model.md). Its test vectors name the
-# threat (T-n) and the layer that must refuse: layer 1 is the port library in the actor, layer 2 is the
-# driver's or backend's own check of the caller's platform identity, layer 3 is physical separation at
-# level L3 or L4. A vector runs with the other layers switched off in the isolation harness, so each layer
-# is proven on its own.
+# threat (T-n) and the check that must refuse: the store's rule with the grant sealed for the tenant, key@'s
+# grant check, the holder's own check (a driver's or backend's check of the caller's platform identity), or
+# physical separation at level L3 or L4. A vector runs with the other checks switched off in the isolation
+# harness, so each check is proven on its own. The checks that used to sit in a library of every actor are gone
+# (decision 0002): the two independent checks of decision 0007 and the ladder of decision 0008 replace them.
 schema: 1
 area: ISO
 requirements:
@@ -14,16 +15,17 @@ requirements:
     rationale: "A layer that is only ever tested behind another layer is not tested at all."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
     issues: [877, 851]
+    superseded_by: [REQ-ISO-083]
     verification:
       - {kind: integration-test, ref: "harness self-test: each layer switch is observed off in the driver, the backend policy and the store layout before a vector runs"}
   - id: REQ-ISO-002
     area: ISO
-    statement: "The isolation harness MUST reject as void a vector whose attempt is refused even with every layer switched off."
+    statement: "The isolation harness MUST reject as void a vector whose attempt is refused even with every check switched off."
     rationale: "A vector that cannot succeed with no protection proves nothing when it fails with protection."
     level: MUST
     source: design-decision
@@ -42,11 +44,12 @@ requirements:
     rationale: "A scope taken from the request lets any caller name another boundary's data."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
     issues: [851, 863]
+    superseded_by: [REQ-DATA-013]
     verification:
       - {kind: test-vectors, ref: "T-11 layer 1, layers 2 and 3 off: actor X passes boundary env-b in a request field; the call is scoped to X's own prefix and env-b is never reached"}
       - {kind: test-vectors, ref: "T-12 layer 1, layers 2 and 3 off: actor X asks the blob port for an object under actor Y's prefix; refused by the library"}
@@ -58,11 +61,12 @@ requirements:
     rationale: "The driver's own check holds when the actor's library is bypassed or compromised."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
     issues: [800, 851]
+    superseded_by: [REQ-KEYS-029, REQ-KEYS-030]
     verification:
       - {kind: test-vectors, ref: "T-8 layer 2, layers 1 and 3 off: ca@env-a requests env-b's CA key; refused by the key-holder ACL or the KMS key policy"}
       - {kind: test-vectors, ref: "T-8 layer 2, layers 1 and 3 off: ca@env-a requests its own boundary's token-signing key; refused (wrong purpose)"}
@@ -77,15 +81,16 @@ requirements:
     standards: []
     issues: [963, 800]
     verification:
-      - {kind: test-vectors, ref: "T-8 layer 3, layers 1 and 2 off: ca@env-a's credentials call env-b's key; refused because the key is in env-b's account or hosts"}
+      - {kind: test-vectors, ref: "T-8 physical separation alone: ca@env-a's credentials call env-b's key; refused because the key is in env-b's account or hosts"}
   - id: REQ-ISO-006
     area: ISO
-    statement: "The key-holder MUST sign for the ca purpose only a parseable TBSCertificate that is within the purpose's constraints."
+    statement: "key@ MUST sign for the ca purpose only a parseable TBSCertificate that is within the purpose's constraints."
     rationale: "Content-aware signing stops a caller that holds the CA key from using it for another protocol or a wider certificate."
     level: MUST
     source: design-decision
     status: planned
-    runtimes: [bare-metal, kubernetes]
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards:
       - {id: ST-62, section: "4.1", depth: Partial}
     issues: [913, 914]
@@ -95,12 +100,13 @@ requirements:
       - {kind: test-vectors, ref: "x509-limbo and Wycheproof malformed-DER inputs fed to the ca purpose; every unparseable input refused"}
   - id: REQ-ISO-007
     area: ISO
-    statement: "The key-holder MUST sign for the ssh-ca purpose only an OpenSSH certificate body."
+    statement: "key@ MUST sign for the ssh-user and ssh-host purposes only an OpenSSH certificate body."
     rationale: "An SSH CA key that signs arbitrary bytes can be turned into a signer for any protocol."
     level: MUST
     source: design-decision
     status: planned
-    runtimes: [bare-metal, kubernetes]
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards:
       - {id: ST-65, depth: Partial}
     issues: [913, 914]
@@ -108,12 +114,13 @@ requirements:
       - {kind: test-vectors, ref: "T-9: the ssh-ca purpose is asked to sign a TBSCertificate; refused (content-aware)"}
   - id: REQ-ISO-008
     area: ISO
-    statement: "The key-holder MUST sign for a token purpose only a JWS signing input."
+    statement: "key@ MUST sign for a token purpose only a JWS signing input."
     rationale: "A token key that signs certificates would let a token signer mint a CA."
     level: MUST
     source: design-decision
     status: planned
-    runtimes: [bare-metal, kubernetes]
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards:
       - {id: ST-49, section: "5.1", depth: Partial}
     issues: [869, 914]
@@ -125,10 +132,11 @@ requirements:
     rationale: "A socket per caller makes the operating system the first judge of who may ask."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: [bare-metal, kubernetes]
     standards: []
     issues: [866, 914]
+    superseded_by: [REQ-KEYS-044]
     verification:
       - {kind: test-vectors, ref: "T-24 layer 2, peer-uid check off: a process under another uid opens ca@env-a's key-holder socket; refused by the directory permissions"}
   - id: REQ-ISO-010
@@ -137,20 +145,22 @@ requirements:
     rationale: "The peer-uid check is a second factor when a socket's directory permissions are wrong."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: [bare-metal, kubernetes]
     standards: []
     issues: [914]
+    superseded_by: [REQ-KEYS-045]
     verification:
       - {kind: test-vectors, ref: "T-24 layer 2, directory permissions off (socket left world-writable): uid B connects to uid A's socket; refused by the peer-uid check"}
   - id: REQ-ISO-011
     area: ISO
-    statement: "The key-holder MUST write an audit record for every signature it makes, naming the caller and the purpose."
-    rationale: "A compromised key-holder or caller is found by its signatures, so each one must be on the record."
+    statement: "key@ MUST write an audit record for every signature it makes, naming the caller and the purpose."
+    rationale: "A compromised key@ or caller is found by its signatures, so each one must be on the record."
     level: MUST
     source: design-decision
     status: planned
-    runtimes: [bare-metal, kubernetes]
+    runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards: []
     issues: [914, 1120]
     verification:
@@ -161,10 +171,11 @@ requirements:
     rationale: "A mediator in front of a backend that can tell callers apart only adds a process that can be compromised for all of them."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [863]
+    superseded_by: [REQ-ISO-085, REQ-DATA-066]
     verification:
       - {kind: test-vectors, ref: "T-10 config check corpus: an install file that routes aws-kms, DynamoDB or PostgreSQL through a shared mediator; refused"}
 
@@ -175,11 +186,12 @@ requirements:
     rationale: "The store's own check holds when the actor's library is bypassed or compromised."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
     issues: [851]
+    superseded_by: [REQ-DATA-047, REQ-DATA-013]
     verification:
       - {kind: test-vectors, ref: "T-11 layer 2, layers 1 and 3 off: actor X writes prefix Y; refused by the rqlite user, DynamoDB LeadingKeys, PostgreSQL RLS or file owner"}
       - {kind: test-vectors, ref: "T-11 layer 2, layers 1 and 3 off: actor X reads prefix Y of a kind it is not a declared reader of; refused"}
@@ -189,51 +201,54 @@ requirements:
     rationale: "rqlite has no row-level permissions, so the cluster and its users are the unit of separation."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: [bare-metal]
     standards: []
     issues: [952]
+    superseded_by: [REQ-DATA-073, REQ-DATA-066]
     verification:
       - {kind: test-vectors, ref: "T-11 layer 2: a declared reader sends an execute to the owner's cluster; refused (query-only user)"}
       - {kind: test-vectors, ref: "T-11 layer 2: actor X presents its own client certificate to actor Y's cluster; refused (a certificate per cluster)"}
   - id: REQ-ISO-015
     area: ISO
-    statement: "The postgres driver MUST separate instances of one actor kind with forced row-level security that tests group-role membership and never a session variable."
+    statement: "The PostgreSQL audit index MUST separate the rows of its projects and tenants with forced row-level security that tests group-role membership and never a session variable."
     rationale: "A policy that trusts a session variable is bypassed by any caller that sets it."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
     standards: []
-    issues: [975]
+    issues: [975, 839]
     verification:
-      - {kind: test-vectors, ref: "T-11 layer 2, layer 1 off: the env-a role selects env-b rows of the same kind; zero rows"}
-      - {kind: test-vectors, ref: "T-11 layer 2: the env-a role sets a session variable naming env-b; zero rows"}
-      - {kind: test-vectors, ref: "T-11 layer 2: the table owner role is used by an actor; refused (actors never own tables)"}
+      - {kind: test-vectors, ref: "T-11, the grant filter off: the role of project A selects the rows of project B; zero rows"}
+      - {kind: test-vectors, ref: "T-11: the role of project A sets a session variable naming project B; zero rows"}
+      - {kind: test-vectors, ref: "T-11: the table owner role is used by an actor; refused (actors never own tables)"}
   - id: REQ-ISO-016
     area: ISO
-    statement: "At level L3 and above, each boundary MUST have its own state store."
-    rationale: "A separate store still holds when every in-store check is wrong."
+    statement: "At level L3 and above, each boundary MUST have its own engine."
+    rationale: "A separate engine still holds when every in-store check is wrong."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [975, 952]
+    superseded_by: [REQ-DATA-073]
     verification:
-      - {kind: test-vectors, ref: "T-11 layer 3, layers 1 and 2 off: an actor of env-a addresses env-b's records; not found, because they are in another store"}
+      - {kind: test-vectors, ref: "T-11, physical separation alone: an actor of env-a addresses env-b's items; not found, because they are in another engine"}
   - id: REQ-ISO-017
     area: ISO
     statement: "The port library MUST encrypt every state value with AES-256-GCM under a data key per boundary and record kind."
     rationale: "Encryption keeps records secret from a store, its admins and its backups even when every access check fails."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-88, depth: Partial}
       - {id: ST-106, depth: Partial}
     issues: [851, 800]
+    superseded_by: [REQ-KEYS-033]
     verification:
       - {kind: test-vectors, ref: "T-14, layers 2 and 3 off: actor X reads Y's record by a raw driver call; ciphertext only, and unwrapping Y's data key is refused"}
       - {kind: test-vectors, ref: "Wycheproof AES-GCM vectors"}
@@ -243,10 +258,11 @@ requirements:
     rationale: "Without that binding a store admin can move a valid ciphertext to another key or boundary."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [851]
+    superseded_by: [REQ-KEYS-033]
     verification:
       - {kind: test-vectors, ref: "T-14: a store admin moves a ciphertext to another key of the same kind; decryption fails"}
       - {kind: test-vectors, ref: "T-14: a ciphertext copied from env-a to the same key name in env-b; decryption fails"}
@@ -256,10 +272,11 @@ requirements:
     rationale: "The unwrap check is what turns a leaked ciphertext into nothing."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [800]
+    superseded_by: [REQ-KEYS-029]
     verification:
       - {kind: test-vectors, ref: "T-11 layer 2: an actor that is not a declared reader asks to unwrap the data key; refused by the key-holder ACL or the KMS encryption-context condition"}
   - id: REQ-ISO-020
@@ -268,18 +285,19 @@ requirements:
     rationale: "Keys are visible to the store and its admins even though values are encrypted."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [863]
+    superseded_by: [REQ-DATA-012]
     verification:
       - {kind: test-vectors, ref: "T-14 manifest lint corpus: a record-key template that uses a field of sensitivity personal or secret; refused"}
 
   # ---- blob
   - id: REQ-ISO-021
     area: ISO
-    statement: "A blob driver MUST refuse a write outside the caller's own prefix, judged by the caller's platform identity."
-    rationale: "The bucket's own check holds when the actor's library is bypassed or compromised."
+    statement: "The credential of an audit piece for a project's bucket MUST refuse a write outside the piece's own prefix, judged by the piece's platform identity."
+    rationale: "The bucket's own check holds when the actor is bypassed or compromised."
     level: MUST
     source: design-decision
     status: planned
@@ -288,10 +306,10 @@ requirements:
       - {id: ST-103, depth: Partial}
     issues: [851]
     verification:
-      - {kind: test-vectors, ref: "T-12 layer 2, layers 1 and 3 off: actor X puts an object under Y's prefix; refused by an IAM prefix condition, a prefix-scoped temporary credential or the directory owner"}
+      - {kind: test-vectors, ref: "T-12, the holder's own check alone: the writer of project X puts an object under project Y's prefix; refused by an IAM prefix condition, a prefix-scoped temporary credential or the directory owner"}
   - id: REQ-ISO-022
     area: ISO
-    statement: "The port library MUST create a blob only if no blob of that name exists."
+    statement: "The audit writer MUST create every entry bundle and tile only if no object of that name exists."
     rationale: "Create-if-absent means a compromised writer cannot rewrite what was already written."
     level: MUST
     source: design-decision
@@ -312,7 +330,7 @@ requirements:
     standards: []
     issues: [954]
     verification:
-      - {kind: test-vectors, ref: "T-12 layer 3, layers 1 and 2 off: an actor of env-a writes into env-b's bucket; refused because its credentials do not reach that bucket"}
+      - {kind: test-vectors, ref: "T-12 physical separation alone: an actor of env-a writes into env-b's bucket; refused because its credentials do not reach that bucket"}
 
   # ---- transport
   - id: REQ-ISO-024
@@ -327,8 +345,8 @@ requirements:
       - {id: ST-103, depth: Partial}
     issues: [851]
     verification:
-      - {kind: test-vectors, ref: "T-13 layer 2, layers 1 and 3 off: role X sends to a queue whose policy names only role Y; refused by the queue policy"}
-      - {kind: test-vectors, ref: "T-13 layer 2: a Unix-socket or spool sender with a foreign peer uid; refused at the receiver"}
+      - {kind: test-vectors, ref: "T-13 the holder's own check alone: role X sends to a queue whose policy names only role Y; refused by the queue policy"}
+      - {kind: test-vectors, ref: "T-13 the holder's own check: a Unix-socket or spool sender with a foreign peer uid; refused at the receiver"}
   - id: REQ-ISO-025
     area: ISO
     statement: "The nats-jetstream driver MUST give each actor instance its own NATS user, limited to its own subjects in its boundary's account."
@@ -342,8 +360,8 @@ requirements:
       - {id: ST-102, depth: Partial}
     issues: [802]
     verification:
-      - {kind: test-vectors, ref: "T-13 layer 2, layers 1 and 3 off: user X publishes on actor Y's audit subject; refused by the permission template"}
-      - {kind: test-vectors, ref: "T-13 layer 2: a user of env-a subscribes to a subject of env-b's account; nothing is delivered"}
+      - {kind: test-vectors, ref: "T-13 the holder's own check alone: user X publishes on actor Y's audit subject; refused by the permission template"}
+      - {kind: test-vectors, ref: "T-13 the holder's own check: a user of env-a subscribes to a subject of env-b's account; nothing is delivered"}
   - id: REQ-ISO-026
     area: ISO
     statement: "At level L3 and above, each boundary MUST have its own queues or streams."
@@ -355,7 +373,7 @@ requirements:
     standards: []
     issues: [802]
     verification:
-      - {kind: test-vectors, ref: "T-13 layer 3, layers 1 and 2 off: an actor of env-a sends to env-b's queue; refused because its credentials do not reach it"}
+      - {kind: test-vectors, ref: "T-13 physical separation alone: an actor of env-a sends to env-b's queue; refused because its credentials do not reach it"}
 
   # ---- tokens and issuers
   - id: REQ-ISO-027
@@ -468,7 +486,7 @@ requirements:
       - {id: ST-59, section: "7.2", depth: Partial}
     issues: [885]
     verification:
-      - {kind: test-vectors, ref: "T-6: an assertion whose client data names origin other.example.com under the same relying-party ID; refused"}
+      - {kind: test-vectors, ref: "T-6: an assertion whose client data names the web origin other.example.com under the same relying-party ID; refused"}
       - {kind: test-vectors, ref: "T-6: an assertion from sluis.devel.example.com presented to a verifier whose allow-list lacks it; refused"}
   - id: REQ-ISO-035
     area: ISO
@@ -485,8 +503,8 @@ requirements:
       - {kind: test-vectors, ref: "T-7: a valid session cookie whose passkey use is older than the production rule; answered with insufficient_user_authentication and acr_values"}
   - id: REQ-ISO-036
     area: ISO
-    statement: "The compiled policy MUST forbid a subject of one company any grant in another company's scope unless a partner grant allows it."
-    rationale: "A company-ceiling guard written as a forbid holds against any permit, including a wrong one."
+    statement: "The compiled policy MUST forbid a subject of one tenant any grant in another tenant's scope unless a cross-tenant grant allows it."
+    rationale: "A tenant guard written as a forbid holds against any permit, including a wrong one."
     level: MUST
     source: design-decision
     status: planned
@@ -495,8 +513,8 @@ requirements:
       - {id: NC-12, depth: Partial}
     issues: [892, 852]
     verification:
-      - {kind: test-vectors, ref: "T-16: a company C subject asks for a grant in company D's scope with no partner grant; refused by the ceiling guard"}
-      - {kind: test-vectors, ref: "T-16 positive control: the same request with a partner grant; allowed"}
+      - {kind: test-vectors, ref: "T-16: a tenant C subject asks for a grant in tenant D's scope with no cross-tenant grant; refused by the tenant guard"}
+      - {kind: test-vectors, ref: "T-16 positive control: the same request with a cross-tenant grant; allowed"}
   - id: REQ-ISO-037
     area: ISO
     statement: "The policy build MUST fail when the bundle of one environment contains a policy scoped to another environment."
@@ -570,29 +588,31 @@ requirements:
   # ---- entry
   - id: REQ-ISO-042
     area: ISO
-    statement: "The entry actor MUST have no network access except its child actors' sockets or invocations."
+    statement: "The entry actor MUST have no network access except its listener and the calls of its ports that the actor registry lists."
     rationale: "A compromised entry that cannot connect out cannot send what it sees anywhere."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [entry]
     standards: []
     issues: [866, 796]
     verification:
-      - {kind: test-vectors, ref: "T-4: entry opens a TCP or UDP socket; refused by the sandbox (Unix sockets only)"}
-      - {kind: test-vectors, ref: "T-4: entry connects to a socket that is not one of its children's; refused"}
+      - {kind: test-vectors, ref: "T-4: entry opens an outbound TCP or UDP socket; refused by the sandbox"}
+      - {kind: test-vectors, ref: "T-4: entry connects to a socket that is not a work actor's; refused"}
   - id: REQ-ISO-043
     area: ISO
-    statement: "The entry actor MUST NOT hold a key, a secret or state of its own."
+    statement: "The entry actor MUST NOT hold a storage, key or audit credential at rest."
     rationale: "What entry does not hold cannot be stolen from it."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [entry]
     standards: []
     issues: [863]
     verification:
-      - {kind: test-vectors, ref: "T-4 manifest corpus: an entry manifest that declares a keys, secrets or state port; the generator refuses it"}
+      - {kind: test-vectors, ref: "T-4 registry corpus: an entry that lists a credential in the actor registry; the registry check refuses it"}
 
   # ---- enrolment and trust bundles
   - id: REQ-ISO-044
@@ -693,16 +713,17 @@ requirements:
     rationale: "A compromised integration then reaches only its own tenant's credential and state."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [863]
+    superseded_by: [REQ-ISO-106]
     verification:
       - {kind: test-vectors, ref: "T-15 layer 2, layers 1 and 3 off: google-signin@company-a reads company-b's client secret; refused"}
   - id: REQ-ISO-052
     area: ISO
-    statement: "An integration MUST NOT hold an authority key."
-    rationale: "Integrations hold vendor credentials, so they must not also be able to sign for sluis."
+    statement: "An adapter MUST NOT hold an authority key."
+    rationale: "Adapters hold vendor connections, so they must not also be able to sign for sluis."
     level: MUST
     source: design-decision
     status: planned
@@ -710,12 +731,12 @@ requirements:
     standards: []
     issues: [863]
     verification:
-      - {kind: test-vectors, ref: "T-15 manifest corpus: an integration manifest that declares a signing purpose; the generator refuses it"}
+      - {kind: test-vectors, ref: "T-15 registry corpus: an adapter given a signing purpose in the actor registry; the registry check refuses it"}
 
   # ---- operators and configuration
   - id: REQ-ISO-053
     area: ISO
-    statement: "The console MUST refuse a change by an operator outside the company and environment scope delegated to that operator."
+    statement: "The console MUST refuse a change by an operator outside the tenant and boundary scope delegated to that operator."
     rationale: "A mistake or a stolen operator session then stays inside one delegation."
     level: MUST
     source: design-decision
@@ -724,23 +745,24 @@ requirements:
     standards: []
     issues: [960]
     verification:
-      - {kind: test-vectors, ref: "T-25: an operator delegated for company A edits a company B record; refused and audited"}
-      - {kind: test-vectors, ref: "T-25: an operator delegated for devel edits a production machine-plane record; refused and audited"}
+      - {kind: test-vectors, ref: "T-25: an operator delegated for tenant A edits a tenant B item; refused and audited"}
+      - {kind: test-vectors, ref: "T-25: an operator delegated for devel edits a production machine-plane item; refused and audited"}
   - id: REQ-ISO-054
     area: ISO
     statement: "sluis config check MUST refuse a driver whose backend has no per-caller check unless the installation is at level L3 or above for that port."
     rationale: "Such a driver has no layer 2, so only layer 3 can stand in for it."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [864]
+    superseded_by: [REQ-DATA-066, REQ-DATA-072]
     verification:
       - {kind: test-vectors, ref: "T-25 config check corpus: an install file with such a driver shared by two boundaries at level L2; refused"}
   - id: REQ-ISO-055
     area: ISO
-    statement: "The drift test MUST fail when a deployed ACL, IAM or KMS policy, unit, socket or service account differs from what the manifest generates."
+    statement: "The drift test MUST fail when a deployed ACL, IAM or KMS policy, unit, socket or service account differs from what the registries generate."
     rationale: "Generated policies help only while what is deployed still matches them."
     level: MUST
     source: design-decision
@@ -764,17 +786,18 @@ requirements:
       - {id: ST-46, depth: Partial}
     issues: [870]
     verification:
-      - {kind: test-vectors, ref: "T-24 layer 2: the node token of ca@devel is used to assume prod's ca role; refused by the trust policy"}
+      - {kind: test-vectors, ref: "T-24 the holder's own check: the node token of ca@devel is used to assume prod's ca role; refused by the trust policy"}
   - id: REQ-ISO-057
     area: ISO
     statement: "A container MUST mount only its own actor's key-holder socket."
     rationale: "A pod that sees another actor's socket is one permission mistake away from using it."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: [kubernetes]
     standards: []
     issues: [876]
+    superseded_by: [REQ-ISO-102]
     verification:
       - {kind: test-vectors, ref: "T-24 chart corpus: every rendered preset mounts at most one key-holder socket per container, its own"}
 
@@ -797,16 +820,17 @@ requirements:
     rationale: "A company that leaves is promised that its records are crypto-shredded, not merely hidden."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1121, 837]
+    superseded_by: [REQ-KEYS-036, REQ-AUDIT-068]
     verification:
       - {kind: integration-test, ref: "T-26: export, then destroy the tenant key; the reader fails to decrypt every record of that company and still reads the others"}
   - id: REQ-ISO-060
     area: ISO
-    statement: "After a company boundary is disconnected, sluis MUST refuse sign-in and token exchange through that company's upstreams."
-    rationale: "Disconnecting is the first step of a company leaving and must take effect at once."
+    statement: "After a tenant is suspended or erased, sluis MUST refuse sign-in and token exchange through that tenant's upstream connections."
+    rationale: "Suspending a tenant is a tightening and takes effect at once (ADR 0008)."
     level: MUST
     source: design-decision
     status: planned
@@ -814,39 +838,42 @@ requirements:
     standards: []
     issues: [973]
     verification:
-      - {kind: test-vectors, ref: "T-26: a valid upstream ID token of the disconnected company at sign-in and at the token endpoint; refused"}
+      - {kind: test-vectors, ref: "T-26: a valid upstream ID token of the suspended tenant at sign-in and at the token endpoint; refused"}
   - id: REQ-ISO-061
     area: ISO
-    statement: "A node's card service MUST accept connections only from the key-holder's user."
+    statement: "A node's card service MUST accept connections only from the user of key@."
     rationale: "While the PIN is verified any local process can sign, and any client can reset the card or lock its PIN."
     level: MUST
     source: design-decision
     status: planned
     runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards: []
     issues: [951]
     verification:
       - {kind: test-vectors, ref: "K2: a process under another uid connects to the card service; refused"}
   - id: REQ-ISO-062
     area: ISO
-    statement: "The key-holder MUST make the OpenPGP primary-key binding signature of a node subkey on the card."
+    statement: "key@ MUST make the OpenPGP primary-key binding signature of a node subkey on the card."
     rationale: "The subkey stays in a PIV slot, so only the card can make its back-signature."
     level: MUST
     source: design-decision
     status: planned
     runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards: []
     issues: [951, 1067]
     verification:
       - {kind: integration-test, ref: "on a test card the gpg, gpgv and sqv verifiers accept the subkey with the back-signature and refuse it without"}
   - id: REQ-ISO-063
     area: ISO
-    statement: "The key-holder MUST NOT accept a caller-supplied digest for an OpenPGP binding signature."
+    statement: "key@ MUST NOT accept a caller-supplied digest for an OpenPGP binding signature."
     rationale: "It builds the digest from the keys itself, so a caller cannot turn the purpose into a general signer."
     level: MUST
     source: design-decision
     status: planned
     runtimes: ["bare-metal", "kubernetes"]
+    actors: [key]
     standards: []
     issues: [951, 1067]
     verification:
@@ -879,8 +906,8 @@ requirements:
       - {kind: test-vectors, ref: "T-23: a validly signed root list with a lower sequence; refused and the anchors on disk are unchanged"}
   - id: REQ-ISO-066
     area: ISO
-    statement: "A signing actor MUST refuse a grant that the sealing key of its own environment does not open."
-    rationale: "A sealing key per environment keeps a decision made for one environment from being spent in another."
+    statement: "A signing actor MUST refuse a grant that key@ does not open under its own boundary's grant data key."
+    rationale: "A grant data key per boundary keeps a decision made for one boundary from being spent in another."
     level: MUST
     source: design-decision
     status: planned
@@ -888,11 +915,11 @@ requirements:
     standards: []
     issues: [892, 914]
     verification:
-      - {kind: test-vectors, ref: "T-18 layer 2: a grant sealed by policy@env-a is presented to signer@env-b; refused"}
+      - {kind: test-vectors, ref: "T-18, the holder's own check alone: a grant sealed by policy@env-a is presented to signer@env-b; refused"}
   - id: REQ-ISO-067
     area: ISO
-    statement: "The `policy` actor MUST seal each mint grant with authenticated encryption under the sealing key, with `purpose=grant` in the encryption context."
-    rationale: "Only sluis itself verifies a grant, so a seal under a key that never leaves its store makes a grant-signing key unnecessary."
+    statement: "The `policy` actor MUST have key@ seal each grant with authenticated encryption under the boundary's grant data key, with the purpose grant in the context."
+    rationale: "Only sluis itself verifies a grant, so a seal under a key that never leaves key@ makes a signature on a grant unnecessary."
     level: MUST
     source: design-decision
     status: planned
@@ -903,8 +930,8 @@ requirements:
       - {kind: test-vectors, ref: "a sealed grant opened with a different purpose in the encryption context; refused, and a tampered grant; refused"}
   - id: REQ-ISO-068
     area: ISO
-    statement: "The data keys of a tenant MUST be wrapped under the sealing key with the tenant in the encryption context."
-    rationale: "Shredding a tenant deletes its data key, and the wrapping under a shared key keeps one tenant's keys from opening for another."
+    statement: "The data keys of a tenant MUST be wrapped under the boundary's wrapping key with the tenant and the purpose in the context."
+    rationale: "Shredding a tenant deletes its wraps, and the context keeps one tenant's wraps from opening for another."
     level: MUST
     source: design-decision
     status: planned
@@ -931,10 +958,11 @@ requirements:
     rationale: "A symmetric key may be shared only because the store itself separates its uses by encryption context."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: ["serverless", "kubernetes"]
     standards: []
     issues: [914]
+    superseded_by: [REQ-KEYS-050]
     verification:
       - {kind: test-vectors, ref: "generated key policies for a shared symmetric key: every Allow statement carries an encryption-context condition; a policy without one fails the build"}
   - id: REQ-ISO-071
@@ -952,7 +980,7 @@ requirements:
       - {kind: test-vectors, ref: "T-23: a bundle with one certificate that chains to an unpinned root; that certificate is not written and the rest are"}
   - id: REQ-ISO-072
     area: ISO
-    statement: "In containers the uid of an actor instance MUST be the actor's pinned base uid plus 1000 times the uid block that the install file declares for its boundary."
+    statement: "In containers the uid of an actor instance MUST be the actor's pinned base uid plus 1000 times the uid block that the Boundary config kind declares for its boundary."
     rationale: "Two boundaries then never share a uid, so the peer-uid check can tell their instances apart."
     level: MUST
     source: design-decision
@@ -1000,16 +1028,17 @@ requirements:
       - {kind: integration-test, ref: "a configuration that gives a customer boundary the host or a key of another boundary is refused by sluis config check"}
   - id: REQ-ISO-076
     area: ISO
-    statement: "sluis MUST refuse a record issued for a tenant that widens a field its template bounds."
+    statement: "store@ MUST refuse a write of a tenant kind that widens a field its template bounds."
     rationale: "A tenant must not widen its own claims, trust ceiling or redirect rules (ADR 0032)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1023]
+    superseded_by: [REQ-DATA-025]
     verification:
-      - {kind: integration-test, ref: "a tenant record that raises each bounded field in turn is refused"}
+      - {kind: integration-test, ref: "a tenant item that raises each bounded field in turn is refused"}
   - id: REQ-ISO-077
     area: ISO
     statement: "A client ID of a tenant MUST be the tenant's name, a colon and the client's name, each 1 to 32 characters."
@@ -1036,7 +1065,7 @@ requirements:
       - {kind: integration-test, ref: "ceiling guard negative test across two tenants"}
   - id: REQ-ISO-079
     area: ISO
-    statement: "A pooled connector MUST serve the connections of one customer boundary only."
+    statement: "An adapter that serves customer connections MUST serve the connections of one customer boundary only."
     rationale: "A compromised pool then reaches the connections of one customer boundary only."
     level: MUST
     source: design-decision
@@ -1045,10 +1074,10 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "a connection of a second boundary is refused by a pool"}
+      - {kind: integration-test, ref: "a connection of a second boundary is refused by the pool adapter"}
   - id: REQ-ISO-080
     area: ISO
-    statement: "A pooled connector MUST open the client secret of a connection only for the duration of one call, with the connection in the encryption context."
+    statement: "A pooled adapter MUST open the client secret of a connection at key@ for the duration of one call only, under a grant for the connection's tenant."
     rationale: "A pool must not hold every connection's secret in memory or open one connection's secret for another."
     level: MUST
     source: design-decision
@@ -1057,11 +1086,11 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "unwrap with another connection's context is refused; no secret is cached after the call"}
+      - {kind: integration-test, ref: "an open under a grant for another tenant is refused; no secret is cached after the call"}
   - id: REQ-ISO-081
     area: ISO
-    statement: "The egress proxy of a pooled connector MUST refuse a request to a host that the discovery document of an existing connection does not name."
-    rationale: "A pool cannot list its hosts in a network policy, so the proxy is the allow-list."
+    statement: "The egress proxy of a pooled adapter MUST refuse a request to a loopback, link-local or private address after name resolution."
+    rationale: "A pool cannot list its hosts in a network policy, so the proxy at least keeps it off the inside."
     level: MUST
     source: design-decision
     status: planned
@@ -1069,7 +1098,19 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "request to an unnamed host and to a private address is refused"}
+      - {kind: integration-test, ref: "a request to a private address is refused"}
+  - id: REQ-ISO-110
+    area: ISO
+    statement: "A pooled adapter MUST restrict every call to the hosts of its connection's discovery document."
+    rationale: "The egress proxy holds no data port and checks only addresses, so the host allow-list lives in the adapter that opens the connection (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a connection whose discovery document names host A: the adapter's call to host B is refused before it leaves the adapter"}
   - id: REQ-ISO-082
     area: ISO
     statement: "sluis config check MUST refuse a private_key_jwt key for a pooled connection."
@@ -1082,3 +1123,319 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "config check negative test"}
+
+  # ---- the two independent checks and the credential holders (decisions 0002, 0003 and 0007)
+  - id: REQ-ISO-083
+    area: ISO
+    statement: "The isolation harness MUST be able to run every isolation vector with the store's rule, key@'s grant check or both switched off."
+    rationale: "A check that is only ever tested behind another check is not tested at all (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [877, 851, 950]
+    verification:
+      - {kind: integration-test, ref: "harness self-test: each switch is observed off in store@ and in key@ before a vector runs"}
+  - id: REQ-ISO-084
+    area: ISO
+    statement: "A tenant's sealed value MUST be readable only when both the store's rule and key@'s grant check allow it."
+    rationale: "Two checks in different holders, with different credentials and different registries, mean a flaw in one is caught by the other (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [851, 950]
+    verification:
+      - {kind: test-vectors, ref: "T-11, key@'s grant check off: an actor with a store rule reads a sealed value; the value stays ciphertext"}
+      - {kind: test-vectors, ref: "T-11, the store's rule off: an actor with a grant for another tenant asks key@ to open; refused"}
+  - id: REQ-ISO-085
+    area: ISO
+    statement: "A work unit MUST hold no storage, key or audit credential at rest."
+    rationale: "A work actor that holds a credential is a second holder and a bigger blast radius (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [949]
+    verification:
+      - {kind: integration-test, ref: "actor registry check: no work actor lists a credential in its holds"}
+      - {kind: integration-test, ref: "a work unit's environment, files and memory are scanned for a storage, key or audit credential"}
+  - id: REQ-ISO-086
+    area: ISO
+    statement: "On Lambda only the roles of the credential holders MUST be able to reach storage, keys, export destinations or the audit blob."
+    rationale: "A work function's role may only invoke, so a compromised function reaches data only through the holders (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    standards: []
+    issues: [949]
+    verification:
+      - {kind: integration-test, ref: "IAM simulation: the role of every work function is denied every storage, key, export and audit-blob action"}
+  - id: REQ-ISO-087
+    area: ISO
+    statement: "A work actor MUST NOT contain a configuration loader, a secret source or a driver."
+    rationale: "Loading config and reading secrets belong to store@, and a driver belongs to its owner (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "dependency check: no work actor binary links a config source, a secret source or a driver package"}
+  - id: REQ-ISO-088
+    area: ISO
+    statement: "The actors ca and ssh-ca MUST run as separate units with separate platform identities."
+    rationale: "An X.509 CA and an SSH CA have different callers, keys and blast radius (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the generated units and roles for ca and ssh-ca are distinct on every runtime"}
+  - id: REQ-ISO-089
+    area: ISO
+    statement: "Every contract between actors MUST be served over ConnectRPC, including a call inside one process."
+    rationale: "One transport for every call keeps the rules and the audit the same whether actors are fused or not (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a fused unit's calls between actors pass through the same interceptors as a remote call"}
+  - id: REQ-ISO-090
+    area: ISO
+    statement: "The transport MUST refuse a call from one actor to another that the actor registry does not list."
+    rationale: "The call graph is a reviewed registry, and a compromised actor must not call outside it (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [949]
+    verification:
+      - {kind: integration-test, ref: "the generated deny matrix: every pair not listed is refused by the transport on each runtime"}
+      - {kind: integration-test, ref: "drift test: a call added in code but not in the registry fails"}
+  - id: REQ-ISO-091
+    area: ISO
+    statement: "The deny matrix and the blast-radius report MUST be generated from the actor registry and the kind registry."
+    rationale: "A handwritten matrix drifts from what is enforced (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [949]
+    verification:
+      - {kind: integration-test, ref: "the generated pages equal the committed pages; a registry change without them fails CI"}
+  - id: REQ-ISO-092
+    area: ISO
+    statement: "The entry actor MUST be fuzzed in CI on its request parsing."
+    rationale: "Entry is the one actor that faces the internet, so it gets the most hostile input (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [entry]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a fuzzing job runs on every release candidate and its corpus is kept"}
+  - id: REQ-ISO-093
+    area: ISO
+    statement: "The entry actor MUST NOT load plugins."
+    rationale: "A plugin is code that nobody reviewed with the actor (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [entry]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "entry has no plugin interface; a dependency check finds no dynamic loader"}
+  - id: REQ-ISO-094
+    area: ISO
+    statement: "The entry actor MUST run with a read-only file system."
+    rationale: "What entry cannot write it cannot plant (ADR 0002)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [entry]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "entry attempts a write to every mounted path; refused"}
+
+  # ---- units, listeners and fusion (decision 0003)
+  - id: REQ-ISO-095
+    area: ISO
+    statement: "An actor on a board MUST NOT listen on a TCP socket."
+    rationale: "Unix sockets with a peer-uid check are the only inbound path, so the network reaches no actor (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    issues: [866]
+    verification:
+      - {kind: integration-test, ref: "a port scan of a board finds only the Raft port, and no actor has a TCP listener"}
+  - id: REQ-ISO-096
+    area: ISO
+    statement: "On a board entry MUST listen on a Unix socket that cloudflared forwards to."
+    rationale: "Entry is then reached only by the tunnel's connector (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    actors: [entry]
+    standards: []
+    issues: [866]
+    verification:
+      - {kind: integration-test, ref: "entry accepts a connection from cloudflared's uid and refuses one from another uid"}
+  - id: REQ-ISO-097
+    area: ISO
+    statement: "On serverless the entry actor MUST listen on 127.0.0.1 inside the function's sandbox only."
+    rationale: "The pinned Lambda Web Adapter is then its only client (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["serverless"]
+    actors: [entry]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a connection to entry from outside the sandbox is impossible; the adapter's request is served"}
+  - id: REQ-ISO-099
+    area: ISO
+    statement: "A credential holder MUST NOT be fused with a work actor."
+    rationale: "Fusing a holder with a work actor would give the work actor its credential (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the installation check refuses a fusion that names store@, key@ or exporter@ with a work actor"}
+      - {kind: integration-test, ref: "the same check refuses key@ with entry"}
+  - id: REQ-ISO-101
+    area: ISO
+    statement: "On Kubernetes a container that holds a cloud token MUST NOT have a listener."
+    rationale: "A listener on the container with the token would be a path to it (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: no driver container exposes a port"}
+  - id: REQ-ISO-102
+    area: ISO
+    statement: "On Kubernetes the cloud token MUST be mounted only into the driver container of the holder's pod."
+    rationale: "The holder's own container then never sees the token, and a work pod has none (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: every rendered preset mounts the token in the driver container only"}
+  - id: REQ-ISO-103
+    area: ISO
+    statement: "On Kubernetes a work pod MUST have no cloud identity."
+    rationale: "A work pod reaches storage, keys and audit only through the holders (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: no work pod has a cloud service account annotation"}
+  - id: REQ-ISO-104
+    area: ISO
+    statement: "The platform MUST start every driver and no actor execs one."
+    rationale: "An actor that can exec a driver can run it with its own arguments (ADR 0003)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [862]
+    verification:
+      - {kind: integration-test, ref: "the units of a board start each driver beside its owner; an actor's exec of a driver binary is refused"}
+  - id: REQ-ISO-105
+    area: ISO
+    statement: "A service SHOULD prefer the replica of an actor in its own cell for its calls."
+    rationale: "A local call saves a hop on every request (ADR 0003)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "with a replica in the same cell and one in another, calls go to the local one"}
+
+  # ---- adapters, boundaries and promotion (decisions 0008 and 0025)
+  - id: REQ-ISO-106
+    area: ISO
+    statement: "An adapter MUST hold no connection credential at rest."
+    rationale: "A compromised adapter then yields no tenant's credential, since it opens each one at key@ for one call (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an adapter's disk, environment and memory between calls are scanned for connection credentials"}
+  - id: REQ-ISO-107
+    area: ISO
+    statement: "An adapter MUST NOT call a work actor other than policy."
+    rationale: "Core calls the adapter, and the adapter's one call is to policy for the grant of work that no caller started (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the call graph check: no edge from an adapter to a core actor"}
+  - id: REQ-ISO-108
+    area: ISO
+    statement: "Two L1 boundaries on one engine MUST wrap their data keys under wrapping keys of their own."
+    rationale: "Their values stay apart because each boundary's data keys are wrapped for its own key and not because the engine differs (ADR 0008)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "two L1 boundaries on one engine: one boundary's key@ cannot unwrap the other's data keys"}
+  - id: REQ-ISO-109
+    area: ISO
+    statement: "Promoting a tenant to a boundary of its own MUST seal its values again and rewrap its data keys for the new boundary's wrapping key."
+    rationale: "A value is bound to its full address, so a moved value is opened by the old key@ and sealed again by the new one (ADR 0008)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "promote a test tenant: its values open under the new boundary and no longer under the old; the old copy is deleted after read-back"}
