@@ -49,7 +49,7 @@ Policies are the one kind with all four layers ([0004](/decisions/0004-the-data-
 
 - **A regulated customer's boundary has its own policy document,** the config kind `RegulatedPartyPolicy`, beside the publisher's `Policy`. The two layers are combined like every other config: union, forbid wins.
 - **That document carries two signatures,** the publisher's and the regulated party's, as two JWS signatures on one signed document (the general JSON serialisation). `store@` verifies both before it parses the document, and refuses the document when either is missing or does not verify ([0005](/decisions/0005-the-store/#configuration-loading)). On a cold start it refuses to start; on a reload it keeps the set in force and raises an alarm.
-- **Neither party can change the policy alone.** The publisher cannot put into a regulated boundary a rule that the customer has not signed, and the customer cannot put there a rule that the publisher's review has not passed. The format and the test vectors are on the [signed config page](/reference/signed-config/), which states the rule once.
+- **Neither party can change the policy alone.** The publisher cannot put into a regulated boundary a rule that the customer has not signed, and the customer cannot put there a rule that the publisher's review has not passed. The format and the test vectors are on the signed config page, which states the rule once.
 
 ### Sealed grants
 

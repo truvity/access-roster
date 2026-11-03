@@ -20,7 +20,7 @@ Data is **kinds**. A kind is declared once in the compiled kind registry and has
 ### Kinds
 
 - **A kind is a typed resource declared in the kind registry.** It names a Protobuf schema, a scope, one storage class, a treatment, a profile, its layers or links, its declared indexes, its rules (actor × kind × verb) and exactly one writer. A kind that is not in the registry cannot be read or written.
-- **The registry is compiled into the binaries that use it.** store@ enforces it ([0005](/decisions/0005-the-store/#rules)); the tests and the generated pages [Kinds](/reference/kinds/) and [Rules](/reference/rules/) read it. Adding a kind is a reviewed change to the registry, and it names its consumer (principle 8).
+- **The registry is compiled into the binaries that use it.** store@ enforces it ([0005](/decisions/0005-the-store/#rules)); the tests and the generated pages Kinds and Rules read it. Adding a kind is a reviewed change to the registry, and it names its consumer (principle 8).
 - **A kind's name is PascalCase** (`DataKeyWrap`); its address segment is the kebab-case form (`data-key-wrap`).
 - **A new question about data is a new declared index,** not a query ([0005](/decisions/0005-the-store/#the-store-api)).
 
@@ -53,7 +53,7 @@ During the design phase the registry is `docs/architecture/kinds.yaml`. When cod
 - **An id never contains personal data.** It is a random value (128 bits), or a keyed hash of a natural key made by key@ ([0006](/decisions/0006-keys-and-sealing/#sign-and-mac)). A person is found by an opaque subject, never by an e-mail address.
 - **An installation is not a scope.** Settings that hold for a whole installation are one signed document that IaC writes, with the same content, into every boundary's config source; no boundary reads another's ([0008](/decisions/0008-boundaries-and-tenants/#installation-wide-settings)).
 - **A sealed value is bound to its full address,** so a value moved to another item, kind or tenant no longer opens ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
-- **The encoding of the segments and their limits** are on the [store API](/reference/store-api/) reference page.
+- **The encoding of the segments and their limits** are on the store API reference page.
 
 | Address | Kind | Class |
 |---|---|---|
@@ -240,7 +240,7 @@ These are not kinds. The registry does not list them, and an actor cannot read o
 - Temp kinds can be lost, so every writer treats them as such: a lost `SessionChain` costs a sign-in.
 - The effective value of a layered kind is composed on read, so a store read of a layered group costs a read per layer. The store caches the config layers in its snapshot.
 - Moving a v1 installation is part of the cutover tooling of the parity milestone ([#1017](https://github.com/truvity/sluis/issues/1017)).
-- The pages that follow are [Data](/concepts/data/), [Kinds](/reference/kinds/) and [Rules](/reference/rules/); the last two are generated from the registry.
+- The pages that follow are [Data](/concepts/data/), Kinds and Rules; the last two are generated from the registry.
 
 ## Roads not taken
 
