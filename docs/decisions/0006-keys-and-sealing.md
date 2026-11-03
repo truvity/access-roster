@@ -30,7 +30,7 @@ v1 ADR 0005 made ES384 the default, and v1 ADR 0009 added a per-audience RS256 e
 
 ### Named exceptions
 
-"No RSA" and "P-384 only" have exactly these exceptions. Each has its own key, which serves no other purpose, and each is a purpose that is enabled on use ([Key purposes](#key-purposes)).
+"No RSA" and "P-384 only" have exactly these exceptions. Each has its own key, which serves no other purpose, and each is a purpose that is enabled on use ([Key purposes](/decisions/0006-keys-and-sealing/#key-purposes)).
 
 1. **FAPI 2.0:** PS256, ES256 and EdDSA, as above.
 2. **Cloud federation:** a key that signs a workload token for a cloud uses the algorithm that cloud requires: ES384 for AWS, ES256 for GCP, RS256 (RSA-2048) for Azure Entra.
@@ -48,8 +48,8 @@ A key is shared between two uses only when all of these are equal: **the audienc
 
 - **There is one key per purpose and per algorithm.** An asymmetric key never serves two purposes, and a key that issues certificates never signs tokens. Several audiences of one purpose share its key: two audiences of the token purpose need one ES384 key, and an audience that needs RS256 gets a key of its own because the algorithm differs.
 - **The signing purposes are separate keys:** the token-signing key; an X.509 intermediate for each trust domain; the SSH user CA and the SSH host CA; the log key of each audit log. Each is a P-384 key.
-- **A boundary's one symmetric KMS key is shared by all its data keys,** each wrap under its own encryption context ([Keys per boundary on AWS](#keys-per-boundary-on-aws)). Sharing is safe there because the context names the boundary, the tenant and the purpose, and the key policy lets only `key@` use the key.
-- **A tenant has no authority key and no wrapping key of its own.** It has three data keys ([Data keys](#data-keys)). A party that needs authority keys of its own is a boundary, not a tenant ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
+- **A boundary's one symmetric KMS key is shared by all its data keys,** each wrap under its own encryption context ([Keys per boundary on AWS](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). Sharing is safe there because the context names the boundary, the tenant and the purpose, and the key policy lets only `key@` use the key.
+- **A tenant has no authority key and no wrapping key of its own.** It has three data keys ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)). A party that needs authority keys of its own is a boundary, not a tenant ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
 - **Boundaries never share keys.** Two boundaries on one engine are separated by wrapping keys of their own, for example a second card per board ([0008](/decisions/0008-boundaries-and-tenants/#the-ladder)).
 - **Purposes outside the baseline are enabled on use,** each a dedicated key. A purpose an installation does not enable gets no key and no slot, and `sluis config check` refuses an enabled purpose with no key or slot and a collision of two purposes on one slot.
 
@@ -70,7 +70,7 @@ The generated [keys page](/reference/keys/) lists every purpose with its algorit
 - **An authority key is born in its key store, signs in place and cannot be exported** ([principle 1](/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it)). The store signs each digest itself. There are no derived signing keys, no burst key and no short-lived online key certified by an intermediate. There is no software signing for an authority key.
 - **Every key whose public half is trusted through the PKI chain is a hardware-held child key,** attested where the hardware can attest and certified through a root that ritueel holds: the CA intermediates and the OpenPGP signing subkeys. Hardware-held means a key service such as AWS KMS or a card such as a YubiKey. KMS cannot attest where a key was born, so for it the checks are the key's description, its policy, the record of its creation and a match between the public key and the request.
 - **SSH CA keys are anchors, not a chain.** The `ssh-user` and `ssh-host` keys are held behind `key@`; hosts trust a list of SSH CA keys that ritueel publishes, signed by a root ([0023](/decisions/0023-certificate-authorities/#ssh)).
-- **Ephemeral and symmetric keys are outside the rule:** session keys, ephemeral ECDH keys, data keys and derived keys are neither hardware-held nor certified. A data key is not an authority key: `key@` makes it, keeps it only wrapped, and opens it only in its own memory ([Data keys](#data-keys)).
+- **Ephemeral and symmetric keys are outside the rule:** session keys, ephemeral ECDH keys, data keys and derived keys are neither hardware-held nor certified. A data key is not an authority key: `key@` makes it, keeps it only wrapped, and opens it only in its own memory ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)).
 - **`key@` signs after it checks what it signs.** Signing is content-aware per purpose. The X.509 purpose signs only a TBSCertificate that parses and stays within its constraints, the SSH purposes only an OpenSSH certificate body, a token purpose only a JWS signing input, and the release-signing purpose only an OpenPGP signature input. A sign call therefore carries the content, not only its digest, and a mistake in a parser refuses a signature instead of signing the wrong thing. Every signature is rate-limited and is an audit fact.
 - **`key@` writes `KeyCertificate`,** the chain the root custodian returned for a purpose, which `sluis key install` hands to it; `ca` writes `TrustBundle` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)).
 - **CA serial numbers are random and 128 bits long.** No serial ledger is kept.
@@ -83,23 +83,23 @@ A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust dom
 | Key | Type | Purpose |
 |---|---|---|
 | Symmetric | AES-256 | Wraps every data key of the boundary: the tenants' `data`, `pseudonym` and `evidence` keys, and the boundary's `grant`, `cookie`, `mac` and `data` keys |
-| Token signing | P-384 | ES384 tokens ([The token-signing key](#the-token-signing-key)) |
+| Token signing | P-384 | ES384 tokens ([The token-signing key](/decisions/0006-keys-and-sealing/#the-token-signing-key)) |
 | X.509 intermediate | P-384 | One per trust domain, for `ca` |
 | SSH user CA | P-384 | `ssh-ca` |
 | SSH host CA | P-384 | `ssh-ca` |
-| Audit log | P-384 | One per audit log; a log key rotates only on compromise ([Rotation](#rotation)) |
+| Audit log | P-384 | One per audit log; a log key rotates only on compromise ([Rotation](/decisions/0006-keys-and-sealing/#rotation)) |
 
 - **The symmetric key's policy names `key@`'s role alone.** `kms:Sign` takes no encryption context, so a P-384 key is protected by its key policy, which also names `key@` only. Every other actor reaches a key through `key@`, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). On Lambda only the role of the `key@` function may reach KMS ([principle 13](/principles/#13-few-credential-holders)).
-- **A data key is made with `GenerateDataKey` under the symmetric key,** with the encryption context {boundary, tenant, purpose}, and only the wrapped copy is stored ([DataKeyWrap](#datakeywrap)). The tenant is `-` for the boundary's own purposes. The data key is not a KMS key, so a new tenant costs no KMS key and no key policy.
+- **A data key is made with `GenerateDataKey` under the symmetric key,** with the encryption context {boundary, tenant, purpose}, and only the wrapped copy is stored ([DataKeyWrap](/decisions/0006-keys-and-sealing/#datakeywrap)). The tenant is `-` for the boundary's own purposes. The data key is not a KMS key, so a new tenant costs no KMS key and no key policy.
 - **KMS automatic rotation** applies to the symmetric key.
 - **The topology is a KMS intermediate per environment boundary,** certified through a root that ritueel holds.
 - **The key that wraps a backup archive is not the symmetric key.** It is a dedicated KMS key, enabled on use, that may live in another account, and only the restore role may decrypt with it. `key@` calls `GenerateDataKey` under it for `exporter@`, and the archive is encrypted with AES-256-GCM under the key it returns ([0010](/decisions/0010-backup-and-recovery/#the-archive-key)). It adds a seventh KMS key where an installation takes backups and does not change the baseline of 1 + 5.
 
 ### Keys per board
 
-- **Each board has a card of its own, and every key of the board is born on that card.** The same purposes as on AWS sit in separate card slots, one slot per purpose and per algorithm ([The slot plan](#the-slot-plan)). A card belongs to one boundary.
-- **The X.509 intermediate of a board is born on its card, attested, certified for about 13 months and re-signed every year over the same key.** The root is ritueel's. The token-signing key is a second key on the same card, certified by the board's intermediate ([The token-signing key](#the-token-signing-key)).
-- **Data keys are not on the card.** `key@` generates a data key in software and wraps it for the key-agreement key of each board's card, so any board opens it with its own card ([DataKeyWrap](#datakeywrap)).
+- **Each board has a card of its own, and every key of the board is born on that card.** The same purposes as on AWS sit in separate card slots, one slot per purpose and per algorithm ([The slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan)). A card belongs to one boundary.
+- **The X.509 intermediate of a board is born on its card, attested, certified for about 13 months and re-signed every year over the same key.** The root is ritueel's. The token-signing key is a second key on the same card, certified by the board's intermediate ([The token-signing key](/decisions/0006-keys-and-sealing/#the-token-signing-key)).
+- **Data keys are not on the card.** `key@` generates a data key in software and wraps it for the key-agreement key of each board's card, so any board opens it with its own card ([DataKeyWrap](/decisions/0006-keys-and-sealing/#datakeywrap)).
 - **A lost or stolen board is replaced, not restored:** a new key on a new card, a new certificate, and ritueel revokes the old one. The card's PIN policy limits the exposure until then. Its wraps are deleted, and the other boards rewrap every data key for the new card.
 - **Signing speed is set by the card.** A YubiKey 5 Nano signs P-384 in about 147 ms, about 7 signatures a second per card, and three boards give about 21 a second (measured 2026-10-31, firmware 5.8.0), against a measured peak of 0.8 tokens a second in v1.
 
@@ -120,8 +120,8 @@ A documented, versioned map says which card slot serves which purpose: one slot 
 | `87` to `95` | Spare (fifteen slots, hex), shared by every purpose |
 | `9e` | Not used: the card-authentication slot signs without a PIN by default |
 
-- **Slot `9d` is the key-agreement slot, and it is the only one.** Grants do not use it directly: they are sealed under a boundary data key, so a grant costs a memory operation and not an ECDH on the card ([Seal and open](#seal-and-open)).
-- **A second purpose or a second algorithm takes a spare slot.** A further trust domain gets another X.509 intermediate, an exception such as PS256 gets its own key, and the purposes of [Key purposes](#key-purposes) that are enabled on use each take one. The installation names the slot in its `KeyPlan`; the default map is built in.
+- **Slot `9d` is the key-agreement slot, and it is the only one.** Grants do not use it directly: they are sealed under a boundary data key, so a grant costs a memory operation and not an ECDH on the card ([Seal and open](/decisions/0006-keys-and-sealing/#seal-and-open)).
+- **A second purpose or a second algorithm takes a spare slot.** A further trust domain gets another X.509 intermediate, an exception such as PS256 gets its own key, and the purposes of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) that are enabled on use each take one. The installation names the slot in its `KeyPlan`; the default map is built in.
 - **The spare range holds the new key of an event rotation** while the old one finishes, and the older key-agreement key until every wrap is rewrapped.
 - **The map records each slot's attestation.** The slot map of root cards is ritueel's. The keys page shows the map.
 - **The release subkey lives in a PIV slot reached through `key@`,** which also makes the subkey's back-signature on the card. The OpenPGP applet is not used on a board.
@@ -147,14 +147,14 @@ sequenceDiagram
 
 - **To write, the actor asks `key@` for `Seal(address, value, grant)`, then writes the result.** The actor validates a sealed field before it seals it, because the store cannot read it.
 - **To read, the actor asks for `Open(address, sealed, grant)`.** `key@` returns the plaintext to the caller only.
-- **The value is sealed under the data key of the address's boundary, tenant and purpose** ([Data keys](#data-keys)), with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open, and a value that has to move to another address is opened and sealed again. The byte layout of the envelope is on the [store API page](/reference/store-api/).
+- **The value is sealed under the data key of the address's boundary, tenant and purpose** ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)), with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open, and a value that has to move to another address is opened and sealed again. The byte layout of the envelope is on the [store API page](/reference/store-api/).
 - **`key@` checks three things on every Seal and Open:** the caller's identity, by the transport ([0003](/decisions/0003-units-transports-and-fusion/#transports)); the caller's rule for the purpose and the operation, generated from the actor registry ([0002](/decisions/0002-families-of-actors/#registries-generate-the-enforcement)); and the grant, which must be sealed for the address's tenant, name the operation and not be expired ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A refusal is an audit fact.
 - **Opens are batched.** A call may carry many opens, so that a request that needs several values, such as a session cookie and a person's records, pays one hop. The per-request cost of opening session cookies at `key@` is measured in the Lambda latency spike ([#1179](https://github.com/truvity/sluis/issues/1179)).
 - **Session cookies are sealed and opened at `key@` on every request,** under the boundary's `cookie` data key. `session` never holds that key ([0018](/decisions/0018-sessions/)).
 
 ### Sign and Mac
 
-- **`Sign(purpose, content, grant)` signs in place** with the key of the purpose ([Keys sign in place](#keys-sign-in-place)). A purpose that carries an authorised effect, a mint or an artifact signature, needs the grant of [0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants).
+- **`Sign(purpose, content, grant)` signs in place** with the key of the purpose ([Keys sign in place](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). A purpose that carries an authorised effect, a mint or an artifact signature, needs the grant of [0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants).
 - **`Mac(purpose, input, grant)` makes a keyed hash with HMAC-SHA384** over a data key: `mac` (boundary) for link ids, upstream session ids, pairwise subjects and the hashed index entries of sealed kinds, or `pseudonym` (tenant) for audit pseudonyms. The caller names a label for each use, and `key@` binds the label into the input, so two uses never produce the same hash for the same input. The key never leaves `key@`.
 - **There is no `LinkKey` kind and no extra KMS key for hashing.** A KMS `GenerateMac` key would need one key for each purpose and boundary because it takes no encryption context, and would make two mechanisms for one operation.
 - **Pairwise subjects use `mac` with a `pairwise` label and are never rotated** ([0034](/decisions/0034-end-users-and-upstream-signals/#pairwise-subjects)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
@@ -173,11 +173,11 @@ A data key is a software AES-256 key. `key@` makes it, keeps it only wrapped, an
 | `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and pairwise subjects |
 | `data` | One per boundary, tenant `-` | The sealed kinds that have no tenant in their address |
 
-- **Each tenant has three data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
+- **Each tenant has three data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
 - **A sealed kind is sealed under the `data` key of its address's tenant.** The directory kinds and the connections and apps made through a UI or API flow (`DirectoryUser`, `DirectoryGroup`, `DirectoryMembership`, `DirectoryConnection`, `MinterConnection`, `GitHubApp`, `SlackConnection`, `EntraConnection` and the desired state) belong to a tenant, the operator's own company included ([0008](/decisions/0008-boundaries-and-tenants/#tenants)), so a tenant's exit shreds them with the rest of its personal data. Config is never sealed and has no tenant.
 - **A sealed kind that has no tenant in its address is sealed under the boundary's `data` key** (tenant `-`). In the registry that is `EnrolmentToken`, the key of a host's enrolment token, and nothing else. The wrap has the same purpose name as the tenant's `data` key and a different address, so the two never meet.
-- **A data key is not a KMS key.** On AWS it is made by `GenerateDataKey` under the boundary's one symmetric key; on boards `key@` generates it in software. Either way only the wrapped copy is stored, and the unwrapped key lives in `key@`'s memory ([The cache](#the-cache)).
-- **A generation counts a data key's rotations.** The envelope of every sealed value names the purpose and the generation that sealed it, so an older generation keeps opening what it sealed ([Rotation](#rotation)).
+- **A data key is not a KMS key.** On AWS it is made by `GenerateDataKey` under the boundary's one symmetric key; on boards `key@` generates it in software. Either way only the wrapped copy is stored, and the unwrapped key lives in `key@`'s memory ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
+- **A generation counts a data key's rotations.** The envelope of every sealed value names the purpose and the generation that sealed it, so an older generation keeps opening what it sealed ([Rotation](/decisions/0006-keys-and-sealing/#rotation)).
 - **Which actor may use which purpose is a rule of `key@`:** the rules say who may Seal, Open or Mac with each. The audit pieces use `pseudonym` and `evidence` through the same rules ([0029](/decisions/0029-the-audit-log/#encryption-and-crypto-shredding)).
 
 ### DataKeyWrap
@@ -194,11 +194,11 @@ flowchart LR
 ```
 
 - **On AWS there is one wrap,** the ciphertext that `GenerateDataKey` returned under the encryption context {boundary, tenant, purpose}.
-- **On boards there is one wrap per recipient:** each board's card (its key-agreement key, slot `9d`) and the recovery recipient ([The recovery recipient](#the-recovery-recipient)). `key@` makes an ephemeral P-384 key, agrees a secret with the recipient's public key (ECDH), derives a wrapping key with HKDF-SHA384 and wraps the data key with AES key wrap. The wrap is bound to the wrap's own address. Making a wrap needs only the recipient's public key, so no card is touched; opening one needs the recipient's private key, which is the card's ECDH.
+- **On boards there is one wrap per recipient:** each board's card (its key-agreement key, slot `9d`) and the recovery recipient ([The recovery recipient](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). `key@` makes an ephemeral P-384 key, agrees a secret with the recipient's public key (ECDH), derives a wrapping key with HKDF-SHA384 and wraps the data key with AES key wrap. The wrap is bound to the wrap's own address. Making a wrap needs only the recipient's public key, so no card is touched; opening one needs the recipient's private key, which is the card's ECDH.
 - **A new data key is written with conditional creates,** all its wraps in one atomic write. If two `key@` instances make a key at once, one wins and the other discards its key and reads the winner's.
 - **A new card or board is a rewrap.** An existing `key@` opens each data key, wraps it for the new recipient's public key and writes the new item. The data is not touched. The recipients' public keys are in the `KeyPlan` config kind.
-- **The wrap for a lost recipient is deleted.** A lost or stolen board's wraps are deleted and its card is revoked ([Keys per board](#keys-per-board)).
-- **Measured on two boards' cards on 2026-11-03:** an ECDH takes a median of 143 ms, about 7 a second per card. Cached afterwards ([The cache](#the-cache)).
+- **The wrap for a lost recipient is deleted.** A lost or stolen board's wraps are deleted and its card is revoked ([Keys per board](/decisions/0006-keys-and-sealing/#keys-per-board)).
+- **Measured on two boards' cards on 2026-11-03:** an ECDH takes a median of 143 ms, about 7 a second per card. Cached afterwards ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
 
 ### The recovery recipient
 
@@ -210,7 +210,7 @@ flowchart LR
 
 - **`key@` caches opened data keys in memory,** each entry with its own time to live. A cached key opens and seals without a card operation or a KMS call, so the card's seven operations a second serve cache misses and not requests.
 - **The time to live is set in the `KeyPlan` under a built-in maximum.** A longer value is refused when the configuration loads.
-- **The entry is also the erasure delay.** On boards `key@` watches `DataKeyWrap` and drops an entry when its wrap is deleted. On Lambda nothing is pushed: a warm `key@` function keeps its entries until they expire, so the time to live is the longest time a deleted tenant's data can still be opened ([Erasing a tenant](#erasing-a-tenant)).
+- **The entry is also the erasure delay.** On boards `key@` watches `DataKeyWrap` and drops an entry when its wrap is deleted. On Lambda nothing is pushed: a warm `key@` function keeps its entries until they expire, so the time to live is the longest time a deleted tenant's data can still be opened ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)).
 - **The cache holds data keys only.** It never holds an authority key or a wrapping key; those stay in their key store.
 - **Memory holding a key is locked and is not written to disk or to a core file.**
 
@@ -220,7 +220,7 @@ flowchart LR
 - **Its `evidence` wrap is deleted when the evidence retention ends.** Evidence never shares a key with personal data and outlives it: a bill can be disputed after the customer has left, and finance keeps usage for years. The retention is declared in audit's configuration, the `AuditLog` config kind ([0029](/decisions/0029-the-audit-log/#retention)).
 - **The boundary's keys are not touched.** A tenant that leaves one boundary and stays in another keeps its keys in the other.
 - **An erasure is an audit fact,** and the tenant lifecycle is in [0008](/decisions/0008-boundaries-and-tenants/#tenant-lifecycle).
-- **On Lambda the erasure takes effect within the cache's time to live,** because warm functions hold the entry ([The cache](#the-cache)).
+- **On Lambda the erasure takes effect within the cache's time to live,** because warm functions hold the entry ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
 
 ### Rotation
 
@@ -234,7 +234,7 @@ flowchart LR
 ### The token-signing key
 
 - **Token-signing and workload-issuer keys are hardware-held, separate from the CA key and from each other, one of each per board.** `signer` uses the token-signing key and `sluis-node` the workload-issuer key, each in a slot of its own through `key@`; the two are never shared, because their callers and their blast radius differ. The board's own intermediate certifies each with a **non-CA certificate that allows digital signatures only**, issued on the board without a ceremony under the profile of [0023](/decisions/0023-certificate-authorities/), so a key that signs tokens cannot issue a certificate.
-- **`sluis-node` signs its workload tokens through `key@`** (purpose `workload-issuer`, boards only), because `key@` has exclusive access to the card ([Exclusive card access](#exclusive-card-access)). `sluis-node` holds no key credential.
+- **`sluis-node` signs its workload tokens through `key@`** (purpose `workload-issuer`, boards only), because `key@` has exclusive access to the card ([Exclusive card access](/decisions/0006-keys-and-sealing/#exclusive-card-access)). `sluis-node` holds no key credential.
 - **Each key-set entry carries an `x5c` chain:** the token certificate, the board's intermediate, then up to the root. A standard client ignores it and fetches the key over TLS; a verifier that wants to can check custody down to a root it trusts. The chain is in the key set, not in each token.
 - **The key set carries every active token key, and a next key only while an event rotation is in progress.**
 

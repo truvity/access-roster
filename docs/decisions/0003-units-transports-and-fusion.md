@@ -56,11 +56,11 @@ flowchart LR
   | Kubernetes | In-cluster gRPC | A projected service-account token with one audience per callee, or SPIFFE mutual TLS | That the token or certificate names a caller the call graph allows |
 
 - **The steps and the checks are the same on every transport** ([principle 16](/principles/#16-one-model-many-transports)). A request passes through `entry`, its owning actor, and store@ and key@ for its data and keys, and meets the same two independent checks ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A design that needs a different step on one platform is a design change for all of them.
-- **The call graph is declared once and enforced twice** ([The call graph](#the-call-graph)).
+- **The call graph is declared once and enforced twice** ([The call graph](/decisions/0003-units-transports-and-fusion/#the-call-graph)).
 - **Calls to holders are the common case.** Every work actor calls store@ on its data port and key@ on its keys port, so a request crosses at least one hop to each. The budget of the hops is in [0037](/decisions/0037-capacity-is-measured-before-it-is-promised/).
-- **On boards the mount and the socket's group are the first lock** ([The call graph](#the-call-graph)). key@ serves each caller on a socket of its own, in a directory only that caller can open ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)).
-- **On Lambda the unit is a function and the hop is an invoke.** The latency of an invoke between actor functions, the per-request cost of opening session cookies at key@, and whether invokes are fast enough are measured in [#1179](https://github.com/truvity/sluis/issues/1179). Until it reports, no function links store@ or its drivers into a work actor's process ([Fusion](#fusion)).
-- **On Kubernetes the unit is the pod.** The cloud token is mounted only into a driver container, and no container that holds a cloud token has a listener ([Listeners](#listeners)).
+- **On boards the mount and the socket's group are the first lock** ([The call graph](/decisions/0003-units-transports-and-fusion/#the-call-graph)). key@ serves each caller on a socket of its own, in a directory only that caller can open ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)).
+- **On Lambda the unit is a function and the hop is an invoke.** The latency of an invoke between actor functions, the per-request cost of opening session cookies at key@, and whether invokes are fast enough are measured in [#1179](https://github.com/truvity/sluis/issues/1179). Until it reports, no function links store@ or its drivers into a work actor's process ([Fusion](/decisions/0003-units-transports-and-fusion/#fusion)).
+- **On Kubernetes the unit is the pod.** The cloud token is mounted only into a driver container, and no container that holds a cloud token has a listener ([Listeners](/decisions/0003-units-transports-and-fusion/#listeners)).
 
 ### The call graph
 

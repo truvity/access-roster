@@ -26,7 +26,7 @@ The store and `key@` are two holders that must each be able to refuse a request 
 - **The validator runs at load and at every reload.** A policy that does not fit the schema is refused with an error naming the offending path. A set that fails validation is refused as a whole and the set in force stays ([0005](/decisions/0005-the-store/#a-failed-reload)); a cold start with a set that fails does not start.
 - **Evaluation fails closed.** A request is denied unless a policy explicitly permits it, an explicit `forbid` wins over a `permit`, and an evaluation that cannot be completed is a denial.
 - **Callers do not link Cedar.** Other actors reach `policy` through its ConnectRPC contract ([0002](/decisions/0002-families-of-actors/#contracts)); the language never appears in their code.
-- **Grant names are declared in a vocabulary and narrowed per audience** ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). A grant name is a named permission. A grant, in this record, is the sealed decision of [Sealed grants](#sealed-grants), and the two words are never used for each other.
+- **Grant names are declared in a vocabulary and narrowed per audience** ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). A grant name is a named permission. A grant, in this record, is the sealed decision of [Sealed grants](/decisions/0007-policy-and-sealed-grants/#sealed-grants), and the two words are never used for each other.
 - **Every decision is audited** with the ids of its determining policies and the digest of the policy set it used.
 
 ### Four layers
