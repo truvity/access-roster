@@ -54,7 +54,7 @@ flowchart LR
 
 - **The data and keys families are the foundation.** store@, exporter@ and key@ run in every installation, and their binaries do not change with what runs above them.
 - **Identity, audit and quota are modules.** A module is a set of actors on top of the foundation, and it brings its own kinds and key purposes into the registries ([0004](/decisions/0004-the-data-model/#kinds), [0006](/decisions/0006-keys-and-sealing/#key-purposes)). The identity module is the work actors other than `quota` (the adapters included), the audit module is the audit pieces, and the quota module is `quota`.
-- **An installation runs the foundation and the modules it needs.** It may run the foundation with the audit module only, to keep audit for a product that does not use sluis for sign-in; a product that adopts sluis for sign-in later adds the identity module, and nothing is migrated.
+- **An installation runs the foundation and the modules it needs.** It may run the foundation with the audit module only, to keep audit for a product that does not use sluis for sign-in; that shape also runs the work actors its front and its access check need, `entry`, `policy` and `exchange` for the tenant push ([0028](/decisions/0028-audit-pieces/#audit-alone)); a product that adopts sluis for sign-in later adds the identity module, and nothing is migrated.
 - **The foundation is a grouping, not a fifth family.** Each actor stays in one of the four families, which say what it may hold; the foundation and the modules say what an installation runs.
 
 ### Work actors

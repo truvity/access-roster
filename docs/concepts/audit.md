@@ -108,7 +108,7 @@ The sluis action is `metadata.event_code`, the company `metadata.tenant_uid`, th
 **The usage stream holds what was used**, as CloudEvents 1.0 events in structured JSON, canonical by RFC 8785, shaped like OpenMeter's usage events: the `type` selects a meter, the `subject` is the account, and `data` holds the unit, a signed integer amount, the request id and the subject's pseudonym. Its `id` is the audit record's id with the event's position in the message ([ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-usage-stream)).
 
 - **One call, one message, two logs.** The emitter builds the audit record and the usage events from one call and sends one message; the writer splits it and seals both in the same atomic batch. There is no dual write, no second writer, and no usage event without its audit record.
-- **Each kind is a log of its own:** its own prefix or bucket, checkpoints, retention, lock mode, readers and witnesses, signed by the same log key. Usage entries carry no personal data and are encrypted per company to the company's usage key, never its audit key ([ADR 0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/)).
+- **Each kind is a log of its own:** its own prefix or bucket, checkpoints, retention, lock mode, readers and witnesses, signed by the same log key. Usage entries carry no personal data and are encrypted per company to the company's usage key, never its audit key ([ADR 0029](/decisions/0029-the-audit-log/)).
 - **Quota and finance read it, and only quota writes balance effects into it.** The usage log has no search index. The finance export is a table derived from it with FinOps FOCUS 1.4 column names; sluis holds no prices.
 
 ## The witness is optional
@@ -141,7 +141,7 @@ There is one audit log per environment boundary (per node on a cluster), and eac
 
 - **Each entry is an envelope in clear plus the record, encrypted with HPKE (RFC 9180) to the company's audit data key.** The record is encrypted with a key per (company, batch), sealed to the public part of that key, so the writer cannot read back what it wrote. The private part is held only wrapped under the boundary's sealing key: a company has no key of its own in a key store ([Keys](/concepts/keys/#aws-kms-layout)). A machine-plane record is encrypted to the boundary's own audit data key, and a usage entry has the same form but is encrypted to the company's usage data key, a key of its own with the lifetime of the usage retention.
 - **The envelope** (record id, time, company, class, outcome and actor type, with OCSF names) is a projection of the record, so a reader that decrypts can catch a writer that lies in it. The operator's own view of a company's records is the envelope.
-- **The tree hashes the whole entry, ciphertext included.** A company that leaves has its slice exported and its audit data key deleted; its records stay in the log, sealed and verifiable, and nobody can read them again. Its usage data key is kept until the usage retention ends, so billing evidence outlives the personal data ([ADR 0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/)).
+- **The tree hashes the whole entry, ciphertext included.** A company that leaves has its slice exported and its audit data key deleted; its records stay in the log, sealed and verifiable, and nobody can read them again. Its usage data key is kept until the usage retention ends, so billing evidence outlives the personal data ([ADR 0029](/decisions/0029-the-audit-log/)).
 - **The erasure of one person is met by the pseudonym.** A person or external actor is a keyed pseudonym, never a name or an e-mail address; the mapping from a pseudonym to the person lives outside the log, and erasure deletes it. There are no per-subject keys in 2.0. Pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, so they rotate monthly, and only the company's own audit role reverses one ([ADR 0029](/decisions/0029-the-audit-log/)).
 
 ## Search
@@ -164,7 +164,7 @@ There is one audit log per environment boundary (per node on a cluster), and eac
 :::note[Proposed]
 These are proposed records. Their open parts are tracked in [#915](https://github.com/truvity/sluis/issues/915) and [#1026](https://github.com/truvity/sluis/issues/1026).
 
-- **Billing pulls a statement** per account and period, closed once and anchored in the usage log ([ADR 0051](/decisions/0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled/)).
+- **Billing pulls a statement** per account and period, closed once and anchored in the usage log ([ADR 0039](/decisions/0039-quota-allowance/)).
 - **Services call over mutual TLS with their SVID, and people with exchanged tokens;** a quota installation has no console until a consumer exists ([ADR 0039](/decisions/0039-quota-allowance/)).
 - **Consistency and failure are measured per state driver** before enforcement is switched on ([ADR 0039](/decisions/0039-quota-allowance/)).
 :::

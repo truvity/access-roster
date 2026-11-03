@@ -509,6 +509,21 @@
       "old": "0042-leaf-certificate-profiles-lifetimes-and-revocation",
       "new": "0023-certificate-authorities",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data",
+      "new": "0029-the-audit-log",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled",
+      "new": "0039-quota-allowance",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0054-customer-connections-run-in-a-pool-per-customer-boundary",
+      "new": "0033-customer-connections",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
@@ -607,6 +622,19 @@
     "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load",
     "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#where-installations-run": "0011-runtimes-and-installations#installations",
     "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#where-installations-run": "0011-runtimes-and-installations#installations",
-    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#v1s-history": "0015-evolution-and-compatibility#v1s-history"
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#v1s-history": "0015-evolution-and-compatibility#v1s-history",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#v1s-history": "0015-evolution-and-compatibility#v1s-history",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#two-classes-of-data-two-keys": "0029-the-audit-log#encryption-and-crypto-shredding",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#roads-not-taken": "0029-the-audit-log#roads-not-taken",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#erasure-and-export": "0008-boundaries-and-tenants#tenant-lifecycle",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#backups": "0010-backup-and-recovery#what-the-archive-holds",
+    "0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#the-period-statement-is-the-portable-evidence": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0054-customer-connections-run-in-a-pool-per-customer-boundary#two-classes-of-connection": "0033-customer-connections#a-pool-per-customer-boundary",
+    "0054-customer-connections-run-in-a-pool-per-customer-boundary#what-a-pool-is-allowed": "0033-customer-connections#what-a-pool-is-allowed",
+    "0054-customer-connections-run-in-a-pool-per-customer-boundary#scaling": "0033-customer-connections#scaling",
+    "0054-customer-connections-run-in-a-pool-per-customer-boundary#what-this-changes": "0033-customer-connections#where-the-pool-meets-other-rules",
+    "0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#a-period-closes-once": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#late-events-and-corrections": "0039-quota-allowance#the-billing-log-is-outside-sluis",
+    "0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled#open-product-facts-the-billing-calendar": "0039-quota-allowance#the-billing-log-is-outside-sluis"
   }
 }

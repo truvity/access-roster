@@ -80,7 +80,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by issuer and subject claim | Accepted |
 | [0020](0020-grant-vocabulary-and-token-claims.md) | Grant names come from a declared vocabulary, and a token carries fixed claims for one audience | Accepted |
 | [0021](0021-clients.md) | Clients: installation clients are config, tenant clients are durable, and a self-described client is admitted only from allow-listed hosts | Accepted |
-| [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE: proofs are exchanged for short-lived credentials, and hosts enrol the same way | Accepted |
+| [0022](0022-workload-identity-and-host-enrolment.md) | Workload identity follows SPIFFE, and hosts enrol the same way | Accepted |
 | [0023](0023-certificate-authorities.md) | The ca and ssh-ca actors are the certificate authorities; every leaf has a fixed profile and a short lifetime | Accepted |
 | [0024](0024-root-custody-and-the-signing-api.md) | sluis holds no root: it asks root custody to certify its intermediates, and signs artifacts through a signing API | Accepted |
 | [0025](0025-integrations.md) | Integrations are adapters, work actors that return facts or carry out authorised effects, hold nothing at rest, and mint only for declared targets | Accepted |
@@ -95,7 +95,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0031](0031-ciam-is-a-broker.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
-| [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front, a few customer boundaries and key-less tenants, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
+| [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front and a few customer boundaries whose tenants each have their own data keys, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
 | [0033](0033-customer-connections.md) | Customer connections run in a pool per customer boundary, and a domain routes only after DNS proof | Accepted |
 | [0034](0034-end-users-and-upstream-signals.md) | An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase | Accepted |
 | [0035](0035-customer-pages.md) | Customer pages are few, branded per client and login domain, and localised per request | Accepted |
@@ -108,17 +108,8 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | ADR | Decision | Status |
 |-----|----------|--------|
 | [0039](0039-quota-allowance.md) | Quota holds an allowance per tenant that the product pushes, counts it down, refuses at zero and records every fact | Proposed |
-| [0040](0040-meters-and-usage-evidence.md) | A meter has a name, a unit and a kind that never change, only declared outcomes bill, and a usage event belongs to the period of its event time within a stated skew | Accepted |
+| [0040](0040-meters-and-usage-evidence.md) | A meter has a name, a unit and a kind, and only declared outcomes become usage evidence | Accepted |
 
-### Being merged
-
-These records are superseded: the content of each moves into the record its status names, and the pull request that moves it deletes the file.
-
-| ADR | Decision | Status |
-|-----|----------|--------|
-| [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
-| [0051](0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Superseded by 0039 |
-| [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
 
 ## Where the old records went
 

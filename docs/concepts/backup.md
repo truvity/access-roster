@@ -43,7 +43,7 @@ The archive is encrypted with a fresh data key, and the data key is wrapped for 
 
 - **The key that wraps a backup archive is not the sealing key** ([ADR 0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)). On AWS it may live in another account, and only the restore role may decrypt with it. The archive and its key preferably live in a separate account, because the backup exists for the case where the primary account is lost or hostile.
 - **Sealed values stay sealed.** When a data key is sealed, an escrow copy of it is encrypted to the archive's recipients ([ADR 0004](/decisions/0004-the-data-model/#treatment)). Losing the sealing key is a restore from those recipients; it needs no ceremony and copies no key out of its store.
-- **An archive holds wrapped data only.** It holds no authority key and no sealing key, and its one escrow copy is of the data keys of sealed secrets, never of a company's audit or usage key, so an archive cannot undo a shred ([ADR 0048](/decisions/0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data/#backups)).
+- **An archive holds wrapped data only.** It holds no authority key and no sealing key, and its one escrow copy is of the data keys of sealed secrets, never of a company's audit or usage key, so an archive cannot undo a shred ([ADR 0029](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 - **The backup side holds public material and a wrap permission only**, so a compromised backup job cannot read earlier archives.
 - **An installation declares how long it keeps an archive.** An erasure reaches the copies in archives when they expire, and a restore re-applies every shred and erasure that the audit log records after the archive was taken.
 

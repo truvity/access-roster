@@ -1289,7 +1289,7 @@ requirements:
   - id: REQ-AUDIT-097
     area: AUDIT
     statement: "A usage log entry MUST be encrypted with HPKE to its company's usage data key."
-    rationale: "Evidence must outlive the shred of the company's personal data, so it has a key of its own (ADR 0048)."
+    rationale: "Evidence must outlive the shred of the company's personal data, so it has a key of its own (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1739,7 +1739,7 @@ requirements:
   - id: REQ-AUDIT-132
     area: AUDIT
     statement: "A usage event MUST NOT carry a field whose sensitivity is personal."
-    rationale: "Evidence carries no personal data, so it can outlive a shred (ADR 0048)."
+    rationale: "Evidence carries no personal data, so it can outlive a shred (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1751,7 +1751,7 @@ requirements:
   - id: REQ-AUDIT-133
     area: AUDIT
     statement: "A company's usage data key MUST be a different key from its audit data key."
-    rationale: "Keys with different lifetimes are not shared (ADR 0048)."
+    rationale: "Keys with different lifetimes are not shared (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1763,7 +1763,7 @@ requirements:
   - id: REQ-AUDIT-134
     area: AUDIT
     statement: "Shredding a company's audit data key MUST NOT delete its usage data key."
-    rationale: "Exit ends the personal data and keeps the evidence (ADR 0048)."
+    rationale: "Exit ends the personal data and keeps the evidence (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -1775,7 +1775,7 @@ requirements:
   - id: REQ-AUDIT-135
     area: AUDIT
     statement: "A company's usage data key MUST be kept until the declared retention of the usage log ends for that company's entries."
-    rationale: "A bill can be disputed until the billing retention ends (ADR 0048)."
+    rationale: "A bill can be disputed until the billing retention ends (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
