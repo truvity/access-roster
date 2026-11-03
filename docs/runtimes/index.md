@@ -119,6 +119,8 @@ flowchart TD
 
 Anything else is a possible installation: start from the nearest tested one and change drivers within the rules.
 
+**The reference installations** that the design is checked against are three: a three-board installation, which is the self-hosted one ([boards](#boards)); an internal installation for a company's own staff, on serverless ([lambda](#lambda)); and a customer installation on Kubernetes on AWS (EKS) ([kubernetes](#kubernetes)). The [local](#local) installation is for development and serves no real user ([0011](/decisions/0011-runtimes-and-installations/#installations)).
+
 ## local
 
 Docker Compose on one workstation, one container per actor and per driver, for development, continuous integration and the integration tests ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). It runs the release's published images, so a local run tests the images Kubernetes runs. It is not for production. Runtime: [bare-metal](/runtimes/bare-metal/#local-docker), one node. Its containers, host names, TLS and first start are on [The local installation](/runtimes/local/). The [tutorial](/tutorials/single-node-install/) walks through it.
@@ -157,7 +159,7 @@ One Lambda function per actor and per holder behind API Gateway, with KMS keys, 
 
 ## kubernetes
 
-A pod per actor and per holder on Amazon EKS, each with its own service account, installed from one Helm chart. A driver is a native sidecar container in its holder's pod, a key-less edge relay container in `entry`'s pod forwards to its socket, and the audit side may be a separate audit installation, from the chart's `audit-install` preset. It is tested by a smoke test on kind with the `kubernetes-dev` preset and by integration tests on a development EKS cluster. The details are on [Kubernetes](/runtimes/kubernetes/). Runtime: kubernetes, N nodes.
+A pod per actor and per holder on Amazon EKS, each with its own service account, installed from one Helm chart. A driver is a native sidecar container in its holder's pod, a key-less edge relay container in `entry`'s pod forwards to its socket, and the audit side may be a separate audit installation, from the chart's `audit-install` preset. Kubernetes in 2.0 means Kubernetes on AWS (EKS), with DynamoDB, AWS KMS and S3; a cluster without AWS is not in 2.0, and the direction for later is PostgreSQL via CNPG as the store engine. A holder's cloud role comes from web identity through the cluster's IAM OIDC provider, not from EKS Pod Identity. It is the customer installation: it runs the full conformance set (OpenID Connect, FAPI 2.0 and the customer-identity plans) as well as a smoke test on kind with the `kubernetes-dev` preset and integration tests on a development EKS cluster. The details are on [Kubernetes](/runtimes/kubernetes/). Runtime: kubernetes, N nodes.
 
 ## Other installations
 

@@ -6,7 +6,7 @@ sidebar:
   order: 4
 ---
 
-On the kubernetes runtime the kubelet supervises sluis, and each actor and each holder is a pod with its own service account. Calls between pods are in-cluster gRPC, authenticated by a projected service-account token with one audience per callee. The tested installation is [kubernetes](/runtimes/#kubernetes): Amazon EKS with AWS KMS keys, DynamoDB, the NATS JetStream audit transport and S3 blobs, installed from one Helm chart. It is the customer-identity installation, and the reference installation of the `nats-jetstream` driver ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)). Which drivers fit Kubernetes is on [Runtimes](/runtimes/#which-drivers-fit-which-runtime).
+On the kubernetes runtime the kubelet supervises sluis, and each actor and each holder is a pod with its own service account. Calls between pods are in-cluster gRPC, authenticated by a projected service-account token with one audience per callee. The tested installation is [kubernetes](/runtimes/#kubernetes): Amazon EKS with AWS KMS keys, DynamoDB, the NATS JetStream audit transport and S3 blobs, installed from one Helm chart. It is the customer installation on Amazon EKS, which is the customer-identity installation, and the reference installation of the `nats-jetstream` driver ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)). Which drivers fit Kubernetes is on [Runtimes](/runtimes/#which-drivers-fit-which-runtime).
 
 **sluis writes no Kubernetes object,** except an exported Secret that exporter@ writes when an installation chooses the direct path ([0009](/decisions/0009-export/#destinations)). Cluster tools such as cert-manager, trust-manager and External Secrets stay its clients and pull what sluis serves and exports.
 
@@ -63,13 +63,13 @@ The call graph of the actor registry is enforced in the pod's code and again by 
 
 - **AWS KMS only,** with the layout of every AWS installation ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). The key policy of every key names key@'s role alone, so no other pod and no node reaches KMS. No card runs on Kubernetes: the key policy is the access list.
 - **No software key in production.** Only the `kubernetes-dev` preset allows the `software` driver, on the terms of the local installation, for the smoke test on kind. A cluster with no key mode that the floor allows refuses to start ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
-- A cluster outside AWS is not supported in the first cut, because it would need a second key mode.
+- **Kubernetes in 2.0 means Kubernetes on AWS (EKS).** A cluster without AWS is not in 2.0, because it would need a second key mode and a second store engine. The direction for later, when it has a consumer, is PostgreSQL via CNPG as the store engine; the key source is decided then. The Backlog decision issue tracks it ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)).
 
 ## Identity
 
 - **A work pod has no cloud identity at all.** A projected service-account token, mounted only into a driver container, is exchanged there for a cloud role by `AssumeRoleWithWebIdentity`, the same code path as on a virtual machine; only the issuer of the token differs ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
 - **The pod's default ServiceAccount token is not mounted.** Each holder's cloud role trusts the cluster's issuer, that holder's audience, and the installation's namespace and ServiceAccount. The infrastructure code generated from the registries registers the issuer and the roles.
-- **EKS Pod Identity is not used for a holder's pod,** because its credentials reach every container of the pod. `sluis-node` serves as a fallback only.
+- **EKS Pod Identity is not used for a holder's pod,** because its credentials reach every container of the pod; the web-identity exchange through the cluster's IAM OIDC provider is the path. `sluis-node` serves as a fallback only.
 - The workload tokens are signed by the cluster's key, not a sluis key, so the P-384 rule does not cover them. Pods must not reach the node's instance metadata service.
 
 ## Data and leases
@@ -115,6 +115,7 @@ From the registries the chart renders one ServiceAccount per pod kind with the a
 ## Testing
 
 - **A smoke test on kind** installs the chart with the `kubernetes-dev` preset under the `restricted` level, with no cloud credentials. It confirms that `SO_PEERCRED` identifies the peer across the containers of one pod, then checks the socket reachability and NetworkPolicy deny matrices, the edge, the probes, a rolling upgrade, and that the render holds no RBAC objects.
+- **The customer installation on EKS runs the full conformance set:** OpenID Connect, FAPI 2.0 and the customer-identity plans, in addition to local on pull requests and Lambda nightly ([Conformance](/standards/conformance/#how-the-tests-run-in-ci), [0038](/decisions/0038-fapi-2-profile/)).
 - **Integration tests on a development EKS cluster** cover the cluster's issuer at AWS, the key policies and the IAM conditions on the table and the queue. They run on a short-lived runner inside the VPC against the cluster's private API endpoint; the cluster has no public endpoint ([#891](https://github.com/truvity/sluis/issues/891)).
 
 ## Limits and residual risk

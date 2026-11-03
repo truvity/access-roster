@@ -303,3 +303,28 @@ requirements:
     issues: [876]
     verification:
       - {kind: integration-test, ref: "chart corpus: the render of every preset holds no RBAC object, and with the direct path the Role names only the exported Secrets"}
+  - id: REQ-DEPLOY-024
+    area: DEPLOY
+    statement: "sluis config check MUST refuse a production Kubernetes installation whose store engine is not dynamodb or whose key@ driver is not aws-kms."
+    rationale: "Kubernetes in 2.0 means Kubernetes on AWS (EKS) with DynamoDB, AWS KMS and S3; a cluster without AWS is not in 2.0 (ADR 0011, Kubernetes; ADR 0005, Engines)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards: []
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "config check: a production Kubernetes bootstrap file with rqlite or postgres as the engine, or with a key driver other than aws-kms, is refused"}
+  - id: REQ-DEPLOY-025
+    area: DEPLOY
+    statement: "On Kubernetes a holder's cloud credential MUST come from a projected service-account token mounted only into its driver container and exchanged by web identity through the cluster's IAM OIDC provider."
+    rationale: "EKS Pod Identity credentials reach every container of the pod, so the holder's own process would hold the cloud credential (ADR 0011, Kubernetes)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards:
+      - {id: ST-46, section: "AssumeRoleWithWebIdentity", depth: Full}
+    issues: [876]
+    verification:
+      - {kind: integration-test, ref: "chart corpus: the token volume is mounted into driver containers only, and no pod uses EKS Pod Identity"}

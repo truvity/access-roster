@@ -29,13 +29,14 @@ The tested installations read as their runtime's row, with these details:
 | ------------ | ------------ |
 | **local** (bare-metal, Docker Compose on a workstation) | Software keys by default; nothing is production. A dedicated development card is opt-in: only the key@ container reaches it, through the host's smart-card service, and key@ has the card to itself ([0011](/decisions/0011-runtimes-and-installations/#the-local-installation)). Containers run as their actors' pinned uids and mount only the sockets the registry allows; no systemd sandboxing, nftables or Landlock |
 | **boards** (bare-metal, three single-board computers, a YubiKey per node) | key@ for each node's card; one rqlite cluster over the three boards, with the Raft port over mutual TLS between peers. No cloud credential for the board-only parts. Landlock is missing on the current board image's kernel, so the other layers carry the load ([Bare-metal](/runtimes/bare-metal/)) |
-| **lambda**, **kubernetes** | As their runtime rows |
+| **lambda** | As its runtime row |
+| **kubernetes** (Kubernetes on AWS, EKS) | As its runtime row. A holder's driver container exchanges the projected token for its role by web identity through the cluster's IAM OIDC provider; EKS Pod Identity is not used, because its credentials reach every container of the pod ([0011](/decisions/0011-runtimes-and-installations/#kubernetes)). A cluster without AWS is not in 2.0 |
 
 A bare-metal node on a cloud VM is a possible installation, not a tested one: there the workload token is exchanged for a role per holder, KMS key policies name key@'s role alone, and the metadata service is closed to every uid but the node agent.
 
 ### Workload identity
 
-On bare-metal `sluis-node` issues a short-lived **workload token per actor**, from the uid it reads off the socket's peer credentials, and asks key@ to sign it ([0006](/decisions/0006-keys-and-sealing/#the-token-signing-key)). The drivers of a holder exchange it for a cloud's credentials where the platform has none of its own. Platform-native identity is used where it exists: the function role on Lambda, a projected service-account token on Kubernetes. The issuer, the per-cloud exchange and its algorithms are on [Identity](/concepts/identity/) ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
+On bare-metal `sluis-node` issues a short-lived **workload token per actor**, from the uid it reads off the socket's peer credentials, and asks key@ to sign it ([0006](/decisions/0006-keys-and-sealing/#the-token-signing-key)). The drivers of a holder exchange it for a cloud's credentials where the platform has none of its own. Platform-native identity is used where it exists: the function role on Lambda, a projected service-account token on Kubernetes, exchanged by web identity through the cluster's IAM OIDC provider. The issuer, the per-cloud exchange and its algorithms are on [Identity](/concepts/identity/) ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)).
 
 ### IAM per holder
 
