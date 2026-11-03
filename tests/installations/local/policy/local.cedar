@@ -44,7 +44,7 @@ when { resource.role == "admin" };
 
 // ---- What a person may get a token for -------------------------------------------------
 
-// A person who holds one of a client's required grants may have a token for it.
+// A person who holds one of a client's required grant names may have a token for it.
 @id("token-requires")
 permit (
   principal is Person,

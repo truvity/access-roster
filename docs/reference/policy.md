@@ -1,18 +1,20 @@
 ---
 title: Policy
-description: "The Cedar schema of sluis policy: entity types, actions and context, how grants and template links reach the stateless policy actor, and a worked example."
+description: "The Cedar schema of sluis policy, its entities, actions and context, how grants and links reach the policy actor, the grant vocabulary, and a worked example."
 status: target
 sidebar:
   order: 7
 ---
 
-`policy` decides every question of the form "does this person hold this grant", "may this person have a token for this client" and "may this workflow have the release key sign" ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)). It has no state and no network, so everything it needs arrives in the request. This page fixes what the request holds, the Cedar schema the policy is written against, how the grants of a person are found, how an operator's template links reach `policy`, and one policy file with test vectors. Who calls `policy` is in the [actor registry](/reference/actors/#policy); the install-file keys that name the files are [`policy`](/reference/install-file/#policy).
+`policy` decides every question of the form "does this person hold this grant name", "may this person have a token for this client" and "may this workflow have the release key sign" ([0007](/decisions/0007-policy-and-sealed-grants/)). It holds no key and no data of its own, and every fact it needs arrives in the request. It reads the reviewed policy through the store. This page fixes what the request holds, the Cedar schema the policy is written against, how the grant names of a person are found, how template links reach `policy`, the vocabulary of grant names, and one policy file with test vectors. Who calls `policy` is in the [actor registry](/reference/actors/#policy). The policy documents are the config kinds `Policy` and `RegulatedPartyPolicy`, and the vocabulary is the config kind `GrantVocabulary` ([Kinds](/reference/kinds/)).
+
+A **grant name** is an entry of the vocabulary, `<scope>:<thing>:<role>`. A **sealed grant** is one decision of `policy`, sealed by key@ ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)). The two are different things. The Cedar entity `Grant` below stands for a grant name, and this page says "grant" alone only for the sealed grant.
 
 ## The schema is sluis's, the policy is the operator's
 
-- **One schema, version 1, fixed by sluis and embedded in `policy`.** An operator writes policy against it and cannot add a type, an action or an attribute. This keeps every request checkable: `policy` validates each request against the schema and refuses one that does not fit, and every policy file against it at load and at every reload ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#decision)).
+- **One schema, version 1, fixed by sluis and embedded in `policy`.** An operator writes policy against it and cannot add a type, an action or an attribute. This keeps every request checkable: `policy` validates each request against the schema and refuses one that does not fit, and every policy document against it at load and at every reload ([0007](/decisions/0007-policy-and-sealed-grants/#cedar-in-a-rust-actor)).
 - **No namespace.** The names below are the whole vocabulary; nothing an operator writes can collide with them.
-- **Adding is compatible.** A type, an action, an optional attribute or a new optional context name may be added in a release; removing or changing one is a new schema version beside this one, as for the install file ([Install file](/reference/install-file/)).
+- **Adding is compatible.** A type, an action, an optional attribute or a new optional context name may be added in a release; removing or changing one is a new schema version beside this one, as for every schema ([0013](/decisions/0013-release-train-packaging-and-distribution/#compatibility-between-releases)).
 - **The file is** [`policy-schema.cedarschema`](https://github.com/truvity/sluis/blob/main/docs/reference/policy-schema.cedarschema), in the Cedar schema syntax of Cedar 4.14.0 (language version 4.6, checked on 2026-11-01). This copy is checked against that file (`just check-examples`).
 
 <!-- example: docs/reference/policy-schema.cedarschema -->
@@ -23,15 +25,16 @@ sidebar:
 
 // An upstream account, named by the upstream's declared name and the value of the upstream's
 // subject claim: `<upstream>/<claim value>` (ADR 0019). An operator can name an account before
-// its first sign-in, which the random subject of a person does not allow. `org` is the company
-// that owns the upstream.
+// its first sign-in, which the random subject of a person does not allow. `org` is the tenant
+// (the company) of the account's sign-in: the tenant whose connection signed it in (ADR 0019).
 entity Account = {
   upstream: String,
   org: String,
 };
 
-// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). `sensitive` is true
-// when its scope is sensitive.
+// A grant name of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). The entity is
+// called Grant; it stands for a grant name and never for the sealed grant of ADR 0007.
+// `sensitive` is true when its scope is sensitive.
 entity Grant = {
   scope: String,
   thing: String,
@@ -40,20 +43,21 @@ entity Grant = {
 };
 
 // A person, known by the opaque `sub` of the issuer, and linked to the upstream account they
-// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0019: an
-// operator holds a person on the console). `grants` is not sent by the asking actor: `policy`
-// finds it with the action "grant.hold" and adds it before it decides any other action.
+// signed in with. `org` is the tenant (the company) the person belongs to, and `state` is `live`
+// or `held` (ADR 0019: an operator holds a person on the console). `grants` is the set of grant
+// names the person holds. The asking actor does not send it: `policy` finds it with the action
+// "grant.hold" and adds it before it decides any other action.
 entity Person in [Account] = {
   org: String,
   state: String,
   grants?: Set<Grant>,
 };
 
-// An environment boundary, such as `dev`.
+// A boundary, such as `dev`.
 entity Boundary;
 
 // A client of an issuer. The token's `aud` is exactly one client id, so a client is also the
-// resource of a token request. `requires` is the client's declared list of grants, and `kind`
+// resource of a token request. `requires` is the client's declared list of grant names, and `kind`
 // is `public`, `confidential` or `exchange`.
 entity Client in [Boundary] = {
   kind: String,
@@ -82,7 +86,7 @@ type Authentication = {
   auth_age?: Long,
 };
 
-// Whether a person holds a grant. The policy files bind groups to grants with this action.
+// Whether a person holds a grant. The policy files bind accounts to grant names with this action.
 action "grant.hold" appliesTo {
   principal: Person,
   resource: Grant,
@@ -129,22 +133,23 @@ action "policy.link" appliesTo {
 
 ## Entity types
 
-The types follow the [actor registry](/reference/actors/) and the [record kinds](/reference/storage/#record-kinds-of-the-first-working-version): a type exists when an actor of the first working version asks about it ([principle 8](/principles/#8-nothing-without-a-consumer)). The asking actor sends the facts as a slice of entities with the request; `policy` reads no store.
+The types follow the [actor registry](/reference/actors/) and the [kinds](/reference/kinds/): a type exists when an actor of the first working version asks about it ([principle 8](/principles/#8-nothing-without-a-consumer)). The asking actor sends the facts as a slice of entities with the request; `policy` reads no item for them.
 
 | Type | What it is | Facts sent by | Id |
 |---|---|---|---|
-| `Account` | An account of an upstream, named by the pair that links a person: the upstream's declared name and the value of its subject claim ([ADR 0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)) | `session` or `exchange`, from the `upstream-link` of the person | `<upstream>/<claim value>`, such as `workforce/u-1001`; never an e-mail address |
-| `Person` | A person who signed in, `in` the `Account` they are linked by | The asker, from the session and the `person` record | The opaque subject ([ADR 0019](/decisions/0019-person-and-upstream-link/#the-records)) |
-| `Grant` | A grant of the vocabulary, with its scope, thing, role and whether the scope is sensitive | `policy`, from the vocabulary | `<scope>:<thing>:<role>`, such as `dev:example-app:user` ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)) |
-| `Client` | A client of an issuer, and the resource of a token request | The asker, from the install file's [`clients`](/reference/install-file/#clients) and `boundaries.<name>.clients` | `<boundary>/<client id>`, such as `dev/example-app`; the group issuer's clients are under `front` |
-| `Boundary` | An environment boundary, and the place a link lives in | The asker, from [`boundaries`](/reference/install-file/#boundaries) | The boundary's name; `front` for the group issuer |
+| `Account` | An account of an upstream, named by the pair that links a person: the upstream's declared name and the value of its subject claim ([0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)) | `session` or `exchange`, from the `UpstreamLink` of the person | `<upstream>/<claim value>`, such as `workforce/u-1001`; never an e-mail address |
+| `Person` | A person who signed in, `in` the `Account` they are linked by | The asker, from the session and the `Person` item | The opaque subject ([0019](/decisions/0019-person-and-upstream-link/#the-records)) |
+| `Grant` | A grant name of the vocabulary, with its scope, thing, role and whether the scope is sensitive | `policy`, from the vocabulary | `<scope>:<thing>:<role>`, such as `dev:example-app:user` ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)) |
+| `Client` | A client of an issuer, and the resource of a token request | The asker, from the `InstallationClient` or `TenantClient` it read ([0021](/decisions/0021-clients/#the-client-declaration)) | `<boundary>/<client id>`, such as `dev/example-app` |
+| `Boundary` | A boundary, and the place a link is made in | The asker, from the `Boundary` config kind | The boundary's name |
 | `Workload` | A workload that proved its identity: in the first version a GitHub Actions job, checked by the `github-oidc` verifier | `exchange`, from the verified proof | `<verifier>/<proof subject>` |
-| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#who-does-what)) |
+| `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)) |
 
-- **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([ADR 0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)). `Account.org` is the `org` key of the account's upstream in the install file, the company that owns it ([Install file](/reference/install-file/#upstreams)), and `Person.org` is the `org` of the account the person is linked by, so it is the company claim of [ADR 0017](/decisions/0017-identity-and-sign-in/#issuers). The asker reads it from the install file and never from the upstream's answer, and no policy file sets it.
-- **`state` is `live` or `held`.** An operator's `person-hold` is a tighten-only action that takes effect at once; `session` sends the state, and the first `forbid` of the example refuses a person who is not live. Lifting a hold gives back only what the policy grants.
-- **A client's id carries its issuer.** Client ids are unique per issuer, not across issuers ([ADR 0017](/decisions/0017-identity-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the install file's `requires`, a set of `Grant`.
-- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#who-does-what)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
+- **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)).
+- **`org` is the tenant the person belongs to,** the company whose connection signed the person in ([0019](/decisions/0019-person-and-upstream-link/#the-records), [0008](/decisions/0008-boundaries-and-tenants/#tenants)). It is not a claim that an upstream sends: the asker reads it from the person's item, and no policy document sets it. `Account.org` is, in the same way, the tenant of the connection that signed the account in; a config `Upstream` has none ([0019](/decisions/0019-person-and-upstream-link/#the-records)).
+- **`state` is `live` or `held` in the first version.** An operator's `PersonHold` is a tightening that takes effect at once; `session` computes the state and sends it, and the first `forbid` of the example refuses a person who is not live. Lifting a hold gives back only what the policy grants. The states `suspended` and `left` join with the directory at parity ([0019](/decisions/0019-person-and-upstream-link/#states)).
+- **A client's id carries its boundary.** Client ids are unique per issuer, not across issuers ([0017](/decisions/0017-identity-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the client's declared `requires`, a set of `Grant`.
+- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
 
 ### What comes with parity
 
@@ -152,20 +157,20 @@ Each of these is added by the record or pull request that first asks about it, a
 
 | Added | By | Because |
 |---|---|---|
-| `Group`, and a binding that names a directory group | Directory sync ([#805](https://github.com/truvity/sluis/issues/805)) | The first working version reads no directory; internal groups are accounts ([ADR 0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)) |
-| `Host` and the action `cert.issue` | Host enrolment ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/)) | Their first asker is `exchange` with a host proof |
-| `Resource` | Declared resources ([#979](https://github.com/truvity/sluis/issues/979)) | A resource is a declared URL with its own `requires`, which schema v1 of the install file does not have |
-| Attributes for the claims of a token | The per-audience claim override ([#788](https://github.com/truvity/sluis/issues/788)) | The first version issues the fixed set of [ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token) |
+| `Group`, and a binding that names a directory group | Directory sync ([#805](https://github.com/truvity/sluis/issues/805)) | The first working version reads no directory; internal groups are accounts ([0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)) |
+| `Host` and the action `cert.issue` | Host enrolment ([0022](/decisions/0022-workload-identity-and-host-enrolment/)) | Their first asker is `exchange` with a host proof |
+| `Resource` | Declared resources ([#979](https://github.com/truvity/sluis/issues/979)) | A resource is a declared URL with its own `requires` ([0021](/decisions/0021-clients/#resources)) |
+| Attributes for the claims of a token | The per-audience claim override ([#788](https://github.com/truvity/sluis/issues/788)) | The first version issues the fixed set of [0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token) |
 
 ## Actions
 
 | Action | Principal | Resource | Asked by | Meaning |
 |---|---|---|---|---|
-| `grant.hold` | `Person` | `Grant` | `policy`, for itself | Whether this person holds this grant. The bindings of the policy files are written on this action |
+| `grant.hold` | `Person` | `Grant` | `policy`, for itself | Whether this person holds this grant name. The bindings of the policy documents are written on this action |
 | `token.issue` | `Person` | `Client` | `session` | Whether this person may have a token for this client, at a code exchange or a refresh |
-| `token.exchange` | `Person` | `Client` | `exchange` | Whether this person's token may become a token for this client, as when `sluis login` exchanges the group issuer's token at a boundary |
-| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/)) |
-| `policy.link` | `Person` (the operator) | `Boundary` | `session`, for a write that `console` routed | Whether this operator may link this template, with these slot values, in this boundary |
+| `token.exchange` | `Person` | `Client` | `exchange` | Whether this person's token may become a token for this client, as when `sluis login` exchanges the token of the front issuer at a boundary |
+| `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)) |
+| `policy.link` | `Person` (the one who asks) | `Boundary` | `exchange`, for a write that `console` routed | Whether this person may link this template, with these slot values, in this boundary |
 
 There is no separate action for step-up. A request that needs a fresher or stronger authentication is denied by a policy that says so ([below](#step-up)), which keeps the one question "may this person have this token" in one place.
 
@@ -185,17 +190,18 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 
 `artifact.sign` carries `content_sha384`, the SHA-384 of the content in lower-case hex, and `content_length`. `grant.hold` has no context. `policy.link` carries `template`, the template's id, and the slot values that the template has: `principal_account` for a `?principal` slot and `resource_grant` for a `?resource` slot. It holds what the delegation policy needs to judge the link, and nothing else.
 
+
 ## How a person's grants are found
 
-[ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary) has grants, not groups, as what a person holds, and `policy` is where facts become grants. `policy` decides a request about a person in two steps:
+[0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary) has grant names, not groups, as what a person holds, and `policy` is where facts become grant names. `policy` decides a request about a person in two steps:
 
-1. **Find the grants.** For every grant of the vocabulary, `policy` asks `grant.hold` for the person, with the bindings and links of the policy as they stand. It then adds every grant that a held role implies, by the ladder of the vocabulary, on the same scope and thing, and puts the full set into `Person.grants`.
-2. **Decide the action** with the person's grants in the entity. The standard rule `principal has grants && resource.requires.containsAny(principal.grants)` is the Cedar form of "at least one required grant".
+1. **Find the grant names.** For every grant name of the vocabulary, `policy` asks `grant.hold` for the person, with the bindings and links of the effective policy set as they stand. It then adds every grant name that a held role implies, by the ladder of the vocabulary, on the same scope and thing, and puts the full set into `Person.grants`.
+2. **Decide the action** with the person's grant names in the entity. The standard rule `principal has grants && resource.requires.containsAny(principal.grants)` is the Cedar form of "at least one required grant name".
 
-- **The answer carries the full set** of held grants, so that the asker narrows the `groups` claim to the audience's `<scope>:<thing>` pairs ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)); admission was decided on the full set.
-- **A sensitive grant is held only by a binding that names it in full.** A grant of a sensitive scope counts as held only when a determining policy has that grant as its resource, `resource == Grant::"prod:example-app:admin"`; `policy` reads the scope of the determining policies for this ([REQ-POLICY-011](/requirements/policy/#REQ-POLICY-011)). A wildcard written as a condition on `resource.scope` or `resource.role` can give any other grant, and Cedar alone would give it a sensitive one too.
-- **The loader tries each binding.** It evaluates every static policy on `grant.hold` for a probe person of the account the policy names against every grant of the vocabulary, and refuses a policy that no grant satisfies ("a wildcard that expands to nothing", [REQ-POLICY-012](/requirements/policy/#REQ-POLICY-012)) and one that satisfies several roles of one scope and thing at once (a wildcard in the role position). A grant name that is not in the vocabulary, as a `Grant::"…"` in a policy file, is refused at load with the path ([REQ-POLICY-010](/requirements/policy/#REQ-POLICY-010)).
-- **The vocabulary is a file beside the policy,** [`policy/vocabulary.yaml`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/vocabulary.yaml) in the example, named by `policy.vocabulary`. Its shape is on [Vocabulary](/reference/vocabulary/). `policy` builds the `Grant` entities from it: one for every scope, thing and role the file declares, with `sensitive` taken from the scope.
+- **The answer carries the full set** of held grant names, so that the asker narrows the `groups` claim to the audience's `<scope>:<thing>` pairs ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)); admission was decided on the full set.
+- **A sensitive grant name is held only by a binding that names it in full.** A grant name of a sensitive scope counts as held only when a determining policy has that grant name as its resource, `resource == Grant::"prod:example-app:admin"`; `policy` reads the scope of the determining policies for this ([REQ-POLICY-011](/requirements/policy/#REQ-POLICY-011)). A wildcard written as a condition on `resource.scope` or `resource.role` can give any other grant name, and Cedar alone would give it a sensitive one too.
+- **The loader tries each binding.** It evaluates every static policy on `grant.hold` for a probe person of the account the policy names against every grant name of the vocabulary, and refuses a policy that no grant name satisfies ("a wildcard that expands to nothing", [REQ-POLICY-012](/requirements/policy/#REQ-POLICY-012)) and one that satisfies several roles of one scope and thing at once (a wildcard in the role position). A grant name that is not in the vocabulary, as a `Grant::"…"` in a policy document, is refused when the snapshot loads, with the path ([REQ-POLICY-010](/requirements/policy/#REQ-POLICY-010)).
+- **The vocabulary is a config document of the boundary,** the kind `GrantVocabulary`; its shape is [below](#the-grant-vocabulary). `policy` builds the `Grant` entities from it: one for every scope, thing and role the document declares, with `sensitive` taken from the scope.
 
 ## What a decision holds
 
@@ -203,19 +209,19 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 
 | In the request | |
 |---|---|
-| The question | The principal, action and resource as entity ids, and the context |
+| The question | The principal, action and resource as entity ids, the tenant the question is about, and the context |
 | The facts | The slice of entities the question needs: the person with the account, the client with its `requires`, the boundary, or the workload and the key |
-| The links | The template links that apply, as [below](#template-links) |
 
 | In the answer | |
 |---|---|
 | The decision | `allow` or `deny`. A policy that errors counts as no permit; a request that does not fit the schema is refused, not decided |
-| The reasons | The ids of the determining policies, each with its annotations |
-| The grants | For a person: the full set of held grants, after the ladder |
-| The snapshot | The digest of the policy set, the vocabulary and the links, and the version of the schema, for the audit record |
-| The sealed grant | On `allow` only: the mint grant, or for `artifact.sign` the signing grant, sealed under the environment's sealing key ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)) |
+| The reasons | The ids of the determining policies, each with its annotations and the layer it came from |
+| The grant names | For a person: the full set of held grant names, after the ladder |
+| The digest | The digest of the effective policy set, the vocabulary and the schema version, for the audit record |
+| The sealed grant | On `allow` only: the sealed grant, sealed by key@ under the boundary's `grant` data key ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)) |
 
-The `proto/` file is written with the first code. Every decision is audited with its reasons and the snapshot digest.
+The `proto/` file is written with the first code. Every decision is audited with its reasons and the digest.
+
 
 ### Policy ids and annotations
 
@@ -230,40 +236,136 @@ The `proto/` file is written with the first code. Every decision is audited with
 - **When the determining policies of a `deny` include one with `@step_up`,** `session` answers `insufficient_user_authentication` with those values and the person signs in again. When there is none, the answer is a plain refusal, and it looks the same for an unknown and a refused client ([Contracts and errors](/reference/contracts/#oauth-and-openid-connect-endpoints)).
 - **A rule is written with `unless`:** the `forbid` applies unless the context shows what is asked for. Unknown context therefore forbids, and the person is asked to step up.
 
+
 ## Template links
 
-A template is declared policy, in a policy file, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are the one operator-set part of policy ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#template-links), [ADR 0004](/decisions/0004-the-data-model/#storage-classes)). In the first version the templates bind an account to a grant, or revoke a grant from an account.
+A template is policy declared in a `Policy` document, with `?principal` and `?resource` slots. A **link** gives the slots values and so makes a policy. Links are how a tenant, an operator and a product change policy at run time without a review of new logic: the logic is in the template, which a reviewer has seen ([0007](/decisions/0007-policy-and-sealed-grants/#template-links)). In the first version the templates bind an account to a grant name, or revoke a grant name from an account.
+
+### Which layer a link is in
+
+| Link | Kind | Class | Lasts | Written by |
+|---|---|---|---|---|
+| A template linked inside the tenant | `PolicyLink` | Durable, tenant layer | Until it is removed | `exchange` |
+| A predefined policy that only forbids | `PredefinedPolicyLink` | Durable, operator layer | Until it is removed | `exchange` |
+| A predefined policy that grants beyond config, such as break-glass | `PredefinedPolicyLinkTemporary` | Temp, operator layer | 1 hour by default, 24 hours at most | `exchange` |
+
+- **A link inside a template is not a loosening.** The template is config's grant to the tenant layer, so a link within it is within the bound of the layer below and is durable, with no expiry ([0004](/decisions/0004-the-data-model/#what-a-loosening-is)).
+- **The kind decides which write is a loosening.** The durable `PredefinedPolicyLink` accepts only a predefined policy that tightens, and only the temp kind accepts one that loosens ([0007](/decisions/0007-policy-and-sealed-grants/#template-links)). The store checks the kind and the policy named, and that the template exists in config.
+- **A tightening takes effect on the next decision and lasts.** A template whose effect is `forbid` can only narrow what is permitted; the console offers those for "revoke a grant". Suspending a person is not a link: it is a `PersonHold`, which `session` writes and sends as `state`.
 
 ### Making a link
 
-1. An operator asks the console for a link: a template id and the slot values.
-2. `console` routes the write to the actor that owns the record kind, which is `session`.
-3. `session` asks `policy` the question `policy.link` with the operator as principal, the boundary as resource and the template and slot values as context. A `deny` ends it.
-4. On `allow`, `session` writes the link into the record `policy-link-set` of the boundary by compare-and-set, and the audit record names the operator, the template, the slot values and the delegation policy that permitted it.
+1. A tenant admin or an operator asks the console for a link: a template id and the slot values. A product acting for its tenant makes the same request through its API.
+2. `console` routes the write to the actor that owns the kind, which is `exchange` ([0027](/decisions/0027-the-console/#writes)).
+3. `exchange` asks `policy` the question `policy.link`, with the person as principal, the boundary as resource and the template and slot values as context. A `deny` ends it.
+4. On `allow`, `exchange` writes the link under a grant sealed for the tenant, and the audit record names who asked, the template, the slot values and the delegation policy that permitted it.
 
-- **The delegation policy is Cedar too.** It is a set of ordinary policies in the policy files, on the action `policy.link`. A template with no delegation policy cannot be linked by anyone: the link set stays as it is.
-- **One record, one owner.** The kind is `policy-link-set`, owned by `session`, a reader being `exchange` ([Storage](/reference/storage/#record-kinds-of-the-first-working-version)). The first working version's state port has no delete and no listing by prefix ([Storage](/reference/storage/#state)), so the whole set of a boundary is one record under the fixed id `links`, changed by compare-and-set, and removing a link writes the set without it. Parity may split the set when the port can list.
+- **The delegation policy is Cedar too.** It is a set of ordinary policies in the `Policy` document, on the action `policy.link`. A template with no delegation policy cannot be linked by anyone, and a stolen session is bounded by it.
 - **A link has** an id, the template id, the slot values as entity ids, who made it and when. A link made twice with the same template and slot values is one link.
-- **Tighten-only.** A template whose effect is `forbid` can only narrow what is permitted; the console offers those for "revoke a grant". The delegation policy still says who may link it, and a link takes effect on the next decision, with no cache between the record and the request. Suspending a person is not a link: it is a `person-hold`, which `session` writes and sends as `state`.
 
-### Sending links to `policy`
+### How links reach `policy`
 
-- **The asker reads the set before each decision** and sends, with the facts, the links whose slot values are the request's account, grant, client or boundary. `policy` keeps nothing between requests.
-- **`policy` links them in memory,** validates each against the loaded templates, and evaluates. The links are part of the snapshot digest of the audit record.
-- **A link that cannot be applied denies the request.** An unknown template, a slot of the wrong type or a grant the vocabulary no longer has means the policy files and the link set have drifted, and ignoring the link could drop a `forbid`. The denial is audited with the link id. `sluis config check --live` reports such a link as a `fail`, so that an edit to the policy files that orphans a link is found before it is deployed ([Commands](/reference/cli/#sluis-config-check-and-explain)).
+- **`policy` reads the effective policy set,** `EffectivePolicySet(boundary, tenant)`, through the store: the four layers composed by union with Cedar forbid-wins, each part with the version it came from ([0004](/decisions/0004-the-data-model/#layered-and-linked-kinds)). The links are part of it. `policy` recompiles when the set changes, by watch, or by a re-read with an ETag on Lambda ([0005](/decisions/0005-the-store/#watch-and-the-resume-point)).
+- **The request names the tenant,** and the asker sends only facts. `policy` links the templates in memory, validates the result, and evaluates. The digest of the set is in the audit record.
+- **A link that cannot be applied denies the request.** An unknown template, a slot of the wrong type or a grant name the vocabulary no longer has means the layers have drifted, and ignoring the link could drop a `forbid`. The store refuses the write of such a link, and it refuses a config snapshot that removes a template a link names ([0005](/decisions/0005-the-store/#the-snapshot)), so the denial is the last line. It is audited with the link id.
 
 ### The grants of one tenant
 
-A company is a tenant: its accounts and its grants carry its `org`, and its administrators may bind accounts of their own `org` to grants in their own scope, with no review of the operator's and no change to the policy files. The delegation policy of the example below does this in one policy; the vectors show what it allows and what it refuses. In the example a company's scope has the company's name, which is the convention the delegation policy states ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary): a scope is an environment, a company or `all`).
+A company is a tenant: its accounts and its grant names carry its `org`, and its administrators may bind accounts of their own `org` to grant names in their own scope, with no review of the operator's and no change to the policy documents. The delegation policy of the example below does this in one policy; the vectors show what it allows and what it refuses. In the example a company's scope has the company's name, which is the convention the delegation policy states ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary): a scope is an environment, a company or `all`).
 
-## A worked example
+## The grant vocabulary
 
-The local installation's [example install file](/reference/install-file/#the-example-file-for-local) names `policy/local.cedar` and `policy/vocabulary.yaml`. It declares one client, `example-app` in the boundary `dev`, which requires one of two grants: `dev:example-app:user`, or the same role in the scope of the company `acme`. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
+A grant name is `<scope>:<thing>:<role>`, and every grant name a policy, a client or a token can name is declared in one document, the **vocabulary** ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). It is the config kind `GrantVocabulary`: Fixed, written by the publishing pipeline, and read by `policy`, `exchange`, `session`, `signer` and the console. This section fixes its shape for the first working version, schema v1. How grant names are found, bound and checked at run time is above.
+
+Schema v1 has only the keys that code of the first working version reads ([principle 8](/principles/#8-nothing-without-a-consumer)). Adding a key or a value is compatible; removing or changing one is a new schema version beside v1.
+
+### Format
+
+- **The document is YAML read by the same strict profile as every config document:** one document, plain JSON data, no anchors, aliases, merge keys, tags or duplicate keys ([Bootstrap file](/reference/bootstrap-file/#format)). It is signed like the others ([Signed config](/reference/signed-config/)).
+- **The schema is the JSON Schema generated from the Protobuf message,** with the `$id` `https://sluis.id/schema/vocabulary/v1/vocabulary.schema.json`, embedded in `policy` and in the `sluis` command ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). `unevaluatedProperties: false` is on every object, so an unknown key is an error that names its path. An error never shows a value. `$schema` may name the `$id`, for editors; a document that names another `$id` is refused.
+- **Names.** A scope, a thing and a role are each 1 to 64 characters of ASCII letters, digits, `-` and `_`, as in a grant name. The colon and `*` are not in the set, so a name cannot be split wrongly and a wildcard cannot be a name.
+
+### Keys
+
+| Key | Required | Meaning |
+|---|---|---|
+| `$schema` | no | The schema `$id`, for editors |
+| `scopes` | yes | A mapping from a scope's name to its declaration. At least one |
+| `things` | yes | A mapping from a thing's name to its declaration. At least one |
+
+#### `scopes`
+
+A scope is an environment, a company or `all` ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). The document does not say which; a scope named like a boundary or a tenant means that boundary or tenant by convention, which is how the delegation policy of [The grants of one tenant](#the-grants-of-one-tenant) reads a company's scope. `all` is an ordinary name with no meaning of its own: `all:x:admin` is a grant name like any other, and never implies `dev:x:admin`.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `sensitive` | no | `true` for a sensitive scope. Default `false`. A wildcard never reaches a sensitive scope: a grant name of it counts as held only when a policy names that grant name in full ([How a person's grants are found](#how-a-persons-grants-are-found)) |
+
+A scope with no field is written `{}`.
+
+#### `things`
+
+A thing is a system, a project or an application.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `roles` | yes | A mapping from a role's name to its declaration. At least one. The ladder of the thing |
+
+#### A role
+
+A role is written in one of two forms.
+
+- **The short form is a list of role names,** the roles it implies: `admin: [operator]` means that holding `admin` holds `operator` too, transitively, on the same scope and the same thing. An empty list, `user: []`, implies nothing.
+- **The long form is a mapping** when the role exists in some scopes only:
+
+  | Field | Required | Meaning |
+  |---|---|---|
+  | `implies` | no | The same list as the short form. Default empty |
+  | `scopes` | no | The scopes the role exists in. At least one, each declared in `scopes`. Default: every declared scope |
+
+The two forms mean the same when the long form leaves `scopes` out, and the document may mix them.
+
+### What the document declares
+
+The grant names of an installation are the combinations the document lists: for every thing, every role of it, and every scope the role exists in, the grant name `<scope>:<thing>:<role>`. `policy` builds one `Grant` entity for each, with its `scope`, `thing`, `role` and `sensitive` ([Entity types](#entity-types)), and finds the held grant names of a person by that set. A name that is not among them is not a grant name: a policy document, a client's `requires`, a binding or a link that names one is refused when the snapshot loads.
+
+A role ladder is explicit. It never inherits across scopes: the roles a role implies are the ones of the same scope and thing. Implication is transitive, and the held set a token is narrowed from has the whole ladder expanded ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)).
+
+A role that exists in some scopes only is written in the long form:
+
+```yaml
+# Example: a role only some scopes have
+scopes:
+  dev: {}
+  prod: { sensitive: true }
+things:
+  deploy:
+    roles:
+      viewer: []
+      releaser: { implies: [viewer], scopes: [dev, prod] }
+      debugger: { implies: [viewer], scopes: [dev] }   # no debugger in prod
+```
+
+### What the vocabulary checks
+
+Beyond the schema, which cannot state these rules:
+
+- every role a role `implies` is a role of the same thing, and not the role itself;
+- the ladder of a thing has no cycle;
+- every scope a role names in `scopes` is declared, and none is repeated;
+- a role exists in no scope its implied roles do not exist in: the scopes of a role are within the scopes of every role it implies, because holding the role holds those too;
+- every grant name that a policy document, a client's `requires`, a binding or a link uses is a grant name the document declares ([What `sluis config check` checks](#what-sluis-config-check-checks)).
+
+An error names the path in the document and never the value. The repository check `just check-installations` runs all of this on every example installation under `tests/installations/`: the document's shape, the rules above, and every grant name in the Cedar policy files and links beside it.
+
+### The example vocabulary
+
+The local installation's vocabulary is [`tests/installations/local/policy/vocabulary.yaml`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/vocabulary.yaml). It declares one thing, `example-app`, with a ladder of three roles in three scopes, one of them sensitive; the test vectors below run against it. This copy is checked against that file (`just check-examples`).
 
 <!-- example: tests/installations/local/policy/vocabulary.yaml -->
 ```yaml
 # The grant vocabulary of the local installation (ADR 0020). Schema v1:
-# https://sluis.id/reference/vocabulary/
+# https://sluis.id/reference/policy/#the-grant-vocabulary
 #
 # A grant is <scope>:<thing>:<role>. Every scope has every thing, and every role of a thing exists
 # in every scope unless the role names its `scopes`. A role implies the roles listed under it, on
@@ -282,6 +384,10 @@ things:
       operator: [user]
       admin: [operator]
 ```
+
+## A worked example
+
+The local installation's boundary `dev` has a `Policy` document, [`policy/local.cedar`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/local.cedar), and the vocabulary above. It also has one client, `example-app` in the boundary `dev`, which requires one of two grant names: `dev:example-app:user`, or the same role in the scope of the company `acme`. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
 
 The policy has the held-person rule, four bindings, the standard rule, one step-up rule, the signing rule, two templates and two delegation policies.
 
@@ -333,7 +439,7 @@ when { resource.role == "admin" };
 
 // ---- What a person may get a token for -------------------------------------------------
 
-// A person who holds one of a client's required grants may have a token for it.
+// A person who holds one of a client's required grant names may have a token for it.
 @id("token-requires")
 permit (
   principal is Person,
@@ -426,7 +532,7 @@ permit (
 when { context.template == "revoke-grant-from-account" };
 ```
 
-Two links are in force in the vectors: an account of the company `acme` is bound to the company's grant, and one account loses the user role. This is the file the asker would send them from.
+Two links are in force in the vectors: an account of the company `acme` is bound to the company's grant name, and one account loses the user role. This is the file the effective policy set would carry them in.
 
 <!-- example: tests/installations/local/policy/links.json -->
 ```json
@@ -435,6 +541,7 @@ Two links are in force in the vectors: an account of the company `acme` is bound
 {"template_id": "revoke-grant-from-account", "link_id": "revoke-u-1002-dev-example-app-user", "args": {"?principal": "Account::\"workforce/u-1002\"", "?resource": "Grant::\"dev:example-app:user\""}}
 ]
 ```
+
 
 ### Test vectors
 
@@ -481,28 +588,27 @@ cedar run-tests --policies local.cedar --schema policy-schema.cedarschema \
 
 The vectors cover what Cedar decides. Two rules that belong to the `policy` actor are not in them and get vectors in its conformance test: the sensitive-grant rule (row 6 is a `deny` there) and the ladder (the entities above carry the grants after it). A request that does not fit the schema, such as an `auth_age` that is a string, is refused and not decided. The same vectors run against any other engine that is offered as a replacement ([principle 6](/principles/#6-generic-products-joined-by-a-contract)).
 
+
 ## What `sluis config check` checks
 
-Offline, on the policy files, the vocabulary and the install file ([Install file](/reference/install-file/#what-sluis-config-check-checks)):
+Offline, on the config documents of a boundary ([Commands](/reference/cli/#sluis-config-check-and-explain)); the snapshot validation of [Signed config](/reference/signed-config/#the-snapshot) makes the same checks when store@ loads:
 
-- every policy file parses, and the set validates against the schema;
+- every policy document parses, and the set validates against the schema;
 - every policy and template has a unique `@id`, and every `@step_up` is on a `forbid` and holds well-formed `acr_values` and `max_age`;
-- every `Grant::"…"` in a policy file and every grant in a client's `requires` is a name the vocabulary declares, and each binding passes the probe of [How a person's grants are found](#how-a-persons-grants-are-found);
-- every `Client` the policy names is one the install file declares, every `Boundary` a declared boundary, and every `Account` names an upstream that the install file declares;
-- every client's `requires` is not empty.
-
-With `--live`, the operator-set records are read as well, and a link whose template the files no longer have is a `fail`.
+- every `Grant::"…"` in a policy document and every grant name in a client's `requires` is a name the vocabulary declares, and each binding passes the probe of [How a person's grants are found](#how-a-persons-grants-are-found);
+- every `Client` the policy names is one the config declares, every `Boundary` a declared boundary, and every `Account` whose upstream part names an `Upstream` of the config is checked against that upstream. Any other account belongs to a company's own connection, a durable `TenantConnection` that config never sees, and is checked when its link is written;
+- every client's `requires` is not empty;
+- every link names a template that a `Policy` document has.
 
 ## Roads not taken
 
-- **Entities loaded from the install file by `policy`.** It would give `policy` a view of the clients, but `policy` would then read configuration that only `session`, `exchange` and `signer` read ([Install file](/reference/install-file/#top-level-keys)), and a request could not be judged from itself. The asker sends the slice.
+- **Entities read from the store by `policy`.** It would give `policy` a view of the clients, but a request could not be judged from itself, and `policy` would read items that only `session`, `exchange` and `signer` read. The asker sends the slice.
 - **A schema the operator extends.** A type or an attribute of an operator's own would let a policy depend on facts no actor sends, and a reload could change what a request means. A new attribute is a release.
 - **A Cedar namespace for sluis's names.** It makes every policy longer to write and protects against a collision that no operator can cause.
-- **Grants as group names.** A group is a directory's word and the first version has no directory; a grant is a name of the vocabulary that a binding gives to an account, and the token carries it ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/)).
-- **A person named by subject or e-mail address in a binding.** The subject does not exist before the first sign-in, and an address is reused and renamed ([ADR 0019](/decisions/0019-person-and-upstream-link/#roads-not-taken)).
+- **Grants as group names.** A group is a directory's word and the first version has no directory; a grant name is an entry of the vocabulary that a binding gives to an account, and the token carries it ([0020](/decisions/0020-grant-vocabulary-and-token-claims/)).
+- **A person named by subject or e-mail address in a binding.** The subject does not exist before the first sign-in, and an address is reused and renamed ([0019](/decisions/0019-person-and-upstream-link/#roads-not-taken)).
 - **Wildcards as a pattern language of their own, outside Cedar.** It would be a second grammar to validate beside Cedar's. A wildcard is a condition on the `Grant` attributes, and the loader's probe holds it to the rules of [REQ-POLICY-011](/requirements/policy/#REQ-POLICY-011) and [REQ-POLICY-012](/requirements/policy/#REQ-POLICY-012).
 - **An action `session.step_up`.** It would split "may this person have this token" from "is the authentication enough for it" into two questions with two sets of policies that can disagree. One `forbid` with `unless` keeps them in one.
 - **Dates and durations in Cedar's `datetime` extension for freshness.** It would put a clock into `policy`, which has none, and a request would no longer answer the same on another day. Seconds counted by the asker keep the vectors fixed.
-- **A link kind per asking actor.** Two writers cannot share a kind, and a binding applies to both `token.issue` and `token.exchange`, which are decided after the grants are found. One kind owned by `session`, read by `exchange`, keeps one link in one place.
-- **`policy`, `console` or `exchange` as the owner of the links.** `policy` has no state port ([ADR 0007](/decisions/0007-policy-and-sealed-grants/)); `console` never writes a record ([ADR 0004](/decisions/0004-the-data-model/#one-writer-per-kind)); `exchange` is the second reader, and one writer for a kind is enough.
-- **Ignoring a link that does not apply.** The request would go through without a `forbid` that an operator meant to have in force.
+- **`policy` or `console` as the owner of the links.** `policy` writes no kind ([0007](/decisions/0007-policy-and-sealed-grants/#cedar-in-a-rust-actor)); the console writes only `Switch` and `LogLevelOverride` itself ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)). `exchange` owns the links and `policy` reads them.
+- **Ignoring a link that does not apply.** The request would go through without a `forbid` that a tenant admin or an operator meant to have in force.

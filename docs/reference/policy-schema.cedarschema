@@ -4,15 +4,16 @@
 
 // An upstream account, named by the upstream's declared name and the value of the upstream's
 // subject claim: `<upstream>/<claim value>` (ADR 0019). An operator can name an account before
-// its first sign-in, which the random subject of a person does not allow. `org` is the company
-// that owns the upstream.
+// its first sign-in, which the random subject of a person does not allow. `org` is the tenant
+// (the company) of the account's sign-in: the tenant whose connection signed it in (ADR 0019).
 entity Account = {
   upstream: String,
   org: String,
 };
 
-// A grant of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). `sensitive` is true
-// when its scope is sensitive.
+// A grant name of the vocabulary, written `<scope>:<thing>:<role>` (ADR 0020). The entity is
+// called Grant; it stands for a grant name and never for the sealed grant of ADR 0007.
+// `sensitive` is true when its scope is sensitive.
 entity Grant = {
   scope: String,
   thing: String,
@@ -21,20 +22,21 @@ entity Grant = {
 };
 
 // A person, known by the opaque `sub` of the issuer, and linked to the upstream account they
-// signed in with. `org` is the company claim, and `state` is `live` or `held` (ADR 0019: an
-// operator holds a person on the console). `grants` is not sent by the asking actor: `policy`
-// finds it with the action "grant.hold" and adds it before it decides any other action.
+// signed in with. `org` is the tenant (the company) the person belongs to, and `state` is `live`
+// or `held` (ADR 0019: an operator holds a person on the console). `grants` is the set of grant
+// names the person holds. The asking actor does not send it: `policy` finds it with the action
+// "grant.hold" and adds it before it decides any other action.
 entity Person in [Account] = {
   org: String,
   state: String,
   grants?: Set<Grant>,
 };
 
-// An environment boundary, such as `dev`.
+// A boundary, such as `dev`.
 entity Boundary;
 
 // A client of an issuer. The token's `aud` is exactly one client id, so a client is also the
-// resource of a token request. `requires` is the client's declared list of grants, and `kind`
+// resource of a token request. `requires` is the client's declared list of grant names, and `kind`
 // is `public`, `confidential` or `exchange`.
 entity Client in [Boundary] = {
   kind: String,
@@ -63,7 +65,7 @@ type Authentication = {
   auth_age?: Long,
 };
 
-// Whether a person holds a grant. The policy files bind groups to grants with this action.
+// Whether a person holds a grant. The policy files bind accounts to grant names with this action.
 action "grant.hold" appliesTo {
   principal: Person,
   resource: Grant,
