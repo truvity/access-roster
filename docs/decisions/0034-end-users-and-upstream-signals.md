@@ -125,6 +125,7 @@ A workforce directory is pulled, so sluis learns that a person was removed ([001
 
 ## Follow-ups
 
+- An agent session for a channel client of a regulated customer's boundary, whose consent is an external record ended by the status call, and an opaque `consent_id` claim for that audience only: decided as a customer-identity record, written with the first channel of a regulated customer.
 - The lifecycle, the status call, the erasure and the export: [#1024](https://github.com/truvity/sluis/issues/1024).
 - Inbound back-channel logout and the status operations: [#916](https://github.com/truvity/sluis/issues/916).
 - Outbound back-channel logout and the sign-out fan-out: [#780](https://github.com/truvity/sluis/issues/780).

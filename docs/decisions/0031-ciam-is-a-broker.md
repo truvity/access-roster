@@ -40,6 +40,8 @@ Any product that meets this is one more OpenID Connect connection ([0033](/decis
 5. **A single sign-on session that outlasts sluis's 24 hours,** so that the silent renewal has something to renew.
 6. **OpenID Connect back-channel logout with `sid`,** and a way to say that an account is disabled or deleted ([0034](/decisions/0034-end-users-and-upstream-signals/#upstream-signals)).
 7. **`email_verified` truthfully,** because a policy may read it; sluis never links by it.
+8. **No linking of accounts by e-mail address,** and no merging of two accounts of one person into one `sub` unless the person links them themselves in the upstream. Two upstream accounts are two people to sluis ([0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)).
+9. **A multi-factor proof relayed from a corporate login never raises `acr` in sluis's tokens on its own.** The upstream reports what it verified itself in `acr` and `amr`, and a proof made further behind it travels as a separate claim that sluis does not read for assurance. `acr` rises only for what sluis verifies: the upstream's answer to a step-up request, mapped and capped by the connection's `assurance` ([0033](/decisions/0033-customer-connections/#connection-trust), [0017](/decisions/0017-identity-and-sign-in/#step-up)).
 
 An upstream outage stops new sign-ins and silent renewals; tokens already issued stay valid until they expire ([REQ-OPS-014](/requirements/ops/#REQ-OPS-014)). sluis states no uptime figure for the upstream.
 

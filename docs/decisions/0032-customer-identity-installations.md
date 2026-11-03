@@ -61,6 +61,7 @@ Three gaps remained.
 - **One customer boundary for the whole customer base.** All products would share an issuer and an audience space, so a token for one product would be a candidate for another's relying parties.
 - **A boundary for every tenant.** Each would carry keys, an issuer host and a yearly certification ([0008](/decisions/0008-boundaries-and-tenants/#scale)).
 - **Organisation membership stored in sluis.** It would make sluis the store of a product's user groups, which [0031](/decisions/0031-ciam-is-a-broker/) refuses.
+- **A `memberships` claim listing a person's organisations.** It would carry the product's membership data through sluis, which stores none, and name organisations to relying parties that must not learn them, regulated audiences first ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)). The product holds the active organisation.
 - **A tenant claim in every token.** Nothing reads it yet, and a claim outside the fixed set needs its own consumer.
 - **Client IDs from a counter or a random string.** Nobody could read which tenant a client belongs to in a log or a relying party's configuration.
 - **A new subject for a moved person.** Every relying party would lose its users and every link would be a new person.
