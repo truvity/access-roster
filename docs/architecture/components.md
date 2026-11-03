@@ -251,7 +251,7 @@ Every kind has exactly one writer. Others read through the store, under the rule
 | ------ | -------------------------- |
 | Infrastructure as code | Config and secret kinds of the installation: `Boundary`, `KeyPlan`, `Tunables`, `Upstream`, `AuditLog`, `BackupPlan`, `ExportDestination`, `BreakGlassPasskey`, and the secrets such as `UpstreamSecret` |
 | The publishing pipeline | Reviewed, signed config: `Policy`, `RegulatedPartyPolicy`, `GrantVocabulary`, `ExchangeTrust`, `PkiProfile`, `AuditCatalogue` |
-| `session` | Everything about people and their connections: `Person`, `UpstreamLink`, `TenantConnection`, `DomainClaim`, `StaffPasskey`; and the temp state of sign-in: `PendingSignIn`, `AuthCode`, `SessionChain`, `ClientDocument` |
+| `session` | Everything about people: `Person`, `UpstreamLink`, `StaffPasskey`; and the temp state of sign-in: `PendingSignIn`, `AuthCode`, `SessionChain`, `ClientDocument` |
 | `exchange` | What a tenant has configured: `Tenant`, `TenantClient`, `ClientSecret`, `ClientSecretExport`, `PolicyLink`, `PredefinedPolicyLink`; and enrolment: `EnrolmentToken`, `PendingEnrolment` |
 | An adapter | What its flow makes: `GitHubApp` and `GitHubInstallation` (`adapter-github`), `SlackConnection` (`adapter-slack`), `EntraConnection` (`adapter-upstream-oidc`); the connections `DirectoryConnection`, `MinterConnection` and `MinterTarget`; and the directory facts |
 | `key@` | `DataKeyWrap`, `KeyCertificate`, `PinReleaseRequest`, `PinRelease` |

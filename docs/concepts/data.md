@@ -54,7 +54,7 @@ Every kind has one treatment. **Sealed** is the default.
 | Treatment | For | The store keeps | Examples |
 |---|---|---|---|
 | **hashed** | A compare-only secret, verified and never read back | The hash | The refresh-token hash of a `SessionChain`, `AuthCode`, `ClientSecret` |
-| **sealed** | A value that is read back: a provider token, personal data, free text | The ciphertext | `Person`, `TenantConnection`, `GitHubApp` |
+| **sealed** | A value that is read back: a provider token, personal data, free text | The ciphertext | `Person`, `GitHubApp` |
 | **plain** | A value that is neither secret nor personal | The value as it is | `Switch`, `Allowance`, `MinterTarget` |
 
 - **Treatment follows the data.** A kind that holds personal data or free text is sealed, or hashed when it is compare-only. Plain is only for values that are neither secret nor personal.

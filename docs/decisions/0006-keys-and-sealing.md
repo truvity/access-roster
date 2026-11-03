@@ -160,7 +160,7 @@ sequenceDiagram
 - **`Mac(purpose, input, grant)` makes a keyed hash with HMAC-SHA384** over a data key: `mac` (boundary) for link ids, upstream session ids, pairwise subjects and the hashed index entries of sealed kinds, or `pseudonym` (tenant) for audit pseudonyms. The caller names a label for each use, and `key@` binds the label into the input, so two uses never produce the same hash for the same input. The key never leaves `key@`.
 - **There is no `LinkKey` kind and no extra KMS key for hashing.** A KMS `GenerateMac` key would need one key for each purpose and boundary because it takes no encryption context, and would make two mechanisms for one operation.
 - **The `mac` key has no new generation in place.** Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all; replacing it is a migration that makes them again ([0019](/decisions/0019-person-and-upstream-link/#the-records)).
-- **Pairwise subjects use `mac` with a `pairwise` label and are never rotated** ([0034](/decisions/0034-end-users-and-upstream-signals/#pairwise-subjects)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
+- **Pairwise subjects use `mac` with a `pairwise` label and are never rotated** ([0034](/decisions/0034-end-users-and-upstream-signals/#subjects-and-sectors)). A boundary that moves keeps the key ([0032](/decisions/0032-customer-identity-installations/#moving)). A pseudonym epoch is a generation of the tenant's `pseudonym` key ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
 
 ### Data keys
 

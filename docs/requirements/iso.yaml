@@ -829,7 +829,7 @@ requirements:
       - {kind: integration-test, ref: "T-26: export, then destroy the tenant key; the reader fails to decrypt every record of that company and still reads the others"}
   - id: REQ-ISO-060
     area: ISO
-    statement: "After a tenant is suspended or erased, sluis MUST refuse sign-in and token exchange through that tenant's upstream connections."
+    statement: "After a tenant is suspended or erased, sluis MUST refuse sign-in and token exchange through the upstreams of that tenant's company."
     rationale: "Suspending a tenant is a tightening and takes effect at once (ADR 0008)."
     level: MUST
     source: design-decision
@@ -1053,8 +1053,8 @@ requirements:
       - {kind: integration-test, ref: "client ID format and uniqueness test"}
   - id: REQ-ISO-078
     area: ISO
-    statement: "A person who signed in through a connection of one tenant MUST NOT hold a grant in the scope of another tenant."
-    rationale: "A tenant's identity provider is controlled by that tenant and must not reach another tenant's data."
+    statement: "A person MUST NOT hold a grant in the scope of any tenant other than the one that the declaration binds them to."
+    rationale: "An identity provider is controlled by its administrators and must not reach another tenant's data (ADR 0032)."
     level: MUST
     source: design-decision
     status: planned
@@ -1065,8 +1065,8 @@ requirements:
       - {kind: integration-test, ref: "ceiling guard negative test across two tenants"}
   - id: REQ-ISO-079
     area: ISO
-    statement: "An adapter that serves customer connections MUST serve the connections of one customer boundary only."
-    rationale: "A compromised pool then reaches the connections of one customer boundary only."
+    statement: "An adapter MUST serve the upstreams of one boundary only."
+    rationale: "A compromised adapter then reaches the upstreams of one boundary only."
     level: MUST
     source: design-decision
     status: planned
@@ -1074,17 +1074,18 @@ requirements:
     standards: []
     issues: [916]
     verification:
-      - {kind: integration-test, ref: "a connection of a second boundary is refused by the pool adapter"}
+      - {kind: integration-test, ref: "an upstream of a second boundary is refused by the adapter"}
   - id: REQ-ISO-080
     area: ISO
     statement: "A pooled adapter MUST open the client secret of a connection at key@ for the duration of one call only, under a grant for the connection's tenant."
     rationale: "A pool must not hold every connection's secret in memory or open one connection's secret for another."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-ISO-106]
     verification:
       - {kind: integration-test, ref: "an open under a grant for another tenant is refused; no secret is cached after the call"}
   - id: REQ-ISO-081
@@ -1093,16 +1094,17 @@ requirements:
     rationale: "A pool cannot list its hosts in a network policy, so the proxy at least keeps it off the inside."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-ISO-110]
     verification:
       - {kind: integration-test, ref: "a request to a private address is refused"}
   - id: REQ-ISO-110
     area: ISO
-    statement: "A pooled adapter MUST restrict every call to the hosts of its connection's discovery document."
-    rationale: "The egress proxy holds no data port and checks only addresses, so the host allow-list lives in the adapter that opens the connection (ADR 0033)."
+    statement: "The adapter-upstream-oidc actor MUST restrict its egress to the hosts of the upstreams that config declares."
+    rationale: "The upstream hosts are known, so an allow-list replaces a general egress proxy (ADR 0033)."
     level: MUST
     source: design-decision
     status: planned
@@ -1110,17 +1112,18 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a connection whose discovery document names host A: the adapter's call to host B is refused before it leaves the adapter"}
+      - {kind: integration-test, ref: "an upstream that declares host A: the adapter's call to host B is refused before it leaves the adapter"}
   - id: REQ-ISO-082
     area: ISO
     statement: "sluis config check MUST refuse a private_key_jwt key for a pooled connection."
     rationale: "A key per pooled connection would be a key per tenant."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-ISO-052]
     verification:
       - {kind: integration-test, ref: "config check negative test"}
 

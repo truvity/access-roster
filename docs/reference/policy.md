@@ -596,7 +596,7 @@ Offline, on the config documents of a boundary ([Commands](/reference/cli/#sluis
 - every policy document parses, and the set validates against the schema;
 - every policy and template has a unique `@id`, and every `@step_up` is on a `forbid` and holds well-formed `acr_values` and `max_age`;
 - every `Grant::"…"` in a policy document and every grant name in a client's `requires` is a name the vocabulary declares, and each binding passes the probe of [How a person's grants are found](#how-a-persons-grants-are-found);
-- every `Client` the policy names is one the config declares, every `Boundary` a declared boundary, and every `Account` whose upstream part names an `Upstream` of the config is checked against that upstream. Any other account belongs to a company's own connection, a durable `TenantConnection` that config never sees, and is checked when its link is written;
+- every `Client` the policy names is one the config declares, every `Boundary` a declared boundary, and every `Account` whose upstream part names an `Upstream` of the config is checked against that upstream. Any other account names an upstream that no `Upstream` declares, and the check refuses it;
 - every client's `requires` is not empty;
 - every link names a template that a `Policy` document has.
 

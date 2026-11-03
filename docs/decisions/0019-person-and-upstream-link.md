@@ -20,15 +20,15 @@ The data model adds two more. A kind that holds personal data is sealed ([0004](
 ### Linking an upstream account
 
 - **An upstream account is identified by the pair (issuer, value of the upstream's subject claim).** The issuer is the `iss` of the ID token, which sluis has checked against the upstream's issuer; the value is the string in the subject claim.
-- **The subject claim is configured per upstream, with the default `sub`.** It is the field `subject_claim` of the config kind `Upstream` and of the durable kind `TenantConnection`. Google uses `sub`; Microsoft Entra needs `oid`.
-- **There is no fallback.** An ID token without the configured claim, or with a value that is not a string of at most 255 characters, is refused ([0025](/decisions/0025-integrations/#the-upstream-contract)). sluis never tries another claim, and never reads the e-mail address, `preferred_username` or `upn` as an identity. The configuration check refuses a `subject_claim` that names one of those mutable claims in config, and `session` refuses it when it writes a `TenantConnection`.
+- **The subject claim is configured per upstream, with the default `sub`.** It is the field `subject_claim` of the config kind `Upstream`. Google uses `sub`; Microsoft Entra needs `oid`.
+- **There is no fallback.** An ID token without the configured claim, or with a value that is not a string of at most 255 characters, is refused ([0025](/decisions/0025-integrations/#the-upstream-contract)). sluis never tries another claim, and never reads the e-mail address, `preferred_username` or `upn` as an identity. The configuration check refuses a `subject_claim` that names one of those mutable claims in config.
 - **E-mail never links, matches or merges.** It is a claim that the person's token may carry when the scope asks for it ([REQ-TOKEN-006](/requirements/token/#REQ-TOKEN-006)).
 - **The first link of an issuer pins the claim.** The pin is a durable item, `UpstreamPin`. If an upstream's configured claim later differs from its pin, sluis refuses the sign-in: a contradicted pin is refused, never learned again. Changing the claim of an upstream that has links is a migration, not a setting.
 - **Two upstream accounts are two people.** sluis does not merge them, whether they differ by upstream or by tenant. Moving an installation to another upstream therefore makes new people; merging is a deliberate operator act that is out of scope until a consumer needs it.
 
 ### The records
 
-`session` writes every kind below, in the front installation that signs people in; a boundary reads a person only through the front's tokens ([0017](/decisions/0017-identity-and-sign-in/#step-up)). Each is a kind of a tenant, the tenant of the connection that signed the person in ([0008](/decisions/0008-boundaries-and-tenants/#tenants)): a `TenantConnection` names its tenant; an `Upstream` of config has none, so its people belong to the tenant whose connection to that app matched the sign-in (an `EntraConnection` for a customer directory), or else to the operator's own tenant ([0004](/decisions/0004-the-data-model/#the-upstream-criterion)). The sealed ones are sealed under that tenant's `data` key ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
+`session` writes every kind below, in the front installation that signs people in; a boundary reads a person only through the front's tokens ([0017](/decisions/0017-identity-and-sign-in/#step-up)). Each is a kind of a tenant, the tenant of the upstream that signed the person in ([0008](/decisions/0008-boundaries-and-tenants/#tenants)): an `Upstream` of config names the company it belongs to (its `org`) in an internal installation, and the broker of a customer installation names none, so its people belong to the tenant the product binds them to ([0032](/decisions/0032-customer-identity-installations/#tenants)), or else to the operator's own tenant ([0004](/decisions/0004-the-data-model/#the-upstream-criterion)). The sealed ones are sealed under that tenant's `data` key ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
 
 | Kind | Class | Treatment | Holds |
 |---|---|---|---|
@@ -37,7 +37,7 @@ The data model adds two more. A kind that holds personal data is sealed ([0004](
 | `UpstreamPin` | durable | plain | The issuer and the subject claim first used for it; the id is a keyed hash of the issuer |
 | `PersonHold` | durable, Operable | sealed | That an operator holds the person, who set it, when and why |
 
-- **The subject is 128 random bits from the operating system's generator, written in lower-case base32 without padding.** It is the id of the `Person` item, it is the `sub` of every token at every issuer, and it is never reused.
+- **The subject is 128 random bits from the operating system's generator, written in lower-case base32 without padding.** It is the id of the `Person` item, it is the `sub` of every token of a boundary whose sector is `public` ([0034](/decisions/0034-end-users-and-upstream-signals/#subjects-and-sectors)), and it is never reused.
 - **The WebAuthn user handle is 32 random bytes stored on the person,** not derived from anything ([REQ-SUBJ-029](/requirements/subj/#REQ-SUBJ-029)).
 - **An id holds no personal data.** The id of a link is a keyed hash of the issuer and the claim value, made by key@'s `Mac` over the boundary's `mac` data key, with a label of its own ([0006](/decisions/0006-keys-and-sealing/#sign-and-mac)). Sealing hides the values; this hides the ids, and `session` never holds the key. There is no `LinkKey` kind.
 - **The ids last as long as the `mac` key.** A new `mac` key would give every link another id, so replacing it is a migration that makes the ids again, not a rotation. Its wrap is a `DataKeyWrap` and is backed up with the others ([0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
@@ -80,7 +80,7 @@ A person has four states, and the state is computed from the kinds, never stored
 
 ## Consequences
 
-- One person has one subject at every issuer, found by the same pair whichever sign-in path reaches it, and the model fits a directory without change: the directory adds a way to create the person earlier and a state, not a new key.
+- One person has one subject, found by the same pair whichever sign-in path reaches it, and the model fits a directory without change: the directory adds a way to create the person earlier and a state, not a new key.
 - No id in the store, and no claim in the tokens, reveals an e-mail address or an upstream id. The cost is the `mac` key: losing it orphans every link, so its wrap is backed up with the other data keys ([0010](/decisions/0010-backup-and-recovery/#what-the-archive-holds)).
 - Every sign-in costs a keyed hash at key@ to find the link. The hop is batched with the other opens of the request ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
 - A person who has two upstream accounts, or whose installation changes upstream, is two people. Their grant names, passkeys and sessions do not carry over.

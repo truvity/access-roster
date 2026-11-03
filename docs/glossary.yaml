@@ -689,9 +689,9 @@ terms:
     see: ["/requirements/acct/", "/requirements/reg/"]
 
   - term: sector
-    definition: "A group of relying parties that share one pairwise subject for a person. A sector is declared in config (kind `Sector`)."
+    definition: "The name a boundary declares in its `Boundary` item and mixes into the pairwise subject of its clients, or `public` for the person's own subject. A boundary declares exactly one sector, and its clients inherit it."
     category: ciam
-    see: ["0034-end-users-and-upstream-signals#pairwise-subjects", "/requirements/subj/"]
+    see: ["0034-end-users-and-upstream-signals#subjects-and-sectors", "/requirements/subj/"]
 
   - term: fallback credential vault
     definition: "An external identity provider that holds an optional fallback password and one-time-password factor for a person and knows only a pseudonym."

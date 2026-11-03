@@ -61,14 +61,14 @@ An integration has two parts that are stored differently ([0004](/decisions/0004
 | Part | Class | Made by | Examples |
 |---|---|---|---|
 | **App definition** that serves the whole installation | Config, with its secret in a secret source | Hand or IaC, on the vendor's side and in a reviewed file | `Upstream` and `UpstreamSecret`; `SlackApp` and `SlackAppSecret`; `Integration` and `IntegrationSecret`; `MinterBounds` |
-| **Connection** of one tenant to a provider | Durable, per tenant, credential sealed | The tenant or the operator, through the UI or the API | `DirectoryConnection`, `EntraConnection`, `GitHubApp`, `GitHubInstallation`, `SlackConnection`, `MinterConnection`, `TenantConnection` |
+| **Connection** of one tenant to a provider | Durable, per tenant, credential sealed | The tenant or the operator, through the UI or the API | `DirectoryConnection`, `EntraConnection`, `GitHubApp`, `GitHubInstallation`, `SlackConnection`, `MinterConnection` |
 | **Mint targets** of a tenant | Durable, Tenant-adjustable, inside the bounds of `MinterBounds` | The tenant admin, through the UI or the API | `MinterTarget` |
 | **A flow in progress** | Temp | The adapter that runs the flow | `SlackInstallState`, `GitHubManifestState`, `EntraConsentState` |
 | **Directory facts** read through a connection | Temp, sealed, 24 hours by default and 7 days at most | The adapter | `DirectoryUser`, `DirectoryGroup`, `DirectoryMembership` |
 
-- **Who connects decides.** A tenant's own connection is never config committed by the operator, so a customer's change does not wait for review ([0004](/decisions/0004-the-data-model/#who-connects-decides)). The company that runs the installation is a tenant too, so its own connections are durable.
+- **Who connects decides.** A tenant's own connection to a provider is never config committed by the operator, so a customer's change does not wait for review ([0004](/decisions/0004-the-data-model/#who-connects-decides)). The company that runs the installation is a tenant too, so its own connections are durable.
 - **An IaC tool may create a connection by calling the API.** What it writes is durable data of the tenant, not config.
-- **The adapter that completes a connect flow writes the connection,** under ids that start with its own name. `session` writes a tenant's own sign-in connection ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)).
+- **The adapter that completes a connect flow writes the connection,** under ids that start with its own name. A tenant has no sign-in connection: the upstreams are the operator's config ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
 - **An installation-wide credential stays in a secret source,** and only the adapter named in the registry reads it ([0005](/decisions/0005-the-store/#secret-sources)). The kinds are in the [kind registry](/reference/kinds/).
 
 ## Core calls adapters, never the reverse

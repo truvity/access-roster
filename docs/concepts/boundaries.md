@@ -104,7 +104,7 @@ Each environment boundary has its own issuer, and so does a customer boundary. A
 |---|---|
 | `iss` | The issuer URL |
 | `aud` | **Exactly one registered `client_id`**, never a URL. An RFC 8707 `resource=` selects a registered client and is never copied into `aud`. Between actors of two boundaries, `aud` is the target's SPIFFE ID |
-| `sub` | An opaque random id, the same at every issuer ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
+| `sub` | The person's opaque random id for a boundary whose sector is `public`, and a pairwise value for any other sector ([Identity](/concepts/identity/#a-persons-subject)); for a JWT-SVID, the SPIFFE ID |
 | `acr`, `amr`, `auth_time` | How and when the person signed in |
 | `cnf` | Only when the audience declares a binding: `cnf.jkt` for DPoP, `cnf.x5t#S256` for mutual TLS ([ADR 0038](/decisions/0038-fapi-2-profile/#binding-is-declared-per-audience)). A bearer token has no `cnf` |
 | grant names | Only that boundary's grant names, narrowed per audience |

@@ -32,8 +32,8 @@ requirements:
       - {kind: integration-test, ref: "issued token scan"}
   - id: REQ-SUBJ-003
     area: SUBJ
-    statement: "A client that receives a pairwise subject MUST name exactly one sector."
-    rationale: "A pairwise subject without a sector would fall back to a global identifier."
+    statement: "A boundary MUST declare exactly one sector, which its clients inherit."
+    rationale: "A pairwise subject without a sector would fall back to a global identifier, and a sector per client is one more thing to forget (ADR 0034)."
     level: MUST
     source: stakeholder-ciam
     status: planned
@@ -45,8 +45,8 @@ requirements:
       - {kind: integration-test, ref: "sector assignment test"}
   - id: REQ-SUBJ-004
     area: SUBJ
-    statement: "The loader MUST refuse a client that asks for a pairwise subject and names no sector."
-    rationale: "A missing sector is a configuration error."
+    statement: "The loader MUST refuse a boundary that declares no sector."
+    rationale: "A missing sector is a configuration error, and public has to be written down (ADR 0034)."
     level: MUST
     source: stakeholder-ciam
     status: planned
@@ -58,8 +58,8 @@ requirements:
       - {kind: integration-test, ref: "missing sector load test"}
   - id: REQ-SUBJ-005
     area: SUBJ
-    statement: "The loader MUST refuse a machine client that names a sector."
-    rationale: "A machine token carries the machine's own identifier as its subject, so no sector applies."
+    statement: "The loader MUST refuse a client that names a sector of its own, a machine client included."
+    rationale: "A client inherits its boundary's sector, and a machine token carries the machine's own identifier as its subject, so no sector applies to it."
     level: MUST
     source: stakeholder-ciam
     status: planned
@@ -196,7 +196,7 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-SUBJ-015
     area: SUBJ
-    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a client moved to another sector."
+    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a boundary that changes its sector."
     rationale: "Such a change would change every stored subject of the sector."
     level: MUST
     source: stakeholder-ciam
@@ -641,7 +641,7 @@ requirements:
       - {kind: integration-test, ref: "state table and transition matrix"}
   - id: REQ-SUBJ-049
     area: SUBJ
-    statement: "Erasing a person MUST delete their person record, upstream link, holds, statuses, sessions, refresh records and consents."
+    statement: "Erasing a person MUST delete their person record, upstream link, holds, statuses, sessions, refresh records and consents, except the records an ErasureHold covers."
     rationale: "After erasure nothing ties an audit pseudonym to a person."
     level: MUST
     source: design-decision
@@ -776,3 +776,89 @@ requirements:
     issues: [1221]
     verification:
       - {kind: integration-test, ref: "a directory fact expires at its time to live; a time to live over 7 days is refused"}
+
+  # ---- who erases, what a boundary may forget, and holds (decision 0034)
+  - id: REQ-SUBJ-061
+    area: SUBJ
+    statement: "sluis MUST accept `erase`, `suspend` and `resume` only from the client that config declares as the front of the person's tenant."
+    rationale: "One product's call must not erase or lock out a person for every boundary (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "a call from another product's client and from a boundary's client is refused for each of the three operations"}
+  - id: REQ-SUBJ-062
+    area: SUBJ
+    statement: "A forget-here call from a boundary's client MUST end only that boundary's own sessions and grants for the person."
+    rationale: "A boundary can drop what it holds without changing the person's state or any other boundary (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "forget here: the boundary's sessions and grants end, and the person's state and the other boundaries' sessions are unchanged"}
+  - id: REQ-SUBJ-063
+    area: SUBJ
+    statement: "An erasure MUST keep the records that an ErasureHold covers until the hold's retention period ends, and then complete."
+    rationale: "A boundary's duty to keep a record must not stop the erasure of everything else (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "erase a person with a hold: the held records remain and nothing else; the held records are deleted when the retention period ends"}
+  - id: REQ-SUBJ-064
+    area: SUBJ
+    statement: "An ErasureHold MUST be lifted only by whoever set it or by the front."
+    rationale: "A hold only tightens, so only its owner or the front may release it (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "a lift from a third caller is refused"}
+  - id: REQ-SUBJ-065
+    area: SUBJ
+    statement: "Setting, lifting and the end of an ErasureHold MUST each write an audit record that names the caller and the time."
+    rationale: "Every step of a hold must be traceable (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "each of the three steps writes one record"}
+  - id: REQ-SUBJ-066
+    area: SUBJ
+    statement: "`sluis config check` MUST refuse the sector public for a boundary that is declared regulated."
+    rationale: "A regulated customer always gets pairwise subjects (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: a regulated boundary declares public"}
+  - id: REQ-SUBJ-067
+    area: SUBJ
+    statement: "Every token that a boundary issues, by sign-in or by exchange, MUST carry the subject of that boundary's sector."
+    rationale: "An exchanged token must not carry the subject of the token it was exchanged for (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: integration-test, ref: "a token exchanged in a boundary of sector alpha carries the alpha subject, not the subject of the incoming token"}

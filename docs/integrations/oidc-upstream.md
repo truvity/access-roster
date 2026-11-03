@@ -6,12 +6,12 @@ sidebar:
   order: 4
 ---
 
-The **generic OpenID Connect upstream** is the same kind of integration as Google sign-in, for any provider that publishes OIDC discovery: a customer's identity provider, a partner's, or a CIAM product. `adapter-upstream-oidc@<boundary>` serves it. The connections of a product's customer organisations are served by a pool of that adapter in their customer boundary, a few replicas that open each connection's client secret at key@ for each call ([0033](/decisions/0033-customer-connections/#a-pool-per-customer-boundary)). A **peer sluis** is the case where the provider is another sluis installation.
+The **generic OpenID Connect upstream** is the same kind of integration as Google sign-in, for any provider that publishes OIDC discovery: a customer's identity provider, a partner's, or a CIAM product. `adapter-upstream-oidc@<boundary>` serves it. The upstreams are fixed config that the operator declares: the internal installation sees three Google Workspace upstreams, and the customer installation sees one, the CIAM broker; a customer's own identity provider is configured in the broker and never in sluis ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)). A **peer sluis** is the case where the provider is another sluis installation.
 
 ## What it's for
 
-- **A partner signs in with their own provider.** sluis sends the person there and accepts the proof it returns.
-- **A person is routed by the domain of their e-mail address.** `person@partner.example` goes to the partner's provider, `person@example.org` to the company directory. A connection's claim on a domain is proven by a DNS record, not taken on trust ([0033](/decisions/0033-customer-connections/#domain-proof)).
+- **An organisation the operator has agreed with signs in with its own provider.** The operator declares it as an `Upstream`; sluis sends the person there and accepts the proof it returns.
+- **A person is routed by the domain of their e-mail address.** `person@partner.example` goes to the upstream that declares that domain, `person@example.org` to the company directory. The operator declares which upstream serves which domain, so there is nothing to prove ([0033](/decisions/0033-customer-connections/#choosing-the-connection)).
 - **A CIAM product plugs in as an upstream.** sluis stays a broker and hosts no customer accounts ([REQ-CIAM-017](/requirements/ciam/#REQ-CIAM-017)): a CIAM product that speaks OpenID Connect is one more upstream, and its end users get sluis subjects like anyone else who signs in. What sluis requires of such a product is in [0031](/decisions/0031-ciam-is-a-broker/#what-sluis-requires-of-an-upstream).
 - **One sluis trusts another.** An installation accepts people and robots vouched for by another installation, and the trust graph stays acyclic ([Boundaries](/concepts/boundaries/)).
 
@@ -27,11 +27,10 @@ The **generic OpenID Connect upstream** is the same kind of integration as Googl
 | Whose provider | Kind | Class | Made by |
 |---|---|---|---|
 | The operator's own (workforce, a partner the operator agreed with) | `Upstream` and `UpstreamSecret` | Config and secret | Hand or IaC; a multi-tenant app is one `Upstream` for many customer directories |
-| A tenant's own | `TenantConnection`, written by `session` | Durable, per tenant, client secret sealed | The UI or the API |
 | A customer's Microsoft Entra directory | `EntraConnection`, written by `adapter-upstream-oidc` | Durable, per tenant | The admin consent, a browser round trip in the UI |
 
-- **Who connects decides.** A tenant's own connection is never config the operator commits: a tenant never appears in config, and a customer's single sign-on change does not wait for review ([0004](/decisions/0004-the-data-model/#who-connects-decides)).
-- **The client secret is opened per call.** The adapter reads the connection, asks key@ to open the sealed secret with a grant for that tenant, exchanges the code and keeps nothing. A `private_key_jwt` key per connection is refused, because it would be an authority key per tenant; a provider that accepts no client secret cannot be a tenant's connection ([0033](/decisions/0033-customer-connections/#what-a-pool-is-allowed)).
+- **A tenant has no connection of its own here.** The upstreams are the operator's config, and a customer's own provider is configured in the broker ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
+- **The client secret is the operator's.** It is an `UpstreamSecret` in the secret source, and the adapter keeps nothing at rest. A `private_key_jwt` key is refused, because it would be an authority key ([0033](/decisions/0033-customer-connections/#the-upstream-hosts-are-known)).
 
 ## What sluis asks the vendor for
 
@@ -58,11 +57,11 @@ The sign-in-only slice of the generic connector is in the first working version 
 Which identity product backs the first group single sign-on, and whether it brokers social login and SAML for the organisations that use it, is a product fact that the repository cannot know ([#1023](https://github.com/truvity/sluis/issues/1023)). Until it is named, this page describes the contract any product must meet ([0031](/decisions/0031-ciam-is-a-broker/#what-sluis-requires-of-an-upstream)). If the product cannot broker SAML for the organisations that need it, the SAML records ([REQ-FED-009](/requirements/fed/#REQ-FED-009)) are reopened.
 :::
 
-A connection proves each domain it serves with a DNS TXT record (a `DomainClaim` of the tenant), and carries a `trust` level (`internal`, `partner` or `customer`) that limits what a sign-in through it may reach, and an `assurance` policy that limits how strong it counts ([0033](/decisions/0033-customer-connections/#connection-trust)). A tenant cannot raise either: both are bounded by the client template in config. A client may send `idp_hint` to choose among the connections it is allowed.
+An upstream declares the e-mail domains it serves, carries a `trust` level (`internal`, `partner` or `customer`) that limits what a sign-in through it may reach, and an `assurance` policy that limits how strong it counts ([0033](/decisions/0033-customer-connections/#connection-trust)). Both are set by the operator under review. A client may send `idp_hint` to choose among the upstreams it is allowed.
 
 ## What policy controls
 
-- **Which connections exist, and for which domains.**
+- **Which upstreams exist, and for which domains.**
 - **What a connection's claims are worth**: only the allow-listed claims are read, and the provider's groups and roles never are.
 - **Admission.** A sign-in proves an identity; the client's `requires` and the policy decide what it reaches.
 - **For a peer:** which peer issuers are trusted, and the audiences each may exchange for.
@@ -78,7 +77,7 @@ A connection proves each domain it serves with a DNS TXT record (a `DomainClaim`
 
 See [the generic OIDC pattern](/integrations/connecting/#generic-oidc-upstream); names and keys are [illustrative](/integrations/#examples-are-illustrative).
 
-For the operator's own upstream, commit the `Upstream` and put the secret in the secret source:
+Commit the `Upstream` and put the secret in the secret source:
 
 ```yaml
 # Upstream, a config kind (example); its secret is an UpstreamSecret in the secret source
@@ -87,17 +86,9 @@ upstreams:
     issuer: https://idp.example.org
     client_id: sluis-partner
     subject_claim: sub
-```
-
-For a tenant's own provider, connect it in the UI or through the API. The values below are what the request carries; `session` writes the `TenantConnection` and seals the client secret.
-
-```yaml
-# a TenantConnection request through the API (example); the client secret is sent once and sealed
-issuer: https://idp.example.org
-client_id: sluis-partner
-domains: [partner.example]
-trust: customer                     # what this sign-in may reach; a tenant's own provider never exceeds customer
-assurance:                          # how strong this sign-in counts
-  ceiling: urn:example:acr:2
-  max_age: 12h
+    domains: [partner.example]       # the e-mail domains this upstream serves, declared by the operator
+    trust: partner                   # what this sign-in may reach
+    assurance:                       # how strong this sign-in counts
+      ceiling: urn:example:acr:2
+      max_age: 12h
 ```

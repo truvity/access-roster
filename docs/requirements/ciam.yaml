@@ -62,8 +62,8 @@ requirements:
       - {kind: integration-test, ref: "negative test"}
   - id: REQ-CIAM-003
     area: CIAM
-    statement: "An installation MAY declare sectors, each a name that is mixed into the pairwise subject of the clients that name it."
-    rationale: "Pairwise subjects separate relying parties that must not correlate a person, and the key is one per boundary (ADR 0034)."
+    statement: "An installation MAY declare sectors, each a name that a boundary mixes into the pairwise subject of its clients."
+    rationale: "Pairwise subjects separate controllers that must not correlate a person, and the key is one per boundary (ADR 0034)."
     level: MAY
     source: stakeholder-ciam
     status: planned

@@ -25,7 +25,7 @@ sluis serves these pages for a customer, and no others. `session` renders them.
 
 | Page | When |
 |---|---|
-| Account chooser and identifier prompt | Only for a client that routes by domain ([0033](/decisions/0033-customer-connections/#choosing-the-connection)) |
+| Account chooser and identifier prompt | Only for a client that routes by domain, which needs more than one upstream ([0033](/decisions/0033-customer-connections/#choosing-the-connection)) |
 | Redirect and form-post pages | While a sign-in is handed to the upstream or to the client |
 | Step-up notice | Before the person is sent to authenticate again ([0018](/decisions/0018-sessions/#customers)) |
 | Agent consent | When an agent asks for access ([REQ-CIAM-004](/requirements/ciam/#REQ-CIAM-004)) |
@@ -57,7 +57,7 @@ Registration, sign-in with a password or a factor, recovery and profile pages ar
 
 - **A login domain is a `FrontHost` entry,** a config kind with a host and a name. The entry named `default` serves a client that names none. A domain needs DNS and a certificate, so the kind is Fixed: a new domain is a reviewed, signed change.
 - **A client references a `FrontHost` entry by name.** An installation client names it in config. A tenant client may pick only an entry that its client template allows ([0021](/decisions/0021-clients/#the-client-declaration)), so a tenant cannot name a domain that config never provisioned.
-- **A tenant has no login domain of its own.** What a tenant brings is a brand and a choice among reviewed entries. A domain claim ([0033](/decisions/0033-customer-connections/#domain-proof)) routes a person's e-mail domain to a connection and is a different thing.
+- **A tenant has no login domain of its own.** What a tenant brings is a brand and a choice among reviewed entries. The e-mail domains that an upstream serves ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)) route a person's address to an upstream and are a different thing.
 - **Each login domain is one origin.** Its cookies are host-prefixed with no `Domain`, so a session started on one login domain does not reach another, and the origins a passkey verifier accepts are those of [0017](/decisions/0017-identity-and-sign-in/#passkeys) ([REQ-ISO-034](/requirements/iso/#REQ-ISO-034)).
 - **The issuer URL of a client is the host of its login domain,** an issuer of its boundary that shares the boundary's keys ([0017](/decisions/0017-identity-and-sign-in/#issuers)). Relying parties pin `iss` ([0017](/decisions/0017-identity-and-sign-in/#issuers)), so a client that moves to another login domain is a new issuer for them.
 

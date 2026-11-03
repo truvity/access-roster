@@ -123,7 +123,7 @@ layered_groups:
     profile: Operable
     combine: within-bounds
     layers: {built-in: "retention floors", config: [Retention]}
-    notes: "Holds are linked, not layered: ErasureHold and PersonHold stop erasure while they exist."
+    notes: "Holds are linked, not layered: ErasureHold keeps the records it covers until its retention period ends, and PersonHold refuses the person, while they exist."
   Tunables:
     profile: Fixed
     combine: within-bounds
@@ -136,7 +136,7 @@ layered_groups:
     profile: Fixed
     combine: within-bounds
     layers: {built-in: "maximum rates and pending-state bounds", config: [RateBound]}
-    notes: "A tenant may lower the rates of its own connections and clients; those are fields of TenantConnection and TenantClient, checked against RateBound on write."
+    notes: "A tenant may lower the rates of its own clients; those are fields of TenantClient, checked against RateBound on write."
 
 built_in:
   - "baseline policies and predefined policies (break-glass among them)"
@@ -173,7 +173,7 @@ kinds:
     readers: [every actor, key@, exporter@]
     exportable: no
     backed_up: no
-    notes: "Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid block."
+    notes: "Kind (environment or customer), level L1-L4, parent boundary, issuer host, uid block, sector (required; public only when declared), regulated (a declaration)."
 
   - name: TrustAnchors
     serves: work
@@ -197,7 +197,7 @@ kinds:
     readers: [session, exchange, signer]
     exportable: no
     backed_up: no
-    notes: "Issuer, key custody, required sector of a regulated party's boundary; written with the party."
+    notes: "Issuer and key custody of a regulated party's boundary; written with the party. Its sector is the boundary's."
 
   - name: KeyPlan
     serves: keys
@@ -285,7 +285,7 @@ kinds:
     readers: [session, adapter-upstream-oidc]
     exportable: no
     backed_up: no
-    notes: "An upstream made by hand or IaC on the provider side: issuer, client id, subject claim, a multi-tenant app (one app for many customer directories). Upstream criterion: config."
+    notes: "An upstream made by hand or IaC on the provider side: issuer, client id, subject claim, the company it belongs to, the e-mail domains it serves, trust and assurance, a multi-tenant app (one app for many customer directories). The operator declares every upstream; a tenant adds none. Upstream criterion: config."
 
   - name: Integration
     serves: work
@@ -784,7 +784,7 @@ kinds:
     readers: [session, console]
     exportable: no
     backed_up: yes
-    notes: "A hold on erasure for a tenant, or for the whole boundary with tenant `-`. Its reason is free text, so sealed."
+    notes: "A hold on the erasure of the records it covers, for a tenant, or for the whole boundary with tenant `-`: who set it, which records, and when its retention period ends. It keeps records and gives no access, and only whoever set it, or the front, lifts it. Its reason is free text, so sealed."
 
   - name: PersonStatus
     serves: work
@@ -1186,35 +1186,6 @@ kinds:
     exportable: no
     backed_up: yes
     notes: "The targets of a reconciler for one connection of a tenant (a team, a channel), their mode (extend or strict) and breaker thresholds, inside the bounds of config and the channels bound in reviewed policy. It names the tenant's own connection, so it is tenant-scoped and durable, and it is sealed because it names the tenant's teams and channels. Written by the provisioner that reconciles to it, on a tenant admin's request through the console or the API."
-
-  - name: TenantConnection
-    serves: work
-    scope: boundary+tenant
-    class: durable
-    treatment: sealed
-    profile: Tenant-adjustable
-    links: [ClientTemplate, DomainClaim]
-    writer: session
-    readers: [session, adapter-upstream-oidc]
-    exportable: no
-    backed_up: yes
-    layer_module: CIAM module
-    notes: "A tenant's own upstream connection, with its client secret sealed; trust level and ceiling within the template. Always durable data, entered through the UI or the API and written by session, with the client secret sealed: the upstream criterion (hand- or IaC-made app is config, browser round trip is durable) applies to connections the operator makes, and who connects decides."
-
-  - name: DomainClaim
-    serves: work
-    scope: boundary+tenant
-    class: durable
-    treatment: plain
-    profile: Tenant-adjustable
-    links: [TenantConnection]
-    writer: session
-    readers: [session]
-    exportable: no
-    backed_up: yes
-    indexes: [by_domain]
-    layer_module: CIAM module
-    notes: "A domain, the DNS proof token and its last checks; routes only once proved."
 
   - name: HeldChange
     serves: work

@@ -96,7 +96,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 |-----|----------|--------|
 | [0031](0031-ciam-is-a-broker.md) | CIAM is a broker: a customer-identity product owns the accounts, sluis owns the session and the tokens, and the contract between them is written down | Accepted |
 | [0032](0032-customer-identity-installations.md) | A customer-identity installation is a front and a few customer boundaries whose tenants each have their own data keys, a tenant's client IDs carry its name, and a move keeps every subject | Accepted |
-| [0033](0033-customer-connections.md) | Customer connections run in a pool per customer boundary, and a domain routes only after DNS proof | Accepted |
+| [0033](0033-customer-connections.md) | An installation federates to a fixed set of upstreams that its operator declares, and a customer installation sees exactly one | Accepted |
 | [0034](0034-end-users-and-upstream-signals.md) | An end user is a person with five states, erased by deleting its records, and upstream signals end sessions or suspend and erase | Accepted |
 | [0035](0035-customer-pages.md) | Customer pages are few, branded per client and login domain, and localised per request | Accepted |
 | [0036](0036-volumetric-abuse.md) | Volumetric abuse is stopped at the edge, and sluis bounds what one connection, client or source can cost with a token bucket kept as a temp kind | Accepted |

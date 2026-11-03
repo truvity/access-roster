@@ -451,8 +451,8 @@ requirements:
       - {kind: integration-test, ref: "a PolicyLink that names a template absent from config is refused"}
   - id: REQ-DATA-035
     area: DATA
-    statement: "A tenant's connection to a provider, and its own connection to its identity provider, MUST be a durable tenant-scoped kind with its credential sealed."
-    rationale: "Who connects decides: a tenant never appears in config, and a customer's single sign-on change does not wait for review (ADR 0004)."
+    statement: "A tenant's connection to a provider MUST be a durable tenant-scoped kind with its credential sealed."
+    rationale: "Who connects decides: a tenant never appears in config, and a customer's change does not wait for review (ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -461,7 +461,7 @@ requirements:
     issues: [1214]
     verification:
       - {kind: integration-test, ref: "registry check: the connection kinds are durable, tenant-scoped and sealed"}
-      - {kind: integration-test, ref: "a TenantConnection written through the API is accepted without a config change"}
+      - {kind: integration-test, ref: "a DirectoryConnection written through the API is accepted without a config change"}
   - id: REQ-DATA-036
     area: DATA
     statement: "The console MUST route every write except those of Switch and LogLevelOverride to the owning actor."
