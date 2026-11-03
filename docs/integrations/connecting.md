@@ -215,8 +215,6 @@ For any provider that publishes OpenID Connect discovery:
 3. **Declare the e-mail domains** the upstream serves in the `Upstream`, then run `sluis integrations check oidc partner`.
 4. Choose what the connection's claims are worth: map the allow-listed claims to facts; asserted groups and roles are never read ([0033](/decisions/0033-customer-connections/#claims-and-groups)).
 
-For a Microsoft Entra directory, the operator commits one multi-tenant `Upstream`; each customer directory then gives admin consent in a browser round trip, which `adapter-upstream-oidc` completes and keeps as an `EntraConnection` of the tenant, with an `EntraConsentState` while the consent is in progress.
-
 The checks on every ID token are on [Generic OIDC and peer sluis](/integrations/oidc-upstream/).
 
 ## Credentials without a ceremony

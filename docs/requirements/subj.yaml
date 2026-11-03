@@ -780,7 +780,7 @@ requirements:
   # ---- who erases, what a boundary may forget, and holds (decision 0034)
   - id: REQ-SUBJ-061
     area: SUBJ
-    statement: "sluis MUST accept `erase`, `suspend` and `resume` only from the client that config declares as the front of the person's tenant."
+    statement: "sluis MUST accept `erase`, `suspend` and `resume` only from the status client that the person's Tenant item names as its owning product's."
     rationale: "One product's call must not erase or lock out a person for every boundary (ADR 0034)."
     level: MUST
     source: design-decision
@@ -816,8 +816,8 @@ requirements:
       - {kind: integration-test, ref: "erase a person with a hold: the held records remain and nothing else; the held records are deleted when the retention period ends"}
   - id: REQ-SUBJ-064
     area: SUBJ
-    statement: "An ErasureHold MUST be lifted only by whoever set it or by the front."
-    rationale: "A hold only tightens, so only its owner or the front may release it (ADR 0034)."
+    statement: "An ErasureHold MUST be lifted only by whoever set it or by the owning product."
+    rationale: "A hold only tightens, so only its owner or the owning product may release it (ADR 0034)."
     level: MUST
     source: design-decision
     status: planned

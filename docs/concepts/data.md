@@ -102,7 +102,7 @@ A **layered kind** is a setting split into one kind per layer, each with its own
 
 ### Connections
 
-An app and a connection are two things. A provider app that serves the whole installation is config plus a secret. Every **connection** of a tenant to a provider (its directory, chat workspace, code host, or its account at a provider that sluis mints for) is a durable kind of that tenant with its credential sealed, made through the UI or the API. The operator's own company is a tenant, so its connections are durable too, and an infrastructure tool that writes through the API makes durable data, not config. A tenant's own connection to its identity provider is always durable data and never config committed by the operator ([ADR 0004](/decisions/0004-the-data-model/#the-upstream-criterion)).
+An app and a connection are two things. A provider app that serves the whole installation is config plus a secret. Every **connection** of a tenant to a provider (its directory, chat workspace, code host, or its account at a provider that sluis mints for) is a durable kind of that tenant with its credential sealed, made through the UI or the API. The operator's own company is a tenant, so its connections are durable too, and an infrastructure tool that writes through the API makes durable data, not config.
 
 ## One writer per kind
 

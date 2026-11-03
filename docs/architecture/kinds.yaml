@@ -285,7 +285,7 @@ kinds:
     readers: [session, adapter-upstream-oidc]
     exportable: no
     backed_up: no
-    notes: "An upstream made by hand or IaC on the provider side: issuer, client id, subject claim, the company it belongs to, the e-mail domains it serves, trust and assurance, a multi-tenant app (one app for many customer directories). The operator declares every upstream; a tenant adds none. Upstream criterion: config."
+    notes: "An upstream made by hand or IaC on the provider side: issuer, client id, subject claim, the claim that carries the organisation id, the e-mail domains it serves, trust and assurance. The operator declares every upstream; a tenant adds none. It names no tenant: it declares only the claim that carries the organisation id. Upstream criterion: config."
 
   - name: Integration
     serves: work
@@ -551,18 +551,6 @@ kinds:
     backed_up: no
     notes: "PKI roles: which leaf profiles ca and ssh-ca issue for whom."
 
-  - name: Sector
-    serves: work
-    scope: boundary
-    class: config
-    treatment: plain
-    profile: Fixed
-    writer: IaC
-    readers: [session, signer]
-    exportable: no
-    backed_up: no
-    layer_module: CIAM module
-
   - name: RateBound
     serves: work
     scope: boundary
@@ -693,7 +681,7 @@ kinds:
     exportable: no
     backed_up: yes
     indexes: [by_name]
-    notes: "Name (a slug of lower-case letters, digits and hyphens, not free text; a display name is TenantBranding's, sealed), state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). exchange owns what a tenant has configured."
+    notes: "Name (a slug of lower-case letters, digits and hyphens, not free text; a display name is TenantBranding's, sealed), state (active, suspended, erasing), created by a product or by a seed apply. Its id is fixed (`self`). The upstream and the organisation id that the upstream sends for it, and the status client of the product that owns its people. exchange owns what a tenant has configured."
 
   - name: Allowance
     serves: work
@@ -784,7 +772,7 @@ kinds:
     readers: [session, console]
     exportable: no
     backed_up: yes
-    notes: "A hold on the erasure of the records it covers, for a tenant, or for the whole boundary with tenant `-`: who set it, which records, and when its retention period ends. It keeps records and gives no access, and only whoever set it, or the front, lifts it. Its reason is free text, so sealed."
+    notes: "A hold on the erasure of the records it covers, for a tenant, or for the whole boundary with tenant `-`: who set it, which records, and when its retention period ends. It keeps records and gives no access, and only whoever set it, or the owning product, lifts it. Its reason is free text, so sealed."
 
   - name: PersonStatus
     serves: work

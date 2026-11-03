@@ -476,3 +476,15 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "config check negative test: a second upstream at the front of a customer installation"}
+  - id: REQ-FED-036
+    area: FED
+    statement: "sluis MUST refuse a sign-in unless the upstream's organisation claim holds exactly one organisation id and exactly one Tenant records it."
+    rationale: "A sign-in whose organisation is absent, unknown, ambiguous or plural must not fall into a tenant by default (ADR 0033)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [916]
+    verification:
+      - {kind: integration-test, ref: "sign-in matrix: the organisation id absent, unknown, recorded by two tenants, and two ids in the claim are each refused"}

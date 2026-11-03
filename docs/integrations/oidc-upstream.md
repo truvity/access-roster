@@ -26,8 +26,7 @@ The **generic OpenID Connect upstream** is the same kind of integration as Googl
 
 | Whose provider | Kind | Class | Made by |
 |---|---|---|---|
-| The operator's own (workforce, a partner the operator agreed with) | `Upstream` and `UpstreamSecret` | Config and secret | Hand or IaC; a multi-tenant app is one `Upstream` for many customer directories |
-| A customer's Microsoft Entra directory | `EntraConnection`, written by `adapter-upstream-oidc` | Durable, per tenant | The admin consent, a browser round trip in the UI |
+| The operator's own (workforce, a partner the operator agreed with) | `Upstream` and `UpstreamSecret` | Config and secret | Hand or IaC |
 
 - **A tenant has no connection of its own here.** The upstreams are the operator's config, and a customer's own provider is configured in the broker ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
 - **The client secret is the operator's.** It is an `UpstreamSecret` in the secret source, and the adapter keeps nothing at rest. A `private_key_jwt` key is refused, because it would be an authority key ([0033](/decisions/0033-customer-connections/#the-upstream-hosts-are-known)).
@@ -53,9 +52,7 @@ Beyond sign-in, a connection supports what a CIAM product or any strict provider
 
 The sign-in-only slice of the generic connector is in the first working version ([#1106](https://github.com/truvity/sluis/issues/1106)); the rest of it, [#916](https://github.com/truvity/sluis/issues/916), is in the CIAM upstream milestone ([Roadmap](/roadmap/)). A SAML identity provider and SCIM provisioning for AWS IAM Identity Center are Later ([#918](https://github.com/truvity/sluis/issues/918)).
 
-:::note[Proposed]
-Which identity product backs the first group single sign-on, and whether it brokers social login and SAML for the organisations that use it, is a product fact that the repository cannot know ([#1023](https://github.com/truvity/sluis/issues/1023)). Until it is named, this page describes the contract any product must meet ([0031](/decisions/0031-ciam-is-a-broker/#what-sluis-requires-of-an-upstream)). If the product cannot broker SAML for the organisations that need it, the SAML records ([REQ-FED-009](/requirements/fed/#REQ-FED-009)) are reopened.
-:::
+The customer installation's one upstream is the Keycloak broker, which holds the tenants' identity providers and brokers their social login and SAML ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)). What sluis requires of it is in [0031](/decisions/0031-ciam-is-a-broker/#what-sluis-requires-of-an-upstream). If Keycloak cannot broker SAML for the organisations that need it, the SAML records ([REQ-FED-009](/requirements/fed/#REQ-FED-009)) are reopened.
 
 An upstream declares the e-mail domains it serves, carries a `trust` level (`internal`, `partner` or `customer`) that limits what a sign-in through it may reach, and an `assurance` policy that limits how strong it counts ([0033](/decisions/0033-customer-connections/#connection-trust)). Both are set by the operator under review. A client may send `idp_hint` to choose among the upstreams it is allowed.
 
