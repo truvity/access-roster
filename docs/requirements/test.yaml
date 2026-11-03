@@ -142,3 +142,18 @@ requirements:
     issues: [877]
     verification:
       - {kind: integration-test, ref: "an ID token minted more than a second after the one-time-password step carries amr with pwd, otp and mfa"}
+  - id: REQ-TEST-011
+    area: TEST
+    statement: "The customer installation on Kubernetes (EKS) MUST run the full conformance set, the OpenID Connect plans, the FAPI 2.0 plans and the customer-identity plans, in addition to the local installation on pull requests and the lambda installation nightly."
+    rationale: "The customer installation is the one that serves end users and claims the high-assurance profile, so the claim is proved on the installation that carries it (ADR 0011, Kubernetes; ADR 0038)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["kubernetes"]
+    standards:
+      - {id: ST-37, section: "1", depth: Full}
+      - {id: ST-104, section: "1", depth: Full}
+    issues: [850, 929, 931]
+    verification:
+      - {kind: conformance-suite, ref: "OIDF Config OP, Basic OP and the logout plans against the EKS customer installation"}
+      - {kind: conformance-suite, ref: "FAPI2-SP against the EKS customer installation"}
