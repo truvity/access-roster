@@ -1,0 +1,52 @@
+// The session service: typed OAuth requests (decision D-10); entry's closed lists come from these fields.
+syntax = "proto3";
+
+package sluis.session.v2alpha1;
+
+import "sluis/type/v2alpha1/type.proto";
+
+// SessionService serves the sign-in endpoints that entry routes to it.
+service SessionService {
+  rpc Authorize(AuthorizeRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc Callback(CallbackRequest) returns (sluis.type.v2alpha1.HttpReply);
+  rpc Token(TokenRequest) returns (sluis.type.v2alpha1.HttpReply);
+}
+
+// AuthorizeRequest is the authorization request (RFC 6749 section 4.1.1, RFC 7636, OpenID Connect Core).
+message AuthorizeRequest {
+  string response_type = 1;          // "code"
+  string client_id = 2;              // the client
+  string redirect_uri = 3;           // where to send the answer
+  string scope = 4;                  // space-separated scopes
+  string state = 5;                  // the client's opaque state
+  string nonce = 6;                  // the OpenID Connect nonce
+  string code_challenge = 7;         // RFC 7636
+  string code_challenge_method = 8;  // "S256"
+  string response_mode = 9;          // the response mode, if sent
+  string prompt = 10;                // the OpenID Connect prompt, if sent
+  string max_age = 11;               // the OpenID Connect max_age, if sent
+  string acr_values = 12;            // the OpenID Connect acr_values, if sent
+}
+
+// CallbackRequest is the answer of the upstream to the sign-in redirect.
+message CallbackRequest {
+  string code = 1;               // the upstream's authorization code
+  string state = 2;              // the state sluis sent
+  string error = 3;              // the upstream's error code, if any
+  string error_description = 4;  // the upstream's error text, if any
+  string iss = 5;                // RFC 9207 issuer identification, if sent
+  string cookie = 6;             // the value of the sluis sign-in cookie, if sent
+}
+
+// TokenRequest is the token request (RFC 6749 section 4.1.3 and 6).
+message TokenRequest {
+  string grant_type = 1;       // "authorization_code" or "refresh_token"
+  string code = 2;             // the authorization code
+  string redirect_uri = 3;     // the redirect_uri of the authorization request
+  string code_verifier = 4;    // RFC 7636
+  string client_id = 5;        // the client
+  string refresh_token = 6;    // the refresh token
+  string scope = 7;            // the requested scope, if narrowing
+  string client_secret = 8;    // client_secret_post
+  string authorization = 9;    // the HTTP Authorization header, for client_secret_basic
+}

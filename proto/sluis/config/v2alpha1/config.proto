@@ -1,0 +1,111 @@
+// The skeleton's config kinds: one message per kind, the payload schema. Ids follow decision D-17:
+// a singleton kind has one item with id "default", a keyed kind uses its name.
+syntax = "proto3";
+
+package sluis.config.v2alpha1;
+
+import "google/protobuf/duration.proto";
+
+// Boundary is the kind Boundary (bootstrap file and signed config); id "default".
+message Boundary {
+  string name = 1;                       // the boundary's name
+  string kind = 2;                       // the boundary's kind
+  string level = 3;                      // the boundary's level
+  string environment = 4;                // "development", "staging" or "production"
+  string issuer = 5;                     // the issuer URL of the boundary
+  uint32 uid_block = 6;                  // the first uid of the boundary's block of actor uids
+  repeated string declared_kinds = 7;    // the kinds the boundary declares
+  string default_tenant = 8;             // decision D-4: the one tenant of the skeleton until Tenant items exist
+}
+
+// KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".
+message KeyPlan {
+  repeated KeyPurposePlan purposes = 1;      // one entry per purpose
+  google.protobuf.Duration cache_ttl = 2;    // how long key@ may cache an unwrapped data key
+}
+
+// KeyPurposePlan is the plan of one purpose.
+message KeyPurposePlan {
+  string purpose = 1;    // a purpose name from keys.yaml
+  string algorithm = 2;  // the algorithm of the purpose's key
+  string slot = 3;       // where the key lives in the key store
+}
+
+// TokenLifetime is the kind TokenLifetime; id "default".
+message TokenLifetime {
+  google.protobuf.Duration id_token = 1;                  // lifetime of an ID token
+  google.protobuf.Duration access_token = 2;              // lifetime of an access token
+  google.protobuf.Duration human_session_absolute = 3;    // the longest a person's session lasts
+  google.protobuf.Duration refresh_idle = 4;              // how long a refresh token may sit unused
+}
+
+// InstallationClient is the kind InstallationClient; id is the client id.
+message InstallationClient {
+  string id = 1;                              // the client id
+  string kind = 2;                            // "public", "confidential" or "exchange"
+  repeated string redirects = 3;              // the allowed redirect URIs
+  repeated string requires = 4;               // what the client requires of a sign-in
+  google.protobuf.Duration ttl_cap = 5;       // the longest token lifetime the client may get
+  string profile = 6;                         // the client's profile
+}
+
+// Upstream is the kind Upstream; id is the upstream's name. It names no tenant (kinds.yaml).
+message Upstream {
+  string name = 1;                 // the upstream's name
+  string kind = 2;                 // the kind of upstream, e.g. "oidc"
+  string issuer = 3;               // the upstream's issuer URL
+  string client_id = 4;            // sluis's client id at the upstream
+  string subject_claim = 5;        // the claim that holds the subject
+  string org_claim = 6;            // the claim that holds the organisation; may be empty
+  repeated string scopes = 7;      // the scopes to ask for
+}
+
+// UpstreamSecret is the kind UpstreamSecret; id is the upstream's name.
+message UpstreamSecret {
+  string upstream = 1;     // the upstream's name
+  string credential = 2;   // the name of the credential in the secret source
+}
+
+// GrantVocabulary is the kind GrantVocabulary; id "default".
+message GrantVocabulary {
+  bytes document = 1;  // the YAML text of policy.md "The grant vocabulary"; parsed by policy
+}
+
+// Policy is the kind Policy: one Cedar file; id is the policy file's id.
+message Policy {
+  string id = 1;      // the policy file's id
+  string cedar = 2;   // the Cedar text
+}
+
+// ExchangeTrust is the kind ExchangeTrust; id "default".
+message ExchangeTrust {
+  repeated TrustedIssuer issuers = 1;  // the issuers whose tokens may be exchanged
+}
+
+// TrustedIssuer is one issuer trusted for token exchange.
+message TrustedIssuer {
+  string issuer = 1;                 // the issuer URL
+  repeated string audiences = 2;     // the audiences accepted from it
+  string proof_kind = 3;             // how its tokens are proven
+  string jwks_uri = 4;               // where its keys are
+}
+
+// AuditLog is the kind AuditLog; id "default".
+message AuditLog {
+  string project = 1;            // the audit project
+  repeated LogDecl logs = 2;     // the logs of the project
+  string lock_mode = 3;          // the object-lock mode of the log's store
+}
+
+// LogDecl declares one log of the audit project.
+message LogDecl {
+  string kind = 1;     // "audit" or "usage"
+  string id = 2;       // the log's id
+  string origin = 3;   // the log's origin, per 0029 "Tiled log"
+}
+
+// AuditCatalogue is the kind AuditCatalogue; id "default".
+message AuditCatalogue {
+  string release = 1;              // the release the catalogue belongs to
+  repeated string actions = 2;     // the action names (decision D-15: names only tonight)
+}

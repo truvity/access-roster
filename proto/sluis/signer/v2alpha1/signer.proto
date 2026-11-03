@@ -1,0 +1,47 @@
+// The signer service and the kind SigningRing (0017 "Issuers").
+syntax = "proto3";
+
+package sluis.signer.v2alpha1;
+
+import "google/protobuf/timestamp.proto";
+
+// SignerService signs tokens and publishes the key set.
+service SignerService {
+  rpc SignToken(SignTokenRequest) returns (SignTokenResponse);
+  rpc KeySet(KeySetRequest) returns (KeySetResponse);
+}
+
+// SignTokenRequest asks for a signed token.
+message SignTokenRequest {
+  string typ = 1;           // "JWT" (ID token) or "at+jwt"
+  bytes claims_json = 2;    // the claims as a JSON object
+}
+
+// SignTokenResponse carries the token.
+message SignTokenResponse {
+  string token = 1;    // compact JWS, ES384
+  string key_id = 2;   // the signing key's RFC 7638 thumbprint, base64url
+}
+
+// KeySetRequest asks for the key set.
+message KeySetRequest {}
+
+// KeySetResponse carries the key set.
+message KeySetResponse {
+  bytes jwks_json = 1;  // the JWK Set (RFC 7517) as JSON
+}
+
+// SigningRing is the kind SigningRing: boundary-scoped, id "default".
+message SigningRing {
+  repeated SigningKey keys = 1;  // the keys of the ring
+}
+
+// SigningKey is one key of the ring.
+message SigningKey {
+  string key_id = 1;                         // RFC 7638 thumbprint, base64url
+  string algorithm = 2;                      // e.g. "ES384"
+  bytes spki_der = 3;                        // the public key, SubjectPublicKeyInfo in DER
+  repeated bytes x5c = 4;                    // the certificate chain, DER, when there is one
+  google.protobuf.Timestamp added_at = 5;    // when the key joined the ring
+  string state = 6;                          // the key's state in the ring
+}
