@@ -234,3 +234,50 @@ check-rules: check-selftest check-decisions check-requirements check-actors chec
 
 # Everything a pull request must pass.
 check: check-rules site-check site-workers
+
+# Code: the Go module (go.mod) and the Cargo workspace (Cargo.toml). CI runs `check-code`.
+
+# Build every Go package.
+go-build:
+    go build ./...
+
+# Test every Go package with the race detector, uncached.
+go-test:
+    go test -race -count=1 ./...
+
+# Lint the Go module.
+go-lint:
+    golangci-lint run ./...
+
+# Build the Cargo workspace.
+rust-build:
+    cargo build --workspace
+
+# Test the Cargo workspace.
+rust-test:
+    cargo test --workspace
+
+# Format check and Clippy over the Cargo workspace.
+rust-lint:
+    cargo fmt --all --check
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
+# the Cargo workspace must each hold a package. The proto and registry steps run once their
+# recipes exist.
+check-code:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go_packages=$(go list ./... | wc -l)
+    [ "$go_packages" -gt 0 ] || { echo "::error::go list ./... found no package" >&2; exit 1; }
+    rust_packages=$(cargo metadata --format-version 1 --no-deps | jq '.workspace_members | length')
+    [ "$rust_packages" -gt 0 ] || { echo "::error::cargo metadata found no workspace member" >&2; exit 1; }
+    echo "$go_packages Go packages, $rust_packages Rust packages"
+    for step in proto-check registry-check; do
+        if just --summary | tr ' ' '\n' | grep -qx "$step"; then
+            just "$step"
+        else
+            echo "SKIP: $step not yet defined"
+        fi
+    done
+    just go-lint go-test rust-lint rust-test

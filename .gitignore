@@ -59,3 +59,9 @@ Thumbs.db
 
 # Cloudflare: the deploy redirect and local state written by the site build
 /site/.wrangler/
+
+# Code: Cargo build output, and the state a harness run leaves (keys of a test run)
+/target/
+/deploy/*/state/
+# devbox plugin files that `devbox run` writes
+/devbox.d/
