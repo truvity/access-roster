@@ -2,8 +2,8 @@
 #
 # The tested installations' ports, drivers and runtimes come from
 # architecture.yaml, so the two explorers agree. This file adds what is specific
-# to audit. Written by hand from the design today; the actors, edges and access
-# lists are generated from the permission manifest once it exists.
+# to audit. Written by hand from the design (records 0028 to 0030); the actors,
+# their ports and their key purposes are those of the registries.
 #
 # Status: `status` is decided | proposed, with the labels of architecture.yaml.
 # A proposed item carries `issue: <n>`, its open tracking issue in
@@ -30,7 +30,7 @@ transport_kinds:
     wait: "In the local spool on the node: segment files on disk (illustrative). The size cap and what happens at it are an open point (below)."
     recv: "The writer reads the spool in append order and acknowledges what it has sealed."
     caller: "The spool keeps a directory per producer uid, so the driver knows which actor appended (ADR 0003)."
-    drain: "The writer reads the spool in append order, rolls records into batches, writes them to the log, has each checkpoint signed and registers the batch. Dedupe by record id absorbs anything delivered twice."
+    drain: "The writer reads the spool in append order, rolls records into batches, writes them to the log, has each checkpoint signed and registers the batch in its state in the project's bucket. Dedupe by record id absorbs anything delivered twice."
     bound: "Free disk on the node and the spool's size cap (an open point)"
     instance: "shared: one spool, the driver checks every caller's peer credentials"
     mode_label: "queue, a local spool (the installation default on bare-metal)"
@@ -47,9 +47,9 @@ transport_kinds:
     durable: "SQS accepted the message in the queue, up to its retention; failed deliveries move to a dead-letter queue"
     wait: "In the SQS queue, up to its retention (SQS allows up to 14 days). Messages that keep failing move to a dead-letter queue after the maximum receive count."
     recv: "The Lambda event source mapping hands batches of messages to the writer function. The function returns the messages it could not seal."
-    caller: "Each actor has its own aws driver (a Lambda extension) and sends under its own IAM role; the queue policy names the sender roles (ADR 0003)."
-    drain: "The event source mapping delivers the backlog in batches as fast as the function and its blob and state limits allow. A batch that fails returns its messages; dedupe by record id absorbs repeats. Messages that fail repeatedly go to the dead-letter queue."
-    bound: "Queue retention (up to 14 days), function concurrency, blob and state throughput"
+    caller: "Each actor has its own aws driver (a Lambda extension) and sends under its own IAM role; the queue policy names the sender roles, and each project has its own queue (ADR 0003, ADR 0028)."
+    drain: "The event source mapping delivers the backlog in batches as fast as the function and its blob limits allow. A batch that fails returns its messages; dedupe by record id absorbs repeats. Messages that fail repeatedly go to the dead-letter queue."
+    bound: "Queue retention (up to 14 days), function concurrency, blob throughput"
     instance: "per-actor: each producer sends under its own IAM role"
     mode_label: "queue, SQS (the installation default on serverless)"
     status: decided
@@ -58,11 +58,11 @@ transport_kinds:
     mode: queue
     short: "queue, NATS JetStream"
     title: "nats-jetstream: a JetStream stream (queue)"
-    used_on: "the installation default on Kubernetes; the customer-identity installation on Kubernetes is its reference"
+    used_on: "the installation default on Kubernetes; the installation of the CIAM layer (0032) on Kubernetes is its reference"
     durable: "the stream accepted the message; it is replicated when the NATS service has three nodes"
     wait: "In the JetStream stream, up to its retention limits."
     recv: "The writer pulls from a durable consumer and acknowledges what it has sealed."
-    caller: "Each producer connects with its own credential, under NATS accounts and permission templates (ADR 0003)."
+    caller: "Each producer connects with its own credential, under NATS accounts and permission templates, so an emitter publishes only to its own project's subjects (ADR 0003, ADR 0028)."
     drain: "The writer pulls the backlog from its consumer in batches. Dedupe by record id absorbs redelivery."
     bound: "Stream retention and storage on the NATS service"
     instance: "per-actor: each producer connects under its own credential"
@@ -77,7 +77,7 @@ transport_kinds:
     durable: "the writer received the record and acknowledged it; nothing is held in between while the writer is up"
     wait: "Nowhere while the writer is up. When the writer is down, the emitter falls back to a local spool on its own disk, so direct mode needs a disk."
     recv: "The writer is the receiver: it accepts the stream and acknowledges each record."
-    caller: "direct-unix reads the caller's peer uid; direct-mtls reads the SPIFFE ID in the client certificate."
+    caller: "direct-unix reads the caller's peer uid; direct-mtls reads the identity in the caller's client certificate."
     drain: "Nothing to drain while the writer is up. The fallback spool is replayed when the writer returns."
     bound: "The writer's availability, and the fallback spool's size"
     instance: "the writer is the one receiver; producers connect to it"
@@ -89,28 +89,35 @@ transport_kinds:
 # ---------------------------------------------------------------------------
 shapes:
   local:
-    log_key: "a software key, through key-holder, which lets only the writer use the log key"
-    witness: "none by default (optional); an external witness is possible"
+    log_key: "a software key, through key@, which lets only the writer use the log key"
+    witness: "none (a witness is optional everywhere); an external witness is possible"
     blob: "a local directory (fs)"
     lock: "lock mode none"
     cluster: "single node"
     index_placement: "A sqlite file on the node; the reader runs beside the indexer"
     note: "The local installation uses a local spool and the fs blob, a local directory with no lock, so tamper evidence depends on a witness, which is optional. sluis config check warns when there is none."
   boards:
-    log_key: "each node's own YubiKey signs that node's log, through key-holder, which lets only that node's writer use the key"
-    witness: "peer: the other two nodes cosign each node's log (2-of-3)"
+    log_key: "each board's own card signs that board's log, through key@, which lets only that board's writer use the key"
+    witness: "peer: the other two boards cosign each board's log (2-of-3)"
     blob: "Cloudflare R2, through the s3-compatible driver with credentials from the cloudflare cloud driver"
     lock: "lock mode removable (an R2 account administrator can remove the lock); the peer witnesses protect the history, which is what lets a production log run here"
-    cluster: "three nodes; each node has its own writer, spool and log; the audit pieces run on the same nodes and share driver instances"
+    cluster: "three boards; each board has its own instance of each project's writer, with its own spool and log; the audit pieces run on the same boards"
     index_placement: "rqlite, a replicated SQLite (ADR 0028), so the reader can run on any node; sqlite on the indexer's node is the fallback"
   lambda:
-    log_key: "one KMS key, used only by the writer function's IAM role through its key policy. One log; the function's role is the isolation"
-    witness: "none by default (optional); an external witness is possible. There is no peer"
+    log_key: "one KMS key per writer, whose key policy names key@ only; key@ lets only the writer use it. One log of each kind per project; the function's role is the isolation"
+    witness: "optional: peer or external"
     blob: "an S3 bucket"
     lock: "lock mode compliance (Object Lock)"
-    cluster: "managed by the platform; the writer runs with a reserved concurrency of 1 on a standard SQS queue, and correctness comes from create-if-absent on the bucket"
+    cluster: "managed by the platform; each project's writer runs with a reserved concurrency of 1 on a standard SQS queue, and correctness comes from create-if-absent on the bucket"
     index_placement: "postgres on Aurora by default (ADR 0028), reached through RDS Proxy with IAM authentication; the indexer and the reader run in the VPC"
     note: "The default index here is postgres on Aurora (ADR 0028), reached through RDS Proxy with IAM authentication and one database role per actor kind. A small install can also run sluis audit search from the CLI, which builds a local sqlite index from the log. The search index is a rebuildable cache; the log in the blob is the record."
+
+# The rows the blob store's detail panel adds to its backend and lock mode: the
+# layout is the same on every installation (records 0029, 0039).
+blob_rows:
+  - { k: Bucket, v: "one per project, with one prefix per log kind: audit/ and usage/, which the project's writer writes, and billing/, the product's own log, which no audit piece writes; the sluis project also has issuance/" }
+  - { k: Layout, v: "<kind>/<log>/ per log: the tlog-tiles entry bundles and tiles, and checkpoints/<size>" }
+  - { k: Writer state, v: "registered in the same bucket in one conditional write: the sealed batches of both log kinds, the duplicate ids it dropped and the transport cursor; never in the store" }
 
 # ---------------------------------------------------------------------------
 # The map
@@ -156,7 +163,7 @@ nodes:
     cls: role
     title: producers
     l2: signer policy ca
-    l3: integrations
+    l3: adapters
     does: Every other actor puts a record on the transport for each thing it did, refusals included.
     holds: Put on the transport, nothing else about audit
     never: Blob, state, index or key access for audit; a way to read the transport back
@@ -165,15 +172,15 @@ nodes:
     row: 4.5
     cls: role
     title: quota
-    l2: engine and state (cas)
-    l3: derived placement
+    l2: allowance, countdown
+    l3: quota module
     kind: actor
     status: decided
-    does: "Rate limits and caps. A separate piece: the quota engine, with its quota state (the state port with compare-and-set). It can be combined with sluis in one installation, where it shares driver instances. Every limit decision is audited, so it is a producer like every other actor."
+    does: "Counts the allowance of each tenant down and refuses at zero. It is a work actor of the quota module, not an audit piece, and it runs beside sluis or in an installation of its own (ADR 0039). Every admit, refusal and push is an audit fact, so it is a producer like every other actor, and the only one whose usage part carries the facts of an allowance (ADR 0030)."
     rows:
-      - { k: Placement, v: "Derived from the port and driver rules; a separate piece, combinable with sluis." }
-      - { k: Mode, v: "Metering by default; enforcement per policy rule, strict in 2.0 (never over the limit). Enforcement is switched on in production after the load test of the mint path (ADR 0030)." }
-    holds: Put on the transport; its own quota state
+      - { k: Placement, v: "A work actor, beside sluis or in an installation of its own; not an audit piece." }
+      - { k: State, v: "The durable kind Allowance, changed by one conditional update; nobody watches it (ADR 0039)." }
+    holds: Put on the transport; the write of Allowance, with a grant sealed for the tenant
     never: Blob, index or key access for audit
   recovery:
     lane: 0
@@ -181,10 +188,10 @@ nodes:
     cls: node
     title: recovery
     l2: break-glass
-    l3: sluis recovery
-    does: The break-glass tool. Its proof is a passkey; it needs neither Kubernetes nor a password. It spools its audit record locally and delivers it later, instead of blocking.
+    l3: recovery sign-in
+    does: The break-glass recovery sign-in. Its proof is a passkey assertion that session checks against the credentials in config; it needs neither Kubernetes nor a password (ADR 0017). It spools its audit record locally and delivers it later, instead of blocking.
     holds: A local spool on the machine it runs on
-    never: A dependency on entry, the state store or the writer
+    never: A dependency on entry, the store or the writer
   transport:
     lane: 1
     row: 2.3
@@ -196,6 +203,7 @@ nodes:
       - { k: Modes, v: "direct (direct-unix on the same host, direct-mtls between hosts) or queue (spool, SQS, NATS JetStream). The installation defaults are queue: the spool on bare-metal, SQS on serverless and NATS JetStream on Kubernetes. Direct is supported with no default." }
       - { k: "Direct mode, writer down", v: "The emitter falls back to a local spool on its own disk, so direct mode needs a disk and is not available on serverless." }
       - { k: "Where the writer runs", v: "One installation's placement, not the model: it may be on the same node as sluis or somewhere else." }
+      - { k: "One per project", v: "Each project has its own queue or stream, and only the project's emitters publish to it and only the project's writer consumes it." }
   rspool:
     lane: 1
     row: 5.8
@@ -213,9 +221,9 @@ nodes:
     title: writer
     l2_lambda: Lambda function
     l3_lambda: SQS event source
-    does: "Takes records from the transport, validates them, removes duplicates and rolls a batch; writes the batch's entry bundles and tiles; has the checkpoint signed with the log key through the keys driver and writes it; registers the batch; and asks the witnesses to cosign. It declares exactly 1 instance. On serverless a reserved concurrency of 1 stands in for the lease; everywhere the blob store's create-if-absent is the fence."
-    holds: Receive and ack on the transport; create-if-absent on its own log's prefix; the batch registration in state; sign with the log key through the keys driver
-    never: The log key itself (the keys driver signs for it); the index; any way to hand a record back to a caller
+    does: "One per project: takes the project's records from the transport, validates them, removes duplicates and rolls a batch; seals each record at key@ under its tenant's evidence key; writes the batch's entry bundles and tiles; has key@ sign the checkpoint with the log key and writes it; registers the batch in its state in the bucket; and asks the witnesses to cosign. Each log has exactly one writer and a cluster keeps one log per node. On serverless a reserved concurrency of 1 is an optimisation; everywhere the blob store's create-if-absent is the fence."
+    holds: Receive and ack on the transport; create-if-absent on its own project's bucket; its state in that bucket; Seal under the evidence key, and Sign with its log key, at key@
+    never: The log key itself (key@ signs for it); Open of any record; the index; any way to hand a record back to a caller
   witness:
     lane: 2
     row: 2.6
@@ -223,14 +231,14 @@ nodes:
     role: witness
     title: witness
     l2: cosigns checkpoints
-    l3: the witness port
-    l2_lambda: none by default
-    l3_lambda: optional
-    does: "Cosigns each new checkpoint the writer sends it, once it has checked that the checkpoint is consistent with the last one it cosigned, so that the writer alone cannot choose which history an auditor sees. The witness port is the only port audit adds to the shared ones. Drivers: none, peer or external. A witness is optional everywhere, and sluis config check warns when there is none."
+    l3: tlog-witness
+    l2_lambda: optional
+    l3_lambda: peer or external
+    does: "Cosigns each new checkpoint the writer sends it, once it has checked that the checkpoint is consistent with the last one it cosigned, so that the writer alone cannot choose which history an auditor sees. A witness is an actor of the audit family with its own drivers: none, peer or external. It is optional everywhere, and sluis config check warns when there is none (ADR 0029)."
     extra_rows:
-      - { k: Port, v: "witness: cosign (tlog-witness, tlog-cosignature). Drivers none, peer, external." }
-      - { k: Placement, v: "Per installation. On boards the other two nodes are each node's peer witnesses." }
-    holds: Its own key; the last checkpoint it cosigned, per log
+      - { k: Drivers, v: "none, peer, external. It speaks tlog-witness and signs tlog-cosignature." }
+      - { k: Placement, v: "Per installation. On boards the other two boards are each board's peer witnesses, through the audit blob." }
+    holds: Its own key (the witness purpose, signed through key@); read and write access to its cosignatures in the audit blob, with the last checkpoint it cosigned, per log
     never: Write on the log; the writer's log key
   indexer:
     lane: 2
@@ -240,12 +248,12 @@ nodes:
     title: indexer
     l2: follows checkpoints
     l3: derived placement
-    does: "Search, the indexer. Follows each log by signed checkpoint, with one cursor per log: it checks each new checkpoint's signature and consistency, then fetches the entry bundles it covers from the blob and applies them to the search index. It declares exactly 1 instance; with more than one node it holds a lease. It can run in serverless with a postgres index."
+    does: "Search, the indexer: the only writer of the search index. Follows each indexed log by signed checkpoint, with one cursor per log: it checks each new checkpoint's signature and consistency, then fetches the entry bundles it covers from the blob, opens each record at key@ under its tenant's evidence key and applies it to the index. One runs per boundary and it takes no lease: indexing is idempotent and a cursor only moves forward, by a conditional write in the index."
     extra_rows:
       - { k: Placement, v: "Derived from the port and driver rules, not decided per installation." }
-      - { k: Instances, v: "exactly 1; a lease when nodes > 1" }
-    holds: Read on the blob; write on the search index; its cursors
-    never: Write on the blob; any signing key
+      - { k: Instances, v: "exactly 1; no lease" }
+    holds: Read on the blob; write on the search index; its cursors, kept in the index; Open under the evidence key at key@, with a grant it asks policy for on each pass
+    never: Write on the blob; Seal; any signing key
   read:
     lane: 2
     row: 5.2
@@ -256,9 +264,9 @@ nodes:
     l3: derived placement
     l2_lambda: Lambda function
     l3_lambda: postgres on Aurora
-    does: "Search, the reader. Answers search from the search index and records each read. Where it runs is derived from the port and driver rules: with a sqlite index on a cluster, the reader runs on the indexer's node; with an rqlite or postgres index it can run on any node. On serverless it can run with a postgres index."
-    holds: Read on the blob; the search index
-    never: Write on the blob; any signing key
+    does: "Search, the reader: the audit API. Answers search from the search index and a single record from the blob, and records each read. Where it runs is derived from the port and driver rules: with a sqlite index on a cluster, the reader runs on the indexer's node; with an rqlite or postgres index it can run on any node. On serverless it can run with a postgres index."
+    holds: Read on the blob and the search index; Open under the evidence key at key@ with the grant of the call; Mac for a pseudonym
+    never: Write on the blob or the index; Seal; any signing key
   index:
     lane: 2
     row: 6.4
@@ -266,48 +274,34 @@ nodes:
     port: index
     title: search index
     does: "The search index (the index port), a projection of the log. Losing one costs search time and no evidence: the log in the blob is the record."
-  statedrv:
-    lane: 3
-    row: 1.0
-    cls: driver
-    port: state
-    title: state driver
-    does: The state port. Holds audit_batches, the cursors and the dedupe ids, replicated.
   keysdrv:
     lane: 3
     row: 2.6
     cls: driver
     port: keys
-    title: key driver
-    does: The keys port, for the writer (the log key) and the witness (its own key) in this view.
+    title: key@ driver
+    does: "The key-store driver of key@, for the writer (the log key) and the witness (its own key) in this view. key@ signs for them and lets each use only its own purpose; the driver is private to key@. The audit pieces read AuditLog, AuditWitnesses and AuditCatalogue through the data port, as config kinds that store@ loads, and write nothing through the store."
   blobdrv:
     lane: 3
     row: 4.4
     cls: driver
     port: blob
     title: blob driver
-    does: The blob port, with a lock mode and create-if-absent writes.
-  statestore:
-    lane: 4
-    row: 1.0
-    cls: store
-    port: state
-    title: state store
-    does: "Replicated state: audit_batches, the cursors and the dedupe ids, which the writer changes in one atomic batch. It carries no record bodies and is never evidence."
+    does: The blob port, with a lock mode and create-if-absent writes. The writer's and the witness's own state live here too, never in the store.
   keystore:
     lane: 4
     row: 2.6
     cls: store
     port: keys
     title: key store
-    does: Where the log key lives. The writer asks the keys driver to sign with it, and the driver's access list lets only the writer use it; the writer never holds the key.
+    does: Where the log key lives, in a card, a KMS key or a software key. The writer asks key@ to sign with it, and key@ (with the key policy on AWS) lets only the writer use it; the writer never holds the key.
   archive:
     lane: 4
     row: 4.4
     cls: store
     port: blob
     title: blob
-    does: "Object storage, used through the blob port with a lock mode (none, removable or compliance). The log lives here: one prefix per log, with the tlog-tiles entry bundles and tiles and every checkpoint. Every object is created only if absent. With a compliance lock nobody can delete an object before its retention ends; a removable lock can be lifted by an account administrator."
+    does: "Object storage, used through the blob port with a lock mode (none, removable or compliance). Each project has a bucket of its own, with one prefix per log kind (audit, usage, and the product's billing log, which no audit piece writes; the issuance log of ca sits in the sluis project). The log lives here: one prefix per log, with the tlog-tiles entry bundles and tiles and every checkpoint. Every object is created only if absent. With a compliance lock nobody can delete an object before its retention ends; a removable lock can be lifted by an account administrator."
 
 calls:
   - { f: client, t: entry, m: "POST /token", d: "Token exchange; success or refusal, both are audited." }
@@ -317,25 +311,22 @@ calls:
   - { f: producers, t: transport, m: Put, d: Record of what each actor did. }
   - { f: entry, t: read, m: Search, d: "Forwards the search with the caller's grant." }
   - { f: entry, t: quota, m: Admit, d: "Rate and count limits." }
-  - { f: quota, t: transport, m: Put, d: "Records each limit decision." }
+  - { f: quota, t: transport, m: Put, d: "Records each admit, refusal and push." }
   - { f: writer, t: transport, m: "Receive, Ack", d: "Takes records; its cursor moves when the batch is registered." }
   - { f: read, t: transport, m: Put, d: Records each read of the trail. }
   - { f: witness, t: transport, m: Put, d: Records each cosignature. }
   - { f: indexer, t: transport, m: Put, d: Records each purge it applies. }
   - { f: recovery, t: rspool, m: Put, d: "Break-glass record, fsync'd locally." }
   - { f: rspool, t: transport, m: replay, d: "Replay into the normal transport." }
-  - { f: writer, t: blobdrv, m: "Put tiles, checkpoint", d: "Writes the entry bundles, tiles and the checkpoint, each created only if absent." }
-  - { f: writer, t: statedrv, m: "Register batch", d: "Registers the sealed batch, its dedupe ids and its cursor in one atomic batch." }
-  - { f: writer, t: keysdrv, m: "Sign checkpoint", d: "Asks the keys driver to sign the checkpoint with the log key. Only the writer may use it." }
+  - { f: writer, t: blobdrv, m: "Put tiles, checkpoint", d: "Writes the entry bundles, tiles and the checkpoint, each created only if absent, and registers the sealed batch, its dedupe ids and its cursor in one conditional write of its state." }
+  - { f: writer, t: keysdrv, m: "Sign checkpoint", d: "Asks key@ to sign the checkpoint with the log key. key@ lets only this writer use it." }
   - { f: writer, t: witness, m: Cosign, d: "Asks the witness to cosign the new checkpoint." }
-  - { f: witness, t: statedrv, m: "Last checkpoint", d: "The last checkpoint it cosigned, per log." }
-  - { f: witness, t: keysdrv, m: "Sign cosign", d: "Signs its cosignature with its own key." }
-  - { f: indexer, t: statedrv, m: "Cursor", d: "Its cursor per log, and its lease on a cluster." }
+  - { f: witness, t: blobdrv, m: "Cosignature, last checkpoint", d: "Writes its cosignatures and keeps the last checkpoint it cosigned, per log, in the audit blob." }
+  - { f: witness, t: keysdrv, m: "Sign cosign", d: "Asks key@ to sign its cosignature with its own key." }
   - { f: indexer, t: blobdrv, m: "Get checkpoint, bundles", d: "Reads new checkpoints and the entry bundles they cover." }
-  - { f: indexer, t: index, m: Apply, d: "Applies the entries to the search index." }
+  - { f: indexer, t: index, m: Apply, d: "Applies the entries to the search index and moves its cursor in it." }
   - { f: read, t: blobdrv, m: "Get entry", d: "Fetches a record's entry and its inclusion proof when one record is opened." }
   - { f: read, t: index, m: Query, d: "Answers queries." }
-  - { f: statedrv, t: statestore, m: "", d: "" }
   - { f: keysdrv, t: keystore, m: "", d: "" }
   - { f: blobdrv, t: archive, m: "", d: "" }
 
@@ -355,7 +346,7 @@ flows:
       - title: Each actor puts its record on the transport
         nodes: [producers, quota, transport]
         edges: ["producers>transport", "quota>transport"]
-        text: Every actor that acted puts what it did (a decision, a limit check, a signature) on the transport over its own socket. In queue mode the record is queued; in direct mode it is streamed to the writer, or kept in a local spool when the writer is down.
+        text: Every actor that acted puts what it did (a decision, a limit check, a signature) on the transport over its own socket, to the queue or stream of its project. In queue mode the record is queued; in direct mode it is streamed to the writer, or kept in a local spool when the writer is down.
         variants:
           - { shapes: [local, boards], text: "The spool keeps a directory per producer uid, so it knows which actor appended." }
           - { shapes: [lambda], text: "Each actor sends under its own IAM role." }
@@ -369,38 +360,39 @@ flows:
       - title: The writer takes the records
         nodes: [writer, transport]
         edges: ["writer>transport"]
-        text: The writer receives records, validates each against the schema generated from the action table, and skips a record id it has already written. It stamps the time it recorded the entry and its own instance into the entry's clear envelope, never into the record.
+        text: The writer receives records, validates each against the schema of its project's catalogue, and skips a record id it has already written. It seals each record at key@ under its tenant's evidence key, and stamps the time it recorded the entry and its own instance into the entry's clear envelope, never into the record.
         variants:
-          - { shapes: [boards], text: "Each node's writer drains its own spool, into that node's own log." }
+          - { shapes: [boards], text: "Each board's writer drains its own spool, into that board's own log." }
       - title: The batch is written to the log
         nodes: [writer, blobdrv, archive]
         edges: ["writer>blobdrv", "blobdrv>archive"]
-        text: A batch is sealed at 256 records or 5 seconds after its first. The writer writes its entry bundles and tiles, each created only if absent, so no object is ever replaced and a second writer cannot fork the log. Its blob driver may write its own log's prefix and nothing else.
+        text: A batch is sealed at 256 records or 5 seconds after its first. The writer writes its entry bundles and tiles, each created only if absent, so no object is ever replaced and a second writer cannot fork the log. Its blob credential reaches its own project's bucket and nothing else.
       - title: The writer has the checkpoint signed
         nodes: [writer, keysdrv, keystore, blobdrv]
         edges: ["writer>keysdrv", "keysdrv>keystore", "writer>blobdrv"]
-        text: The writer asks the keys driver to sign the new checkpoint with the log key, then writes the checkpoint. The access list of the keys driver (or the key policy on AWS) lets only the writer use the log key, and the writer never holds the key itself.
+        text: The writer asks key@ to sign the new checkpoint with the log key, then writes the checkpoint. key@ lets only the writer use the log key (and the key policy names key@ only on AWS), and the writer never holds the key itself.
         variants:
-          - { shapes: [local], text: "A software key signs, through key-holder." }
-          - { shapes: [boards], text: "The node's own YubiKey signs for that node's log. The other nodes' keys are never used for it." }
-          - { shapes: [lambda], text: "One KMS key, whose key policy names the writer function's role only. There is one log; the function's role is the isolation." }
+          - { shapes: [local], text: "A software key signs, through key@." }
+          - { shapes: [boards], text: "The board's own card signs for that board's log. The other boards' keys are never used for it." }
+          - { shapes: [lambda], text: "One KMS key, whose key policy names key@ only. There is one log of each kind per project; the writer function's role is the isolation." }
       - title: The batch is registered
-        nodes: [writer, statedrv, statestore, transport]
-        edges: ["writer>statedrv", "statedrv>statestore"]
-        text: In one atomic state batch the writer registers the sealed batch, records the duplicate ids it dropped and moves its transport cursor. A crash leaves all of it or none, so a crash before this step means a redelivery, which dedupe absorbs.
+        nodes: [writer, blobdrv, archive, transport]
+        edges: ["writer>blobdrv", "blobdrv>archive"]
+        text: In one conditional write of its state in the project's bucket the writer registers the sealed batches of both log kinds, records the duplicate ids it dropped and moves its transport cursor. A crash leaves all of it or none, so a crash before this step means a redelivery, which dedupe absorbs. The writer's state lives in the blob and never in the store.
       - title: A witness cosigns the checkpoint
-        nodes: [writer, witness, statedrv, keysdrv]
-        edges: ["writer>witness", "witness>statedrv", "witness>keysdrv"]
-        text: Where the installation has a witness, the writer asks it to cosign the new checkpoint. The witness checks that it is consistent with the last one it cosigned and signs with its own key. A witness is optional everywhere, and sluis config check warns when there is none. Without one, a compromised writer can get a rewritten checkpoint signed; a compliance lock still prevents overwriting objects, but not a split view.
+        nodes: [writer, witness, blobdrv, keysdrv]
+        edges: ["writer>witness", "witness>blobdrv", "witness>keysdrv"]
+        text: Where the installation has a witness, the writer asks it to cosign the new checkpoint. The witness checks that it is consistent with the last one it cosigned and signs with its own key, through key@. A witness is optional everywhere, and sluis config check warns when there is none. Without one, a compromised writer can get a rewritten checkpoint signed; a compliance lock still prevents overwriting objects, but not a split view.
         variants:
-          - { shapes: [boards], text: "The other two nodes are this log's peer witnesses (2-of-3). Each node is also a witness for the other two." }
-          - { shapes: [local, lambda], text: "No witness by default. An external witness is possible." }
+          - { shapes: [boards], text: "The other two boards are this log's peer witnesses (2-of-3). Each board is also a witness for the other two." }
+          - { shapes: [local], text: "No witness. An external witness is possible." }
+          - { shapes: [lambda], text: "Optional: a peer or an external witness." }
       - title: The indexer updates the search index
-        nodes: [indexer, statedrv, blobdrv, index]
-        edges: ["indexer>statedrv", "indexer>blobdrv", "indexer>index", "statedrv>statestore", "blobdrv>archive"]
-        text: The indexer sees the new checkpoint, checks its signature and its consistency with the previous one, fetches the entry bundles it covers and applies them to the search index, then advances its cursor. It indexes only what a signed checkpoint covers.
+        nodes: [indexer, blobdrv, archive, index]
+        edges: ["indexer>blobdrv", "indexer>index", "blobdrv>archive"]
+        text: The indexer sees the new checkpoint, checks its signature and its consistency with the previous one, fetches the entry bundles it covers, opens each record at key@ under its tenant's evidence key, applies the records to the search index and advances its cursor in the index. It indexes only what a signed checkpoint covers.
         variants:
-          - { shapes: [boards], text: "The index is rqlite (ADR 0028), replicated across the nodes, so the reader can run on any node. The reader merges the three logs by time." }
+          - { shapes: [boards], text: "The index is rqlite (ADR 0028), replicated across the boards, so the reader can run on any board. The reader merges the three logs of a project by recorded time." }
           - { shapes: [lambda], text: "The index here is postgres on Aurora, reached through RDS Proxy." }
   - id: search
     title: An auditor searches
@@ -427,35 +419,35 @@ flows:
       - title: One record is opened
         nodes: [read, blobdrv, archive]
         edges: ["read>blobdrv", "blobdrv>archive"]
-        text: When the auditor opens a single record, the reader returns it as the canonical bytes the emitter produced, with its inclusion proof against a cosigned checkpoint. The index is never the only copy.
+        text: When the auditor opens a single record, the reader opens it from the blob at key@ under the tenant's evidence key, with the grant of the call, and returns the canonical bytes the emitter produced with its inclusion proof against a cosigned checkpoint. The index is never the only copy.
       - title: The answer says how fresh it is
         nodes: [entry, auditor]
         edges: ["auditor>entry"]
         text: The answer can name the checkpoint the index has reached, so the auditor knows how far behind it is (illustrative). Records still waiting in the transport are not searchable yet.
   - id: erasure
-    title: An erasure reaches the index
-    why: A purge travels through the log like any other record.
+    title: A tenant's exit reaches the index
+    why: A tenant's exit purges the index; the log is not edited.
     steps:
-      - title: An operator asks for an erasure
+      - title: An operator ends a tenant
         nodes: [auditor, entry]
         edges: ["auditor>entry"]
-        text: An operator with the erasure grant asks to erase a person under one company, with a reason. A grant to read is not a grant to erase.
+        text: An operator with the erasure grant asks to end a tenant, with a reason. A grant to read is not a grant to erase.
       - title: entry records the request
         nodes: [entry, transport]
         edges: ["entry>transport"]
-        text: "entry puts an erasure record on the transport: who asked, what scope, why. It returns when that record is durable in the transport, like any other request."
+        text: "entry puts an audit record on the transport: who asked, which tenant, why. It returns when that record is durable in the transport, like any other request."
       - title: The writer seals it into the log
-        nodes: [writer, transport, blobdrv, archive, statedrv, statestore]
-        edges: ["writer>transport", "writer>blobdrv", "writer>statedrv", "blobdrv>archive", "statedrv>statestore"]
-        text: The writer validates the erasure record like any record and seals it into the log in order, so the erasure is itself evidence.
-      - title: The indexer applies the purge
-        nodes: [indexer, statedrv, index]
-        edges: ["indexer>statedrv", "indexer>index"]
-        text: The indexer reaches the erasure entry at its cursor and purges the rows it names from the index. A rebuild replays the log and applies the purge again at the same position.
+        nodes: [writer, transport, blobdrv, archive]
+        edges: ["writer>transport", "writer>blobdrv", "blobdrv>archive"]
+        text: The writer validates the record like any record and seals it into the log in order, so the exit is itself evidence.
+      - title: The indexer purges the tenant's rows
+        nodes: [indexer, index]
+        edges: ["indexer>index"]
+        text: A tenant's exit purges its rows from the search index, and every later rebuild skips them. Its records stay in the log, sealed.
       - title: The log is not edited
         nodes: [writer, keysdrv]
         edges: ["writer>keysdrv"]
-        text: Log objects are never rewritten. A person is recorded under a keyed pseudonym, and the mapping from the pseudonym to the person lives outside the log; erasing the person deletes it. A company that leaves has its slice exported and its audit data key deleted, so its records stay sealed and verifiable but unreadable.
+        text: Log objects are never rewritten. A person is recorded under a keyed pseudonym, and the mapping from the pseudonym to the person lives outside the log; erasing the person deletes it. A tenant that leaves has its data and pseudonym keys deleted at once and its evidence key when the evidence retention ends, so its records stay verifiable but stop opening.
   - id: recovery
     title: Recovery during an outage
     why: Break-glass work spools locally, never blocks, and is delivered later.
@@ -464,7 +456,7 @@ flows:
         nodes: [recovery]
         edges: []
         down: [writer, entry]
-        text: entry, the state store or the writer is down and an operator has to act, for example to restore a key or re-enrol a node. Recovery is the break-glass path and needs none of them.
+        text: entry or the writer is down and an operator has to act, for example to restore a key or re-enrol a node. Recovery is the break-glass path and needs none of them.
       - title: Recovery spools its record first
         nodes: [recovery, rspool]
         edges: ["recovery>rspool"]
@@ -478,14 +470,14 @@ flows:
       - title: The platform comes back
         nodes: [writer, transport, entry]
         edges: []
-        text: entry, the state store and the writer are running again, and the normal transport accepts records again.
+        text: entry and the writer are running again, and the normal transport accepts records again.
       - title: The spool is replayed
         nodes: [rspool, transport]
         edges: ["rspool>transport"]
         text: The recovery records move from the recovery spool into the normal transport, in order, keeping the time each happened. Who does the replay is an open point (below).
       - title: Delivery goes the usual way
-        nodes: [writer, transport, blobdrv, archive, statedrv, statestore]
-        edges: ["writer>transport", "writer>blobdrv", "writer>statedrv", "blobdrv>archive", "statedrv>statestore"]
+        nodes: [writer, transport, blobdrv, archive]
+        edges: ["writer>transport", "writer>blobdrv", "blobdrv>archive"]
         text: The writer treats them as any record. It dedupes by id, so a replay run twice is harmless, and the recorded time lands hours after the time of the event, so the gap stays visible.
   - id: down
     title: The writer is down for an hour
@@ -495,9 +487,9 @@ flows:
         nodes: [writer]
         edges: []
         down: [writer]
-        text: The blob is unreachable, or the state store has lost quorum, or a deploy failed.
+        text: The blob is unreachable, or a deploy failed, or the writer's host is gone.
         variants:
-          - { shapes: [boards], text: "Each node has its own writer and its own log, so the other nodes' writers keep writing their own logs; only this node's log waits." }
+          - { shapes: [boards], text: "Each board has its own writer and its own log, so the other boards' writers keep writing their own logs; only this board's log waits." }
       - title: Requests keep succeeding
         nodes: [client, entry, producers, transport]
         edges: ["client>entry", "entry>transport", "producers>transport"]
@@ -523,12 +515,12 @@ flows:
         edges: ["writer>transport"]
         text: The writer reads the backlog from the transport, as the table below says for each installation.
       - title: The backlog becomes batches
-        nodes: [writer, blobdrv, archive, statedrv, statestore]
-        edges: ["writer>blobdrv", "writer>statedrv", "blobdrv>archive", "statedrv>statestore"]
-        text: Records roll into batches of up to 256, so an hour of backlog becomes a modest number of batches, not one per record. Each is written, signed and registered in order. The limit is the blob and the state store, not the callers.
+        nodes: [writer, blobdrv, archive]
+        edges: ["writer>blobdrv", "blobdrv>archive"]
+        text: Records roll into batches of up to 256, so an hour of backlog becomes a modest number of batches, not one per record. Each is written, signed and registered in order. The limit is the blob, not the callers.
       - title: Checkpoints and indexes catch up
-        nodes: [writer, witness, indexer, index]
-        edges: ["writer>keysdrv", "writer>witness", "indexer>statedrv", "indexer>index"]
+        nodes: [writer, keysdrv, witness, indexer, blobdrv, index]
+        edges: ["writer>keysdrv", "writer>witness", "indexer>blobdrv", "indexer>index"]
         text: The writer has the new checkpoints signed and cosigned, and the indexer applies them from its cursor. Lag jumps and falls back to 0, and the transport age falls back to seconds.
 
 # ---------------------------------------------------------------------------
@@ -542,7 +534,7 @@ promises:
     text: The caller never waits for the writer, the blob or the index. Durable means what the transport driver says. In queue mode, if the writer is down for an hour, requests still succeed and records queue. In direct mode the emitter falls back to a local spool, so direct mode needs a disk.
     status: decided
   - title: The writer never holds the log key
-    text: The writer asks the keys driver to sign each checkpoint. The driver's access list (or the key policy on AWS) lets only the writer use the log key, and the writer cannot read it. The witness holds nothing the writer holds, and cannot write to the log.
+    text: The writer asks key@ to sign each checkpoint. key@ lets only that writer use its log key (and the key policy on AWS names key@ only), and the writer cannot read it. The witness holds nothing the writer holds, and cannot write to the log.
     status: decided
   - title: A witness is optional, and the risk of none is written down
     text: sluis config check warns when an installation has no witness. With no witness, a compromised writer can get a rewritten checkpoint signed; a compliance lock still prevents overwriting objects, but not a split view. A production log needs a compliance lock or a weaker lock plus a peer or external witness, and sluis config check refuses anything else there (ADR 0029).
@@ -550,25 +542,28 @@ promises:
   - title: The search index is a projection, never the evidence
     text: Losing a search index costs search time and no evidence. The log in the blob is the record, and verification never trusts the index or the state.
     status: decided
-  - title: The state store is on the write path, never in the evidence
-    text: The writer registers each sealed batch in one atomic state batch, so a crash leaves all of it or none. Verification reads the log in the blob only.
+  - title: The writer's state is in the blob, never in the store
+    text: The writer registers the sealed batches of both log kinds, the duplicate ids it dropped and its transport cursor in one conditional write of its state in the project's bucket, so a crash leaves all of it or none. The audit pieces write nothing through the store. Verification reads the log in the blob only.
     status: decided
   - title: Exactly one writer per log; a cluster keeps one log per node
-    text: Each node has its own writer, spool and log key, and the other nodes are its peer witnesses (2-of-3). Readers merge the logs by time. Every object is created only if absent, so a second writer cannot fork a log.
+    text: Each node runs its own instance of each project's writer, with its own spool and log key, and the other nodes are that log's peer witnesses (2-of-3). Readers merge the logs of a project by recorded time. Every object is created only if absent, so a second writer cannot fork a log.
     status: decided
   - title: Recovery never blocks on audit
     text: Recovery spools its audit record locally and delivers it later. Its proof is a passkey and needs no Kubernetes.
     status: decided
-  - title: Audit shares the sluis ports
-    text: The ports are keys, state, lease, blob, transport, index and cloud, plus witness, the only port audit adds. The log is a blob with a lock mode, quota state is state with compare-and-set, and Search uses the index port. Audit is four separate pieces, the emitter, the log, Search and Quota; pieces combined in one installation, even with sluis, share driver instances.
+  - title: One audit per boundary, a project per emitting unit
+    text: "Each boundary has one audit. Each emitting unit (sluis itself, the infrastructure, each product) is a project with its own bucket, writer, log keys and queue. The bucket has a prefix per log kind: audit, usage, and the product's billing log, which no audit piece writes (ADR 0028, ADR 0029)."
+    status: decided
+  - title: Audit is four pieces on the foundation
+    text: "The writer, the witness, the indexer and the reader are credential holders of the audit family. They have the data and keys ports every actor has, and the blob, transport and index ports of their own. They read AuditLog, AuditWitnesses and AuditCatalogue through the data port, and every signature goes through key@. The emitter is a library, not a piece. quota is a work actor of its own module, not an audit piece."
     status: decided
 
 chain:
   stages:
-    - { title: record, lines: ["OCSF event, RFC 8785 JSON", "encrypted to the company key", "one entry in the log"], by: writer }
+    - { title: record, lines: ["OCSF event, RFC 8785 JSON", "sealed under the tenant's evidence key", "one entry in the log"], by: writer }
     - { title: entry bundles and tiles, lines: ["C2SP tlog-tiles", "RFC 6962 tree hashes", "created only if absent"], by: writer }
-    - { title: "checkpoint 1,280", lines: ["signed-note: origin, size, root", "signed with the log key", "also at checkpoints/1280"], by: key-holder, by_label: "the writer, through key-holder" }
-    - { title: cosignature, lines: ["over the checkpoint", "peer or external witness", "optional"], by: key-holder, by_label: "a witness, with its own key" }
+    - { title: "checkpoint 1,280", lines: ["signed-note: log name, size, root", "signed with the log key", "also at checkpoints/1280"], by: key, by_label: "the writer, through key@" }
+    - { title: cosignature, lines: ["over the checkpoint", "peer or external witness", "optional"], by: key, by_label: "a witness, with its own key, through key@" }
   checkpoints:
     - { id: "checkpoint 768", covers: "after batch #39" }
     - { id: "checkpoint 1,024", covers: "after batch #40" }
@@ -578,52 +573,52 @@ chain:
     - Checks each checkpoint's signature against the log key the auditor pinned.
     - Checks that each checkpoint is consistent with the one before.
     - Checks the witnesses' cosignatures where the installation has any.
-    - Needs no key to any record, so a log still verifies after a company is shredded.
+    - Needs no key to any record, so a log still verifies after a tenant's keys are shredded.
   notes:
     - title: Three layers
       text: Hashes show each object is the one written. The lock (compliance where the install has it, removable otherwise, or none) stops anyone deleting before retention ends. Signed checkpoints show nothing was removed or added, and a witness shows the operator did not show two different histories.
       status: decided
     - title: The formats are the C2SP ones
-      text: Checkpoints are C2SP signed-note checkpoints (tlog-checkpoint), signed with the P-384 log key; the log is laid out as tlog-tiles; witnesses sign with tlog-cosignature (Ed25519 or ML-DSA-44 keys) and are asked through tlog-witness. ca keeps its issuance log of X.509 certificates as a witnessed static-ct-api log. sluis follows the specifications and invents no format.
+      text: Checkpoints are C2SP signed-note checkpoints (tlog-checkpoint), signed with the P-384 log key of the writer instance; the log is laid out as tlog-tiles; witnesses sign with tlog-cosignature (Ed25519 or ML-DSA-44 keys) and are asked through tlog-witness. ca keeps its issuance log of X.509 certificates as a witnessed static-ct-api log. sluis follows the specifications and invents no format.
       status: decided
     - title: Trust is the pin
       text: An auditor trusts a log key because they pinned it, out of band. A published key is distribution only; a verifier ignores a key it has not pinned.
       status: decided
     - title: Seal granularity
-      text: A batch is sealed at 256 records or 5 seconds after its first record, whichever comes first, and an empty batch is never sealed, so an idle log signs nothing. Each batch ends with a seal entry that records its count, the writer instance and the observed clock offset (ADR 0029).
+      text: A batch is sealed at 256 messages or 5 seconds after its first, whichever comes first, and one seal covers the audit batch and the usage batch of the same messages. An empty batch is never sealed, so an idle log signs nothing. Each batch ends with a seal entry that records its count, the writer instance and the observed clock offset (ADR 0029).
       status: decided
 
 lag:
   leader: 120
   rate_per_min: 40
   nodes:
-    - { id: node-1, cursor: 120 }
-    - { id: node-2, cursor: 118 }
-    - { id: node-3, cursor: 95 }
+    - { id: "log of node 1", cursor: 120 }
+    - { id: "log of node 2", cursor: 118 }
+    - { id: "log of node 3", cursor: 95 }
 
 index_notes:
   - title: One index per boundary
-    text: The index is fed from the logs by signed checkpoint, one cursor per log, and has a company column that every query is filtered on. On boards it is a replicated rqlite index (ADR 0028), so the reader can run on any node; with sqlite the reader runs on the indexer's node. Purges are entries of the log like any other.
+    text: The index is fed from the indexed logs (the audit log and the issuance log) by signed checkpoint, one cursor per log. It is partitioned by project and log kind, and every row carries its project, log kind and tenant, which every query is filtered on. The usage log has no index. On boards it is a replicated rqlite index (ADR 0028), so the reader can run on any node; with sqlite the reader runs on the indexer's node. A tenant's exit purges its rows.
     status: decided
   - title: Rebuilding
-    text: The search index can be thrown away. A rebuild builds a new generation from the log beside the serving one, then switches the reader to it.
+    text: The search index can be thrown away. A rebuild builds a new generation from the log beside the serving one, then switches the reader to it atomically.
     status: decided
   - title: The blob
     text: Object storage, S3-compatible (for example R2) or S3, or a local directory, through the blob port. Its lock mode (none, removable or compliance) depends on the installation. Log objects are never edited or deleted early.
     status: decided
 
 compare:
-  - { topic: "Record, action table, profiles", v1: "one record format (a Protobuf core with JSON Schema slots), a catalogue per application, profile copies per purpose", v2: "an OCSF event per record with the sluis facts in one unmapped.sluis object, a table of actions in code with a JSON Schema generated from it, and a separate usage log in CloudEvents for quota and billing (ADR 0030); framework profiles come with v1 parity (ADR 0029)" }
+  - { topic: "Record, action table, profiles", v1: "one record format (a Protobuf core with JSON Schema slots), a catalogue per application, profile copies per purpose", v2: "an OCSF event per record with the sluis facts in one unmapped.sluis object, a table of actions in code with a JSON Schema generated from it, and a separate usage log in CloudEvents for quota and billing (ADR 0030); compliance profiles are floors that the configuration check enforces (ADR 0029)" }
   - { topic: "How a record is accepted", v1: "emit library with block or async delivery to a receiver, JetStream or SQS", v2: "transport port (direct, or queue: spool, SQS, NATS JetStream); the request returns on transport durability" }
-  - { topic: "Who runs it", v1: "pods or Lambda functions, a chart or a Pulumi library; a CronJob for the notary", v2: "actors started by the platform; drivers as services, no exec" }
-  - { topic: "Coordination between parts", v1: "none: the bucket layout is the contract and each part lists the bucket", v2: "each log's signed checkpoints; the indexer follows them from its cursor" }
-  - { topic: Index, v1: "PostgreSQL, fed by observe, which lists the bucket from a cursor after a settle window", v2: "sqlite on local, rqlite on boards, postgres on Aurora on lambda and on cnpg on Kubernetes (ADR 0028), fed by checkpoint from the indexer's cursor" }
-  - { topic: Seals, v1: "one per profile, tenant and hour, built by listing the bucket; empty hours sealed", v2: "a C2SP checkpoint per batch, at 256 records or 5 seconds; an empty batch is never sealed (ADR 0029)" }
-  - { topic: "Signing key", v1: "a notary with KMS, a transit key or a key file; a separate service account from the writer", v2: "the writer asks the keys driver to sign each checkpoint with the log key, and only the writer may use it; a witness cosigns, and is optional" }
-  - { topic: Recovery, v1: "not part of audit", v2: "a local spool in every installation; never blocks" }
+  - { topic: "Who runs it", v1: "pods or Lambda functions, a chart or a Pulumi library; a CronJob for the notary", v2: "four pieces that are credential holders of the audit family (writer, witness, indexer, reader), started by the platform, with the emitter as a library; drivers as services, no exec" }
+  - { topic: "Coordination between parts", v1: "none: the bucket layout is the contract and each part lists the bucket", v2: "each log's signed checkpoints; the indexer follows them from its cursor, and the writer's state is in the blob" }
+  - { topic: Index, v1: "PostgreSQL, fed by observe, which lists the bucket from a cursor after a settle window", v2: "sqlite on local, rqlite on boards, postgres on Aurora on lambda and on cnpg on Kubernetes (ADR 0028), fed by checkpoint from the indexer's cursor, one index per boundary" }
+  - { topic: Seals, v1: "one per profile, tenant and hour, built by listing the bucket; empty hours sealed", v2: "a C2SP checkpoint per batch, at 256 messages or 5 seconds; an empty batch is never sealed (ADR 0029)" }
+  - { topic: "Signing key", v1: "a notary with KMS, a transit key or a key file; a separate service account from the writer", v2: "the writer asks key@ to sign each checkpoint with its log key, and key@ lets only that writer use it; a witness cosigns, and is optional" }
+  - { topic: Recovery, v1: "not part of audit", v2: "the break-glass recovery sign-in spools its record locally in every installation and never blocks (ADR 0017)" }
   - { topic: Blob, v1: "S3 with or without object lock, per install", v2: "the blob port with a lock mode (none, removable, compliance) and create-if-absent writes" }
 
-compare_note: "v1 makes the bucket listing the contract between the parts. v2 makes each log's signed checkpoints the contract: the indexer follows them, and the state store only registers what the writer has sealed. The log in the blob stays the source of truth, and a node can always rebuild from it."
+compare_note: "v1 makes the bucket listing the contract between the parts. v2 makes each log's signed checkpoints the contract: the indexer follows them, and the writer's own state in the blob only registers what it has sealed. The log in the blob stays the source of truth, and a node can always rebuild from it."
 
 # Points that are proposed in the design and not yet decided. Each names its
 # open tracking issue.

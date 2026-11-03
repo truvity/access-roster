@@ -106,10 +106,9 @@ function build(sh: any): AuditShape {
       issue = n.port === 'index' ? d.issue : undefined;
       rows = [{ k: 'Backend', v: d.backing }];
       if (n.port === 'blob') {
-        rows = [{ k: 'Backend', v: au.blob }, { k: 'Lock mode', v: au.lock }, { k: 'Layout', v: '<kind>/<boundary>/<log>/ per log: the tlog-tiles entry bundles and tiles, and checkpoints/<size>' }];
+        rows = [{ k: 'Backend', v: au.blob }, { k: 'Lock mode', v: au.lock }, ...data.blob_rows];
       }
       if (n.port === 'keys') rows.push({ k: 'Log key', v: au.log_key });
-      if (n.port === 'state') rows = [{ k: 'Backend', v: sh.state }, { k: 'Holds', v: 'audit_batches, the transport cursor and the dedupe ids, written in one atomic batch; no record bodies' }];
       if (n.port === 'index') {
         rows = [{ k: 'Backend', v: d.backing }, { k: 'Placement', v: au.index_placement }];
       }
@@ -170,7 +169,7 @@ function build(sh: any): AuditShape {
   const shapeNotes: MapModel['notes'] = au.note ? [{ text: au.note, status: 'decided' }] : [];
   return {
     id: sh.id, name: sh.name, nodes, edges, width, height, lanes,
-    intro: `Runtime: ${sh.environment}. Transport: ${ok.short}. Keys: ${sh.keys}. State: ${sh.state}. Blob: ${au.blob}, ${au.lock}.`,
+    intro: `Runtime: ${sh.environment}. Transport: ${ok.short}. Keys: ${sh.keys}. Blob: ${au.blob}, ${au.lock}.`,
     notes: shapeNotes,
     shape: sh, audit: au, transport: ok,
     ack: ok.durable,
