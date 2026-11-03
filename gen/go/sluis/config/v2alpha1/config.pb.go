@@ -818,7 +818,7 @@ type LogDecl struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`     // "audit" or "usage"
 	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`         // the log's id
-	Origin        string                 `protobuf:"bytes,3,opt,name=origin,proto3" json:"origin,omitempty"` // the log's origin, per 0029 "Tiled log"
+	Origin        string                 `protobuf:"bytes,3,opt,name=origin,proto3" json:"origin,omitempty"` // the C2SP checkpoint origin line, per 0029 "Tiled log" (terms-allow: origin)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

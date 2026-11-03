@@ -101,7 +101,7 @@ message AuditLog {
 message LogDecl {
   string kind = 1;     // "audit" or "usage"
   string id = 2;       // the log's id
-  string origin = 3;   // the log's origin, per 0029 "Tiled log"
+  string origin = 3;   // the C2SP checkpoint origin line, per 0029 "Tiled log" (terms-allow: origin)
 }
 
 // AuditCatalogue is the kind AuditCatalogue; id "default".
