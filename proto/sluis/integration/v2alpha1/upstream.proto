@@ -1,0 +1,52 @@
+// The upstream integration contract, served by adapter-upstream-oidc.
+syntax = "proto3";
+
+package sluis.integration.v2alpha1;
+
+import "google/protobuf/timestamp.proto";
+
+// UpstreamService signs a person in at an upstream OpenID Connect provider.
+service UpstreamService {
+  rpc Begin(BeginRequest) returns (BeginResponse);
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+}
+
+// BeginRequest starts a sign-in at an upstream.
+message BeginRequest {
+  string upstream = 1;        // the name of the Upstream item
+  string redirect_uri = 2;    // sluis's callback
+  string state = 3;           // the state to send to the upstream
+  string nonce = 4;           // the nonce to send to the upstream
+  string code_challenge = 5;  // S256 only
+}
+
+// BeginResponse carries the URL to send the person to.
+message BeginResponse {
+  string authorization_url = 1;  // where to redirect the person
+}
+
+// CompleteRequest finishes a sign-in with the upstream's code.
+message CompleteRequest {
+  string upstream = 1;       // the name of the Upstream item
+  string code = 2;           // the upstream's authorization code
+  string redirect_uri = 3;   // the redirect_uri of the begin step
+  string code_verifier = 4;  // the PKCE verifier for the begin step's challenge
+  string nonce = 5;          // the nonce of the begin step
+}
+
+// Assertion is what the upstream says about the person, verified.
+message Assertion {
+  string issuer = 1;                        // the upstream's issuer
+  string subject_claim = 2;                 // the name of the claim that holds the subject
+  string subject = 3;                       // the value of that claim
+  optional string acr = 4;                  // the authentication context class, if the upstream said one
+  repeated string amr = 5;                  // the authentication methods
+  bool amr_present = 6;                     // true when the upstream said anything about amr, even an empty list
+  google.protobuf.Timestamp auth_time = 7;  // when the person authenticated, if the upstream said so
+  string org_id = 8;                        // the organisation claim, if configured and present
+}
+
+// CompleteResponse carries the assertion.
+message CompleteResponse {
+  Assertion assertion = 1;  // what the upstream asserts
+}

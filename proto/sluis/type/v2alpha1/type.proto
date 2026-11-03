@@ -1,0 +1,52 @@
+// Types shared by several packages (contracts.md "Packages and files").
+syntax = "proto3";
+
+package sluis.type.v2alpha1;
+
+import "google/protobuf/timestamp.proto";
+
+// Address names an item: <boundary>/<tenant | ->/<kind>/<id> (store-api.md "Address encoding").
+// It is shared by store, key and the ports; the boundary is never a field, it is the connection.
+message Address {
+  string kind = 1;    // the kebab-case segment of the kind's name
+  string tenant = 2;  // empty for a kind with no tenant; the address then carries "-"
+  string id = 3;      // one or more parts, separated by "/"
+}
+
+// IndexEntry is one declared index of an item, computed by the writer.
+message IndexEntry {
+  string name = 1;   // the declared index
+  bytes value = 2;   // the value to match under that index
+}
+
+// Refusal is the detail of every Connect error inside sluis (contracts.md "Errors").
+message Refusal {
+  string reason = 1;      // from a closed list; never a value
+  string field_path = 2;  // the path of the field at fault; never its value
+}
+
+// Header is one HTTP header of an HttpReply.
+message Header {
+  string name = 1;   // the header name
+  string value = 2;  // the header value
+}
+
+// HttpReply is what entry turns into the HTTP answer of an OAuth endpoint.
+message HttpReply {
+  int32 status = 1;               // the HTTP status code
+  repeated Header headers = 2;    // only Location, Set-Cookie, Content-Type, Cache-Control, Pragma, WWW-Authenticate; entry refuses others
+  bytes body = 3;                 // the response body
+}
+
+// Grant is a decision of policy. It only ever travels sealed (purpose grant) and is never stored (0007 "Sealed grants").
+message Grant {
+  string boundary = 1;                        // the boundary the grant is valid in
+  repeated string tenants = 2;                // tenant ids; "*" = every tenant of the boundary (audit reads only)
+  string holder = 3;                          // the actor it was made for; key@ and store@ refuse it from any other caller
+  repeated string store_verbs = 4;            // "get","list","create","update","delete","apply"
+  repeated string key_ops = 5;                // "seal","open","mac","sign"
+  google.protobuf.Timestamp issued_at = 6;    // when policy made the decision
+  google.protobuf.Timestamp expires_at = 7;   // at most 60 s after issued_at
+  string decision_id = 8;                     // UUIDv7, also in the audit record of the decision
+  string action = 9;                          // the Cedar action that allowed it, e.g. "token.issue"
+}

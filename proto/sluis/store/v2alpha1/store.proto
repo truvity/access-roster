@@ -1,0 +1,129 @@
+// The store service, served by store@ (store-api.md "The store service").
+syntax = "proto3";
+
+package sluis.store.v2alpha1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "sluis/type/v2alpha1/type.proto";
+
+// StoreService is the one generic data service of a work actor; a kind is named, never a method.
+service StoreService {
+  rpc Get(GetRequest) returns (GetResponse);               // one item by address
+  rpc List(ListRequest) returns (ListResponse);            // the items of a kind in a tenant, or by a declared index
+  rpc Write(WriteRequest) returns (WriteResponse);         // create, update, delete or apply, all or none
+  rpc Watch(WatchRequest) returns (stream WatchResponse);  // the changes of a kind from a resume point
+}
+
+// Item is a stored item as store@ returns it.
+message Item {
+  sluis.type.v2alpha1.Address address = 1;               // where the item lives
+  uint64 version = 2;                                     // 1 at create, plus 1 at each change; set by store@
+  bytes value = 3;                                        // the kind's Protobuf message; for a sealed kind, the envelope
+  google.protobuf.Timestamp expires_at = 4;               // set by store@ when the kind has a TTL
+  repeated sluis.type.v2alpha1.IndexEntry indexes = 5;    // the declared indexes, computed by the writer
+}
+
+// Consistency is the read guarantee a Get asks for.
+enum Consistency {
+  CONSISTENCY_UNSPECIFIED = 0;  // not set: the same as LINEARIZABLE
+  LINEARIZABLE = 1;             // the default; the read sees every write that finished before it
+  FOLLOWER = 2;                 // a read that tolerates lag
+}
+
+// Layer is the layer of a layered kind that set a field.
+enum Layer {
+  LAYER_UNSPECIFIED = 0;  // not set
+  BUILT_IN = 1;           // the built-in layer
+  CONFIG = 2;             // the signed config
+  OPERATOR = 3;           // the operator's items
+  TENANT = 4;             // the tenant's items
+}
+
+// Verb is what a write operation does.
+enum Verb {
+  VERB_UNSPECIFIED = 0;  // not set
+  CREATE = 1;            // the item, only if the address is free
+  UPDATE = 2;            // the item, only at if_version
+  DELETE = 3;            // removes the item, at if_version when given
+  APPLY = 4;             // creates the item or sets it to the value; never refused for a version
+}
+
+// ChangeType is what a watched change did to its item.
+enum ChangeType {
+  CHANGE_TYPE_UNSPECIFIED = 0;  // not set
+  CHANGE_TYPE_PUT = 1;          // the item was written
+  CHANGE_TYPE_DELETE = 2;       // the item was removed
+}
+
+// Provenance says which layer set a field of a layered kind.
+message Provenance {
+  string field_path = 1;  // the path of the field
+  Layer layer = 2;        // the layer that set it
+  uint64 version = 3;     // the version of the item of that layer
+}
+
+// GetRequest reads one item.
+message GetRequest {
+  sluis.type.v2alpha1.Address address = 1;  // the item
+  Consistency consistency = 2;              // LINEARIZABLE (the default) or FOLLOWER
+  uint64 if_none_match = 3;                 // a version the caller holds; the reply may be "unchanged"
+}
+
+// GetResponse is the item, or "unchanged".
+message GetResponse {
+  bool unchanged = 1;                  // true when the item is still at if_none_match; item is then empty
+  Item item = 2;                       // the item
+  repeated Provenance provenance = 3;  // for a layered kind only
+}
+
+// ListRequest lists a tenant's items of a kind, or follows a declared index.
+message ListRequest {
+  string kind = 1;         // the kind's segment
+  string tenant = 2;       // the tenant; empty for a kind with none
+  string index = 3;        // a declared index of the kind, or empty to list the tenant's items
+  bytes index_value = 4;   // the value to match under that index
+  int32 page_size = 5;     // at most the maximum the contract declares
+  string page_token = 6;   // opaque; bound to the query and the caller
+}
+
+// ListResponse is one page of items.
+message ListResponse {
+  repeated Item items = 1;       // the items of the page
+  string next_page_token = 2;    // empty on the last page
+}
+
+// WriteRequest is a batch of operations, applied all or none.
+message WriteRequest {
+  repeated Operation operations = 1;  // at most 64, applied all or none, to kinds of the calling actor
+  bytes grant = 2;                    // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap)
+}
+
+// Operation is one write of a batch.
+message Operation {
+  Verb verb = 1;                                          // CREATE, UPDATE, DELETE or APPLY
+  sluis.type.v2alpha1.Address address = 2;                // the item
+  bytes value = 3;                                        // the kind's Protobuf message; for a sealed kind, the envelope
+  uint64 if_version = 4;                                  // UPDATE: the version read; DELETE: optional
+  google.protobuf.Duration ttl = 5;                       // optional: shorter than the kind's maximum; absent, the kind's default
+  repeated sluis.type.v2alpha1.IndexEntry indexes = 6;    // the declared indexes, computed by the writer
+}
+
+// WriteResponse carries the items as written.
+message WriteResponse {
+  repeated Item items = 1;  // the items as written, with their versions
+}
+
+// WatchRequest asks for the changes of a kind from a resume point.
+message WatchRequest {
+  string kind = 1;           // the kind's segment
+  string tenant = 2;         // empty: every tenant of the boundary the caller's rules allow
+  uint64 resume_point = 3;   // the change-log sequence last seen; 0 starts from now
+}
+
+// WatchResponse is one change.
+message WatchResponse {
+  uint64 resume_point = 1;   // hand this back after a restart
+  ChangeType type = 2;       // PUT or DELETE
+  Item item = 3;             // the item the change is about
+}
