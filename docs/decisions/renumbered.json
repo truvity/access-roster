@@ -454,10 +454,20 @@
       "old": "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force",
       "new": "0005-the-store",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record",
+      "new": "0008-boundaries-and-tenants",
+      "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery",
+      "new": "0010-backup-and-recovery",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
-    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#how-a-per-actor-rqlite-driver-reaches-its-cluster",
+    "0008-drivers-are-unix-socket-services-and-only-the-public-api-listens-on-tcp#how-a-per-actor-rqlite-driver-reaches-its-cluster": "0005-the-store#engines",
     "0002-the-design-model-actors-ports-drivers-and-contracts#ports-and-drivers": "0002-families-of-actors#ports-of-a-work-actor",
     "0002-the-design-model-actors-ports-drivers-and-contracts#placement-is-derived": "0003-units-transports-and-fusion#units",
     "0002-the-design-model-actors-ports-drivers-and-contracts#the-permission-manifest": "0002-families-of-actors#registries-generate-the-enforcement",
@@ -488,6 +498,36 @@
     "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#freshness-at-a-cold-start": "0005-the-store#freshness-at-a-cold-start",
     "0057-configuration-sources-are-a-port-sources-own-disjoint-paths-authority-is-signed-and-a-failing-source-keeps-the-version-in-force#roads-not-taken": "0005-the-store#roads-not-taken",
     "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#three-kinds-of-configuration": "0004-the-data-model#storage-classes",
-    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#instances-are-issued-under-declared-templates": "0004-the-data-model#profiles"
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#instances-are-issued-under-declared-templates": "0004-the-data-model#profiles",
+    "0004-drivers-listeners-and-boundary-enforcement#key-holder-is-the-one-mediator": "0006-keys-and-sealing#exclusive-card-access",
+    "0004-drivers-listeners-and-boundary-enforcement#three-layers-per-port": "0007-policy-and-sealed-grants#two-independent-checks",
+    "0004-drivers-listeners-and-boundary-enforcement#per-driver-checks": "0007-policy-and-sealed-grants#two-independent-checks",
+    "0005-boundaries-and-the-isolation-ladder#boundary-kinds": "0008-boundaries-and-tenants#boundaries",
+    "0005-boundaries-and-the-isolation-ladder#the-isolation-ladder": "0008-boundaries-and-tenants#the-ladder",
+    "0005-boundaries-and-the-isolation-ladder#what-each-boundary-owns": "0008-boundaries-and-tenants#the-ladder",
+    "0010-configuration-and-data-pkl-schema-origins-and-sensitivities#backup-and-restore-by-origin": "0010-backup-and-recovery#what-the-archive-holds",
+    "0011-state-is-one-port-with-compare-and-set#every-value-is-encrypted": "0006-keys-and-sealing#seal-and-open",
+    "0012-cryptography-and-authority-keys#grants-are-sealed-not-signed": "0007-policy-and-sealed-grants#sealed-grants",
+    "0012-cryptography-and-authority-keys#the-card-slot-map": "0006-keys-and-sealing#the-slot-plan",
+    "0012-cryptography-and-authority-keys#when-keys-are-shared-and-when-separate": "0006-keys-and-sealing#key-purposes",
+    "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#the-words": "0008-boundaries-and-tenants#boundaries",
+    "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#keys-and-isolation": "0008-boundaries-and-tenants#tenants",
+    "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#the-scale-to-design-for": "0008-boundaries-and-tenants#scale",
+    "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#growth-is-another-installation": "0008-boundaries-and-tenants#scale",
+    "0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#workforce-installations": "0008-boundaries-and-tenants#example-installations",
+    "0031-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#customer-identity-installations": "0008-boundaries-and-tenants#example-installations",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#erasure-and-export": "0008-boundaries-and-tenants#tenant-lifecycle",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#backups": "0010-backup-and-recovery#what-the-archive-holds",
+    "0034-a-backup-is-an-age-encrypted-tar-of-canonical-json-per-kind-and-restores-onto-any-driver#the-archive": "0010-backup-and-recovery#what-the-archive-holds",
+    "0034-a-backup-is-an-age-encrypted-tar-of-canonical-json-per-kind-and-restores-onto-any-driver#the-restore": "0010-backup-and-recovery#restore",
+    "0035-the-secrets-port-has-one-driver-sealed-state-and-the-export-port-publishes-only-kinds-marked-external#the-export-port": "0009-export#what-is-exportable",
+    "0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery#a-regional-outage": "0010-backup-and-recovery#a-regional-outage",
+    "0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery#recovery": "0010-backup-and-recovery#restore",
+    "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#the-words": "0008-boundaries-and-tenants#boundaries",
+    "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#keys-and-isolation": "0008-boundaries-and-tenants#tenants",
+    "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#the-scale-to-design-for": "0008-boundaries-and-tenants#scale",
+    "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#growth-is-another-installation": "0008-boundaries-and-tenants#scale",
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#workforce-installations": "0008-boundaries-and-tenants#example-installations",
+    "0047-declared-and-issued-configuration-authority-is-declared-and-instances-are-issued#customer-identity-installations": "0008-boundaries-and-tenants#example-installations"
   }
 }

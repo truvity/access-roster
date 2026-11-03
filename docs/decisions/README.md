@@ -64,11 +64,11 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0003](0003-units-transports-and-fusion.md) | One model, many transports: a unit per actor, the same calls over sockets, invokes and pods, and fusion only by explicit choice | Proposed |
 | [0004](0004-the-data-model.md) | Data is resource kinds in a compiled registry, each with an address, one storage class, a treatment, a profile and one writer | Proposed |
 | [0005](0005-the-store.md) | store@ holds every storage credential: one generic store service, typed clients, drivers private to their owner, and signed configuration loaded as a whole | Accepted |
-| [0006](0006-keys-and-sealing.md) | Cryptography uses P-384 by default, and authority keys are born in their store, sign in place and rotate by rule | Accepted |
-| [0007](0007-policy-and-sealed-grants.md) | Policy is written in Cedar and evaluated by a Rust policy actor | Accepted |
-| [0008](0008-boundaries-and-tenants.md) | Boundaries are environments, companies and customer boundaries on an isolation ladder, and a boundary on its own runtime is an installation federated by declared trust | Accepted |
-| [0009](0009-export.md) | The secrets port has one driver, sealed state, and the export port publishes only kinds marked external | Accepted |
-| [0010](0010-backup-and-recovery.md) | A backup is an age-encrypted tar of canonical JSON per record kind, with two recipients, and a restore writes it onto any driver | Accepted |
+| [0006](0006-keys-and-sealing.md) | key@ holds a boundary's keys: it seals, opens and signs in place, with three data keys per tenant and one key per purpose and algorithm | Accepted |
+| [0007](0007-policy-and-sealed-grants.md) | Policy is Cedar in a Rust actor over four layers, and every tenant-scoped write carries a grant that policy sealed | Accepted |
+| [0008](0008-boundaries-and-tenants.md) | A boundary is the unit of keys and policy on a cumulative ladder from L0 to L4, and a tenant is a scope with data keys of its own | Accepted |
+| [0009](0009-export.md) | exporter@ publishes the kinds marked exportable to destinations outside sluis, never to a secret source | Accepted |
+| [0010](0010-backup-and-recovery.md) | A backup is a logical archive of the authoritative kinds through the store; a regional outage is accepted and a drill measures recovery | Accepted |
 | [0011](0011-runtimes-and-installations.md) | Runtimes are three kinds, four installations are tested, and delivery goes local first, then boards, Lambda and Kubernetes in parallel | Accepted |
 | [0012](0012-the-language-follows-the-executable.md) | The language follows the executable: Go by default, Rust at the edge, in the trusted base, in cloud drivers and on the smallest boards | Accepted |
 | [0013](0013-release-train-packaging-and-distribution.md) | One repository, one version, one release train, and packaging follows the runtime | Accepted |
@@ -120,7 +120,6 @@ These records are superseded: the content of each moves into the record its stat
 | [0043](0043-break-glass-recovery-uses-passkeys-only.md) | Break-glass recovery uses passkeys only: two attested hardware keys and one pinned synced passkey, a recovery scope, an alert on every use and a quarterly drill | Superseded by 0017 |
 | [0044](0044-audit-pseudonyms-are-keyed-per-company-and-epoch.md) | Audit pseudonyms are HMAC-SHA384 of the subject under a data key per company and month, wrapped by the sealing key, and only the company's audit role reverses them | Superseded by 0029 |
 | [0045](0045-the-signing-api-signs-sent-content-for-an-authorised-proof-and-returns-an-armoured-detached-signature.md) | The signing API signs the content it is sent for a proof that policy authorised, and its first stage returns an armoured OpenPGP detached signature | Superseded by 0024 |
-| [0046](0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record.md) | Tenancy and scale: a boundary is the unit of keys and isolation, a tenant is a record without keys, and growth past a cohort is another installation | Superseded by 0008 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
 | [0049](0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs.md) | Credential minters mint only for declared targets whose entitlement sluis governs, and never where the vendor can trust sluis directly | Superseded by 0025 |
 | [0050](0050-audit-lifecycle-tiers-move-only-cold-objects-and-compliance-profiles-are-floors-that-the-configuration-check-enforces.md) | Audit lifecycle tiers move only cold objects, and compliance profiles are floors that the configuration check enforces | Superseded by 0029 |
@@ -129,7 +128,6 @@ These records are superseded: the content of each moves into the record its stat
 | [0053](0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on.md) | Quota consistency and failure are measured per state driver before enforcement is switched on | Superseded by 0039 |
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
 | [0055](0055-upstream-signals-end-sessions-and-suspend-or-erase-a-person.md) | Upstream signals: back-channel logout ends sessions by `sid`, a status call suspends or erases a person, and a global sign-out reaches every client | Superseded by 0034 |
-| [0056](0056-a-regional-outage-is-accepted-public-keys-outlive-it-and-a-drill-measures-recovery.md) | A regional outage is accepted for signing, public key material outlives it, and recovery objectives are measured by a drill | Superseded by 0010 |
 
 ## Where the old records went
 
