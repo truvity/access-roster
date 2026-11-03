@@ -1,0 +1,944 @@
+# sluis glossary: the single source of terms.
+#
+# It generates the vocabulary page (/concepts/) with `just glossary-write` and feeds the retired-terms
+# check `just check-terms` (tools/checks/terms.mjs), which reads the `retired` and `lint` sections.
+# A writer uses the words of `terms` for the model's concepts and never a word of `retired`.
+#
+# Public file: example names only (acme, globex, example.com), no private deployment, account or ticket.
+#
+# Fields of a term:
+#   term        the word or phrase as written in prose (code spelling in `code` when it differs)
+#   definition  one or two sentences, public-safe, in the target model
+#   category    one of the keys of `categories`
+#   see         where to read more: a decision record, `NNNN-slug` or `NNNN-slug#heading` (the record is
+#               docs/decisions/NNNN-slug.md), and/or a site path that starts with `/`
+#   avoid       synonyms a writer does not use for this meaning (free text; the check matches only `retired`)
+#   notes       optional: disambiguation
+schema: 1
+checked: "2026-11-03"
+
+categories:
+  families: "Families of actors and the units that run them"
+  data: "The data model: kinds, addresses, classes, treatment"
+  layers: "Profiles, layers and how layered values combine"
+  store: "The store: its API, drivers, engines and configuration loading"
+  keys: "Keys, sealing and grants"
+  identity: "People, machines and the proofs they present"
+  boundaries: "Boundaries, tenants and installations"
+  ciam: "Customer-identity installations (the account-hosting setup)"
+  audit: "Audit and usage evidence"
+  quota: "Quota and the allowance"
+  integrations: "Upstreams and integrations"
+
+terms:
+  # ---------------------------------------------------------------- families
+  - term: family
+    definition: "One of the four groups every actor belongs to: work, data, keys or audit. A port is never shared between two families."
+    category: families
+    see: ["0002-families-of-actors#the-four-families", "/concepts/families/"]
+    avoid: ["layer (for a family)", "tier"]
+
+  - term: work actor
+    definition: "An actor that does one job of sluis (entry, console, session, exchange, policy, signer, ca, ssh-ca (a separate actor from ca), quota, or an adapter). It holds no storage, key or audit credential at rest; it reaches data, keys and audit only through its ports."
+    category: families
+    see: ["0002-families-of-actors#work-actors"]
+    avoid: ["role", "process role", "service (for an actor)"]
+
+  - term: actor
+    definition: "A program with one responsibility, run as its own unit in each boundary it serves. Every actor belongs to one family."
+    category: families
+    see: ["0002-families-of-actors"]
+    avoid: ["role", "process role", "component (for an actor)"]
+
+  - term: actor@boundary
+    code: "<actor>@<boundary>"
+    definition: "The name of one actor in one boundary, for example `session@prod` or `store@prod`. The same name appears in every layer that enforces it: unit, user, socket, function, service account, key alias and the actor field of an audit record."
+    category: families
+    see: ["0002-families-of-actors#names"]
+    avoid: ["actor instance (as a separate term)"]
+    notes: "Also written for holders: store@boundary, key@boundary, exporter@boundary. In prose, `store@`, `key@` and `exporter@` mean the holder of the boundary being discussed."
+
+  - term: credential holder
+    definition: "A unit that holds a credential at rest. There are exactly four kinds: store@ and exporter@ (data), key@ (keys), and the audit pieces that hold a credential (writer, witness, indexer, reader). No work actor is one."
+    category: families
+    see: ["0002-families-of-actors#credential-holders"]
+    avoid: ["mediator", "mediating driver", "state-owner", "key-holder"]
+
+  - term: data family
+    definition: "store@ and exporter@: the only units that hold storage or export-destination credentials."
+    category: families
+    see: ["0002-families-of-actors#the-four-families"]
+
+  - term: keys family
+    definition: "key@: the only unit that holds a card PIN or a KMS permission."
+    category: families
+    see: ["0002-families-of-actors#the-four-families", "0006-keys-and-sealing"]
+
+  - term: audit family
+    definition: "The audit pieces: the emitter library in every actor, the audit transport, the writer, the witness, the indexer and the reader. Its pieces read their documents (the config kinds AuditLog, AuditWitnesses and AuditCatalogue) through the data port, like the actors of every other family; the blob, the transport and the index are their own ports."
+    category: families
+    see: ["0002-families-of-actors#the-four-families", "0028-audit-pieces"]
+
+  - term: foundation
+    definition: "The data and keys families (store@, exporter@, key@): what every installation runs, whatever else runs above it. Its binaries do not change with the modules. A grouping, not a fifth family."
+    category: families
+    see: ["0002-families-of-actors#the-foundation-and-the-modules"]
+
+  - term: module
+    definition: "A set of actors on top of the foundation, bringing its own kinds and key purposes into the registries: identity (the work actors other than quota, the adapters included), audit (the audit pieces) and quota (quota). An installation runs the foundation and the modules it needs, for example the foundation with the audit module only."
+    category: families
+    see: ["0002-families-of-actors#the-foundation-and-the-modules"]
+    notes: "Not the accounts module of a hub installation, and not the module part of a log id."
+
+  - term: store@
+    code: "store@<boundary>"
+    definition: "The data family's holder of storage credentials. It serves the one generic store service to work actors on their data port, enforces the kind registry, and has exactly four ports downward, one per storage class: config source, secret source, durable and temp. It never seals or opens a value."
+    category: families
+    see: ["0005-the-store"]
+    avoid: ["state-owner", "state port", "config loader (of an actor)", "secrets port"]
+
+  - term: key@
+    code: "key@<boundary>"
+    definition: "The keys family's holder: it holds the card PIN or the KMS permission of one boundary and offers Seal, Open, Sign and Mac (a keyed hash) to callers whose grant and rules allow it. It caches opened data keys in memory, each with its own time to live."
+    category: families
+    see: ["0006-keys-and-sealing"]
+    avoid: ["key-holder", "keys driver (for the holder)", "key service (for key@)"]
+
+  - term: exporter@
+    code: "exporter@<boundary>"
+    definition: "The data family's second holder: it watches the store for kinds marked exportable, opens sealed values at key@ with its own grant, writes them to destinations outside sluis with its own destination credential, and audits each write. A full reconcile runs at start and daily."
+    category: families
+    see: ["0009-export"]
+    avoid: ["export port", "export driver (for the holder)"]
+
+  - term: port
+    definition: "A named interface of a unit. A work actor has a data port (to store@), a keys port (to key@), an audit emit port, and the ports of its own job (an HTTP listener for entry only, provider APIs, outbound fetch). store@ has four ports downward, one per storage class; exporter@ has one per destination; key@ has one for its card or KMS."
+    category: families
+    see: ["0002-families-of-actors#ports-of-a-work-actor", "0005-the-store#drivers"]
+    avoid: ["state port", "lease port", "secrets port", "config-source port", "export port", "capability flag"]
+
+  - term: driver
+    definition: "A separate binary behind one port of a holder, private to its owner (store@, key@ or exporter@; key@'s card and KMS driver included): only the owner can open its socket. Each port has one contract and one CLI (`serve`, `check`, `version`, `conformance`). On Lambda a driver is an extension in the holder's function; on Kubernetes a native sidecar container in the holder's pod."
+    category: store
+    see: ["0005-the-store#drivers"]
+    avoid: ["per-actor driver", "mediating driver", "shared driver instance"]
+
+  - term: transport
+    definition: "How a call between two units travels on one installation: a Unix socket with the caller known by uid, a Lambda invoke with the caller known by its role, or in-cluster gRPC authenticated by a service-account token or SPIFFE mutual TLS. The steps and the checks are the same on every transport."
+    category: families
+    see: ["0003-units-transports-and-fusion#transports"]
+    notes: "Not the audit transport, which is the queue, spool or stream between the emitters and the writer."
+
+  - term: audit transport
+    definition: "The queue, spool or stream that carries audit emits to the writer: a local spool on boards, SQS on Lambda, SQS or NATS JetStream on Kubernetes."
+    category: audit
+    see: ["0028-audit-pieces"]
+
+  - term: unit
+    definition: "What an installation starts for one actor: a systemd unit with its own user on boards, a Lambda function, or a Kubernetes pod with its own service account. One actor per unit unless the installation fuses work actors."
+    category: families
+    see: ["0003-units-transports-and-fusion#units"]
+    avoid: ["container (as the Kubernetes unit)", "process (as a unit)"]
+
+  - term: fusion
+    definition: "An explicit installation choice to run several work actors in one unit. The store then applies the union of their rules to that unit. A holder is never fused with a work actor, and key@ never with entry."
+    category: families
+    see: ["0003-units-transports-and-fusion#fusion"]
+    avoid: ["fusion rule (as a free choice)"]
+
+  - term: cell
+    definition: "On Kubernetes, one replica of each actor scheduled together on one node; cells are spread across nodes and zones, and in-cluster services prefer the local cell."
+    category: families
+    see: ["0003-units-transports-and-fusion#cells"]
+
+  - term: platform piece
+    definition: "A program an installation runs that is not an actor of any family: the edge connector, the card service, the engine processes and the node agent `sluis-node`."
+    category: families
+    see: ["0002-families-of-actors#platform-pieces"]
+
+  - term: actor registry
+    definition: "The file that names every actor, its family, language, placement, calls, egress hosts and key purposes. With the kind registry it generates every enforcement layer and the reference pages."
+    category: families
+    see: ["0002-families-of-actors#registries-generate-the-enforcement", "/reference/actors/"]
+    avoid: ["permission manifest"]
+
+  - term: console
+    definition: "The work actor of the operator API and pages. It checks the caller's delegation and routes each write to the actor that owns the kind; it writes only two kinds itself, `Switch` and `LogLevelOverride`."
+    category: families
+    see: ["0002-families-of-actors#the-console", "0027-the-console"]
+    avoid: ["admin API (as an actor)", "part of entry"]
+
+  # ---------------------------------------------------------------- data
+  - term: kind
+    definition: "A typed resource declared in the kind registry: a Protobuf schema, a scope, one storage class, a treatment, a profile, its layers or links, its declared indexes, its rules and exactly one writer. Its name is PascalCase (`DataKeyWrap`); its address segment is the kebab-case form (`data-key-wrap`)."
+    category: data
+    see: ["0004-the-data-model#kinds", "/reference/kinds/"]
+    avoid: ["record kind", "record (for stored data)", "object"]
+
+  - term: kind registry
+    definition: "The compiled list of every kind. The store enforces it, the tests and generated reference pages read it, and a kind that is not in it cannot be read or written."
+    category: data
+    see: ["0004-the-data-model#kinds", "/reference/kinds/", "/reference/rules/"]
+    avoid: ["schema annotations", "permission manifest"]
+
+  - term: address
+    code: "<boundary>/<tenant | ->/<kind>/<id>"
+    definition: "Where one item of a kind lives: the boundary, the tenant or `-`, the kind and the id. The address space is flat, not a tree; there is no other scope."
+    category: data
+    see: ["0004-the-data-model#the-address"]
+    avoid: ["record key", "path (for an address)", "prefix (as a scope)"]
+
+  - term: id
+    definition: "The last part of an address. Actor, module, client and quota names are parts of the id, never scopes. An id never contains personal data: it is random, or a keyed hash of a natural key."
+    category: data
+    see: ["0004-the-data-model#the-address"]
+
+  - term: scope
+    definition: "The dimensions that separate data: the boundary, always, and the tenant, only for durable and temp kinds. Nothing else is a scope."
+    category: data
+    see: ["0004-the-data-model#the-address"]
+    avoid: ["installation scope", "actor scope", "client scope"]
+
+  - term: storage class
+    definition: "Where a kind lives and who writes it; exactly one per kind. The four classes are config, secret, durable and temp."
+    category: data
+    see: ["0004-the-data-model#storage-classes"]
+    avoid: ["origin", "store (for a class)"]
+
+  - term: config
+    definition: "The storage class of read-only settings: signed documents from a file, a ConfigMap or AWS AppConfig, written by IaC or the publishing pipeline outside sluis. sluis never writes config. No tenant dimension."
+    category: data
+    see: ["0004-the-data-model#storage-classes", "0005-the-store#configuration-loading"]
+    avoid: ["declared configuration", "authority (as a class)", "install file"]
+
+  - term: secret
+    definition: "The storage class of read-only secrets: values from a systemd credential or AWS SSM, written by IaC. No tenant dimension. A secret that sluis generates or receives is not this class: it is sealed or hashed durable data."
+    category: data
+    see: ["0004-the-data-model#storage-classes"]
+    avoid: ["secrets port", "sealed-state", "vault"]
+
+  - term: durable
+    definition: "The storage class of read-write data that must survive: written by exactly one actor through the store, and backed up when it is authoritative. A time to live may be a field."
+    category: data
+    see: ["0004-the-data-model#storage-classes"]
+    avoid: ["state", "issued durable", "operator-set"]
+
+  - term: temp
+    definition: "The storage class of read-write data that may be lost: losing it costs a sign-in or a retry, never data. A time to live is mandatory. Never backed up."
+    category: data
+    see: ["0004-the-data-model#storage-classes"]
+    avoid: ["ephemeral state", "cache (as a class)"]
+
+  - term: built-in
+    definition: "What the binary carries: defaults, hard limits, predefined policies and closed value sets such as the allowance modes. It is not a storage class and changes only with a release."
+    category: data
+    see: ["0004-the-data-model#built-in"]
+    avoid: ["schema default", "floor in code (for all built-ins)"]
+
+  - term: authoritative kind
+    definition: "A durable kind that nothing else can recreate. Only authoritative kinds are backed up."
+    category: data
+    see: ["0010-backup-and-recovery#what-the-archive-holds"]
+    avoid: ["origin issued"]
+
+  - term: treatment
+    definition: "How the store keeps a kind's value: hashed, sealed or plain, declared per kind. Sealed is the default."
+    category: data
+    see: ["0004-the-data-model#treatment"]
+    avoid: ["sensitivity", "every value is encrypted"]
+
+  - term: hashed
+    definition: "Treatment of a compare-only secret, such as a session id, a refresh token, a code or a generated client secret: only its hash is stored, it never reaches key@ and it is never read back."
+    category: data
+    see: ["0004-the-data-model#treatment"]
+
+  - term: sealed
+    definition: "Treatment of a value that must be read back, such as a provider token or personal data: the actor seals it at key@ before writing, the store keeps the ciphertext, and only an actor with a grant can open it."
+    category: data
+    see: ["0004-the-data-model#treatment", "0006-keys-and-sealing#seal-and-open"]
+    avoid: ["encrypted in the port library", "sealed secret"]
+
+  - term: plain
+    definition: "Treatment of a value that is neither secret nor personal, such as a switch, a link or a counter: stored as it is."
+    category: data
+    see: ["0004-the-data-model#treatment"]
+
+  - term: one writer per kind
+    definition: "Every durable and temp kind has exactly one writing actor, named in the registry; the store refuses any other. Config and secret kinds have one writer outside sluis: IaC or the publishing pipeline."
+    category: data
+    see: ["0004-the-data-model#one-writer-per-kind"]
+    notes: "Three kinds are declared self-scoped (Lease, ReplayGuard, SpentGrant): the id starts with the writing actor's name and the store lets each listed actor write only ids under its own name, so one writer per item still holds. The other named exception is the restore command of store@, which writes back the kinds it restores."
+
+  - term: rule
+    definition: "One line of the registry: an actor may use a verb on a kind. The store checks the rule on every call, before it touches data."
+    category: data
+    see: ["0005-the-store#rules", "/reference/rules/"]
+    avoid: ["ACL", "manifest entry"]
+
+  - term: verb
+    definition: "An operation on a kind: get, list, create, update, delete, apply, or watch."
+    category: data
+    see: ["0005-the-store#the-store-api"]
+
+  - term: declared index
+    definition: "A lookup a kind declares in the registry, besides listing by tenant. A new question is a new reviewed index; there is no query language."
+    category: store
+    see: ["0005-the-store#the-store-api"]
+
+  - term: linked kinds
+    definition: "Separate kinds that refer to each other by id, each in exactly one class, such as an app (config), its client secret (secret), a connection per tenant (durable) and an install in progress (temp). The store does not join them."
+    category: data
+    see: ["0004-the-data-model#layered-and-linked-kinds"]
+
+  - term: upstream criterion
+    definition: "How an upstream or provider app is classed: made by hand or IaC on the provider side for the whole installation, it is config (with its secret in a secret source); made through a browser round trip in the UI, such as an app install or an admin consent, it is durable data. A tenant's connection to a provider is always durable, whoever creates it: an IaC tool that writes through the API makes durable data, not config."
+    category: integrations
+    see: ["0004-the-data-model#the-upstream-criterion"]
+
+  - term: connection
+    definition: "A tenant's connection to a provider: its directory (Google Workspace, Entra, a GitHub organisation), its chat workspace, its code host, its account at a provider that sluis mints for. A durable kind of that tenant with its credential sealed, made through the UI or the API; the app definition that serves the whole installation stays config. The operator's own company is a tenant, so its connections are durable too."
+    category: integrations
+    see: ["0004-the-data-model#the-upstream-criterion"]
+    avoid: ["connector (as the general term)"]
+    notes: "Not a network connection. Kinds: DirectoryConnection, MinterConnection, SlackConnection, EntraConnection, GitHubApp."
+
+  - term: backup
+    definition: "A logical archive of the authoritative kinds, read through the store. Sealed values stay sealed, and the data key wraps are included. The archive is encrypted with AES-256-GCM under an archive key of its own, wrapped for the restore role and for an offline recipient."
+    category: data
+    see: ["0010-backup-and-recovery#what-the-archive-holds", "/concepts/data/"]
+    avoid: ["snapshot (for an archive)", "dump"]
+    notes: "A snapshot is the loaded config set of store@, not a backup."
+
+  # ---------------------------------------------------------------- profiles and layers
+  - term: profile
+    definition: "Which layers may set a kind's value: Fixed, Operable or Tenant-adjustable."
+    category: layers
+    see: ["0004-the-data-model#profiles"]
+
+  - term: Fixed
+    definition: "The profile of settings with no write path at run time: built-in plus config. Change needs review and signature. Examples: installation shape, trust, key plan, tunables, login domains, upstreams made by hand or IaC."
+    category: layers
+    see: ["0004-the-data-model#profiles"]
+
+  - term: Operable
+    definition: "The profile of settings an operator writes at run time, on top of built-in and config. It may be boundary-scoped or tenant-scoped (for example a hold on one person or tenant): observability, switches, retention and holds, upstreams made through a UI flow."
+    category: layers
+    see: ["0004-the-data-model#profiles"]
+    avoid: ["operator-set"]
+
+  - term: Tenant-adjustable
+    definition: "The profile of settings written by a tenant admin, or by a product for its tenant, inside bounds declared in config, only in its own tenant and with a sealed grant: security limits, sign-in requirements, policies, clients, branding and the allowance."
+    category: layers
+    see: ["0004-the-data-model#profiles"]
+    avoid: ["issued instance", "tenant override"]
+
+  - term: layer
+    definition: "One source of a setting's value, lowest first: built-in, config, operator (at run time), tenant. All four apply to policies only; every other kind uses a subset."
+    category: layers
+    see: ["0004-the-data-model#layers-and-the-direction-rule"]
+    notes: "Not an isolation layer (retired) and not a Lambda layer (a packaging term)."
+
+  - term: direction rule
+    definition: "A higher layer may tighten freely; it may loosen only as far as the layer below allows, and a run-time loosening carries an expiry. The store checks it when the value is written."
+    category: layers
+    see: ["0004-the-data-model#layers-and-the-direction-rule", "/principles/"]
+    avoid: ["tighten-only (as the whole rule)", "precedence"]
+
+  - term: tighten
+    definition: "To change a setting so that less can happen (shorter lifetime, stricter sign-in, a forbid, a pause). A tightening takes effect at once and is durable."
+    category: layers
+    see: ["0004-the-data-model#layers-and-the-direction-rule"]
+
+  - term: loosen
+    definition: "To change a setting so that more can happen than the layer below yields (a longer lifetime, debug logging, a break-glass link). Allowed only as far as the layer below permits; at run time it expires."
+    category: layers
+    see: ["0004-the-data-model#layers-and-the-direction-rule"]
+
+  - term: layered kind
+    definition: "A setting split into one kind per layer, each in its own class. The store composes the layers into one effective value with its provenance, and checks the direction rule on every write."
+    category: layers
+    see: ["0004-the-data-model#layered-and-linked-kinds"]
+
+  - term: combine rule
+    definition: "How the store composes a layered kind: union for policies, where a Cedar forbid anywhere wins; shortest wins for lifetimes; intersection for sign-in methods; the unexpired override wins for log levels; the most specific wins for branding."
+    category: layers
+    see: ["0004-the-data-model#layered-and-linked-kinds"]
+
+  - term: provenance
+    definition: "What a read of a layered kind returns beside the value: which layer set each field, at which version."
+    category: layers
+    see: ["0005-the-store#the-store-api"]
+    avoid: ["origin of an effective value"]
+
+  - term: bound
+    definition: "A limit declared in config (or built in) that a higher layer may not cross, such as a client template's allowed redirect hosts or a cap on a lifetime."
+    category: layers
+    see: ["0004-the-data-model#profiles"]
+    avoid: ["slot (of a template)"]
+
+  # ---------------------------------------------------------------- store
+  - term: store service
+    definition: "The one generic ConnectRPC service store@ serves on the data port: Get, List, Write and Watch, each carrying a kind name and bytes. The store decodes and validates against the kind registry and applies the kind's rules. There is no query language and no SQL."
+    category: store
+    see: ["0005-the-store#the-store-api", "/reference/store-api/"]
+    avoid: ["state service", "one generated service per kind"]
+
+  - term: typed client
+    definition: "The client library an actor uses: `store.Client[T Kind]` in Go, `Store<K: Kind>` over `trait Kind` in Rust. Typed upward, generic on the wire."
+    category: store
+    see: ["0005-the-store#typed-clients"]
+    avoid: ["port library"]
+
+  - term: item
+    definition: "What a driver sees: a key, a version, bytes, a time to live and index entries. A driver never knows what a kind means."
+    category: store
+    see: ["0005-the-store#drivers", "/reference/store-api/"]
+    avoid: ["record"]
+
+  - term: version
+    definition: "The number the store sets on each item: 1 at create, plus 1 at each change. An update names the version it read (`if_version`); for a lease the version is the fencing token."
+    category: store
+    see: ["0005-the-store#the-store-api"]
+    avoid: ["revision"]
+
+  - term: watch
+    definition: "A verb that streams the changes of a kind from a resume point. Pushed on boards and Kubernetes; on Lambda a reader re-reads with an ETag instead."
+    category: store
+    see: ["0005-the-store#watch-and-the-resume-point"]
+    avoid: ["change feed", "subscription"]
+
+  - term: resume point
+    definition: "The change-log sequence a watcher hands back after a restart to receive every change it missed."
+    category: store
+    see: ["0005-the-store#watch-and-the-resume-point"]
+    avoid: ["cursor (for a watch)"]
+
+  - term: change log
+    definition: "A row the store writes in the same transaction as each change; its sequence numbers feed watch and resume points."
+    category: store
+    see: ["0005-the-store#watch-and-the-resume-point"]
+
+  - term: engine
+    definition: "The database behind the durable and temp drivers: DynamoDB on AWS, rqlite on boards and on the local installation (one node), an in-memory engine in tests only."
+    category: store
+    see: ["0005-the-store#engines"]
+    avoid: ["state store", "state cluster", "backend (for the engine)"]
+
+  - term: lease
+    definition: "A temp kind created by a conditional create with a time to live; its version is the fencing token, and it is never swept: an expired lease is taken over by a conditional update of the same item. Only background jobs (a reconciler, a scheduled adapter, the backup) take one. A lease needs nothing of its own in the store: it is an ordinary kind."
+    category: store
+    see: ["0005-the-store#leases"]
+    avoid: ["lease port", "local lock"]
+
+  - term: bootstrap file
+    definition: "The one local file store@ reads at start: the boundary, one destination per storage class and the driver sockets. The only setting whose change needs a restart."
+    category: store
+    see: ["0005-the-store#the-bootstrap-file", "/reference/bootstrap-file/"]
+    avoid: ["install file", "static configuration"]
+
+  - term: signed config document
+    definition: "One config kind's content as a JSON Web Signature from the publishing key, with a sequence number that must grow once store@ is running. store@ verifies the signature before it parses the bytes; at a cold start it takes the latest validly signed document whatever its sequence number."
+    category: store
+    see: ["0005-the-store#configuration-loading", "/reference/signed-config/"]
+    avoid: ["config-source document", "fragment", "authority source"]
+
+  - term: snapshot
+    definition: "The whole set of verified config documents of a boundary, validated as one and swapped atomically. A cold start refuses on any failure; a failed reload keeps the snapshot in force and raises an alarm."
+    category: store
+    see: ["0005-the-store#configuration-loading"]
+    avoid: ["merged document", "composition"]
+
+  - term: installation-wide document
+    definition: "A signed config document with the same content written by IaC into every boundary's config source, such as the trust anchors, the root list, the front host or the predefined policies. No boundary reads another's."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#installation-wide-settings"]
+    avoid: ["installation scope", "shared config source"]
+
+  - term: secret source
+    definition: "store@'s read-only port for the secret class: a systemd credential on boards, AWS SSM elsewhere. Values named by config are fetched on first use and kept in memory."
+    category: store
+    see: ["0005-the-store#secret-sources"]
+    avoid: ["secrets port", "secrets driver"]
+
+  - term: config source
+    definition: "store@'s read-only port for the config class: a directory of signed files, a ConfigMap, or AWS AppConfig."
+    category: store
+    see: ["0005-the-store#configuration-loading"]
+    avoid: ["config-source port", "source owns paths"]
+
+  - term: IaC
+    definition: "Infrastructure as code and the publishing pipeline: the only writers of config and secret kinds. They run outside sluis, under review."
+    category: store
+    see: ["0004-the-data-model#one-writer-per-kind"]
+    avoid: ["declared (as a writer)"]
+
+  # ---------------------------------------------------------------- keys
+  - term: seal
+    definition: "key@'s operation `Seal(address, value, grant)`: encrypt a value under the data key of the address's boundary, tenant and purpose, with the full address as authenticated data. The actor then writes the result to the store."
+    category: keys
+    see: ["0006-keys-and-sealing#seal-and-open"]
+    avoid: ["wrap (for a value)", "encrypt in the port library"]
+
+  - term: open
+    definition: "key@'s operation `Open(address, sealed, grant)`: check the grant and the caller's rules, then decrypt; the plaintext exists only in the calling actor."
+    category: keys
+    see: ["0006-keys-and-sealing#seal-and-open"]
+    avoid: ["unwrap (for a value)", "decrypt in the store"]
+
+  - term: data key
+    definition: "A software AES-256 key. Each tenant has three, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch) and `evidence` (audit and usage); each boundary has four: `grant`, `cookie`, `mac` and `data` (the last, with tenant `-`, seals the kinds that have no tenant). key@ makes it, keeps it only wrapped, and opens it only in its own memory."
+    category: keys
+    see: ["0006-keys-and-sealing#data-keys"]
+    avoid: ["data key per kind", "data-key record"]
+
+  - term: wrapping key
+    definition: "The key in hardware or KMS that protects a boundary's data keys: the boundary's symmetric KMS key with the encryption context {boundary, tenant, purpose} on AWS, or each board's key-agreement key on its card. It never leaves its key store."
+    category: keys
+    see: ["0006-keys-and-sealing#data-keys"]
+    avoid: ["sealing key", "KEK (in prose)", "environment key"]
+
+  - term: DataKeyWrap
+    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey. key@ is its only writer."
+    category: keys
+    see: ["0006-keys-and-sealing#datakeywrap"]
+    avoid: ["data-key", "data-key escrow"]
+
+  - term: recovery recipient
+    definition: "An offline P-384 key, held under ritueel's custody, for which every data key is also wrapped. It opens every wrap when all cards are lost, and rewraps an archive for another installation."
+    category: keys
+    see: ["0006-keys-and-sealing#the-recovery-recipient"]
+    avoid: ["escrow recipient", "offline copy of the sealing key"]
+
+  - term: crypto-shred
+    definition: "Erasing a tenant by deleting its data key wraps: the `data` and `pseudonym` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
+    category: keys
+    see: ["0006-keys-and-sealing#erasing-a-tenant"]
+
+  - term: key purpose
+    definition: "What one key is for, such as token signing, an X.509 intermediate, the SSH user CA, the SSH host CA or an audit log. One key per purpose and per algorithm, never shared across purposes; several audiences of one purpose share it."
+    category: keys
+    see: ["0006-keys-and-sealing#key-purposes", "/reference/keys/"]
+
+  - term: slot plan
+    definition: "The per-board map of card slots: one slot per key purpose and per algorithm. The key-agreement slot that unwraps data keys already exists in the version 1 map; grants leave it for a boundary data key."
+    category: keys
+    see: ["0006-keys-and-sealing#the-slot-plan", "/reference/keys/"]
+    avoid: ["card slot map (version 1)"]
+
+  - term: sealed grant
+    definition: "The short-lived decision of `policy`, sealed by key@ (only policy may seal one; the store, ca, signer, key@ and the minters open it). It names the tenant and what it allows, is reusable for about 60 seconds, and is never stored. A grant sealed for the address's tenant is required on every tenant-scoped write."
+    category: keys
+    see: ["0007-policy-and-sealed-grants#sealed-grants"]
+    avoid: ["signed grant", "grant key", "tenant grant (as a separate thing)"]
+    notes: "In prose, 'grant' alone means the sealed grant. For the named permissions of the grant vocabulary write 'grant name'."
+
+  - term: grant vocabulary
+    definition: "The config kind that names the permissions and claims a policy may use (grant names), with the role ladder and the sensitive scopes. Different from a sealed grant, which is one decision in flight."
+    category: keys
+    see: ["0020-grant-vocabulary-and-token-claims", "/reference/policy/"]
+    avoid: ["grants (for the vocabulary)"]
+
+  - term: spent marker
+    definition: "A temp kind that holds a hash so that a one-shot thing cannot happen twice: the hash of a sealed grant used for an irreversible action (kind `SpentGrant`), or the hash of an allowance push's request id (kind `SpentPush`)."
+    category: keys
+    see: ["0007-policy-and-sealed-grants#sealed-grants"]
+
+  - term: two independent checks
+    definition: "What stands between any actor and a tenant's sealed value: the store's rule (may this actor use this verb on this kind, with a grant for this tenant on a write) and key@'s grant check on every Seal and Open."
+    category: keys
+    see: ["0007-policy-and-sealed-grants#two-independent-checks"]
+    avoid: ["three layers per port", "isolation layer"]
+
+  - term: grant name
+    definition: "One entry of the grant vocabulary: a named permission or claim that a policy may allow and a token may carry, such as a role or a sensitive scope. It is not a sealed grant."
+    category: keys
+    see: ["0020-grant-vocabulary-and-token-claims#grant-names-and-the-vocabulary", "/reference/policy/#the-grant-vocabulary"]
+    avoid: ["grant (for a named permission)"]
+
+  - term: authority key
+    definition: "A key that signs for others: a CA intermediate, the token-signing key or an SSH CA key. It is born in its key store, signs in place through key@ and never leaves."
+    category: keys
+    see: ["0006-keys-and-sealing#keys-sign-in-place", "/principles/#1-a-key-is-born-in-its-store-and-never-leaves-it"]
+    avoid: ["sealing key", "signing key (for a data key)"]
+
+  # ---------------------------------------------------------------- identity
+  - term: subject
+    definition: "The opaque, random id of a person, assigned when sluis first sees the person. An upstream account is tied to it by issuer and subject claim, never by e-mail."
+    category: identity
+    see: ["0017-identity-and-sign-in#subjects", "0019-person-and-upstream-link"]
+    avoid: ["user id", "e-mail as a key"]
+
+  - term: trust domain
+    definition: "The SPIFFE name of a boundary, such as `prod.example.com`. Each boundary has its own trust domain, trust bundle and CA intermediate."
+    category: identity
+    see: ["0022-workload-identity-and-host-enrolment#trust-domains"]
+
+  - term: proof
+    definition: "What a machine presents to get a credential: a cloud instance document, a Kubernetes token, a CI token, a hardware attestation, an enrolment token or a person's approval. exchange verifies it and policy decides what the machine may become."
+    category: identity
+    see: ["0022-workload-identity-and-host-enrolment#proofs-and-the-exchange"]
+
+  - term: trust bundle
+    definition: "The certificates a host trusts for one trust domain, and the root-signed list they chain to."
+    category: identity
+    see: ["0022-workload-identity-and-host-enrolment#the-trust-bundle", "0024-root-custody-and-the-signing-api#root-pins-and-the-root-list"]
+    avoid: ["CA bundle (for a trust bundle)"]
+
+  # ---------------------------------------------------------------- boundaries
+  - term: boundary
+    definition: "The unit of keys and policy. Every address starts with it, it has a level on the ladder, its own key@ from L1, and its own issuer and audit log."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#boundaries"]
+    avoid: ["environment (as the general term)", "company boundary", "product boundary"]
+
+  - term: tenant
+    definition: "A division inside a boundary with its own data keys (data, pseudonym, evidence), settings, clients and allowance; the second scope dimension, used only by durable and temp kinds. A tenant may exist in several boundaries, with separate data keys in each."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#tenants"]
+    avoid: ["key-less tenant", "company (as a scope)", "audit tenant", "quota tenant"]
+
+  - term: ladder
+    definition: "The cumulative levels of separation: L0 a tenant (the store's rules and its own data keys), L1 own keys, L2 own processes, L3 own engine, L4 own runtime. Each level includes the ones below it."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+    avoid: ["isolation layer"]
+
+  - term: L0
+    definition: "A tenant: separated by the store's rules and its own data keys, with no keys, processes or engine of its own."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+
+  - term: L1
+    definition: "A boundary with its own key@ and keys (its own wrapping key: a KMS key, or a second card per board), on its parent's store and processes."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+
+  - term: L2
+    definition: "A boundary with its own units: its own store@ and work actors, on its parent's engine under its own address prefix."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+
+  - term: L3
+    definition: "A boundary with its own engine (its own rqlite cluster or DynamoDB table), bucket and queue."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+
+  - term: L4
+    definition: "A boundary with its own runtime: its own cloud account, cluster or hosts, joined to others by declared trust."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#the-ladder"]
+
+  - term: installation
+    definition: "One concrete deployment: a runtime, its nodes and backends, and the boundaries it runs. It is a deployment, not a scope."
+    category: boundaries
+    see: ["0011-runtimes-and-installations", "/runtimes/"]
+    avoid: ["installation (as a scope of data)"]
+
+  - term: tested installation
+    definition: "One of the four installations the project tests: local, boards, lambda and kubernetes. Any other combination is possible but untested."
+    category: boundaries
+    see: ["0011-runtimes-and-installations#installations", "/runtimes/"]
+
+  - term: runtime
+    definition: "The kind of platform that starts the units: bare-metal (systemd), serverless (Lambda) or kubernetes."
+    category: boundaries
+    see: ["0011-runtimes-and-installations"]
+    avoid: ["shape", "environment (for a runtime)"]
+
+  - term: promotion
+    definition: "Moving a tenant into a boundary of its own: its kinds are moved and its data keys rewrapped for the new boundary's wrapping key."
+    category: boundaries
+    see: ["0008-boundaries-and-tenants#promotion"]
+
+  - term: operator
+    definition: "The person or team that runs an installation and acts at run time through the console, within the Operable layer."
+    category: boundaries
+    see: ["0027-the-console"]
+
+  - term: tenant admin
+    definition: "A person delegated to change one tenant's Tenant-adjustable settings through the console or the API."
+    category: boundaries
+    see: ["0027-the-console"]
+
+  - term: product
+    definition: "A customer's or the operator's own application that calls sluis's API for its tenants, for example to push an allowance."
+    category: boundaries
+    see: ["0039-quota-allowance"]
+    notes: "Not a sluis kind. Write 'a product' in examples, never a real product name."
+
+  # ---------------------------------------------------------------- ciam
+  - term: customer boundary
+    definition: "A boundary of the customer kind: the boundary of one regulated customer, or one shared boundary for several customers. It has its own keys and issuer, and its tenants each have their own data keys. It is a boundary, not a tenant."
+    category: ciam
+    see: ["0008-boundaries-and-tenants#boundaries", "0032-customer-identity-installations"]
+    avoid: ["company boundary", "product boundary"]
+
+  - term: hub installation
+    definition: "In an account-hosting setup, the installation that holds customer accounts and issues pairwise subjects. An installation is a deployment, not a scope of data: its boundaries and tenants are addressed like any other."
+    category: ciam
+    see: ["0032-customer-identity-installations", "/requirements/acct/"]
+
+  - term: context installation
+    definition: "In an account-hosting setup, the installation of one regulated party. It has its own issuer, keys, subjects and sessions, and gets sign-in silently from the hub installation."
+    category: ciam
+    see: ["0032-customer-identity-installations", "/requirements/acct/"]
+
+  - term: accounts module
+    definition: "The module of a hub installation that holds the account registry and runs the registration, passkey and recovery ceremonies."
+    category: ciam
+    see: ["/requirements/acct/", "/requirements/reg/"]
+
+  - term: sector
+    definition: "A group of relying parties that share one pairwise subject for a person. A sector is declared in config (kind `Sector`)."
+    category: ciam
+    see: ["0034-end-users-and-upstream-signals#pairwise-subjects", "/requirements/subj/"]
+
+  - term: fallback credential vault
+    definition: "An external identity provider that holds an optional fallback password and one-time-password factor for a person and knows only a pseudonym."
+    category: ciam
+    see: ["/requirements/vault/"]
+
+  - term: control plane
+    definition: "The external system through which operators and support issue signed administrative intents."
+    category: ciam
+    see: ["0031-ciam-is-a-broker"]
+
+  # ---------------------------------------------------------------- audit
+  - term: emitter
+    definition: "The library in every actor that builds an audit record and sends it on the audit emit port."
+    category: audit
+    see: ["0028-audit-pieces"]
+
+  - term: writer
+    definition: "The audit piece that seals records from the audit transport into its one log in the blob; its own state lives in the blob, written by conditional writes. One writer per log."
+    category: audit
+    see: ["0029-the-audit-log"]
+    avoid: ["audit writer state in the store"]
+
+  - term: witness
+    definition: "The audit piece that cosigns a log's new checkpoint once it is consistent with the last one it cosigned."
+    category: audit
+    see: ["0029-the-audit-log"]
+
+  - term: indexer
+    definition: "The audit piece that follows each log by checkpoint and feeds the search index, its only writer. Search is audit's own index and may use SQL; it is not the store's business."
+    category: audit
+    see: ["0028-audit-pieces"]
+
+  - term: reader
+    definition: "The audit piece that answers audit queries from the index, filtered by the caller's grant, and records each read."
+    category: audit
+    see: ["0028-audit-pieces"]
+
+  - term: audit blob
+    definition: "The bucket or directory that holds the audit logs, their checkpoints and the writer's state; it needs conditional writes."
+    category: audit
+    see: ["0029-the-audit-log"]
+
+  - term: usage fact
+    definition: "An audit-family record of one admit, deny or top-up, with its evidence; the billing log of a product is built from these outside sluis."
+    category: audit
+    see: ["0040-meters-and-usage-evidence"]
+    avoid: ["usage event (for a billed statement)", "finance export"]
+
+  - term: audit log
+    definition: "The tamper-evident, tiled log that a writer seals into the audit blob: one log per boundary, one writer per log."
+    category: audit
+    see: ["0029-the-audit-log", "/concepts/audit/"]
+    avoid: ["audit trail (as a component)"]
+
+  - term: usage stream
+    definition: "The usage facts, built from the same call as the audit record and kept as a separate stream."
+    category: audit
+    see: ["0030-audit-records-and-the-usage-stream#the-usage-stream"]
+
+  - term: project
+    definition: "A unit of ownership that emits to a boundary's audit: sluis itself, the infrastructure, or a product. Each project has its own bucket with a prefix per log kind (audit, usage, billing), its own log signing keys and its own writer; its team reads its own logs, its auditor reads them read-only, and the boundary's auditor reads every project."
+    category: audit
+    see: ["0002-families-of-actors#the-four-families", "0029-the-audit-log"]
+
+  # ---------------------------------------------------------------- quota
+  - term: allowance
+    definition: "The durable kind that holds, per tenant and quota, a mode (prepaid, limited or unlimited) and the units left. A product pushes it; the quota actor counts it down and refuses at zero."
+    category: quota
+    see: ["0039-quota-allowance"]
+    avoid: ["balance", "billing account", "plan"]
+
+  - term: allowance push
+    definition: "A product's call that changes an allowance. It carries a request id, an operation (add, set or write-off) and, optionally, the expected version. It is idempotent by request id (a hashed `SpentPush` marker), is applied with a conditional update, and is an audit fact."
+    category: quota
+    see: ["0039-quota-allowance"]
+    avoid: ["top-up (as a separate mechanism)", "balance update"]
+
+  - term: allowance mode
+    definition: "One of three built-in modes of an allowance: prepaid and limited are counted down and refused at zero; unlimited is only recorded."
+    category: quota
+    see: ["0039-quota-allowance"]
+
+  # ---------------------------------------------------------------- integrations
+  - term: upstream
+    definition: "An identity provider sluis signs people in through. Made by hand or IaC it is config; made through a UI flow it is durable."
+    category: integrations
+    see: ["0025-integrations", "0004-the-data-model#the-upstream-criterion"]
+
+  - term: integration
+    definition: "A capability sluis uses of an outside vendor, in one of five contracts: upstream, facts source, credential minter, provisioner or notifier. An integration returns facts or carries out effects that core authorised, and never decides."
+    category: integrations
+    see: ["0025-integrations"]
+    avoid: ["connector (as the general term)", "plugin"]
+
+  - term: adapter
+    code: "adapter-<vendor>@<boundary>"
+    definition: "The work actor that implements one or more integration contracts for one vendor, named `adapter-<vendor>@<boundary>`: `adapter-github`, `adapter-slack`, `adapter-upstream-oidc`. It holds no credential at rest: its provider secrets are config-referenced secrets or sealed durable data that it opens per call. One adapter serves one vendor and opens each tenant's connection credential at key@ for each call."
+    category: integrations
+    see: ["0025-integrations"]
+    avoid: ["integration (for the actor)", "connector", "github integration", "slack integration", "upstream integration"]
+    notes: "The writer or reader of a kind that an adapter owns is written `adapter-<vendor>` in the kind registry, the same way as every other actor name."
+
+retired:
+  # Each entry: the retired term, what replaces it, and where the old word stays correct.
+  #
+  # `allowed_in` is documentation, shown on the generated vocabulary page. It is NOT a mechanism and the
+  # lint does not read it. An exception is enforced only by one of these four, all in `lint` below:
+  #   1. `lint.scope.exclude`   a path that may keep old words (renumbered.json, CHANGELOG.md, v1 content,
+  #                             the generated vocabulary page, which prints the retired list itself);
+  #   2. `lint.skip_records`    withdrawn requirement records, which keep their old text for ever;
+  #   3. a rule's `context_allow`  a second regex on the same line (the HTTP and browser sense of "origin");
+  #   4. an inline `terms-allow: <id>` marker, which CI lists for the reviewer. A "roads not taken" bullet
+  #      that names a retired term uses this marker. (The patterns are written so that 'audit record',
+  #      'decision record' and 'an issued certificate' do not match, and need no exception.)
+  - term: key-holder
+    id: key-holder
+    replacement: "key@ (key@boundary)"
+    allowed_in: ["renumbered.json", "CHANGELOG entries before the rewrite"]
+  - term: state-owner
+    id: state-owner
+    replacement: "store@ (store@boundary)"
+    allowed_in: ["renumbered.json"]
+  - term: "origin (data sense: declared, operator-set, learned, derived, issued)"
+    id: origin
+    replacement: "storage class plus profile; for issued and declared see 'durable' and 'config'"
+    allowed_in: ["HTTP and browser sense: same-origin, cross-origin, the Origin header, CORS, a WebAuthn or passkey origin, a redirect origin, allow-listed origins of client documents", "a tunnel's origin (cloudflared)", "the plain English 'origin of' a request or a page"]
+  - term: sensitivity
+    id: sensitivity
+    replacement: "treatment (hashed, sealed, plain)"
+    allowed_in: []
+  - term: operator-set
+    id: operator-set
+    replacement: "the operator layer of an Operable kind"
+    allowed_in: []
+  - term: install file
+    id: install-file
+    replacement: "bootstrap file (where things are) plus signed config documents (what is configured)"
+    allowed_in: ["redirect maps"]
+  - term: "secrets port, `secrets` port"
+    id: secrets-port
+    replacement: "secret source (read-only, IaC-written) or sealed durable data (generated or received secrets)"
+    allowed_in: []
+  - term: sealed-state
+    id: sealed-state
+    replacement: "sealed durable kind"
+    allowed_in: []
+  - term: "live / restart reload, reload class"
+    id: reload-class
+    replacement: "the snapshot: every config change reloads as a whole; only the bootstrap file needs a restart"
+    allowed_in: []
+  - term: "config-source composition, sources own disjoint paths, owned paths"
+    id: config-composition
+    replacement: "one signed document per config kind, verified and validated as one snapshot"
+    allowed_in: []
+  - term: key-less tenant
+    id: key-less-tenant
+    replacement: "tenant (it has its own data keys, and no authority key)"
+    allowed_in: []
+  - term: Pkl
+    id: pkl
+    replacement: "Protobuf (the only schema source; JSON Schema is generated from it)"
+    allowed_in: ["roads not taken of the data model record"]
+  - term: "permission manifest"
+    id: permission-manifest
+    replacement: "the kind registry (rules) and the actor registry (calls, egress, key purposes)"
+    allowed_in: ["roads not taken"]
+    notes: "The kind registry holds the rules over kinds; the actor registry holds calls, egress and key purposes."
+  - term: "mediator, mediating driver, per-actor driver"
+    id: mediator
+    replacement: "credential holder; driver (private to its owner)"
+    allowed_in: ["roads not taken"]
+  - term: "state port, lease port, export port, config-source port"
+    id: old-ports
+    replacement: "the data port of a work actor; store@'s four ports; a lease is a temp kind; exporter@"
+    allowed_in: ["roads not taken"]
+  - term: "record kind, data-key record, record key"
+    id: record-kind
+    replacement: "kind, DataKeyWrap, address"
+    allowed_in: ["'audit record' and 'decision record' keep the word record"]
+  - term: sealing key
+    id: sealing-key
+    replacement: "wrapping key (the KMS key or card key that protects data keys) or data key (what seals a value)"
+    allowed_in: []
+  - term: "isolation layer, three layers per port"
+    id: isolation-layer
+    replacement: "two independent checks, and the ladder"
+    allowed_in: ["roads not taken"]
+  - term: "company boundary"
+    id: company-boundary
+    replacement: "a tenant of an environment boundary (the boundary kinds are environment and customer)"
+    allowed_in: []
+  - term: "declared / issued configuration, issued instance, authority (as a configuration kind), defaults (as a configuration kind)"
+    id: declared-issued
+    replacement: "config (Fixed), durable kinds of the operator or tenant layer, bounds in config"
+    allowed_in: ["'issued' for certificates and tokens: an issued certificate, a token issued to a client"]
+  - term: "grant key, grant-signing key"
+    id: grant-key
+    replacement: "sealed grant (sealed by key@ under the boundary's grant data key or KMS key with context)"
+    allowed_in: []
+  - term: "one generated service per kind"
+    id: service-per-kind
+    replacement: "the one generic store service and typed clients"
+    allowed_in: ["roads not taken of the store record"]
+
+# The retired-terms check: `just check-terms` (tools/checks/terms.mjs), run by `just check`.
+lint:
+  scope:
+    include: ["docs/**/*.md", "docs/**/*.mdx", "docs/**/*.yaml", "site/src/**/*.{astro,ts,yaml,md}", "*.md", ".claude/**/*.md", "proto/**/*.proto"]
+    exclude:
+      - "docs/glossary.yaml"                 # this file names the retired terms
+      - "docs/concepts/index.md"             # the generated vocabulary page prints the retired list and its replacements
+      - "docs/decisions/renumbered.json"     # old slugs
+      - "CHANGELOG.md"                       # history
+      - "site/src/content/v1/**"             # v1 documentation keeps v1 words
+  # Records that keep their old text for ever are skipped by record, not by file: a requirement record with
+  # `status: withdrawn` is never rewritten (docs/requirements/README.md), so it would hit the lint for ever.
+  skip_records:
+    - {files: "docs/requirements/*.yaml", where: {status: withdrawn}}
+  case_insensitive: true
+  # Before matching, the check removes Markdown link targets `](...)`, bare URLs and old record slugs
+  # (a slug is an address, not prose), so a link to a renamed page is not a hit.
+  strip_before_match: ['\]\([^)]*\)', 'https?://\S+', '\b\d{4}-[a-z0-9]+(-[a-z0-9]+)+\b']
+  # A line may carry `terms-allow: <id>` (in an HTML or YAML comment, on the line or the line before);
+  # CI prints every such marker so the reviewer sees each exception. A rule's `context_allow` is a
+  # second regex: a hit on a line that also matches it is not an error.
+  rules:
+    - {id: key-holder,           pattern: '\bkey[- ]holders?\b'}
+    - {id: state-owner,          pattern: '\bstate[- ]owners?\b'}
+    - {id: origin,               pattern: '\borigins?\b',
+       context_allow: '(same-origin|cross-origin|sibling origins?|origin per host|web origin|site origins?|git (fetch|push|pull|remote)|\borigin/|\bOrigin\b header|`Origin`|\bCORS\b|WebAuthn|passkey|rp_id|redirect|allow-?listed origins?|client document|CIMD|cloudflared|tunnel|origin of (the|a|this) (request|page|call)|HTTP)'}
+    - {id: sensitivity,          pattern: '\bsensitivit(y|ies)\b'}
+    - {id: operator-set,         pattern: '\boperator-set\b'}
+    - {id: install-file,         pattern: '\binstall[- ]files?\b'}
+    - {id: secrets-port,         pattern: '(\bsecrets port\b|`secrets` port|\bsecrets driver\b)'}
+    - {id: sealed-state,         pattern: '\bsealed-state\b'}
+    - {id: reload-class,         pattern: '(\breload class(es)?\b|\b(live|restart) reload\b|class `(live|restart)`)'}
+    - {id: config-composition,   pattern: '(\bowned paths?\b|\bsources? owns?\b|\bdisjoint (ownership|paths)\b|\bconfig(uration)?[- ]source composition\b)'}
+    - {id: key-less-tenant,      pattern: '\bkey-?less tenants?\b'}
+    - {id: pkl,                  pattern: '\bPkl\b'}
+    - {id: permission-manifest,  pattern: '\bpermission manifests?\b'}
+    - {id: mediator,             pattern: '\b(mediating driver|per-actor driver|per-actor (rqlite )?cluster)s?\b'}
+    - {id: old-ports,            pattern: '(\b(state|lease|export|config-source) port\b|`(state|lease|export|config-source)` port)'}
+    - {id: record-kind,          pattern: '(\brecord kinds?\b|\bdata-key record\b|\brecord keys?\b)'}
+    - {id: sealing-key,          pattern: '\bsealing keys?\b'}
+    - {id: isolation-layer,      pattern: '(\bisolation layers?\b|\bthree layers per port\b)'}
+    - {id: company-boundary,     pattern: '\bcompany boundar(y|ies)\b'}
+    - {id: declared-issued,      pattern: '(\bdeclared configuration\b|\bissued (instance|record)s?\b|\b(declared|issued|learned|derived), (durable|ephemeral)\b|\bissued, (durable|ephemeral)\b)'}
+    - {id: grant-key,            pattern: '\bgrant[- ](signing )?keys?\b'}
+    - {id: service-per-kind,     pattern: '\b(one )?generated service per kind\b'}

@@ -93,7 +93,7 @@
         "catalogue": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["title", "checked", "vocabulary", "areas", "gaps", "glossary"],
+          "required": ["title", "checked", "vocabulary", "areas", "gaps"],
           "properties": {
             "title": { "type": "string" },
             "checked": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
@@ -127,8 +127,7 @@
               "type": "object",
               "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
               "additionalProperties": { "type": "string", "minLength": 12 }
-            },
-            "glossary": { "type": "object", "additionalProperties": { "type": "string", "minLength": 12 } }
+            }
           }
         }
       }

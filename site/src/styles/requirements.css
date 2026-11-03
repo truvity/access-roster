@@ -74,8 +74,6 @@ a.rq-chip:hover { border-color: var(--sl-color-accent); color: var(--sl-color-wh
 .rq-details summary { cursor: pointer; }
 .rq-list { font-size: var(--sl-text-sm); }
 .rq-list li { margin-block: .3rem; }
-.rq-glossary dt { font-weight: 600; margin-top: .5rem; }
-.rq-glossary dd { margin: 0 0 0 1rem; }
 .rq-pager { display: flex; justify-content: space-between; margin-top: 1.5rem; }
 
 /* narrow screens: a row becomes a card, each cell labelled */
