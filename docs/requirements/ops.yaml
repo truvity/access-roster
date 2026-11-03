@@ -62,12 +62,13 @@ requirements:
     rationale: "A duplicated singleton corrupts state."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-81, section: "8446", depth: Partial}
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [847]
+    superseded_by: [REQ-DATA-063, REQ-DATA-065]
     verification:
       - {kind: test-vectors, ref: "port suite lease"}
   - id: REQ-OPS-004
@@ -198,11 +199,12 @@ requirements:
     rationale: "Authority is reviewed before it takes effect."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [864, 960]
+    superseded_by: [REQ-DATA-024, REQ-DATA-015]
     verification:
       - {kind: integration-test, ref: "authority origin refusal test"}
   - id: REQ-OPS-016
@@ -211,10 +213,11 @@ requirements:
     rationale: "A declared value locks its field."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [960]
+    superseded_by: [REQ-DATA-028]
     verification:
       - {kind: integration-test, ref: "declared lock test"}
   - id: REQ-OPS-017
@@ -223,16 +226,17 @@ requirements:
     rationale: "Neither side may silently take over the other."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [960]
+    superseded_by: [REQ-DATA-002]
     verification:
       - {kind: integration-test, ref: "double definition hold test"}
   - id: REQ-OPS-018
     area: OPS
-    statement: "Every operator-set write MUST be audited under the person who made it, with the full value apart from secrets."
-    rationale: "The audit trail is the history of records that are not in version control."
+    statement: "Every write that the console makes or routes MUST be audited under the person who made it, with the previous and new version and the full new value apart from sealed values."
+    rationale: "Every run-time write is authorised for a concrete person and audited under that name."
     level: MUST
     source: design-decision
     status: planned
@@ -240,18 +244,19 @@ requirements:
     standards: []
     issues: [960]
     verification:
-      - {kind: integration-test, ref: "operator-set audit record test"}
+      - {kind: integration-test, ref: "Operable-kind write audit record test"}
   - id: REQ-OPS-019
     area: OPS
     statement: "The state driver MUST refuse an operator-set write from any actor other than the owner of the record kind."
     rationale: "The owning actor validates its own records."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-103, section: "test plan", depth: Partial}
     issues: [960]
+    superseded_by: [REQ-DATA-004]
     verification:
       - {kind: integration-test, ref: "operator-set writer refusal test"}
   - id: REQ-OPS-020
@@ -260,10 +265,11 @@ requirements:
     rationale: "Configuring what the product knows creates two sources of truth."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [864]
+    superseded_by: [REQ-DATA-002]
     verification:
       - {kind: integration-test, ref: "learned key refusal test"}
   - id: REQ-OPS-021
@@ -272,11 +278,12 @@ requirements:
     rationale: "A bad reload must not change a running installation."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [977]
+    superseded_by: [REQ-DATA-084]
     verification:
       - {kind: integration-test, ref: "failed reload test"}
   - id: REQ-OPS-022
@@ -285,16 +292,17 @@ requirements:
     rationale: "A fast brake must not wait for a deployment."
     level: MAY
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [960]
+    superseded_by: [REQ-DATA-030]
     verification:
       - {kind: integration-test, ref: "tighten-only switch test"}
   - id: REQ-OPS-023
     area: OPS
-    statement: "`sluis config explain` MUST show the origin of each effective value."
-    rationale: "An operator must be able to trace a value to whoever set it."
+    statement: "`sluis config explain` MUST show the provenance of each effective value: the layer that set it and its version."
+    rationale: "An operator must see where an effective value comes from."
     level: MUST
     source: design-decision
     status: planned
@@ -302,7 +310,7 @@ requirements:
     standards: []
     issues: [864]
     verification:
-      - {kind: integration-test, ref: "explain origin test"}
+      - {kind: integration-test, ref: "explain provenance test"}
   - id: REQ-OPS-024
     area: OPS
     statement: "On a push notification an integration MUST read the full state from the product's API instead of storing the notification's content."
@@ -321,10 +329,11 @@ requirements:
     rationale: "Run-time self-service stays inside what a reviewer has read (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1023]
+    superseded_by: [REQ-DATA-025, REQ-DATA-026]
     verification:
       - {kind: integration-test, ref: "an issue with no covering template, and an issue by a caller no delegation permits, are both refused"}
   - id: REQ-OPS-026
@@ -333,10 +342,11 @@ requirements:
     rationale: "Without them a reviewer cannot tell why an instance exists (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1023]
+    superseded_by: [REQ-OPS-018]
     verification:
       - {kind: integration-test, ref: "issued instance audit record test"}
   - id: REQ-OPS-027
@@ -345,10 +355,11 @@ requirements:
     rationale: "An instance must not hold more authority than its template carries (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1023]
+    superseded_by: [REQ-DATA-025]
     verification:
       - {kind: integration-test, ref: "a slot value one step outside its bound is refused and one on the bound is accepted"}
   - id: REQ-OPS-028
@@ -357,10 +368,11 @@ requirements:
     rationale: "A default carries no authority, so it may not exceed its bound (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1023, 977]
+    superseded_by: [REQ-DATA-082]
     verification:
       - {kind: integration-test, ref: "out-of-bound default snapshot test"}
   - id: REQ-OPS-029
@@ -369,10 +381,11 @@ requirements:
     rationale: "The reviewed commit and the applied configuration must be matchable (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-082]
     verification:
       - {kind: integration-test, ref: "snapshot swap and digest audit test on each runtime"}
   - id: REQ-OPS-030
@@ -511,8 +524,8 @@ requirements:
       - {kind: manual, ref: "drill record review"}
   - id: REQ-OPS-041
     area: OPS
-    statement: "`sluis config check` MUST refuse a configuration source whose driver the installation does not offer."
-    rationale: "An installation without AWS has no AppConfig, and the refusal names the missing dependency (ADR 0005)."
+    statement: "`sluis config check` MUST refuse a bootstrap file that names a driver the installation does not offer for a port."
+    rationale: "A driver that the runtime lacks cannot serve its port."
     level: MUST
     source: design-decision
     status: planned
@@ -520,17 +533,18 @@ requirements:
     standards: []
     issues: [1157]
     verification:
-      - {kind: integration-test, ref: "source driver offer tests on each tested installation"}
+      - {kind: integration-test, ref: "driver offer tests on each tested installation"}
   - id: REQ-OPS-042
     area: OPS
     statement: "`sluis config check` MUST refuse two configuration sources whose owned paths are equal or one inside the other."
     rationale: "Two owners of one key would make the effective value depend on an order."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: equal and nested pointers"}
   - id: REQ-OPS-043
@@ -539,10 +553,11 @@ requirements:
     rationale: "A source that could rewrite the list of sources or the roots would choose its own authority."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: base keys"}
   - id: REQ-OPS-044
@@ -551,10 +566,11 @@ requirements:
     rationale: "A copy in the install file would hide a source that fails or changes."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: base holds an owned key"}
   - id: REQ-OPS-045
@@ -563,10 +579,11 @@ requirements:
     rationale: "A publisher writes only its own scope (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: key outside scope"}
   - id: REQ-OPS-046
@@ -575,10 +592,11 @@ requirements:
     rationale: "An absent subtree and an empty one must not mean the same."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: missing owned path"}
   - id: REQ-OPS-047
@@ -587,10 +605,11 @@ requirements:
     rationale: "No source wins, so the order of a list is not a way to set a value."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: order independence"}
   - id: REQ-OPS-048
@@ -599,11 +618,12 @@ requirements:
     rationale: "A bad document is named by its source, and a combination that no single document shows is still refused."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: per-document and merged verdicts"}
   - id: REQ-OPS-049
@@ -612,12 +632,13 @@ requirements:
     rationale: "An authority document is accepted for its publisher, not for the service that carried it (principle 4)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards:
       - {id: ST-49, section: "5.2", depth: Partial}
       - {id: ST-51, section: "3.4", depth: Partial}
     issues: [1157]
+    superseded_by: [REQ-DATA-076, REQ-DATA-077]
     verification:
       - {kind: test-vectors, ref: "signed document vectors: unsigned, wrong key, other algorithm, forbidden header"}
   - id: REQ-OPS-050
@@ -626,10 +647,11 @@ requirements:
     rationale: "The access rules of a configuration service must not be the right to grant."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: service source owning authority"}
   - id: REQ-OPS-051
@@ -638,10 +660,11 @@ requirements:
     rationale: "Per-customer defaults live in the configuration service and not in git (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-082, REQ-DATA-087]
     verification:
       - {kind: test-vectors, ref: "composition vectors: defaults from a file or a signed source"}
   - id: REQ-OPS-052
@@ -650,10 +673,11 @@ requirements:
     rationale: "A check that cannot run is reported as not run, never as passed, and no cached copy stands in for a source."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-083]
     verification:
       - {kind: integration-test, ref: "start with an unreachable and an invalid source on the lambda installation"}
       - {kind: integration-test, ref: "start with a missing, an unreadable and an invalid install file or file source on each tested installation"}
@@ -663,10 +687,11 @@ requirements:
     rationale: "An outage of a configuration service must not change a running installation."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-084]
     verification:
       - {kind: integration-test, ref: "unreachable source on reload test"}
   - id: REQ-OPS-054
@@ -675,10 +700,11 @@ requirements:
     rationale: "A running process must not take an older signed document than the one it applies."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-080]
     verification:
       - {kind: test-vectors, ref: "signed document vectors: lower sequence"}
   - id: REQ-OPS-055
@@ -687,10 +713,11 @@ requirements:
     rationale: "Declared configuration is delivered read-only (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-015]
     verification:
       - {kind: integration-test, ref: "permission manifest and IAM policy tests: no write action on a configuration profile"}
   - id: REQ-OPS-056
@@ -699,10 +726,11 @@ requirements:
     rationale: "Two languages read the same install file, so they must agree on how its sources are put together (principle 6)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-091]
     verification:
       - {kind: test-vectors, ref: "composition vector set run by both loaders"}
   - id: REQ-OPS-057
@@ -711,10 +739,11 @@ requirements:
     rationale: "One rule says what a reload may change, and a key that nobody has classified is the safe one (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: test-vectors, ref: "reload class vectors: annotated, inherited and unannotated paths"}
   - id: REQ-OPS-058
@@ -723,10 +752,11 @@ requirements:
     rationale: "A half-applied snapshot is a document that nobody reviewed or published (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: integration-test, ref: "reload with a restart change and a live change test on each runtime"}
   - id: REQ-OPS-059
@@ -735,10 +765,11 @@ requirements:
     rationale: "An operator must see why a change did not apply, and a poll must not repeat the record."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: integration-test, ref: "refused reload audit record test"}
   - id: REQ-OPS-060
@@ -747,10 +778,11 @@ requirements:
     rationale: "A pipeline must learn before it publishes that a running installation would refuse the change."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: test-vectors, ref: "reload class vectors: changed paths against a previous version"}
   - id: REQ-OPS-061
@@ -759,10 +791,11 @@ requirements:
     rationale: "A restart change in a source is refused at reload and holds back every live change in the same snapshot."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: test-vectors, ref: "reload class vectors: a source owning a restart path"}
   - id: REQ-OPS-062
@@ -771,10 +804,11 @@ requirements:
     rationale: "A brake must not wait for a restart (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-086]
     verification:
       - {kind: test-vectors, ref: "reload class vectors: tighten-only fields"}
   - id: REQ-OPS-063
@@ -783,10 +817,11 @@ requirements:
     rationale: "A lambda installation gets live policy and clients from the configuration service, because a layer cannot change under a running function (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: ["serverless"]
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-093]
     verification:
       - {kind: integration-test, ref: "live policy and client change on the lambda installation test"}
   - id: REQ-OPS-064
@@ -795,10 +830,11 @@ requirements:
     rationale: "The `file` driver signals by notify, so a replaced file is seen without a poll (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: ["bare-metal", "kubernetes"]
     standards: []
     issues: [977]
+    superseded_by: [REQ-DATA-092]
     verification:
       - {kind: integration-test, ref: "file replace and ConfigMap swap reload test"}
   - id: REQ-OPS-065
@@ -807,9 +843,49 @@ requirements:
     rationale: "A reviewer finds an older signed document at a cold start by comparing the digest and the sequence number with the reviewed branch (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [1157]
+    superseded_by: [REQ-DATA-085]
     verification:
       - {kind: integration-test, ref: "audit record of a start names digest and sequence number test"}
+
+  # ---- reconcilers (decision 0026)
+  - id: REQ-OPS-066
+    area: OPS
+    statement: "A reconciler MUST act only on the targets that the ReconcileTarget config kind declares."
+    rationale: "A target is a reviewed document, so a reconciler cannot be pointed at a system nobody approved (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a reconciler pass for a target absent from ReconcileTarget changes nothing"}
+  - id: REQ-OPS-067
+    area: OPS
+    statement: "An operator MUST be able to pause a reconciler with a Switch."
+    rationale: "A pause is a tightening, so it takes effect at once and lasts (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a Switch for a target stops its next pass and survives a restart"}
+  - id: REQ-OPS-068
+    area: OPS
+    statement: "A reconciler MUST compute its pass from the kind DesiredState once its writer exists."
+    rationale: "The kind and its writer arrive with the reconciler milestone, so this record waits for them (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: open
+    runtimes: all
+    standards: []
+    issues: [1181]
+    gap: proposed-design
+    verification:
+      - {kind: integration-test, ref: "a pass computed from a DesiredState item changes the external system to match it"}
