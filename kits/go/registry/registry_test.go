@@ -39,6 +39,22 @@ func TestStoreGolden(t *testing.T) {
 	if !IsWriter("session", "session-chain") || IsWriter("exchange", "session-chain") {
 		t.Error("IsWriter disagrees with the registry for session-chain")
 	}
+	// The backup job reads every backed-up kind in full. Switch is backed up and its readers are "the actor
+	// named in the id", which binds every other actor to its own ids; exporter must not be bound.
+	for _, verb := range []string{"get", "list"} {
+		if !StoreAllows("exporter", "switch", verb) {
+			t.Errorf("exporter may not %s switch, so the backup cannot read it", verb)
+		}
+		if StoreSelfScopedFor("exporter", "switch", verb) {
+			t.Errorf("exporter's %s of switch is self-scoped, so the backup could read only its own ids", verb)
+		}
+		if !StoreSelfScopedFor("session", "switch", verb) {
+			t.Errorf("session's %s of switch is not self-scoped", verb)
+		}
+	}
+	if StoreAllows("exporter", "switch", "create") {
+		t.Error("exporter may write switch")
+	}
 	// An adapter writes the directory facts under its own ids and reads them all: the verb decides.
 	if !StoreSelfScopedFor("adapter-github", "directory-user", "create") {
 		t.Error("an adapter must write directory-user under its own ids only")
@@ -264,7 +280,7 @@ func TestTableSizes(t *testing.T) {
 			}
 		}
 	}
-	if entries != 480 || verbs != 1742 || selfMarks != 706 || keyEntries != 59 || keyOps != 84 {
+	if entries != 480 || verbs != 1742 || selfMarks != 704 || keyEntries != 59 || keyOps != 84 {
 		t.Errorf("store entries %d, verbs %d, self marks %d, key entries %d, key ops %d", entries, verbs, selfMarks, keyEntries, keyOps)
 	}
 }

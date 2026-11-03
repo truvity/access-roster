@@ -853,7 +853,7 @@ var storeRules = map[string]map[string]uint16{
 		"spent-grant":            0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"ssh-revocation":         0x0003, // get list
 		"staff-passkey":          0x0003, // get list
-		"switch":                 0x0183, // get(self) list(self)
+		"switch":                 0x0003, // get list
 		"tenant":                 0x0003, // get list
 		"tenant-branding":        0x0003, // get list
 		"tenant-client":          0x0003, // get list

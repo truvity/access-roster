@@ -290,7 +290,8 @@ registry-gen:
 
 # The generated registry files are current, and the uid list only grew. Fails while a generated file
 # differs from the registries or is not committed. The uid list is compared with main's, which CI
-# fetches first (a shallow checkout has no origin/main); with no copy on main the test prints SKIP.
+# fetches first (a shallow checkout has no origin/main); a failed fetch fails the recipe, and only a main
+# that has no uids.yaml yet makes the test print SKIP.
 registry-check:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -300,5 +301,5 @@ registry-check:
     git diff --exit-code -- $paths
     # shellcheck disable=SC2086
     [ -z "$(git ls-files --others --exclude-standard -- $paths)" ] || { echo "::error::a generated registry file is not committed" >&2; exit 1; }
-    git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main 2>/dev/null || true
+    git rev-parse -q --verify refs/remotes/origin/main >/dev/null || git fetch -q --depth=1 origin main:refs/remotes/origin/main
     go test -count=1 -v -run 'TestUIDsAppendOnly' ./tools/gen/registry

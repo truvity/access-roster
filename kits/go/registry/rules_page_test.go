@@ -60,6 +60,11 @@ func TestMatchesRulesPage(t *testing.T) {
 				if p.write && (verb == "get" || verb == "list") {
 					continue
 				}
+				// The backup job reads every backed-up kind in full, whatever the reader macro says: exporter
+				// reads Switch (readers: the actor named in the id) as ciphertext, not under its own ids.
+				if k.BackedUp && actor == "exporter" && (verb == "get" || verb == "list") {
+					continue
+				}
 				if !StoreSelfScopedFor(actor, k.Segment, verb) {
 					problems = append(problems, fmt.Sprintf("actor %s, kind %s, verb %s: the page says own ids only, the tables do not", actor, k.Name, verb))
 				}
