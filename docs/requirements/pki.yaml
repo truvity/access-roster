@@ -577,7 +577,7 @@ requirements:
   - id: REQ-PKI-043
     area: PKI
     statement: "A workload X.509-SVID MUST carry exactly one URI SAN, the workload's SPIFFE ID."
-    rationale: "SPIFFE verifiers read the identity from that one name (ADR 0042)."
+    rationale: "SPIFFE verifiers read the identity from that one name (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -590,7 +590,7 @@ requirements:
   - id: REQ-PKI-044
     area: PKI
     statement: "The certificate authority actor MUST refuse to issue a leaf certificate whose names fall outside its intermediate's permitted subtrees."
-    rationale: "A mistake is a refusal at the issuer, not a certificate that verifiers reject later (ADR 0042)."
+    rationale: "A mistake is a refusal at the issuer, not a certificate that verifiers reject later (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -603,7 +603,7 @@ requirements:
   - id: REQ-PKI-045
     area: PKI
     statement: "An intermediate request MUST carry critical name constraints that permit only the boundary's trust domain and its declared DNS zones."
-    rationale: "An intermediate of one environment must not vouch for another environment's names (ADR 0042)."
+    rationale: "An intermediate of one environment must not vouch for another environment's names (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -616,7 +616,7 @@ requirements:
   - id: REQ-PKI-046
     area: PKI
     statement: "An intermediate request MUST exclude every IP address range when the boundary declares none."
-    rationale: "Without an IP subtree RFC 5280 leaves IP addresses unconstrained (ADR 0042)."
+    rationale: "Without an IP subtree RFC 5280 leaves IP addresses unconstrained (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -629,7 +629,7 @@ requirements:
   - id: REQ-PKI-047
     area: PKI
     statement: "The certificate authority actor MUST refuse a leaf lifetime above its profile's maximum."
-    rationale: "Short leaves are the revocation control that works for every relying party (ADR 0042)."
+    rationale: "Short leaves are the revocation control that works for every relying party (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -642,7 +642,7 @@ requirements:
   - id: REQ-PKI-048
     area: PKI
     statement: "sluis MUST re-sign each intermediate's certificate revocation list at least every 24 hours."
-    rationale: "A relying party that configures the list needs a fresh one (ADR 0042)."
+    rationale: "A relying party that configures the list needs a fresh one (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned
@@ -655,7 +655,7 @@ requirements:
   - id: REQ-PKI-049
     area: PKI
     statement: "A published certificate revocation list MUST carry a nextUpdate no later than seven days after its thisUpdate."
-    rationale: "A relying party that misses a day of fetches keeps a valid list (ADR 0042)."
+    rationale: "A relying party that misses a day of fetches keeps a valid list (ADR 0023)."
     level: MUST
     source: design-decision
     status: planned

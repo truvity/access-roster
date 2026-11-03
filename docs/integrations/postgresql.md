@@ -33,7 +33,7 @@ None. A client profile has no process and no credential. The certificate is sign
 Because one intermediate issues every leaf of the boundary, the separation is in the database's map: the server matches the full subject with `clientname=DN` and a **fixed regular-expression map**, so a certificate of any other profile matches no role, and PostgreSQL 14 and newer log the full subject, not only the role.
 
 - **Reserved roles are never issued**: a replication role (such as CNPG's `streaming_replica`) and the database's owner role.
-- **Short lifetimes are the main control.** PostgreSQL checks revocation only when a CRL is configured; `ca` publishes a static CRL, and a database that configures it checks it. The database client profile lasts at most 12 hours, and the CRL is re-signed every 24 hours with a `nextUpdate` of 7 days ([ADR 0042](/decisions/0042-leaf-certificate-profiles-lifetimes-and-revocation/)).
+- **Short lifetimes are the main control.** PostgreSQL checks revocation only when a CRL is configured; `ca` publishes a static CRL, and a database that configures it checks it. The database client profile lasts at most 12 hours, and the CRL is re-signed every 24 hours with a `nextUpdate` of 7 days ([ADR 0023](/decisions/0023-certificate-authorities/)).
 - **Every certificate is in `ca`'s issuance log** and in the audit record.
 
 ## What sluis asks the vendor for

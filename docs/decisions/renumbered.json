@@ -504,6 +504,11 @@
       "old": "0049-credential-minters-mint-only-for-declared-targets-whose-entitlement-sluis-governs",
       "new": "0025-integrations",
       "renumbered": "2026-11-03"
+    },
+    {
+      "old": "0042-leaf-certificate-profiles-lifetimes-and-revocation",
+      "new": "0023-certificate-authorities",
+      "renumbered": "2026-11-03"
     }
   ],
   "anchors": {
@@ -599,6 +604,9 @@
     "0045-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load",
     "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-load-test": "0039-quota-allowance#consistency-under-load",
     "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#the-writer-is-down": "0039-quota-allowance#consistency-under-load",
-    "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load"
+    "0053-quota-consistency-and-failure-are-measured-per-state-driver-before-enforcement-is-switched-on#pending-decision-lines": "0039-quota-allowance#consistency-under-load",
+    "0030-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#where-installations-run": "0011-runtimes-and-installations#installations",
+    "0046-tenancy-and-scale-a-boundary-holds-keys-and-a-tenant-is-a-record#where-installations-run": "0011-runtimes-and-installations#installations",
+    "0032-data-lifecycle-and-evidence-never-share-a-key-with-personal-data#v1s-history": "0015-evolution-and-compatibility#v1s-history"
   }
 }
