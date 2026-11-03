@@ -1,8 +1,8 @@
 # 0037 — Capacity is measured before it is promised: a dated spike of the signing path, the hops to store@ and key@, the engines and the audit writer, and tokens stay signed in place meanwhile
 
-**Status:** Proposed
+**Status:** Accepted
 **Layer:** CIAM module
-**Date:** 2026-11-02
+**Date:** 2026-11-03
 
 Proposal: [issue #878](https://github.com/truvity/sluis/issues/878).
 
@@ -11,7 +11,7 @@ Proposal: [issue #878](https://github.com/truvity/sluis/issues/878).
 [Principle 9](/principles/#9-measure-before-deciding-and-date-the-measurement) says a design that depends on a number rests on a measurement. For the customer-identity installation on Kubernetes there is none, and the model adds two hops to every request that no figure covers yet.
 
 - **What exists.** The boards have a recorded budget ([Board capacity](/runtimes/bare-metal/#board-capacity)): about 7 P-384 signatures a second per card and about 21 a second for three boards (measured 2026-10-31); a data key opened on a card takes a median of 143 ms, about 7 a second per card, and is cached afterwards (measured on two boards' cards, 2026-11-03); and three boards deliver 400 replicated commits a second with a p99 of 118 to 127 ms (measured 2026-11-02). v1's workforce load was about 25,000 tokens in seven days with a peak of 0.8 a second ([0006](/decisions/0006-keys-and-sealing/)). The key service was measured from Lambda on 2026-11-02 ([below](/decisions/0037-capacity-is-measured-before-it-is-promised/#measured-so-far), [#878](https://github.com/truvity/sluis/issues/878)).
-- **What is missing for customers.** No sign-in or refresh rate; no key service measurement from the pods of the installation; no latency of a call from a work actor to store@ or to key@ on Kubernetes or on Lambda; no access-pattern or hot-item analysis of the engine; no limit of the audit writer; no index size; and, on boards, no memory per unit once `ca` and `ssh-ca` are separate units and no cost of a directory re-sync. [REQ-PERF-001](/requirements/perf/#REQ-PERF-001) asks only that budgets be recorded when a path changes.
+- **What is missing for customers.** No sign-in or refresh rate; no key service measurement from the pods of the installation; no latency of a call from a work actor to store@ or to key@ on Kubernetes or on Lambda; no access-pattern or hot-item analysis of the engine; no limit of the audit writer; and no index size. [REQ-PERF-001](/requirements/perf/#REQ-PERF-001) asks only that budgets be recorded when a path changes.
 - **Why the hops are a worry.** Every work actor calls store@ on its data port and key@ on its keys port, so a request crosses at least one hop to each ([0003](/decisions/0003-units-transports-and-fusion/#transports)). A hop is a Unix socket call on boards, an invoke on Lambda and an in-cluster call on Kubernetes. Opening a sealed value costs a hop to key@, which the cache of opened data keys makes a memory operation after the first use ([0006](/decisions/0006-keys-and-sealing/#the-cache)). The cost of opening the session cookie at key@ on every request is unmeasured.
 - **Why signing is the first worry.** Every token is signed in place by key@ ([0006](/decisions/0006-keys-and-sealing/#keys-sign-in-place)): a sign-in signs an ID token and an access token, every refresh signs again, and every exchange into a customer boundary signs a token for it. With tokens of at most one hour ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#lifetimes)) a population of customers refreshes all day. The key service has one request quota per account and Region for ECC operations, shared by every ECC key and caller in them ([below](/decisions/0037-capacity-is-measured-before-it-is-promised/#measured-so-far)).
 
@@ -69,7 +69,27 @@ What it means:
 - **A cache miss on a card is a 143 ms wait.** The seven a second per card serve misses and not requests, so the hit rate of the cache decides how many requests a card supports.
 - **Every limiter admit and every session write is a Raft commit.** Their rate is an input to the budget of 400.
 
-Whether the customers' load fits the quota and the budgets depends on the products' sessions and clients, which are inputs the spike still needs; the decision lines that depend on the target load stay Proposed.
+Whether the customers' load fits the quota and the budgets depends on the products' sessions and clients, which are inputs the rest of the spike still needs.
+
+#### Board capacity
+
+MEASURED on 2026-11-03, 14:00 to 15:20 UTC, on three RK3566 boards of 2 GB (1,978 MiB as the kernel reports it), one rqlite v10.6.6 cluster over the three, and 30 Go stand-ins, one for each actor and driver row of the table in [0012](/decisions/0012-the-language-follows-the-executable/) that runs on a board, each linking the library that table gives as the reason for Go ([#1180](https://github.com/truvity/sluis/issues/1180)). `ca` and `ssh-ca` were two units. No Rust actor was built, so the Rust figure is still the estimate of 0012.
+
+| What | Result |
+|---|---|
+| A typical loaded board (30 units, the rqlite leader at 100 writes a second) | 1,056 MiB proportional memory, 53% of the board; 1,381 MiB available |
+| The worst board measured (every unit under heavy call load) | 1,155 MiB, 58%; 1,268 MiB available |
+| rqlite, one write is one transaction, 100 writes a second | p50 12.6 ms, p95 22.1 ms, p99 175 ms; 101 Raft commits a second |
+| rqlite saturated | about 275 commits a second, the leader's CPU 85% busy; no write failed at any rate |
+| A directory re-sync of 1,000, 10,000 and 100,000 users, each item with its change-log row | 2.5 s, 26 s and 260 s; 41, 410 and 4,100 commits; 1,575 items a second at 100,000 users, rqlite private memory peaking at 45 MiB |
+| The sign-in write during the re-sync of 100,000 users | p99 from 37 ms to 209 ms |
+| Clearing a directory before a re-sync | writes stalled for about 2.9 s |
+
+What it means:
+
+- **The set fits, and nothing is fused or dropped.** The design needs 7 to 73 commits a second against a saturation of about 275 in this mix, and about 27 MiB per board buys the separation of `ca` and `ssh-ca` ([0012](/decisions/0012-the-language-follows-the-executable/)). An installation that must save memory fuses work actors under the fusion rule ([0003](/decisions/0003-units-transports-and-fusion/)) or leaves out the adapters it does not use.
+- **A re-sync replaces items; it does not clear first.** Clearing a directory stalls writes for seconds, and a re-sync is throttled in a real installation: flat out it raises the p99 of a sign-in write about fivefold.
+- **One board reset itself without a shutdown,** 19 s into the second 100,000-user re-sync at 1,000 items to a transaction. Its filesystem and storage were clean and its power controller recorded no reason; the journal was not persistent, so the cause is not known. It is investigated separately, and no figure above depends on it. Runs made while the cluster had two nodes are marked degraded in the raw data.
 
 ### The model to fill in
 
@@ -85,7 +105,7 @@ It follows the shape of a result in [Decisions, requirements and research](/cont
 2. **The hops to store@ and key@.** The latency and the rate of a call from a work actor to store@ and to key@ on each transport: an invoke on Lambda, an in-cluster call on Kubernetes, and a Unix socket on boards. The per-request cost of opening the session cookie at key@ with batching, the hit rate of the data key cache and the cost of a miss (a KMS request on AWS, an ECDH on a card). Whether an invoke is fast enough for one function per actor was the Lambda latency spike ([#1179](https://github.com/truvity/sluis/issues/1179)): it is, and no in-process store exception is needed ([0003](/decisions/0003-units-transports-and-fusion/)). Its result is in [The warm sign-in on Lambda](/decisions/0037-capacity-is-measured-before-it-is-promised/#the-warm-sign-in-on-lambda).
 3. **The engines.** On DynamoDB: the items one sign-in, one code exchange, one refresh and one exchange read and write, with consistent reads and the conditional writes and transactions counted; the partition keys and whether any one is hot (the `RateWindow` buckets of [0036](/decisions/0036-volumetric-abuse/#inside-sluis) and a product's `Person` items are the likely ones); capacity mode against on-demand throttling; item sizes; expiry. On rqlite: the commits per action, with every `RateWindow` write counted.
 4. **The audit writer.** The sustained events a second that the one writer of one log seals into batches on the blob store, the backlog on the transport at that rate, the time from emit to sealed, the index's ingest rate, and the cost per event of the keyed hash that makes a pseudonym ([0029](/decisions/0029-the-audit-log/#pseudonyms)).
-5. **Boards: memory and re-sync.** The memory per unit on 2 GB boards when `ca` and `ssh-ca` are separate units and every holder is a unit of its own, and the cost of a directory re-sync, where every write is a commit. This is the board capacity spike ([#1180](https://github.com/truvity/sluis/issues/1180)).
+5. **Boards: memory and re-sync.** The memory per unit on 2 GB boards when `ca` and `ssh-ca` are separate units and every holder is a unit of its own, and the cost of a directory re-sync, where every write is a commit. This was the board capacity spike ([#1180](https://github.com/truvity/sluis/issues/1180)); its result is in [Board capacity](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity).
 6. **End to end.** Sign-in and refresh rate against p99 latency with three cells ([0003](/decisions/0003-units-transports-and-fusion/#cells)), a connection pool replica pair ([0033](/decisions/0033-customer-connections/#a-pool-per-customer-boundary)) and the audit installation, with the first bottleneck named.
 
 The result states when and where it ran (UTC, Region, cluster size), the versions of every component, what the setup over- and under-counts (a fake upstream is faster than a real one; one Region has no cross-zone failure), the numbers in tables with units, and the raw logs' place.
@@ -103,7 +123,7 @@ In this order, each only if the one before it cannot meet the measured need:
 
 - Nobody promises a number to a product before the result exists, and the result is dated, because a quota and a price rot. The signing figures above are measured and dated; the hops and the rest of the path are not.
 - The spike needs a cluster in a development account, a Lambda installation and a load generator that plays a real upstream's latency; it costs engineer time and a small bill.
-- The record stays Proposed until the result is linked. Then it is amended into an Accepted record that states the measured figures and the road taken.
+- The record is Accepted with the figures measured so far: the signing path on Lambda ([#1179](https://github.com/truvity/sluis/issues/1179)), the key service, the cards and the boards ([#1180](https://github.com/truvity/sluis/issues/1180)), all measured on 2026-11-02 and 2026-11-03. The rest of the spike (items 1 to 4 and 6) adds its figures here when it reports.
 - The hops of the model are accepted for the isolation they buy ([0002](/decisions/0002-families-of-actors/#credential-holders)). The spike prices them; a price that is too high changes a transport or the cache, never a check.
 - Requirements: [REQ-PERF-003](/requirements/perf/#REQ-PERF-003) and [REQ-PERF-004](/requirements/perf/#REQ-PERF-004) state the rule for the result.
 
@@ -119,4 +139,4 @@ In this order, each only if the one before it cannot meet the measured need:
 ## Follow-ups
 
 - The spike, its result and the amendment: [#878](https://github.com/truvity/sluis/issues/878), widened to the whole path.
-- The board capacity spike: memory per unit on 2 GB boards with `ca` and `ssh-ca` separate, and the directory re-sync cost: [#1180](https://github.com/truvity/sluis/issues/1180).
+- The cause of the board reset during the heaviest re-sync run (a persistent journal and one controlled repeat), investigated apart from the capacity figures, which do not depend on it.
