@@ -59,3 +59,29 @@ requirements:
     issues: [870]
     verification:
       - {kind: integration-test, ref: "cloud STS acceptance test"}
+
+  # ---- enrolment (decision 0022)
+  - id: REQ-WORKLOAD-005
+    area: WORKLOAD
+    statement: "An enrolment token MUST be stored sealed under the boundary's data key, as the HMAC key derived from it and not as the token."
+    rationale: "A copy of the store must not yield a token that enrols a host (ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the stored EnrolmentToken is ciphertext and does not contain the token value"}
+  - id: REQ-WORKLOAD-006
+    area: WORKLOAD
+    statement: "An enrolment request MUST be opened at key@ with the enrolment purpose."
+    rationale: "The enrolment key is a key@ purpose, so exchange never holds it (ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "exchange holds no enrolment private key; an enrolment request opens through key@"}

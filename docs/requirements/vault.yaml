@@ -984,7 +984,8 @@ requirements:
     rationale: "Issuance by an unintended authority is the main impersonation path."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
+    superseded_by: [REQ-SEC-029]
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Full}
@@ -997,7 +998,8 @@ requirements:
     rationale: "Monitoring finds certificates that the operator did not request."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
+    superseded_by: [REQ-SEC-030]
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Partial}
@@ -1010,7 +1012,8 @@ requirements:
     rationale: "It signals an impersonation attempt."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: withdrawn
+    superseded_by: [REQ-SEC-031]
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Partial}

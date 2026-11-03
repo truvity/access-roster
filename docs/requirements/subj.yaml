@@ -85,7 +85,7 @@ requirements:
       - {kind: integration-test, ref: "machine token subject test"}
   - id: REQ-SUBJ-007
     area: SUBJ
-    statement: "The subject for a client in a sector MUST be a keyed MAC of the sluis subject with the sector in the message."
+    statement: "The subject for a client in a sector MUST be made by key@ with Mac over the boundary's mac data key, with the label pairwise and the sector in the input."
     rationale: "Sites in different sectors must not be able to join their customer lists."
     level: MUST
     source: stakeholder-ciam
@@ -101,7 +101,7 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Basic OP with pairwise subject"}
   - id: REQ-SUBJ-008
     area: SUBJ
-    statement: "The subject MAC key MUST be non-extractable and used through the keys port."
+    statement: "The subject MAC key MUST be the boundary's mac data key, which never leaves key@."
     rationale: "A key that cannot be read cannot be brute-forced offline."
     level: MUST
     source: stakeholder-ciam
@@ -196,7 +196,7 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
   - id: REQ-SUBJ-015
     area: SUBJ
-    statement: "The loader MUST refuse a change of a sector's key backend, key identifier or tenant while subjects exist."
+    statement: "`sluis config check` MUST refuse a change that would alter a pairwise subject already given out, such as a renamed sector or a client moved to another sector."
     rationale: "Such a change would change every stored subject of the sector."
     level: MUST
     source: stakeholder-ciam
@@ -206,10 +206,10 @@ requirements:
       - {id: NC-06, section: "2104", depth: Partial}
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "sector identity change load test"}
+      - {kind: integration-test, ref: "sector identity change check test"}
   - id: REQ-SUBJ-016
     area: SUBJ
-    statement: "A change of subject key MUST be made as a new sector or as a migration through the computed-subject export."
+    statement: "A change of subject derivation MUST be made as a new sector or as a migration through the computed-subject export."
     rationale: "Subject stability is worth more than key hygiene here."
     level: MUST
     source: stakeholder-ciam
@@ -650,7 +650,7 @@ requirements:
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "erasure test that scans every record kind for the subject"}
+      - {kind: integration-test, ref: "erasure test that scans every kind for the subject"}
   - id: REQ-SUBJ-050
     area: SUBJ
     statement: "Erasing a person MUST write a tombstone."
@@ -677,7 +677,7 @@ requirements:
       - {kind: integration-test, ref: "stale token and refresh test after an erasure"}
   - id: REQ-SUBJ-052
     area: SUBJ
-    statement: "The schema MUST NOT mark a field personal in any record kind outside the end-user inventory of ADR 0034."
+    statement: "The schema MUST NOT mark a field personal in any kind outside the end-user inventory of ADR 0034."
     rationale: "The inventory is what an erasure and an export must cover."
     level: MUST
     source: design-decision
@@ -701,7 +701,7 @@ requirements:
       - {kind: integration-test, ref: "export test"}
   - id: REQ-SUBJ-054
     area: SUBJ
-    statement: "The key for pairwise subjects MUST be one non-extractable key per boundary rather than one per sector or per tenant."
+    statement: "The key for pairwise subjects MUST be the boundary's one mac data key rather than a key per sector or per tenant."
     rationale: "A key per sector is a key per tenant, and KMS GenerateMac takes no encryption context to separate shared uses."
     level: MUST
     source: design-decision
@@ -736,3 +736,43 @@ requirements:
     issues: [916]
     verification:
       - {kind: integration-test, ref: "status call with an e-mail address is refused"}
+
+  # ---- person kinds (decision 0019)
+  - id: REQ-SUBJ-057
+    area: SUBJ
+    statement: "The id of an upstream link MUST be a keyed hash made at key@."
+    rationale: "An id never contains personal data, and a natural key is hashed before it is stored (ADR 0019)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a link id is a Mac output with the label link; the upstream subject is not in the id"}
+  - id: REQ-SUBJ-058
+    area: SUBJ
+    statement: "The reason of a PersonHold MUST be sealed."
+    rationale: "A reason is free text and may name a person (ADR 0019)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "registry check: PersonHold is sealed; a stored hold shows only ciphertext"}
+  - id: REQ-SUBJ-060
+    area: SUBJ
+    statement: "Directory facts MUST be temp kinds with a time to live of 24 hours by default and 7 days at most."
+    rationale: "A fact that a re-sync rebuilds is temp, and a stale directory must not outlive a week (ADR 0019)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a directory fact expires at its time to live; a time to live over 7 days is refused"}

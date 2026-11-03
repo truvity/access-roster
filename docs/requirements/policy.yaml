@@ -169,7 +169,7 @@ requirements:
       - {kind: integration-test, ref: "each misplaced wildcard and an empty expansion are refused"}
   - id: REQ-POLICY-013
     area: POLICY
-    statement: "An installation MUST declare a grant vocabulary."
+    statement: "An installation MUST declare a GrantVocabulary config document."
     rationale: "Without one a name nobody declared would load, and a typo would grant nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
@@ -178,4 +178,68 @@ requirements:
     standards: []
     issues: [892]
     verification:
-      - {kind: integration-test, ref: "an install file without a vocabulary is refused by sluis config check"}
+      - {kind: integration-test, ref: "a config set without a vocabulary is refused by sluis config check"}
+
+  # ---- sealed grants and policy layers (decisions 0007 and 0020)
+  - id: REQ-POLICY-015
+    area: POLICY
+    statement: "key@ MUST seal a grant only for the policy actor."
+    rationale: "Only policy decides, so only its decisions may be sealed as grants (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "any other actor asks key@ to seal a grant; refused"}
+  - id: REQ-POLICY-016
+    area: POLICY
+    statement: "An actor that carries out a one-shot irreversible action MUST write the hash of its grant as a SpentGrant by a conditional create."
+    rationale: "A grant is reusable for about a minute, and a one-shot action must run once (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "two uses of one grant for a mint or a signature: the second finds the marker and is refused"}
+  - id: REQ-POLICY-017
+    area: POLICY
+    statement: "The effective policy of a regulated customer's boundary MUST combine the publisher's Policy and the RegulatedPartyPolicy by union with forbid wins."
+    rationale: "Neither party can change the policy alone, and a forbid of either holds (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [policy]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "combine vectors: a forbid in the RegulatedPartyPolicy overrides a permit in the Policy, and the reverse"}
+  - id: REQ-POLICY-018
+    area: POLICY
+    statement: "A link of a predefined policy that grants beyond config MUST be written to the temp kind PredefinedPolicyLinkTemporary, which expires within 24 hours."
+    rationale: "Linking break-glass is a loosening, and a run-time loosening carries an expiry (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a break-glass link is written as a temp item that expires in 1 hour by default and is refused at 25 hours"}
+  - id: REQ-POLICY-019
+    area: POLICY
+    statement: "`policy` MUST recompile its effective policy set when the set changes."
+    rationale: "A tightening takes effect at once (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [policy]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a PredefinedPolicyLink is written; the next decision uses the recompiled set"}

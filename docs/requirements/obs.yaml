@@ -138,7 +138,7 @@ requirements:
       - {kind: integration-test, ref: "free-text redaction test"}
   - id: REQ-OBS-011
     area: OBS
-    statement: "The telemetry allowlist MUST be generated from the sensitivity annotations of the configuration schema."
+    statement: "The telemetry allowlist MUST be generated from the treatment of the kinds in the kind registry."
     rationale: "A list kept by hand drifts from the fields."
     level: MUST
     source: design-decision
@@ -201,3 +201,29 @@ requirements:
     issues: [861]
     verification:
       - {kind: integration-test, ref: "log line format test in the conformance suite"}
+
+  # ---- log levels (decision 0016)
+  - id: REQ-OBS-016
+    area: OBS
+    statement: "A log-level override MUST expire within 24 hours, after which the level returns to config."
+    rationale: "A debug level left on is a loosening that lasts (ADR 0016)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "an override written with 25 hours is refused; at expiry the level is the config level"}
+  - id: REQ-OBS-017
+    area: OBS
+    statement: "An actor MUST read a log-level override for its own id only."
+    rationale: "An override names a boundary, an actor and a module, never a tenant (ADR 0016)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "actor X lists the overrides of actor Y; refused"}

@@ -86,7 +86,7 @@ A conditional verdict holds once its spike passes. The table above fixes the lan
 | S3 ([#941](https://github.com/truvity/sluis/issues/941)) | A slim `entry` prototype in both languages, behind the tunnel client and the Lambda Web Adapter, with limits, timeouts and 24 hours of fuzzing; p99 latency, memory, cold start, binary size | `entry` |
 | S10 ([#947](https://github.com/truvity/sluis/issues/947)) | GoReleaser with a Cargo workspace: every Rust binary for two architectures, with SBOM and provenance like the Go artefacts, and Lambda zips within the layer limits | Every Rust component |
 
-Spikes S2 ([#940](https://github.com/truvity/sluis/issues/940)), S4 ([#942](https://github.com/truvity/sluis/issues/942)), S5 ([#943](https://github.com/truvity/sluis/issues/943)), S6 ([#944](https://github.com/truvity/sluis/issues/944)) and S7 ([#945](https://github.com/truvity/sluis/issues/945)) are done (results above). Configuration is settled in [0004](/decisions/0004-the-data-model/#schemas-are-protobuf); its fidelity spike ([#1177](https://github.com/truvity/sluis/issues/1177)) is done too (2026-11-03).
+Spikes S2 ([#940](https://github.com/truvity/sluis/issues/940)), S4 ([#942](https://github.com/truvity/sluis/issues/942)), S5 ([#943](https://github.com/truvity/sluis/issues/943)), S6 ([#944](https://github.com/truvity/sluis/issues/944)) and S7 ([#945](https://github.com/truvity/sluis/issues/945)) are done (results above). Configuration is settled in [0004](/decisions/0004-the-data-model/#schemas-are-protobuf); its fidelity spike ([#1177](https://github.com/truvity/sluis/issues/1177)) is done too (2026-11-03). The re-run of S4 (2026-11-02, [#942](https://github.com/truvity/sluis/issues/942)) did the zeroisation review of the key@ PIN paths and showed the release-subkey back-signature working through a PIV slot on a real card.
 
 ### Fallbacks are candidates
 
@@ -127,5 +127,4 @@ A fallback is not chosen in advance. When a spike fails, the maintainer picks th
 
 ## Follow-ups
 
-- The zeroisation review of the key@ PIN paths, and the release-subkey slot on a real card: [#942](https://github.com/truvity/sluis/issues/942).
 - Spikes S1 ([#939](https://github.com/truvity/sluis/issues/939)) and S10 ([#947](https://github.com/truvity/sluis/issues/947)) pass (2026-11-01); results are on the issues. S3 ([#941](https://github.com/truvity/sluis/issues/941)) holds the Rust row for the slim `entry` on memory, size and threads (latency is parity); two checks remain: the real tunnel client (edge relay tests) and 24-hour fuzz campaigns (CI, [#796](https://github.com/truvity/sluis/issues/796)).

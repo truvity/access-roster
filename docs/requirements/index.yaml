@@ -45,7 +45,7 @@ catalogue:
     CIAM: {title: "Customer account hosting: scope and boundaries", file: ciam.yaml}
     ACCT: {title: "Customer accounts", file: acct.yaml}
     SUBJ: {title: "Subjects and sectors", file: subj.yaml}
-    VAULT: {title: "Fallback credential vault", file: vault.yaml}
+    VAULT: {title: "Fallback credential vault", file: vault.yaml, retired: true}
     REG: {title: "Registration, recovery and lifecycle", file: reg.yaml}
   gaps:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."

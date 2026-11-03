@@ -171,8 +171,8 @@ requirements:
       - {kind: integration-test, ref: "disabled person exchange test"}
   - id: REQ-EXCH-013
     area: EXCH
-    statement: "A credential minter MUST refuse a request for a target or a catalogue entry that the install file does not declare, with the reason NOT_FOUND."
-    rationale: "A minter serves only what an operator declared (ADR 0025)."
+    statement: "A credential minter MUST refuse a request for a target that is not a declared MinterTarget or that lies outside MinterBounds, with the reason NOT_FOUND."
+    rationale: "A minter serves only the targets that a tenant declared within the bounds an operator reviewed (ADR 0025)."
     level: MUST
     source: design-decision
     status: planned
@@ -180,10 +180,10 @@ requirements:
     standards: []
     issues: [1011]
     verification:
-      - {kind: integration-test, ref: "a mint for an undeclared target and for an undeclared entry"}
+      - {kind: integration-test, ref: "a mint for an undeclared target and for a target outside MinterBounds"}
   - id: REQ-EXCH-014
     area: EXCH
-    statement: "A credential minter MUST refuse a catalogue entry that grants administration of tokens, billing, account settings, memberships or identity providers at its vendor."
+    statement: "A credential minter MUST refuse a target that grants administration of tokens, billing, account settings, memberships or identity providers at its vendor."
     rationale: "The minting credential is the sharpest edge of an integration, so the floor is in code (ADR 0025)."
     level: MUST
     source: design-decision
@@ -192,7 +192,7 @@ requirements:
     standards: []
     issues: [1011]
     verification:
-      - {kind: test-vectors, ref: "catalogue entries on the refusal list"}
+      - {kind: test-vectors, ref: "targets on the refusal list"}
   - id: REQ-EXCH-015
     area: EXCH
     statement: "A credential minter MUST NOT return a credential that outlasts the least of the lifetime of its grant, the policy cap and the vendor's maximum."
@@ -205,3 +205,30 @@ requirements:
     issues: [1011]
     verification:
       - {kind: integration-test, ref: "a mint request for a longer lifetime than each limit in turn"}
+
+  # ---- credential minters and adapters (decision 0025)
+  - id: REQ-EXCH-016
+    area: EXCH
+    statement: "A credential minter MUST NOT record the credential it returns."
+    rationale: "What sluis never stores cannot be taken from it, and a minted credential is short-lived (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a scan of the store, the logs and the audit log after a mint finds no credential value"}
+  - id: REQ-EXCH-017
+    area: EXCH
+    statement: "store@ MUST refuse a write of a MinterTarget that lies outside MinterBounds."
+    rationale: "MinterBounds says which target types and maximum lifetimes an installation allows (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a MinterTarget one step outside each bound in turn is refused on write"}
