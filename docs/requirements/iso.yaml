@@ -1474,7 +1474,6 @@ requirements:
     source: design-decision
     status: planned
     runtimes: ["kubernetes"]
-    actors: [store, key]
     standards: []
     issues: [876]
     verification:
@@ -1500,7 +1499,6 @@ requirements:
     source: design-decision
     status: planned
     runtimes: ["kubernetes"]
-    actors: [entry]
     standards: []
     issues: [876]
     verification:
