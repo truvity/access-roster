@@ -527,7 +527,7 @@ Name (a slug of lower-case letters, digits and hyphens, not free text; a display
 
 ### `Allowance`
 
-Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add \| set \| write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the version, and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update.
+Id is the quota name. Mode (prepaid, limited, unlimited) and units left, counted down by quota. A product changes it by a push: a request id, an operation (add \| set \| write-off) and, optionally, the expected version. A push is idempotent by request id (its SpentPush marker), is applied with a conditional update on the units (a delta), and is an audit fact. Admits use the same conditional update, so they race with pushes safely. Hot counter: the driver contract allows a single conditional update.
 
 - **Class:** durable; scope boundary+tenant; plain; profile Tenant-adjustable; module quota module; serves the work family.
 - **Writer:** [`quota`](/reference/actors/#quota).
