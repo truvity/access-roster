@@ -31,6 +31,9 @@ exclude = [
   # that kept the link check busy for the whole job. The RFC links are references, not
   # something this site can fix; datatracker.ietf.org serves the same documents.
   '^https://www\.rfc-editor\.org/',
+  # www.iso.org answers an automated client with 403 Forbidden (seen on the check of the pull
+  # request that added the ISO/IEC 27017 catalogue entry); the page opens in a browser.
+  '^https://www\.iso\.org/',
   # Needs a token or a session.
   '^https://(www\.)?linkedin\.com',
 ]
