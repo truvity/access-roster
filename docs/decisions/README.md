@@ -73,8 +73,8 @@ Records are grouped by the layer of the product they belong to: the core, then t
 | [0012](0012-the-language-follows-the-executable.md) | The language follows the executable: Go by default, Rust at the edge, in the trusted base, in cloud drivers and on the smallest boards | Accepted |
 | [0013](0013-release-train-packaging-and-distribution.md) | One repository, one version, one release train, and packaging follows the runtime | Accepted |
 | [0014](0014-the-site-is-static-on-cloudflare-workers.md) | The site is static on Cloudflare Workers, deployed by GitHub Actions, with a live status API | Accepted |
-| [0015](0015-evolution-and-compatibility.md) | Evolution and compatibility: N and N-1 inside a major version, a parallel cutover from v1, and neutral artifacts as the deliverable | Accepted |
-| [0016](0016-telemetry.md) | Telemetry is OpenTelemetry used directly, with one log format, W3C trace context, fixed span and metric names, and a generated attribute allowlist | Accepted |
+| [0015](0015-evolution-and-compatibility.md) | Evolution and compatibility: N and N-1 inside a major version, a parallel cutover from v1, and v1's history stays where it is | Accepted |
+| [0016](0016-telemetry.md) | Telemetry is OpenTelemetry with fixed conventions, and a log level is raised at run time only with an expiry | Accepted |
 | [0017](0017-identity-and-sign-in.md) | Each boundary has its own issuer, a token has one audience, people sign in with passkeys and step-up, and break-glass recovery uses passkeys held in config | Accepted |
 | [0018](0018-sessions.md) | Sessions have three classes with limits per class, and session chains are temp kinds | Accepted |
 | [0019](0019-person-and-upstream-link.md) | A person is tied to an upstream account by issuer and subject claim | Accepted |
@@ -116,7 +116,6 @@ These records are superseded: the content of each moves into the record its stat
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0042](0042-leaf-certificate-profiles-lifetimes-and-revocation.md) | Every leaf certificate has a fixed profile and a short lifetime, intermediates are name-constrained per environment, and one static CRL per intermediate is re-signed daily | Superseded by 0023 |
 | [0048](0048-data-lifecycle-and-evidence-never-share-a-key-with-personal-data.md) | Data lifecycle and evidence: evidence and personal data never share a key, erasure is shredding the key, and v1's history stays where it is | Superseded by 0029 |
 | [0051](0051-the-finance-export-is-a-statement-per-account-and-period-closed-once-anchored-in-the-usage-log-and-pulled.md) | The finance export is a statement per boundary, account and period, closed once, anchored in the usage log and pulled by the billing system | Superseded by 0039 |
 | [0054](0054-customer-connections-run-in-a-pool-per-customer-boundary.md) | Customer-owned upstream connections run in a pool per customer boundary, and every other connector keeps its own process | Superseded by 0033 |
