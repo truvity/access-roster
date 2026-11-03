@@ -107,7 +107,7 @@ Records are grouped by the layer of the product they belong to: the core, then t
 
 | ADR | Decision | Status |
 |-----|----------|--------|
-| [0039](0039-quota-allowance.md) | Quota holds an allowance per tenant that the product pushes, counts it down, refuses at zero and records every fact | Proposed |
+| [0039](0039-quota-allowance.md) | Quota holds an allowance per tenant that the product pushes, counts it down, refuses at zero and records every fact | Accepted |
 | [0040](0040-meters-and-usage-evidence.md) | A meter has a name, a unit and a kind, and only declared outcomes become usage evidence | Accepted |
 
 
