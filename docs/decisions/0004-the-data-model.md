@@ -229,7 +229,7 @@ These are not kinds. The registry does not list them, and an actor cannot read o
 | Minted credentials | Never recorded |
 | Backup archives | In the backup bucket; each archive's provenance is a `backup.completed` audit fact ([0010](/decisions/0010-backup-and-recovery/)) |
 | Exported copies | In the destinations exporter@ writes ([0009](/decisions/0009-export/)) |
-| Telemetry settings | The standard `OTEL_*` environment variables only; the schema has no telemetry keys ([0016](/decisions/0016-telemetry/)) |
+| Telemetry settings | Exporters, endpoints and resources: the standard `OTEL_*` environment variables only; the log level and the trace sampling are the layered kind `LogSettings` ([0016](/decisions/0016-telemetry/)) |
 | Product-side data | Plans, prices, money balances, organisations, memberships, consent evidence, customer accounts and their credentials, end-user passkeys: the product's, never sluis's |
 
 ## Consequences

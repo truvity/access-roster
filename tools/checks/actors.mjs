@@ -54,7 +54,10 @@ const OPS = ['seal', 'open', 'sign', 'mac', 'public-key', 'wrap', 'unwrap'];
 const CONTRACTS = ['Upstream', 'FactsSource', 'CredentialMinter', 'Provisioner', 'Notifier'];
 const WORK_PORTS = ['data', 'keys', 'audit-emit'];
 const STORE_PORTS = ['config-source', 'secret-source', 'durable', 'temp'];
-const TOP = ['schema', 'ports', 'egress_classes', 'actors', 'platform', 'not_actors'];
+const TOP = ['schema', 'ports', 'egress_classes', 'actors', 'platform', 'external_callers', 'not_actors'];
+const EXTERNAL_FIELDS = ['name', 'purpose', 'identity', 'key_purposes', 'adrs'];
+// An external caller (a product's emitter) is not an actor: it may ask key for Mac under `pseudonym`, and for nothing else.
+const EXTERNAL_ALLOWED = { pseudonym: ['mac'] };
 const FIELDS = ['name', 'family', 'holder', 'holds', 'purpose', 'aka', 'contracts', 'language', 'language_rule', 'language_row', 'language_note',
   'placement', 'ports', 'calls', 'egress', 'key_purposes', 'adrs', 'requirement_areas', 'standards', 'label', 'issues'];
 const PLATFORM_FIELDS = ['name', 'purpose', 'language', 'language_rule', 'language_note', 'placement', 'binary', 'ports', 'calls', 'egress',
@@ -83,6 +86,7 @@ if (reg.schema !== 1) error(`${REGISTRY}: schema must be 1`);
 for (const k of Object.keys(reg)) if (!TOP.includes(k)) error(`${REGISTRY}: unknown top-level key ${k}`);
 const actors = Array.isArray(reg.actors) ? reg.actors : [];
 const platform = Array.isArray(reg.platform) ? reg.platform : [];
+const external = Array.isArray(reg.external_callers) ? reg.external_callers : [];
 const portDefs = isObj(reg.ports) ? reg.ports : {};
 const egressDefs = isObj(reg.egress_classes) ? reg.egress_classes : {};
 for (const [n, p] of Object.entries(portDefs)) {
@@ -195,6 +199,27 @@ for (const n of ['store', 'exporter', 'key', 'writer', 'witness', 'indexer', 're
 }
 const notActors = isObj(reg.not_actors) ? reg.not_actors : {};
 for (const n of Object.keys(notActors)) if (everyone.has(n)) error(`${REGISTRY}: ${n} is both an actor and in not_actors`);
+// External callers: callers of an actor that are not sluis actors, known by a platform identity.
+const externalNames = new Set();
+for (const [i, c] of external.entries()) {
+  const at = `${REGISTRY}: external_callers[${i}]${c?.name ? ` (${c.name})` : ''}`;
+  if (!isObj(c)) { error(`${at}: not an object`); continue; }
+  for (const k of Object.keys(c)) if (!EXTERNAL_FIELDS.includes(k)) error(`${at}: unknown field ${k}`);
+  for (const k of EXTERNAL_FIELDS) if (!(k in c)) error(`${at}: missing ${k}`);
+  if (typeof c.name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(c.name)) { error(`${at}: name must be lower-case kebab-case`); continue; }
+  if (everyone.has(c.name) || externalNames.has(c.name) || Object.hasOwn(notActors, c.name)) error(`${at}: the name is also an actor, a platform piece, a non-actor or another external caller`);
+  externalNames.add(c.name);
+  if (typeof c.purpose !== 'string' || !/^[A-Z"`].{10,300}\.$/.test(c.purpose)) error(`${at}: purpose must be one sentence ending in a period`);
+  if (typeof c.identity !== 'string' || !c.identity.length) error(`${at}: identity says how key knows the caller`);
+  if (!Array.isArray(c.key_purposes) || !c.key_purposes.length) error(`${at}: key_purposes must be a list`);
+  for (const [j, k] of (Array.isArray(c.key_purposes) ? c.key_purposes : []).entries()) {
+    const allowed = EXTERNAL_ALLOWED[k?.purpose];
+    if (!allowed) error(`${at}: key_purposes[${j}]: an external caller may use only ${Object.keys(EXTERNAL_ALLOWED).join(', ')}`);
+    else if (!isStrList(k.ops) || !k.ops.length || k.ops.some((o) => !allowed.includes(o))) error(`${at}: key_purposes[${j}]: ${k.purpose} allows only ${allowed.join(', ')} for an external caller`);
+    for (const f of Object.keys(k ?? {})) if (!['purpose', 'ops'].includes(f)) error(`${at}: key_purposes[${j}]: unknown field ${f}`);
+  }
+  if (!isStrList(c.adrs) || !c.adrs.length || c.adrs.some((n) => !/^[0-9]{4}$/.test(n))) error(`${at}: adrs must list four-digit record numbers, quoted`);
+}
 
 // ---- the requirements vocabulary
 const index = load('docs/requirements/index.yaml');
@@ -228,6 +253,7 @@ function names(text, a) {
   const words = [...(a.aka ?? []), ...(prose(a) ? [a.name] : [])];
   return words.some((w) => new RegExp(`(?<![\\w-])${esc(w)}(?![\\w-])`, 'i').test(text));
 }
+for (const c of external) for (const n of Array.isArray(c?.adrs) ? c.adrs : []) if (!adr.has(n)) error(`${REGISTRY}: ${c.name}: ADR ${n} is not a record in docs/decisions/`);
 for (const a of everyone.values()) {
   const silent = [];
   for (const n of a.adrs ?? []) {
@@ -240,7 +266,7 @@ for (const [n, { text }] of adr) {
   for (const m of text.matchAll(/`([a-z][a-z0-9-]*)@[^`\s]+`/g)) {
     const name = m[1];
     if (name.startsWith('sluis-')) continue; // a unit or a service name, such as sluis-ca@prod.service
-    if (!everyone.has(name) && !Object.hasOwn(notActors, name)) {
+    if (!everyone.has(name) && !externalNames.has(name) && !Object.hasOwn(notActors, name)) {
       adrProblem(`ADR ${n}: the instance name \`${m[0].slice(1, -1)}\` names ${name}, which is not an actor or a declared non-actor of ${REGISTRY}`);
     }
   }
@@ -311,6 +337,12 @@ function render() {
     out.push(`| [${code(a.name)}](#${a.name}) | ${a.family ?? 'platform'} | ${a.holder ? 'yes' : 'no'} | ${a.language} (${a.language_rule}) | ${scopeText[a.placement.scope]}${a.placement.instances === 'exactly-1' ? ', exactly 1' : ''} | ${code(a.label)} |`);
   }
   for (const a of [...actors, ...platform]) out.push(...section(a));
+  if (external.length) {
+    out.push('', '### External callers', '', 'Callers of an actor that are not sluis actors. Each is known by a platform identity, holds nothing and has no ports.');
+    for (const c of external) {
+      out.push('', `#### ${code(c.name)}`, '', c.purpose, '', `- **Identity:** ${c.identity}`, `- **Key purposes:** ${list(c.key_purposes.map((k) => `${code(k.purpose)} (${k.ops.join(', ')})`))}.`, `- **Decisions:** ${list(c.adrs.map(adrLink))}.`);
+    }
+  }
   out.push('', END);
   return out.join('\n');
 }

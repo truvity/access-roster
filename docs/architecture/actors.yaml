@@ -113,9 +113,10 @@ actors:
     language_note: "Gated by spikes S1, S3 and S10; the fallback candidate is Go first."
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "The only actor reachable from outside: a Unix socket on bare-metal and Kubernetes, loopback TCP on serverless." }
     ports: [data, keys, audit-emit, listener]
-    calls: [session, exchange, console, ssh-ca, adapter-<vendor>]
+    calls: [session, exchange, console, ssh-ca, quota, adapter-<vendor>]
     egress: []
     key_purposes:
+      - { purpose: mac, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0003', '0008', '0011', '0012', '0017']
     requirement_areas: [SEC, ISO]
@@ -131,7 +132,7 @@ actors:
     language_rule: R4
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, audit-emit, fetch]
-    calls: [policy, signer, adapter-upstream-oidc]
+    calls: [policy, signer, exchange, adapter-upstream-oidc]
     egress: [client-document-hosts]
     key_purposes:
       - { purpose: cookie, ops: [seal, open] }
@@ -153,7 +154,7 @@ actors:
     language_note: "Rust unless its design names a serious trade-off; the single-page application is TypeScript."
     placement: { scope: front, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, audit-emit]
-    calls: [session, exchange, reader, adapter-<vendor>]
+    calls: [session, exchange, policy, reader, adapter-<vendor>]
     egress: []
     key_purposes:
       - { purpose: data, ops: [open] }
@@ -283,7 +284,7 @@ actors:
     language_note: "Rust unless its design names a serious trade-off."
     placement: { scope: beside-sluis, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "Runs beside sluis, sharing its store, or in an installation of its own." }
     ports: [data, keys, audit-emit]
-    calls: []
+    calls: [policy]
     egress: []
     key_purposes:
       - { purpose: pseudonym, ops: [mac] }
@@ -293,7 +294,7 @@ actors:
     label: actor:quota
     issues: [915, 1026]
 
-  # ---- adapters: the work actors of the integrations, one per vendor tenant and credential (ADR 0025)
+  # ---- adapters: the work actors of the integrations, one per vendor, opening each tenant's connection credential at key@ for each call (ADR 0025)
   - name: adapter-upstream-oidc
     family: work
     holder: false
@@ -303,9 +304,9 @@ actors:
     language: Go
     language_rule: R4
     language_row: Integrations
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, audit-emit, provider-api]
-    calls: []
+    calls: [policy]
     egress: [upstream-idp]
     key_purposes:
       - { purpose: data, ops: [open] }
@@ -325,9 +326,9 @@ actors:
     language: Go
     language_rule: R4
     language_row: Integrations
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler, a scheduled re-sync) takes a lease, so one runs at a time." }
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler, a scheduled re-sync) takes a lease, so one runs at a time." }
     ports: [data, keys, audit-emit, provider-api]
-    calls: []
+    calls: [policy]
     egress: [github-api]
     key_purposes:
       - { purpose: grant, ops: [open] }
@@ -349,9 +350,9 @@ actors:
     language: Go
     language_rule: R4
     language_row: Integrations
-    placement: { scope: per-tenant, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler) takes a lease, so one runs at a time." }
+    placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "A background job (the reconciler) takes a lease, so one runs at a time." }
     ports: [data, keys, audit-emit, provider-api]
-    calls: []
+    calls: [policy]
     egress: [slack-api]
     key_purposes:
       - { purpose: data, ops: [seal, open] }
@@ -436,9 +437,9 @@ actors:
     aka: ["audit writer"]
     language: Go
     language_rule: R4
-    placement: { scope: per-boundary, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes], note: "Exactly one writer per log; a cluster keeps one log per node." }
+    placement: { scope: per-boundary, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes], note: "One writer per project; exactly one writer per log; a cluster keeps one log per node and project." }
     ports: [data, keys, blob, transport]
-    calls: []
+    calls: [policy]
     egress: [audit-blob, audit-transport]
     key_purposes:
       - { purpose: audit-log, ops: [sign, public-key] }
@@ -479,7 +480,7 @@ actors:
     language_note: "Rust unless its design names a serious trade-off."
     placement: { scope: per-boundary, instances: exactly-1, runtimes: [bare-metal, serverless, kubernetes] }
     ports: [data, keys, blob, transport, index, audit-emit]
-    calls: []
+    calls: [policy]
     egress: [audit-blob, search-index]
     key_purposes:
       - { purpose: evidence, ops: [open] }
@@ -499,7 +500,7 @@ actors:
     language_note: "Rust unless its design names a serious trade-off."
     placement: { scope: per-boundary, instances: any, runtimes: [bare-metal, serverless, kubernetes], note: "With a sqlite index on a cluster it runs on the indexer's node." }
     ports: [data, keys, blob, index, audit-emit]
-    calls: []
+    calls: [policy]
     egress: [audit-blob, search-index]
     key_purposes:
       - { purpose: pseudonym, ops: [mac] }
@@ -529,6 +530,18 @@ platform:
     standards: [ST-110, ST-46]
     label: actor:sluis-node
     issues: [870]
+
+# Callers of a sluis actor that are not sluis actors (ADR 0029, "Pseudonyms"): a product's emitter makes
+# the pseudonym of each person before a record leaves the product's process, by asking key for Mac under
+# the tenant's `pseudonym` key. An external caller is known by its platform identity, is not placed,
+# holds nothing and has no ports; the only purpose it may list is `pseudonym`, and the only op is `mac`.
+external_callers:
+  - name: product-emitter
+    purpose: "The emitter library inside a product, which asks key for the keyed hash of a subject before an audit record leaves the product's process."
+    identity: "The product's own platform identity."
+    key_purposes:
+      - { purpose: pseudonym, ops: [mac] }
+    adrs: ['0029']
 
 # Names that look like actors and are not, with the reason. The check refuses them as actors.
 not_actors:

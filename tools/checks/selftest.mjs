@@ -259,8 +259,8 @@ expect('a holder that says nothing about what it holds', 'actors', edit(actorsYa
 expect('a work actor without a keys port', 'actors', edit(actorsYaml, 'ports: [data, keys, audit-emit, listener]', 'ports: [data, audit-emit, listener]'), 'fail', { has: ['a work actor has a keys port'] });
 expect('a work actor with a port of the data family', 'actors', edit(actorsYaml, 'ports: [data, keys, audit-emit, fetch]', 'ports: [data, keys, audit-emit, fetch, durable]'), 'fail', { has: ['a port is never shared between families'] });
 expect('store with three ports downward', 'actors', edit(actorsYaml, 'ports: [config-source, secret-source, durable, temp, keys, audit-emit]', 'ports: [config-source, secret-source, durable, keys, audit-emit]'), 'fail', { has: ['exactly four ports downward'] });
-expect('a call to key', 'actors', edit(actorsYaml, 'calls: [session, exchange, console, ssh-ca, adapter-<vendor>]', 'calls: [session, key]'), 'fail', { has: ['calls key'] });
-expect('a call to an unknown actor', 'actors', edit(actorsYaml, 'calls: [policy, signer, adapter-upstream-oidc]', 'calls: [policy, signr]'), 'fail', { has: ['calls signr, which is not an actor'] });
+expect('a call to key', 'actors', edit(actorsYaml, 'calls: [session, exchange, console, ssh-ca, quota, adapter-<vendor>]', 'calls: [session, key]'), 'fail', { has: ['calls key'] });
+expect('a call to an unknown actor', 'actors', edit(actorsYaml, 'calls: [policy, signer, exchange, adapter-upstream-oidc]', 'calls: [policy, signr]'), 'fail', { has: ['calls signr, which is not an actor'] });
 expect('an egress class that is not declared', 'actors', edit(actorsYaml, 'egress: [client-document-hosts]', 'egress: [anywhere]'), 'fail', { has: ['egress class anywhere is not declared'] });
 expect('an egress class that nothing uses', 'actors', edit(actorsYaml, 'egress_classes:\n', 'egress_classes:\n  never-used: "Nothing reaches it."\n'), 'fail', { has: ['never-used is declared and no actor uses it'] });
 expect('an unknown op in key_purposes', 'actors', edit(actorsYaml, '- { purpose: pseudonym, ops: [mac] }', '- { purpose: pseudonym, ops: [hash] }'), 'fail', { has: ['ops must list'] });
@@ -272,6 +272,10 @@ expect('an instance name that is no actor', 'actors', edit(stub, 'Text.', 'See `
 expect('a role the registry lacks', 'actors', edit('site/src/data/explorer/architecture.yaml', '  quota:\n    status: decided', '  meter:\n    status: decided'), 'fail', { has: ['role meter is not an actor'] });
 expect('a stale generated page', 'actors', edit('docs/reference/actors.md', '| work | no | Rust (R2) |', '| work | no | Rust |'), 'fail', { has: ['generated block is stale'] });
 expect('no registry', 'actors', { ...actorFiles, [actorsYaml]: undefined }, 'fail', { has: ['actors.yaml is missing'] });
+expect('an external caller that uses a purpose other than pseudonym', 'actors', edit(actorsYaml, '- { purpose: pseudonym, ops: [mac] }\n    adrs: [\'0029\']', '- { purpose: data, ops: [open] }\n    adrs: [\'0029\']'), 'fail', { has: ['an external caller may use only pseudonym'] });
+expect('an external caller that seals', 'actors', edit(actorsYaml, '- { purpose: pseudonym, ops: [mac] }\n    adrs: [\'0029\']', '- { purpose: pseudonym, ops: [mac, seal] }\n    adrs: [\'0029\']'), 'fail', { has: ['pseudonym allows only mac for an external caller'] });
+expect('an external caller named like an actor', 'actors', edit(actorsYaml, '  - name: product-emitter', '  - name: policy'), 'fail', { has: ['the name is also an actor'] });
+expect('an external caller with an unknown field', 'actors', edit(actorsYaml, '    identity: "The product\'s own platform identity."', '    identity: "The product\'s own platform identity."\n    ports: [data]'), 'fail', { has: ['unknown field ports'] });
 
 // ---- C8 examples: a block on a page equals the file it names
 const exPage = (body) => `---\ntitle: x\n---\n\n<!-- example: tests/x/install.yaml -->\n\`\`\`yaml\n${body}\`\`\`\n`;
@@ -355,7 +359,7 @@ expect('a user that is no actor', 'registries', editReg(KY, 'users: [ssh-ca]\n  
 expect('an actor using a purpose keys.yaml lacks', 'registries', editReg(AY, '- { purpose: grant, ops: [seal] }', '- { purpose: grnt, ops: [seal] }'), 'fail', { has: ['the key purpose grnt is not in docs/architecture/keys.yaml'] });
 expect('an actor using an op the purpose does not allow', 'registries', editReg(AY, '- { purpose: x509-intermediate, ops: [sign, public-key] }', '- { purpose: x509-intermediate, ops: [sign, seal] }'), 'fail', { has: ['x509-intermediate does not allow the op seal'] });
 expect('a user that does not list the purpose', 'registries', editReg(KY, '    cookie:\n      ops: [seal, open]\n      users: [session]', '    cookie:\n      ops: [seal, open]\n      users: [session, policy]'), 'fail', { has: ['policy is a user, but its key_purposes'] });
-expect('an actor using a purpose it is no user of', 'registries', editReg(KY, 'users: [session, ca, adapter-github]', 'users: [session, ca]'), 'fail', { has: ['does not list adapter-github as a user of mac'] });
+expect('an actor using a purpose it is no user of', 'registries', editReg(KY, 'users: [entry, session, ca, adapter-github]', 'users: [entry, session, ca]'), 'fail', { has: ['does not list adapter-github as a user of mac'] });
 expect('a temp kind whose default is above its maximum', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 11m, max: 10m}'), 'fail', { has: ['AuthCode: ttl.default 11m is above ttl.max 10m'] });
 expect('a default above its maximum, in other units', 'registries', editKind('PendingEnrolment', 'ttl: {default: 7d, max: 30d}', 'ttl: {default: 721h, max: 30d}'), 'fail', { has: ['PendingEnrolment: ttl.default 721h is above ttl.max 30d'] });
 expect('a temp kind whose maximum is 0s', 'registries', editKind('AuthCode', 'ttl: {default: 60s, max: 10m}', 'ttl: {default: 0s, max: 0s}'), 'fail', { has: ['AuthCode: ttl.max is 0s'] });
@@ -368,13 +372,15 @@ expect('a PIN release kept longer than the decided maximum', 'registries', editK
 expect('a sealed kind with no tenant, whose reader has no boundary data key', 'registries', editKind('EnrolmentToken', 'readers: [exchange]', 'readers: [exchange, session]'), 'fail', { has: ['EnrolmentToken is sealed and has no tenant', 'does not list session'] });
 expect('a sealed kind made boundary-scoped by an edit', 'registries', editKind('Person', 'scope: boundary+tenant', 'scope: boundary'), 'fail', { has: ['Person is sealed and has no tenant', 'does not list session'] });
 expect('DataKeyWrap with three boundary data keys', 'registries', editKind('DataKeyWrap', 'boundary: [grant, cookie, mac, data]', 'boundary: [grant, cookie, mac]'), 'fail', { has: ['DataKeyWrap.purposes must equal the data key purposes'] });
-expect('a boundary data key that is missing from keys.yaml', 'registries', editReg(KY, '    data:\n      ops: [seal, open]\n      users: [exchange]\n      erased: never', '    datum:\n      ops: [seal, open]\n      users: [exchange]\n      erased: never'), 'fail', { has: ['data_keys.boundary must be exactly grant, cookie, mac, data'] });
+expect('a boundary data key that is missing from keys.yaml', 'registries', editReg(KY, '    data:\n      ops: [seal, open]\n      users: [exchange, console]\n      erased: never', '    datum:\n      ops: [seal, open]\n      users: [exchange, console]\n      erased: never'), 'fail', { has: ['data_keys.boundary must be exactly grant, cookie, mac, data'] });
 expect('an actor using the archive key with an op it does not allow', 'registries', editReg(AY, '- { purpose: backup-archive, ops: [wrap] }', '- { purpose: backup-archive, ops: [wrap, seal] }'), 'fail', { has: ['backup-archive does not allow the op seal'] });
 expect('a backed-up kind that does not list exporter@ is read by the backup job', 'registries', regFiles, 'pass', { has: ['40 backed up, read by exporter@\'s backup job as ciphertext'] });
 expect('a backup job without the exporter actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporters\n    family: data'), 'fail', { has: ['the backup job\'s actor exporter is not an actor'] });
 expect('a backup job whose actor is not a data actor', 'registries', editReg(AY, '  - name: exporter\n    family: data', '  - name: exporter\n    family: work'), 'fail', { has: ['the backup job\'s actor is in the data family (it is work)'] });
 expect('a backup job without the data port', 'registries', editReg(AY, 'ports: [data, keys, audit-emit, destination]', 'ports: [keys, audit-emit, destination]'), 'fail', { has: ['exporter@ reads the backed-up kinds through the data port'] });
 expect('no key registry', 'registries', { ...regFiles, [KY]: undefined }, 'fail', { has: ['keys.yaml is missing'] });
+expect('an external caller that keys.yaml does not list', 'registries', editReg(KY, 'users: [every work actor, reader, product-emitter]', 'users: [every work actor, reader]'), 'fail', { has: ['does not list product-emitter as a user of pseudonym'] });
+expect('a user that is neither an actor nor an external caller', 'registries', editReg(KY, 'users: [every work actor, reader, product-emitter]', 'users: [every work actor, reader, product-emitters]'), 'fail', { has: ['user product-emitters is not an actor'] });
 
 // ---- C11 terms: the glossary's lint section, in warn mode and in error mode
 const glossary = (extra = {}) => `schema: ${extra.schema ?? 1}

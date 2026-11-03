@@ -107,6 +107,8 @@ for (const a of [...(actorsDoc.actors ?? []), ...(actorsDoc.platform ?? [])]) {
   if (typeof a?.name === 'string') actors.set(a.name, { ...a, family: a.family ?? 'platform' });
 }
 const adapters = [...actors.values()].filter((a) => a.name.startsWith('adapter-'));
+// Callers of key that are not actors (a product's emitter): known by name, with their own key_purposes.
+const externals = new Map((actorsDoc.external_callers ?? []).filter((c) => typeof c?.name === 'string').map((c) => [c.name, { ...c, family: 'external' }]));
 
 // A reference in a writer, a reader or a user list: what it names. `@` ends the name of a holder.
 function ref(raw) {
@@ -115,7 +117,7 @@ function ref(raw) {
   if (s === 'none yet') return { none: true };
   if (MACROS.includes(s)) return { macro: s };
   const name = s.replace(/@$/, '');
-  return { name, actor: actors.get(name) };
+  return { name, actor: actors.get(name) ?? externals.get(name) };
 }
 
 // ---- keys.yaml
@@ -237,7 +239,7 @@ const usersOf = (p) => (p.users ?? []).flatMap((u) => {
   if (r.macro === 'adapter-<vendor>') return [];
   return r.name ? [r.name] : [];
 });
-for (const [name, a] of actors) {
+for (const [name, a] of [...actors, ...externals]) {
   const seen = new Set();
   for (const [j, kp] of (Array.isArray(a.key_purposes) ? a.key_purposes : []).entries()) {
     const at = `${ACTORS}: ${name}: key_purposes[${j}]`;
@@ -253,7 +255,7 @@ for (const [name, a] of actors) {
 }
 for (const [purpose, p] of all) {
   for (const u of usersOf(p)) {
-    const a = actors.get(u);
+    const a = actors.get(u) ?? externals.get(u);
     if (a && !(a.key_purposes ?? []).some((kp) => kp.purpose === purpose)) error(`${KEYS}: ${purpose}: ${u} is a user, but its key_purposes in ${ACTORS} does not list ${purpose}`);
   }
 }

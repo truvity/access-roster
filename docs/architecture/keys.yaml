@@ -140,7 +140,7 @@ purposes:
     aws: { key_spec: ECC_NIST_P384, per: log, baseline: true }
     board: { slot: '84' }
     users: [writer]
-    notes: "Signs the checkpoints of an audit log and of its usage log; only the writer of that log may use it."
+    notes: "Signs the checkpoints of a project's audit log and usage log; one key per writer instance (one per project, and per node on boards); only that writer may use it."
 
   # ---- enabled on use: each a dedicated key
   - name: issuance-log
@@ -286,9 +286,9 @@ data_keys:
       notes: "Personal and operational data of the tenant."
     pseudonym:
       ops: [mac]
-      users: [every work actor, reader]
+      users: [every work actor, reader, product-emitter]
       erased: "tenant exit"
-      notes: "Keyed hashes, rolled by epoch: audit pseudonyms."
+      notes: "Keyed hashes, rolled by epoch: audit pseudonyms. A product's emitter is a declared external caller (actors.yaml)."
     evidence:
       ops: [seal, open]
       users: [writer, indexer, reader]
@@ -307,12 +307,12 @@ data_keys:
       notes: "Seals and opens the session cookie, per request, batched."
     mac:
       ops: [mac]
-      users: [session, ca, adapter-github]
+      users: [entry, session, ca, adapter-github]
       erased: never
       notes: "The key behind key's Mac for link ids and index values: UpstreamLink and UpstreamSession ids, pairwise subjects (label `pairwise`), by_subject_hash, the directory indexes."
     data:
       ops: [seal, open]
-      users: [exchange]
+      users: [exchange, console]
       erased: never
       notes: "Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds this is EnrolmentToken only. The wrap has the same purpose name as the tenant's `data` key and a different address."
 
