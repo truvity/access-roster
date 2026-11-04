@@ -26,7 +26,8 @@ requirements:
     rationale: "These are the failures of real token verifiers."
     level: MUST
     source: standard
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:

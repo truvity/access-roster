@@ -122,7 +122,8 @@ requirements:
     rationale: "A token key that signs certificates would let a token signer mint a CA."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
@@ -413,7 +414,8 @@ requirements:
     rationale: "A readable client ID that each relying party pins stops a token for one client being accepted by another."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
