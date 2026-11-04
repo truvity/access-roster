@@ -104,10 +104,15 @@ func (s *Server) openOwn(ctx context.Context, ref keyRef) ([]byte, error) {
 		return nil, unavailable(reasonStore)
 	}
 	prefix := fmt.Sprintf("%s/%d/", ref.purpose, ref.generation)
+	var ofKey []wrapItem
 	for _, o := range others {
 		if strings.HasPrefix(o.ID, prefix) {
-			return nil, errNotWrapped
+			ofKey = append(ofKey, o)
 		}
+	}
+	if len(ofKey) > 0 {
+		s.warnLegacy(legacyLabels(ofKey))
+		return nil, errNotWrapped
 	}
 	return nil, errNoKey
 }
@@ -239,6 +244,7 @@ func (s *Server) rewrapTenant(ctx context.Context, tenant string, recips []recip
 	if err != nil {
 		return err
 	}
+	s.warnLegacy(legacyLabels(all))
 	// Group the wraps by key (purpose and generation): who has one.
 	have := map[keyRef]map[string]bool{}
 	for _, it := range all {

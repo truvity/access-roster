@@ -21,7 +21,17 @@ import (
 	"github.com/truvity/sluis/v2/actors/key/internal/envelope"
 	"github.com/truvity/sluis/v2/actors/key/internal/wrap"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
+	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 )
+
+func mustMarshal(m proto.Message) []byte {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 // The thumbprint vectors are committed in testdata: RFC 7638, section 3.1, which pins the procedure, and a P-384
 // key whose thumbprint was computed outside Go.
@@ -378,7 +388,7 @@ func TestMalformedRecipientsStopTheStart(t *testing.T) {
 		want string
 	}{
 		"a label":   {[]string{"node-1-abcdefghijklmnop"}, "recipients[0] is not an RFC 7638 thumbprint"},
-		"a repeat":  {[]string{good, good}, "a recipient is listed twice"},
+		"a repeat":  {[]string{good, good}, "recipients[1] is listed twice"},
 		"too short": {[]string{good[:40]}, "recipients[0] is not an RFC 7638 thumbprint"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -415,5 +425,45 @@ func TestSwappedCertificateKeyIsNotUsed(t *testing.T) {
 	}
 	if err := a.srv.Check(context.Background()); err == nil || !strings.Contains(err.Error(), honest.id) {
 		t.Fatalf("check = %v, want the listed node reported as without a key", err)
+	}
+}
+
+// Wraps under the old label format (<node>-<hash>), made before the label was derived from the listed id, are not
+// opened by anyone now. That fails closed, and it says why: the log names the label once, and the check fails with
+// the remedy, so that an unpurged board is not left to fail every seal and open with a message that says "wait".
+func TestOldLabelWrapsAreSaidNotSilent(t *testing.T) {
+	e := newTestEnv(t, "development")
+	logs := captureLog(t)
+	a := e.startedNode(nodeOpts{name: "node-1"})
+	old := "node-1-abcdefghijklmnop"
+	e.store.mu.Lock()
+	e.store.items["|data-key-wrap|cookie/1/"+old] = &storev2alpha1.Item{
+		Address: &typev2alpha1.Address{Kind: "data-key-wrap", Id: "cookie/1/" + old}, Version: 1,
+		Value: mustMarshal(&keyv2alpha1.DataKeyWrap{Purpose: "cookie", Generation: 1, Recipient: old}),
+		Indexes: []*typev2alpha1.IndexEntry{{Name: indexByPurpose, Value: []byte("cookie")}, {Name: indexByRecipient, Value: []byte(old)}},
+	}
+	e.store.mu.Unlock()
+
+	_, err := seal1(a.client("session"), "cookie", "cookie", "", "s1", []byte("x"), nil)
+	wantRefusal(t, err, connect.CodeUnavailable, "wrap")
+	if !strings.Contains(logs.String(), "old recipient label format") || !strings.Contains(logs.String(), old) {
+		t.Fatalf("the log does not name the old label:\n%s", logs.String())
+	}
+	if n := strings.Count(logs.String(), "old recipient label format"); n != 1 {
+		t.Fatalf("the warning was logged %d times, want once", n)
+	}
+	err = a.srv.Check(context.Background())
+	if err == nil || !strings.Contains(err.Error(), old) || !strings.Contains(err.Error(), "delete those DataKeyWrap items") {
+		t.Fatalf("check = %v, want the old label and the remedy", err)
+	}
+	// Once they are gone the node makes its key and the check passes.
+	e.store.mu.Lock()
+	delete(e.store.items, "|data-key-wrap|cookie/1/"+old)
+	e.store.mu.Unlock()
+	if _, err := seal1(a.client("session"), "cookie", "cookie", "", "s1", []byte("x"), nil); err != nil {
+		t.Fatalf("after the old wraps were deleted: %v", err)
+	}
+	if err := a.srv.Check(context.Background()); err != nil {
+		t.Fatalf("check after the old wraps were deleted: %v", err)
 	}
 }

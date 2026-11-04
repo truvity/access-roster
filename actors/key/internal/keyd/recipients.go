@@ -45,19 +45,51 @@ type recipientSet struct {
 	events []Event
 }
 
-// plannedRecipients reads the list of the KeyPlan: sorted, each a thumbprint, none twice.
+// plannedRecipients reads the list of the KeyPlan: each a thumbprint, none twice. The result is sorted; an error
+// names the index in the document, as store@ does.
 func plannedRecipients(plan *configv2alpha1.KeyPlan) ([]string, error) {
-	out := slices.Clone(plan.GetRecipients())
-	slices.Sort(out)
-	for i, id := range out {
+	seen := map[string]bool{}
+	for i, id := range plan.GetRecipients() {
 		if !validRecipientID(id) {
 			return nil, fmt.Errorf("keyplan/default: recipients[%d] is not an RFC 7638 thumbprint", i)
 		}
-		if i > 0 && out[i-1] == id {
-			return nil, errors.New("keyplan/default: a recipient is listed twice")
+		if seen[id] {
+			return nil, fmt.Errorf("keyplan/default: recipients[%d] is listed twice", i)
+		}
+		seen[id] = true
+	}
+	out := slices.Clone(plan.GetRecipients())
+	slices.Sort(out)
+	return out, nil
+}
+
+// derivedLabelLen is the length of recipientLabel: the base32 of 32 bytes.
+const derivedLabelLen = 52
+
+// legacyLabels returns the recipient labels of the wraps that are not of the derived form. Wraps made before the
+// label was derived from the listed id carry <node>-<hash>; key@ finds none of them for itself, so it neither opens
+// those keys nor makes new ones beside them, and the cause must be said.
+func legacyLabels(items []wrapItem) []string {
+	var out []string
+	for _, it := range items {
+		if _, _, l, ok := parseWrapID(it.ID); ok && len(l) != derivedLabelLen && !slices.Contains(out, l) {
+			out = append(out, l)
 		}
 	}
-	return out, nil
+	slices.Sort(out)
+	return out
+}
+
+// legacyRemedy says what to do about wraps under the old label format.
+const legacyRemedy = "key@ cannot open them: delete those DataKeyWrap items (or purge the installation's state) and restart, so that the data keys are made again"
+
+// warnLegacy logs, once for each label, that wraps under the old label format exist. The label is public.
+func (s *Server) warnLegacy(labels []string) {
+	for _, l := range labels {
+		if _, dup := s.reported.LoadOrStore("legacy:"+l, struct{}{}); !dup {
+			slog.Warn("wraps under the old recipient label format exist; "+legacyRemedy, "label", l)
+		}
+	}
 }
 
 // recipients reads the KeyPlan again and finds the public key of each listed recipient. This node's own key is
@@ -181,7 +213,7 @@ func (r *recipientSet) report(key, what, path, detail string, seen *sync.Map) {
 // whether the KeyPlan lists it, and the listed recipients that have no key. An incomplete wrap set fails the check;
 // a node that is not listed yet does not (it is how a node joins: it starts, its id is read, and the list is
 // changed by a reviewed commit). The check writes no audit record: the serving process audits the same finding.
-func (s *Server) checkRecipients(ctx context.Context, plan *configv2alpha1.KeyPlan) error {
+func (s *Server) checkRecipients(ctx context.Context, plan *configv2alpha1.KeyPlan, defaultTenant string) error {
 	out := s.cfg.Out
 	if out == nil {
 		out = os.Stdout
@@ -212,10 +244,24 @@ func (s *Server) checkRecipients(ctx context.Context, plan *configv2alpha1.KeyPl
 		missing = append(missing, l)
 	}
 	_, _ = fmt.Fprintf(out, "recipients listed: %d\n", len(listed))
+	var problems []error
 	if len(missing) > 0 {
-		return fmt.Errorf("the wrap set is incomplete: %d listed recipients have no key (%s)", len(missing), strings.Join(missing, " "))
+		problems = append(problems, fmt.Errorf("the wrap set is incomplete: %d listed recipients have no key (%s)", len(missing), strings.Join(missing, " ")))
 	}
-	return nil
+	// The wraps of the boundary's own keys and of the default tenant: the tenants key@ can name without having served.
+	var old []string
+	for _, t := range slices.Compact([]string{"", defaultTenant}) {
+		items, err := s.listWraps(ctx, t, "")
+		if err != nil {
+			return errors.New("store@: the wraps cannot be listed")
+		}
+		old = append(old, legacyLabels(items)...)
+	}
+	slices.Sort(old)
+	if old = slices.Compact(old); len(old) > 0 {
+		problems = append(problems, fmt.Errorf("wraps exist under the old recipient label format (%s): %s", strings.Join(old, " "), legacyRemedy))
+	}
+	return errors.Join(problems...)
 }
 
 // currentWrappingID asks the key store for the wrapping public key without making one. An empty id means the key
