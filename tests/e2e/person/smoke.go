@@ -157,13 +157,12 @@ func smokeRun(cfg *config, fromOut *int64) error {
 	fmt.Println("exchanged token (the claims; the signature is not shown)")
 	printToken(xHdr, xClaims)
 	fmt.Printf("signature:     ES384, verified with kid %s from %s/jwks\n", kid, issuer)
-	// ADR 0034: both subjects are Mac(the tenant's pairwise key, sector and person id), so one person in one tenant
-	// should have one. Reported, not enforced: the two actors build the Mac input differently (see the pull request).
-	if idClaims["sub"] == xClaims["sub"] {
-		fmt.Println("subjects:      the sign-in's sub and the exchanged token's sub are the same pairwise subject")
-	} else {
-		fmt.Println("subjects:      NOTE the sign-in's sub and the exchanged token's sub differ (session and exchange build the Mac input differently)")
+	// ADR 0034: both subjects are Mac(the tenant's pairwise key, kits/go/subject.PairwiseInput(sector, person id)), so one
+	// person in one tenant has one. A difference is a failure.
+	if idClaims["sub"] != xClaims["sub"] {
+		return errors.New("the ID token's sub and the exchanged token's sub differ: session and exchange must build the same pairwise subject")
 	}
+	fmt.Println("subjects:      the sign-in's sub and the exchanged token's sub are the same pairwise subject")
 
 	// --- 3. The audit trail.
 	fmt.Println("\n== 3. The audit trail (emitters, spool, writer, fs blob)")
