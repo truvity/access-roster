@@ -154,6 +154,7 @@ pub fn serve_driver(socket: &Path, dir: &Path) -> tokio::sync::oneshot::Sender<(
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o600,
+        socket_gid: None,
         allow: Allow::OwnerOnly("store"),
         default_deadline: Duration::from_secs(10),
     };

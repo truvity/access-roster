@@ -1,7 +1,7 @@
 //! The `credential` driver of store@.
 //!
 //! ```text
-//! credential serve       --socket PATH [--dir DIR]   # DIR defaults to $CREDENTIALS_DIRECTORY
+//! credential serve       --socket PATH [--dir DIR] [--socket-gid GID]   # DIR defaults to $CREDENTIALS_DIRECTORY
 //! credential check       [--dir DIR]
 //! credential conformance                             # the source suite over a temporary directory
 //! credential version
@@ -36,6 +36,19 @@ fn dir(f: &Flags) -> anyhow::Result<PathBuf> {
     }
 }
 
+/// The group of the socket (`--socket-gid`), if given. The socket is then 0660 for that group, so that
+/// the owner, who joins it, can connect; without it the socket is 0600 for the driver's user alone.
+/// The peer check (`OwnerOnly`) still decides who may call.
+fn socket_gid(f: &Flags) -> anyhow::Result<Option<u32>> {
+    match f.matches.get_one::<String>("socket-gid") {
+        None => Ok(None),
+        Some(g) => match g.parse::<u32>() {
+            Ok(g) if g != 0 => Ok(Some(g)),
+            _ => bail!("--socket-gid must be a group number other than 0"),
+        },
+    }
+}
+
 impl Commands for Credential {
     async fn serve(&self, f: Flags) -> anyhow::Result<()> {
         if f.socket.as_os_str().is_empty() {
@@ -43,6 +56,7 @@ impl Commands for Credential {
         }
         // The directory is checked before the socket exists: no directory, no service.
         let dir = Dir::open(&dir(&f)?)?;
+        let gid = socket_gid(&f)?;
         // Only store@ may open this socket (0005 "Drivers"): the owner is the registry's.
         let owner = sluis_registry::driver_owner(DRIVER)
             .with_context(|| format!("{DRIVER} is not a driver of the registry"))?;
@@ -50,7 +64,8 @@ impl Commands for Credential {
             actor: DRIVER,
             boundary: f.boundary,
             socket: f.socket,
-            mode: 0o600,
+            mode: gid.map_or(0o600, |_| 0o660),
+            socket_gid: gid,
             allow: Allow::OwnerOnly(owner),
             default_deadline: Duration::from_secs(30),
         };
@@ -76,6 +91,13 @@ fn main() {
                 .value_name("DIR")
                 .global(true)
                 .help("The credentials directory; default $CREDENTIALS_DIRECTORY"),
+        )
+        .arg(
+            Arg::new("socket-gid")
+                .long("socket-gid")
+                .value_name("GID")
+                .global(true)
+                .help("Open the socket (mode 0660) to this group; the default is 0600"),
         )
     });
 }

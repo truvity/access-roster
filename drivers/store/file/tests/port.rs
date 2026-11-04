@@ -25,6 +25,7 @@ fn serve(socket: &Path, dir: &Path, me_is: &'static str) -> tokio::sync::oneshot
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o600,
+        socket_gid: None,
         allow: Allow::OwnerOnly("store"),
         default_deadline: Duration::from_secs(10),
     };
@@ -183,4 +184,26 @@ async fn a_caller_that_is_not_store_is_refused_before_anything_is_read() {
     assert_eq!(e.code, ErrorCode::PermissionDenied);
     assert_eq!(refusal_reason(&e).as_deref(), Some("call_graph"));
     let _ = stop.send(());
+}
+
+#[test]
+fn serve_refuses_a_socket_gid_of_zero_or_text_before_it_listens() {
+    let (dir, run) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    for gid in ["0", "wheel"] {
+        let sock = run.path().join("x.sock");
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_file"))
+            .args(["serve", "--socket"])
+            .arg(&sock)
+            .arg("--dir")
+            .arg(dir.path())
+            .args(["--socket-gid", gid])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "{gid}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("--socket-gid"),
+            "{gid}"
+        );
+        assert!(!sock.exists());
+    }
 }
