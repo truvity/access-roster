@@ -78,6 +78,9 @@ pub enum Error {
     Bound,
     /// A frame read back does not hold its sum.
     Corrupt,
+    /// An earlier I/O failure left the files in a state the spool cannot vouch for. Every call
+    /// is refused until the process restarts and recovers the directory.
+    Poisoned,
     /// The filesystem failed.
     Io(std::io::Error),
 }
@@ -88,6 +91,7 @@ impl fmt::Display for Error {
             Self::Full => f.write_str("full"),
             Self::Bound => f.write_str("bound"),
             Self::Corrupt => f.write_str("corrupt"),
+            Self::Poisoned => f.write_str("poisoned"),
             Self::Io(e) => write!(f, "io: {e}"),
         }
     }
@@ -129,6 +133,44 @@ pub struct Syncs {
     pub dir: AtomicU64,
 }
 
+/// The places a test can make the disk fail. Compiled in tests only.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Point {
+    Write,
+    SetLen,
+    SyncData,
+    SyncDir,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct Faults(Vec<Point>);
+
+/// Fails once at `point` when a test armed it.
+#[cfg(test)]
+fn fault_at(faults: &mut Faults, point: Point) -> std::io::Result<()> {
+    match faults.0.iter().position(|p| *p == point) {
+        Some(i) => {
+            faults.0.remove(i);
+            Err(std::io::Error::other("injected fault"))
+        }
+        None => Ok(()),
+    }
+}
+
+/// `fault!(self, Write)`: an I/O error when a test armed that point, and nothing at all in a
+/// product build. Takes the field, so it can be used while another field is borrowed.
+macro_rules! fault {
+    ($inner:ident, $point:ident) => {{
+        #[cfg(test)]
+        let r = fault_at(&mut $inner.faults, Point::$point);
+        #[cfg(not(test))]
+        let r = Ok::<(), std::io::Error>(());
+        r
+    }};
+}
+
 struct Segment {
     bytes: u64,
     unacked: usize,
@@ -154,6 +196,10 @@ struct Inner {
     pending: BTreeMap<u64, Loc>,
     next_seq: u64,
     total: u64,
+    /// Set by an I/O failure that leaves the files uncertain; see [`Error::Poisoned`].
+    poisoned: bool,
+    #[cfg(test)]
+    faults: Faults,
 }
 
 struct Shared {
@@ -209,25 +255,34 @@ fn frame(payload: &[u8]) -> Result<Vec<u8>> {
     Ok(f)
 }
 
+/// The end of the frame at `pos` when it holds its length and sum.
+fn frame_end(buf: &[u8], pos: usize) -> Option<usize> {
+    let head = buf.get(pos..pos + HEADER)?;
+    let (len, want) = head.split_at(4);
+    let len = usize::try_from(u32::from_be_bytes(len.try_into().ok()?)).ok()?;
+    let (start, end) = (pos + HEADER, pos.checked_add(HEADER)?.checked_add(len)?);
+    let payload = (len <= MAX_PAYLOAD)
+        .then(|| buf.get(start..end))
+        .flatten()?;
+    (sum(payload) == want).then_some(end)
+}
+
 /// The payload ranges of the frames of `buf` that hold their length and sum, and the offset where
 /// the first frame that does not begins (the length of `buf` when all do).
 fn frames(buf: &[u8]) -> (Vec<(usize, usize)>, usize) {
     let (mut out, mut pos) = (Vec::new(), 0usize);
-    while let Some(head) = buf.get(pos..pos + HEADER) {
-        let (len, want) = head.split_at(4);
-        let len = usize::try_from(u32::from_be_bytes(len.try_into().unwrap_or_default()))
-            .unwrap_or(usize::MAX);
-        let (start, end) = (pos + HEADER, pos.saturating_add(HEADER).saturating_add(len));
-        let Some(payload) = (len <= MAX_PAYLOAD).then(|| buf.get(start..end)).flatten() else {
-            break;
-        };
-        if sum(payload) != want {
-            break;
-        }
-        out.push((start, end));
+    while let Some(end) = frame_end(buf, pos) {
+        out.push((pos + HEADER, end));
         pos = end;
     }
     (out, pos)
+}
+
+/// Whether a frame that holds its length and sum begins anywhere after `bad`. `fdatasync` runs
+/// after each frame, so only the last frame can be torn: a good frame after a bad one means the
+/// bad one was damaged at rest, and cutting there would drop acknowledged facts.
+fn good_frame_after(buf: &[u8], bad: usize) -> bool {
+    (bad + 1..buf.len()).any(|p| frame_end(buf, p).is_some())
 }
 
 fn entry_payload(seq: u64, emitter: &str, message: &[u8]) -> Vec<u8> {
@@ -306,6 +361,9 @@ impl Spool {
             pending: BTreeMap::new(),
             next_seq: 1,
             total: 0,
+            poisoned: false,
+            #[cfg(test)]
+            faults: Faults::default(),
         };
         inner.recover(&syncs)?;
         let tail = inner.next_seq - 1;
@@ -354,7 +412,8 @@ impl Spool {
         let mut inner = self.lock();
         let seq = inner.append(emitter, message, &self.0.syncs)?;
         drop(inner);
-        self.0.tail.send_replace(seq);
+        // Never backwards: another append may already have published a later number.
+        self.0.tail.send_modify(|t| *t = (*t).max(seq));
         Ok(seq)
     }
 
@@ -367,6 +426,9 @@ impl Spool {
     /// [`Error::Corrupt`] when a frame no longer holds its sum, [`Error::Io`] on a read failure.
     pub fn read_from(&self, after: u64, max: usize, max_bytes: usize) -> Result<(Vec<Entry>, u64)> {
         let inner = self.lock();
+        if inner.poisoned {
+            return Err(Error::Poisoned);
+        }
         let mut files: HashMap<u64, File> = HashMap::new();
         let (mut out, mut bytes) = (Vec::new(), 0usize);
         for (seq, loc) in inner.pending.range(after.saturating_add(1)..) {
@@ -436,7 +498,8 @@ fn count(c: &AtomicU64) {
 }
 
 impl Inner {
-    fn sync_dir(&self, syncs: &Syncs) -> Result<()> {
+    fn sync_dir(&mut self, syncs: &Syncs) -> Result<()> {
+        fault!(self, SyncDir)?;
         rustix::fs::fsync(&self.dir)?;
         count(&syncs.dir);
         Ok(())
@@ -476,6 +539,12 @@ impl Inner {
                 ensure!(
                     Some(first) == last,
                     "{}: damaged before its end; refusing to start",
+                    seg_name(first)
+                );
+                ensure!(
+                    !good_frame_after(&buf, good),
+                    "{}: a damaged frame at offset {good} is followed by good ones; this is \
+                     corruption, not a torn write: refusing to start",
                     seg_name(first)
                 );
                 let f = OpenOptions::new().write(true).open(&path)?;
@@ -579,11 +648,21 @@ impl Inner {
     }
 
     /// Closes the newest segment and starts the next at `next_seq`; removes the old one if it has
-    /// nothing left to deliver.
+    /// nothing left to deliver. The new segment is used only once its name is durable in the
+    /// directory. Any failure poisons the spool: the directory is not what the books say.
     fn roll(&mut self, syncs: &Syncs) -> Result<()> {
-        let old = self.active.take().map(|(first, _)| first);
+        let r = self.roll_steps(syncs);
+        if r.is_err() {
+            self.poisoned = true;
+        }
+        r
+    }
+
+    fn roll_steps(&mut self, syncs: &Syncs) -> Result<()> {
         let first = self.next_seq;
         let file = self.open_new(&seg_name(first))?;
+        self.sync_dir(syncs)?;
+        let old = self.active.take().map(|(first, _)| first);
         self.segments.insert(
             first,
             Segment {
@@ -595,11 +674,15 @@ impl Inner {
         self.active = Some((first, file));
         if let Some(old) = old.filter(|o| self.segments.get(o).is_some_and(|s| s.unacked == 0)) {
             self.remove_segment(old)?;
+            self.sync_dir(syncs)?;
         }
-        self.sync_dir(syncs)
+        Ok(())
     }
 
     fn append(&mut self, emitter: &str, message: &[u8], syncs: &Syncs) -> Result<u64> {
+        if self.poisoned {
+            return Err(Error::Poisoned);
+        }
         let seq = self.next_seq;
         let frame = frame(&entry_payload(seq, emitter, message))?;
         let need = frame.len() as u64;
@@ -622,10 +705,21 @@ impl Inner {
         let (first, _) = self.active_state();
         let (_, file) = self.active.as_mut().ok_or(Error::Corrupt)?;
         let before = self.segments.get(&first).map_or(0, |s| s.bytes);
-        let written = file.write_all(&frame).and_then(|()| file.sync_data());
-        if let Err(e) = written {
-            // Take the half frame back so the next append does not follow it.
-            let _ = file.set_len(before);
+        if let Err(e) = fault!(self, Write).and_then(|()| file.write_all(&frame)) {
+            // Take the half frame back so the next append does not follow it. If that fails
+            // too, a half frame stays and later frames would follow it: poison.
+            if fault!(self, SetLen)
+                .and_then(|()| file.set_len(before))
+                .is_err()
+            {
+                self.poisoned = true;
+            }
+            return Err(e.into());
+        }
+        if let Err(e) = fault!(self, SyncData).and_then(|()| file.sync_data()) {
+            // After a failed fsync the kernel may have dropped the pages: what is on disk is
+            // unknown until the next start reads it.
+            self.poisoned = true;
             return Err(e.into());
         }
         count(&syncs.file);
@@ -654,6 +748,9 @@ impl Inner {
     }
 
     fn ack(&mut self, ids: &[u64], syncs: &Syncs) -> Result<()> {
+        if self.poisoned {
+            return Err(Error::Poisoned);
+        }
         let mut by_segment: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
         for id in ids {
             if let Some(loc) = self.pending.get(id) {
@@ -678,8 +775,17 @@ impl Inner {
                 .mode(FILE_MODE)
                 .open(&path)?;
             let before = f.metadata()?.len();
-            if let Err(e) = f.write_all(&buf).and_then(|()| f.sync_data()) {
-                let _ = f.set_len(before);
+            if let Err(e) = fault!(self, Write).and_then(|()| f.write_all(&buf)) {
+                if fault!(self, SetLen)
+                    .and_then(|()| f.set_len(before))
+                    .is_err()
+                {
+                    self.poisoned = true;
+                }
+                return Err(e.into());
+            }
+            if let Err(e) = fault!(self, SyncData).and_then(|()| f.sync_data()) {
+                self.poisoned = true;
                 return Err(e.into());
             }
             count(&syncs.file);
@@ -695,12 +801,144 @@ impl Inner {
                 }
             }
         }
-        for first in &drained {
-            self.remove_segment(*first)?;
+        let removed = drained
+            .iter()
+            .try_for_each(|first| self.remove_segment(*first).map_err(Error::from));
+        let synced = removed.and_then(|()| {
+            if created || !drained.is_empty() {
+                self.sync_dir(syncs)
+            } else {
+                Ok(())
+            }
+        });
+        if synced.is_err() {
+            self.poisoned = true;
         }
-        if created || !drained.is_empty() {
-            self.sync_dir(syncs)?;
-        }
-        Ok(())
+        synced
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn root() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        d
+    }
+
+    fn arm(s: &Spool, points: &[Point]) {
+        s.lock().faults.0.extend_from_slice(points);
+    }
+
+    fn ids(s: &Spool) -> Vec<u64> {
+        s.read_from(0, usize::MAX, usize::MAX)
+            .unwrap()
+            .0
+            .iter()
+            .map(|e| e.seq)
+            .collect()
+    }
+
+    fn poisoned(s: &Spool) {
+        assert!(matches!(s.append("e@d", b"x"), Err(Error::Poisoned)));
+        assert!(matches!(s.ack(&[1]), Err(Error::Poisoned)));
+        assert!(matches!(s.read_from(0, 1, 1), Err(Error::Poisoned)));
+    }
+
+    #[test]
+    fn a_failed_write_that_is_taken_back_leaves_the_spool_usable() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        s.append("e@d", b"one").unwrap();
+        arm(&s, &[Point::Write]);
+        assert!(matches!(s.append("e@d", b"two"), Err(Error::Io(_))));
+        assert_eq!(s.append("e@d", b"three").unwrap(), 2);
+        assert_eq!(ids(&s), [1, 2]);
+    }
+
+    #[test]
+    fn a_half_frame_that_cannot_be_taken_back_poisons_the_spool_and_a_restart_recovers() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        s.append("e@d", b"one").unwrap();
+        arm(&s, &[Point::Write, Point::SetLen]);
+        assert!(s.append("e@d", b"two").is_err());
+        poisoned(&s);
+        drop(s);
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        assert_eq!(ids(&s), [1]);
+        assert_eq!(s.append("e@d", b"again").unwrap(), 2);
+    }
+
+    #[test]
+    fn a_failed_fsync_of_a_frame_poisons_the_spool() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        s.append("e@d", b"one").unwrap();
+        arm(&s, &[Point::SyncData]);
+        assert!(s.append("e@d", b"two").is_err());
+        poisoned(&s);
+        drop(s);
+        // The frame reached the file; the emitter was told it failed, so a repeat is possible
+        // and the writer removes it by uid (0029: at least once).
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        assert_eq!(ids(&s), [1, 2]);
+    }
+
+    #[test]
+    fn a_new_segment_whose_directory_entry_cannot_be_synced_is_never_used() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        arm(&s, &[Point::SyncDir]);
+        // The first append makes the first segment.
+        assert!(s.append("e@d", b"one").is_err());
+        poisoned(&s);
+        assert_eq!(s.depth(), 0);
+        drop(s);
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        assert_eq!(s.append("e@d", b"one").unwrap(), 1);
+
+        // The same on a roll later, and the old segment is still there to recover from.
+        let small = Config {
+            limit: 1 << 20,
+            segment: 64,
+        };
+        let r = root();
+        let s = Spool::open(r.path(), small).unwrap();
+        s.append("e@d", &[1u8; 80]).unwrap();
+        arm(&s, &[Point::SyncDir]);
+        assert!(s.append("e@d", &[2u8; 80]).is_err());
+        poisoned(&s);
+        drop(s);
+        let s = Spool::open(r.path(), small).unwrap();
+        assert_eq!(ids(&s), [1]);
+        assert_eq!(s.append("e@d", &[2u8; 80]).unwrap(), 2);
+    }
+
+    #[test]
+    fn a_failed_ack_fsync_poisons_the_spool_and_the_message_comes_again() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        s.append("e@d", b"one").unwrap();
+        arm(&s, &[Point::SyncData]);
+        assert!(s.ack(&[1]).is_err());
+        poisoned(&s);
+        drop(s);
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        assert!(ids(&s).len() <= 1);
+    }
+
+    #[test]
+    fn the_tail_never_goes_backwards() {
+        let r = root();
+        let s = Spool::open(r.path(), Config::default()).unwrap();
+        let rx = s.watch_tail();
+        s.append("e@d", b"one").unwrap();
+        s.append("e@d", b"two").unwrap();
+        s.0.tail.send_modify(|t| *t = (*t).max(1));
+        assert_eq!(*rx.borrow(), 2);
     }
 }

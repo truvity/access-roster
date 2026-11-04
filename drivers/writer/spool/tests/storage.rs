@@ -151,3 +151,54 @@ fn the_files_are_private() {
         );
     }
 }
+
+#[test]
+fn a_flipped_byte_in_a_middle_frame_refuses_to_start_and_loses_nothing() {
+    let r = root();
+    let s = Spool::open(r.path(), Config::default()).unwrap();
+    for _ in 0..3 {
+        s.append("entry@dev", b"fact").unwrap();
+    }
+    let seg = files(r.path(), "seg").pop().unwrap();
+    drop(s);
+    let original = std::fs::read(&seg).unwrap();
+    // One frame is a third of the file; flip a byte in the payload of the second.
+    let mut b = original.clone();
+    let mid = b.len() / 2;
+    b[mid] ^= 0xff;
+    std::fs::write(&seg, &b).unwrap();
+    let e = Spool::open(r.path(), Config::default())
+        .err()
+        .expect("refused");
+    assert!(format!("{e:#}").contains("corruption"), "{e:#}");
+    // Nothing was cut: the file is as damaged as it was left.
+    assert_eq!(std::fs::read(&seg).unwrap(), b);
+
+    // A damaged length, too: the frames after it are good.
+    let mut b = original;
+    let head = b.len() / 3; // start of the second frame (all three have the same size)
+    b[head + 3] ^= 0x40;
+    std::fs::write(&seg, &b).unwrap();
+    assert!(Spool::open(r.path(), Config::default()).is_err());
+    assert_eq!(std::fs::read(&seg).unwrap(), b);
+}
+
+#[test]
+fn a_torn_final_frame_is_cut_but_every_frame_before_it_is_kept() {
+    let r = root();
+    let s = Spool::open(r.path(), Config::default()).unwrap();
+    for _ in 0..3 {
+        s.append("entry@dev", b"fact").unwrap();
+    }
+    let seg = files(r.path(), "seg").pop().unwrap();
+    drop(s);
+    let len = std::fs::metadata(&seg).unwrap().len();
+    // The last frame's bytes were not all flushed: its tail is zeros.
+    let mut b = std::fs::read(&seg).unwrap();
+    let n = b.len();
+    b[n - 5..].fill(0);
+    std::fs::write(&seg, b).unwrap();
+    let s = Spool::open(r.path(), Config::default()).unwrap();
+    assert_eq!(ids(&s), [1, 2]);
+    assert_eq!(std::fs::metadata(&seg).unwrap().len(), len / 3 * 2);
+}
