@@ -8,8 +8,8 @@
 //! The stand-in for `key@` signs ES384 with a key made for the test and applies the content rule of
 //! the real `key@` to what it signs (`actors/key/internal/content`: the header holds exactly `alg`,
 //! `kid` and `typ`, the payload is an object with `iss`, `aud`, `iat` and `exp`). A token is checked
-//! with go-jose, built from `actors/signer/tests/gojose`, against the key set that `signer`
-//! publishes from the `SigningRing` in the stand-in for `store@`.
+//! with go-jose, through the compiled test of `actors/signer/tests/gojose`, against the key set that
+//! `signer` publishes from the `SigningRing` in the stand-in for `store@`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -631,28 +631,29 @@ fn repo_root() -> PathBuf {
         .canonicalize()
         .unwrap();
     assert!(
-        root.join("actors/signer/tests/gojose/main.go").exists(),
+        root.join("actors/signer/tests/gojose/gojose_test.go")
+            .exists(),
         "actors/signer/tests/gojose is missing: it is the Go side of the test"
     );
     root
 }
 
-/// The go-jose verifier, built once. The Go side is in this repository, so a missing Go toolchain
-/// is a failure, never a skip.
+/// The go-jose verifier: the Go test of `actors/signer/tests/gojose`, compiled once. The Go side is
+/// in this repository, so a missing Go toolchain is a failure, never a skip.
 fn gojose() -> &'static Path {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
-        let bin = Path::new(env!("CARGO_TARGET_TMPDIR")).join("gojose");
+        let bin = Path::new(env!("CARGO_TARGET_TMPDIR")).join("gojose.test");
         let out = Command::new("go")
             .current_dir(repo_root())
-            .args(["build", "-o"])
+            .args(["test", "-c", "-o"])
             .arg(&bin)
             .arg("./actors/signer/tests/gojose")
             .output()
-            .expect("go build: is Go on the PATH (devbox)?");
+            .expect("go test -c: is Go on the PATH (devbox)?");
         assert!(
             out.status.success(),
-            "go build of the verifier failed:\n{}{}",
+            "go test -c of the verifier failed:\n{}{}",
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
@@ -666,7 +667,8 @@ fn verify(w: &World, jwks: &[u8], token: &str, aud: &str, typ: &str) -> Result<S
     verify_at(w, jwks, token, aud, typ, w.clock.secs())
 }
 
-/// [`verify`] as a relying party would at the Unix time `at`.
+/// [`verify`] as a relying party would at the Unix time `at`. The Go test prints `kid=<kid>` when it
+/// verified; a run that skips exits 0 and prints no kid, which is a failure here.
 fn verify_at(
     w: &World,
     jwks: &[u8],
@@ -678,15 +680,23 @@ fn verify_at(
     let file = w.dir.path().join("jwks.json");
     std::fs::write(&file, jwks).unwrap();
     let out = Command::new(gojose())
-        .arg(&file)
-        .args([token, ISSUER, aud, typ])
-        .arg(at.to_string())
+        .args(["-test.run", "^TestToken$", "-test.v", "-test.count=1"])
+        .env("SLUIS_SIGNER_JWKS", &file)
+        .env("SLUIS_SIGNER_TOKEN", token)
+        .env("SLUIS_SIGNER_ISSUER", ISSUER)
+        .env("SLUIS_SIGNER_AUDIENCE", aud)
+        .env("SLUIS_SIGNER_TYP", typ)
+        .env("SLUIS_SIGNER_NOW", at.to_string())
         .output()
         .unwrap();
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_owned())
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let kid = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("kid="))
+        .map(str::to_owned);
+    match (out.status.success(), kid) {
+        (true, Some(kid)) => Ok(kid),
+        _ => Err(format!("{stdout}{}", String::from_utf8_lossy(&out.stderr))),
     }
 }
 
