@@ -2119,8 +2119,8 @@ requirements:
       - {kind: integration-test, ref: "a fact outside the bounds is counted at its recorded time and flagged"}
   - id: REQ-AUDIT-161
     area: AUDIT
-    statement: "An actor MUST audit every call except a health check."
-    rationale: "A health check reads and changes nothing, and auditing it grows the log with no callers (ADR 0030)."
+    statement: "An actor MUST audit every call except an answered health or readiness probe."
+    rationale: "A probe reads and changes nothing, and auditing it grows the log with no callers; a probe that is refused is a real call and stays audited (ADR 0030)."
     level: MUST
     source: design-decision
     status: planned
@@ -2129,3 +2129,15 @@ requirements:
     issues: [841]
     verification:
       - {kind: integration-test, ref: "an idle installation writes no audit entry; one real call, a refused one included, writes one"}
+  - id: REQ-AUDIT-162
+    area: AUDIT
+    statement: "A health or readiness probe MUST NOT make another actor write an audit record."
+    rationale: "A probe that calls a second actor, or provokes one of its refusals, moves the growth of the log there (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [841]
+    verification:
+      - {kind: integration-test, ref: "an installation whose probes run for a minute writes no audit entry at any actor"}

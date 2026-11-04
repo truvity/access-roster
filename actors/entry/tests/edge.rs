@@ -1139,6 +1139,43 @@ async fn every_request_is_audited_without_repeating_what_the_caller_sent() {
     );
 }
 
+/// S-3 (ADR 0030, REQ-AUDIT-161): an answered health probe writes no audit record, however often it comes; a real
+/// request still writes one, and a health request that is refused is not a probe and is audited.
+#[tokio::test]
+async fn a_health_probe_is_not_audited_and_a_real_call_is() {
+    let up = up().await;
+    for _ in 0..3 {
+        for method in ["GET", "HEAD"] {
+            let r = http(&up, method, "/healthz", &[], b"").await;
+            assert_eq!(r.status, 200, "{method}");
+            assert!(r.h("sluis-correlation-id").is_some());
+        }
+    }
+    assert!(
+        up.fake.emitted.lock().unwrap().is_empty(),
+        "{:?}",
+        up.fake.emitted.lock().unwrap()
+    );
+    // A real request is audited.
+    let r = http(&up, "GET", "/jwks", &[], b"").await;
+    assert_eq!(r.status, 200);
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 1, "{recs:?}");
+    assert_eq!(recs[0]["metadata"]["event_code"], "entry.jwks");
+    // A refused health request (a method, a parameter) is audited as a refusal.
+    let r = http(&up, "POST", "/healthz", &[], b"").await;
+    assert_eq!(r.status, 405);
+    let r = http(&up, "GET", "/healthz?x=1", &[], b"").await;
+    assert_eq!(r.status, 400);
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 3, "{recs:?}");
+    assert!(
+        recs[1..]
+            .iter()
+            .all(|r| { r["metadata"]["event_code"] == "entry.health" && r["status_id"] == 2 })
+    );
+}
+
 #[tokio::test]
 async fn the_socket_has_the_asked_for_mode() {
     use std::os::unix::fs::PermissionsExt;

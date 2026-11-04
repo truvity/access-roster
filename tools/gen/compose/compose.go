@@ -616,9 +616,11 @@ func (p *plan) build() error {
 		CapAdd: []string{"NET_BIND_SERVICE"},
 		Env:    []string{"XDG_DATA_HOME=/tmp/caddy-data", "XDG_CONFIG_HOME=/tmp/caddy-config"},
 		Ports:  []string{"127.0.0.1:${SLUIS_LOCAL_PORT:-8443}:" + forwarderPort},
-		// The probe asks for the issuer's discovery document by the host's name, which the container maps to itself.
+		// The probe asks entry's liveness route by the host's name, which the container maps to itself. It is not a
+		// real request: entry answers it without an audit record (S-3, ADR 0030), where the discovery document it
+		// asked for before wrote one every few seconds.
 		Hosts:   []string{"sluis." + string(b) + ".local.test:127.0.0.1"},
-		Health:  []string{"wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://sluis." + string(b) + ".local.test:" + forwarderPort + "/.well-known/openid-configuration"},
+		Health:  []string{"wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://sluis." + string(b) + ".local.test:" + forwarderPort + "/healthz"},
 		Network: "",
 	})
 	p.hasHlth["forwarder"] = true
