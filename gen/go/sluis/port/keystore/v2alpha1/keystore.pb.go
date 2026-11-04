@@ -125,7 +125,7 @@ func (x *CapabilitiesResponse) GetAlgorithms() []string {
 type EnsureRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // the purpose the key is for
-	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384" or "ECDH-P384"
+	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384", "ES256" (audit-log only) or "ECDH-P384"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -231,8 +231,8 @@ func (x *EnsureResponse) GetCreated() bool {
 type KeyStoreSignRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // the purpose whose key signs
-	Digest        []byte                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`       // SHA-384 of the content key@ checked
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384"
+	Digest        []byte                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`       // the digest of the content key@ checked: SHA-384 for ES384, SHA-256 for ES256
+	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384" or "ES256"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -71,7 +71,7 @@ A binding names log kinds as well as projects, so a finance reader may be grante
 |---|---|---|
 | [local](/runtimes/#local) | A software key through key@ | None |
 | [boards](/runtimes/#boards) | Each board's own card signs that board's log, through key@ | The other two boards, as `peer` witnesses |
-| [lambda](/runtimes/#lambda) | One KMS `ECC_NIST_P384` key per writer, whose key policy names key@ only | Optional: `peer` or `external` |
+| [lambda](/runtimes/#lambda) | One KMS `ECC_NIST_P256` key per writer, whose key policy names key@ only | Optional: `peer` or `external` |
 | [kubernetes](/runtimes/#kubernetes) | One KMS key per writer instance | Optional: `peer` or `external` |
 
 ## The write-once fence

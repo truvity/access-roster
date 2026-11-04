@@ -162,7 +162,8 @@ func TestSignRefusals(t *testing.T) {
 	wantRefused(t, sign("token-signing", digest, "ES256"), connect.CodeInvalidArgument, "algorithm")
 	wantRefused(t, sign("token-signing", digest, ""), connect.CodeInvalidArgument, "algorithm")
 	wantRefused(t, sign("registry", digest, "ES384"), connect.CodeInvalidArgument, "purpose")
-	wantRefused(t, sign("audit-log", digest, "ES384"), connect.CodeNotFound, "absent")
+	wantRefused(t, sign("audit-log", digest, "ES384"), connect.CodeInvalidArgument, "algorithm")
+	wantRefused(t, sign("audit-log", digest[:32], "ES256"), connect.CodeNotFound, "absent")
 	wantRefused(t, sign("wrapping", digest, "ES384"), connect.CodeFailedPrecondition, "algorithm")
 
 	_, err := r.client.PublicKey(ctx, connect.NewRequest(&keystorev2alpha1.KeyStorePublicKeyRequest{Purpose: "audit-log"}))
@@ -185,6 +186,9 @@ func TestEnsureRefusals(t *testing.T) {
 	ensure(t, r.client, "token-signing", "ES384")
 	wantRefused(t, e("token-signing", "ECDH-P384"), connect.CodeFailedPrecondition, "algorithm")
 	wantRefused(t, e("wrapping", "ES384"), connect.CodeFailedPrecondition, "algorithm")
+	// The audit-log key is ES256 (D-25), not ES384.
+	wantRefused(t, e("audit-log", "ES384"), connect.CodeFailedPrecondition, "algorithm")
+	wantRefused(t, e("token-signing", "ES256"), connect.CodeFailedPrecondition, "algorithm")
 }
 
 func TestEcdhAgainstReference(t *testing.T) {
@@ -237,7 +241,7 @@ func TestCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := res.Msg
-	if m.GetStore() != "software" || m.GetAttests() || strings.Join(m.GetAlgorithms(), ",") != "ES384,ECDH-P384" {
+	if m.GetStore() != "software" || m.GetAttests() || strings.Join(m.GetAlgorithms(), ",") != "ES384,ES256,ECDH-P384" {
 		t.Fatalf("capabilities = %v", m)
 	}
 }

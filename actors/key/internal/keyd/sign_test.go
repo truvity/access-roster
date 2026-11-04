@@ -6,6 +6,8 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
@@ -36,7 +38,11 @@ func publicKey(t *testing.T, n *node, actor, purpose string) (*ecdsa.PublicKey, 
 }
 
 func signReq(purpose string, content []byte) *connect.Request[keyv2alpha1.SignRequest] {
-	return connect.NewRequest(&keyv2alpha1.SignRequest{Purpose: purpose, Content: content, Algorithm: "ES384"})
+	alg := "ES384"
+	if purpose == "audit-log" {
+		alg = "ES256" // the one exception to P-384 (D-25)
+	}
+	return connect.NewRequest(&keyv2alpha1.SignRequest{Purpose: purpose, Content: content, Algorithm: alg})
 }
 
 func tokenInput(kid string, header, payload string) []byte {
@@ -132,10 +138,20 @@ func TestSignCheckpointIsNotAudited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	digest := sha512.Sum384(body)
-	if !ecdsa.VerifyASN1(pub, digest[:], res.Msg.GetSignatureDer()) || res.Msg.GetKeyId() != kid {
-		t.Fatal("the checkpoint signature does not verify")
+	// D-25: the audit-log key is P-256 and signs the SHA-256 of the note body, as C2SP signature type 0x02 does.
+	if pub.Curve != elliptic.P256() {
+		t.Fatal("the audit-log key is not a P-256 key")
 	}
+	digest := sha256.Sum256(body)
+	if !ecdsa.VerifyASN1(pub, digest[:], res.Msg.GetSignatureDer()) || res.Msg.GetKeyId() != kid {
+		t.Fatal("the checkpoint signature does not verify over SHA-256")
+	}
+	if len(res.Msg.GetSignatureRaw()) != 64 {
+		t.Fatalf("raw signature of %d octets, want 64 for P-256", len(res.Msg.GetSignatureRaw()))
+	}
+	// The SHA-384 form of every other purpose is not accepted for it.
+	_, err = n.client("writer").Sign(context.Background(), connect.NewRequest(&keyv2alpha1.SignRequest{Purpose: "audit-log", Content: body, Algorithm: "ES384"}))
+	wantRefusal(t, err, connect.CodeInvalidArgument, "algorithm")
 	for _, bad := range []string{"example.com/log\n7\n" + root, "example.com/log\n07\n" + root + "\n", "x\n7\nAAAA\n", "hello"} {
 		_, err := n.client("writer").Sign(context.Background(), signReq("audit-log", []byte(bad)))
 		wantRefusal(t, err, connect.CodeInvalidArgument, "content")

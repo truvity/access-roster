@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/sha512"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,14 +191,31 @@ func TestParseVerifierKeyRejects(t *testing.T) {
 }
 
 func TestAuditVerifyRefusesAnotherDigest(t *testing.T) {
-	// A checkpoint signed over the SHA-256 digest, as the witness implementation does, is not one of ours.
+	// A checkpoint signed over the SHA-384 digest, the form before D-25, is not a standard note and is refused.
 	key := newFixtureKey(t)
 	l := newFixtureLog(t, key, 300)
-	key.digest = func(msg []byte) []byte { d := sha256.Sum256(msg); return d[:] }
+	key.digest = func(msg []byte) []byte { d := sha512.Sum384(msg); return d[:] }
 	l.write(t, "checkpoint", l.checkpoint(t, key, 300, l.rootAt(t, 300)))
 	ta := newTestApp(t)
 	if code := ta.do(verifyArgs(l)...); code != 3 {
 		t.Fatalf("exit = %d, want 3", code)
+	}
+}
+
+func TestAuditVerifyRefusesAP384LogKey(t *testing.T) {
+	// The log key is P-256 (D-25): a verifier key of a P-384 key is not accepted.
+	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spki, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(spki)
+	vkey := fmt.Sprintf("log+%x+%s", sum[:4], base64.StdEncoding.EncodeToString(append([]byte{2}, spki...)))
+	if _, err := parseVerifierKey(vkey); err == nil || !strings.Contains(err.Error(), "P-256") {
+		t.Fatalf("a P-384 verifier key: %v", err)
 	}
 }
 

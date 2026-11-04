@@ -6,6 +6,7 @@ import (
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"errors"
@@ -64,6 +65,7 @@ func Suite() []Case {
 	return []Case{
 		{"capabilities", caseCapabilities},
 		{"ensure, sign and verify", caseSign},
+		{"audit-log key is P-256 and signs SHA-256", caseAuditLogSign},
 		{"public key", casePublicKey},
 		{"ecdh against a reference", caseEcdh},
 		{"unknown purpose is refused", caseUnknownPurpose},
@@ -77,8 +79,8 @@ func caseCapabilities(ctx context.Context, c keystorev2alpha1connect.KeyStoreSer
 		return err
 	}
 	if res.Msg.GetStore() != "software" || res.Msg.GetAttests() ||
-		!slices.Equal(res.Msg.GetAlgorithms(), []string{"ES384", "ECDH-P384"}) {
-		return errors.New("capabilities differ from software, no attestation, ES384 and ECDH-P384")
+		!slices.Equal(res.Msg.GetAlgorithms(), []string{"ES384", "ES256", "ECDH-P384"}) {
+		return errors.New("capabilities differ from software, no attestation, ES384, ES256 and ECDH-P384")
 	}
 	return nil
 }
@@ -95,7 +97,7 @@ func caseSign(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClie
 	if again.Msg.GetCreated() || !bytes.Equal(first.Msg.GetSpkiDer(), again.Msg.GetSpkiDer()) {
 		return errors.New("a second Ensure made a key or returned another public key")
 	}
-	pub, err := parseECDSA(again.Msg.GetSpkiDer())
+	pub, err := parseECDSA(again.Msg.GetSpkiDer(), "P-384")
 	if err != nil {
 		return err
 	}
@@ -109,6 +111,34 @@ func caseSign(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClie
 	}
 	_, err = c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "token-signing", Digest: digest[:47], Algorithm: "ES384"}))
 	return wantRefusal(err, connect.CodeInvalidArgument, "digest")
+}
+
+// caseAuditLogSign is the one exception to P-384 (ADR 0006, "Named exceptions"): the audit-log key is a P-256 key that
+// signs SHA-256 digests, the C2SP signature type 0x02, and it refuses the SHA-384 form of every other purpose.
+func caseAuditLogSign(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
+	ens, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "audit-log", Algorithm: "ES256"}))
+	if err != nil {
+		return err
+	}
+	pub, err := parseECDSA(ens.Msg.GetSpkiDer(), "P-256")
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256([]byte("sluis key-store suite"))
+	sig, err := c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "audit-log", Digest: digest[:], Algorithm: "ES256"}))
+	if err != nil {
+		return err
+	}
+	if !ecdsa.VerifyASN1(pub, digest[:], sig.Msg.GetSignatureDer()) {
+		return errors.New("the signature does not verify with the public key")
+	}
+	d384 := sha512.Sum384([]byte("sluis key-store suite"))
+	_, err = c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "audit-log", Digest: d384[:], Algorithm: "ES256"}))
+	if err := wantRefusal(err, connect.CodeInvalidArgument, "digest"); err != nil {
+		return err
+	}
+	_, err = c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "audit-log", Digest: d384[:], Algorithm: "ES384"}))
+	return wantRefusal(err, connect.CodeInvalidArgument, "algorithm")
 }
 
 func casePublicKey(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
@@ -131,7 +161,7 @@ func caseEcdh(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClie
 	if err != nil {
 		return err
 	}
-	pub, err := parseECDSA(ens.Msg.GetSpkiDer())
+	pub, err := parseECDSA(ens.Msg.GetSpkiDer(), "P-384")
 	if err != nil {
 		return err
 	}
@@ -184,14 +214,14 @@ func wantRefusal(err error, code connect.Code, reason string) error {
 	return nil
 }
 
-func parseECDSA(spki []byte) (*ecdsa.PublicKey, error) {
+func parseECDSA(spki []byte, curve string) (*ecdsa.PublicKey, error) {
 	k, err := x509.ParsePKIXPublicKey(spki)
 	if err != nil {
 		return nil, errors.New("the public key is not SubjectPublicKeyInfo in DER")
 	}
 	pub, ok := k.(*ecdsa.PublicKey)
-	if !ok || pub.Curve.Params().Name != "P-384" {
-		return nil, errors.New("the public key is not a P-384 key")
+	if !ok || pub.Curve.Params().Name != curve {
+		return nil, fmt.Errorf("the public key is not a %s key", curve)
 	}
 	return pub, nil
 }

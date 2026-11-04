@@ -42,6 +42,9 @@ const (
 
 	// logKeyPurpose is the key@ purpose that signs the checkpoints of the audit and usage logs.
 	logKeyPurpose = "audit-log"
+	// logKeyAlgorithm is the algorithm of the log key: P-256 with SHA-256, the one exception to P-384 (ADR 0006,
+	// "Named exceptions"; D-25), so that a checkpoint is a standard C2SP signed note of type 0x02.
+	logKeyAlgorithm = "ES256"
 	// evidencePurpose seals the entries (0029, "Encryption and crypto-shredding").
 	evidencePurpose = "evidence"
 	// SealKind is the kind of the address an entry is sealed at. The id is SealID. key@ binds the boundary, the
@@ -225,8 +228,8 @@ func (s *Server) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the public key of the log key: %w", err)
 	}
-	if pk.Msg.GetAlgorithm() != "ES384" {
-		return errors.New("the log key is not an ES384 key")
+	if pk.Msg.GetAlgorithm() != logKeyAlgorithm {
+		return errors.New("the log key is not an ES256 key")
 	}
 	if s.key, err = newLogKey(s.origin, pk.Msg.GetSpkiDer()); err != nil {
 		return err
@@ -390,7 +393,7 @@ func (s *Server) checkpointAt(ctx context.Context, size int64, root [32]byte) ([
 	}
 	body := checkpointBody(s.origin, size, root)
 	res, err := s.keys.Sign(ctx, connect.NewRequest(&keyv2alpha1.SignRequest{
-		Purpose: logKeyPurpose, Content: body, Algorithm: "ES384",
+		Purpose: logKeyPurpose, Content: body, Algorithm: logKeyAlgorithm,
 	}))
 	if err != nil {
 		return nil, fmt.Errorf("sign the checkpoint: %w", err)

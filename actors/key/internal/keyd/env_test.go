@@ -232,7 +232,7 @@ func newFakeDriver(storeName string) *fakeDriver {
 }
 
 func (d *fakeDriver) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
-	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Algorithms: []string{"ES384", "ECDH-P384"}}), nil
+	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Algorithms: []string{"ES384", "ES256", "ECDH-P384"}}), nil
 }
 
 func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2alpha1.EnsureRequest]) (*connect.Response[keystorev2alpha1.EnsureResponse], error) {
@@ -241,7 +241,11 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 	k, ok := d.keys[req.Msg.GetPurpose()]
 	if !ok {
 		var err error
-		if k, err = ecdsa.GenerateKey(elliptic.P384(), rand.Reader); err != nil {
+		curve := elliptic.P384()
+		if req.Msg.GetAlgorithm() == "ES256" {
+			curve = elliptic.P256()
+		}
+		if k, err = ecdsa.GenerateKey(curve, rand.Reader); err != nil {
 			return nil, err
 		}
 		d.keys[req.Msg.GetPurpose()] = k
@@ -271,7 +275,7 @@ func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alph
 	d.signs.Add(1)
 	digest := req.Msg.GetDigest()
 	if d.badSignature {
-		digest = make([]byte, 48)
+		digest = make([]byte, len(digest))
 	}
 	sig, err := ecdsa.SignASN1(rand.Reader, k, digest)
 	if err != nil {
@@ -349,7 +353,7 @@ func defaultPlan() *configv2alpha1.KeyPlan {
 		Purposes: []*configv2alpha1.KeyPurposePlan{
 			{Purpose: "wrapping", Algorithm: "ECDH-P384", Slot: "9d"},
 			{Purpose: "token-signing", Algorithm: "ES384", Slot: "9a"},
-			{Purpose: "audit-log", Algorithm: "ES384", Slot: "84"},
+			{Purpose: "audit-log", Algorithm: "ES256", Slot: "84"},
 			{Purpose: "data", Algorithm: "AES-256-GCM"},
 		},
 	}

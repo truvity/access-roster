@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -79,20 +78,11 @@ func (a *app) auditVerifyCommand() command {
 //   - the key ID is the first four octets of the SHA-256 of the DER SubjectPublicKeyInfo (not of the name and type
 //     as for Ed25519);
 //   - the verifier key is name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo);
-//   - the signature line carries base64(key ID || ASN.1 DER ECDSA signature).
+//   - the signature line carries base64(key ID || ASN.1 DER ECDSA signature), over the SHA-256 of the note text.
 //
-// The curve is P-384 here (0029, 0006).
+// The curve is P-256, the one exception to P-384 (0006, "Named exceptions"; 0029, "Tiled log"; D-25), so a note
+// verifies with any C2SP verifier of this type and not with sluis code alone.
 const sigTypeECDSA = 0x02
-
-// checkpointDigest is the digest that the log key signs, and the one thing in this encoding that differs from the
-// witness implementation (SHA-256): the log key is a P-384 key in AWS KMS (0029, "Tiled log"; 0006), and KMS signs
-// ECDSA_SHA_384 over a digest of exactly 48 octets, so the signer cannot be handed a SHA-256 digest. It is a maintainer
-// decision, kept in this one place: the writer must sign the SHA-384 of the note text, and a verifier of the
-// witness's own kind will not verify these notes.
-func checkpointDigest(msg []byte) []byte {
-	d := sha512.Sum384(msg)
-	return d[:]
-}
 
 // logKey is the verifier of a log's checkpoints, as a note.Verifier.
 type logKey struct {
@@ -104,7 +94,8 @@ type logKey struct {
 func (k *logKey) Name() string    { return k.name }
 func (k *logKey) KeyHash() uint32 { return k.id }
 func (k *logKey) Verify(msg, sig []byte) bool {
-	return ecdsa.VerifyASN1(k.pub, checkpointDigest(msg), sig)
+	d := sha256.Sum256(msg)
+	return ecdsa.VerifyASN1(k.pub, d[:], sig)
 }
 
 // keyID is the key ID of a DER SubjectPublicKeyInfo.
@@ -139,8 +130,8 @@ func parseVerifierKey(s string) (*logKey, error) {
 		return nil, errors.New("the key is not a DER SubjectPublicKeyInfo")
 	}
 	pub, ok := pk.(*ecdsa.PublicKey)
-	if !ok || pub.Curve != elliptic.P384() {
-		return nil, errors.New("the key is not a P-384 key")
+	if !ok || pub.Curve != elliptic.P256() {
+		return nil, errors.New("the key is not a P-256 key")
 	}
 	return &logKey{name: parts[0], id: binary.BigEndian.Uint32(h), pub: pub}, nil
 }

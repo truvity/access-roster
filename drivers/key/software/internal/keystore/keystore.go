@@ -1,8 +1,11 @@
-// Package keystore holds the P-384 keys of the software key driver in files: one PKCS#8 DER file for each
+// Package keystore holds the keys of the software key driver in files: one PKCS#8 DER file for each
 // purpose, in a state directory that only the driver's user can reach (ADR 0011, "Software keys by default").
 //
 // A software key can be read by anyone who can read its volume. That is the accepted risk of the local
 // installation: the volume is the boundary, so the package adds no passphrase, no import and no export.
+//
+// Every key is P-384 except the one of the audit-log purpose, which is P-256 (ADR 0006, "Named exceptions": the
+// C2SP signed-note signature type 0x02 that generic witnesses verify; D-25).
 package keystore
 
 import (
@@ -26,15 +29,17 @@ import (
 
 // The algorithms of the key-store port (keystore.proto).
 const (
-	ES384      = "ES384"     // ECDSA over P-384 with SHA-384 (RFC 7518, section 3.4)
-	ECDHP384   = "ECDH-P384" // ECDH over P-384 (NIST SP 800-56A)
-	fileExt    = ".p8"       // a PKCS#8 DER private key (RFC 5208)
-	tempMark   = ".tmp-"     // the prefix of a key file that is being written
-	dirMode    = 0o700       // the state directory
-	fileMode   = 0o600       // a key file
-	modeMask   = fs.ModePerm | fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
-	maxKeyFile = 4096
-	digestLen  = 48 // SHA-384
+	ES384        = "ES384"     // ECDSA over P-384 with SHA-384 (RFC 7518, section 3.4)
+	ES256        = "ES256"     // ECDSA over P-256 with SHA-256 (RFC 7518, section 3.4); the audit-log purpose only
+	ECDHP384     = "ECDH-P384" // ECDH over P-384 (NIST SP 800-56A)
+	fileExt      = ".p8"       // a PKCS#8 DER private key (RFC 5208)
+	tempMark     = ".tmp-"     // the prefix of a key file that is being written
+	dirMode      = 0o700       // the state directory
+	fileMode     = 0o600       // a key file
+	modeMask     = fs.ModePerm | fs.ModeSetuid | fs.ModeSetgid | fs.ModeSticky
+	maxKeyFile   = 4096
+	digestLen    = 48 // SHA-384
+	digestLen256 = 32 // SHA-256
 )
 
 // purposeAlgorithm maps the key purposes that a key store holds (docs/architecture/keys.yaml) to the algorithm
@@ -42,7 +47,7 @@ const (
 var purposeAlgorithm = map[string]string{
 	"wrapping":          ECDHP384,
 	"token-signing":     ES384,
-	"audit-log":         ES384,
+	"audit-log":         ES256,
 	"pin-release":       ES384,
 	"workload-issuer":   ES384,
 	"x509-intermediate": ES384,
@@ -50,6 +55,14 @@ var purposeAlgorithm = map[string]string{
 	"ssh-host":          ES384,
 	"issuance-log":      ES384,
 	"release-signing":   ES384,
+}
+
+// curveOf is the curve of the key of an algorithm.
+func curveOf(algorithm string) elliptic.Curve {
+	if algorithm == ES256 {
+		return elliptic.P256()
+	}
+	return elliptic.P384()
 }
 
 // AlgorithmFor returns the algorithm of the key of a purpose, and false when a key store holds no key for it.
@@ -79,7 +92,7 @@ var (
 	ErrAbsent    = errors.New("keystore: no key for the purpose")
 	ErrAlgorithm = errors.New("keystore: the key has another algorithm")
 	ErrPeer      = errors.New("keystore: the peer public key is not a P-384 point")
-	ErrDigest    = errors.New("keystore: the digest is not 48 bytes")
+	ErrDigest    = errors.New("keystore: the digest has the wrong length for the algorithm")
 )
 
 // Store is the set of keys of one state directory. It is safe for concurrent use by one process.
@@ -116,7 +129,8 @@ func Check(dir string) (map[string]*ecdsa.PrivateKey, []string) {
 			problems = append(problems, path+": not the file of a key purpose")
 			continue
 		}
-		k, p := readKey(path)
+		alg, _ := AlgorithmFor(purpose)
+		k, p := readKey(path, curveOf(alg))
 		if p != "" {
 			problems = append(problems, p)
 			continue
@@ -179,7 +193,7 @@ func (s *Store) Ensure(purpose, algorithm string) (spki []byte, created bool, er
 		spki, err = marshalPublic(k)
 		return spki, false, err
 	}
-	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	k, err := ecdsa.GenerateKey(curveOf(want), rand.Reader)
 	if err != nil {
 		return nil, false, fmt.Errorf("keystore: generate: %w", err)
 	}
@@ -248,18 +262,23 @@ func (s *Store) PublicKey(purpose string) ([]byte, error) {
 	return marshalPublic(k)
 }
 
-// Sign signs a SHA-384 digest with the ES384 key of the purpose and returns the ASN.1 DER signature
-// (RFC 7518, section 3.4 shows the JOSE form; the DER form is what the port carries). The nonce comes from
-// crypto/rand.
+// Sign signs a digest with the ES384 key of the purpose (a SHA-384 digest, 48 octets) or its ES256 key (a SHA-256
+// digest, 32 octets), and returns the ASN.1 DER signature (RFC 7518, section 3.4 shows the JOSE form; the DER form
+// is what the port carries). The nonce comes from crypto/rand.
 func (s *Store) Sign(purpose string, digest []byte) ([]byte, error) {
 	k, err := s.get(purpose)
 	if err != nil {
 		return nil, err
 	}
-	if a, _ := AlgorithmFor(purpose); a != ES384 {
+	want := digestLen
+	switch a, _ := AlgorithmFor(purpose); a {
+	case ES384:
+	case ES256:
+		want = digestLen256
+	default:
 		return nil, ErrAlgorithm
 	}
-	if len(digest) != digestLen {
+	if len(digest) != want {
 		return nil, ErrDigest
 	}
 	sig, err := ecdsa.SignASN1(rand.Reader, k, digest)
@@ -324,8 +343,10 @@ func checkDir(dir string) string {
 	return ""
 }
 
-// readKey reads and parses one key file, after it checks the file. It returns the problem, or "".
-func readKey(path string) (*ecdsa.PrivateKey, string) {
+// readKey reads and parses one key file, after it checks the file. It returns the problem, or "". A key of
+// another curve than the purpose's is refused, never replaced: an audit-log key that an older driver made as a
+// P-384 key must be removed by the person, because a new key changes the verifier key of the log.
+func readKey(path string, curve elliptic.Curve) (*ecdsa.PrivateKey, string) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0) //nolint:gosec // a path in the state directory
 	if err != nil {
 		return nil, path + ": cannot be opened"
@@ -352,8 +373,8 @@ func readKey(path string) (*ecdsa.PrivateKey, string) {
 		return nil, path + ": not a PKCS#8 private key"
 	}
 	k, ok := parsed.(*ecdsa.PrivateKey)
-	if !ok || k.Curve != elliptic.P384() {
-		return nil, path + ": not a P-384 key"
+	if !ok || k.Curve != curve {
+		return nil, fmt.Sprintf("%s: not a %s key; the purpose needs one, and a key is never re-made in place", path, curve.Params().Name)
 	}
 	return k, ""
 }

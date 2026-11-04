@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"errors"
@@ -209,6 +210,82 @@ func TestAKeyOfAnotherCurveIsRefused(t *testing.T) {
 	}
 	if _, err := keystore.Open(dir); err == nil {
 		t.Fatal("a P-256 key was accepted")
+	}
+}
+
+// The audit-log key is P-256 and signs SHA-256 (ADR 0006, "Named exceptions"; D-25), the one exception to P-384.
+func TestAuditLogKeyIsP256AndSignsSHA256(t *testing.T) {
+	dir := stateDir(t)
+	s, err := keystore.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Ensure("audit-log", keystore.ES384); !errors.Is(err, keystore.ErrAlgorithm) {
+		t.Fatalf("audit-log with ES384: %v", err)
+	}
+	spki, created, err := s.Ensure("audit-log", keystore.ES256)
+	if err != nil || !created {
+		t.Fatalf("Ensure: created=%v err=%v", created, err)
+	}
+	k, err := x509.ParsePKIXPublicKey(spki)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub := k.(*ecdsa.PublicKey)
+	if pub.Curve != elliptic.P256() {
+		t.Fatal("the audit-log key is not a P-256 key")
+	}
+	d256 := sha256.Sum256([]byte("a checkpoint"))
+	sig, err := s.Sign("audit-log", d256[:])
+	if err != nil || !ecdsa.VerifyASN1(pub, d256[:], sig) {
+		t.Fatalf("a SHA-256 signature did not verify: %v", err)
+	}
+	d384 := sha512.Sum384([]byte("a checkpoint"))
+	if _, err := s.Sign("audit-log", d384[:]); !errors.Is(err, keystore.ErrDigest) {
+		t.Fatalf("Sign with a SHA-384 digest: %v", err)
+	}
+	// It persists as P-256 and every other purpose stays P-384.
+	again, err := keystore.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := again.PublicKey("audit-log"); !slices.Equal(got, spki) {
+		t.Fatal("the key did not persist")
+	}
+	other, _, err := again.Ensure("token-signing", keystore.ES384)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok, _ := x509.ParsePKIXPublicKey(other)
+	if ok.(*ecdsa.PublicKey).Curve != elliptic.P384() {
+		t.Fatal("token-signing is not a P-384 key")
+	}
+}
+
+// A state directory that holds an audit-log key from before D-25 (P-384) is refused with a message that says what
+// to do; the key is never replaced silently, because a new key is a new verifier key for the log.
+func TestAnOldP384AuditLogKeyIsRefused(t *testing.T) {
+	dir := stateDir(t)
+	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "audit-log.p8")
+	if err := os.WriteFile(path, der, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = keystore.Open(dir)
+	var pe *keystore.ProblemsError
+	if !errors.As(err, &pe) || len(pe.Problems) != 1 || !strings.Contains(pe.Problems[0], "audit-log.p8: not a P-256 key") {
+		t.Fatalf("want one problem that names audit-log.p8 and P-256, got %v", err)
+	}
+	got, rerr := os.ReadFile(path) //nolint:gosec // a path in the test directory
+	if rerr != nil || !slices.Equal(got, der) {
+		t.Fatal("the old key file was changed")
 	}
 }
 

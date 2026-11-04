@@ -13,6 +13,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/hex"
@@ -162,7 +163,7 @@ func (f *fakePolicy) requests() []*policyv2alpha1.DecideRequest {
 
 // ---- key@
 
-// fakeKey seals with AES-256-GCM bound to the address, as key@ does, and signs with a P-384 key made for the test.
+// fakeKey seals with AES-256-GCM bound to the address, as key@ does, and signs as key@ does for the audit-log purpose: a P-256 key made for the test, ES256 over the SHA-256 of the content (D-25).
 // It accepts a Seal only with the grant "grant:<tenant>", which the fake policy gives.
 type fakeKey struct {
 	keyv2alpha1connect.UnimplementedKeyServiceHandler
@@ -177,7 +178,7 @@ type fakeKey struct {
 
 func newFakeKey(t *testing.T, ev *events) *fakeKey {
 	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,12 +207,12 @@ func (f *fakeKey) PublicKey(_ context.Context, req *connect.Request[keyv2alpha1.
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&keyv2alpha1.PublicKeyResponse{SpkiDer: spki, KeyId: "k", Algorithm: "ES384"}), nil
+	return connect.NewResponse(&keyv2alpha1.PublicKeyResponse{SpkiDer: spki, KeyId: "k", Algorithm: "ES256"}), nil
 }
 
 func (f *fakeKey) Sign(_ context.Context, req *connect.Request[keyv2alpha1.SignRequest]) (*connect.Response[keyv2alpha1.SignResponse], error) {
 	m := req.Msg
-	if m.GetPurpose() != "audit-log" || m.GetAlgorithm() != "ES384" {
+	if m.GetPurpose() != "audit-log" || m.GetAlgorithm() != "ES256" {
 		return nil, refusal.New(connect.CodeInvalidArgument, "purpose", "purpose")
 	}
 	if f.failSign != nil {
@@ -221,7 +222,7 @@ func (f *fakeKey) Sign(_ context.Context, req *connect.Request[keyv2alpha1.SignR
 	if _, err := parseCheckpoint(string(m.GetContent())); err != nil {
 		return nil, refusal.New(connect.CodeInvalidArgument, "content", "content")
 	}
-	d := sha512.Sum384(m.GetContent())
+	d := sha256.Sum256(m.GetContent())
 	der, err := ecdsa.SignASN1(rand.Reader, f.priv, d[:])
 	if err != nil {
 		return nil, err
