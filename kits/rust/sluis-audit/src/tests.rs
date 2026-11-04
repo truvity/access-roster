@@ -7,7 +7,10 @@ use serde_json::{Map, Value};
 use crate::canonical::{canonical, invalid};
 use crate::record::{RecordInput, build_record, email_shaped, validate_event};
 use crate::uuid::{new_uuid_v7, uuid_v7};
-use crate::{Action, Event, PolicyRef, RECORD_MAX, STRING_MAX, Status, epoch_of, format_pseudonym};
+use crate::{
+    Action, Decision, Event, PolicyRef, RECORD_MAX, STRING_MAX, Status, Subject, epoch_of,
+    format_pseudonym, pseudonym_input,
+};
 
 const JCS: &str = include_str!("../../../conformance/audit/jcs-vectors.json");
 const RECORDS: &str = include_str!("../../../conformance/audit/record-vectors.json");
@@ -87,12 +90,14 @@ fn canonical_refuses_what_is_not_record_data() {
 }
 
 fn event_of(v: &Value) -> Event {
+    let v = &expand(v);
     let a = &v["action"];
     Event {
         action: Action {
             name: text(a, "name").into(),
             class_uid: u32::try_from(a["class_uid"].as_u64().unwrap()).unwrap(),
             activity_id: u32::try_from(a["activity_id"].as_u64().unwrap()).unwrap(),
+            activity_name: text(a, "activity_name").into(),
         },
         status: if v["status"] == 2 {
             Status::Failure
@@ -101,8 +106,17 @@ fn event_of(v: &Value) -> Event {
         },
         status_code: text(v, "status_code").into(),
         tenant: text(v, "tenant").into(),
-        subject: None,
+        subject: v.get("subject").map(|s| Subject {
+            tenant: text(s, "tenant").into(),
+            kind: text(s, "kind").into(),
+            value: text(s, "value").into(),
+        }),
         policy: v.get("policy").map(|p| PolicyRef {
+            decision: match p.get("decision").and_then(Value::as_i64) {
+                Some(1) => Some(Decision::Allowed),
+                Some(2) => Some(Decision::Denied),
+                _ => None,
+            },
             decision_id: text(p, "decision_id").into(),
             digest: text(p, "digest").into(),
             policy_ids: p
@@ -127,6 +141,7 @@ fn expand(v: &Value) -> Value {
             }
             Value::Object(m.iter().map(|(k, e)| (k.clone(), expand(e))).collect())
         }
+        Value::Array(a) => Value::Array(a.iter().map(expand).collect()),
         other => other.clone(),
     }
 }
@@ -204,6 +219,7 @@ fn base_event() -> Event {
             name: "key.sign".into(),
             class_uid: 6003,
             activity_id: 99,
+            activity_name: "Sign".into(),
         },
         ..Event::default()
     }
@@ -286,6 +302,7 @@ fn the_event_checks() {
         ("empty subject", |e| {
             e.subject = Some(crate::Subject {
                 tenant: "acme".into(),
+                kind: "person".into(),
                 value: String::new(),
             });
         }),
@@ -302,6 +319,7 @@ fn the_event_checks() {
     let mut ev = base_event();
     ev.subject = Some(crate::Subject {
         tenant: "acme".into(),
+        kind: "person".into(),
         value: "alice@example.com".into(),
     });
     validate_event(&ev).unwrap();
@@ -350,4 +368,77 @@ fn the_epoch_is_the_utc_month() {
     assert_eq!(epoch_of(1_767_225_600_000), "202601");
     assert_eq!(epoch_of(951_782_400_000), "200002"); // 2000-02-29
     assert_eq!(epoch_of(-1), "196912");
+}
+
+#[test]
+fn event_refusals_and_acceptances_match_the_vectors() {
+    let f = parse(RECORDS);
+    assert!(!arr(&f, "event_refusals").is_empty() && !arr(&f, "event_accepted").is_empty());
+    for r in arr(&f, "event_refusals") {
+        let err = validate_event(&event_of(&r["event"])).expect_err(text(r, "name"));
+        let (reason, path) = refusal_of(&err);
+        assert_eq!(reason, text(r, "reason"), "{}", text(r, "name"));
+        assert_eq!(path, text(r, "path"), "{}", text(r, "name"));
+    }
+    for a in arr(&f, "event_accepted") {
+        validate_event(&event_of(&a["event"]))
+            .unwrap_or_else(|e| panic!("{}: {e}", text(a, "name")));
+    }
+}
+
+#[test]
+fn the_pseudonym_input_matches_the_vectors() {
+    let f = parse(RECORDS);
+    assert_eq!(text(&f, "mac_label"), crate::PSEUDONYM_LABEL);
+    assert!(!arr(&f, "mac_inputs").is_empty());
+    let mut seen = std::collections::HashSet::new();
+    for v in arr(&f, "mac_inputs") {
+        let got: String = pseudonym_input(
+            text(v, "boundary"),
+            &Subject {
+                tenant: text(v, "tenant").into(),
+                kind: text(v, "kind").into(),
+                value: text(v, "value").into(),
+            },
+        )
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+        assert_eq!(got, text(v, "input_hex"));
+        assert!(seen.insert(got), "two vectors give the same input");
+    }
+}
+
+#[test]
+fn a_policy_declares_its_profile_and_a_record_without_one_does_not() {
+    let rec = |ev: &Event| {
+        String::from_utf8(
+            build_record(&RecordInput {
+                actor: "a",
+                boundary: "dev",
+                release: "r",
+                uid: "u",
+                time_ms: 0,
+                correlation: None,
+                pseudonym: None,
+                ev,
+            })
+            .unwrap(),
+        )
+        .unwrap()
+    };
+    let mut ev = base_event();
+    assert!(!rec(&ev).contains("profiles") && !rec(&ev).contains("action_id"));
+    ev.policy = Some(PolicyRef {
+        decision_id: "d-1".into(),
+        decision: Some(Decision::Denied),
+        policy_ids: vec!["p-1".into()],
+        ..PolicyRef::default()
+    });
+    let r = rec(&ev);
+    assert!(r.contains(r#""profiles":["security_control"]"#), "{r}");
+    assert!(
+        r.contains(r#""action_id":2"#) && r.contains(r#""decision":"Denied""#),
+        "{r}"
+    );
 }

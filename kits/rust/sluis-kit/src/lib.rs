@@ -41,4 +41,13 @@ pub fn peer(ext: &http::Extensions) -> Option<&Peer> {
 /// The correlation id of a call (contracts.md "Every call").
 pub mod correlation {
     pub use crate::correlation_impl::{get, scope};
+
+    /// The correlation id of the call being served, from any code that runs inside its handler
+    /// (the kit sets it around the handler, and the client passes it on). `None` outside a handler,
+    /// or when the caller sent none or an invalid one. The audit emitter reads it for
+    /// `metadata.correlation_uid`.
+    #[must_use]
+    pub fn current() -> Option<String> {
+        crate::correlation_impl::current().correlation
+    }
 }

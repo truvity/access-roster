@@ -33,6 +33,8 @@ struct Seen {
     peer_uid: Option<u32>,
     left: Option<Duration>,
     correlation: Option<String>,
+    /// `correlation::current()`, read inside the handler without the request extensions.
+    ambient: Option<String>,
 }
 
 struct Fake {
@@ -55,6 +57,7 @@ impl StoreService for Fake {
             peer_uid: p.map(|p| p.uid),
             left: ctx.time_remaining(),
             correlation: correlation::get(ctx.extensions()),
+            ambient: correlation::current(),
         };
         if let Some(onward) = &self.onward {
             let c = StoreServiceClient::new(onward.transport(), onward.config());
@@ -428,6 +431,11 @@ async fn the_correlation_id_and_the_deadline_left_are_passed_on() {
         a.seen.lock().unwrap().correlation.as_deref(),
         Some("c0ffee")
     );
+    assert_eq!(
+        a.seen.lock().unwrap().ambient.as_deref(),
+        Some("c0ffee"),
+        "correlation::current() inside the handler"
+    );
     let at_b = b.seen.lock().unwrap().clone();
     assert_eq!(
         at_b.correlation.as_deref(),
@@ -468,6 +476,11 @@ async fn a_correlation_id_that_is_not_1_to_64_of_alnum_dash_underscore_is_droppe
             None,
             "{bad:?} must be dropped"
         );
+        assert_eq!(
+            r.seen.lock().unwrap().ambient,
+            None,
+            "{bad:?} must be dropped"
+        );
     }
     for good in ["a", "A-b_9", &"z".repeat(64)] {
         let opts = CallOptions::default().with_header("sluis-correlation-id", good);
@@ -475,6 +488,7 @@ async fn a_correlation_id_that_is_not_1_to_64_of_alnum_dash_underscore_is_droppe
             .await
             .unwrap();
         assert_eq!(r.seen.lock().unwrap().correlation.as_deref(), Some(good));
+        assert_eq!(r.seen.lock().unwrap().ambient.as_deref(), Some(good));
     }
     r.stop().await;
 }
