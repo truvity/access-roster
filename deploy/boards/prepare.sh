@@ -45,8 +45,11 @@ replace upstream.yaml "client_id: sluis-local" "client_id: $client"
 
 recipients=()
 [ ! -s "$state/recipients" ] || recipients=(-recipients "$state/recipients")
+# The policy binds the test users by their sub (REQ-SUBJ-044). M1 on the boards signs nobody in (the upstream's secret
+# below is a placeholder too), so each user gets a random UUID that no account has, and the bindings bind nobody.
+go run ./tools/harness/upstream-subjects -config "$state/config" -unbound -out "$state/subjects"
 go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
-	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" "${recipients[@]}"
+	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${recipients[@]}"
 
 # The credentials the config documents name (the store's credential driver serves them). The two client secrets are
 # random and kept across runs. The upstream's client secret is a random placeholder: M1 needs no upstream, and the

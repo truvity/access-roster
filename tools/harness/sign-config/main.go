@@ -10,9 +10,14 @@
 // by the next, so that a second run signs the same payloads with the same key under a higher `seq`. A source file
 // `<kind>.yaml`, `<kind>.json` or `<kind>.cedar` becomes `<kind>.jws` (signed-config.md, "The document": the file
 // driver reads `<kebab-case kind name>.jws`).
+//
+// A source names a test user's account by the placeholder {{sub:<user>}}, and `-subjects` gives the values: the local
+// installation binds its test users by `sub` (REQ-SUBJ-044), and the identity provider makes a user's `sub` when it
+// imports its realm, so the harness reads it there first (tools/harness/upstream-subjects) and this tool fills it in.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -28,6 +33,7 @@ func main() {
 	bootstrapOut := flag.String("bootstrap-out", "", "the path of the bootstrap file to write")
 	kid := flag.String("kid", "publisher-1", "the kid of the publisher key")
 	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
+	subjectsFile := flag.String("subjects", "", "a file with the subjects of the test users, a user and its sub on each line (# starts a comment); each fills the placeholder {{sub:<user>}} of a source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
 	flag.Parse()
 	if flag.NArg() != 0 || *keyDir == "" || *out == "" || *bootstrapOut == "" {
@@ -46,9 +52,17 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	var subjects map[string]string
+	if *subjectsFile != "" {
+		var err error
+		if subjects, err = readSubjects(*subjectsFile); err != nil {
+			fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	docs, err := Run(Options{
 		ConfigDir: *configDir, BootstrapTemplate: *template, KeyDir: *keyDir, Out: *out, BootstrapOut: *bootstrapOut,
-		KID: *kid, Seq: n, Recipients: ids,
+		KID: *kid, Seq: n, Recipients: ids, Subjects: subjects,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
@@ -71,4 +85,29 @@ func readRecipients(path string) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// readSubjects reads the subjects of the test users: `<user> <sub>` a line, blank lines and # comments left out. A user
+// named twice is an error.
+func readSubjects(path string) (map[string]string, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // the harness's own state file
+	if err != nil {
+		return nil, fmt.Errorf("subjects: %w", err)
+	}
+	out := map[string]string{}
+	for l := range strings.SplitSeq(string(b), "\n") {
+		l, _, _ = strings.Cut(l, "#")
+		f := strings.Fields(l)
+		if len(f) == 0 {
+			continue
+		}
+		if len(f) != 2 {
+			return nil, errors.New("subjects: a line is not `<user> <sub>`")
+		}
+		if _, dup := out[f[0]]; dup {
+			return nil, fmt.Errorf("subjects: %q is named twice", f[0])
+		}
+		out[f[0]] = f[1]
+	}
+	return out, nil
 }

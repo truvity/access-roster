@@ -619,11 +619,13 @@ requirements:
     rationale: "Those claims change for a person, and an identity must not."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
+    tests: [actors/store/tests/config.rs, tools/harness/sign-config/sign_test.go]
     verification:
       - {kind: integration-test, ref: "each of the four claims is refused with the path of the field"}
   - id: REQ-SUBJ-045

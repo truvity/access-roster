@@ -7,7 +7,9 @@
 #
 # Inputs, from the environment and never from the repository:
 #   SLUIS_UPSTREAM_TARGET    host:port of the upstream identity provider, which the sidecar of the adapter forwards to
-#   SLUIS_KEYCLOAK_SECRETS   a file with SLUIS_LOCAL_CLIENT_SECRET (default: $SLUIS_BUILD_DIR/keycloak-secrets.env)
+#   SLUIS_KEYCLOAK_SECRETS   a file with SLUIS_LOCAL_CLIENT_SECRET, and the realm's bootstrap administrator
+#                            (KC_BOOTSTRAP_ADMIN_USERNAME and _PASSWORD) to read the test users' sub (default:
+#                            $SLUIS_BUILD_DIR/keycloak-secrets.env)
 #   SLUIS_LOCAL_PORT         the loopback port of the forwarder (default 8443)
 #   COMPOSE_PROJECT_NAME     the Compose project (default sluis-local); a second project on one machine sets this, a
 #                            SLUIS_LOCAL_PORT and a SLUIS_LOCAL_TAG of its own, so that it leaves the first alone
@@ -15,8 +17,8 @@
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
-# The state of a run (the CA, the publisher key, the signed config, the credentials) is below .cache/local and is
-# deleted by `down`; the volumes go with it.
+# The state of a run (the CA, the publisher key, the signed config, the subjects of the test users, the credentials) is
+# below .cache/local and is deleted by `down`; the volumes go with it.
 #
 # The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
 # software key is made at the first start, so `up` has two phases. The first start signs the KeyPlan with an empty list
@@ -104,7 +106,15 @@ sign_config() {
 	local extra=()
 	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
 	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
-		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" "${extra[@]}"
+		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"
+}
+
+# read_subjects reads the sub of each test user that the policy binds from the identity provider's realm, through its
+# admin API, as the bootstrap administrator of the secrets file. The policy binds by sub, never by user name
+# (REQ-SUBJ-044), and the realm makes the value when it imports its users, so it is read at every prepare.
+read_subjects() {
+	go run ./tools/harness/upstream-subjects -config tests/installations/local/config -secrets "$secrets" -out "$state/subjects" ||
+		{ echo "local: the subjects of the test users could not be read from the identity provider's realm" >&2; exit 1; }
 }
 
 # prepare makes the state of the run: the harness CA and the forwarder's leaf, the signed config and the bootstrap file
@@ -114,6 +124,7 @@ prepare() {
 	mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store"
 	go run ./tools/harness/ca -dir "$state/ca" -host "$host,$audit_host"
 	cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
+	read_subjects
 	sign_config
 	# The credentials the config documents name: the upstream's client secret from the harness secrets file, and a random
 	# secret for each client of the installation, kept across runs. Nothing is echoed.

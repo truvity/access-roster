@@ -31,6 +31,9 @@ import (
 // SLUIS_UPSTREAM_CLIENT_LOCAL, and SLUIS_KEYCLOAK_SECRETS, the file with the passwords, the TOTP secrets and the client
 // secret). Where they are not set, as in CI, the tests say SKIP and are not run. No secret is printed.
 
+// keycloakUserID is the shape of a Keycloak user id, which Keycloak sends as `sub`.
+var keycloakUserID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
 type keycloak struct {
 	issuer, clientID string
 	secrets          map[string]string
@@ -179,7 +182,9 @@ func (k *keycloak) env(t *testing.T) *env {
 		environment: "development", secret: k.secrets["SLUIS_LOCAL_CLIENT_SECRET"],
 		upstream: &configv2alpha1.Upstream{
 			Name: "workforce", Kind: "oidc", Issuer: k.issuer, ClientId: k.clientID,
-			SubjectClaim: "preferred_username", Scopes: []string{"profile", "email"},
+			// The local installation's claim (tests/installations/local/config/upstream.yaml): `sub`, the user's id in
+			// the realm, never the user name (REQ-SUBJ-044).
+			SubjectClaim: "sub", Scopes: []string{"profile", "email"},
 		},
 	})
 }
@@ -219,7 +224,8 @@ func TestKeycloakBeginAndComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete against the real Keycloak: %v", err)
 	}
-	if a.GetIssuer() != k.issuer || a.GetSubjectClaim() != "preferred_username" || a.GetSubject() != "alice" {
+	// Keycloak's sub is the user's id, a UUID made when the realm imported the user (RFC 9562).
+	if a.GetIssuer() != k.issuer || a.GetSubjectClaim() != "sub" || !keycloakUserID.MatchString(a.GetSubject()) {
 		t.Errorf("assertion identity = %q %q %q", a.GetIssuer(), a.GetSubjectClaim(), a.GetSubject())
 	}
 	if !a.GetAmrPresent() || strings.Join(a.GetAmr(), ",") != "pwd,otp,mfa" {

@@ -58,8 +58,11 @@ trap cleanup EXIT
 mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store"
 go run ./tools/harness/ca -dir "$state/ca" -host "$host"
 cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
+# The policy binds the test users by their sub (REQ-SUBJ-044). Nobody signs in here and the realm is empty, so each user
+# gets a random UUID that no account has, and the bindings bind nobody.
+go run ./tools/harness/upstream-subjects -config tests/installations/local/config -unbound -out "$state/subjects"
 go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
-	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml"
+	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects"
 (
 	set +x
 	umask 077

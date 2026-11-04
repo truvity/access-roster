@@ -67,7 +67,7 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
     let u = pb::Upstream::decode_from_slice(&one("Upstream")).unwrap();
     assert_eq!(u.name, "workforce");
     assert_eq!(u.issuer, "http://127.0.0.1:8180/realms/sluis-test");
-    assert_eq!(u.subject_claim, "preferred_username");
+    assert_eq!(u.subject_claim, "sub");
     // The name of its client secret in the secret source, which store@ serves as UpstreamSecret.
     assert_eq!(u.secret, "upstream-workforce");
     let c = pb::InstallationClient::decode_from_slice(&one("InstallationClient")).unwrap();
@@ -1118,6 +1118,29 @@ async fn plain_http_is_for_development_and_only_on_a_loopback_ip_literal() {
                 assert!(!err.contains(url), "an error never shows a value: {err}");
             }
         }
+    }
+}
+
+/// verifies: REQ-SUBJ-044
+#[test]
+fn a_subject_claim_that_changes_for_a_person_is_refused_by_place() {
+    let upstream = |claim: &str| {
+        format!(
+            "workforce:\n  kind: oidc\n  issuer: https://idp.example.com\n  client_id: sluis\n  subject_claim: {claim}\n"
+        )
+    };
+    for claim in ["email", "preferred_username", "upn", "name"] {
+        let msg = refused("Upstream", &upstream(claim));
+        assert!(
+            msg.starts_with("workforce.subject_claim: "),
+            "{claim}: {msg}"
+        );
+        assert!(msg.contains("changes for a person"), "{claim}: {msg}");
+    }
+    // A stable claim is accepted: `sub`, and Entra's `oid`.
+    for claim in ["sub", "oid"] {
+        payload::decode(kind("Upstream"), upstream(claim).as_bytes())
+            .unwrap_or_else(|e| panic!("{claim}: {}", e.0));
     }
 }
 
