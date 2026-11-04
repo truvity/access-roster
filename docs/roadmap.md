@@ -20,7 +20,7 @@ Measured on 2026-11-04. Each line is a proof you can run; the commands are `devb
 |---|---|---|
 | **M1, the spine** | Passes on the local installation: a client asks `policy` for a decision and `signer` for a token, the token verifies against the key set that `entry` serves, the records of the run are in the audit log, and `sluis audit verify` checks the log | `local-up`, then `local-smoke` |
 | **M3, the boards** | Passes on three boards over one shared three-node rqlite cluster: the same spine runs against each board in turn, and from the second board on it finds the earlier boards' signing key, which shows the shared store | `build-arm64`, `boards-deploy`, then `boards-smoke`; `boards-undeploy` removes it again |
-| **M2, the person** | Passes on its branch and lands after decision D-28: `sluis login` signs a person in through the upstream identity provider, and `sluis token` exchanges the token for an audience (RFC 8693) | `local-up`, then `local-person-smoke` |
+| **M2, the person** | Passes on its pull request, which lands once `exchange` can open the facts of a session chain under the `chain` key ([0006](/decisions/0006-keys-and-sealing/#data-keys)): `sluis login` signs a person in through the upstream identity provider, and `sluis token` exchanges the token for an audience (RFC 8693) | `local-up`, then `local-person-smoke` (not in the Justfile until that pull request lands) |
 
 The deny matrix of the local installation also runs (`local-deny`): every caller against every socket, at the socket and at the guard.
 

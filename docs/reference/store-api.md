@@ -246,13 +246,13 @@ service BlobService {
   rpc Get(BlobGetRequest) returns (BlobGetResponse);       // path -> bytes and entity tag
   rpc List(BlobListRequest) returns (BlobListResponse);    // paths by prefix, paged
 }
-message BlobListRequest { string prefix = 1; bytes page_token = 2; int32 page_size = 3; }
-message BlobListResponse { repeated string paths = 1; bytes next_page_token = 2; }
+message BlobListRequest { string prefix = 1; string page_token = 2; int32 page_size = 3; }
+message BlobListResponse { repeated string paths = 1; string next_page_token = 2; }
 ```
 
 - **`Create` writes an object that must not exist** and answers `already_exists` when it does. It is the fence of the log ([0029](/decisions/0029-the-audit-log/#the-write-once-fence)).
 - **`Put` overwrites only the paths a driver allows** (`checkpoint` and `writer-state`), and only at the entity tag the caller read (`if_match`, empty when the object must be absent).
-- **`List` is paged like every list** ([Contracts and errors](/reference/contracts/#every-call)). The default `page_size` is 1,000 paths and the maximum 10,000; a larger request is cut to the maximum. `page_token` is `bytes` and bound to the prefix that made it.
+- **`List` is paged like every list** ([Contracts and errors](/reference/contracts/#every-call)). The default `page_size` is 1,000 paths and the maximum 10,000; a larger request is cut to the maximum. `page_token` is opaque and bound to the prefix that made it; today it is a `string` and the driver does not check the binding.
 - **A path is validated by the driver:** non-empty segments of at most 255 bytes, none starting with `.`, no NUL, at most 1,024 bytes in all, and never a link out of the root. A path that fails is refused with the reason `path`, which names the field and never the value.
 
 The closed list of reasons of the blob port:
@@ -266,7 +266,7 @@ The closed list of reasons of the blob port:
 | `aborted` | `version` | `Put` found another entity tag, or an object where none was wanted |
 | `unavailable` | `engine` | The directory or the bucket failed; the driver fails closed |
 
-The proto still has `page_token` as a string and `List` has no maximum in the contract; changing it is a follow-up, not part of this page.
+The proto above is what is built. The target is a `bytes` token bound to the prefix and a page-size maximum written in the contract; both are planned ([Pagination](/reference/contracts/#every-call)). The store service's own `page_token` is a `string` in the same way.
 
 ### The command line and the suite
 
