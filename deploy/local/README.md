@@ -28,6 +28,8 @@ the project name, that no Docker network and no route of the host overlaps. Dock
 and a host firewall may drop it on the way to the upstream (as on the workstation of the first runs: the whole of
 `172.20.0.0/14` was dropped, so `adapter-upstream-oidc` stayed unhealthy and `local-up` stopped waiting). Set `SLUIS_LOCAL_SUBNET`
 (for example `SLUIS_LOCAL_SUBNET=10.99.8.0/24`) where the firewall lets only other subnets through; the override wins.
+A project's existing network is reused whatever its subnet, so a project that is already up on Docker's `172.20` pick needs
+`just local-down` once before `just local-up` gives it the new default.
 
 | File | What it is |
 |---|---|

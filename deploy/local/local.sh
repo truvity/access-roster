@@ -43,6 +43,18 @@ cidr_range() {
 	echo "$lo $((lo | (0xFFFFFFFF >> bits)))"
 }
 
+# host_routes prints the destinations of the host's IPv4 routes in every table, one a line, as CIDRs. A VPN keeps its
+# routes in a table of its own that is consulted before the main one, so `ip route show` alone would miss them. The
+# type word some routes start with (blackhole, unreachable, ...) is dropped and a bare address is a /32.
+host_routes() {
+	ip -4 route show table all 2>/dev/null | awk '{
+		f = $1
+		if (f ~ /^(blackhole|unreachable|prohibit|throw|local|broadcast|multicast|unicast|anycast|nat)$/) f = $2
+		if (f ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) f = f "/32"
+		print f
+	}' || true
+}
+
 # default_subnet prints the subnet of the project's network when SLUIS_LOCAL_SUBNET is not set. Docker's own pick is the
 # next free 172.x /16, which a host firewall may drop (measured on one workstation: the whole of 172.20.0.0/14 was dropped
 # on the way to a service on the host's own address, so the upstream adapter stayed unhealthy), and two projects must not
@@ -52,7 +64,7 @@ default_subnet() {
 	local project=${COMPOSE_PROJECT_NAME:-sluis-local} have used="" start i cand lo hi ulo uhi u overlap
 	have=$(docker network inspect "${project}_default" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -m1 '^[0-9.]*/[0-9]*$' || true)
 	if [ -n "$have" ]; then echo "$have"; return; fi
-	used="$(docker network ls -q 2>/dev/null | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true) $(ip -4 route show 2>/dev/null | cut -d' ' -f1 || true)"
+	used="$(docker network ls -q 2>/dev/null | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true) $(host_routes)"
 	start=$(($(printf '%s' "$project" | cksum | cut -d' ' -f1) % 256))
 	for i in $(seq 0 255); do
 		cand=10.99.$(((start + i) % 256)).0/24
@@ -69,10 +81,15 @@ default_subnet() {
 	return 1
 }
 
-subnet=${SLUIS_LOCAL_SUBNET:-$(default_subnet)}
-mkdir -p "$state"
-printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$subnet" >"$state/network.yaml"
-compose+=(-f "$state/network.yaml")
+# Only `up` and `tamper` (which recreates a container) give the network its subnet; down, status and logs read the project.
+case "${1:-}" in
+up | tamper)
+	subnet=${SLUIS_LOCAL_SUBNET:-$(default_subnet)}
+	mkdir -p "$state"
+	printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$subnet" >"$state/network.yaml"
+	compose+=(-f "$state/network.yaml")
+	;;
+esac
 host=sluis.dev.local.test
 audit_host=sluis-audit.dev.local.test
 

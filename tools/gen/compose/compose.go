@@ -310,7 +310,7 @@ func Generate(o Options) ([]File, error) {
 func (p *plan) auditFront(b boundary, fwd uint32, _ func(string) (string, string), auditDir func() (string, string)) *service {
 	u := p.uid("entry")
 	reader := p.uid("reader")
-	s := &service{Name: "entry-audit", Image: "sluis-local/entry:dev", Binary: "actors/entry", NoBuild: true,
+	s := &service{Name: "entry-audit", Image: "sluis-local/entry:" + imageTag, Binary: "actors/entry", NoBuild: true,
 		User: fmt.Sprintf("%d:%d", u, u), Hardened: true, Restart: "on-failure", Network: "none"}
 	run := p.volume(volume{Name: "run-entry", Owner: u, Group: u, Mode: "0751"})
 	s.Mounts = append(s.Mounts, mount{run, "/run/sluis/entry", false})

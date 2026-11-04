@@ -402,7 +402,7 @@ services:
       exchange: { condition: service_healthy }
 
   entry-audit:
-    image: sluis-local/entry:dev
+    image: sluis-local/entry:${SLUIS_LOCAL_TAG:-dev}
     pull_policy: never
     command: ["serve", "--boundary", "dev", "--front", "audit", "--socket", "/run/sluis/entry/dev-audit.sock", "--socket-gid", "61027"]
     user: "61000:61000"
