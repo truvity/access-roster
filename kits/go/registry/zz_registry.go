@@ -1259,10 +1259,11 @@ var callers = map[string][]string{
 }
 
 // uidNames: the append-only list of tools/gen/registry/uids.yaml; the index is the ordinal.
-var uidNames = []string{"entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder"}
+var uidNames = []string{"entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder", "driver-indexer-fs"}
 
 // driverOwners: the user of a driver to the actor that owns it.
 var driverOwners = map[string]string{
+	"driver-indexer-fs":       "indexer",
 	"driver-indexer-sqlite":   "indexer",
 	"driver-key-software":     "key",
 	"driver-store-credential": "store",

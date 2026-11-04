@@ -102,15 +102,32 @@ impl Fs {
     ///
     /// Fails when the root is missing, is not such a directory, or cannot be opened.
     pub fn open(root: &Path) -> anyhow::Result<Self> {
+        Self::open_owned_by(root, rustix::process::geteuid().as_raw())
+    }
+
+    /// Opens `root` for a driver that only reads it: the directory belongs to `owner`, the uid of
+    /// the writer's driver, and this process reads it through the group of that driver (the files
+    /// are 0640 and the directories 0750). The other checks are those of [`Fs::open`]. The type
+    /// does not stop a caller from calling `create` or `put`; the read-only driver's service never
+    /// does, and the volume it mounts is read-only.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the root is missing, is not a directory of `owner` closed to others, or cannot
+    /// be opened.
+    pub fn open_read_only(root: &Path, owner: u32) -> anyhow::Result<Self> {
+        Self::open_owned_by(root, owner)
+    }
+
+    fn open_owned_by(root: &Path, owner: u32) -> anyhow::Result<Self> {
         use anyhow::{Context, bail};
         let m = std::fs::symlink_metadata(root).context("the blob root")?;
         if !m.is_dir() {
             bail!("the blob root is not a directory (a symlink is refused)");
         }
-        let me = rustix::process::geteuid().as_raw();
-        if m.uid() != me {
+        if m.uid() != owner {
             bail!(
-                "the blob root is owned by uid {}, not by this driver's uid {me}",
+                "the blob root is owned by uid {}, not by uid {owner}",
                 m.uid()
             );
         }

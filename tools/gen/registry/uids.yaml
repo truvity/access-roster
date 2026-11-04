@@ -44,3 +44,5 @@ names:
   - driver-indexer-sqlite
   # the test harness
   - harness-forwarder
+  # a driver added after the harness (WP-26): the read-only blob driver of the indexer and the reader
+  - driver-indexer-fs
