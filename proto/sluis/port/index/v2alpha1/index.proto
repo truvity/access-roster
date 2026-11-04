@@ -1,0 +1,105 @@
+// The audit search index port (0028 "Search and the index"): the write side the indexer uses, and the
+// read side the reader uses. They are two services on two sockets (index.sock and index-ro.sock), so a
+// driver serves the read side without any way to write.
+syntax = "proto3";
+
+package sluis.port.index.v2alpha1;
+
+// IndexService is the write side of the index, served on index.sock to the indexer only.
+service IndexService {
+  rpc GetCursor(GetCursorRequest) returns (GetCursorResponse);  // where the indexer stands in one log
+  rpc Apply(ApplyRequest) returns (ApplyResponse);              // rows of one log and its next cursor, in one transaction
+}
+
+// IndexReadService is the read side of the index, served on index-ro.sock to the reader only.
+service IndexReadService {
+  rpc Search(SearchRequest) returns (SearchResponse);  // rows of named partitions and tenants, newest first
+}
+
+// LogRef names one log of the boundary: a partition of the index is a project and a log kind.
+message LogRef {
+  string project = 1;  // the audit project
+  string kind = 2;     // the log kind: "audit" or "issuance" (the usage log has no index, 0028)
+  string log = 3;      // the log's id
+}
+
+// Cursor is where the indexer stands in a log: the last checkpoint it verified and indexed to.
+message Cursor {
+  int64 size = 1;    // the tree size of that checkpoint
+  bytes root = 2;    // the root hash of that checkpoint (SHA-256, RFC 6962)
+  bytes state = 3;   // the indexer's own proof state at that size; opaque to the index
+}
+
+// GetCursorRequest asks for the cursor of a log.
+message GetCursorRequest {
+  LogRef log = 1;  // the log
+}
+
+// GetCursorResponse carries the cursor; a log never indexed has size 0 and no root.
+message GetCursorResponse {
+  Cursor cursor = 1;  // the cursor
+}
+
+// Row is one indexed record: the fixed columns of 0028 and the record itself, once.
+message Row {
+  string tenant = 1;         // metadata.tenant_uid
+  bytes hash = 2;            // SHA-384 of the record's canonical bytes: the key of idempotent indexing
+  int64 seq = 3;             // the entry's position in the log
+  int64 time_ms = 4;         // time, in milliseconds
+  int64 recorded_ms = 5;     // the writer's stamp, in milliseconds
+  string boundary = 6;       // metadata.log_name
+  string action = 7;         // metadata.event_code
+  int64 class_uid = 8;       // class_uid
+  int64 activity_id = 9;     // activity_id
+  int64 status_id = 10;      // status_id
+  string status_code = 11;   // status_code
+  string actor_uid = 12;     // actor.user.uid
+  int64 actor_type_id = 13;  // actor.user.type_id
+  string trace_id = 14;      // metadata.correlation_uid
+  string record_id = 15;     // metadata.uid
+  string product = 16;       // metadata.product.name
+  bytes record = 17;         // the record, RFC 8785 canonical bytes
+}
+
+// ApplyRequest registers a batch of one log: its rows and the cursor after them.
+message ApplyRequest {
+  LogRef log = 1;           // the log
+  int64 expect_size = 2;    // the size of the cursor the indexer read; the write is refused when it has moved
+  Cursor next = 3;          // the cursor after the rows; its size must be larger than expect_size
+  repeated Row rows = 4;    // the rows; one already present (same tenant and hash) is a repeat
+}
+
+// ApplyResponse counts what the batch did.
+message ApplyResponse {
+  int64 inserted = 1;    // rows that were new
+  int64 duplicates = 2;  // rows that were already there
+}
+
+// Partition is a project and a log kind that a query reads.
+message Partition {
+  string project = 1;  // the audit project
+  string kind = 2;     // the log kind
+}
+
+// SearchRequest is a query. The partitions and the tenants are mandatory: they are the grant's filter.
+message SearchRequest {
+  repeated Partition partitions = 1;  // the partitions to read; at least one
+  repeated string tenants = 2;        // the tenants to read; at least one, "*" for every tenant
+  string q = 3;                       // words over the searchable fields; a trailing * makes a prefix
+  string action = 4;                  // only this action, when set
+  string status_code = 5;             // only this status code, when set
+  int64 status_id = 6;                // only this status_id, when not 0
+  string actor_uid = 7;               // only this actor, when set
+  string trace_id = 8;                // only this trace id, when set
+  string record_id = 9;               // only this record id, when set
+  int64 from_ms = 10;                 // time at or after, when not 0
+  int64 to_ms = 11;                   // time before, when not 0
+  int32 page_size = 12;               // rows per page; 0 is 50, at most 200
+  bytes page_token = 13;              // from the previous page; bound to nothing, opaque
+}
+
+// SearchResponse is one page, newest first.
+message SearchResponse {
+  repeated Row rows = 1;      // the rows
+  bytes next_page_token = 2;  // empty on the last page
+}
