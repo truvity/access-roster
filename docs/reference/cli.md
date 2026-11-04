@@ -43,6 +43,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis key status` | The keys and their certificates, through key@ | Nothing | 0, 1, 2, 10, 11, 12 |
 | `sluis login [--issuer URL]` | The group issuer; the boundaries' token endpoints | Tokens in the user's cache | 0, 1, 2, 3 |
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
+| `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
 
 ### `sluis config check` and `explain`
 
@@ -70,7 +71,16 @@ The root list is part of `TrustAnchors`, the config kind that holds the root lis
 
 - **`sluis login`** signs a person in at the group issuer with the authorization code flow, PKCE `S256` and a loopback redirect on `127.0.0.1` (RFC 8252), as the public client that config declares for the CLI, an `InstallationClient` ([0021](/decisions/0021-clients/#the-client-declaration)). It then exchanges that token silently (RFC 8693) at each boundary's own token endpoint, so the front never sees a boundary's tokens ([0017](/decisions/0017-identity-and-sign-in/#step-up)). `--issuer` names the group issuer the first time; afterwards it comes from the cache. A browser opens; with no browser the command prints the URL to standard error.
 - **`sluis token --audience CLIENT_ID`** prints an access token for that audience at the boundary given by `--boundary`, from the cache while it is valid, otherwise by a refresh or an exchange. A refusal exits 3 and looks the same for an unknown and a refused audience ([Contracts and errors](/reference/contracts/#oauth-and-openid-connect-endpoints)).
+- **The flags** `--issuer URL` (login and token), `--client-id ID` (the client the CLI signs in as; `sluis-cli` unless named), `--no-browser` (print the URL, open nothing) and `--timeout DURATION` (how long login waits for the browser). An issuer that registers the CLI as a confidential client, as a development realm may, needs its secret on `--secret-fd N` for both commands. An `http://` issuer is accepted only on a loopback host; otherwise the issuer must be `https://`, and the trust roots are the system's, extended by `SSL_CERT_FILE`.
 - **The cache** is `$XDG_CONFIG_HOME/sluis/tokens/` (`~/.config/sluis/tokens/` when the variable is unset), one file per issuer, mode `0600`. A file that another user can read is refused, not used.
+
+### `sluis audit verify`
+
+`sluis audit verify DIR --key VKEY` checks a tiled log ([0029](/decisions/0029-the-audit-log/#tiled-log)) from its files alone, offline, with no server. `DIR` is the log's prefix: the `checkpoint` object, `checkpoints/<size>` and the `tile/` tree of C2SP tlog-tiles. `VKEY` is the log's verifier key, `name+hash+key`, and `--key-file FILE` reads it from a file. `--origin LINE` also requires the origin line the checkpoints name.
+
+It verifies the signature of the checkpoint and of every checkpoint in `checkpoints/`, takes the largest as the head, and rebuilds the tree from the hash tiles with the RFC 6962 hashes, so a tile that does not belong to the head is refused. It hashes every entry bundle to the leaf hashes, and checks that each earlier checkpoint is a prefix of the head. It prints `ok` with the origin, the size and the root hash, and exits 0. It exits 3, naming the file in `reasons`, for a bad signature, a tile or an entry that was changed or is missing, or a checkpoint whose size or hash does not fit the tree; and 1 for a directory it cannot read.
+
+The log key is a P-384 key in a signed note: the type byte `0x02` and the DER `SubjectPublicKeyInfo`, with the signature in ASN.1 DER over the SHA-384 of the note text.
 
 ## Exit codes
 
@@ -110,9 +120,11 @@ And these where they apply:
 | `requests` | `key request` | A list of `{ "stem", "kind", "files": [{ "path", "sha256" }] }`. |
 | `installed` | `key install` | A list of `{ "stem", "outcome", "reasons" }`. |
 | `token` | `token` | `{ "access_token", "expires_at", "audience", "issuer" }`. |
+| `login` | `login` | `{ "issuer", "client_id", "subject", "expires_at" }`; no token. |
+| `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. |
 
 Members are lower-case words with underscores; times are RFC 3339 in UTC; the object is not in canonical form. A new member is not a new version, so a reader ignores a member it does not know; a member renamed, removed or changed in meaning is version 2.
 
 ## Later commands
 
-These come with the parity milestone and follow the conventions above ([#1097](https://github.com/truvity/sluis/issues/1097)): `sluis trust sync` and `trust enroll` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)), `sluis node unlock` ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)), `sluis restore`, a command of store@ with a plan by default, `--apply` to write and `--overwrite` to replace ([0010](/decisions/0010-backup-and-recovery/#restore)), `sluis audit` ([0028](/decisions/0028-audit-pieces/#the-audit-front)), `sluis pki` and `sluis ssh`, the commands for integrations, clients and credentials, and the replacements for v1's `sluisctl` sign-in helpers (kubeconfig, cloud profiles, database and vendor wrappers). The backup is a job of exporter@, not a command ([0009](/decisions/0009-export/)). Until then, commands that the integration pages show and this page does not list show the shape, not decided names ([Examples are illustrative](/integrations/#examples-are-illustrative)).
+These come with the parity milestone and follow the conventions above ([#1097](https://github.com/truvity/sluis/issues/1097)): `sluis trust sync` and `trust enroll` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)), `sluis node unlock` ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)), `sluis restore`, a command of store@ with a plan by default, `--apply` to write and `--overwrite` to replace ([0010](/decisions/0010-backup-and-recovery/#restore)), the rest of `sluis audit` ([0028](/decisions/0028-audit-pieces/#the-audit-front)), `sluis pki` and `sluis ssh`, the commands for integrations, clients and credentials, and the replacements for v1's `sluisctl` sign-in helpers (kubeconfig, cloud profiles, database and vendor wrappers). The backup is a job of exporter@, not a command ([0009](/decisions/0009-export/)). Until then, commands that the integration pages show and this page does not list show the shape, not decided names ([Examples are illustrative](/integrations/#examples-are-illustrative)).

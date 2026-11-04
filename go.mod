@@ -7,6 +7,7 @@ toolchain go1.27.3
 require (
 	connectrpc.com/connect v1.21.1
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/mod v0.42.0
 	google.golang.org/protobuf v1.36.12
 )
 
