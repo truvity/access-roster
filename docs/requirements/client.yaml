@@ -58,7 +58,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -155,7 +155,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -186,7 +186,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -217,7 +217,7 @@ requirements:
     level: MUST
     source: design-decision
     status: out-of-scope
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-21, section: "3", depth: Full}
@@ -351,7 +351,7 @@ requirements:
     level: MUST
     source: design-decision
     status: out-of-scope
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-01, section: "4.4", depth: Full}

@@ -184,7 +184,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -200,7 +200,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -216,7 +216,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -231,7 +231,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: out-of-scope
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -246,7 +246,7 @@ requirements:
     level: MUST
     source: design-decision
     status: out-of-scope
-    milestone: first-version
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
@@ -260,7 +260,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards: []
@@ -274,7 +274,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards: []

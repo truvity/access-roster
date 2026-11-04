@@ -25,7 +25,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
