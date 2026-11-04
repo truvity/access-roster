@@ -88,48 +88,61 @@ func (a admin) Unlock(ctx context.Context, req *connect.Request[keystorev2alpha1
 	if a.s.pin.held() {
 		return connect.NewResponse(&keystorev2alpha1.UnlockResponse{}), nil // already unlocked: the card is not asked again
 	}
+	if err := a.s.unlockHeld(ctx, "Unlock", pin); err != nil {
+		return nil, err
+	}
+	slog.Info("unlocked: the driver holds the PIN in locked memory")
+	return connect.NewResponse(&keystorev2alpha1.UnlockResponse{}), nil
+}
+
+// unlockHeld puts the PIN in locked memory and gives it to the card once: the admin socket's Unlock and a PIN release
+// (FinishPinRelease) take this one path. The caller holds mu, has checked that no PIN is held, and wipes pin. A PIN the
+// card refuses is dropped and never tried again, and a card with one attempt left, or none, is not sent a PIN.
+func (s *Service) unlockHeld(ctx context.Context, method string, pin []byte) *connect.Error {
+	if len(pin) < pinMin || len(pin) > pinMax {
+		return refuse(ctx, method, connect.CodeInvalidArgument, reasonPIN, "pin")
+	}
 	// Ask the card how many attempts it has left (a VERIFY without a PIN reads the counter and does not change it). With
 	// one left, a wrong PIN would block the card; with none it is blocked already. A counter that cannot be read is a
 	// refusal too: the driver does not guess.
-	retries, rerr := a.s.card.PINRetries()
+	retries, rerr := s.card.PINRetries()
 	switch {
 	case errors.Is(rerr, card.ErrCardGone):
-		a.s.cardGone("Unlock")
-		return nil, refuse(ctx, "Unlock", connect.CodeUnavailable, reasonCard, "")
+		s.cardGone(method)
+		return refuse(ctx, method, connect.CodeUnavailable, reasonCard, "")
 	case rerr != nil:
 		slog.Error("unlock refused: the PIN counter cannot be read", "error", rerr.Error())
-		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonCard, "")
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonCard, "")
 	case retries == 0:
 		slog.Error("unlock refused: the card is blocked and needs the PUK")
-		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonBlocked, "pin")
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonBlocked, "pin")
 	case retries == 1:
 		slog.Error("unlock refused: the card has one PIN attempt left; the PUK procedure is the owners'")
-		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonRetries, "pin")
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonRetries, "pin")
 	}
-	if err := a.s.pin.set(pin); err != nil {
+	if err := s.pin.set(pin); err != nil {
 		slog.Error("unlock refused: the PIN cannot be held in locked memory", "error", err.Error())
-		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonMemory, "")
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonMemory, "")
 	}
-	if err := a.s.card.Login(pin); err != nil {
-		a.s.pin.wipe()
+	if err := s.card.Login(pin); err != nil {
+		s.pin.wipe()
 		if errors.Is(err, card.ErrCardGone) {
-			a.s.cardGone("Unlock")
-			return nil, refuse(ctx, "Unlock", connect.CodeUnavailable, reasonCard, "")
+			s.cardGone(method)
+			return refuse(ctx, method, connect.CodeUnavailable, reasonCard, "")
 		}
 		var pe *card.PINError
 		if errors.As(err, &pe) {
 			if pe.Retries == 0 {
 				slog.Error("unlock refused: the card is blocked and needs the PUK")
-				return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonBlocked, "pin")
+				return refuse(ctx, method, connect.CodeFailedPrecondition, reasonBlocked, "pin")
 			}
 			slog.Warn("unlock refused: the card did not accept the PIN", "retries", pe.Retries)
-			return nil, refuse(ctx, "Unlock", connect.CodePermissionDenied, reasonPIN, "pin")
+			return refuse(ctx, method, connect.CodePermissionDenied, reasonPIN, "pin")
 		}
 		slog.Error("unlock failed", "error", err.Error())
-		return nil, refusal.New(connect.CodeInternal, reasonStore, "")
+		return refusal.New(connect.CodeInternal, reasonStore, "")
 	}
-	slog.Info("unlocked: the driver holds the PIN in locked memory")
-	return connect.NewResponse(&keystorev2alpha1.UnlockResponse{}), nil
+	return nil
 }
 
 // ServeAdmin serves the unlock service on cfg.Socket until ctx ends. The socket is mode 0600 and the peer is

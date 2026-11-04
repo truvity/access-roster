@@ -161,7 +161,7 @@ key@ has the card to itself. Its card driver runs as a dedicated user, the card 
 Board cards are touch never and PIN once, so a board signs unattended. A board starts locked, and key@ never stores the PIN in plaintext on disk:
 
 - `sluis node unlock <node>` delivers the PIN over an authenticated channel;
-- an unlocked peer releases the board's PIN through the store, sealed to a one-time key of the locked key@, which covers a reboot of one board and a rolling update; the locked key@ signs its request with a card slot that needs no PIN, and the peer verifies the signature and the slot's attestation first;
+- an unlocked peer releases the board's PIN through the store, sealed to a one-time key of the locked board's card driver, which covers a reboot of one board and a rolling update; the locked key@ signs its request with a card slot that needs no PIN, the peer verifies the signature and the slot's attestation first, and the locked board verifies the peer's signed answer before its card is given the PIN;
 - after a full power loss one manual unlock is needed, and the first board then unlocks the others;
 - a wrong PIN is never retried, because the card blocks after three attempts and then needs the PUK.
 

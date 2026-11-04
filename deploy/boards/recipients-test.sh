@@ -75,6 +75,7 @@ case "$cmd" in
 	[ -n "${!id_var:-}" ] || exit 1
 	echo "wrapping key id: ${!id_var}"
 	echo "wrapping key listed: ${LISTED:-true}"
+	echo "slot map: {\"node\":\"$board\",\"slots\":[{\"slot\":\"9d\",\"purpose\":\"wrapping\",\"public_key\":\"${!id_var}\"}]}"
 	;;
 *systemctl*) eval "$cmd" ;;
 *db/query*)
@@ -120,6 +121,12 @@ refuses "a board whose id changed is refused without the switch mode" deploy/boa
 check "the switch mode replaces the id of that board alone" env SLUIS_BOARDS_RECIPIENTS_SWITCHED=1 deploy/boards/boards.sh recipients
 [ "$(ids)" = "$(want "$(mkid 1)" "$(mkid 22)" "$(mkid 3)")" ] || { echo "FAIL after the switch the file holds: $(ids)"; fail=1; }
 if ! grep -q "^b.test=$(mkid 22)$" "$work/state/recipients.boards" || ! grep -q "^a.test=$(mkid 1)$" "$work/state/recipients.boards"; then echo "FAIL the record: $(cat "$work/state/recipients.boards")"; fail=1; fi
+# The slot map: the run of b alone replaced b's entry and kept the others'.
+if [ "$(grep -c '^{' "$work/state/slot-map")" != 3 ] || ! grep -q "^{\"node\":\"b.test\".*$(mkid 22)" "$work/state/slot-map" ||
+	! grep -q "^{\"node\":\"a.test\".*$(mkid 1)" "$work/state/slot-map" || grep -q "$(mkid 2)\"" "$work/state/slot-map"; then
+	echo "FAIL the slot map: $(cat "$work/state/slot-map")"
+	fail=1
+fi
 
 # Rollback: b comes back with its software id.
 ID_b_test=$(mkid 2)

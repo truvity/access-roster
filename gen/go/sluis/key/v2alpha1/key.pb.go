@@ -1088,6 +1088,121 @@ func (x *KeyRevocation) GetRevokedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// PinReleaseRequest is the kind PinReleaseRequest (0006 "Touch and PIN"): a locked board asks its peers for the card
+// PIN. key@ alone writes and reads it. Its id is <node>/<request>, the two fields of the text.
+type PinReleaseRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The signed text: "sluis-pin-release-v1", the boundary, the node, the request id (a UUIDv7, RFC 9562) and the
+	// ephemeral P-384 public key (SEC1 uncompressed) that the locked card driver made for this request, each field a
+	// 4-octet big-endian length and its octets (0006 "Touch and PIN"; kits/go/pinrelease). The same octets are the HKDF-SHA384
+	// info and the AES-256-GCM additional data of the answer.
+	Text          []byte `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	SignatureDer  []byte `protobuf:"bytes,2,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ES384 over SHA-384(text) by the node's pin-release key (slot 87), ASN.1 DER
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinReleaseRequest) Reset() {
+	*x = PinReleaseRequest{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinReleaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinReleaseRequest) ProtoMessage() {}
+
+func (x *PinReleaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinReleaseRequest.ProtoReflect.Descriptor instead.
+func (*PinReleaseRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *PinReleaseRequest) GetText() []byte {
+	if x != nil {
+		return x.Text
+	}
+	return nil
+}
+
+func (x *PinReleaseRequest) GetSignatureDer() []byte {
+	if x != nil {
+		return x.SignatureDer
+	}
+	return nil
+}
+
+// PinRelease is the kind PinRelease: the one answer to the PinReleaseRequest with the same id, written by the unlocked
+// peer that answered first.
+type PinRelease struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The signed answer text: "sluis-pin-release-answer-v1", the boundary, the releasing node, the requesting node, the
+	// request id, SHA-384 of the request text, the releaser's ephemeral public key and the sealed PIN (AES-256-GCM,
+	// nonce first), each field length-prefixed as in the request.
+	Text          []byte `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	SignatureDer  []byte `protobuf:"bytes,2,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ES384 over SHA-384(text) by the releasing node's pin-release key, ASN.1 DER
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinRelease) Reset() {
+	*x = PinRelease{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinRelease) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinRelease) ProtoMessage() {}
+
+func (x *PinRelease) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinRelease.ProtoReflect.Descriptor instead.
+func (*PinRelease) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *PinRelease) GetText() []byte {
+	if x != nil {
+		return x.Text
+	}
+	return nil
+}
+
+func (x *PinRelease) GetSignatureDer() []byte {
+	if x != nil {
+		return x.SignatureDer
+	}
+	return nil
+}
+
 var File_sluis_key_v2alpha1_key_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
@@ -1167,7 +1282,14 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\vreason_code\x18\x03 \x01(\tR\n" +
 	"reasonCode\x129\n" +
 	"\n" +
-	"revoked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt2\xc3\x04\n" +
+	"revoked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\"L\n" +
+	"\x11PinReleaseRequest\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\fR\x04text\x12#\n" +
+	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer\"E\n" +
+	"\n" +
+	"PinRelease\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\fR\x04text\x12#\n" +
+	"\rsignature_der\x18\x02 \x01(\fR\fsignatureDer2\xc3\x04\n" +
 	"\n" +
 	"KeyService\x12I\n" +
 	"\x04Seal\x12\x1f.sluis.key.v2alpha1.SealRequest\x1a .sluis.key.v2alpha1.SealResponse\x12I\n" +
@@ -1191,7 +1313,7 @@ func file_sluis_key_v2alpha1_key_proto_rawDescGZIP() []byte {
 	return file_sluis_key_v2alpha1_key_proto_rawDescData
 }
 
-var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*SealRequest)(nil),           // 0: sluis.key.v2alpha1.SealRequest
 	(*SealResponse)(nil),          // 1: sluis.key.v2alpha1.SealResponse
@@ -1211,18 +1333,20 @@ var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*DataKeyWrap)(nil),           // 15: sluis.key.v2alpha1.DataKeyWrap
 	(*KeyCertificate)(nil),        // 16: sluis.key.v2alpha1.KeyCertificate
 	(*KeyRevocation)(nil),         // 17: sluis.key.v2alpha1.KeyRevocation
-	(*v2alpha1.Address)(nil),      // 18: sluis.type.v2alpha1.Address
-	(*v2alpha1.Grant)(nil),        // 19: sluis.type.v2alpha1.Grant
-	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(*PinReleaseRequest)(nil),     // 18: sluis.key.v2alpha1.PinReleaseRequest
+	(*PinRelease)(nil),            // 19: sluis.key.v2alpha1.PinRelease
+	(*v2alpha1.Address)(nil),      // 20: sluis.type.v2alpha1.Address
+	(*v2alpha1.Grant)(nil),        // 21: sluis.type.v2alpha1.Grant
+	(*timestamppb.Timestamp)(nil), // 22: google.protobuf.Timestamp
 }
 var file_sluis_key_v2alpha1_key_proto_depIdxs = []int32{
-	18, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
-	18, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
+	20, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
+	20, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
 	2,  // 2: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
-	19, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
-	19, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
-	20, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
-	20, // 6: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
+	21, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
+	21, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
+	22, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
+	22, // 6: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
 	0,  // 7: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
 	3,  // 8: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
 	5,  // 9: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
@@ -1255,7 +1379,7 @@ func file_sluis_key_v2alpha1_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_key_v2alpha1_key_proto_rawDesc), len(file_sluis_key_v2alpha1_key_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

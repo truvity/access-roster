@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"slices"
 	"time"
 
@@ -96,7 +97,19 @@ func (s *Server) Check(ctx context.Context) error {
 	if err := s.checkTransport(ctx); err != nil {
 		return err
 	}
-	return s.checkRecipients(ctx, plan, b.GetDefaultTenant())
+	problems := s.checkRecipients(ctx, plan, b.GetDefaultTenant())
+	// This node's entry of the slot map, for the harness that signs it into the KeyPlan (D20b). It is printed whatever
+	// the recipients say: a node joins by being read first.
+	line, err := s.slotMapLine(ctx, plan)
+	if err != nil {
+		return errors.Join(problems, err)
+	}
+	out := s.cfg.Out
+	if out == nil {
+		out = os.Stdout
+	}
+	_, _ = fmt.Fprintln(out, line)
+	return problems
 }
 
 // checkTransport reaches the audit transport's emit socket: a facts-less connection, so the check writes no
