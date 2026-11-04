@@ -1371,7 +1371,7 @@ requirements:
   - id: REQ-KEYS-091
     area: KEYS
     actors: [store]
-    statement: "store@ MUST refuse an update, a delete and an apply on an existing KeyRevocation item, for every caller."
+    statement: "store@ MUST refuse an update, a delete and an apply on KeyRevocation, for every caller, an apply even at an address that holds no item."
     rationale: "A revocation is terminal, and the direction rule alone would still allow a delete; Lease allows an update, so its rule is not the model (ADR 0041, ADR 0004)."
     level: MUST
     source: design-decision
@@ -1382,7 +1382,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "an update, a delete and an apply on an existing KeyRevocation item are refused for every actor, key@ included; a create is accepted"}
+      - {kind: integration-test, ref: "an update, a delete and an apply on KeyRevocation are refused for every actor, key@ included, an apply on a free address too; a create is accepted"}
   - id: REQ-KEYS-092
     area: KEYS
     statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a KeyRevocation item that works while the actor of the compromised node is down."
@@ -1625,7 +1625,7 @@ requirements:
   - id: REQ-KEYS-109
     area: KEYS
     statement: "key@ MUST refuse a Sign with any key that KeyRevocation lists, whatever the signing purpose."
-    rationale: "A revoked key signs nothing more, and this holds for the SSH CAs, the X.509 intermediates, the checkpoint keys and the workload-issuer key as for a token key, whichever actor asks; a revocation of a purpose refuses the keys made at or before it and not a replacement made after it, and an unreadable KeyRevocation refuses the Sign (ADR 0041)."
+    rationale: "A revoked key signs nothing more, for every signing purpose and whichever actor asks; a purpose revocation refuses keys made at or before it, not a replacement made after it; a key of unknown age and an unreadable KeyRevocation are refused; the PIV driver reports the age of the keys it made (ADR 0041)."
     level: MUST
     source: design-decision
     status: partial

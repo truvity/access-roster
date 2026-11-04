@@ -11,9 +11,11 @@ Type=simple
 User=sluis-drv-key-yubikey-piv-%i
 Group=sluis-drv-key-yubikey-piv-%i
 SupplementaryGroups=sluis-key-drv-%i sluis-pcsc-%i
+StateDirectory=sluis-state/%i/drv-key-yubikey-piv
+StateDirectoryMode=0700
 RuntimeDirectory=sluis-drv-key-yubikey-piv-%i
 RuntimeDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/key/yubikey-piv serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --environment development --node %H --admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock --serial ${SLUIS_CARD_SERIAL} --socket-gid 61030
+ExecStart=/opt/sluis/bin/drivers/key/yubikey-piv serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-yubikey-piv --environment development --node %H --admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock --serial ${SLUIS_CARD_SERIAL} --socket-gid 61030
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB
