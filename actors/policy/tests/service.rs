@@ -218,6 +218,7 @@ async fn the_ladder_is_expanded_and_the_answer_carries_the_full_set() {
     );
 }
 
+/// verifies: REQ-POLICY-011
 #[tokio::test]
 async fn a_wildcard_never_reaches_a_sensitive_scope_but_a_grant_named_in_full_does() {
     let rig = Rig::new("session").await;
@@ -601,6 +602,7 @@ async fn an_actor_the_registry_does_not_let_call_policy_is_refused_before_the_me
     assert!(rig.around.spool.records().is_empty());
 }
 
+/// verifies: REQ-POLICY-007
 #[tokio::test]
 async fn an_allow_reached_past_a_policy_that_errored_is_a_denial() {
     // A forbid that errors is skipped by Cedar, which would let the permit through. The overflow

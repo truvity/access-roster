@@ -67,6 +67,7 @@ requirements:
     level: MAY
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
@@ -139,6 +140,7 @@ requirements:
     level: MAY
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-26, section: "1", depth: Full}
@@ -181,7 +183,9 @@ requirements:
     rationale: "Resets are account-takeover paths."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -195,7 +199,9 @@ requirements:
     rationale: "Resets are account-takeover paths."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -209,7 +215,9 @@ requirements:
     rationale: "Resets are account-takeover paths."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -223,6 +231,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -237,6 +246,7 @@ requirements:
     level: MUST
     source: design-decision
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
@@ -249,7 +259,9 @@ requirements:
     rationale: "The customer-identity product owns the account, and sluis only brokers the sign-in (ADR 0031)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]
@@ -261,7 +273,9 @@ requirements:
     rationale: "A social provider is reached through the upstream product, so sluis has no consumer for a connector of its own (ADR 0031)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]

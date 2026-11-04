@@ -166,7 +166,7 @@ func TestUpstreamOfAnotherKindIsUnsupported(t *testing.T) {
 	refused(t, err, "UNSUPPORTED", connect.CodeUnimplemented, "upstream.kind")
 }
 
-// verifies: REQ-FED-016
+// verifies: REQ-FED-016, REQ-FED-005
 func TestCompleteReturnsTheVerifiedAssertion(t *testing.T) {
 	f := newFixture(t, nil)
 	f.verifier, _ = pkcePair(t)
@@ -230,6 +230,7 @@ func TestAnEmptyAMRIsPresent(t *testing.T) {
 	}
 }
 
+// verifies: REQ-FED-001, REQ-FED-011, REQ-FED-012, REQ-FED-013, REQ-FED-015, REQ-FED-003
 func TestCompleteRefusesWhatDoesNotVerify(t *testing.T) {
 	other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
@@ -376,6 +377,7 @@ func TestAnHTTPIssuerIsRefusedOutsideDevelopment(t *testing.T) {
 
 // REQ-FED-008: the address is checked after the name is resolved. Outside a development boundary, loopback is refused
 // even for an https issuer; the test server counts the connections it is offered.
+// verifies: REQ-FED-008
 func TestLoopbackIsRefusedAfterResolutionOutsideDevelopment(t *testing.T) {
 	var conns atomic.Int32
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))

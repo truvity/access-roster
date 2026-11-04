@@ -8,7 +8,9 @@ requirements:
     rationale: "An RP that skips a check is a login bypass."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Full}
@@ -26,7 +28,8 @@ requirements:
     rationale: "An RP that skips a check is a login bypass."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Full}
@@ -42,7 +45,8 @@ requirements:
     rationale: "An RP that skips a check is a login bypass."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Full}
@@ -58,7 +62,8 @@ requirements:
     rationale: "An RP that skips a check is a login bypass."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Full}
@@ -73,7 +78,9 @@ requirements:
     rationale: "E-mail is not a stable or verified key."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.7", depth: Full}
@@ -87,7 +94,9 @@ requirements:
     rationale: "E-mail is not a stable or verified key."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.7", depth: Full}
@@ -100,7 +109,8 @@ requirements:
     rationale: "This stops mix-up attacks across upstreams."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-10, section: "2.4", depth: Full}
@@ -114,7 +124,8 @@ requirements:
     rationale: "This stops mix-up attacks across upstreams."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-10, section: "2.4", depth: Full}
@@ -128,6 +139,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -141,7 +153,8 @@ requirements:
     rationale: "Only declared claims enter the model."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2", depth: Partial}
@@ -156,6 +169,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2", depth: Partial}
@@ -170,7 +184,8 @@ requirements:
     rationale: "An unsolicited response is a login CSRF vector."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2", depth: Partial}
@@ -197,7 +212,9 @@ requirements:
     rationale: "Peer trust composes installations."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3", depth: Full}
@@ -212,7 +229,8 @@ requirements:
     rationale: "SSRF through an attacker-chosen discovery URL reaches internal services."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -226,6 +244,7 @@ requirements:
     level: MAY
     source: stakeholder-ciam
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-43, section: "2", depth: Partial}
@@ -240,6 +259,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-43, section: "2", depth: Partial}
@@ -254,6 +274,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-43, section: "2", depth: Partial}
@@ -267,6 +288,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Partial}
@@ -281,6 +303,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Partial}
@@ -307,6 +330,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3", depth: Partial}
@@ -320,6 +344,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -358,6 +383,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -370,6 +396,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -382,6 +409,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: NC-01, section: "8176", depth: Partial}
@@ -473,6 +501,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
