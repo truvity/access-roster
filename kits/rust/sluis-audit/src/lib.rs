@@ -48,7 +48,7 @@ pub const STRING_MAX: usize = 1024;
 pub const RECORD_MAX: usize = 16 << 10;
 
 const PSEUDONYM_PURPOSE: &str = "pseudonym";
-const PSEUDONYM_LABEL: &str = "audit-subject";
+const PSEUDONYM_LABEL: &str = "sluis-pseudonym-v1";
 const PSEUDONYM_BYTES: usize = 16;
 
 /// OCSF's `status_id`.
@@ -71,26 +71,57 @@ pub struct Action {
     pub class_uid: u32,
     /// The OCSF activity within the class, e.g. 99 Other.
     pub activity_id: u32,
+    /// `activity_name`. Required when `activity_id` is 99 (0030: "activity_name only for activity
+    /// 99 or where the table names one"), e.g. `Sign` or `Open` for key use.
+    pub activity_name: String,
 }
 
-/// The person an event concerns.
+/// The person or external actor an event concerns.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Subject {
     /// The tenant whose pseudonym key is used.
     pub tenant: String,
-    /// The raw subject; the emitter turns it into a pseudonym and never sends it.
+    /// The kind of identity (0029 "Pseudonyms"), e.g. `person`, `workload` or `client`. It is part
+    /// of the pseudonym's input, so the same identifier of two kinds gives two pseudonyms. Required.
+    pub kind: String,
+    /// The stable identifier of that kind: the sluis subject of a person; the upstream's issuer and
+    /// subject for an identity sluis has assigned no subject; the SPIFFE ID or client id of a
+    /// workload or client; a product's own subject id for a person of a product. The emitter turns
+    /// it into a pseudonym and never sends it.
     pub value: String,
+}
+
+/// The outcome of a policy decision: OCSF's `security_control` `action_id`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i64)]
+pub enum Decision {
+    /// Allowed (`action_id` 1).
+    Allowed = 1,
+    /// Denied (`action_id` 2).
+    Denied = 2,
+}
+
+impl Decision {
+    pub(crate) fn caption(self) -> &'static str {
+        match self {
+            Decision::Allowed => "Allowed",
+            Decision::Denied => "Denied",
+        }
+    }
 }
 
 /// The decision that gated an action (0030 "The class mapping": part of the record of the action).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PolicyRef {
-    /// The decision id.
+    /// The decision id: `policy.uid`. Required, because the OCSF policy object needs a uid; a
+    /// digest or a list of policies without one is refused.
     pub decision_id: String,
-    /// The digest of the policy bundle.
+    /// The digest of the policy bundle: `policy.version`.
     pub digest: String,
-    /// The policies that took part.
+    /// The policies that took part: `authorizations[].policy.uid`.
     pub policy_ids: Vec<String>,
+    /// `action_id` and `authorizations[].decision`; `None` records none.
+    pub decision: Option<Decision>,
 }
 
 /// One audit event.
@@ -111,10 +142,9 @@ pub struct Event {
     /// `unmapped.sluis`: strings, booleans, integers within +-(2^53-1), lists of strings and nested
     /// objects. A float, a null or a list of anything else is refused.
     pub sluis: Map<String, Value>,
-    /// The correlation id of the call being served (`sluis_kit::correlation::get`), which becomes
-    /// `metadata.correlation_uid`. The Go package reads it from the context; Rust has no ambient
-    /// accessor in the kit, so the handler passes it. An id that is not 1 to 64 characters of
-    /// `[A-Za-z0-9_-]` is dropped.
+    /// The correlation id for `metadata.correlation_uid`. When `None`, the emitter takes
+    /// `sluis_kit::correlation::current()`, the id of the call being served, so a handler need not
+    /// pass it. An id that is not 1 to 64 characters of `[A-Za-z0-9_-]` is dropped.
     pub correlation_id: Option<String>,
 }
 
@@ -261,9 +291,11 @@ impl Emitter {
             None => None,
         };
         let uid = new_uuid_v7(time_ms);
+        let ambient = sluis_kit::correlation::current();
         let correlation = ev
             .correlation_id
             .as_deref()
+            .or(ambient.as_deref())
             .filter(|c| valid_correlation(c));
         let rec = record::build_record(&record::RecordInput {
             actor: &self.actor,
@@ -292,7 +324,7 @@ impl Emitter {
                 purpose: PSEUDONYM_PURPOSE.into(),
                 tenant: s.tenant.clone(),
                 label: PSEUDONYM_LABEL.into(),
-                input: s.value.clone().into_bytes(),
+                input: pseudonym_input(&self.boundary, s),
                 epoch: epoch.clone(),
                 ..MacRequest::default()
             })
@@ -304,6 +336,20 @@ impl Emitter {
         }
         Ok(format_pseudonym(&epoch, mac))
     }
+}
+
+/// The `Mac` input of a pseudonym (0029 "Pseudonyms"): the boundary, the tenant, the kind of
+/// identity and its identifier, each with a 4-byte big-endian length in front. The label
+/// `sluis-pseudonym-v1` is the request's label, which key@ binds in. The length prefixes make the
+/// parts unambiguous: ("ab","c") and ("a","bc") differ.
+pub(crate) fn pseudonym_input(boundary: &str, s: &Subject) -> Vec<u8> {
+    let mut b = Vec::new();
+    for part in [boundary, &s.tenant, &s.kind, &s.value] {
+        // Every part is at most STRING_MAX bytes (checked before this is called).
+        b.extend_from_slice(&u32::try_from(part.len()).unwrap_or(u32::MAX).to_be_bytes());
+        b.extend_from_slice(part.as_bytes());
+    }
+    b
 }
 
 /// `p1.<epoch>.<first 128 bits of the MAC, base64url, no padding>`; `mac` holds at least 16 bytes.
