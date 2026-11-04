@@ -125,7 +125,7 @@ attestations:
 2. Write one clause: one keyword, one behaviour, one sentence. If you want to write "and" between two behaviours, write two records.
 3. Fill the traceability: the standards it implements (`section` when `depth` is `Full`), the issues that deliver it (`issues`; `features: [design]`
    when there is none yet), and how it is verified. A MUST needs a verification.
-4. Set the `milestone`. Set the status honestly. A new record is never `done`: that status is set later, by the pull request that adds the passing test (see "Marking a requirement done" in the [contributing page](../contributing/decisions.md#marking-a-requirement-done)). An `open` or `partial` record names a `gap` key; an undecided point it waits for is an issue in `issues`.
+4. Set the `milestone`. Set the status honestly. A new record is `done` only when its verifying test, tagged with `verifies:`, lands in the same pull request; the evidence check enforces it (see "Marking a requirement done" in the [contributing page](../contributing/decisions.md#marking-a-requirement-done)). An `open` or `partial` record names a `gap` key; an undecided point it waits for is an issue in `issues`.
 5. Keep it public. No names of people or companies, no tickets, no addresses, no mention of any private infrastructure; the lint scans for them.
 6. Run `devbox run -- just check`. The pages and `requirements.json` are generated, never committed.
 
