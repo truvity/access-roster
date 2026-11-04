@@ -402,3 +402,33 @@ boards-undeploy:
 # Read only: the units of boards-deploy on every board, and whether they are active.
 boards-status:
     deploy/boards/boards.sh status
+
+# The local installation (docs/runtimes/local.md): Docker Compose on this workstation, every actor and driver as its
+# pinned uid, config signed by the harness. Needs Docker, and SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS in the
+# environment (the run.env of the build); the repository names neither. Run them as `devbox run -- just local-up`.
+
+# Generate deploy/local/compose.yaml and init.sh from the registries. `go test ./tools/gen/compose` (part of go-test)
+# fails while the committed files differ from what this makes.
+compose-gen:
+    go run ./tools/gen/compose
+
+# Build the executables and the images, make the state of the run (harness CA, signed config, credentials) and start the
+# project; it returns when every service that has a health check is healthy.
+local-up: rqlite-fetch
+    deploy/local/local.sh up
+
+# Stop the project and delete its volumes and the state of the run (the CA, the publisher key, the credentials).
+local-down:
+    deploy/local/local.sh down
+
+# Each service of the project with its uid, its state and its health.
+local-status:
+    deploy/local/local.sh status
+
+# The logs of the project, or of the services named: `just local-logs store key`.
+local-logs *services:
+    deploy/local/local.sh logs {{ services }}
+
+# The smoke step of store@'s verification: with one signed document changed, store@ refuses to start. Needs `local-up`.
+local-smoke-tamper:
+    deploy/local/local.sh tamper
