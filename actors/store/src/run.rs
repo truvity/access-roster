@@ -103,16 +103,30 @@ async fn reach(path: &Path) -> Result<(), String> {
     }
 }
 
-/// The sockets store@ needs, with the name of each.
-fn needed(b: &Bootstrap, key: &Path, transport: &Path) -> Vec<(String, PathBuf)> {
+/// The sockets store@ needs before it serves, with the name of each.
+///
+/// key@ is not among them. key@'s `Init` reads its own kinds from store@, so key@ cannot be up
+/// before store@ serves: waiting for it here would deadlock the two units. store@ dials key@ at the
+/// first use (`KeyOpener`), and a call that needs it answers `unavailable` until it is reachable
+/// (ADR 0007 "Sealed grants": store@ fails closed).
+fn needed(b: &Bootstrap, transport: &Path) -> Vec<(String, PathBuf)> {
     let mut v: Vec<_> = b
         .destinations()
         .into_iter()
         .map(|(port, d)| (format!("{port} ({} driver)", d.driver), d.socket.clone()))
         .collect();
-    v.push(("key@".into(), key.to_owned()));
     v.push(("audit transport".into(), transport.to_owned()));
     v
+}
+
+/// The warning for a key@ that does not answer yet, or `None` when it does.
+async fn key_warning(key: &Path) -> Option<String> {
+    reach(key).await.err().map(|why| {
+        format!(
+            "key@: {} unreachable ({why}); store@ answers unavailable to a call that needs key@ until it is up",
+            key.display()
+        )
+    })
 }
 
 /// The unreachable sockets among `wanted`, one line each.
@@ -135,7 +149,7 @@ impl Commands for Store {
         let p = paths(&f, &b.boundary);
 
         // A cold start refuses on any failure (ADR 0005): wait for the drivers up to start_timeout.
-        let wanted = needed(&b, &p.key, &p.transport);
+        let wanted = needed(&b, &p.transport);
         let deadline = Instant::now() + b.start_timeout;
         loop {
             let missing = unreachable(&wanted).await;
@@ -150,6 +164,11 @@ impl Commands for Store {
                 );
             }
             tokio::time::sleep(REACH_PAUSE).await;
+        }
+
+        // key@ may come up after store@, and only after it (key@'s Init reads store@): serve without it.
+        if let Some(w) = key_warning(&p.key).await {
+            tracing::warn!("{w}");
         }
 
         // The signed config, loaded as one snapshot. A cold start refuses on any failure.
@@ -223,7 +242,11 @@ impl Store {
     async fn check_inner(&self, f: &Flags) -> anyhow::Result<()> {
         let b = load(f)?;
         let p = paths(f, &b.boundary);
-        let missing = unreachable(&needed(&b, &p.key, &p.transport)).await;
+        let missing = unreachable(&needed(&b, &p.transport)).await;
+        // key@ is a warning, not a failure: it starts after store@ (see `needed`).
+        if let Some(w) = key_warning(&p.key).await {
+            tracing::warn!("{w}");
+        }
         if missing.is_empty() {
             Ok(())
         } else {
