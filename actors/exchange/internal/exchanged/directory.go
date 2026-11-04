@@ -20,11 +20,8 @@ type Person struct {
 }
 
 // Directory finds the person behind the claims of a verified token of this boundary. It is the one place that reads
-// the kinds of session: Person, UpstreamLink and the session chain. They are sealed and written by session, so the
-// contract and the sealed reader arrive with session (#1221).
-//
-// planned: the store-backed Directory, with session (#1221). Until then main binds Unbound, which refuses every
-// call and makes `check` fail.
+// the kinds of session. main binds StoreDirectory, which reads them through store@ and key@; Unbound is the Directory
+// of a build that has none.
 type Directory interface {
 	// Person returns the person of the claims. ErrUnknownPerson says no person has this subject, and
 	// ErrSessionEnded says the session chain that produced the token has ended (REQ-EXCH-005). Any other error

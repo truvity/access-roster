@@ -564,7 +564,7 @@ func TestTokenLosingRedemptionEndsTheWinnersChain(t *testing.T) {
 			ac.SealedFacts = nil
 			raw, _ := proto.Marshal(ac)
 			s.items[k] = &storedItem{value: raw, version: s.items[k].version + 1}
-			facts, err := e.key.sealForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: winner}, &sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
+			facts, err := e.key.sealForTest("data", &typev2alpha1.Address{Kind: "session-chain", Id: winner}, &sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
 			if err != nil {
 				panic(err)
 			}

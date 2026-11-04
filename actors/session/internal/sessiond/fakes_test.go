@@ -435,8 +435,9 @@ func (f *fakeKey) check(purpose string, a *typev2alpha1.Address, op string, gran
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
 		}
 	case "data":
+		// key@ takes `data` on either: a tenant's needs a grant, the boundary's (no tenant) is checked by rule only (D-5).
 		if a.GetTenant() == "" {
-			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
+			return nil
 		}
 		g, ok := f.policy.open(grant, f.clk.now())
 		if !ok || g.tenant != a.GetTenant() || !contains(g.ops, op) {

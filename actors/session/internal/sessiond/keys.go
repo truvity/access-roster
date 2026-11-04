@@ -96,6 +96,19 @@ func (k keys) openFlow(ctx context.Context, kind, id string, envelope []byte, m 
 	return nil
 }
 
+// sealChainFacts seals the sign-in facts of a session chain under the boundary's data key, at the address of the chain
+// with no tenant: key@ checks a purpose of the boundary by rule only (D-5), so no grant is needed. Both session and
+// exchange hold the purpose `data`; exchange opens the facts to find the person's accounts for token.exchange, and it
+// cannot open a cookie (keys.yaml). The authorization code's facts, which only session reads, stay under the cookie key.
+func (k keys) sealChainFacts(ctx context.Context, sid string, m proto.Message) ([]byte, error) {
+	return k.sealData(ctx, chainKind, "", sid, m, nil)
+}
+
+// openChainFacts opens what sealChainFacts sealed. errNotOurs says it did not open.
+func (k keys) openChainFacts(ctx context.Context, sid string, envelope []byte, m proto.Message) error {
+	return k.openData(ctx, chainKind, "", sid, envelope, m, nil)
+}
+
 // sealData seals the message under the tenant's data key. key@ requires the sealed grant of the decision that allows
 // the write (D-5: a tenant purpose on a tenant address).
 func (k keys) sealData(ctx context.Context, kind, tenant, id string, m proto.Message, grant []byte) ([]byte, error) {

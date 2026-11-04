@@ -156,7 +156,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	if err != nil {
 		return nil, internal("random", err)
 	}
-	chainFacts, err := s.keys.sealFlow(ctx, chainKind, sid, &facts)
+	chainFacts, err := s.keys.sealChainFacts(ctx, sid, &facts)
 	if err != nil {
 		return nil, unavailable("key", err)
 	}

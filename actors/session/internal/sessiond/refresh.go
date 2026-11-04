@@ -66,7 +66,7 @@ func (s *Service) refreshGrant(ctx context.Context, r *sessionv2alpha1.TokenRequ
 	}
 
 	var facts sessionv2alpha1.SignInFacts
-	if err := s.keys.openFlow(ctx, chainKind, sid, chain.GetSealedFacts(), &facts); err != nil {
+	if err := s.keys.openChainFacts(ctx, sid, chain.GetSealedFacts(), &facts); err != nil {
 		if errors.Is(err, errNotOurs) {
 			return s.refuse(ctx, tc, person, nil, reasonRefresh, errInvalidGrant()), nil
 		}
@@ -219,7 +219,7 @@ func (s *Service) endChain(ctx context.Context, tc *tokenCtx, sid, reason string
 	}
 	chain := it.Value
 	var facts sessionv2alpha1.SignInFacts
-	if err := s.keys.openFlow(ctx, chainKind, sid, chain.GetSealedFacts(), &facts); err != nil {
+	if err := s.keys.openChainFacts(ctx, sid, chain.GetSealedFacts(), &facts); err != nil {
 		if errors.Is(err, errNotOurs) {
 			return nil
 		}
