@@ -97,4 +97,6 @@ case "$a" in amd64) goarch=amd64 ;; *) goarch=arm64 ;; esac
 CGO_ENABLED=0 GOOS=linux GOARCH=$goarch go build -trimpath -o "$ctx/probe" ./tests/deny/probe
 docker build -q -f deploy/local/Dockerfile --build-arg BINARY=probe -t "$image" "$ctx" >/dev/null
 
-go run ./tests/deny -project "$project" -probe-image "$image" ${SLUIS_DENY_REPORT:+-report "$SLUIS_DENY_REPORT"}
+# The matrix is the Go test TestDenyMatrix (REQ-DATA-066, REQ-KEYS-044, REQ-ISO-090), so that the run that CI makes is
+# a test that names what it verifies; `go run ./tests/deny` runs the same matrix by hand.
+SLUIS_DENY_RUN_PROJECT=$project SLUIS_DENY_RUN_IMAGE=$image go test -count=1 -timeout 20m -v -run '^TestDenyMatrix$' ./tests/deny
