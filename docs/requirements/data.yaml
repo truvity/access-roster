@@ -276,7 +276,7 @@ requirements:
   - id: REQ-DATA-019
     area: DATA
     statement: "store@ MUST keep a sealed value as the ciphertext the writing actor produced and a hashed value as the hash the writing actor computed."
-    rationale: "The store never seals or opens, so a compromised store yields no sealed data (ADR 0004)."
+    rationale: "The store never seals or opens a stored value, so a compromised store yields no sealed data (ADR 0004); the keys it may use open grants (ADR 0007) and, at a restore, the backup archive key (ADR 0006, ADR 0010), and neither opens a stored value."
     level: MUST
     source: design-decision
     status: partial
@@ -287,7 +287,7 @@ requirements:
     standards: []
     issues: [1206]
     verification:
-      - {kind: integration-test, ref: "store@ has no key purpose and no key credential in the actor registry"}
+      - {kind: integration-test, ref: "store@ holds no key purpose that opens a stored value (data, evidence, chain, cookie) and no key credential; it opens grants and unwraps the archive key on restore"}
       - {kind: integration-test, ref: "a dump of the engine holds ciphertext and hashes only for sealed and hashed kinds"}
   - id: REQ-DATA-020
     area: DATA
@@ -944,7 +944,7 @@ requirements:
   - id: REQ-DATA-065
     area: DATA
     statement: "A lease MUST be taken only by a background job."
-    rationale: "Request paths need no lock, and a self-scoped id keeps one writer per item (ADR 0005)."
+    rationale: "Request paths need no lock, and a self-scoped id keeps one writer per item (ADR 0005); the kind registry will name the lease takers through an actors.yaml field background_jobs, from which the generator derives the Lease writers, built with the first lease consumer (#1203)."
     level: MUST
     source: design-decision
     status: planned

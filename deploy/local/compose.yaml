@@ -19,7 +19,6 @@ services:
       - audit:/v/audit
       - bootstrap:/v/bootstrap
       - config:/v/config
-      - creds-adapter:/v/creds-adapter
       - creds-store:/v/creds-store
       - drv-indexer:/v/drv-indexer
       - drv-store:/v/drv-store
@@ -76,15 +75,12 @@ services:
       - "61012"
       - "61024"
     network_mode: service:idp-loopback
-    environment:
-      - "CREDENTIALS_DIRECTORY=/run/credentials"
     volumes:
       - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc
       - run-store:/run/sluis/store:ro
       - key-adapter-upstream-oidc:/run/sluis/key/dev/adapter-upstream-oidc:ro
       - audit:/run/sluis/audit/dev:ro
       - run-policy:/run/sluis/policy:ro
-      - creds-adapter:/run/credentials:ro
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -867,7 +863,6 @@ volumes:
   audit: {}
   bootstrap: {}
   config: {}
-  creds-adapter: {}
   creds-store: {}
   drv-indexer: {}
   drv-store: {}

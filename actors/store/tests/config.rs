@@ -68,6 +68,8 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
     assert_eq!(u.name, "workforce");
     assert_eq!(u.issuer, "http://127.0.0.1:8180/realms/sluis-test");
     assert_eq!(u.subject_claim, "preferred_username");
+    // The name of its client secret in the secret source, which store@ serves as UpstreamSecret.
+    assert_eq!(u.secret, "upstream-workforce");
     let c = pb::InstallationClient::decode_from_slice(&one("InstallationClient")).unwrap();
     // The items of a keyed kind are in the order of their ids: the audience comes before the command-line client.
     assert_eq!(
@@ -307,6 +309,27 @@ async fn only_a_public_native_clients_loopback_redirect_passes_the_https_floor()
             err.to_string()
                 .contains("must be https, or http on a loopback IP literal"),
             "{environment}: {err}"
+        );
+    }
+}
+
+#[test]
+fn the_secret_an_upstream_names_is_a_credential_name() {
+    let upstream = |secret: &str| {
+        format!(
+            "workforce:\n  kind: oidc\n  issuer: https://idp.example.com\n  client_id: c\n  subject_claim: sub\n  secret: {secret}\n"
+        )
+    };
+    let u = payload::decode(kind("Upstream"), upstream("upstream-workforce").as_bytes()).unwrap();
+    assert_eq!(
+        pb::Upstream::decode_from_slice(&u[0].1).unwrap().secret,
+        "upstream-workforce"
+    );
+    for bad in ["../x", "a/b", ".hidden", "\"has space\""] {
+        let e = refused("Upstream", &upstream(bad));
+        assert!(
+            e.contains("workforce.secret: is not a credential name"),
+            "{bad}: {e}"
         );
     }
 }

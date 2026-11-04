@@ -71,12 +71,15 @@ message Upstream {
   string subject_claim = 5;        // the claim that holds the subject
   string org_claim = 6;            // the claim that holds the organisation; may be empty
   repeated string scopes = 7;      // the scopes to ask for
+  string secret = 8;               // the name of sluis's client secret at the upstream in the secret source (0005 "Secret sources")
 }
 
-// UpstreamSecret is the kind UpstreamSecret; id is the upstream's name.
+// UpstreamSecret is the kind UpstreamSecret; id is the upstream's name. Its value is what store@ answers to a get from
+// its one reader, adapter-upstream-oidc: the secret that IaC put in the secret source under the name that the
+// Upstream declares. It is never signed, stored, logged or audited, and the adapter keeps it for one call only.
 message UpstreamSecret {
-  string upstream = 1;     // the upstream's name
-  string credential = 2;   // the name of the credential in the secret source
+  string upstream = 1;  // the upstream's name
+  bytes secret = 2;     // the secret, exactly as the secret source holds it
 }
 
 // GrantVocabulary is the kind GrantVocabulary; id "default".

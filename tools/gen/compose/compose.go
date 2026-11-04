@@ -96,8 +96,9 @@ var actorSpecs = map[string]actorSpec{
 	// policy: the sockets of store@, key@ and the audit transport have the defaults of the plan.
 	"policy": {Socket: true, Check: true},
 	// entry has no check command: its health is the forwarder's probe through it.
-	"entry":                 {Socket: true, Joins: []string{"harness-forwarder"}},
-	"adapter-upstream-oidc": {Socket: true, Check: true, Egress: true, Creds: "creds-adapter"}, //nolint:gosec // the name of a volume
+	"entry": {Socket: true, Joins: []string{"harness-forwarder"}},
+	// The adapter reads its client secret through store@ (UpstreamSecret, REQ-ISO-106): it has no credential volume.
+	"adapter-upstream-oidc": {Socket: true, Check: true, Egress: true},
 	// session and exchange (M2, "the person"): the other actors are reached on the plan's socket layout by default, so
 	// neither takes a flag beyond the common ones. session finds its only Upstream by itself.
 	"session":  {Socket: true, Check: true},
@@ -851,7 +852,6 @@ func (p *plan) initScript() string {
 	}
 	fwd := p.uid("harness-forwarder")
 	store := p.uid("driver-store-credential")
-	adapter := p.uid("adapter-upstream-oidc")
 	fmt.Fprintf(&b, `
 # The signed config and the bootstrap file belong to root and nobody else can write them (bootstrap-file.md, "Where it lives").
 rm -f /v/config/*.jws
@@ -871,12 +871,11 @@ seed_credentials() { # from-directory volume uid
 	done
 }
 seed_credentials /seed/credentials/store creds-store %d
-seed_credentials /seed/credentials/adapter creds-adapter %d
 
 # The forwarder's certificate chain and key.
 install -o %d -g %d -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem
 install -o %d -g %d -m 0400 /seed/ca/leaf.key /v/forwarder-tls/leaf.key
-`, p.o.Boundary, p.o.Boundary, p.o.Boundary, store, adapter, fwd, fwd, fwd, fwd)
+`, p.o.Boundary, p.o.Boundary, p.o.Boundary, store, fwd, fwd, fwd, fwd)
 	if _, ok := p.vols["vkeys"]; ok {
 		indexer := p.uid("indexer")
 		fmt.Fprintf(&b, `

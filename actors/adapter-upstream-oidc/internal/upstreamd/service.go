@@ -45,7 +45,6 @@ var challengeRE = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 type Options struct {
 	Boundary string
 	Config   *Config
-	Secrets  CredentialDir
 	Audit    *audit.Emitter
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -248,7 +247,7 @@ func (s *Service) complete(ctx context.Context, t *target, r *integrationv2alpha
 	if (p.IssParameter && r.GetIss() == "") || (r.GetIss() != "" && r.GetIss() != p.Issuer) {
 		return nil, oidc.Invalid("iss")
 	}
-	secret, err := s.opts.Secrets.ClientSecret(r.GetUpstream())
+	secret, err := s.opts.Config.ClientSecret(ctx, r.GetUpstream())
 	if err != nil {
 		// No credential, no sign-in: a public client is not assumed (fail closed).
 		return nil, oidc.Unavailable("upstream.client_secret")
@@ -397,7 +396,7 @@ func (s *Service) Check(ctx context.Context) []string {
 			bad = append(bad, path+".kind")
 			continue
 		}
-		if _, err := s.opts.Secrets.ClientSecret(up.GetName()); err != nil {
+		if _, err := s.opts.Config.ClientSecret(ctx, up.GetName()); err != nil {
 			bad = append(bad, path+".client_secret")
 		}
 		if _, err := s.dir.Provider(ctx, up.GetIssuer(), development(b)); err != nil {

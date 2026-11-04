@@ -465,57 +465,76 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     }
 
     /// The item of a secret kind (ADR 0005, "Secret sources"). The config names where the secret is: the
-    /// `InstallationClient` of the id gives the name of the credential, and the secret source gives its bytes. The
-    /// value is the kind's message and leaves in the answer only; it is not in an audit fact, a log line or a span.
+    /// `InstallationClient` or the `Upstream` of the id gives the name of the credential, and the secret source gives
+    /// its bytes. The value is the kind's message and leaves in the answer only; it is not in an audit fact, a log
+    /// line or a span. The kind registry has already limited the caller to the kind's readers.
     async fn secret_item(&self, kind: &Kind, id: &str) -> Res<DriverItem> {
-        if kind.name != "InstallationClientSecret" {
+        let declaring = match kind.name {
+            "InstallationClientSecret" => "InstallationClient",
+            "UpstreamSecret" => "Upstream",
             // The other secret kinds are read by the actors that own them (adapters), which this build does not
             // serve through store@.
-            return Err(unimplemented_secret());
-        }
+            _ => return Err(unimplemented_secret()),
+        };
         let absent = || refuse(ErrorCode::NotFound, "absent", "address");
-        let client = sluis_registry::kind_by_name("InstallationClient")
-            .unwrap_or_else(|| unreachable!("the registry has InstallationClient"));
-        // Without the InstallationClient document the secret cannot be located: unavailable, never empty, as for
-        // a config kind. Otherwise a config outage would read as an unknown client.
+        let config = sluis_registry::kind_by_name(declaring)
+            .unwrap_or_else(|| unreachable!("the registry has {declaring}"));
+        // Without the declaring document the secret cannot be located: unavailable, never empty, as for a config
+        // kind. Otherwise a config outage would read as an unknown client or upstream.
         self.config
-            .version(client.segment)
+            .version(config.segment)
             .ok_or_else(engine_down)?;
-        let bytes = self.config.get(client.segment, id).ok_or_else(absent)?;
-        let declared = pb::InstallationClient::decode_from_slice(&bytes).map_err(|_| {
-            // A document the loader accepted that does not decode is a bug: the operator needs to see it.
-            tracing::warn!(client = id, "InstallationClient does not decode");
+        let bytes = self.config.get(config.segment, id).ok_or_else(absent)?;
+        // A document the loader accepted that does not decode is a bug: the operator needs to see it.
+        let undecodable = |_| {
+            tracing::warn!(kind = declaring, id, "a declaring document does not decode");
             engine_down()
-        })?;
-        if declared.secret.is_empty() {
+        };
+        let credential = if declaring == "Upstream" {
+            pb::Upstream::decode_from_slice(&bytes)
+                .map_err(undecodable)?
+                .secret
+        } else {
+            pb::InstallationClient::decode_from_slice(&bytes)
+                .map_err(undecodable)?
+                .secret
+        };
+        if credential.is_empty() {
             return Err(absent());
         }
         // The caller gets the one answer `absent` for every case below; the operator gets the name of the
         // credential in the log, never a value.
-        let secret = self
-            .secrets
-            .read(&declared.secret)
-            .await
-            .map_err(|e| match e {
-                SecretError::Absent => {
-                    tracing::warn!(
-                        client = id,
-                        credential = declared.secret.as_str(),
-                        "the credential a client names is not in the secret source"
-                    );
-                    absent()
-                }
-                SecretError::Down => engine_down(),
-            })?;
-        let value = pb::InstallationClientSecret {
-            client: id.to_owned(),
-            secret: secret.data.clone(),
-            ..pb::InstallationClientSecret::default()
+        let secret = self.secrets.read(&credential).await.map_err(|e| match e {
+            SecretError::Absent => {
+                tracing::warn!(
+                    kind = declaring,
+                    id,
+                    credential = credential.as_str(),
+                    "the credential the config names is not in the secret source"
+                );
+                absent()
+            }
+            SecretError::Down => engine_down(),
+        })?;
+        let value = if declaring == "Upstream" {
+            pb::UpstreamSecret {
+                upstream: id.to_owned(),
+                secret: secret.data.clone(),
+                ..pb::UpstreamSecret::default()
+            }
+            .encode_to_vec()
+        } else {
+            pb::InstallationClientSecret {
+                client: id.to_owned(),
+                secret: secret.data.clone(),
+                ..pb::InstallationClientSecret::default()
+            }
+            .encode_to_vec()
         };
         Ok(DriverItem {
             // A label of the file, not of the value: the SHA-384 of the source's version, first 8 bytes.
             version: version_of(&secret.version),
-            value: value.encode_to_vec(),
+            value,
             ..DriverItem::default()
         })
     }

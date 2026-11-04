@@ -478,6 +478,7 @@ type Upstream struct {
 	SubjectClaim  string                 `protobuf:"bytes,5,opt,name=subject_claim,json=subjectClaim,proto3" json:"subject_claim,omitempty"` // the claim that holds the subject
 	OrgClaim      string                 `protobuf:"bytes,6,opt,name=org_claim,json=orgClaim,proto3" json:"org_claim,omitempty"`             // the claim that holds the organisation; may be empty
 	Scopes        []string               `protobuf:"bytes,7,rep,name=scopes,proto3" json:"scopes,omitempty"`                                 // the scopes to ask for
+	Secret        string                 `protobuf:"bytes,8,opt,name=secret,proto3" json:"secret,omitempty"`                                 // the name of sluis's client secret at the upstream in the secret source (0005 "Secret sources")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -561,11 +562,20 @@ func (x *Upstream) GetScopes() []string {
 	return nil
 }
 
-// UpstreamSecret is the kind UpstreamSecret; id is the upstream's name.
+func (x *Upstream) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// UpstreamSecret is the kind UpstreamSecret; id is the upstream's name. Its value is what store@ answers to a get from
+// its one reader, adapter-upstream-oidc: the secret that IaC put in the secret source under the name that the
+// Upstream declares. It is never signed, stored, logged or audited, and the adapter keeps it for one call only.
 type UpstreamSecret struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Upstream      string                 `protobuf:"bytes,1,opt,name=upstream,proto3" json:"upstream,omitempty"`     // the upstream's name
-	Credential    string                 `protobuf:"bytes,2,opt,name=credential,proto3" json:"credential,omitempty"` // the name of the credential in the secret source
+	Upstream      string                 `protobuf:"bytes,1,opt,name=upstream,proto3" json:"upstream,omitempty"` // the upstream's name
+	Secret        []byte                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`     // the secret, exactly as the secret source holds it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -607,11 +617,11 @@ func (x *UpstreamSecret) GetUpstream() string {
 	return ""
 }
 
-func (x *UpstreamSecret) GetCredential() string {
+func (x *UpstreamSecret) GetSecret() []byte {
 	if x != nil {
-		return x.Credential
+		return x.Secret
 	}
-	return ""
+	return nil
 }
 
 // GrantVocabulary is the kind GrantVocabulary; id "default".
@@ -1040,7 +1050,7 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\x06secret\x18\a \x01(\tR\x06secret\"J\n" +
 	"\x18InstallationClientSecret\x12\x16\n" +
 	"\x06client\x18\x01 \x01(\tR\x06client\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\fR\x06secret\"\xc1\x01\n" +
+	"\x06secret\x18\x02 \x01(\fR\x06secret\"\xd9\x01\n" +
 	"\bUpstream\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x16\n" +
@@ -1048,12 +1058,11 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\tclient_id\x18\x04 \x01(\tR\bclientId\x12#\n" +
 	"\rsubject_claim\x18\x05 \x01(\tR\fsubjectClaim\x12\x1b\n" +
 	"\torg_claim\x18\x06 \x01(\tR\borgClaim\x12\x16\n" +
-	"\x06scopes\x18\a \x03(\tR\x06scopes\"L\n" +
+	"\x06scopes\x18\a \x03(\tR\x06scopes\x12\x16\n" +
+	"\x06secret\x18\b \x01(\tR\x06secret\"D\n" +
 	"\x0eUpstreamSecret\x12\x1a\n" +
-	"\bupstream\x18\x01 \x01(\tR\bupstream\x12\x1e\n" +
-	"\n" +
-	"credential\x18\x02 \x01(\tR\n" +
-	"credential\"-\n" +
+	"\bupstream\x18\x01 \x01(\tR\bupstream\x12\x16\n" +
+	"\x06secret\x18\x02 \x01(\fR\x06secret\"-\n" +
 	"\x0fGrantVocabulary\x12\x1a\n" +
 	"\bdocument\x18\x01 \x01(\fR\bdocument\".\n" +
 	"\x06Policy\x12\x0e\n" +
