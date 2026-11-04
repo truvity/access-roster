@@ -1,7 +1,7 @@
 # 0013 — One repository, one version, one release train, and packaging follows the runtime
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -25,6 +25,7 @@ Two platform facts are hard constraints. The YubiKey driver talks to the smart-c
 - **One build tool: GoReleaser v2, open-source edition,** for Go and Rust executables alike, with one SBOM generator and one build definition. The Rust executables are built with cargo-zigbuild, current crates and rustls, as static musl binaries, except the binaries that link `libpcsclite`. GoReleaser builds the images from the binaries of the same run with `dockers_v2`, and truvity/ocictl packages and pushes the Helm chart from the same output, with every image pinned by digest. There is no FIPS build in 2.0 ([0006](/decisions/0006-keys-and-sealing/#algorithms)).
 - **The YubiKey driver, and the build of key@ that links `piv-go`, are built in a native job per architecture,** inside the userland of the oldest supported distribution, so they run on every supported glibc. The jobs' outputs join the rest of the release.
 - **One command-line tool, `sluis`, with subcommands** for operators and users, such as `sluis config check`, `sluis doctor`, `sluis trust sync` and `sluis key request|install|status`. Root ceremonies belong to [ritueel](https://ritueel.id). Actors, drivers, the node agent and the host service are separate executables, one per process, because each runs as its own user, unit, function or container.
+- **`sluis config check` runs the store executable of the same release as a helper** ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The CLI looks for it in this order: its `--helper` flag, the `SLUIS_STORE_HELPER` variable, `store` in the CLI's own directory, and the install path `../libexec/sluis/actors/store` beside that directory. So a tarball that holds both executables in one directory works as it is unpacked, and so does a host with the `sluis` and `sluis-store` packages. The helper is a Linux executable, so `config check` runs on Linux only.
 
 ### Packaging per runtime
 
@@ -85,6 +86,7 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 
 ## Consequences
 
+- `sluis config check` needs two executables of one release, the CLI and store. A pipeline that checks config before it publishes installs both, on Linux.
 - One tag produces everything, so no one needs a compatibility table between components. A small fix releases every artifact, including unchanged ones.
 - Every consumer of a v1 Go module changes its import path once, when it moves to v2; both lines can sit in one build graph during the migration.
 - Two toolchains build one train. If the Cargo workspace does not build under GoReleaser, the train needs a special-case job.
@@ -104,6 +106,7 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 
 - **Keep the build profiles.** A profile mixed the runtime with the provider and the use, and a build that is not the one tested is the one that runs.
 - **Independent versions per component or module.** A user would need a compatibility table between components released from one commit; v1 ADR 0042 rejected it for the same reason.
+- **store@'s validation linked into the `sluis` binary.** The CLI is Go and store@ is Rust; linking Rust into the Go binary through cgo would give up its static cross-compiled build for one command.
 - **One binary for everything, selected by subcommand.** An actor's unit could then execute every other actor's code; only the CLI is one binary.
 - **ko for the images.** It builds Go only and puts the binary under its own path, so the Rust executables and the rule that an image holds the package's file byte for byte would not hold.
 - **The four-segment image names `ghcr.io/truvity/sluis/<kind>/<name>`.** Not shown to work on GHCR, where the flat three-segment form is.

@@ -14,7 +14,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
-    issues: [864, 867]
+    issues: [864, 867, 1419]
     verification:
       - {kind: integration-test, ref: "driver-requirement tests"}
   - id: REQ-OPS-009
@@ -29,7 +29,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
-    issues: [864, 867]
+    issues: [864, 867, 1419]
     verification:
       - {kind: integration-test, ref: "compatibility matrix tests"}
   - id: REQ-OPS-002
@@ -323,7 +323,7 @@ requirements:
     milestone: first-version
     runtimes: all
     standards: []
-    issues: [864]
+    issues: [864, 1419]
     verification:
       - {kind: integration-test, ref: "explain provenance test"}
   - id: REQ-OPS-024

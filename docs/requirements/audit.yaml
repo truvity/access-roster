@@ -249,7 +249,7 @@ requirements:
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
-    issues: [1121, 837]
+    issues: [1121, 837, 1419]
     verification:
       - {kind: integration-test, ref: "config-check lock-mode report test"}
   - id: REQ-AUDIT-009

@@ -118,7 +118,7 @@ requirements:
     standards:
       - {id: ST-51, section: "3", depth: Partial}
       - {id: ST-88, section: "1", depth: Partial}
-    issues: [800, 864]
+    issues: [800, 864, 1419]
     verification:
       - {kind: integration-test, ref: "config-check matrix per driver"}
   - id: REQ-KEYS-005
@@ -631,9 +631,8 @@ requirements:
     rationale: "A plan may shorten a limit and never lengthen it past the maximum in code (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards: []
     issues: [1210]

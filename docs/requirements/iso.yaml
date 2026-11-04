@@ -1065,7 +1065,7 @@ requirements:
     milestone: first-version
     runtimes: all
     standards: []
-    issues: [863]
+    issues: [863, 1419]
     verification:
       - {kind: integration-test, ref: "a repeated block and a block of 55 are refused"}
   - id: REQ-ISO-074
