@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"os"
@@ -171,12 +172,38 @@ func TestCanonicalRefusesWhatIsNotJSONData(t *testing.T) {
 	}
 }
 
+// repeatable is a string, or {"$repeat": "a", "times": n} for n copies, so a vector can hold a long string.
+type repeatable string
+
+func (r *repeatable) UnmarshalJSON(b []byte) error {
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*r = repeatable(s)
+		return nil
+	}
+	var m struct {
+		Repeat string `json:"$repeat"`
+		Times  int    `json:"times"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	*r = repeatable(strings.Repeat(m.Repeat, m.Times))
+	return nil
+}
+
 type eventJSON struct {
 	Action struct {
-		Name       string `json:"name"`
-		ClassUID   int    `json:"class_uid"`
-		ActivityID int    `json:"activity_id"`
+		Name         string     `json:"name"`
+		ClassUID     int        `json:"class_uid"`
+		ActivityID   int        `json:"activity_id"`
+		ActivityName repeatable `json:"activity_name"`
 	} `json:"action"`
+	Subject *struct {
+		Tenant string     `json:"tenant"`
+		Kind   repeatable `json:"kind"`
+		Value  repeatable `json:"value"`
+	} `json:"subject"`
 	Status     int             `json:"status"`
 	StatusCode string          `json:"status_code"`
 	Tenant     string          `json:"tenant"`
@@ -185,17 +212,21 @@ type eventJSON struct {
 		DecisionID string   `json:"decision_id"`
 		Digest     string   `json:"digest"`
 		PolicyIDs  []string `json:"policy_ids"`
+		Decision   int      `json:"decision"`
 	} `json:"policy"`
 }
 
 func (e eventJSON) event(t *testing.T) Event {
 	t.Helper()
 	ev := Event{
-		Action: Action{Name: e.Action.Name, ClassUID: e.Action.ClassUID, ActivityID: e.Action.ActivityID},
+		Action: Action{Name: e.Action.Name, ClassUID: e.Action.ClassUID, ActivityID: e.Action.ActivityID, ActivityName: string(e.Action.ActivityName)},
 		Status: Status(e.Status), StatusCode: e.StatusCode, Tenant: e.Tenant, Sluis: sluisFrom(t, e.Sluis),
 	}
 	if e.Policy != nil {
-		ev.Policy = &PolicyRef{DecisionID: e.Policy.DecisionID, Digest: e.Policy.Digest, PolicyIDs: e.Policy.PolicyIDs}
+		ev.Policy = &PolicyRef{DecisionID: e.Policy.DecisionID, Digest: e.Policy.Digest, PolicyIDs: e.Policy.PolicyIDs, Decision: Decision(e.Policy.Decision)}
+	}
+	if e.Subject != nil {
+		ev.Subject = &Subject{Tenant: e.Subject.Tenant, Kind: string(e.Subject.Kind), Value: string(e.Subject.Value)}
 	}
 	return ev
 }
@@ -235,6 +266,21 @@ type recordFile struct {
 		Name  string          `json:"name"`
 		Sluis json.RawMessage `json:"sluis"`
 	} `json:"accepted"`
+	EventRefusals []struct {
+		Name   string    `json:"name"`
+		Event  eventJSON `json:"event"`
+		Reason string    `json:"reason"`
+		Path   string    `json:"path"`
+	} `json:"event_refusals"`
+	EventAccepted []struct {
+		Name  string    `json:"name"`
+		Event eventJSON `json:"event"`
+	} `json:"event_accepted"`
+	MacLabel  string `json:"mac_label"`
+	MacInputs []struct {
+		Boundary, Tenant, Kind, Value string
+		InputHex                      string `json:"input_hex"`
+	} `json:"mac_inputs"`
 	Email struct {
 		Match   []string `json:"match"`
 		NoMatch []string `json:"no_match"`
@@ -288,7 +334,7 @@ func TestUUIDVectors(t *testing.T) {
 func TestRefusalVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)
-	base := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess}
+	base := Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
 	if len(f.Refusals) == 0 {
 		t.Fatal("no refusal vectors")
 	}
@@ -345,7 +391,7 @@ func TestRecordIsRefusedAboveItsBound(t *testing.T) {
 	for i := range 20 {
 		sluis["k"+strconv.Itoa(i)] = strings.Repeat("a", StringMax)
 	}
-	ev := Event{Action: Action{Name: "x", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess, Sluis: sluis}
+	ev := Event{Action: Action{Name: "x", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess, Sluis: sluis}
 	if err := validateEvent(ev); err != nil {
 		t.Fatal(err)
 	}
@@ -355,5 +401,51 @@ func TestRecordIsRefusedAboveItsBound(t *testing.T) {
 	}
 	if path, _ := refusal.FieldPath(err); path != "record" {
 		t.Fatalf("path = %q", path)
+	}
+}
+
+func TestEventRefusalVectors(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.EventRefusals) == 0 || len(f.EventAccepted) == 0 {
+		t.Fatal("no event vectors")
+	}
+	for _, r := range f.EventRefusals {
+		t.Run(r.Name, func(t *testing.T) {
+			err := validateEvent(r.Event.event(t))
+			if err == nil {
+				t.Fatal("accepted")
+			}
+			if reason, _ := refusal.Reason(err); reason != r.Reason {
+				t.Errorf("reason = %q, want %q", reason, r.Reason)
+			}
+			if path, _ := refusal.FieldPath(err); path != r.Path {
+				t.Errorf("path = %q, want %q", path, r.Path)
+			}
+		})
+	}
+	for _, a := range f.EventAccepted {
+		if err := validateEvent(a.Event.event(t)); err != nil {
+			t.Errorf("%s: %v", a.Name, err)
+		}
+	}
+}
+
+func TestPseudonymInputVectors(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.MacInputs) == 0 || f.MacLabel != pseudonymLabel {
+		t.Fatalf("label %q, %d inputs", f.MacLabel, len(f.MacInputs))
+	}
+	seen := map[string]string{}
+	for _, v := range f.MacInputs {
+		got := hex.EncodeToString(pseudonymInput(v.Boundary, Subject{Tenant: v.Tenant, Kind: v.Kind, Value: v.Value}))
+		if got != v.InputHex {
+			t.Errorf("input of %+v = %s, want %s", v, got, v.InputHex)
+		}
+		if other, dup := seen[got]; dup {
+			t.Errorf("%+v and %s give the same input", v, other)
+		}
+		seen[got] = v.Boundary + "/" + v.Tenant
 	}
 }
