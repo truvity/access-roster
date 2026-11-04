@@ -105,8 +105,13 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if r.GetCodeChallengeMethod() != "S256" || !validChallenge(r.GetCodeChallenge()) {
 		return fail("invalid_request", "PKCE with S256 is required", reasonPKCE)
 	}
-	scope, ok := grantedScope(r.GetScope())
-	if !ok {
+	// An unknown scope is refused, not dropped (REQ-CLIENT-022): invalid_scope is "invalid, unknown, or malformed"
+	// (RFC 6749 section 4.1.2.1). The description names no scope; the audit record says which rule refused.
+	scope, err := grantedScope(r.GetScope())
+	switch {
+	case errors.Is(err, errScopeUnknown):
+		return fail("invalid_scope", "a requested scope is not served", reasonScope)
+	case err != nil:
 		return fail("invalid_scope", "the openid scope is required", reasonRequest)
 	}
 	// A prompt asks for something the upstream must be told to do: login forces a fresh authentication, none forbids
@@ -233,24 +238,35 @@ func validChallenge(c string) bool {
 	return true
 }
 
-// grantedScope returns the scopes session grants out of the requested ones, and false when openid is not among
-// them. Unknown scopes are left out (RFC 6749 section 3.3: the server may grant less than was asked).
-func grantedScope(requested string) (string, bool) {
+// The ways a requested scope is refused.
+var (
+	errScopeMalformed = errors.New("scope: malformed or without openid")
+	errScopeUnknown   = errors.New("scope: unknown")
+)
+
+// grantedScope returns the requested scopes, each once, in the order asked. A scope session does not serve is an
+// error, errScopeUnknown, and not left out (REQ-CLIENT-022): RFC 6749 section 3.3 lets a server grant less than was
+// asked, but a client that asked for a scope it does not get would find out only from the token. A scope over the
+// bound, or one without openid (OpenID Connect Core section 3.1.2.1), is errScopeMalformed.
+func grantedScope(requested string) (string, error) {
 	if len(requested) > maxScope {
-		return "", false
+		return "", errScopeMalformed
 	}
 	var out []string
 	seen := map[string]bool{}
 	for _, sc := range strings.Fields(requested) {
-		if knownScopes[sc] && !seen[sc] {
+		if !knownScopes[sc] {
+			return "", errScopeUnknown
+		}
+		if !seen[sc] {
 			seen[sc] = true
 			out = append(out, sc)
 		}
 	}
 	if !seen["openid"] {
-		return "", false
+		return "", errScopeMalformed
 	}
-	return strings.Join(out, " "), true
+	return strings.Join(out, " "), nil
 }
 
 // redirectRegistered reports whether got is one of the client's registered redirect URIs. The match is an exact string
