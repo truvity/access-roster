@@ -161,7 +161,8 @@ requirements:
     rationale: "A wildcard in requires, a claim, a lifetime or the role position would grant or admit by pattern."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: register-gap
     runtimes: all
     standards: []
     issues: [892]

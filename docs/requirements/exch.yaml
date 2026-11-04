@@ -52,7 +52,8 @@ requirements:
     rationale: "A uniform answer hides which audiences exist."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: register-gap
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2.2", depth: Full}
