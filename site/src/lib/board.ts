@@ -35,12 +35,13 @@ const QUERY = `query($org: String!, $number: Int!, $field: String!, $status: Str
     projectV2(number: $number) {
       id
       field(name: $field) { ... on ProjectV2SingleSelectField { options { id name } } }
+      statusField: field(name: $status) { ... on ProjectV2SingleSelectField { options { id name } } }
       items(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
           content { __typename ... on Issue { number title state labels(first: 50) { nodes { name } } repository { nameWithOwner } } }
           milestone: fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-          status: fieldValueByName(name: $status) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          status: fieldValueByName(name: $status) { ... on ProjectV2ItemFieldSingleSelectValue { optionId } }
         }
       }
     }
@@ -71,6 +72,7 @@ async function page(token: string, userAgent: string, after: string | null) {
 export async function readBoard(token: string, userAgent: string): Promise<Board> {
   const issues = new Map<number, BoardIssue>();
   let options: string[] | null = null;
+  let inProgressId = '';
   let id = '';
   let after: string | null = null;
   let items = 0;
@@ -80,6 +82,9 @@ export async function readBoard(token: string, userAgent: string): Promise<Board
       id = project.id;
       options = (project.field?.options ?? []).map((o: { name: string }) => o.name);
       if (!options!.length) throw new Error(`the project has no single-select field "${FIELD}" with options`);
+      const found = (project.statusField?.options ?? []).find((o: { name: string }) => o.name === IN_PROGRESS);
+      if (!found) throw new Error(`the project has no option "${IN_PROGRESS}" in its single-select field "${STATUS_FIELD}"`);
+      inProgressId = found.id;
     }
     for (const node of project.items.nodes) {
       items++;
@@ -92,7 +97,7 @@ export async function readBoard(token: string, userAgent: string): Promise<Board
         open: c.state === 'OPEN',
         labels: (c.labels?.nodes ?? []).map((l: { name: string }) => l.name),
         milestone: value && options!.includes(value) ? value : null,
-        inProgress: node.status?.name === IN_PROGRESS,
+        inProgress: node.status?.optionId === inProgressId,
       });
     }
     if (!project.items.pageInfo.hasNextPage) {
