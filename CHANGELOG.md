@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Breaking:** a development boundary takes a plain-http URL only on the loopback IP literal `127.0.0.1` or `[::1]`, as ADR 0011 says. store@ refuses at load an `http` boundary issuer, upstream issuer, `ExchangeTrust` issuer or `jwks_uri` on any other host, `localhost` included; it took any. The adapter and exchange no longer fetch from another address of `127.0.0.0/8` or from `::ffff:127.0.0.1`. A development upstream behind plain HTTP is reached through a loopback forwarder, as the local installation does.
 - **Breaking:** an `InstallationClient` redirect must be `https`, or `http` on the loopback IP literal `127.0.0.1` or `[::1]` with any port (RFC 8252 section 7.3). store@ refuses any other plain-http redirect at load, `http://localhost` included, in every environment, and `/authorize` never redirects to one; a staging or production boundary now accepts a public native client's loopback redirect, and only that one, as ADR 0011 says.
 - **Breaking:** `/authorize` answers a request with a scope it does not serve with `error=invalid_scope` on the client's redirect URI, where it dropped the scope and signed the person in. Only `openid`, `profile` and `email` are served.
 - **Breaking:** the subject claim of an upstream ID token is at most 255 bytes (255 ASCII characters, the bound of OpenID Connect Core section 2); the adapter took 256. An upstream that sends a longer value now fails the sign-in.

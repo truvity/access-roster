@@ -71,6 +71,7 @@ func TestCacheTTL(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-037
 func TestCheckURL(t *testing.T) {
 	for _, c := range []struct {
 		url  string
@@ -83,6 +84,10 @@ func TestCheckURL(t *testing.T) {
 		{"http://127.0.0.1/keys", false, false},
 		{"http://localhost/keys", true, false},
 		{"http://10.0.0.1/keys", true, false},
+		{"http://idp.example.com/keys", true, false},
+		// Only the two literals: not another address of 127.0.0.0/8, not the mapped form.
+		{"http://127.0.0.2/keys", true, false},
+		{"http://[::ffff:127.0.0.1]/keys", true, false},
 		{"https://user:pw@example.com/", false, false},
 		{"https://example.com/#frag", false, false},
 		{"ftp://example.com/", false, false},
