@@ -285,11 +285,11 @@ await test('the milestone cards: a Design group and a Build group, named, with t
   assert.ok(card.includes('ps-bargroup-design') && card.includes('ps-bargroup-build'), 'a Design group and a Build group');
   assert.ok(card.indexOf('ps-bargroup-design') < card.indexOf('ps-bargroup-build'));
   assert.ok(card.includes('aria-label="Design: 1 of 1 ADRs accepted, 0 of 1 requirements decided"'), card);
-  assert.ok(card.includes('aria-label="Build: 0 done and 0 partial of 1 requirements, 0 closed and 0 in progress of 1 issues"'), card);
-  for (const k of ['ADRs accepted', 'Requirements decided', 'Requirements', 'Issues']) assert.ok(card.includes(`<dt>${k}</dt>`), k);
+  assert.ok(card.includes('aria-label="Build: 0 done and 0 partial of 1 requirements, 0 evidence-backed, 0 closed and 0 in progress of 1 issues"'), card);
+  for (const k of ['ADRs accepted', 'Requirements decided', 'Requirements', 'Evidence-backed', 'Issues']) assert.ok(card.includes(`<dt>${k}</dt>`), k);
   assert.ok(card.includes('0 done, 0 partial of 1') && card.includes('0 closed, 0 in progress of 1'), 'each part has its own number');
-  // Two plain bars in Design, and two in Build that are each two meters (the whole, and its first part).
-  assert.equal(card.match(/<meter /g).length, 6);
+  // Two plain bars in Design, and in Build one plain bar (evidence) and two that are each two meters (the whole, and its first part).
+  assert.equal(card.match(/<meter /g).length, 7);
   assert.equal(card.match(/class="ps-stack"/g).length, 2);
   // Nothing done, partial or in progress: the Design block says "not built".
   assert.ok(card.includes('decided on paper, not built') && !card.includes('build in progress'), card);
@@ -318,7 +318,7 @@ await test('the Build bars show partial requirements and issues in progress, and
   // The whole is the sum of the parts: closed + in progress, done + partial.
   assert.ok(c.includes('max="5" value="3"') && c.includes('max="5" value="1"'), 'requirements: 3 of 5 below, 1 of 5 above');
   assert.ok(c.includes('max="4" value="3"') && c.includes('max="4" value="1"'), 'issues: 3 of 4 below, 1 of 4 above');
-  assert.ok(c.includes('aria-label="Build: 1 done and 2 partial of 5 requirements, 1 closed and 2 in progress of 4 issues"'), c);
+  assert.ok(c.includes('aria-label="Build: 1 done and 2 partial of 5 requirements, 0 evidence-backed, 1 closed and 2 in progress of 4 issues"'), c);
   assert.ok(c.includes('decided on paper, build in progress') && !c.includes('not built'), 'any progress drops "not built"');
   // Each of the three alone drops "not built".
   const cold = { options: ['M1'], issues: [issue(1, true, false)] };
@@ -431,6 +431,43 @@ await test('counting: each live requirement is in exactly one block, under the e
   assert.equal(groups.flatMap((g) => g.areas).reduce((n, a) => n + a.counts.total, 0), liveRequirements);
   assert.equal(counts.reduce((n, c) => n + c.total, 0), liveRequirements, 'withdrawn is in no block');
 });
+// ---- the explicit milestone and the evidence (docs/requirements/README.md)
+const MS_BOARD = { options: ['M1', 'M2'], issues: [
+  { number: 10, title: 'one', open: true, labels: [], milestone: 'M1' },
+  { number: 20, title: 'two', open: true, labels: [], milestone: 'M2' },
+] };
+const MS_REPO = { builtAt: '2026-11-01T10:00:00Z', decisions: [], requirements: [
+  // names M2 although its issue is in M1: the name wins
+  { id: 'REQ-AA-001', area: 'AA', status: 'done', issues: [10], auto: true, milestone: 'M2', evidence: 2 },
+  // names no milestone: placed by its issue (M1), inferred
+  { id: 'REQ-AA-002', area: 'AA', status: 'partial', issues: [10], auto: true, milestone: null, evidence: 1 },
+  // names no milestone, no issue: Unassigned, inferred
+  { id: 'REQ-AA-003', area: 'AA', status: 'planned', issues: [], auto: false },
+  // names a milestone the board does not have: Unassigned, not inferred
+  { id: 'REQ-AA-004', area: 'AA', status: 'done', issues: [20], auto: true, milestone: 'Retired', evidence: 0 },
+  // done without evidence is not evidence-backed; planned with evidence is not either
+  { id: 'REQ-AA-005', area: 'AA', status: 'planned', issues: [20], auto: true, milestone: 'M2', evidence: 3 },
+] };
+await test('milestone: a record that names one is placed there, and one that names none is placed by its issues and counted as inferred', () => {
+  const groups = groupStatus(MS_BOARD, MS_REPO);
+  assert.deepEqual(groups.map((g) => [g.name, g.reqs.total, g.reqs.inferred, g.reqs.evidenced]), [['M1', 1, 1, 1], ['M2', 2, 0, 1], ['Unassigned', 2, 1, 0]]);
+  const t = totalsOf(groups);
+  assert.deepEqual([t.reqs.total, t.reqs.inferred, t.reqs.evidenced], [5, 2, 2]);
+  // Without a board every record is Unassigned, whatever it names.
+  assert.equal(groupStatus(null, MS_REPO).at(-1).reqs.total, 5);
+});
+await test('milestone: an old repo.json with no milestone and no evidence still groups, all inferred', () => {
+  const g = groupStatus(MS_BOARD, REPO);
+  assert.equal(g.reduce((n, x) => n + x.reqs.inferred, 0), 1);
+  assert.equal(g.reduce((n, x) => n + x.reqs.evidenced, 0), 0);
+});
+await test('milestone: the page shows the evidence-backed count and says what was inferred', () => {
+  const html = statusBodyHtml({ groups: groupStatus(MS_BOARD, MS_REPO), mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
+  assert.ok(html.includes('1 evidence-backed'), 'the Build caption names the count');
+  assert.ok(html.includes('<dt>Evidence-backed</dt>'));
+  assert.ok(html.includes('1 of 1 requirements are placed here by inference'), 'M1 says its one record is inferred');
+  assert.ok(html.includes('>Evidence-backed</th>') && html.includes('>Inferred</th>'), 'two ledger columns');
+});
 await test('counting: the blocks add up to the totals', () => {
   const groups = groupStatus(COUNT_BOARD, COUNT_REPO);
   const t = totalsOf(groups);
@@ -450,11 +487,11 @@ await test('counting: the page draws the same sums, in the Total row and in the 
   const row = (re) => [...re.exec(html)[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((m) => Number(m[1]));
   const total = row(/<tr class="ps-total-row"[^>]*>(.*?)<\/tr>/);
   assert.equal(total[0], liveRequirements, 'requirements Total');
-  assert.equal(total[7], COUNT_REPO.decisions.length, 'ADR Records');
+  assert.equal(total[9], COUNT_REPO.decisions.length, 'ADR Records');
   const rows = [...html.matchAll(/<tr class="ps-group-row">(.*?)<\/tr>/g)].map((m) => [...m[1].matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((x) => Number(x[1])));
   assert.equal(rows.length, 3);
   assert.equal(rows.reduce((n, r) => n + r[0], 0), total[0]);
-  assert.equal(rows.reduce((n, r) => n + r[7], 0), total[7]);
+  assert.equal(rows.reduce((n, r) => n + r[9], 0), total[9]);
   // Every row has Total = Undecided + Planned + Partial + Done + Out of scope.
   for (const r of [...rows, total]) assert.equal(r[0], r[1] + r[2] + r[3] + r[4] + r[5]);
   // The cards: one for each milestone and one for Unassigned; their denominators are the records.

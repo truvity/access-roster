@@ -1581,7 +1581,8 @@ async fn a_listed_reader_gets_the_secret_of_the_client_the_config_names() {
     }
 }
 
-// REQ-DATA-016: store@ serves a secret kind only to the readers that the kind lists.
+/// verifies: REQ-DATA-016
+/// store@ serves a secret kind only to the readers that the kind lists.
 #[tokio::test]
 async fn a_caller_that_is_not_a_listed_reader_gets_no_secret_and_the_source_is_not_asked() {
     let f = F::new().await;

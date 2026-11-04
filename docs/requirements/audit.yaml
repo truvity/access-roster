@@ -1383,7 +1383,7 @@ requirements:
     standards:
       - {id: ST-103, section: "blob port", depth: Full}
     issues: [1121, 837, 851]
-    tests: [drivers/writer/fs/src/suite.rs]
+    tests: [drivers/writer/fs/src/suite.rs, drivers/writer/fs/tests/port.rs]
     verification:
       - {kind: conformance-suite, ref: "port conformance suite, blob create-if-absent"}
   - id: REQ-AUDIT-104

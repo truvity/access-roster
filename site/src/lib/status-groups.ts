@@ -4,10 +4,13 @@
 // Every decision record and every live requirement is in exactly one group, so the groups
 // add up to the totals in the page's header (totalsOf below, drawn as the table's last row).
 // - An issue belongs to the group of its own milestone value.
-// - A requirement belongs to the group of the issues it links (`issues:`); with several, the
-//   earliest group in option order. A requirement that links no issue, whose issues are not
-//   on the board, or whose issues have no milestone (or one that is not an option) is
-//   "Unassigned". Withdrawn requirements are not live and are in no group; out-of-scope
+// - A requirement belongs to the group its `milestone:` names (the name of a board option,
+//   resolved from the slug by the build; /data/repo.json carries the name). A requirement that
+//   names none is placed by inference: the group of the issues it links (`issues:`); with
+//   several, the earliest group in option order. It is then counted as `inferred`, and the
+//   page says so. A requirement that names a milestone the board does not have, or that names
+//   none and links no issue, whose issues are not on the board, or whose issues have no
+//   milestone (or one that is not an option) is "Unassigned". Withdrawn requirements are not live and are in no group; out-of-scope
 //   ones are live (they are in the header's total) and have their own column.
 // - A decision record belongs to the group of its proposal issue, and to "Unassigned" when
 //   that issue is not on the board or has no milestone. Records that share a proposal issue
@@ -34,10 +37,13 @@ export interface BoardLike { options: string[]; issues: BoardIssue[] }
 
 // The facts of /data/repo.json that the groups need (src/lib/repo.ts writes them).
 export interface DecisionFact { id: string; number: string; title: string; status: string; proposal: number | null }
-export interface RequirementFact { id: string; area: string; status: string; issues: number[]; auto: boolean }
+// `milestone`: the name of the board option the record names, or null; `evidence`: the number of tagged tests and
+// attestations. A /data/repo.json from before these fields has neither: no milestone named, no evidence.
+export interface RequirementFact { id: string; area: string; status: string; issues: number[]; auto: boolean; milestone?: string | null; evidence?: number }
 export interface RepoLike { decisions: DecisionFact[]; requirements: RequirementFact[] }
 
-export interface ReqCounts { total: number; open: number; planned: number; partial: number; done: number; outOfScope: number; auto: number }
+// `evidenced`: done or partial, with at least one piece of evidence. `inferred`: placed by its issues because the record names no milestone.
+export interface ReqCounts { total: number; open: number; planned: number; partial: number; done: number; outOfScope: number; auto: number; evidenced: number; inferred: number }
 export interface AreaRow { code: string; counts: ReqCounts }
 export interface Group {
   name: string;
@@ -67,6 +73,8 @@ const countReqs = (rs: RequirementFact[]): ReqCounts => ({
   done: rs.filter((r) => r.status === 'done').length,
   outOfScope: rs.filter((r) => r.status === 'out-of-scope').length,
   auto: rs.filter((r) => r.auto).length,
+  evidenced: rs.filter((r) => (r.status === 'done' || r.status === 'partial') && (r.evidence ?? 0) > 0).length,
+  inferred: rs.filter((r) => !r.milestone).length,
 });
 
 export const slugOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'group';
@@ -85,7 +93,12 @@ export function groupStatus(board: BoardLike | null, repo: RepoLike): Group[] {
   const areaCodes = [...new Set(repo.requirements.map((r) => r.area))];
 
   const reqsBy = names.map(() => [] as RequirementFact[]);
-  for (const r of repo.requirements.filter(counted)) reqsBy[Math.min(last, ...r.issues.map(indexOfIssue))].push(r);
+  for (const r of repo.requirements.filter(counted)) {
+    if (r.milestone) {
+      const k = options.indexOf(r.milestone);
+      reqsBy[k < 0 ? last : k].push(r);
+    } else reqsBy[Math.min(last, ...r.issues.map(indexOfIssue))].push(r);
+  }
 
   const recordsBy = names.map(() => [] as DecisionFact[]);
   for (const d of repo.decisions) recordsBy[indexOfIssue(d.proposal)].push(d);
@@ -144,6 +157,7 @@ export function totalsOf(groups: Group[]): Totals {
     reqs: {
       total: sum((g) => g.reqs.total), open: sum((g) => g.reqs.open), planned: sum((g) => g.reqs.planned),
       partial: sum((g) => g.reqs.partial), done: sum((g) => g.reqs.done), outOfScope: sum((g) => g.reqs.outOfScope), auto: sum((g) => g.reqs.auto),
+      evidenced: sum((g) => g.reqs.evidenced), inferred: sum((g) => g.reqs.inferred),
     },
     records: sum((g) => g.adrs.records.length),
     accepted: sum((g) => g.adrs.accepted),

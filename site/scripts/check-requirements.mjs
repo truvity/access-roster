@@ -20,9 +20,17 @@
 //   L15 an open or partial record names a declared gap key; gap is allowed on no other status
 //   L16 a standard that no requirement cites (warning)
 //   L17 an out-of-scope record is a MUST NOT or a MAY and has a verification
-//   L18 a done record names its evidence: `tests` lists repository paths, each a file that exists
-//       inside the repository and that names the record's id (a test carries its id in its name)
+//   L18 `tests`, when a record lists it, holds repository paths, each a file that exists inside the repository and
+//       that names the record's id. It is an index for the reader; what counts as evidence is L21
 //   L19 an area with `retired: true` in index.yaml has only withdrawn records; it keeps its file and its ids
+//   L20 `milestone` names a key of catalogue.milestones (index.yaml); a live record without one is a warning while
+//       MILESTONE_REQUIRED is false and an error once it is true (or with --require-milestone). With a board
+//       (--board file, or GH_TOKEN/GITHUB_TOKEN to read it) a record whose issues are none of them in its milestone
+//       is a warning
+//   L21 the evidence of a status: a `done` record needs evidence (a test that carries `verifies: REQ-...`, or an
+//       attestation, see site/scripts/collect-evidence.mjs); evidence on a planned, open or withdrawn record is a
+//       warning naming it; a tag that names an unknown id is an error
+//   L22 attestations.yaml: each entry names a live record that has a manual verification, with who, when and what
 //   ISS a planned or partial record links the issues that deliver it (one warning with the count;
 //       the summary line gives the count per area). The schema checks the numbers themselves.
 //   COV the coverage figures on docs/standards/conformance.md equal the catalogue: the share of
@@ -32,17 +40,26 @@
 // No dependency beyond `yaml`: the JSON Schema subset the schema uses is checked by the small
 // validator below. Errors fail the run; warnings print and do not, unless --strict is given.
 //
-// usage: site/scripts/check-requirements.mjs [--strict] [--write-coverage] [dir]   (dir defaults to docs/requirements)
+// usage: site/scripts/check-requirements.mjs [--strict] [--write-coverage] [--require-milestone] [--board file] [dir]
+//   (dir defaults to docs/requirements)
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import { collectEvidence } from './collect-evidence.mjs';
+
+// The switch of L20. While false, a live record without `milestone:` is one warning for the whole catalogue (the status
+// page infers its milestone from its issues). The audit that sets `milestone:` on every record flips this to true in the
+// same pull request, and from then on a missing milestone is an error. `--require-milestone` turns it on for one run.
+const MILESTONE_REQUIRED = false;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
 const writeCoverage = args.includes('--write-coverage');
-const dir = resolve(args.find((a) => !a.startsWith('--')) ?? join(root, 'docs', 'requirements'));
+const requireMilestone = MILESTONE_REQUIRED || args.includes('--require-milestone');
+const boardFile = args.includes('--board') ? args[args.indexOf('--board') + 1] : undefined;
+const dir = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--board') ?? join(root, 'docs', 'requirements'));
 const repoDir = resolve(dir, '..', '..'); // the repository the catalogue sits in: the `tests` paths are relative to it
 
 // ---- public safety: patterns, not names. A hit is an error; the data must not need an exception.
@@ -129,8 +146,10 @@ const files = new Map();
 const index = load('index.yaml');
 files.set('index.yaml', index);
 for (const name of readdirSync(dir).filter((f) => f.endsWith('.yaml')).sort()) {
-  if (name !== 'index.yaml' && name !== 'standards.yaml') files.set(name, load(name));
+  if (name !== 'index.yaml' && name !== 'standards.yaml' && name !== 'attestations.yaml') files.set(name, load(name));
 }
+let attestationsDoc = null;
+try { attestationsDoc = load('attestations.yaml'); } catch { /* the file is optional: no attestation */ }
 const standardsDoc = load('standards.yaml');
 
 // L1
@@ -138,6 +157,11 @@ for (const [name, doc] of files) {
   const out = [];
   validate(schema.$defs[name === 'index.yaml' ? 'indexFile' : 'areaFile'], doc, '', out);
   out.forEach((m) => E(`L1 ${name}${m}`));
+}
+if (attestationsDoc) {
+  const out = [];
+  validate(schema.$defs.attestationsFile, attestationsDoc, '', out);
+  out.forEach((m) => E(`L1 attestations.yaml${m}`));
 }
 if (!Array.isArray(standardsDoc?.standards) || standardsDoc.standards.length === 0) E('L1 standards.yaml: no standards list');
 for (const s of standardsDoc?.standards ?? []) {
@@ -255,9 +279,8 @@ for (const r of reqs) {
   if (r.superseded_by && r.status !== 'withdrawn') E(`L4 ${i}: superseded_by is set on a ${r.status} record`);
 }
 
-// L18: the evidence of a done record. A test file that was named but does not hold the id proves nothing.
+// L18: a test file that was named but does not hold the id proves nothing. Whether a record has evidence is L21.
 function checkTests(r) {
-  if (r.status === 'done' && !r.tests?.length) E(`L18 ${r.id}: a done record needs tests, the repository paths of its passing tests`);
   for (const t of r.tests ?? []) {
     const file = resolve(repoDir, t);
     if (t.split('/').includes('..') || !file.startsWith(repoDir + sep)) { E(`L18 ${r.id}: tests path ${t} leaves the repository`); continue; }
@@ -288,6 +311,76 @@ for (const s of standardsDoc.standards) {
 const unlinked = reqs.filter((r) => (r.status === 'planned' || r.status === 'partial') && !r.issues?.length);
 for (const r of unlinked) unlinkedByArea.set(r.area, (unlinkedByArea.get(r.area) ?? 0) + 1);
 if (unlinked.length) W(`ISS ${unlinked.length} planned or partial requirements link no delivering issue (issues)`);
+
+// ---- L20: the milestone of a record
+const milestones = cat.milestones;
+const liveReqs = reqs.filter((r) => r.status !== 'withdrawn');
+for (const r of reqs) {
+  if (r.milestone && !(r.milestone in milestones)) E(`L20 ${r.id}: milestone ${r.milestone} is not declared in index.yaml (${Object.keys(milestones).join(', ')})`);
+}
+const noMilestone = liveReqs.filter((r) => !r.milestone);
+if (noMilestone.length) {
+  if (!requireMilestone) W(`L20 ${noMilestone.length} live requirements have no milestone (the status page infers it from their issues and says so)`);
+  else {
+    for (const r of noMilestone.slice(0, 25)) E(`L20 ${r.id}: a live record needs a milestone (${Object.keys(milestones).join(', ')})`);
+    if (noMilestone.length > 25) E(`L20 ${noMilestone.length - 25} more live records have no milestone`);
+  }
+}
+// The board, to compare a record's milestone with its issues: a file, or the live board when a token is at hand.
+async function loadBoard() {
+  if (boardFile) return JSON.parse(readFileSync(resolve(boardFile), 'utf8'));
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return null;
+  try {
+    const { readBoard } = await import('../src/lib/board.ts');
+    return await readBoard(token, 'sluis-check-requirements');
+  } catch (e) {
+    console.log(`check-requirements: the board could not be read (${e instanceof Error ? e.message : e}); milestones are not compared with issues`);
+    return null;
+  }
+}
+const board = await loadBoard();
+if (!board) console.log('check-requirements: no board data, so milestones are not compared with the milestones of their issues');
+else {
+  const byNumber = new Map((board.issues ?? []).map((i) => [i.number, i.milestone]));
+  for (const [slug, name] of Object.entries(milestones)) {
+    if (board.options && !board.options.includes(name)) W(`L20 milestone ${slug} names the board option "${name}", which the board does not have`);
+  }
+  for (const r of liveReqs) {
+    if (!r.milestone || !(r.milestone in milestones) || !r.issues?.length) continue;
+    const name = milestones[r.milestone];
+    if (!r.issues.some((n) => byNumber.get(n) === name)) W(`L20 ${r.id}: milestone ${r.milestone} ("${name}"), but none of its issues (${r.issues.map((n) => `#${n}`).join(', ')}) is in that milestone on the board`);
+  }
+}
+
+// ---- L21 and L22: the evidence of a status
+const scan = collectEvidence(repoDir);
+const evidence = new Map(); // id -> [{file, line, test} or {attestation}]
+for (const [id, list] of scan.evidence) evidence.set(id, [...list]);
+for (const [i, a] of (attestationsDoc?.attestations ?? []).entries()) {
+  const where = `L22 attestations.yaml entry ${i + 1} (${a.req})`;
+  const r = byId.get(a.req);
+  if (!r) { E(`${where}: no such requirement`); continue; }
+  if (r.status === 'withdrawn') E(`${where}: the requirement is withdrawn`);
+  if (!r.verification.some((v) => v.kind === 'manual')) E(`${where}: the requirement has no manual verification, so it takes no attestation`);
+  if (a.on > new Date().toISOString().slice(0, 10)) E(`${where}: the date ${a.on} is in the future`);
+  for (const text of [a.checked]) {
+    for (const [rx, what] of DENY) if (rx.test(text)) E(`L10 ${where}: ${what}`);
+    if (PRIVATE?.test(text)) E(`L10 ${where}: matches a deny-listed term`);
+    if (URLISH.test(text)) E(`L10 ${where}: a URL that is not under .example`);
+    for (const m of text.matchAll(TICKET)) if (!NOT_TICKET.has(m[1])) E(`L10 ${where}: ticket-key shaped text ${m[0]}`);
+  }
+  (evidence.get(a.req) ?? evidence.set(a.req, []).get(a.req)).push({ attestation: { by: a.by, on: a.on } });
+}
+for (const id of scan.evidence.keys()) {
+  if (!byId.has(id)) E(`L21 ${id}: a test carries this id (${scan.evidence.get(id)[0].file}:${scan.evidence.get(id)[0].line}), but the catalogue has no such requirement`);
+}
+for (const r of reqs) {
+  const n = evidence.get(r.id)?.length ?? 0;
+  if (r.status === 'done' && n === 0) E(`L21 ${r.id}: a done record has no evidence: no test carries "verifies: ${r.id}" and no attestation names it`);
+  if (n > 0 && ['planned', 'open', 'withdrawn'].includes(r.status)) W(`L21 ${r.id}: ${n} piece(s) of evidence, but the status is ${r.status}; set it to done or partial`);
+}
+console.log(`check-requirements: evidence for ${[...evidence.keys()].filter((k) => byId.has(k)).length} requirements (${scan.tests} tagged tests in ${scan.files} files, ${attestationsDoc?.attestations?.length ?? 0} attestations)`);
 
 // COV
 const coverage = computeCoverage(reqs);
