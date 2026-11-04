@@ -33,7 +33,6 @@ const (
 	tenant   = "acme" // the default tenant of the boundary (tests/installations/local/config/boundary.yaml)
 	host     = "sluis.dev.local.test"
 	audience = "sluis-cli" // an InstallationClient of the local config
-	image    = "sluis-local/signer:dev"
 	// batchWait is the writer's batch interval (5 s) with margin.
 	batchWait = 20 * time.Second
 )
@@ -42,6 +41,9 @@ const (
 // environment, which is how a second installation runs beside the first on one machine (deploy/local/local.sh uses the
 // same variable).
 var project = cmp.Or(os.Getenv("COMPOSE_PROJECT_NAME"), "sluis-local")
+
+// image is the signer image the steps run in, tagged as `deploy/local/local.sh` tags it (SLUIS_LOCAL_TAG).
+var image = "sluis-local/signer:" + cmp.Or(os.Getenv("SLUIS_LOCAL_TAG"), "dev")
 
 // services the smoke needs healthy before it starts.
 var services = []string{"policy", "signer", "key", "store", "writer", "entry", "forwarder", "rqlite", "drv-key-software", "drv-writer-spool", "drv-writer-fs"}
