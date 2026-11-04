@@ -1,0 +1,42 @@
+[package]
+name = "sluis-kit"
+description = "The Rust kit: Connect over Unix sockets with peer credentials, the call-graph guard, the refusal helper and the one command shape."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# Lets a test choose which uid is which actor. Never enabled by a product build: only this crate's
+# own dev-dependency below turns it on, so it exists in test and example builds only.
+test-identities = []
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+buffa = { version = "=0.9.2", features = ["json"] }
+clap = { version = "4", features = ["derive", "string"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
+futures = "0.3"
+http = "1"
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["server-auto", "server-graceful", "tokio", "http1", "http2"] }
+rustix = { version = "1", features = ["process"] }
+sluis-proto = { path = "../sluis-proto" }
+sluis-registry = { path = "../sluis-registry" }
+sluis-version = { path = "../sluis-version" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time", "macros", "sync"] }
+tower = { version = "0.5", features = ["util"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+[dev-dependencies]
+sluis-kit = { path = ".", features = ["test-identities"] }
+rustix = { version = "1", features = ["process"] }
+tempfile = "3"
+
+sluis-kit-echo = { path = "../sluis-kit-echo" }

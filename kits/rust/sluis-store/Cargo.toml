@@ -1,0 +1,28 @@
+[package]
+name = "sluis-store"
+description = "The typed store client Store<K: Kind> (ADR 0005, Typed clients) over the generated StoreService."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+buffa = { version = "=0.9.2", features = ["json"] }
+buffa-types = { version = "=0.9.2", features = ["json"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client"] }
+sluis-kit = { path = "../sluis-kit" }
+sluis-proto = { path = "../sluis-proto" }
+sluis-registry = { path = "../sluis-registry" }
+thiserror = "2"
+
+[dev-dependencies]
+sluis-kit = { path = "../sluis-kit", features = ["test-identities"] }
+rustix = { version = "1", features = ["process"] }
+anyhow = "1"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
