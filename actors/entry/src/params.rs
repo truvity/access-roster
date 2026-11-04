@@ -45,6 +45,22 @@ pub(crate) struct Params(Vec<(String, String)>);
 impl Params {
     /// Parses `raw`, an undecoded query string or form body. The empty string holds no parameter.
     pub(crate) fn parse(raw: &str, limit: usize) -> Result<Self, Bad> {
+        Self::read(raw, limit, None)
+    }
+
+    /// Like [`Params::parse`], but a name outside `known` is dropped and not kept: a client of the
+    /// route ignores what it does not recognise (RFC 6749 section 4.1.2). It is for a response
+    /// that reaches sluis as a client only. The dropped pair is still read and bounded, and it is
+    /// not checked for a repeat; a known name is checked as in `parse`.
+    pub(crate) fn parse_ignoring_unknown(
+        raw: &str,
+        limit: usize,
+        known: &[&str],
+    ) -> Result<Self, Bad> {
+        Self::read(raw, limit, Some(known))
+    }
+
+    fn read(raw: &str, limit: usize, known: Option<&[&str]>) -> Result<Self, Bad> {
         if raw.len() > limit {
             return Err(Bad::Size);
         }
@@ -65,6 +81,9 @@ impl Params {
             }
             if name.len() > NAME_MAX || value.len() > VALUE_MAX {
                 return Err(Bad::Size);
+            }
+            if known.is_some_and(|k| !k.contains(&name.as_str())) {
+                continue;
             }
             if out.iter().any(|(k, _)| *k == name) {
                 return Err(Bad::Duplicate);
@@ -199,6 +218,27 @@ mod tests {
         // Names are exact: no case folding, no trimming.
         assert_eq!(p("A=1").unwrap().only(&["a"]).unwrap_err(), Bad::Unknown);
         assert_eq!(p("a%20=1").unwrap().only(&["a"]).unwrap_err(), Bad::Unknown);
+    }
+
+    #[test]
+    fn unknown_names_are_dropped_when_asked_and_known_names_keep_their_checks() {
+        let k = ["code", "state"];
+        let q = |s: &str| Params::parse_ignoring_unknown(s, QUERY_MAX, &k);
+        let ok = q("code=c&session_state=s&x=1&x=2&state=st").unwrap();
+        assert_eq!((ok.get("code"), ok.get("state")), ("c".into(), "st".into()));
+        assert!(!ok.has("session_state") && !ok.has("x"));
+        assert!(ok.only(&k).is_ok());
+        assert_eq!(q("code=1&code=2").unwrap_err(), Bad::Duplicate);
+        assert_eq!(q("state=1&x=2&state=3").unwrap_err(), Bad::Duplicate);
+        // A dropped pair is still read and bounded.
+        assert_eq!(q("code=c&x=%zz").unwrap_err(), Bad::Syntax);
+        assert_eq!(q("code=c&&x=1").unwrap_err(), Bad::Syntax);
+        let long = format!("code=c&x={}", "a".repeat(VALUE_MAX + 1));
+        assert_eq!(q(&long).unwrap_err(), Bad::Size);
+        assert_eq!(
+            Params::parse_ignoring_unknown("code=c&x=1", 4, &k).unwrap_err(),
+            Bad::Size
+        );
     }
 
     #[test]

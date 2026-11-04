@@ -579,8 +579,7 @@ async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called(
     .await;
     let bad = http(&up, "GET", "/authorize?state=%zz", &[], b"").await;
     let case = http(&up, "GET", "/authorize?State=x", &[], b"").await;
-    let cb = http(&up, "GET", "/callback?code=1&cookie=injected", &[], b"").await;
-    for r in [&unknown, &dup, &bad, &case, &cb] {
+    for r in [&unknown, &dup, &bad, &case] {
         assert_eq!(r.status, 400);
     }
     // The same body for every refusal of a status, whatever the reason.
@@ -590,6 +589,58 @@ async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called(
     assert!(!text.contains("extra") && !text.contains("state"), "{text}");
     let calls = up.fake.calls.lock().unwrap();
     assert!(calls.authorize.is_empty() && calls.callback.is_empty());
+}
+
+#[tokio::test]
+async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_one() {
+    // The upstream answers sluis as a client: RFC 6749 section 4.1.2 says to ignore a response
+    // parameter that is not recognised (Keycloak sends session_state). Requests to sluis keep
+    // their closed lists (REQ-AUTHN-012).
+    let up = up().await;
+    let ok = http(
+        &up,
+        "GET",
+        "/callback?code=abc&state=st&session_state=sess9&iss=https%3A%2F%2Fidp.example.com\
+         &error_uri=https%3A%2F%2Fidp.example.com%2Fe&arbitrary_extra=zz&cookie=injected",
+        &[("Cookie", "__Host-sluis_signin=cv123")],
+        b"",
+    )
+    .await;
+    assert_eq!(ok.status, 200);
+    for q in [
+        "/callback?code=a&code=b&state=st",
+        "/callback?code=a&state=s&state=t",
+        "/callback?code=a&state=s&error_uri=x&error_uri=y",
+        "/callback?code=a&session_state=%zz",
+    ] {
+        let r = http(&up, "GET", q, &[], b"").await;
+        assert_eq!(r.status, 400, "{q}");
+        let text = r.text();
+        assert!(!text.contains("code") && !text.contains("state"), "{text}");
+    }
+    let authorize = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&session_state=x"),
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!(authorize.status, 400);
+    let c = up.fake.calls.lock().unwrap();
+    assert!(c.authorize.is_empty());
+    // Only the contract's fields arrive, and the cookie is the header's, never a parameter's.
+    assert_eq!(c.callback.len(), 1);
+    let r = &c.callback[0];
+    assert_eq!(
+        (
+            r.code.as_str(),
+            r.state.as_str(),
+            r.iss.as_str(),
+            r.cookie.as_str()
+        ),
+        ("abc", "st", "https://idp.example.com", "cv123")
+    );
 }
 
 #[tokio::test]
