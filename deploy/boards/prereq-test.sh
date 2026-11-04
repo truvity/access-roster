@@ -135,8 +135,12 @@ mkdir -p "$work/etc/systemd/system" "$work/etc/tmpfiles.d"
 : >"$work/etc/tmpfiles.d/sluis-pcscd-dev.conf"
 printf 'file\t%s\nfile\t%s\ndir\t%s\nunit\tsluis-key@dev.service\nfile\t%s\n' "$work/etc/systemd/system/sluis-key@.service" "$work/etc/tmpfiles.d/sluis-pcscd-dev.conf" "$work/etc/tmpfiles.d" "$work/state/not-a-single" >"$work/manifest"
 FAKE_SELINUX=1 run relabel
-if grep -qx -- "-R $work/state" "$RESTORECON_LOG"; then echo "ok   SELinux on: -R over the state directory (the sluis paths that exist)"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
-if grep -qx -- "-- $work/etc/systemd/system/sluis-key@.service $work/etc/tmpfiles.d/sluis-pcscd-dev.conf $work/etc/tmpfiles.d" "$RESTORECON_LOG"; then echo "ok   and the files and directories of the manifest, each alone, without -R"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
+mkdir -p "$work/state/dev/key"
+printf 'dir\t%s\n' "$work/state/dev/key" >>"$work/manifest"
+: >"$RESTORECON_LOG"
+FAKE_SELINUX=1 run relabel
+if grep -qx -- "-- $work/state $work/etc/systemd/system/sluis-key@.service $work/etc/tmpfiles.d/sluis-pcscd-dev.conf $work/etc/tmpfiles.d $work/state/dev/key" "$RESTORECON_LOG"; then echo "ok   SELinux on: the state root, the manifest's files and directories (the state directories too), each alone, without -R"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
+if grep -q -- "-R .*$work/state" "$RESTORECON_LOG"; then echo "FAIL the state directory is walked recursively: $(cat "$RESTORECON_LOG")"; fail=1; else echo "ok   and the state directory is never walked"; fi
 if grep -q -- "-F\|-RF\|^-R .*etc/systemd\|^-R .*tmpfiles\|-R /etc/systemd\|-R /etc/sysusers\|-R /etc/polkit" "$RESTORECON_LOG"; then echo "FAIL restorecon is recursive or forced over a directory of the system: $(cat "$RESTORECON_LOG")"; fail=1; else echo "ok   and no directory of the system is relabelled recursively, nor forced"; fi
 rm "$work/bin/selinuxenabled"
 : >"$RESTORECON_LOG"
