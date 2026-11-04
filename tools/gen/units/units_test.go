@@ -642,3 +642,185 @@ func TestPolicyUnit(t *testing.T) {
 		t.Errorf("policy has a row but no binary directory: %v", err)
 	}
 }
+
+// The card driver is an alternative to the software driver of key@: the same socket, one of the two on a board. The
+// default key@ unit stays on the software driver, and a drop-in switches it (boards.sh, SLUIS_BOARDS_KEY_DRIVER).
+func TestCardDriver(t *testing.T) {
+	files := generate(t)
+	card := files["sluis-drv-key-yubikey-piv@.service"]
+	soft := files["sluis-drv-key-software@.service"]
+	if card == "" || soft == "" {
+		t.Fatal("a driver unit is missing")
+	}
+	socket := func(unit string) string {
+		for _, f := range strings.Fields(unit) {
+			if strings.HasSuffix(f, "/key-store.sock") {
+				return f
+			}
+		}
+		return ""
+	}
+	if socket(card) == "" || socket(card) != socket(soft) {
+		t.Errorf("the card driver serves %q and the software driver %q: they must be the same socket", socket(card), socket(soft))
+	}
+	for _, want := range []string{
+		"Requires=pcscd.socket", "After=pcscd.socket",
+		"User=sluis-drv-key-yubikey-piv-%i", "RuntimeDirectory=sluis-drv-key-yubikey-piv-%i", "RuntimeDirectoryMode=0700",
+		"--admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock", "--node %H", "--environment development",
+		"PrivateNetwork=yes", "RestrictAddressFamilies=AF_UNIX", "MemoryDenyWriteExecute=yes", "NoNewPrivileges=yes",
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the card driver unit lacks %q", want)
+		}
+	}
+	// The admin socket is in a directory of its own and not in key@'s.
+	if strings.Contains(card, "ReadWritePaths=/run/sluis-drv") {
+		t.Error("the admin socket directory is a ReadWritePaths of the driver: systemd makes it writable already")
+	}
+
+	// The default key@ unit does not know the card driver.
+	key := files["sluis-key@.service"]
+	if strings.Contains(key, "yubikey-piv") {
+		t.Error("the default key@ unit mentions the card driver")
+	}
+	if !strings.Contains(key, "Requires=sluis-drv-key-software@%i.service") {
+		t.Error("the default key@ unit does not require the software driver")
+	}
+
+	// The key@ unit of a board with a card names the card driver where the default names the software driver: in Requires,
+	// After and the groups, and nowhere else. (A drop-in cannot take a Requires= away in systemd 249, so it is a whole unit.)
+	variant := files[CardKeyUnitFile]
+	if variant == "" {
+		t.Fatal("no key@ unit for the card variant")
+	}
+	if strings.Contains(variant, "key-software") {
+		t.Errorf("the card key@ unit still names the software driver:\n%s", variant)
+	}
+	for _, want := range []string{"Requires=sluis-drv-key-yubikey-piv@%i.service", "After=sluis-drv-key-yubikey-piv@%i.service", "sluis-drv-key-yubikey-piv-%i"} {
+		if !strings.Contains(variant, want) {
+			t.Errorf("the card key@ unit lacks %q:\n%s", want, variant)
+		}
+	}
+	// Everything else is the default unit's: with the driver renamed in the default, the two are the same unit.
+	renamed := strings.NewReplacer("sluis-drv-key-software", "sluis-drv-key-yubikey-piv").Replace(key)
+	if sortedGroups(renamed) != sortedGroups(variant) {
+		t.Errorf("the card key@ unit differs from the default beyond the driver:\n--- default, driver renamed\n%s\n--- card\n%s", renamed, variant)
+	}
+
+	// The card service is closed to everyone but the card driver's group and root, and so is polkit's card access.
+	if sock := files[PcscdSocketFile]; !strings.Contains(sock, "SocketMode=0660") || !strings.Contains(sock, "SocketGroup=sluis-pcsc-dev") {
+		t.Errorf("the pcscd socket drop-in:\n%s", sock)
+	}
+	rules := files[PolkitRulesFile]
+	if !strings.Contains(rules, `subject.user == "sluis-drv-key-yubikey-piv-dev" ? polkit.Result.YES : polkit.Result.NO`) ||
+		!strings.Contains(rules, "org.debian.pcsc-lite.access_pcsc") || !strings.Contains(rules, "org.debian.pcsc-lite.access_card") {
+		t.Errorf("the polkit rules:\n%s", rules)
+	}
+}
+
+// The card driver's user and group exist for the sockets: it is in the index with the owner's group as a need.
+func TestCardDriverIndex(t *testing.T) {
+	files := generate(t)
+	var row []string
+	for _, l := range strings.Split(files["index.tsv"], "\n") {
+		if strings.HasPrefix(l, "sluis-drv-key-yubikey-piv@dev.service") {
+			row = strings.Split(l, "\t")
+		}
+	}
+	if len(row) != 7 || row[3] != "drivers/key/yubikey-piv" || row[4] != "sluis-drv-key-yubikey-piv-dev" || row[6] != "sluis-key" {
+		t.Fatalf("the index row of the card driver: %q", row)
+	}
+	// The user is the registry's uid for the driver.
+	uid, ok := registry.UID("driver-key-yubikey-piv", 0)
+	if !ok || row[5] != itoa(uid) {
+		t.Fatalf("the uid is %s, the registry says %d", row[5], uid)
+	}
+	if !strings.Contains(files["sluis-drv-key-yubikey-piv.sysusers"], "u sluis-drv-key-yubikey-piv-dev "+itoa(uid)) {
+		t.Fatalf("the sysusers line:\n%s", files["sluis-drv-key-yubikey-piv.sysusers"])
+	}
+}
+
+// sortedGroups is a unit with the words of its SupplementaryGroups= line sorted, so that two units compare equal when they
+// join the same groups in another order.
+func sortedGroups(unit string) string {
+	lines := strings.Split(unit, "\n")
+	for i, l := range lines {
+		if v, ok := strings.CutPrefix(l, "SupplementaryGroups="); ok {
+			w := strings.Fields(v)
+			slices.Sort(w)
+			lines[i] = "SupplementaryGroups=" + strings.Join(w, " ")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// The card service is opened to one group, and only the card driver is in it. The key-store socket has the driver's own
+// group, which key@ joins; if the card service had that group too, key@ could talk to the card while the driver restarts
+// (the card keeps its login) and sign with a PIN-once key, or burn PIN attempts. No other uid gets the card service's group.
+func TestOnlyTheCardDriverGetsThePcscGroup(t *testing.T) {
+	files := generate(t)
+	group := ""
+	for _, l := range strings.Split(files[PcscdSocketFile], "\n") {
+		if v, ok := strings.CutPrefix(l, "SocketGroup="); ok {
+			group = v
+		}
+	}
+	if group == "" {
+		t.Fatal("the pcscd socket drop-in names no group")
+	}
+	driverUser := "sluis-drv-key-yubikey-piv-dev"
+	if group == driverUser {
+		t.Fatalf("the card service's group is the card driver's own group %s, which key@ joins for the key-store socket", group)
+	}
+	boundaryGroup := strings.Replace(group, "-dev", "-%i", 1)
+	holders := 0
+	n := 0
+	for name, body := range files {
+		for _, l := range strings.Split(body, "\n") {
+			if v, ok := strings.CutPrefix(l, "SupplementaryGroups="); ok && slices.Contains(strings.Fields(v), boundaryGroup) {
+				holders++
+				if name != "sluis-drv-key-yubikey-piv@.service" {
+					t.Errorf("%s joins the card service's group %s", name, boundaryGroup)
+				}
+			}
+			// Membership by sysusers (m user group), and a user whose primary group it is.
+			if strings.HasPrefix(l, "m ") && strings.Contains(l, group) {
+				t.Errorf("%s makes a member of %s: %q", name, group, l)
+			}
+			if strings.HasPrefix(l, "u ") && strings.Contains(l, group) {
+				t.Errorf("%s makes a user with the group %s: %q", name, group, l)
+			}
+			if strings.HasPrefix(l, "g "+group) {
+				n++
+			}
+		}
+	}
+	if holders != 1 {
+		t.Errorf("%d units join %s, want the card driver's alone", holders, boundaryGroup)
+	}
+	if n != 1 {
+		t.Errorf("%d sysusers lines make the group %s, want one", n, group)
+	}
+	// The key@ units, the default and the card variant, hold the driver's group and not the card service's.
+	for _, f := range []string{"sluis-key@.service", CardKeyUnitFile} {
+		if strings.Contains(files[f], boundaryGroup) {
+			t.Errorf("%s holds the card service's group", f)
+		}
+	}
+	if !strings.Contains(files[CardKeyUnitFile], "sluis-drv-key-yubikey-piv-%i") {
+		t.Error("the card key@ unit does not hold the driver's group, so it cannot reach the key-store socket")
+	}
+}
+
+// The driver is bound to the board's card: the serial comes from a file the deploy writes, not from the repository.
+func TestCardDriverIsBoundToTheBoardsCard(t *testing.T) {
+	unit := generate(t)["sluis-drv-key-yubikey-piv@.service"]
+	for _, want := range []string{"--serial ${SLUIS_CARD_SERIAL}", "EnvironmentFile=/etc/sluis/yubikey-piv-%i.env"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("the card driver unit lacks %q", want)
+		}
+	}
+	if strings.Contains(unit, "EnvironmentFile=-") {
+		t.Error("the serial file is optional: a driver without it would adopt any card")
+	}
+}
