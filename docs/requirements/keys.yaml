@@ -1105,7 +1105,7 @@ requirements:
       - {kind: integration-test, ref: "the key plan check refuses an audit-log purpose that is not ES256"}
   - id: REQ-KEYS-082
     area: KEYS
-    statement: "The chain data key of a boundary MUST be sealable by session alone and openable by session and exchange alone."
+    statement: "The chain data key of a boundary MUST be sealable by session alone and openable by exchange alone."
     rationale: "Session-chain facts are read by exchange, which must not hold the cookie key or a tenant's data key (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1115,7 +1115,7 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "exchange opens a chain-sealed value; exchange seal, and every other actor's seal or open, are refused"}
+      - {kind: integration-test, ref: "exchange opens a chain-sealed value; session's open, exchange's seal and every other actor's seal or open are refused"}
   - id: REQ-KEYS-083
     area: KEYS
     statement: "key@ MUST delete a generation of the chain data key only after the longest time to live of a session chain has passed since it last sealed."

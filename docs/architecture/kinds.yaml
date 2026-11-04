@@ -135,7 +135,7 @@ layered_groups:
   RateBounds:
     profile: Fixed
     combine: within-bounds
-    layers: {built-in: "maximum rates and pending-state bounds", config: [RateBound]}
+    layers: {built-in: "maximum rates", config: [RateBound]}
     notes: "A tenant may lower the rates of its own clients; those are fields of TenantClient, checked against RateBound on write."
 
 built_in:
@@ -562,7 +562,7 @@ kinds:
     readers: [entry]
     exportable: no
     backed_up: no
-    notes: "Protective rate bounds and pending-state bounds per connection, client and source address. Not quota."
+    notes: "Protective rate bounds per connection, client and source address. Not quota."
 
   - name: ExportDestination
     serves: data
@@ -1203,19 +1203,6 @@ kinds:
     notes: "Channels made on the console; channels bound in policy are ReconcileTarget (durable). Two kinds, two owners. Written by the chat adapter (`adapter-slack` or another)."
 
   # ======================================================================== temp
-  - name: PendingSignIn
-    serves: work
-    scope: boundary+tenant
-    class: temp
-    treatment: sealed
-    profile: "-"
-    writer: session
-    readers: [session]
-    exportable: no
-    backed_up: no
-    ttl: {default: 10m, max: 10m}
-    notes: "State between the authorize request and the upstream callback (state, nonce, PKCE verifier). Not written: it travels in the sealed cookie `__Host-sluis_signin`, and nothing is stored before a person is known (ADR 0025)."
-
   - name: AuthCode
     serves: work
     scope: boundary+tenant

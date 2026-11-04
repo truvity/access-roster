@@ -118,7 +118,7 @@ A boundary on AWS needs **1 symmetric key and 5 asymmetric keys** in KMS (4 P-38
 | Token signing | `ECC_NIST_P384`, `SIGN_VERIFY` | Tokens and the key set, used by `signer` through key@ |
 | X.509 intermediate | `ECC_NIST_P384`, `SIGN_VERIFY` | The CA key of each trust domain, for `ca` |
 | SSH user CA, SSH host CA | `ECC_NIST_P384`, `SIGN_VERIFY` | One key each, for `ssh-ca` |
-| Audit log | `ECC_NIST_P384`, `SIGN_VERIFY` | One per audit writer instance, for its audit and usage logs |
+| Audit log | `ECC_NIST_P256`, `SIGN_VERIFY` | One per audit writer instance, for its audit and usage logs |
 | Per tenant | None | A tenant's data keys are wrapped under the symmetric key |
 
 The symmetric key's policy names key@'s role alone, and every signing key's policy names key@ only, because `kms:Sign` takes no encryption context. Every other actor reaches a key through key@, whose rules say who may ask for which purpose. A signing key that ritueel certifies has one more principal that cannot sign: a read-only role that ritueel's certifier assumes to read the key and its policy ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)). KMS rotates the symmetric key automatically. In production it is a multi-Region key plus a replica, because losing it loses every sealed value; signing keys are single-Region ([ADR 0010](/decisions/0010-backup-and-recovery/#residency)).

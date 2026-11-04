@@ -87,7 +87,7 @@ requirements:
   - id: REQ-TOKEN-020
     area: TOKEN
     split_from: REQ-TOKEN-002
-    statement: "sluis MUST publish every active key in the key set with a kid, and the next key while a rotation is in progress."
+    statement: "sluis MUST publish every pre-published, active and retiring key in the key set with a kid."
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity

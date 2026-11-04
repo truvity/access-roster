@@ -63,7 +63,7 @@ A failure names the document by its kind, never the value. A document that is re
 
 store@ loads the documents of its boundary as one set ([0005](/decisions/0005-the-store/#the-snapshot)):
 
-1. **Read every document** of the boundary from the config source, one for each config kind the boundary declares ([0005](/decisions/0005-the-store/#the-snapshot)). A declared kind with no document is a failure; there is no default and no empty stand-in in its place. A document for a kind that is not declared is ignored: it is not verified, not read and not applied, so a source may hold documents of a later release or of a kind that another installation declares.
+1. **Read every document** of the boundary from the config source, one for each config kind the boundary declares ([0005](/decisions/0005-the-store/#the-snapshot)). A declared kind with no document is a failure; there is no default and no empty stand-in in its place. A document for a kind that is not declared is refused ([0005](/decisions/0005-the-store/#the-snapshot)). Planned: store@ cannot detect an undeclared document yet, because the config-source contract has no call that lists the documents of a source, so for now such a document is never read.
 2. **Verify each one** as above.
 3. **Validate the set.** Each document is checked against its kind's schema; then the checks that span kinds and layers run: links resolve, the config bounds sit inside the built-in bounds, a template that a link names exists, and every grant name is in the vocabulary ([Policy](/reference/policy/#the-grant-vocabulary)). An error names the document and the path.
 4. **Swap atomically.** The snapshot replaces the one in force, and each changed kind is delivered to its watchers.
@@ -168,4 +168,4 @@ The payload of a vector is a stand-in: the signature layer does not look into it
 | A valid signature over a payload that is not valid for the kind | Refused at step 6, naming the path |
 | One document of the set invalid, the other documents valid | The whole set is refused; the snapshot in force stays |
 | Every document valid, one declared kind missing from the source | Refused at a cold start and on a reload |
-| A document for a config kind that the boundary does not declare | Ignored, at a cold start and on a reload; the declared kinds load as usual |
+| A document for a config kind that the boundary does not declare | Refused at a cold start and on a reload (planned: store@ cannot list a source's documents yet, so the document is not read) |
