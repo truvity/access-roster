@@ -320,7 +320,8 @@ impl Env {
     }
 }
 
-// REQ-DATA-099: the signed document the snapshot holds is the one in force, byte for byte as the source gave it.
+/// verifies: REQ-DATA-099
+/// the signed document the snapshot holds is the one in force, byte for byte as the source gave it.
 #[tokio::test]
 async fn req_data_099_the_snapshot_holds_the_signed_bytes_of_the_document_in_force() {
     let e = env().await;
