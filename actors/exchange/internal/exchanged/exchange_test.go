@@ -23,6 +23,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/subject"
 )
 
+// verifies: REQ-EXCH-010
 func TestExchangeForExampleAppReturnsAnAccessTokenNarrowedToThatAudience(t *testing.T) {
 	e := newEnv(t, envOptions{requires: []string{"dev:example-app:user"}})
 	// The person holds the full set after the ladder; the audience asks for the pair dev:example-app only.
@@ -184,6 +185,7 @@ func TestAnEmptyAmrIsStillPresent(t *testing.T) {
 	}
 }
 
+// verifies: REQ-EXCH-009
 func TestAnUnknownAudienceAndARefusedAudienceAreTheSameAnswer(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	subject := e.mint(subjectClaims(nil))
@@ -286,6 +288,7 @@ func TestEveryRefusalThatDoesNotDependOnTheAudienceIsTheSameForAKnownAndAnUnknow
 
 }
 
+// verifies: REQ-EXCH-009
 func TestEveryExchangeAndEveryRefusalIsAudited(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	subject := e.mint(subjectClaims(nil))
@@ -342,6 +345,7 @@ func TestARefusedExchangeRecordsTheDecisionThatDeniedIt(t *testing.T) {
 	}
 }
 
+// verifies: REQ-EXCH-002, REQ-EXCH-008
 func TestTheRequestIsChecked(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	subject := e.mint(subjectClaims(nil))
@@ -480,6 +484,7 @@ func TestANativePublicClientsTokenMayBeExchanged(t *testing.T) {
 	}
 }
 
+// verifies: REQ-EXCH-005
 func TestThePersonOfTheTokenIsLookedUpAndAnEndedSessionIsRefused(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	subject := e.mint(subjectClaims(nil))

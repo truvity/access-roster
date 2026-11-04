@@ -4,13 +4,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
+import { evidenceMap, type Evidence } from './evidence';
 
 export interface StandardRef { id: string; section?: string; depth: 'Full' | 'Partial' }
 export interface Verification { kind: 'conformance-suite' | 'test-vectors' | 'integration-test' | 'manual'; ref: string; suite?: string }
 export interface Req {
   id: string; area: string; split_from?: string; statement: string; rationale: string;
   level: 'MUST' | 'SHOULD' | 'MAY'; source: string; status: string; runtimes: 'all' | string[];
-  standards: StandardRef[]; features: ('parity' | 'design')[]; issues?: number[]; tests?: string[]; verification: Verification[]; actors?: string[];
+  standards: StandardRef[]; features: ('parity' | 'design')[]; issues?: number[]; milestone?: string; tests?: string[]; verification: Verification[]; actors?: string[];
   gap?: string; manual_reason?: string; superseded_by?: string[]; moved_to?: string;
 }
 export interface Area { code: string; title: string; file: string; retired: boolean; reqs: Req[] }
@@ -38,7 +39,7 @@ const dir = resolve(process.cwd(), '../docs/requirements');
 const read = (name: string) => parse(readFileSync(resolve(dir, name), 'utf8'));
 
 export interface Catalogue {
-  title: string; checked: string; gaps: Record<string, string>;
+  title: string; checked: string; gaps: Record<string, string>; milestones: Record<string, string>;
   vocabulary: { level: string[]; source: string[]; status: string[]; runtimes: string[]; verification: string[]; depth: string[] };
   areas: Area[]; activeAreas: Area[]; areaByCode: Map<string, Area>; reqs: Req[]; byId: Map<string, Req>;
   standards: Standard[]; standardById: Map<string, Standard>;
@@ -56,7 +57,7 @@ export function catalogue(): Catalogue {
   const reqs = areas.flatMap((a) => a.reqs);
   const standards: Standard[] = read('standards.yaml').standards;
   cached = {
-    title: c.title, checked: c.checked, gaps: c.gaps, vocabulary: c.vocabulary,
+    title: c.title, checked: c.checked, gaps: c.gaps, milestones: c.milestones, vocabulary: c.vocabulary,
     areas, activeAreas: areas.filter((a) => !a.retired), areaByCode: new Map(areas.map((a) => [a.code, a])), reqs, byId: new Map(reqs.map((r) => [r.id, r])),
     standards, standardById: new Map(standards.map((s) => [s.id, s])),
   };
@@ -92,7 +93,8 @@ export function exportJson() {
     },
     areas: c.areas.map((a) => ({ code: a.code, title: a.title, retired: a.retired, requirements: a.reqs.length })),
     standards: c.standards,
-    requirements: c.reqs.map((r) => ({ ...r, url: `https://sluis.id${reqPath(r)}` })),
+    // `evidence`: the tests that carry `verifies: <id>` and the attestations (docs/requirements/README.md); `milestone` is the slug.
+    requirements: c.reqs.map((r) => ({ ...r, evidence: (evidenceMap().get(r.id) ?? []) satisfies Evidence[], url: `https://sluis.id${reqPath(r)}` })),
   };
 }
 
