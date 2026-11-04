@@ -545,7 +545,7 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
         })
         .await
         .unwrap();
-    assert_eq!(l.items.len(), 2);
+    assert_eq!(l.items.len(), 3);
     refused(
         f.write(
             vec![op(
