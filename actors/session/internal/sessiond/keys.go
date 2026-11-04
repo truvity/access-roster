@@ -64,23 +64,36 @@ func flowAddress(kind, id string) *typev2alpha1.Address {
 // decided, or that policy needs in order to decide: key@ checks the cookie purpose by rule only, with no grant (D-5),
 // because a tenant's data key would need the decision these facts are for.
 func (k keys) sealFlow(ctx context.Context, kind, id string, m proto.Message) ([]byte, error) {
-	return k.sealBoundary(ctx, "cookie", kind, id, m)
+	return k.seal(ctx, "cookie", flowAddress(kind, id), m)
 }
 
-// sealChain seals the sign-in facts of a session chain under the boundary's chain key, at the address of the chain with
-// no tenant (0006, "Data keys"). Session seals and cannot open: exchange alone opens, to find the person's accounts
-// for a token exchange. Session reads the facts back from its own cookie-sealed copy.
-func (k keys) sealChain(ctx context.Context, sid string, m proto.Message) ([]byte, error) {
-	return k.sealBoundary(ctx, "chain", chainKind, sid, m)
+// chainAddress is the address the sign-in facts of a session chain are sealed to: the chain, in its tenant. The tenant
+// is part of the key and of the envelope, so another tenant's key does not open them.
+func chainAddress(tenant, sid string) *typev2alpha1.Address {
+	return &typev2alpha1.Address{Kind: chainKind, Tenant: tenant, Id: sid}
 }
 
-// sealBoundary seals the message under the boundary key of a purpose. key@ checks a boundary purpose by rule only.
-func (k keys) sealBoundary(ctx context.Context, purpose, kind, id string, m proto.Message) ([]byte, error) {
+// sealChain seals the sign-in facts of a session chain under the chain key of the chain's tenant (0006, "Data keys").
+// key@ checks the chain purpose by rule only, with no grant, because policy needs these facts to decide; the key is
+// the tenant's, so a tenant's exit takes the facts with it. session seals and opens them, exchange opens them.
+func (k keys) sealChain(ctx context.Context, tenant, sid string, m proto.Message) ([]byte, error) {
+	return k.seal(ctx, "chain", chainAddress(tenant, sid), m)
+}
+
+// openChain opens an envelope made by sealChain into m. errNotOurs says it did not open; any other error is key@
+// unavailable.
+func (k keys) openChain(ctx context.Context, tenant, sid string, envelope []byte, m proto.Message) error {
+	return k.open(ctx, "chain", chainAddress(tenant, sid), envelope, m)
+}
+
+// seal seals the message under the key of a purpose that key@ checks by rule only (the boundary's cookie, a tenant's
+// chain).
+func (k keys) seal(ctx context.Context, purpose string, a *typev2alpha1.Address, m proto.Message) ([]byte, error) {
 	pt, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 	if err != nil {
 		return nil, refusal.New(connect.CodeInternal, "schema", "value")
 	}
-	res, err := k.c.Seal(ctx, connect.NewRequest(&keyv2alpha1.SealRequest{Purpose: purpose, Address: flowAddress(kind, id), Plaintext: pt}))
+	res, err := k.c.Seal(ctx, connect.NewRequest(&keyv2alpha1.SealRequest{Purpose: purpose, Address: a, Plaintext: pt}))
 	clear(pt)
 	if err != nil {
 		return nil, fmt.Errorf("key seal %s: %w", purpose, err)
@@ -91,8 +104,13 @@ func (k keys) sealBoundary(ctx context.Context, purpose, kind, id string, m prot
 // openFlow opens an envelope made by sealFlow into m. errNotOurs says it did not open; any other error is key@
 // unavailable.
 func (k keys) openFlow(ctx context.Context, kind, id string, envelope []byte, m proto.Message) error {
+	return k.open(ctx, "cookie", flowAddress(kind, id), envelope, m)
+}
+
+// open opens an envelope of a purpose that key@ checks by rule only into m.
+func (k keys) open(ctx context.Context, purpose string, a *typev2alpha1.Address, envelope []byte, m proto.Message) error {
 	res, err := k.c.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: []*keyv2alpha1.OpenItem{{
-		Purpose: "cookie", Address: flowAddress(kind, id), Envelope: envelope,
+		Purpose: purpose, Address: a, Envelope: envelope,
 	}}}))
 	if err != nil {
 		return openError(err)

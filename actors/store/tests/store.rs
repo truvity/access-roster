@@ -428,7 +428,7 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
         op(
             Verb::CREATE,
             "data-key-wrap",
-            "",
+            "acme",
             "chain/1/node-1-aaaa",
             b"wrap-5",
         ),
@@ -436,12 +436,13 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
     let done = f.write(ops, &[]).await.unwrap();
     assert_eq!(done.items.len(), 5);
     assert_eq!(done.items[2].address.tenant, "");
+    assert_eq!(done.items[4].address.tenant, "acme");
     assert_eq!(
         f.durable.keys(),
         [
-            "dev/-/data-key-wrap/chain/1/node-1-aaaa",
             "dev/-/data-key-wrap/cookie/1/node-1-aaaa",
             "dev/-/data-key-wrap/grant/1/node-1-aaaa",
+            "dev/acme/data-key-wrap/chain/1/node-1-aaaa",
             "dev/acme/data-key-wrap/data/1/node-1-aaaa",
             "dev/acme/data-key-wrap/data/1/node-2-bbbb",
         ]
@@ -493,13 +494,13 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
         ErrorCode::InvalidArgument,
         "address",
     );
-    // The chain purpose is the boundary's: a tenant has none.
+    // The chain purpose is a tenant's: the boundary has none.
     refused(
         f.write(
             vec![op(
                 Verb::CREATE,
                 "data-key-wrap",
-                "acme",
+                "",
                 "chain/1/node-1-aaaa",
                 b"w",
             )],

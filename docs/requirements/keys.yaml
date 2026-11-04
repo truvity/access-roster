@@ -1109,11 +1109,12 @@ requirements:
     rationale: "Session-chain facts are read by exchange, which must not hold the cookie key or a tenant's data key, and they are a tenant's personal data, so they are sealed under the tenant's key and erased with it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     actors: [key]
     standards: []
     issues: [1208]
+    tests: [actors/key/internal/keyd/seal_test.go, actors/session/internal/sessiond/token_test.go, actors/exchange/internal/exchanged/directory_store_test.go]
     verification:
       - {kind: integration-test, ref: "session seals and opens and exchange opens, by rule with no grant; exchange's seal and every other actor's seal or open are refused with the reason rule; another tenant's chain does not open"}
   - id: REQ-KEYS-083

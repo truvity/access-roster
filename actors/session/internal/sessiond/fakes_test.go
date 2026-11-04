@@ -401,6 +401,13 @@ func (f *fakeKey) record(s string) {
 	f.calls = append(f.calls, s)
 }
 
+// reset forgets the calls so far.
+func (f *fakeKey) reset() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = nil
+}
+
 func (f *fakeKey) called() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -435,11 +442,8 @@ func (f *fakeKey) check(purpose string, a *typev2alpha1.Address, op string, gran
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
 		}
 	case "chain":
-		// session may seal and never open (actors.yaml; REQ-KEYS-082).
-		if op != "seal" {
-			return refusal.New(connect.CodePermissionDenied, "rule", "purpose")
-		}
-		if a.GetTenant() != "" {
+		// session may seal and open a tenant's chain key, by rule and with no grant (actors.yaml; REQ-KEYS-082).
+		if a.GetTenant() == "" {
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
 		}
 	case "data":

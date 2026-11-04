@@ -209,6 +209,20 @@ func (f *fakeStore) wrapCount() int {
 	return n
 }
 
+// eraseWraps deletes every wrap of the tenant, as a tenant's exit does, and returns how many there were.
+func (f *fakeStore) eraseWraps(tenant string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for k, it := range f.items {
+		if it.GetAddress().GetKind() == "data-key-wrap" && it.GetAddress().GetTenant() == tenant {
+			delete(f.items, k)
+			n++
+		}
+	}
+	return n
+}
+
 func (f *fakeStore) wrapWriteCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

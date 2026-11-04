@@ -152,6 +152,7 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 | <a id="tenant-data-key-pseudonym"></a>`pseudonym` | `mac` | every work actor, [`reader`](/reference/actors/#reader), product-emitter | tenant exit | Keyed hashes, rolled by epoch: audit pseudonyms. A product's emitter is a declared external caller (actors.yaml). |
 | <a id="tenant-data-key-pairwise"></a>`pairwise` | `mac` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | tenant exit | The key behind a pairwise subject: sub = Mac(the tenant's pairwise key, the person's stable id). One per tenant, never rotated, used for nothing else. It is re-wrapped, not replaced, when the tenant moves. |
 | <a id="tenant-data-key-evidence"></a>`evidence` | `seal`, `open` | [`writer`](/reference/actors/#writer), [`indexer`](/reference/actors/#indexer), [`reader`](/reference/actors/#reader) | end of the evidence retention | Audit and usage records. Evidence never shares a key with personal data and outlives it. |
+| <a id="tenant-data-key-chain"></a>`chain` | `seal`, `open` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | tenant exit | Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, because policy needs these facts to decide. A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006). |
 
 ### Per boundary
 
@@ -159,7 +160,6 @@ Data keys are software AES-256 keys that key generates and wraps; they are store
 |---|---|---|---|---|
 | <a id="boundary-data-key-grant"></a>`grant` | `seal`, `open` | [`policy`](/reference/actors/#policy), [`store`](/reference/actors/#store), [`ca`](/reference/actors/#ca), [`signer`](/reference/actors/#signer), [`key`](/reference/actors/#key), [`adapter-github`](/reference/actors/#adapter-github) | never | Seals the grants policy mints; the actors that carry a grant out open it. A grant is in flight only. |
 | <a id="boundary-data-key-cookie"></a>`cookie` | `seal`, `open` | [`session`](/reference/actors/#session) | never | Seals and opens the session cookie and the sign-in cookie, per request, batched. |
-| <a id="boundary-data-key-chain"></a>`chain` | `seal`, `open` | [`session`](/reference/actors/#session), [`exchange`](/reference/actors/#exchange) | never | Seals the facts of a session chain that exchange must read: session seals them, exchange opens them. A boundary key, not shredded with a tenant; a generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006). |
 | <a id="boundary-data-key-mac"></a>`mac` | `mac` | [`entry`](/reference/actors/#entry), [`session`](/reference/actors/#session), [`ca`](/reference/actors/#ca), [`adapter-github`](/reference/actors/#adapter-github) | never | The key behind key's Mac for link ids and index values: UpstreamLink and UpstreamSession ids, by_subject_hash, the directory indexes. |
 | <a id="boundary-data-key-data"></a>`data` | `seal`, `open` | [`exchange`](/reference/actors/#exchange), [`console`](/reference/actors/#console) | never | Seals a sealed kind that has no tenant in its address (tenant `-`). Every other sealed kind is sealed under its tenant's `data` key, so after the tenant-scoped connections and directory kinds these are EnrolmentToken and PendingEnrolment. The wrap has the same purpose name as the tenant's `data` key and a different address. |
 
@@ -198,7 +198,7 @@ From the actor registry; the key registry names the same pairs from the other si
 | Actor | Key purposes (ops) |
 |---|---|
 | [`entry`](/reference/actors/#entry) | `mac` (mac), `pseudonym` (mac) |
-| [`session`](/reference/actors/#session) | `chain` (seal), `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac) |
+| [`session`](/reference/actors/#session) | `chain` (seal, open), `cookie` (seal, open), `data` (seal, open), `mac` (mac), `pairwise` (mac), `pseudonym` (mac) |
 | [`console`](/reference/actors/#console) | `data` (open), `pseudonym` (mac) |
 | [`exchange`](/reference/actors/#exchange) | `chain` (open), `enrolment` (open, public-key), `data` (seal, open), `pairwise` (mac), `pseudonym` (mac) |
 | [`signer`](/reference/actors/#signer) | `token-signing` (sign, public-key), `token-signing-ps256` (sign, public-key), `token-signing-es256` (sign, public-key), `token-signing-eddsa` (sign, public-key), `token-signing-rs256` (sign, public-key), `release-signing` (sign, public-key), `grant` (open), `data` (open), `pseudonym` (mac) |
