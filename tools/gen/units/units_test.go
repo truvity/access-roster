@@ -1,10 +1,10 @@
 package main
 
 import (
-	"regexp"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -380,6 +380,9 @@ func TestSearchPath(t *testing.T) {
 	}
 }
 
+// The generated units load a credential encrypted, and never with the plain line.
+//
+// verifies: REQ-DEPLOY-027
 func TestCredentialsUseLoadCredentialEncrypted(t *testing.T) {
 	saved := drivers["driver-key-software"]
 	t.Cleanup(func() { drivers["driver-key-software"] = saved })
@@ -654,6 +657,9 @@ func TestPolicyUnit(t *testing.T) {
 
 // The card driver is an alternative to the software driver of key@: the same socket, one of the two on a board. The
 // default key@ unit stays on the software driver, and a whole key@ unit switches it (boards.sh, SLUIS_BOARDS_KEY_DRIVER).
+// The pcscd service drop-in gives the socket its group at every start.
+//
+// verifies: REQ-DEPLOY-030
 func TestCardDriver(t *testing.T) {
 	files := generate(t)
 	card := files["sluis-drv-key-yubikey-piv@.service"]
@@ -719,6 +725,9 @@ func TestCardDriver(t *testing.T) {
 	// The card service is closed to everyone but the card driver's group and root, and so is polkit's card access.
 	if sock := files[PcscdSocketFile]; !strings.Contains(sock, "SocketMode=0660") || !strings.Contains(sock, "SocketGroup=sluis-pcsc-dev") {
 		t.Errorf("the pcscd socket drop-in:\n%s", sock)
+	}
+	if svc := files[PcscdServiceFile]; !strings.Contains(svc, "\nExecStartPre=-+/usr/bin/chown root:sluis-pcsc-dev /run/pcscd/pcscd.comm\n") {
+		t.Errorf("the pcscd service drop-in does not give the socket back to the card driver's group:\n%s", svc)
 	}
 	rules := files[PolkitRulesFile]
 	if !strings.Contains(rules, `(subject.user == "root" || subject.user == "sluis-drv-key-yubikey-piv-dev") ? polkit.Result.YES : polkit.Result.NO`) ||

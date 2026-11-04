@@ -64,7 +64,7 @@ A reflash makes a new host key, and a credential encrypted under the old key no 
 A board runs the card driver (`drivers/key/yubikey-piv`) in place of the software key driver when `boards-deploy` and `boards-smoke` run with `SLUIS_BOARDS_KEY_DRIVER=yubikey-piv`. The two serve the same socket, so a board runs one of them, and a deploy with `software` switches back.
 
 - **The unit** `sluis-drv-key-yubikey-piv@.service` requires `pcscd.socket`, runs as its own uid under the hardening of every driver unit, and has a `RuntimeDirectory` of its own for the admin socket that takes the PIN. The key@ unit of this variant requires the card driver in place of the software one and joins its group; it is a whole unit and not a drop-in, because a dependency cannot be removed in a drop-in on any systemd version (systemd.unit(5): "if you want to remove dependencies, you have to override the entire unit").
-- **The card service is closed to everyone else, by two locks.** A drop-in for `pcscd.socket` makes its socket mode `0660` for a group, `sluis-pcsc-<boundary>`, that only the card driver joins, so only that uid (and root) reaches the card ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). It is not the driver's own group: key@ joins that one to reach the key-store socket, and with it key@ could talk to the card while the driver restarts, when the card keeps its login. A generator test checks that no other unit gets the card service's group. The second lock is polkit, where pcscd is built with it, and it differs by distribution:
+- **The card service is closed to everyone else, by two locks.** A drop-in for `pcscd.socket` makes its socket mode `0660` for a group, `sluis-pcsc-<boundary>`, that only the card driver joins, so only that uid (and root) reaches the card ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). A second drop-in, for `pcscd.service`, gives the socket that group again at every start of the service, because a pcscd that runs as its own user (Ubuntu 26.04) has `RuntimeDirectory=pcscd` in its unit, and systemd hands the directory and the socket in it to that user when the service starts and finds the directory root's (MEASURED 2026-11-04: after the first start the socket was `pcscd:pcscd` and the card driver was refused). The drop-in runs `chown root:<group>` as root in `ExecStartPre`, after systemd has made the directory and before pcscd serves a client. It is not the driver's own group: key@ joins that one to reach the key-store socket, and with it key@ could talk to the card while the driver restarts, when the card keeps its login. A generator test checks that no other unit gets the card service's group. The second lock is polkit, where pcscd is built with it, and it differs by distribution:
 
   | | pcscd | polkit | What admits the card driver |
   |---|---|---|---|
@@ -72,9 +72,9 @@ A board runs the card driver (`drivers/key/yubikey-piv`) in place of the softwar
   | Ubuntu 26.04 | 2.4.1, runs as the user `pcscd`, `Requires=polkit.service` | polkitd 127, JavaScript `.rules` | the polkit rule, then the socket group |
   | Rocky 10 | 2.2.3, runs as root, no sandbox in its unit | polkit 125, JavaScript `.rules` | the polkit rule, then the socket group |
 
-  A pcscd with polkit asks polkit about every client, and the policy (`org.debian.pcsc-lite.policy`: `access_pcsc` and `access_card` are `allow_active=yes` and `no` for everything else) refuses a system service, which has no active session. So on Ubuntu 26.04 and Rocky 10 the rule is not a second lock but what lets the card driver in: it admits root and the card driver's user and refuses every other user. The deploy installs it where the policy file exists (measured on the Ubuntu 22.04 boards, where it does not; read from the packages of 26.04 and Rocky 10 in the research of 2026-11-04). The CI jobs of the operating systems check both locks against a real pcscd (see "Supported operating systems"); a pcscd that runs as a non-root user and takes its socket from the drop-in's `SocketUser=root` is tested there on 26.04, and is not tested on a board or a card.
+  A pcscd with polkit asks polkit about every client, and the policy (`org.debian.pcsc-lite.policy`: `access_pcsc` and `access_card` are `allow_active=yes` and `no` for everything else) refuses a system service, which has no active session. So on Ubuntu 26.04 and Rocky 10 the rule is not a second lock but what lets the card driver in: it admits root and the card driver's user and refuses every other user. The deploy installs it where the policy file exists (measured on the Ubuntu 22.04 boards, where it does not; read from the packages of 26.04 and Rocky 10 in the research of 2026-11-04). The CI jobs of the operating systems check both locks against a real pcscd (see "Supported operating systems"); a pcscd that runs as a non-root user and takes its socket from the drop-in's `SocketUser=root` is tested there on 26.04 (MEASURED 2026-11-04), and is not tested on a board or a card.
 - **The driver is bound to the board's card.** Its unit passes `--serial` from `/etc/sluis/yubikey-piv-<boundary>.env`, which the deploy writes from `SLUIS_BOARD_CARD_SERIALS` (`board=serial` pairs, required for every board of the run; no serial is in the repository). A unit without the file does not start, and a card with another serial is not adopted.
-- **The deploy installs no package.** The board image carries the card service, its CCID driver and, where pcscd asks polkit, polkit; `remote.sh` checks them (`dpkg -s` on Debian and Ubuntu, `rpm -q` on RHEL and Rocky) and refuses, naming the packages of the board's family, before it changes anything for the card (`pcscd` and `libccid`; `pcsc-lite` and `pcsc-lite-ccid`; `polkitd` or `polkit`). `boards-undeploy` takes the unit, the drop-in and the rule away and leaves the packages.
+- **The deploy installs no package.** The board image carries the card service, its CCID driver and, where pcscd asks polkit, polkit; `remote.sh` checks them (`dpkg -s` on Debian and Ubuntu, `rpm -q` on RHEL and Rocky) and refuses, naming the packages of the board's family, before it writes a file (`pcscd` and `libccid`; `pcsc-lite` and `pcsc-lite-ccid`; `polkitd` or `polkit`). `boards-undeploy` takes the unit, the drop-in and the rule away and leaves the packages.
 - **The board starts locked.** The driver has no PIN until `sluis node unlock NODE` delivers it on the admin socket, as root on the board ([the command](/reference/cli/#sluis-node-unlock)).
 
 #### SELinux and the firewall
@@ -82,7 +82,7 @@ A board runs the card driver (`drivers/key/yubikey-piv`) in place of the softwar
 On a board with SELinux enforcing (Rocky 10) the deploy ends its file work with `restorecon -RF` over `/opt/sluis`, `/etc/sluis`, the units, users, tmpfiles and polkit directories it wrote to, and the state directory, so that every file has the label the policy gives its path. It does nothing where SELinux is not enabled, and a failed `restorecon` is a warning.
 
 - **The stance: sluis units run as `unconfined_service_t`.** The binaries below `/opt/sluis/bin` are `bin_t`, and the policy of RHEL and Rocky starts a `bin_t` program from systemd in `unconfined_service_t` (`init.te`: `unconfined_server_domtrans(init_t)`). The units work with the sockets (`var_run_t`), the state (`var_lib_t`), the credentials (`etc_t`) and the connection to pcscd (`pcscd_var_run_t`) without a rule of ours, and SELinux confines nothing of sluis: the isolation is the uids, the socket modes, the call-graph check and the systemd sandbox, as on Ubuntu. A policy module with a domain for each actor, its own socket types and only the allowed `connectto` pairs would be a third lock; it is later work and needs an SELinux-enforcing board or VM in CI. Running sluis in containers as `container_t` is not how a bare-metal board works.
-- **Not tested here:** the deploy under enforcing. The CI jobs run the scripts in a Rocky 10 container, where SELinux is not the container's to enforce. A nightly job on a Rocky 10 virtual machine would check that `ausearch -m AVC` is empty after a deploy and a smoke; it needs a runner with `/dev/kvm` and is not set up (see "Supported operating systems").
+- **Tested in a virtual machine, nightly.** The container jobs cannot see a label or an AVC denial. `deploy/boards/os-vm-test.sh` boots the Rocky 10.2 cloud image under KVM with SELinux enforcing, runs the deploy of the card variant through real ssh, and checks that the executables are `bin_t`, the units `systemd_unit_file_t`, the units' processes `unconfined_service_t` and pcscd `pcscd_t`, that a unit receives its credentials, that the card driver's unit reaches pcscd, and that `ausearch -m AVC,USER_AVC -ts boot` finds nothing (MEASURED 2026-11-04 on Rocky 10.2, kernel 6.12.0-211.16.1.el10_2.0.1, systemd 257: all hold, with the stand-in executables of the test). The workflow `nightly-selinux.yaml` runs it on a hosted runner; until its first scheduled run passes, the requirement stays planned. It does not run on a pull request, and it does not run the sluis programs themselves or read a card.
 - **The firewall is the image's.** sluis opens no port: every actor and driver listens on a Unix socket, and the only inter-node port is rqlite's Raft port, which is not sluis's unit. firewalld on Rocky 10 has a default zone (`public`) that admits `ssh`, `dhcpv6-client` and `cockpit` only, so the image of a Rocky board must admit rqlite's HTTP (4001) and Raft (4002) ports from the declared peers and no other address, as "Sockets and the call graph" above wants; the deploy does not touch the firewall. The same holds for `ufw` on Ubuntu, if the image enables it. A future per-uid nftables egress table has to live beside firewalld's own `inet firewalld` table and must not be flushed by it.
 
 #### Switching a board to the card, or back
@@ -107,11 +107,50 @@ systemd's `RestrictSUIDSGID=yes` installs a seccomp filter that answers the `ope
 - **The fallback keeps the guarantee.** It walks the path one component at a time with `O_NOFOLLOW`, refuses `..`, an empty component and an absolute path before any open, and refuses a symlink anywhere in the path. The `file` driver, which follows links below its directory for ConfigMap trees, keeps a stack of directory descriptors, refuses a link that leaves the root and stops at 40 links.
 - **Both roads are tested,** each case with `openat2` answering `ENOSYS` and with it working.
 
-## Supported distributions and the systemd floor
+## Supported operating systems
 
-The systemd floor is 252. Ubuntu 26.04 LTS, Rocky Linux 10.x and Amazon Linux 2023 meet it, on amd64 and arm64, so the units use `LoadCredentialEncrypted=` where they need it ([Packages](/distribution/packages/#supported-platforms)). There are no build profiles: the packaging is the build. One cluster may mix distributions, because the package set is the same, at the price of a wider test surface.
+The packages and the boards run on the same three distributions ([Packages](/distribution/packages/#supported-platforms)). The systemd floor is 252, the version in Amazon Linux 2023, so the units use `LoadCredentialEncrypted=` and the deploy refuses a board below it. There are no build profiles: the packaging is the build. One cluster may mix distributions, because the package set is the same, at the price of a wider test surface.
 
-A board image older than the floor is a declared exception until board images for the supported distributions exist ([#881](https://github.com/truvity/sluis/issues/881)). The boards deploy no longer has a plain `LoadCredential=` road: it refuses to write a credential on such an image, and the exception ends when the boards are reflashed. Key material is not affected, because it stays in the card. `sluis doctor` warns on the randomness checklist when the kernel is older than 5.18, which VM-clone reseeding needs.
+| | Ubuntu 26.04 LTS | Rocky Linux 10.x | Amazon Linux 2023 |
+|---|---|---|---|
+| systemd | 259 | 257 | 252 |
+| glibc | 2.43 | 2.39 | 2.34 |
+| Kernel on the boards | the distribution's own | the Kmods SIG kernel 6.18 | not a board |
+| Mandatory access control | AppArmor | SELinux, enforcing | SELinux, permissive by default |
+| Firewall | `ufw`, off unless the image enables it | `firewalld`, zone `public` | none by default |
+| pcscd | 2.4.1, runs as the user `pcscd`, `Requires=polkit.service` | 2.2.3, runs as root | not used |
+| polkit | 127 | 125 | not used |
+| Card packages | `pcscd`, `libccid`, `polkitd` | `pcsc-lite`, `pcsc-lite-ccid`, `polkit` | not used |
+| The boards | yes | yes | no |
+| Tested by CI | the deploy scripts in a systemd container (`os-container-test.sh`) | the same, in a Rocky 10 container, and nightly in a virtual machine with SELinux enforcing (`os-vm-test.sh`) | not by these jobs |
+
+The kernel of every system is far above 5.18, which VM-clone reseeding needs (`sluis doctor` warns on the randomness checklist below it). The Rocky board runs the Kmods SIG kernel 6.18 in place of the stock kernel of the release, by the decision of 2026-11-04.
+
+### What the jobs check, and what they do not
+
+`deploy/boards/os-container-test.sh` starts a systemd container of the distribution and runs the real `boards.sh` against it, through a stand-in for ssh that runs the board's command in the container. The executables are stand-ins that sleep, so the units, users, drop-ins, credentials and the card service are real and the sluis programs are not. Each distribution is checked for:
+
+- the refusal, naming the packages of the family, when the card packages are missing, before any file is written;
+- the deploy of the card variant: `systemd-analyze verify`, start, and active units;
+- the credentials: encrypted on the board, mode 0400, decrypted under the board's host key, and encrypted again by the next deploy after the host key was replaced (the reflash);
+- the two locks of the card service against a real `pcscd`: root and the card driver's user reach it, a user outside the socket's group does not, a member of the group that is not the card driver does not (the polkit rule), and without the rule even the card driver does not (MEASURED 2026-11-04 on Ubuntu 26.04 and Rocky 10.2, with `SCardEstablishContext` under each uid; there is no reader and no card).
+
+`deploy/boards/prereq-test.sh` covers the same checks against fakes of `dpkg`, `rpm`, `systemctl` and `systemd-creds` on any machine.
+
+What they do not check, and what is missing:
+
+- **A card.** Nothing here reads a reader. `SCardConnect` and the `access_card` action need one; they are exercised on a board.
+- **SELinux enforcing, as a gate on a merge.** A container cannot show the labels or an AVC denial, so the check is the nightly virtual machine above, not a gate on a merge. It needs `/dev/kvm`, which the hosted Linux runners offer once a udev rule opens it; the workflow does that. Its first scheduled run is the proof that the hosted runner can boot the image.
+- **What a unit receives through `LoadCredentialEncrypted=` on some container hosts.** On a host where systemd in the container cannot set up the credentials directory at all (a plain `LoadCredential=` fails too), the test says so and checks the decryption only.
+- **The kernel 6.18 of the Rocky board and the boards' hardware.** The containers run on the runner's kernel.
+
+### The cgo card driver and glibc
+
+The card driver links `libpcsclite` and is built natively, in the pinned Ubuntu 22.04 userland (glibc 2.35), so it asks for no symbol newer than the build userland has. `native-build.sh` prints the newest symbol it asks for and fails the build above `GLIBC_2.34` (MEASURED 2026-11-04: the newest symbol is `GLIBC_2.34`), which is the glibc of Amazon Linux 2023 and so below every supported system. A change that needs a newer symbol raises that line on purpose, and this page with it. `libpcsclite.so.1` comes from the distribution's own package (`libpcsclite1`, `pcsc-lite-libs`), so the card driver depends on nothing else.
+
+### Ubuntu 22.04 is the exception that ends
+
+The boards that still run Ubuntu 22.04 (systemd 249, glibc 2.35, pcscd 1.9.5 without polkit) are a declared exception, not a supported platform ([#881](https://github.com/truvity/sluis/issues/881)). The software key driver deploys there as before; the deploy refuses to write a credential, because the units read `LoadCredentialEncrypted=`, which systemd 249 does not know. The exception ends when the last such board is reflashed to a system of the table: the 22.04 column of the card table above, and this paragraph, are then removed. Key material is never affected, because it stays in the card.
 
 ## One node
 

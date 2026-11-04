@@ -65,3 +65,4 @@ catalogue:
     attestation-missing: "Its verification includes a manual check, and no attestation records that check yet."
     external-suite-not-run: "The external conformance suite or vector set named in its verification does not run in CI yet; the tests that do run are tagged as evidence."
     smoke-not-in-ci: "Covered only by a smoke program that does not run in CI."
+    ci-script-not-tagged: "Proved by a script that a CI job runs; the evidence collector reads Go and Rust tests only, so no tag can name the record."

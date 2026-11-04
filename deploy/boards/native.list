@@ -1,5 +1,7 @@
 # The executables that link a C library, and so are built natively for each architecture inside the userland of the
-# oldest supported distribution, Ubuntu 22.04 (ADR 0013, "Build and release"): they run on every newer glibc.
+# build userland, Ubuntu 22.04, whose glibc (2.35) is older than that of Ubuntu 26.04 and Rocky 10 and whose symbols stay at
+# GLIBC_2.34 or below, the glibc of Amazon Linux 2023 (ADR 0013, "Build and release"; docs/runtimes/bare-metal.md, "Supported
+# operating systems"). 22.04 is the build userland, not a supported board image.
 # `just build-arm64` leaves them to this build (it cross-compiles with CGO off), and picks up their output.
 #
 # Columns, separated by a tab: the package below the repository root, and the Go build tags.

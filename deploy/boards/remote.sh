@@ -17,6 +17,7 @@ state_root=/var/lib/sluis-state
 # second does the same through polkit on a board whose pcscd is built with it.
 card_serial_env=/etc/sluis/yubikey-piv-$boundary.env
 card_pcscd_dropin=/etc/systemd/system/pcscd.socket.d/10-sluis.conf
+card_pcscd_service_dropin=/etc/systemd/system/pcscd.service.d/10-sluis.conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 
@@ -33,7 +34,7 @@ allowed_path() {
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
-	"$card_pcscd_dropin" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
+	"$card_pcscd_dropin" | "$card_pcscd_service_dropin" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
 	esac
 	return 1
 }
@@ -42,7 +43,7 @@ allowed_dir() {
 	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
-	/etc/systemd/system/pcscd.socket.d | /etc/polkit-1/rules.d) return 0 ;;
+	/etc/systemd/system/pcscd.socket.d | /etc/systemd/system/pcscd.service.d | /etc/polkit-1/rules.d) return 0 ;;
 	/etc/sluis/config | /etc/sluis/config/"$boundary" | /etc/sluis/bootstrap.d) return 0 ;;
 	/etc/sluis/credentials | /etc/sluis/credentials/"$boundary" | /etc/sluis/credentials/"$boundary"/sluis-*) return 0 ;;
 	"$state_root" | "$state_root"/*) return 0 ;;
@@ -64,6 +65,14 @@ case "$mode" in
 deploy)
 	[ -d "$stage/files" ] && [ -f "$stage/plan.tsv" ] || { echo "remote: no stage in $stage" >&2; exit 1; }
 	[ -s "$stage/plan.tsv" ] || { echo "remote: the plan is empty" >&2; exit 1; }
+	# What the board's image must carry is checked before the first file is written: a deploy that stops half way leaves a unit
+	# that boards.sh reads as a switch that stopped half way, and refuses to go on from.
+	if [ -d "$stage/files/card" ]; then
+		check_card_prerequisites || exit 1
+	fi
+	if [ -d "$stage/files/etc/credentials" ]; then
+		require_credential_encryption || exit 1
+	fi
 	# /etc/sysusers.d does not exist on every image; both directories are listed if deploy has to make them.
 	for d in /etc/sluis /etc/sysusers.d; do
 		if [ ! -d "$d" ]; then
@@ -140,8 +149,7 @@ deploy)
 	# deploy are taken away (the key@ template of this deploy already names the software driver again).
 	card_changed=0
 	if [ -d "$stage/files/card" ]; then
-		# The card service, its reader driver and, where pcscd asks polkit, polkit are the image's: checked, never installed.
-		check_card_prerequisites || exit 1
+		# The card service, its reader driver and, where pcscd asks polkit, polkit are the image's: checked above, never installed.
 		install_card() { # source dest [mode]
 			allowed_path "$2" || { echo "remote: refusing $2" >&2; exit 1; }
 			d=$(dirname "$2")
@@ -153,6 +161,7 @@ deploy)
 			install -m "${3:-0644}" -o root -g root "$1" "$2"
 		}
 		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
+		install_card "$stage/files/card/pcscd-service.dropin" "$card_pcscd_service_dropin"
 		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" 0600 # the card the driver is bound to; systemd reads it as root
 		# A pcscd that ships its polkit policy asks polkit about every client and refuses a system service by default (Ubuntu 26.04,
 		# Rocky 10): the rule is what admits the card driver, and the socket group is the second lock. A pcscd without polkit (Ubuntu
@@ -162,7 +171,7 @@ deploy)
 		fi
 		card_changed=1
 	else
-		for f in "$card_pcscd_dropin" "$card_polkit_rules" "$card_serial_env"; do
+		for f in "$card_pcscd_dropin" "$card_pcscd_service_dropin" "$card_polkit_rules" "$card_serial_env"; do
 			if [ -e "$f" ]; then
 				rm -f -- "$f"
 				echo "removed $f"
@@ -201,7 +210,6 @@ deploy)
 		note file "$dest"
 		install -m 0644 -o root -g root "$stage/files/etc/rqlite.env" "$dest"
 		if [ -d "$stage/files/etc/credentials" ]; then
-			require_credential_encryption || exit 1
 			mkdir_noted /etc/sluis/credentials 0700
 			mkdir_noted "/etc/sluis/credentials/$boundary" 0700
 			for d in "$stage"/files/etc/credentials/*/; do
@@ -304,7 +312,7 @@ undeploy)
 		esac
 	done <"$manifest"
 	systemctl daemon-reload
-	if grep -q "pcscd.socket.d" "$manifest"; then
+	if grep -q "pcscd\.\(socket\|service\)\.d" "$manifest"; then
 		systemctl stop pcscd.service pcscd.socket 2>/dev/null || true
 		systemctl start pcscd.socket || true
 	fi
