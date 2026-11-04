@@ -854,8 +854,9 @@ requirements:
     rationale: "A log must still verify after its records stop opening (ADR 0029)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -1200,7 +1201,6 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Partial}
@@ -1553,8 +1553,9 @@ requirements:
     rationale: "A record that is not canonical would hash differently in another implementation."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
