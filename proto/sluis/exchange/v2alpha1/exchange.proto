@@ -3,6 +3,7 @@ syntax = "proto3";
 
 package sluis.exchange.v2alpha1;
 
+import "google/protobuf/timestamp.proto";
 import "sluis/type/v2alpha1/type.proto";
 
 // ExchangeService serves the token endpoint's exchange grant that entry routes to it.
@@ -22,4 +23,20 @@ message TokenExchangeRequest {
   string client_id = 8;             // the client
   string actor_token = 9;           // the token of the actor, if any
   string actor_token_type = 10;     // the type of the actor token
+}
+
+// VerifierKeyCache is the temp kind VerifierKeyCache (0022 "Proofs and the exchange"): the published keys of a proof
+// issuer, kept for as long as HTTP caching allows and 24 hours at most. The id is the lower-case hex SHA-256 of the
+// issuer URL; only exchange reads and writes it.
+message VerifierKeyCache {
+  string issuer = 1;                         // the trusted issuer the keys belong to
+  bytes jwks_json = 2;                       // the JWK Set (RFC 7517) as the issuer published it
+  google.protobuf.Timestamp fetched_at = 3;  // when exchange fetched it
+}
+
+// ReplayGuard is the self-scoped temp kind ReplayGuard (0004 "One writer per kind"): the mark of a proof that has
+// been presented. The id is "exchange/" and the lower-case hex SHA-384 of the issuer and the jti, so the store shows
+// neither; the item lives as long as the proof is valid.
+message ReplayGuard {
+  google.protobuf.Timestamp seen_at = 1;  // when exchange first accepted the proof
 }

@@ -12,6 +12,7 @@ import (
 	v2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -141,11 +142,121 @@ func (x *TokenExchangeRequest) GetActorTokenType() string {
 	return ""
 }
 
+// VerifierKeyCache is the temp kind VerifierKeyCache (0022 "Proofs and the exchange"): the published keys of a proof
+// issuer, kept for as long as HTTP caching allows and 24 hours at most. The id is the lower-case hex SHA-256 of the
+// issuer URL; only exchange reads and writes it.
+type VerifierKeyCache struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Issuer        string                 `protobuf:"bytes,1,opt,name=issuer,proto3" json:"issuer,omitempty"`                        // the trusted issuer the keys belong to
+	JwksJson      []byte                 `protobuf:"bytes,2,opt,name=jwks_json,json=jwksJson,proto3" json:"jwks_json,omitempty"`    // the JWK Set (RFC 7517) as the issuer published it
+	FetchedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=fetched_at,json=fetchedAt,proto3" json:"fetched_at,omitempty"` // when exchange fetched it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifierKeyCache) Reset() {
+	*x = VerifierKeyCache{}
+	mi := &file_sluis_exchange_v2alpha1_exchange_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifierKeyCache) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifierKeyCache) ProtoMessage() {}
+
+func (x *VerifierKeyCache) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_exchange_v2alpha1_exchange_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifierKeyCache.ProtoReflect.Descriptor instead.
+func (*VerifierKeyCache) Descriptor() ([]byte, []int) {
+	return file_sluis_exchange_v2alpha1_exchange_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *VerifierKeyCache) GetIssuer() string {
+	if x != nil {
+		return x.Issuer
+	}
+	return ""
+}
+
+func (x *VerifierKeyCache) GetJwksJson() []byte {
+	if x != nil {
+		return x.JwksJson
+	}
+	return nil
+}
+
+func (x *VerifierKeyCache) GetFetchedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FetchedAt
+	}
+	return nil
+}
+
+// ReplayGuard is the self-scoped temp kind ReplayGuard (0004 "One writer per kind"): the mark of a proof that has
+// been presented. The id is "exchange/" and the lower-case hex SHA-384 of the issuer and the jti, so the store shows
+// neither; the item lives as long as the proof is valid.
+type ReplayGuard struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SeenAt        *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=seen_at,json=seenAt,proto3" json:"seen_at,omitempty"` // when exchange first accepted the proof
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayGuard) Reset() {
+	*x = ReplayGuard{}
+	mi := &file_sluis_exchange_v2alpha1_exchange_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayGuard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayGuard) ProtoMessage() {}
+
+func (x *ReplayGuard) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_exchange_v2alpha1_exchange_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayGuard.ProtoReflect.Descriptor instead.
+func (*ReplayGuard) Descriptor() ([]byte, []int) {
+	return file_sluis_exchange_v2alpha1_exchange_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ReplayGuard) GetSeenAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SeenAt
+	}
+	return nil
+}
+
 var File_sluis_exchange_v2alpha1_exchange_proto protoreflect.FileDescriptor
 
 const file_sluis_exchange_v2alpha1_exchange_proto_rawDesc = "" +
 	"\n" +
-	"&sluis/exchange/v2alpha1/exchange.proto\x12\x17sluis.exchange.v2alpha1\x1a\x1esluis/type/v2alpha1/type.proto\"\xf0\x02\n" +
+	"&sluis/exchange/v2alpha1/exchange.proto\x12\x17sluis.exchange.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\xf0\x02\n" +
 	"\x14TokenExchangeRequest\x12\x1d\n" +
 	"\n" +
 	"grant_type\x18\x01 \x01(\tR\tgrantType\x12#\n" +
@@ -159,7 +270,14 @@ const file_sluis_exchange_v2alpha1_exchange_proto_rawDesc = "" +
 	"\vactor_token\x18\t \x01(\tR\n" +
 	"actorToken\x12(\n" +
 	"\x10actor_token_type\x18\n" +
-	" \x01(\tR\x0eactorTokenType2i\n" +
+	" \x01(\tR\x0eactorTokenType\"\x82\x01\n" +
+	"\x10VerifierKeyCache\x12\x16\n" +
+	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x1b\n" +
+	"\tjwks_json\x18\x02 \x01(\fR\bjwksJson\x129\n" +
+	"\n" +
+	"fetched_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tfetchedAt\"B\n" +
+	"\vReplayGuard\x123\n" +
+	"\aseen_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x06seenAt2i\n" +
 	"\x0fExchangeService\x12V\n" +
 	"\x05Token\x12-.sluis.exchange.v2alpha1.TokenExchangeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReplyB\xf7\x01\n" +
 	"\x1bcom.sluis.exchange.v2alpha1B\rExchangeProtoP\x01ZKgithub.com/truvity/sluis/v2/gen/go/sluis/exchange/v2alpha1;exchangev2alpha1\xa2\x02\x03SEX\xaa\x02\x17Sluis.Exchange.V2alpha1\xca\x02\x17Sluis\\Exchange\\V2alpha1\xe2\x02#Sluis\\Exchange\\V2alpha1\\GPBMetadata\xea\x02\x19Sluis::Exchange::V2alpha1b\x06proto3"
@@ -176,19 +294,24 @@ func file_sluis_exchange_v2alpha1_exchange_proto_rawDescGZIP() []byte {
 	return file_sluis_exchange_v2alpha1_exchange_proto_rawDescData
 }
 
-var file_sluis_exchange_v2alpha1_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_sluis_exchange_v2alpha1_exchange_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_sluis_exchange_v2alpha1_exchange_proto_goTypes = []any{
-	(*TokenExchangeRequest)(nil), // 0: sluis.exchange.v2alpha1.TokenExchangeRequest
-	(*v2alpha1.HttpReply)(nil),   // 1: sluis.type.v2alpha1.HttpReply
+	(*TokenExchangeRequest)(nil),  // 0: sluis.exchange.v2alpha1.TokenExchangeRequest
+	(*VerifierKeyCache)(nil),      // 1: sluis.exchange.v2alpha1.VerifierKeyCache
+	(*ReplayGuard)(nil),           // 2: sluis.exchange.v2alpha1.ReplayGuard
+	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*v2alpha1.HttpReply)(nil),    // 4: sluis.type.v2alpha1.HttpReply
 }
 var file_sluis_exchange_v2alpha1_exchange_proto_depIdxs = []int32{
-	0, // 0: sluis.exchange.v2alpha1.ExchangeService.Token:input_type -> sluis.exchange.v2alpha1.TokenExchangeRequest
-	1, // 1: sluis.exchange.v2alpha1.ExchangeService.Token:output_type -> sluis.type.v2alpha1.HttpReply
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	3, // 0: sluis.exchange.v2alpha1.VerifierKeyCache.fetched_at:type_name -> google.protobuf.Timestamp
+	3, // 1: sluis.exchange.v2alpha1.ReplayGuard.seen_at:type_name -> google.protobuf.Timestamp
+	0, // 2: sluis.exchange.v2alpha1.ExchangeService.Token:input_type -> sluis.exchange.v2alpha1.TokenExchangeRequest
+	4, // 3: sluis.exchange.v2alpha1.ExchangeService.Token:output_type -> sluis.type.v2alpha1.HttpReply
+	3, // [3:4] is the sub-list for method output_type
+	2, // [2:3] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_sluis_exchange_v2alpha1_exchange_proto_init() }
@@ -202,7 +325,7 @@ func file_sluis_exchange_v2alpha1_exchange_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_exchange_v2alpha1_exchange_proto_rawDesc), len(file_sluis_exchange_v2alpha1_exchange_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
