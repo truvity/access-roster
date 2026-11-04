@@ -7,6 +7,8 @@ name: Checks
 on:
   pull_request:
   merge_group:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -123,7 +125,7 @@ jobs:
       - run: devbox run -- just check-rules
       - name: Commit messages and the pull request text
         env:
-          BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || format('origin/{0}', github.base_ref) }}
+          BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event_name == 'push' && github.event.before || format('origin/{0}', github.base_ref) }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: devbox run -- just check-messages
