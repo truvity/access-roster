@@ -42,7 +42,7 @@
 //
 // usage: site/scripts/check-requirements.mjs [--strict] [--write-coverage] [--require-milestone] [--board file] [dir]
 //   (dir defaults to docs/requirements)
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -130,6 +130,7 @@ function validate(node, value, path, out) {
     if (node.items) value.forEach((v, i) => validate(node.items, v, `${path}/${i}`, out));
   }
   if (type === 'object') {
+    if (node.minProperties !== undefined && Object.keys(value).length < node.minProperties) out.push(`${path}: fewer than ${node.minProperties} properties`);
     for (const k of node.required ?? []) if (!(k in value)) out.push(`${path}: missing ${k}`);
     const props = node.properties ?? {};
     for (const [k, v] of Object.entries(value)) {
@@ -148,8 +149,11 @@ files.set('index.yaml', index);
 for (const name of readdirSync(dir).filter((f) => f.endsWith('.yaml')).sort()) {
   if (name !== 'index.yaml' && name !== 'standards.yaml' && name !== 'attestations.yaml') files.set(name, load(name));
 }
+// The attestations are optional; a file that exists but cannot be parsed is an error, never an empty list.
 let attestationsDoc = null;
-try { attestationsDoc = load('attestations.yaml'); } catch { /* the file is optional: no attestation */ }
+if (existsSync(join(dir, 'attestations.yaml'))) {
+  try { attestationsDoc = load('attestations.yaml'); } catch (e) { E(`L1 attestations.yaml: cannot be parsed (${e instanceof Error ? e.message.split('\n')[0] : e})`); }
+}
 const standardsDoc = load('standards.yaml');
 
 // L1
@@ -356,6 +360,7 @@ else {
 // ---- L21 and L22: the evidence of a status
 const scan = collectEvidence(repoDir);
 const evidence = new Map(); // id -> [{file, line, test} or {attestation}]
+const attested = new Set(); // ids with at least one attestation
 for (const [id, list] of scan.evidence) evidence.set(id, [...list]);
 for (const [i, a] of (attestationsDoc?.attestations ?? []).entries()) {
   const where = `L22 attestations.yaml entry ${i + 1} (${a.req})`;
@@ -370,6 +375,7 @@ for (const [i, a] of (attestationsDoc?.attestations ?? []).entries()) {
     if (URLISH.test(text)) E(`L10 ${where}: a URL that is not under .example`);
     for (const m of text.matchAll(TICKET)) if (!NOT_TICKET.has(m[1])) E(`L10 ${where}: ticket-key shaped text ${m[0]}`);
   }
+  attested.add(a.req);
   (evidence.get(a.req) ?? evidence.set(a.req, []).get(a.req)).push({ attestation: { by: a.by, on: a.on } });
 }
 for (const id of scan.evidence.keys()) {
@@ -377,7 +383,14 @@ for (const id of scan.evidence.keys()) {
 }
 for (const r of reqs) {
   const n = evidence.get(r.id)?.length ?? 0;
-  if (r.status === 'done' && n === 0) E(`L21 ${r.id}: a done record has no evidence: no test carries "verifies: ${r.id}" and no attestation names it`);
+  if (r.status === 'done') {
+    // Each listed verification kind needs its own evidence: a test kind needs a tagged test that runs in CI, manual needs an attestation.
+    const kinds = new Set(r.verification.map((v) => v.kind));
+    const tagged = (scan.evidence.get(r.id) ?? []).length;
+    if (kinds.size === 0 && n === 0) E(`L21 ${r.id}: a done record has no evidence: no test carries "verifies: ${r.id}" and no attestation names it`);
+    if ([...kinds].some((k) => k !== 'manual') && tagged === 0) E(`L21 ${r.id}: a done record has no evidence for its ${[...kinds].filter((k) => k !== 'manual').join(', ')} verification: no test carries "verifies: ${r.id}"`);
+    if (kinds.has('manual') && !attested.has(r.id)) E(`L21 ${r.id}: a done record has no evidence for its manual verification: no attestation names it`);
+  }
   if (n > 0 && ['planned', 'open', 'withdrawn'].includes(r.status)) W(`L21 ${r.id}: ${n} piece(s) of evidence, but the status is ${r.status}; set it to done or partial`);
 }
 console.log(`check-requirements: evidence for ${[...evidence.keys()].filter((k) => byId.has(k)).length} requirements (${scan.tests} tagged tests in ${scan.files} files, ${attestationsDoc?.attestations?.length ?? 0} attestations)`);

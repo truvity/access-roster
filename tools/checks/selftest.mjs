@@ -47,7 +47,7 @@ function expect(name, check, files, want, { env = {}, has = [], lacks = [], comm
   const dir = fixture(files, commits);
   const res = spawnSync(process.execPath, [script, ...args.map((a) => (typeof a === 'function' ? a(dir) : a)), join(dir, target)], {
     encoding: 'utf8',
-    env: { ...process.env, PUBLIC_CONTENT_DENYLIST: '', REQUIRE_DENYLIST: '', PR_TITLE: '', PR_BODY: '', BASE: 'base', ...env },
+    env: { ...process.env, PUBLIC_CONTENT_DENYLIST: '', REQUIRE_DENYLIST: '', GH_TOKEN: '', GITHUB_TOKEN: '', PR_TITLE: '', PR_BODY: '', BASE: 'base', ...env },
   });
   const out = `${res.stdout}${res.stderr}`;
   const got = res.status === 0 ? 'pass' : 'fail';
@@ -174,6 +174,17 @@ reqExpect('an attestation that does not say what was checked', catalogueFiles(do
 reqExpect('an attestation dated in the future', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('2026-11-04', '2999-01-01')), MANUAL), 'fail', { has: ['L22', 'in the future'] });
 reqExpect('an attestation that carries an e-mail address', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('The example page', 'dev@example.com read the page')), MANUAL), 'fail', { has: ['L10', 'e-mail'] });
 
+// Each listed verification kind needs its own evidence.
+const BOTH = '{kind: integration-test, ref: "the example test"}\n      - {kind: manual, ref: "a reviewer reads the example"}';
+reqExpect('a done record with a test kind and manual, tag only', catalogueFiles(done(), testFile(goTagged), BOTH), 'fail', { has: ['L21 REQ-EX-001', 'manual verification'] });
+reqExpect('a done record with a test kind and manual, attestation only', catalogueFiles(done(), attestation(goodAttestation), BOTH), 'fail', { has: ['L21 REQ-EX-001', 'integration-test verification'] });
+reqExpect('a done record with a test kind and manual, both', catalogueFiles(done(), { ...testFile(goTagged), ...attestation(goodAttestation) }, BOTH), 'pass');
+reqExpect('a done record whose only tagged test is ignored', catalogueFiles(done(), { 'actors/example/tests/it.rs': `/// ${verifies} REQ-EX-001\n#[test]\n#[ignore]\nfn the_example() {}\n` }), 'fail', { has: ['no evidence'] });
+reqExpect('a done record whose only tagged test is skipped first thing', catalogueFiles(done(), testFile(`// ${verifies} REQ-EX-001\nfunc TestTheExample(t *testing.T) {\n\tt.Skip("SKIP: later")\n}\n`)), 'fail', { has: ['no evidence'] });
+reqExpect('a done record whose only tagged test needs a build tag CI does not run', catalogueFiles(done(), testFile(`//go:build sluis_card\n\npackage x\n\n// ${verifies} REQ-EX-001\nfunc TestTheExample(t *testing.T) {}\n`)), 'fail', { has: ['no evidence'] });
+reqExpect('an attestations file that does not parse', catalogueFiles(done(manualRecord), { 'docs/requirements/attestations.yaml': 'schema: 1\nattestations: [\n' }, MANUAL), 'fail', { has: ['L1 attestations.yaml', 'cannot be parsed'] });
+reqExpect('a catalogue that declares no milestone', catalogueFiles('    status: planned\n    features: [design]\n', { 'docs/requirements/index.yaml': readFileSync(join(repo, 'docs/requirements/index.yaml'), 'utf8').replace(/  milestones:\n(?:    .*\n)+/, '  milestones: {}\n') }), 'fail', { has: ['milestones', 'fewer than 1 properties'] });
+
 const WITH_MILESTONE = (slug) => `    status: planned\n    features: [design]\n    milestone: ${slug}\n`;
 reqExpect('a live record without a milestone is a warning while the switch is off', catalogueFiles('    status: planned\n    features: [design]\n'), 'pass', { has: ['warning: L20 1 live requirements have no milestone'] });
 reqExpect('a live record without a milestone fails when the switch is on', catalogueFiles('    status: planned\n    features: [design]\n'), 'fail', { args: ['--require-milestone'], has: ['error: L20 REQ-EX-001', 'needs a milestone'] });
@@ -200,21 +211,82 @@ function collect(name, files, check) {
   if (check) problems.push(...check(res, out));
   if (problems.length) { failures++; console.error(`FAIL collect-evidence: ${name}: ${problems.join('; ')}`); } else console.log(`ok   collect-evidence: ${name}`);
 }
-collect('a Go tag, a Rust tag, a sub-test tag are found and an untagged test is not', {
+const goFalse = [
+  'package a', '',
+  'func TestMessages(t *testing.T) {',
+  '\tt.Fatalf("REQ-EX-020/not a case")',
+  '\tt.Errorf("%s", "REQ-EX-021/in a message")',
+  '\tt.Log("REQ-EX-022/log")',
+  '\tx := "REQ-EX-023/a plain string"',
+  '\t// t.Run("REQ-EX-024/commented out", nil)',
+  '\t_ = x',
+  '}', '',
+  'var cases = map[string]int{',
+  '\t"REQ-EX-025/after the test": 1,',
+  '}', '',
+  'func helper(t *testing.T) { t.Run("REQ-EX-026/helper", nil) }', '',
+  'func TestSkipped(t *testing.T) {',
+  '\tt.Skip("SKIP: always")',
+  '\tt.Run("REQ-EX-027/skipped", nil)',
+  '}', '',
+  'func TestSkipsOnlyWhenNeeded(t *testing.T) {',
+  '\tif os.Getenv("X") == "" {\n\t\tt.Skip("SKIP: x")\n\t}',
+  '\tt.Run("REQ-EX-028/conditional", nil)',
+  '}', '',
+  `// no longer ${verifies} REQ-EX-029`,
+  'func TestNegatedTag(t *testing.T) {}', '',
+  `// ${verifies} REQ-EX-030`,
+  'func TestWithoutT() {}', '',
+  `// ${verifies} REQ-EX-031`,
+  'func TestWrongParam(x int) {}', '',
+  'func TestBraces(t *testing.T) {',
+  '\ts := "}"',
+  '\t_ = s',
+  '\tt.Run("REQ-EX-032/after a brace in a string", nil)',
+  '}', '',
+  'func TestNamedCases(t *testing.T) {',
+  '\tfor _, c := range []struct{ name string }{{name: "REQ-EX-033/by name"}, {name: "no id"}} {\n\t\t_ = c\n\t}',
+  '}', '',
+].join('\n');
+const goTag = (constraint, id) => `//go:build ${constraint}\n\npackage e\n\n// ${verifies} ${id}\nfunc TestX(t *testing.T) {}\n`;
+const rustFile = [
+  `/// ${verifies} REQ-EX-006`, '/// More text.', '#[test]', 'fn rust_tagged() {}', '',
+  '#[test]', 'fn rust_untagged() {}', '',
+  `/// ${verifies} REQ-EX-007`, 'fn not_a_test() {}', '',
+  `/// ${verifies} REQ-EX-050`, '#[test]', '#[ignore]', 'fn ignored_after() {}', '',
+  `/// ${verifies} REQ-EX-051`, '#[ignore = "slow"]', '#[test]', 'fn ignored_before() {}', '',
+  `/// ${verifies} REQ-EX-052`, '#[cfg(feature = "slow")]', '#[test]', 'fn behind_a_feature() {}', '',
+  '#[cfg(feature = "slow")]', 'mod slow {', '    // a brace in a string: "}"', `    /// ${verifies} REQ-EX-053`, '    #[test]', '    fn in_a_gated_module() {}', '}', '',
+  `/// ${verifies} REQ-EX-055`, '#[test]', 'fn after_the_gated_module() {}', '',
+  '#[cfg(test)]', 'mod tests {',
+  `    /// ${verifies} REQ-EX-008`, '    #[tokio::test(', '        flavor = "multi_thread",', '        worker_threads = 2', '    )]', '    async fn multi_line_attribute() {}', '',
+  `    /// ${verifies} REQ-EX-054`, '    #[cfg(test)]', '    #[test]', '    fn cfg_test_is_fine() {}', '}', '',
+].join('\n');
+collect('tags are found where a CI-run test carries them, and nowhere else', {
   'actors/a/a_test.go': `package a\n\n// ${verifies} REQ-EX-001, REQ-EX-002\nfunc TestTagged(t *testing.T) {}\n\nfunc TestREQ_EX_012_FromTheName(t *testing.T) {}\n\nfunc TestUntagged(t *testing.T) {\n\t// REQ-EX-003 is only mentioned\n}\n\nfunc TestTable(t *testing.T) {\n\tt.Run("REQ-EX-004/plain_method", func(t *testing.T) {})\n\tt.Run("a case named REQ-EX-005", func(t *testing.T) {})\n\tfor name := range map[string]int{\n\t\t"REQ-EX-011/a table key": 1,\n\t} {\n\t\t_ = name\n\t}\n}\n`,
-  'actors/b/tests/b.rs': `/// ${verifies} REQ-EX-006\n/// More text.\n#[test]\nfn rust_tagged() {}\n\n#[test]\nfn rust_untagged() {}\n\n/// ${verifies} REQ-EX-007\nfn not_a_test() {}\n\n#[cfg(test)]\nmod tests {\n    /// ${verifies} REQ-EX-008\n    #[tokio::test(flavor = "multi_thread")]\n    #[ignore]\n    async fn nested() {}\n}\n`,
+  'actors/a/false_test.go': goFalse,
+  'actors/e/card_test.go': goTag('sluis_card', 'REQ-EX-040'),
+  'actors/e/both_test.go': goTag('sluis_card && sluis_test', 'REQ-EX-044'),
+  'actors/e/ignore_test.go': goTag('ignore', 'REQ-EX-045'),
+  'actors/e/seam_test.go': goTag('sluis_test', 'REQ-EX-041'),
+  'actors/e/linux_test.go': goTag('linux', 'REQ-EX-042'),
+  'actors/e/not_card_test.go': goTag('!sluis_card', 'REQ-EX-043'),
+  'actors/e/other_os_windows_test.go': 'package e\n\n// ' + verifies + ' REQ-EX-046\nfunc TestW(t *testing.T) {}\n',
+  'actors/b/tests/b.rs': rustFile,
+  'actors/g/it.rs': `#![cfg(feature = "x")]\n\n/// ${verifies} REQ-EX-056\n#[test]\nfn gated_file() {}\n`,
   'docs/c_test.go': `// ${verifies} REQ-EX-009\nfunc TestOutside(t *testing.T) {}\n`,
   'actors/d/testdata/d_test.go': `// ${verifies} REQ-EX-010\nfunc TestFixture(t *testing.T) {}\n`,
 }, (res, out) => {
   const p = [];
   if (!out) return [`no JSON: ${res.stderr}`];
   const got = Object.keys(out.evidence).sort().join(' ');
-  if (got !== 'REQ-EX-001 REQ-EX-002 REQ-EX-004 REQ-EX-006 REQ-EX-008 REQ-EX-011 REQ-EX-012') p.push(`found ${got}`);
+  const want = 'REQ-EX-001 REQ-EX-002 REQ-EX-004 REQ-EX-006 REQ-EX-008 REQ-EX-011 REQ-EX-012 REQ-EX-028 REQ-EX-032 REQ-EX-033 REQ-EX-041 REQ-EX-042 REQ-EX-043 REQ-EX-054 REQ-EX-055';
+  if (got !== want) p.push(`found ${got}`);
   const at = (id) => out.evidence[id]?.[0];
   if (at('REQ-EX-001')?.file !== 'actors/a/a_test.go' || at('REQ-EX-001')?.line !== 4 || at('REQ-EX-001')?.test !== 'TestTagged') p.push(`REQ-EX-001 at ${JSON.stringify(at('REQ-EX-001'))}`);
   if (at('REQ-EX-004')?.test !== 'TestTable/REQ-EX-004/plain_method' || at('REQ-EX-004')?.line !== 13) p.push(`REQ-EX-004 at ${JSON.stringify(at('REQ-EX-004'))}`);
   if (at('REQ-EX-006')?.test !== 'rust_tagged' || at('REQ-EX-006')?.line !== 4) p.push(`REQ-EX-006 at ${JSON.stringify(at('REQ-EX-006'))}`);
-  if (at('REQ-EX-008')?.test !== 'nested') p.push(`REQ-EX-008 at ${JSON.stringify(at('REQ-EX-008'))}`);
+  if (at('REQ-EX-008')?.test !== 'multi_line_attribute') p.push(`REQ-EX-008 at ${JSON.stringify(at('REQ-EX-008'))}`);
   return p;
 });
 collect('a tree with no test file is an empty sweep', { 'README.md': 'x\n' }, (res, out) => (res.status === 1 && out === null && /empty sweep/.test(res.stderr) ? [] : [`exit ${res.status}`]));
