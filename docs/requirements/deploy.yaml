@@ -436,13 +436,12 @@ requirements:
     rationale: "The card driver is the one cgo executable, and the oldest supported system, Amazon Linux 2023, has glibc 2.34 (docs/runtimes/bare-metal.md, The cgo card driver and glibc)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: ci-script-not-tagged
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "native-build.sh fails the native job of CI above GLIBC_2.34 for every executable of deploy/boards/native.list"}
+      - {kind: integration-test, ref: "tools/gen/units: the native job runs a test that fails above GLIBC_2.34 for every executable of deploy/boards/native.list"}
   - id: REQ-DEPLOY-033
     area: DEPLOY
     statement: "The units of a board with SELinux enforcing MUST run with no AVC denial after a deploy and a smoke."

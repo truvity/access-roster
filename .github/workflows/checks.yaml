@@ -207,7 +207,6 @@ jobs:
           grep -q 'sluis-drv-key-yubikey-piv@dev.service' staged.txt
           if grep -q 'sluis-drv-key-software@dev.service' staged.txt; then echo 'the software key driver is staged beside the card driver'; exit 1; fi
           grep -q 'files/card/pcscd-socket.dropin' staged.txt
-          grep -q 'files/card/pcscd-service.dropin' staged.txt
           grep -q 'files/card/pcsc-polkit.rules' staged.txt
           grep -q 'files/sysusers/sluis-pcsc-dev.conf' staged.txt
           # key@ of the card variant requires the card driver, not the software one.
@@ -227,6 +226,13 @@ jobs:
         with:
           persist-credentials: false
       - run: deploy/boards/native-build.sh
+      # The Go toolchain that native-build.sh installed runs the test that holds the glibc symbols to the floor.
+      - name: Hold the glibc symbols of the executables to the floor
+        env:
+          SLUIS_NATIVE_DIST: dist/native/arm64
+        run: |
+          export PATH=/usr/local/go/bin:$PATH GOFLAGS=-buildvcs=false GOTOOLCHAIN=local CGO_ENABLED=1
+          go test -count=1 -v -run '^TestNativeExecutablesStayWithinTheGlibcFloor$' ./tools/gen/units
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-arm64
@@ -238,15 +244,18 @@ jobs:
   # (docs/runtimes/bare-metal.md, "Supported operating systems"). The run is the Go test that names the requirements; it starts
   # deploy/boards/os-container-test.sh, which drives the real boards.sh through a stand-in for ssh. No board and no card.
   os-containers:
-    name: 'os-containers (${{ matrix.image }})'
+    name: 'os-containers (${{ matrix.name }})'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        image:
-          - ubuntu:26.04
-          - rockylinux/rockylinux:10
+        # Pinned by the digest of the multi-architecture index (checked 2026-11-04); a bump changes the tag and the digest together.
+        include:
+          - name: ubuntu-26.04
+            image: ubuntu:26.04@sha256:6a06111c3b0a8600feadb270aec771dc239bf407b25625f93f44ab00e11f4d3c
+          - name: rocky-10
+            image: rockylinux/rockylinux:10@sha256:827d37bc128288ccf160ee318bb3cb92d591164cb217e92f8bc61e3982ae1834
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

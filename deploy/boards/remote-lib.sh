@@ -5,6 +5,7 @@
 # package manager and a fake os-release. Sourced by remote.sh, never run. It reads, from the caller:
 #   card_polkit_policy   the polkit policy file that a pcscd built with polkit ships
 #   state_root           the directory of the units' state
+#   manifest             the file that lists what the deploy made (kind<TAB>path)
 #   os_release_file      /etc/os-release, unless the caller says otherwise (a test)
 
 # os_family says which package manager the board has: deb (Debian, Ubuntu) or rpm (RHEL, Rocky, Fedora). The deploy installs no
@@ -13,6 +14,7 @@
 os_release_file=${os_release_file:-/etc/os-release}
 os_family() {
 	local id="" like=""
+	[ -r "$os_release_file" ] || os_release_file=/usr/lib/os-release # /etc/os-release is a link to it, and missing in a thin image
 	if [ -r "$os_release_file" ]; then
 		# shellcheck disable=SC1091 # the board's own file
 		id=$(. "$os_release_file" && printf '%s' "${ID:-}")
@@ -101,15 +103,29 @@ encrypt_credential() {
 
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux
 # is not enabled. The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
-# state is var_lib_t and the sockets var_run_t. A failure is a warning: the files are there, and the label is what a later
-# restorecon or a policy module is for.
+# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis, /etc/sluis and the state
+# directory, and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
+# tmpfiles files, the polkit rule), each one alone, never a whole directory of the system. A failure is a warning: the files are
+# there, and the label is what a later restorecon or a policy module is for.
 relabel() {
 	command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled || return 0
 	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the files keep the labels they were made with" >&2; return 0; }
-	local p paths=()
-	for p in /opt/sluis /etc/sluis /etc/sysusers.d /etc/tmpfiles.d /etc/systemd/system /etc/polkit-1/rules.d "$state_root"; do
-		[ ! -e "$p" ] || paths+=("$p")
+	local p kind value roots=() singles=()
+	for p in /opt/sluis /etc/sluis "$state_root"; do
+		[ ! -e "$p" ] || roots+=("$p")
 	done
-	restorecon -RF "${paths[@]}" || echo "remote: warning: restorecon did not label everything" >&2
+	if [ -f "$manifest" ]; then
+		while IFS=$'\t' read -r kind value; do
+			case "$kind" in file | dir) ;; *) continue ;; esac
+			case "$value" in /opt/sluis | /opt/sluis/* | /etc/sluis | /etc/sluis/* | "$state_root" | "$state_root"/*) continue ;; esac
+			[ ! -e "$value" ] || singles+=("$value")
+		done <"$manifest"
+	fi
+	if [ "${#roots[@]}" -gt 0 ]; then
+		restorecon -R "${roots[@]}" || echo "remote: warning: restorecon did not label everything below sluis's own directories" >&2
+	fi
+	if [ "${#singles[@]}" -gt 0 ]; then
+		restorecon -- "${singles[@]}" || echo "remote: warning: restorecon did not label every file of the deploy" >&2
+	fi
 }
 

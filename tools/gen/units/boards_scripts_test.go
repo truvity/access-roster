@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -45,4 +49,69 @@ func TestBoardsDeployOnASystemdContainer(t *testing.T) {
 		t.Skip("SLUIS_OS_IMAGE is not set: the CI jobs of the operating systems name ubuntu:26.04 and rockylinux/rockylinux:10")
 	}
 	runScript(t, "deploy/boards/os-container-test.sh", image)
+}
+
+// glibcFloor is the newest glibc symbol a native executable may ask for: the glibc of Amazon Linux 2023, the oldest supported
+// system (docs/runtimes/bare-metal.md, "The cgo card driver and glibc"). A newer symbol raises the floor of every board; raise
+// this on purpose, with that page.
+var glibcFloor = [2]int{2, 34}
+
+func glibcVersion(t *testing.T, s string) [2]int {
+	t.Helper()
+	parts := strings.Split(s, ".")
+	if len(parts) < 2 {
+		t.Fatalf("not a glibc version: %q", s)
+	}
+	major, err1 := strconv.Atoi(parts[0])
+	minor, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil {
+		t.Fatalf("not a glibc version: %q", s)
+	}
+	return [2]int{major, minor}
+}
+
+// The native job builds the executables of deploy/boards/native.list and then runs this on them, with SLUIS_NATIVE_DIST naming
+// the directory of its output (dist/native/arm64).
+//
+// verifies: REQ-DEPLOY-032
+func TestNativeExecutablesStayWithinTheGlibcFloor(t *testing.T) {
+	dist := os.Getenv("SLUIS_NATIVE_DIST")
+	if dist == "" {
+		t.Skip("SLUIS_NATIVE_DIST is not set: the native job of CI names the directory of the executables it built")
+	}
+	root := repoRoot(t)
+	list, err := os.Open(filepath.Join(root, "deploy/boards/native.list")) //nolint:gosec // the repository's own file
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = list.Close() }()
+	symbol := regexp.MustCompile(`GLIBC_([0-9]+\.[0-9]+(?:\.[0-9]+)?)`)
+	checked := 0
+	sc := bufio.NewScanner(list)
+	for sc.Scan() {
+		line := sc.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		pkg, _, _ := strings.Cut(line, "\t")
+		bin := filepath.Join(root, dist, pkg)
+		out, err := exec.Command("objdump", "-T", bin).CombinedOutput() //nolint:gosec // objdump on an executable the job built
+		if err != nil {
+			t.Fatalf("objdump -T %s: %v\n%s", bin, err, out)
+		}
+		newest := [2]int{}
+		for _, m := range symbol.FindAllStringSubmatch(string(out), -1) {
+			if v := glibcVersion(t, m[1]); v[0] > newest[0] || (v[0] == newest[0] && v[1] > newest[1]) {
+				newest = v
+			}
+		}
+		t.Logf("%s asks for GLIBC_%d.%d at most", pkg, newest[0], newest[1])
+		if newest[0] > glibcFloor[0] || (newest[0] == glibcFloor[0] && newest[1] > glibcFloor[1]) {
+			t.Errorf("%s asks for GLIBC_%d.%d, newer than the floor GLIBC_%d.%d", pkg, newest[0], newest[1], glibcFloor[0], glibcFloor[1])
+		}
+		checked++
+	}
+	if checked == 0 {
+		t.Fatal("native.list names no executable: nothing was checked")
+	}
 }

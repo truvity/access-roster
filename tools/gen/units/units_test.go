@@ -658,7 +658,7 @@ func TestPolicyUnit(t *testing.T) {
 
 // The card driver is an alternative to the software driver of key@: the same socket, one of the two on a board. The
 // default key@ unit stays on the software driver, and a whole key@ unit switches it (boards.sh, SLUIS_BOARDS_KEY_DRIVER).
-// The pcscd service drop-in gives the socket its group at every start.
+// The socket's group comes from the socket drop-in alone: nothing runs as root to repair it.
 //
 // verifies: REQ-DEPLOY-030
 func TestCardDriver(t *testing.T) {
@@ -727,8 +727,10 @@ func TestCardDriver(t *testing.T) {
 	if sock := files[PcscdSocketFile]; !strings.Contains(sock, "SocketMode=0660") || !strings.Contains(sock, "SocketGroup=sluis-pcsc-dev") {
 		t.Errorf("the pcscd socket drop-in:\n%s", sock)
 	}
-	if svc := files[PcscdServiceFile]; !strings.Contains(svc, "\nExecStartPre=-+/usr/bin/chown root:sluis-pcsc-dev /run/pcscd/pcscd.comm\n") {
-		t.Errorf("the pcscd service drop-in does not give the socket back to the card driver's group:\n%s", svc)
+	for name, body := range files {
+		if strings.Contains(body, "ExecStartPre=") && strings.Contains(body, "pcscd") {
+			t.Errorf("%s runs a command before pcscd as a privileged user; the socket's directory is made by tmpfiles instead", name)
+		}
 	}
 	rules := files[PolkitRulesFile]
 	if !strings.Contains(rules, `(subject.user == "root" || subject.user == "sluis-drv-key-yubikey-piv-dev") ? polkit.Result.YES : polkit.Result.NO`) ||
