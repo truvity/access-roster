@@ -7,7 +7,7 @@
 //   - its requirements are exactly the records of /requirements.json, with the same
 //     area, level, status and issues, `auto` true exactly when a verification is not manual, `evidence` the length
 //     of its evidence list, and a `milestone` exactly when the record names one;
-//   - its coverage equals the generated block on docs/standards/conformance.md.
+//   - its coverage equals the table the build drew on the conformance page.
 // Fails closed: no file, no record or no requirement is a failure.
 //
 // usage: site/scripts/check-repo-json.mjs [dist]   (dist relative to the repository root, default site/dist)
@@ -113,15 +113,18 @@ else {
   });
 }
 
-// ---- coverage: the conformance page's generated block
-const page = readFileSync(join(root, 'docs', 'standards', 'conformance.md'), 'utf8');
+// ---- coverage: the table the build drew on the conformance page (site/src/remark-coverage.mjs)
+const pageFile = join(dist, 'standards', 'conformance', 'index.html');
+if (!existsSync(pageFile)) E('coverage: the built site has no standards/conformance/index.html');
+const page = existsSync(pageFile) ? readFileSync(pageFile, 'utf8') : '';
+if (page.includes('[[coverage-table]]')) E('coverage: the placeholder [[coverage-table]] was not replaced on the conformance page');
 const rowOf = (label) => {
-  const m = new RegExp(`^\\| ${label} \\((\\d+)\\) \\| (\\d+) \\| ([\\d.]+)% \\|$`, 'm').exec(page);
+  const m = new RegExp(`<td[^>]*>${label} \\((\\d+)\\)</td>\\s*<td[^>]*>(\\d+)</td>\\s*<td[^>]*>([\\d.]+)%</td>`).exec(page);
   return m ? { requirements: Number(m[1]), externallyChecked: Number(m[2]), share: Number(m[3]) } : null;
 };
 for (const [key, label] of [['all', 'All, not withdrawn'], ['must', 'MUST']]) {
   const want = rowOf(label);
-  if (!want) E(`coverage: no "${label}" row in the coverage block of docs/standards/conformance.md`);
+  if (!want) E(`coverage: no "${label}" row in the table of the built conformance page`);
   else if (JSON.stringify(repo.coverage?.[key]) !== JSON.stringify(want)) {
     E(`coverage: repo.json ${key} ${JSON.stringify(repo.coverage?.[key])}, the conformance page ${JSON.stringify(want)}`);
   }
