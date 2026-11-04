@@ -275,7 +275,7 @@ func TestConformancePassesAgainstItself(t *testing.T) {
 	if err := driver.Conformance(context.Background(), r.socket, &out); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "6 cases, 0 failed") {
+	if !strings.Contains(out.String(), "7 cases, 0 failed") {
 		t.Fatalf("report: %s", out.String())
 	}
 }
