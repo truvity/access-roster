@@ -7,6 +7,10 @@
 # The output keeps the directory: dist/arm64/actors/<a>, dist/arm64/drivers/<owner>/<d>, dist/arm64/cli/<c>
 # (PLAN.md "Board deployment"). Run it from the repository root: `just build-arm64`.
 # A build that makes no binary, or one that is not a static aarch64 ELF, fails.
+#
+# The executables that link a C library (deploy/boards/native.list: the card driver) are not cross-compiled here, because
+# CGO is off. `just build-arm64-native` builds them natively in an Ubuntu 22.04 userland; this script copies them from
+# dist/native/arm64 when they exist and checks that they are dynamically linked aarch64 ELF files.
 set -euo pipefail
 
 for tool in go cargo jq file; do
@@ -22,6 +26,20 @@ rm -rf "$out"
 mkdir -p "$out"
 built=()
 
+# The native list: executables that link a C library (the card driver). A cross-compile with CGO off cannot make them,
+# and would make a driver that cannot open a card; `just build-arm64-native` makes them, and they are copied below.
+native=()
+while IFS=$'\t' read -r pkg _tags; do
+	[ -n "$pkg" ] || continue
+	[[ "$pkg" != '#'* ]] || continue
+	native+=("$pkg")
+done <deploy/boards/native.list
+is_native() { # package
+	local n
+	for n in "${native[@]}"; do [ "$n" = "$1" ] && return 0; done
+	return 1
+}
+
 # Go: every package main below actors/, drivers/ and cli/. The test binaries (kits/conformance) are not product.
 # The list is made before the loop, outside a process substitution, so that a failed `go list` stops the build.
 # An empty pattern only warns ("matched no packages"); a real error shows, and fails.
@@ -36,6 +54,7 @@ rm -f "$errs"
 gopkgs=${gopkgs//github.com\/truvity\/sluis\/v2\//}
 while IFS= read -r rel; do
 	[ -n "$rel" ] || continue
+	if is_native "$rel"; then continue; fi
 	echo "go    $rel"
 	mkdir -p "$out/$(dirname "$rel")"
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X ${version_pkg}.Version=${version}" -o "$out/$rel" "./$rel"
@@ -59,13 +78,32 @@ while IFS=$'\t' read -r pkg dir bin; do
 	built+=("$rel")
 done <<<"$rustbins"
 
+# The native executables, when `just build-arm64-native` made them: dynamically linked, so they are not held to the
+# static check below. One that is not there is said, not hidden: a board without the card driver runs the software
+# driver only.
+nativeout=dist/native/arm64
+dynamic=()
+for rel in "${native[@]}"; do
+	if [ -f "$nativeout/$rel" ]; then
+		echo "nat   $rel (from $nativeout)"
+		mkdir -p "$out/$(dirname "$rel")"
+		install -m 0755 "$nativeout/$rel" "$out/$rel"
+		built+=("$rel")
+		dynamic+=("$rel")
+	else
+		echo "build-arm64: note: $rel is built natively and $nativeout/$rel does not exist (run: just build-arm64-native); it is not in $out" >&2
+	fi
+done
+
 [ "${#built[@]}" -gt 0 ] || { echo "build-arm64: no executable found below actors/, drivers/ or cli/: nothing was built" >&2; exit 1; }
 
 # Every output is a statically linked ARM aarch64 ELF executable.
 bad=0
 for rel in "${built[@]}"; do
 	desc=$(file -b "$out/$rel")
-	for want in "ELF 64-bit LSB" "ARM aarch64" "statically linked"; do
+	link="statically linked"
+	for d in "${dynamic[@]}"; do [ "$d" = "$rel" ] && link="dynamically linked"; done
+	for want in "ELF 64-bit LSB" "ARM aarch64" "$link"; do
 		case "$desc" in *"$want"*) ;; *) echo "build-arm64: $rel: not \"$want\": $desc" >&2; bad=1 ;; esac
 	done
 	printf '%-40s %s\n' "$rel" "$desc"
