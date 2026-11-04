@@ -111,6 +111,12 @@ func (d CredentialDir) ClientSecret(upstream string) (string, error) {
 		return "", errNoSecret
 	}
 	defer func() { _ = f.Close() }()
+	// The file must be the process's own and closed to its group and to everyone else: a credential that others can
+	// read is not one. The check is on the open file, so it holds for the file that is read.
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() || !ownedAlone(fi) {
+		return "", errNoSecret
+	}
 	buf, err := io.ReadAll(io.LimitReader(f, maxSecret+1))
 	if err != nil || len(buf) > maxSecret {
 		return "", errNoSecret

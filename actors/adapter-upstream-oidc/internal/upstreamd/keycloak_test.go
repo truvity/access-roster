@@ -242,7 +242,7 @@ func TestKeycloakRefusesANonceThatIsNotTheBeginStep(t *testing.T) {
 	_, err := e.complete(context.Background(), &integrationv2alpha1.CompleteRequest{
 		Upstream: "workforce", Code: code, RedirectUri: callback, CodeVerifier: verifier, Nonce: "a-different-nonce", Iss: iss,
 	})
-	refused(t, err, "UPSTREAM_REJECTED", connect.CodeFailedPrecondition, "id_token.nonce")
+	refused(t, err, "INVALID", connect.CodeInvalidArgument, "id_token.nonce")
 }
 
 func TestKeycloakRefusesAnIssThatIsNotTheUpstreams(t *testing.T) {

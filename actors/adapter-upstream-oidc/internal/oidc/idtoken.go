@@ -16,6 +16,9 @@ var idTokenAlgs = []jose.SignatureAlgorithm{jose.ES256, jose.ES384, jose.RS256}
 // skew is the leeway for the clocks of the two sides, on exp, nbf and iat.
 const skew = 30 * time.Second
 
+// Every refusal here is INVALID: 0025 ("The upstream contract") refuses a bad token, a missing claim and a missing iss
+// with that reason and gives no lenient fallback.
+
 // Claims are the claims of a verified ID token. The adapter reads only the ones it is configured to read
 // (REQ-FED-005): the subject claim, the organisation claim, acr, amr and auth_time. Roles and groups are never read
 // (REQ-FED-016).
@@ -30,7 +33,7 @@ func (d *Directory) VerifyIDToken(ctx context.Context, p *Provider, development 
 	tok, err := jose.ParseSignedCompact(raw, idTokenAlgs)
 	if err != nil || len(tok.Signatures) != 1 {
 		// Not a compact JWS, or an algorithm outside idTokenAlgs (none, HS256, ...).
-		return nil, Rejected("id_token.alg")
+		return nil, Invalid("id_token.alg")
 	}
 	kid := tok.Signatures[0].Header.KeyID
 	payload, err := d.verifySignature(ctx, p, development, tok, kid, false)
@@ -62,36 +65,37 @@ func (d *Directory) verifySignature(ctx context.Context, p *Provider, developmen
 	if !retried {
 		return d.verifySignature(ctx, p, development, tok, kid, true)
 	}
-	return nil, Rejected("id_token.signature")
+	return nil, Invalid("id_token.signature")
 }
 
 func checkClaims(payload []byte, issuer, clientID, nonce string, now time.Time) (Claims, error) {
 	var c Claims
 	if json.Unmarshal(payload, &c) != nil {
-		return nil, Rejected("id_token")
+		return nil, Invalid("id_token")
 	}
 	var iss, gotNonce, azp string
 	var exp, nbf, iat int64
 	if !decode(c, "iss", &iss) || !decode(c, "nonce", &gotNonce) || !decode(c, "azp", &azp) ||
 		!decode(c, "exp", &exp) || !decode(c, "nbf", &nbf) || !decode(c, "iat", &iat) {
-		return nil, Rejected("id_token")
+		return nil, Invalid("id_token")
 	}
 	aud, ok := audience(c["aud"])
 	switch {
 	case iss != issuer:
-		return nil, Rejected("id_token.iss")
+		return nil, Invalid("id_token.iss")
 	case !ok || !contains(aud, clientID):
-		return nil, Rejected("id_token.aud")
+		return nil, Invalid("id_token.aud")
 	case len(aud) > 1 && azp != clientID, azp != "" && azp != clientID:
-		return nil, Rejected("id_token.azp")
+		return nil, Invalid("id_token.azp")
 	case exp == 0 || !time.Unix(exp, 0).Add(skew).After(now):
-		return nil, Rejected("id_token.exp")
+		return nil, Invalid("id_token.exp")
 	case nbf != 0 && time.Unix(nbf, 0).After(now.Add(skew)):
-		return nil, Rejected("id_token.nbf")
-	case iat != 0 && time.Unix(iat, 0).After(now.Add(skew)):
-		return nil, Rejected("id_token.iat")
+		return nil, Invalid("id_token.nbf")
+	case iat == 0 || time.Unix(iat, 0).After(now.Add(skew)):
+		// iat is REQUIRED (OpenID Connect Core 1.0 section 2): a token without it is refused.
+		return nil, Invalid("id_token.iat")
 	case nonce == "" || subtle.ConstantTimeCompare([]byte(gotNonce), []byte(nonce)) != 1:
-		return nil, Rejected("id_token.nonce")
+		return nil, Invalid("id_token.nonce")
 	}
 	return c, nil
 }

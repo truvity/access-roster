@@ -19,8 +19,8 @@ import (
 // Connect code.
 const (
 	ReasonUnavailable = "UNAVAILABLE"       // unavailable: the upstream or a dependency is down
-	ReasonRejected    = "UPSTREAM_REJECTED" // failed_precondition: the upstream said no, or what it said does not verify
-	ReasonInvalid     = "INVALID"           // invalid_argument: the request does not fit the contract
+	ReasonRejected    = "UPSTREAM_REJECTED" // failed_precondition: the upstream said no
+	ReasonInvalid     = "INVALID"           // invalid_argument: a request, or a token, that does not fit or verify
 	ReasonNotFound    = "NOT_FOUND"         // not_found: no such upstream
 	ReasonRateLimited = "RATE_LIMITED"      // resource_exhausted
 	ReasonUnsupported = "UNSUPPORTED"       // unimplemented: outside what this adapter does
@@ -31,7 +31,8 @@ func Unavailable(path string) error {
 	return refusal.New(connect.CodeUnavailable, ReasonUnavailable, path)
 }
 
-// Rejected is the refusal for an answer of the upstream that does not verify, or that says no.
+// Rejected is the refusal for an upstream that says no: a code or a client it rejects, or a discovery document that does
+// not fit. A token that does not verify is INVALID (0025, "The upstream contract").
 func Rejected(path string) error {
 	return refusal.New(connect.CodeFailedPrecondition, ReasonRejected, path)
 }

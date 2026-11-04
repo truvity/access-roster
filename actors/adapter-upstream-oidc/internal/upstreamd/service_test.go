@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -240,41 +242,42 @@ func TestCompleteRefusesWhatDoesNotVerify(t *testing.T) {
 		code   connect.Code
 		path   string
 	}{
-		{name: "a bad nonce", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Nonce = "another-nonce" }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.nonce"},
-		{name: "no nonce in the token", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "nonce") } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.nonce"},
-		{name: "a wrong iss in the token", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["iss"] = "https://evil.example.com" } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.iss"},
-		{name: "a wrong iss parameter", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Iss = "https://evil.example.com/realms/test" }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "iss"},
-		{name: "a missing iss parameter when the upstream advertises it", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Iss = "" }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "iss"},
-		{name: "a wrong audience", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["aud"] = "someone-else" } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.aud"},
+		{name: "a bad nonce", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Nonce = "another-nonce" }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.nonce"},
+		{name: "no nonce in the token", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "nonce") } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.nonce"},
+		{name: "a wrong iss in the token", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["iss"] = "https://evil.example.com" } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.iss"},
+		{name: "a wrong iss parameter", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Iss = "https://evil.example.com/realms/test" }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "iss"},
+		{name: "a missing iss parameter when the upstream advertises it", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Iss = "" }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "iss"},
+		{name: "a wrong audience", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["aud"] = "someone-else" } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.aud"},
 		{name: "several audiences and a wrong azp", tweak: func(i *fakeIDP) {
 			i.claims = func(c map[string]any) { c["aud"] = []string{idpClientID, "other"}; c["azp"] = "other" }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.azp"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.azp"},
 		{name: "several audiences and no azp", tweak: func(i *fakeIDP) {
 			i.claims = func(c map[string]any) { c["aud"] = []string{idpClientID, "other"}; delete(c, "azp") }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.azp"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.azp"},
+		{name: "no iat", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "iat") } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.iat"},
 		{name: "an expired token", tweak: func(i *fakeIDP) {
 			i.claims = func(c map[string]any) { c["exp"] = time.Now().Add(-10 * time.Minute).Unix() }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.exp"},
-		{name: "no expiry", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "exp") } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.exp"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.exp"},
+		{name: "no expiry", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "exp") } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.exp"},
 		{name: "a token not yet valid", tweak: func(i *fakeIDP) {
 			i.claims = func(c map[string]any) { c["nbf"] = time.Now().Add(10 * time.Minute).Unix() }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.nbf"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.nbf"},
 		{name: "a token issued in the future", tweak: func(i *fakeIDP) {
 			i.claims = func(c map[string]any) { c["iat"] = time.Now().Add(10 * time.Minute).Unix() }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.iat"},
-		{name: "a bad signature", tweak: func(i *fakeIDP) { i.sign = func(p []byte) string { return i.signES384(p, other) } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.signature"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.iat"},
+		{name: "a bad signature", tweak: func(i *fakeIDP) { i.sign = func(p []byte) string { return i.signES384(p, other) } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.signature"},
 		{name: "alg none", tweak: func(i *fakeIDP) {
 			i.sign = func(p []byte) string { return forge(map[string]any{"alg": "none", "typ": "JWT"}, p, nil) }
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.alg"},
-		{name: "alg HS256", tweak: func(i *fakeIDP) { i.sign = hs256 }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.alg"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.alg"},
+		{name: "alg HS256", tweak: func(i *fakeIDP) { i.sign = hs256 }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.alg"},
 		{name: "a key id the set does not hold", tweak: func(i *fakeIDP) {
 			i.sign = func(p []byte) string {
 				return forge(map[string]any{"alg": "ES384", "kid": "unknown"}, p, make([]byte, 96))
 			}
-		}, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.signature"},
-		{name: "a subject claim that is not there", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "preferred_username") } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.preferred_username"},
-		{name: "a subject claim that is not a string", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["preferred_username"] = 42 } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.preferred_username"},
-		{name: "an amr that is not a list", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["amr"] = "pwd" } }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "id_token.amr"},
+		}, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.signature"},
+		{name: "a subject claim that is not there", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { delete(c, "preferred_username") } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.preferred_username"},
+		{name: "a subject claim that is not a string", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["preferred_username"] = 42 } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.preferred_username"},
+		{name: "an amr that is not a list", tweak: func(i *fakeIDP) { i.claims = func(c map[string]any) { c["amr"] = "pwd" } }, reason: "INVALID", code: connect.CodeInvalidArgument, path: "id_token.amr"},
 		{name: "a code the upstream rejects", edit: func(r *integrationv2alpha1.CompleteRequest) { r.Code = "used-code" }, reason: "UPSTREAM_REJECTED", code: connect.CodeFailedPrecondition, path: "code"},
 		{name: "a token endpoint that is down", tweak: func(i *fakeIDP) { i.tokenStatus = http.StatusServiceUnavailable }, reason: "UNAVAILABLE", code: connect.CodeUnavailable, path: "token_endpoint"},
 		{name: "a token endpoint that asks to slow down", tweak: func(i *fakeIDP) { i.tokenStatus = http.StatusTooManyRequests }, reason: "RATE_LIMITED", code: connect.CodeResourceExhausted, path: "token_endpoint"},
@@ -468,7 +471,7 @@ func TestEveryCallIsAudited(t *testing.T) {
 	if md(1, "tenant_uid") != "acme" {
 		t.Errorf("tenant = %v, want the boundary's default tenant", md(1, "tenant_uid"))
 	}
-	if recs[2]["status_id"] != float64(2) || recs[2]["status_code"] != "UPSTREAM_REJECTED" || recs[2]["user"] != nil {
+	if recs[2]["status_id"] != float64(2) || recs[2]["status_code"] != "INVALID" || recs[2]["user"] != nil {
 		t.Errorf("refusal record = %v", recs[2])
 	}
 
@@ -486,4 +489,43 @@ func TestEveryRefusalIsAConnectErrorWithADetail(t *testing.T) {
 	if _, ok := refusal.Reason(err); !ok {
 		t.Fatalf("no Refusal detail on %v", err)
 	}
+}
+
+// A client secret that others can read is not a credential: the file must be the process's own and closed to its
+// group and to everyone else.
+func TestClientSecretFileMustBeClosed(t *testing.T) {
+	for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o660} {
+		t.Run(mode.String(), func(t *testing.T) {
+			f := newFixture(t, nil)
+			file := filepath.Join(f.secrets, "upstream.workforce.client-secret")
+			if err := os.Chmod(file, mode); err != nil {
+				t.Fatal(err)
+			}
+			_, err := f.complete(context.Background(), f.completeReq())
+			refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
+			if f.idp.tokenHits.Load() != 0 {
+				t.Fatal("a token request was made with a credential others can read")
+			}
+			// The owner's own read-only file is fine.
+			if err := os.Chmod(file, 0o400); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.complete(context.Background(), f.completeReq()); err != nil {
+				t.Fatalf("a 0400 file of the owner was refused: %v", err)
+			}
+		})
+	}
+}
+
+func TestClientSecretThatIsNotAFileIsRefused(t *testing.T) {
+	f := newFixture(t, nil)
+	file := filepath.Join(f.secrets, "upstream.workforce.client-secret")
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(file, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.complete(context.Background(), f.completeReq())
+	refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
 }

@@ -246,7 +246,7 @@ func (d *Directory) Exchange(ctx context.Context, p *Provider, development bool,
 	}
 	if json.Unmarshal(body, &tr) != nil || tr.IDToken == "" {
 		// OpenID Connect Core 1.0 section 3.1.3.3: an authentication response holds an ID token.
-		return "", Rejected("token_endpoint.id_token")
+		return "", Invalid("token_endpoint.id_token")
 	}
 	return tr.IDToken, nil
 }
