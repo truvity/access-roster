@@ -28,15 +28,27 @@ import (
 
 // The local installation (docs/runtimes/local.md). These are the public names of the harness, not of any real host.
 const (
-	project  = "sluis-local" // the Compose project
 	boundary = "dev"
 	tenant   = "acme" // the default tenant of the boundary (tests/installations/local/config/boundary.yaml)
 	host     = "sluis.dev.local.test"
 	audience = "sluis-cli" // an InstallationClient of the local config
-	image    = "sluis-local/signer:dev"
 	// batchWait is the writer's batch interval (5 s) with margin.
 	batchWait = 20 * time.Second
 )
+
+// project is the Compose project, and image the signer image the steps run in, as `deploy/local/local.sh` names them:
+// COMPOSE_PROJECT_NAME and SLUIS_LOCAL_TAG, so that a second installation on the machine can be smoked beside the first.
+var (
+	project = envOr("COMPOSE_PROJECT_NAME", "sluis-local")
+	image   = "sluis-local/signer:" + envOr("SLUIS_LOCAL_TAG", "dev")
+)
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
 
 // services the smoke needs healthy before it starts.
 var services = []string{"policy", "signer", "key", "store", "writer", "entry", "forwarder", "rqlite", "drv-key-software", "drv-writer-spool", "drv-writer-fs"}
@@ -234,7 +246,7 @@ func repoRoot() (string, error) {
 
 // requireHealthy fails with the name of every service of the project that is missing or not healthy.
 func requireHealthy() error {
-	out, err := exec.Command("docker", "ps", "--all", "--filter", "label=com.docker.compose.project="+project,
+	out, err := exec.Command("docker", "ps", "--all", "--filter", "label=com.docker.compose.project="+project, //nolint:gosec // the project name is the harness's own environment
 		"--format", `{{.Label "com.docker.compose.service"}} {{.State}} {{.Status}}`).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker is not usable: %s", strings.TrimSpace(string(out)))
@@ -410,7 +422,7 @@ var verifierRE = regexp.MustCompile(`"verifier_key":"([^"]+)"`)
 
 // verifierKey is the public key of the log, which the writer logs when it starts.
 func verifierKey() (string, error) {
-	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+project,
+	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+project, //nolint:gosec // the project name is the harness's own environment
 		"--filter", "label=com.docker.compose.service=writer").Output()
 	id := strings.TrimSpace(string(out))
 	if err != nil || id == "" {

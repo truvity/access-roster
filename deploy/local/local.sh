@@ -12,8 +12,9 @@
 #   COMPOSE_PROJECT_NAME     the Compose project (default sluis-local); a second project on one machine sets this, a
 #                            SLUIS_LOCAL_PORT and a SLUIS_LOCAL_TAG of its own, so that it leaves the first alone
 #   SLUIS_LOCAL_TAG          the tag of the images this project builds (default dev)
-#   SLUIS_LOCAL_SUBNET       the subnet of the project's network, for a machine whose firewall lets only some subnets
-#                            reach the upstream (default: the one Docker picks)
+#   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
+#                            name and kept while the project's network exists; see default_subnet). Set it where the
+#                            host's firewall lets only some subnets reach the upstream
 # The state of a run (the CA, the publisher key, the signed config, the credentials) is below .cache/local and is
 # deleted by `down`; the volumes go with it.
 set -euo pipefail
@@ -24,11 +25,46 @@ state=.cache/local
 seed=$state/seed
 export SLUIS_LOCAL_SEED=$root/$seed
 compose=(docker compose -f deploy/local/compose.yaml)
-if [ -n "${SLUIS_LOCAL_SUBNET:-}" ]; then
-	mkdir -p "$state"
-	printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$SLUIS_LOCAL_SUBNET" >"$state/network.yaml"
-	compose+=(-f "$state/network.yaml")
-fi
+
+# cidr_range prints the first and last address of an IPv4 CIDR as integers.
+cidr_range() {
+	local ip=${1%/*} bits=${1#*/} a b c d lo
+	IFS=. read -r a b c d <<<"$ip"
+	lo=$(((a << 24) | (b << 16) | (c << 8) | d))
+	lo=$((lo & (0xFFFFFFFF << (32 - bits) & 0xFFFFFFFF)))
+	echo "$lo $((lo | (0xFFFFFFFF >> bits)))"
+}
+
+# default_subnet prints the subnet of the project's network when SLUIS_LOCAL_SUBNET is not set. Docker's own pick is the
+# next free 172.x /16, which a host firewall may drop (measured on one workstation: the whole of 172.20.0.0/14 was dropped
+# on the way to a service on the host's own address, so the upstream adapter stayed unhealthy), and two projects must not
+# share it. So: the subnet of the project's network when it exists (a second `up` keeps it), else the first /24 of
+# 10.99.0.0/16, counted from a number made of the project name, that no Docker network and no route of the host overlaps.
+default_subnet() {
+	local project=${COMPOSE_PROJECT_NAME:-sluis-local} have used="" start i cand lo hi ulo uhi u overlap
+	have=$(docker network inspect "${project}_default" --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null | tr ' ' '\n' | grep -m1 '^[0-9.]*/[0-9]*$' || true)
+	if [ -n "$have" ]; then echo "$have"; return; fi
+	used="$(docker network ls -q 2>/dev/null | xargs -r docker network inspect --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null || true) $(ip -4 route show 2>/dev/null | cut -d' ' -f1 || true)"
+	start=$(($(printf '%s' "$project" | cksum | cut -d' ' -f1) % 256))
+	for i in $(seq 0 255); do
+		cand=10.99.$(((start + i) % 256)).0/24
+		read -r lo hi <<<"$(cidr_range "$cand")"
+		overlap=no
+		for u in $used; do
+			[[ $u =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$ ]] || continue
+			read -r ulo uhi <<<"$(cidr_range "$u")"
+			if [ "$lo" -le "$uhi" ] && [ "$ulo" -le "$hi" ]; then overlap=yes; break; fi
+		done
+		if [ "$overlap" = no ]; then echo "$cand"; return; fi
+	done
+	echo "local: no free /24 in 10.99.0.0/16; set SLUIS_LOCAL_SUBNET" >&2
+	return 1
+}
+
+subnet=${SLUIS_LOCAL_SUBNET:-$(default_subnet)}
+mkdir -p "$state"
+printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$subnet" >"$state/network.yaml"
+compose+=(-f "$state/network.yaml")
 host=sluis.dev.local.test
 audit_host=sluis-audit.dev.local.test
 

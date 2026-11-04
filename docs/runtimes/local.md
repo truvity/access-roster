@@ -43,7 +43,7 @@ Run each as `devbox run -- just <recipe>`. The project needs Docker, and `SLUIS_
 | `local-deny` | The deny matrix ([ADR 0002](/decisions/0002-families-of-actors/)): for every caller and every socket, a probe as the caller's uid checks the call graph at the socket and at the guard. It starts a Compose project of its own and removes it, and leaves a `local-up` project alone |
 | `local-down` | Stops the project and deletes its volumes and the state of the run |
 
-- **The firewall.** A host firewall may let a container reach the upstream from some Docker subnets only. The Compose project has the subnet Docker picks; the deny matrix, which runs its own project, takes `SLUIS_DENY_SUBNET` (for example `10.99.0.0/24`) to put its network on a subnet the firewall allows.
+- **The firewall.** A host firewall may let a container reach the upstream from some Docker subnets only. The Compose project of `local-up` has a free /24 of `10.99.0.0/16`, chosen from the project name (`SLUIS_LOCAL_SUBNET` overrides it), because the subnet Docker picks may be one the firewall drops; the deny matrix, which runs its own project, takes `SLUIS_DENY_SUBNET` (for example `10.99.0.0/24`) to put its network on a subnet the firewall allows.
 
 ## Host names
 

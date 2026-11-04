@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The local installation's network takes a free /24 of `10.99.0.0/16`, chosen from the project name, where it took the subnet Docker picks (`172.x`), which a host firewall may drop on the way to the upstream. `SLUIS_LOCAL_SUBNET` still overrides it, and `just local-smoke` now follows `COMPOSE_PROJECT_NAME` and `SLUIS_LOCAL_TAG`, so a second installation can be smoked beside the first.
 - A new token-signing key is published for 30 minutes before it signs, not 12 hours: the lead time follows the cache budget of the key set (`max-age` 300 s, edge time to live, a throttled refetch on an unknown `kid`, clock skew). A verifier must honour `max-age` and fetch the key set again on an unknown `kid`.
 - The status page shows build progress: requirements that are partial next to those done, issues in progress on the board next to those closed, and a Design caption that says "not built" only while nothing is done, partial or in progress.
 - The audit log's checkpoints are standard C2SP signed notes (signature type 0x02): the `audit-log` key is a P-256 key that signs SHA-256, so a generic witness or checkpoint verifier checks them, and `sluis audit verify` reads only that form. The software key driver refuses a state directory that holds an older P-384 `audit-log` key: remove its `audit-log.p8` (and the log it signed) on a development installation, or run `just local-down` and `just local-up` again.

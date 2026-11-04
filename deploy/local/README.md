@@ -19,10 +19,15 @@ and computes the one-time password (`tools/harness/kclogin`); the CLI reaches th
 test process, so no hosts file is needed. The identity provider's client for sluis must not add `session_state` to the
 authorization response (entry's callback takes the closed list of RFC 6749 and RFC 9207 only).
 
-A second project on one machine sets `COMPOSE_PROJECT_NAME`, `SLUIS_LOCAL_PORT` and `SLUIS_LOCAL_TAG` (the tag of its images),
-and `SLUIS_LOCAL_SUBNET` where the firewall lets only some subnets reach the upstream; the first project is left alone.
-A project that stays on Docker's default subnet on such a machine shows `adapter-upstream-oidc` as unhealthy and `local-up` stops
-waiting: set `SLUIS_LOCAL_SUBNET` to a subnet the firewall allows (for example `SLUIS_LOCAL_SUBNET=10.99.8.0/24`) and run it again.
+A second project on one machine sets `COMPOSE_PROJECT_NAME`, `SLUIS_LOCAL_PORT` and `SLUIS_LOCAL_TAG` (the tag of its images);
+the first project is left alone. `just local-smoke` follows the same three variables.
+
+The project's network has a subnet of its own, which `local.sh` chooses when `SLUIS_LOCAL_SUBNET` is not set: the subnet of the
+project's network when it exists (a second `up` keeps it), else the first free /24 of `10.99.0.0/16`, counted from a number made of
+the project name, that no Docker network and no route of the host overlaps. Docker's own pick is the next free `172.x.0.0/16`,
+and a host firewall may drop it on the way to the upstream (as on the workstation of the first runs: the whole of
+`172.20.0.0/14` was dropped, so `adapter-upstream-oidc` stayed unhealthy and `local-up` stopped waiting). Set `SLUIS_LOCAL_SUBNET`
+(for example `SLUIS_LOCAL_SUBNET=10.99.8.0/24`) where the firewall lets only other subnets through; the override wins.
 
 | File | What it is |
 |---|---|
