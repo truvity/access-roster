@@ -63,6 +63,7 @@ dir /v/run-key/dev/ssh-ca 61014 61014 0751
 dir /v/run-key/dev/store 61014 61014 0751
 dir /v/run-key/dev/witness 61014 61014 0751
 dir /v/run-key/dev/writer 61014 61014 0751
+dir /v/run-policy 61005 61005 0751
 dir /v/run-signer 61004 61004 0751
 dir /v/run-store 61012 61012 0751
 dir /v/run-store/dev 61012 61012 0751

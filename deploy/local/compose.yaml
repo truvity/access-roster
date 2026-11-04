@@ -48,6 +48,7 @@ services:
       - run-adapter-upstream-oidc:/v/run-adapter-upstream-oidc
       - run-entry:/v/run-entry
       - run-key:/v/run-key
+      - run-policy:/v/run-policy
       - run-signer:/v/run-signer
       - run-store:/v/run-store
       - state-blob:/v/state-blob
@@ -64,6 +65,7 @@ services:
     command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/adapter-upstream-oidc/dev.sock"]
     user: "61009:61009"
     group_add:
+      - "61005"
       - "61012"
       - "61024"
     network_mode: service:idp-loopback
@@ -74,6 +76,7 @@ services:
       - run-store:/run/sluis/store:ro
       - key-adapter-upstream-oidc:/run/sluis/key/dev/adapter-upstream-oidc:ro
       - audit:/run/sluis/audit/dev:ro
+      - run-policy:/run/sluis/policy:ro
       - creds-adapter:/run/credentials:ro
     read_only: true
     cap_drop: [ALL]
@@ -428,6 +431,38 @@ services:
       drv-key-software: { condition: service_healthy }
       drv-writer-spool: { condition: service_healthy }
 
+  policy:
+    image: sluis-local/policy:dev
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/policy
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/policy/dev.sock"]
+    user: "61005:61005"
+    group_add:
+      - "61012"
+      - "61024"
+    network_mode: none
+    volumes:
+      - run-policy:/run/sluis/policy
+      - run-store:/run/sluis/store:ro
+      - key-policy:/run/sluis/key/dev/policy:ro
+      - audit:/run/sluis/audit/dev:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/policy/dev.sock"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+
   rqlite:
     image: sluis-local/rqlite:dev
     build:
@@ -536,6 +571,7 @@ services:
     command: ["serve", "--boundary", "dev", "--instance", "node-1"]
     user: "61015:61015"
     group_add:
+      - "61005"
       - "61012"
       - "61024"
       - "61025"
@@ -545,6 +581,7 @@ services:
       - audit:/run/sluis/audit/dev:ro
       - run-store:/run/sluis/store:ro
       - key-writer:/run/sluis/key/dev/writer:ro
+      - run-policy:/run/sluis/policy:ro
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -595,6 +632,7 @@ volumes:
   run-adapter-upstream-oidc: {}
   run-entry: {}
   run-key: {}
+  run-policy: {}
   run-signer: {}
   run-store: {}
   state-blob: {}
