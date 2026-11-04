@@ -102,6 +102,7 @@ type refusalCase struct {
 	reason string // the audit status code
 }
 
+// verifies: REQ-AUTHN-001, REQ-AUTHN-002, REQ-AUTHN-026, REQ-AUTHN-060
 func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 	cases := []refusalCase{
 		{"no PKCE", func(r *sessionv2alpha1.AuthorizeRequest) { r.CodeChallenge, r.CodeChallengeMethod = "", "" }, "invalid_request", "pkce"},
@@ -178,6 +179,7 @@ func safe(s string) string {
 	return s
 }
 
+// verifies: REQ-AUTHN-003
 func TestAuthorizeNeverRedirectsToAnAddressTheClientDidNotRegister(t *testing.T) {
 	cases := map[string]string{ //nolint:gosec // URLs with userinfo, to be refused; no credential
 		"other host":               "http://127.0.0.2:43210/callback",

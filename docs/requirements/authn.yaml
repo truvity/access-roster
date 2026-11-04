@@ -8,7 +8,9 @@ requirements:
     rationale: "A single flow keeps the attack surface small and matches current security guidance."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "3.1.1", depth: Partial}
@@ -25,7 +27,9 @@ requirements:
     rationale: "A refused flow must be reported with a code that a client can act on."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "3.1.1", depth: Partial}
@@ -40,7 +44,9 @@ requirements:
     rationale: "PKCE with a strong method defeats code interception and injection."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-03, section: "4.2-4.3", depth: Full}
@@ -56,7 +62,8 @@ requirements:
     rationale: "A downgrade to plain or to no challenge reopens code interception."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-03, section: "4.2-4.3", depth: Full}
@@ -70,7 +77,8 @@ requirements:
     rationale: "Exact matching blocks open-redirect and code-leak attacks."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "2.1", depth: Full}
@@ -85,6 +93,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "2.1", depth: Full}
@@ -98,7 +107,9 @@ requirements:
     rationale: "The issuer parameter defends against mix-up attacks."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-10, section: "2", depth: Full}
@@ -115,7 +126,9 @@ requirements:
     rationale: "The client matches a response to its request by state."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "4.1.2", depth: Full}
@@ -131,6 +144,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-10, section: "3", depth: Full}
@@ -145,7 +159,9 @@ requirements:
     rationale: "A relying party configures itself from discovery, so any untruth misleads it."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-29, section: "4", depth: Full}
@@ -162,7 +178,9 @@ requirements:
     rationale: "Clients look in either location depending on their library."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-29, section: "4", depth: Full}
@@ -179,7 +197,9 @@ requirements:
     rationale: "A mismatch breaks issuer validation in every relying party."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-29, section: "4", depth: Full}
@@ -196,6 +216,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Full}
@@ -210,7 +231,9 @@ requirements:
     rationale: "A silent check that shows UI breaks embedded clients."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Full}
@@ -226,7 +249,9 @@ requirements:
     rationale: "The combination has no defined meaning."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Full}
@@ -239,7 +264,9 @@ requirements:
     rationale: "Relying parties use auth_time to decide freshness."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Full}
@@ -256,7 +283,9 @@ requirements:
     rationale: "Relying parties use auth_time to decide freshness."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Full}
@@ -273,6 +302,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -290,6 +320,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -304,6 +335,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Partial}
@@ -318,6 +350,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.5", depth: Partial}
@@ -332,7 +365,9 @@ requirements:
     rationale: "A narrow claims surface avoids undefined disclosure behaviour."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "5.5", depth: Partial}
@@ -346,7 +381,8 @@ requirements:
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured; a response from an upstream is not such a request (ADR 0025)."
     level: MUST
     source: security-review
-    status: planned
+    status: done
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "2", depth: Partial}
@@ -361,7 +397,9 @@ requirements:
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "2", depth: Partial}
@@ -377,7 +415,8 @@ requirements:
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
     level: MUST
     source: security-review
-    status: planned
+    status: done
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "2", depth: Partial}
@@ -392,6 +431,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -408,6 +448,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -423,6 +464,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -438,6 +480,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-16, section: "2", depth: Full}
@@ -453,6 +496,7 @@ requirements:
     level: MAY
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-17, section: "6", depth: Full}
@@ -466,7 +510,8 @@ requirements:
     rationale: "Each is deprecated or enlarges the attack surface."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "2.4", depth: Full}
@@ -480,7 +525,9 @@ requirements:
     rationale: "The grant is not needed and enlarges the attack surface."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-20, section: "7523", depth: Partial}
@@ -494,7 +541,9 @@ requirements:
     rationale: "Front-channel logout depends on third-party cookies, and back-channel logout is the supported path (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-32, section: "1", depth: Full}
@@ -508,7 +557,9 @@ requirements:
     rationale: "The iframe depends on third-party cookies."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-33, section: "1", depth: Full}
@@ -522,7 +573,9 @@ requirements:
     rationale: "Third-party-initiated login is a login CSRF vector, and no app launcher needs it yet (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-35, section: "4", depth: Full}
@@ -582,6 +635,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-06, section: "3", depth: Full}
@@ -598,6 +652,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-06, section: "3", depth: Full}
@@ -613,6 +668,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-06, section: "3", depth: Full}
@@ -628,6 +684,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-06, section: "3", depth: Full}
@@ -642,12 +699,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "negative test (UV=0)"}
@@ -659,12 +717,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "negative test (wrong web origin)"}
@@ -675,12 +734,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "challenge binding test"}
@@ -692,12 +752,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "replay negative test"}
@@ -709,12 +770,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "counter regression negative test"}
@@ -725,11 +787,12 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "5", depth: Partial}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: integration-test, ref: "identical-response test for known and unknown identifiers"}
   - id: REQ-AUTHN-021
@@ -738,7 +801,9 @@ requirements:
     rationale: "Step-up lets a resource demand stronger evidence per action."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-24, section: "3", depth: Full}
@@ -753,7 +818,9 @@ requirements:
     rationale: "A token that hides the new authentication gives the resource server nothing to check."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-24, section: "3", depth: Full}
@@ -767,7 +834,9 @@ requirements:
     rationale: "Passwords are a phishing and storage liability; passkeys and federation replace them."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -781,7 +850,9 @@ requirements:
     rationale: "A stored verifier is an offline-guessing target."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -795,7 +866,9 @@ requirements:
     rationale: "A password field trains users to type passwords into a sign-in page."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -826,6 +899,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7", depth: Partial}
@@ -839,6 +913,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -852,6 +927,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.1", depth: Partial}
@@ -865,6 +941,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "6.5", depth: Partial}
@@ -878,6 +955,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -891,6 +969,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -905,6 +984,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -918,6 +998,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -931,6 +1012,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [795]
@@ -943,7 +1025,9 @@ requirements:
     rationale: "Enumeration helps targeted attacks."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -957,7 +1041,9 @@ requirements:
     rationale: "A timing difference is as good as a different response for enumeration."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -971,6 +1057,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-34, section: "2", depth: Full}
@@ -984,7 +1071,9 @@ requirements:
     rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it; for a fixed script a hash protects as well as a nonce (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-34, depth: Partial}
@@ -998,7 +1087,8 @@ requirements:
     rationale: "Only the two response modes of the code flow are served (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-34, section: "2", depth: Full}
@@ -1012,7 +1102,9 @@ requirements:
     rationale: "Discovery is truthful, and front-channel logout is not served (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-32, section: "3", depth: Full}
@@ -1026,7 +1118,9 @@ requirements:
     rationale: "A client must not be configured for a flow that sluis does not serve (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-32, section: "2", depth: Partial}
@@ -1041,6 +1135,7 @@ requirements:
     level: MAY
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-36, section: "5", depth: Partial}
@@ -1054,6 +1149,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-36, section: "5", depth: Partial}
@@ -1067,6 +1163,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-36, section: "7", depth: Partial}
@@ -1082,7 +1179,9 @@ requirements:
     rationale: "Recovery must not depend on the thing it recovers (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1178]
@@ -1095,6 +1194,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1178]
@@ -1107,6 +1207,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1178]
@@ -1118,7 +1219,8 @@ requirements:
     rationale: "A client ignores unrecognised response parameters, so an upstream that adds one does not break sign-in (RFC 6749 section 4.1.2)."
     level: MUST
     source: standard
-    status: planned
+    status: done
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-01, section: "4.1.2", depth: Partial}
@@ -1132,6 +1234,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-34, depth: Partial}

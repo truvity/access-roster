@@ -589,6 +589,7 @@ func TestOnlyTheCallersOfTheCallGraphMayExchange(t *testing.T) {
 	}
 }
 
+// verifies: REQ-TOKEN-037
 func TestTheLifetimeIsTheEarliestOfTheIssuerTheClientTheCapAndTheSubjectToken(t *testing.T) {
 	for _, c := range []struct {
 		name      string

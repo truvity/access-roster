@@ -83,6 +83,7 @@ func (e *env) redeemed() (map[string]any, authorizeParams) {
 	return body(e.t, r), p
 }
 
+// verifies: REQ-AUTHN-033, REQ-TOKEN-023, REQ-TOKEN-010, REQ-TOKEN-027, REQ-TOKEN-013, REQ-TOKEN-030, REQ-TOKEN-016
 func TestTokenCodeGrantIssuesTheTokens(t *testing.T) {
 	e := newEnv(t, nil)
 	code, p := e.signIn()
@@ -466,6 +467,7 @@ func TestTokenDependenciesDownFailClosed(t *testing.T) {
 	}
 }
 
+// verifies: REQ-TOKEN-037
 func TestTokenLifetimes(t *testing.T) {
 	t.Run("the client's ttl_cap shortens", func(t *testing.T) {
 		e := newEnv(t, func(o *options) { o.client.TtlCap = durationpb.New(2 * time.Minute) })
@@ -534,6 +536,7 @@ func TestSubjectIsPairwiseUnlessThePublicSectorIsDeclared(t *testing.T) {
 	}
 }
 
+// verifies: REQ-TOKEN-033
 func TestTokenGroupsAreNarrowedToTheAudience(t *testing.T) {
 	e := newEnv(t, func(o *options) { o.client.Requires = []string{"dev:example-app:user"} })
 	e.policy.grantNames = []string{"dev:example-app:admin", "dev:example-app:user", "dev:other-app:admin", "all:example-app:user", "prod:example-app:admin"}
@@ -605,6 +608,7 @@ func TestTokenSpendAndChainAreOneWrite(t *testing.T) {
 // The ID token's sub and the sub exchange makes for the same person, tenant and sector must be equal (0034). Both
 // units build the Mac input with subject.PairwiseInput, so this test computes the expected sub from that function
 // alone, with the Mac of the fake key@.
+// verifies: REQ-TOKEN-032
 func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()
