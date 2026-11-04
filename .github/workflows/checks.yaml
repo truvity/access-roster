@@ -207,14 +207,15 @@ jobs:
           grep -q 'sluis-drv-key-yubikey-piv@dev.service' staged.txt
           if grep -q 'sluis-drv-key-software@dev.service' staged.txt; then echo 'the software key driver is staged beside the card driver'; exit 1; fi
           grep -q 'files/card/pcscd-socket.dropin' staged.txt
+          grep -q 'files/card/pcscd-service.dropin' staged.txt
           grep -q 'files/card/pcsc-polkit.rules' staged.txt
           grep -q 'files/sysusers/sluis-pcsc-dev.conf' staged.txt
           # key@ of the card variant requires the card driver, not the software one.
           grep -q '^key@ unit requires: Requires=sluis-drv-key-yubikey-piv@%i.service *$' staged.txt
 
   # The executables that link a C library (deploy/boards/native.list: the card driver) are built natively, on a hosted
-  # arm64 runner, inside the userland of the oldest supported distribution, Ubuntu 22.04 (ADR 0013), so they run on
-  # every newer glibc. The job vets and tests the package with cgo and the card build in (a fake card; the hardware is
+  # arm64 runner, inside the Ubuntu 22.04 userland (ADR 0013), whose glibc is older than any supported system's and whose
+  # symbols native-build.sh holds to GLIBC_2.34, so they run on every supported glibc. The job vets and tests the package with cgo and the card build in (a fake card; the hardware is
   # exercised on a board), builds it, and checks what it links. Its output is uploaded for the boards deploy.
   native-arm64:
     name: 'native-arm64 (card driver in Ubuntu 22.04, cgo)'
@@ -233,18 +234,49 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The deploy scripts of the boards against a real operating system, in a systemd container of each: Ubuntu 26.04 and Rocky 10
+  # (docs/runtimes/bare-metal.md, "Supported operating systems"). The run is the Go test that names the requirements; it starts
+  # deploy/boards/os-container-test.sh, which drives the real boards.sh through a stand-in for ssh. No board and no card.
+  os-containers:
+    name: 'os-containers (${{ matrix.image }})'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ubuntu:26.04
+          - rockylinux/rockylinux:10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: os-containers-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            os-containers-${{ runner.os }}-
+      - name: Deploy to a systemd container and check the card service
+        env:
+          SLUIS_OS_IMAGE: ${{ matrix.image }}
+        run: devbox run -- go test -count=1 -v -run '^TestBoardsDeployOnASystemdContainer$' ./tools/gen/units
+
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done

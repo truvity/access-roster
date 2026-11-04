@@ -357,3 +357,102 @@ requirements:
     issues: [876]
     verification:
       - {kind: integration-test, ref: "chart corpus: the token volume is mounted into driver containers only, and no pod uses EKS Pod Identity"}
+  - id: REQ-DEPLOY-026
+    area: DEPLOY
+    statement: "The boards deploy MUST refuse a card deploy, before it writes a file and naming the packages of the board's family, when the board lacks the card service, its CCID driver or, where pcscd asks polkit, polkit."
+    rationale: "The deploy installs no package, so a board without them is stopped with the names to put in its image, not left half deployed (docs/runtimes/bare-metal.md, Supported operating systems)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "deploy/boards/prereq-test.sh against fakes of dpkg and rpm, and deploy/boards/os-container-test.sh on Ubuntu 26.04 and Rocky 10 with the packages missing"}
+  - id: REQ-DEPLOY-027
+    area: DEPLOY
+    statement: "The generated units of a board MUST load their credentials with LoadCredentialEncrypted= and never with LoadCredential=."
+    rationale: "A credential file is then encrypted at rest under the board's own host key (docs/runtimes/bare-metal.md, Credentials are encrypted on the board)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units: no generated unit holds a plain LoadCredential= line, and the credential lines name the encrypted file"}
+  - id: REQ-DEPLOY-028
+    area: DEPLOY
+    statement: "The boards deploy MUST encrypt each credential on the board under the board's own host key at every deploy."
+    rationale: "A reflash makes a new host key, and a credential encrypted under the old one no longer opens, so the next deploy has to make it again."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "prereq-test.sh: a blob named for its unit, mode 0400, none left on failure; os-container-test.sh: after the host key is replaced the old file fails and the next deploy's opens"}
+  - id: REQ-DEPLOY-029
+    area: DEPLOY
+    statement: "The boards deploy MUST refuse to write a credential on a board whose systemd is older than 252 or that has no systemd-creds, naming the version and the floor."
+    rationale: "The units read LoadCredentialEncrypted=, which an older systemd does not know, so the credential would never arrive."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "prereq-test.sh: systemd 249, an unreadable version and a missing systemd-creds are refused; 252 and 259 are accepted"}
+  - id: REQ-DEPLOY-030
+    area: DEPLOY
+    statement: "The socket of the card service MUST belong to the card driver's group after every start of pcscd."
+    rationale: "A pcscd that runs as its own user has its runtime directory, the socket included, handed to that user by systemd at its first start, which would shut the card driver out (MEASURED 2026-11-04 on Ubuntu 26.04)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "os-container-test.sh on Ubuntu 26.04 and Rocky 10: the socket is root:group after pcscd ran, and the card driver and root reach it while others do not"}
+  - id: REQ-DEPLOY-031
+    area: DEPLOY
+    statement: "The boards deploy MUST deploy the card variant on Ubuntu 26.04 LTS and on Rocky Linux 10.x, with systemd 252 or later, and start its units."
+    rationale: "Those are the operating systems of the boards, and the deploy used to be written for Ubuntu 22.04 (docs/runtimes/bare-metal.md, Supported operating systems)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "os-container-test.sh in a systemd container of each distribution; SELinux enforcing runs nightly in os-vm-test.sh, which has not run in CI yet; no card"}
+  - id: REQ-DEPLOY-032
+    area: DEPLOY
+    statement: "The card driver MUST NOT ask for a glibc symbol newer than GLIBC_2.34."
+    rationale: "The card driver is the one cgo executable, and the oldest supported system, Amazon Linux 2023, has glibc 2.34 (docs/runtimes/bare-metal.md, The cgo card driver and glibc)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: ci-script-not-tagged
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "native-build.sh fails the native job of CI above GLIBC_2.34 for every executable of deploy/boards/native.list"}
+  - id: REQ-DEPLOY-033
+    area: DEPLOY
+    statement: "The units of a board with SELinux enforcing MUST run with no AVC denial after a deploy and a smoke."
+    rationale: "The stance is that sluis runs as unconfined_service_t and confines nothing, which holds only if the labels the deploy gives let every unit start (docs/runtimes/bare-metal.md, SELinux and the firewall)."
+    level: MUST
+    source: design-decision
+    status: planned
+    features: [design]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "a nightly job on a Rocky 10 virtual machine with SELinux enforcing: ausearch -m AVC is empty after a deploy and a smoke"}
