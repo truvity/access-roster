@@ -434,6 +434,7 @@ func TestGrantWindowIsBoundedByNow(t *testing.T) {
 
 // REQ-KEYS-082: the chain key of a tenant is sealed by session alone and opened by session and exchange alone, by rule
 // and with no grant (ADR 0006, "Data keys").
+// verifies: REQ-KEYS-082
 func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
@@ -509,6 +510,7 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 
 // REQ-KEYS-082, REQ-KEYS-036: a tenant's exit deletes its chain wraps with the rest, so the facts of its chains no
 // longer open, not even on a node that starts again with an empty cache; another tenant's chain still opens.
+// verifies: REQ-KEYS-082
 func TestTenantExitMakesChainFactsUnopenable(t *testing.T) {
 	e := newTestEnv(t, "development")
 	a := e.startedNode(nodeOpts{name: "node-1"})
