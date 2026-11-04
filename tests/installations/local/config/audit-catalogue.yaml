@@ -33,6 +33,10 @@ default:
     - entry.discovery
     - entry.jwks
     - entry.unrouted
+    # The audit front (--front audit) names its one route the same way.
+    - entry.search
+    # reader: one record per Search, answered or refused (actors/reader/src/audit.rs).
+    - reader.search
     # adapter-upstream-oidc (actors/adapter-upstream-oidc/internal/upstreamd/audit.go).
     - upstream.begin
     - upstream.complete
