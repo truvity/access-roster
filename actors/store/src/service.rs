@@ -1202,10 +1202,6 @@ fn blame_end(kind: &'static Kind, _caller: &str, end: watch::Ended) -> Refuse {
     r
 }
 
-/// How long a watch waits for the driver to refuse a resume point it does not hold, which a driver says as the first
-/// thing its stream carries, so that the refusal is the answer to the call and not an error in the stream.
-const WATCH_PROBE: Duration = Duration::from_millis(300);
-
 impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     /// Opens a watch: the checks of a read, then the stream (watch.rs).
     async fn watch_open(
@@ -1246,6 +1242,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     kind.segment,
                     id_prefix,
                     self.config_poll,
+                    self.bookmark_every,
                     slot,
                 );
                 Ok(Box::pin(futures::stream::unfold(w, |mut w| async move {
@@ -1269,18 +1266,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 } else {
                     req.resume_point
                 };
-                let mut rows = engine
+                // A resume point the log does not hold is refused: at once when the engine says it on the call, and
+                // otherwise as the first thing the driver's stream says, which ends this stream with the refusal
+                // (audited like any other).
+                let rows = engine
                     .tail_log(start)
                     .await
                     .map_err(|e| blame(tail_refusal(&e)))?;
-                // A resume point the log does not hold is refused as the first thing the driver's stream says.
-                let mut first = None;
-                match tokio::time::timeout(WATCH_PROBE, rows.recv()).await {
-                    Err(_) => {}
-                    Ok(None) => return Err(blame(engine_down())),
-                    Ok(Some(Err(e))) => return Err(blame(tail_refusal(&e))),
-                    Ok(Some(Ok(row))) => first = Some(row),
-                }
                 let w = LogWatch::new(
                     engine,
                     self.boundary.clone(),
@@ -1288,7 +1280,6 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     Arc::clone(&self.now),
                     self.bookmark_every,
                     rows,
-                    first,
                     start,
                     slot,
                 );

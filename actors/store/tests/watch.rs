@@ -60,9 +60,9 @@ async fn position(f: &F, kind: &str) -> u64 {
 // ---- the state at delivery ----
 
 /// verifies: REQ-DATA-100
-/// A change carries the address, the type and the version, and the value as read when it is delivered: an item that
-/// changed three times since the point is delivered once, at the version it has, and the rows below that version are
-/// skipped. An item that is gone is a delete with no value, once, however many rows it left.
+/// A change carries the address, the type, the version and the log sequence, and the value as read when it is
+/// delivered: an item that changed three times since the point is delivered once, at the version it has, because
+/// the later rows of its address supersede the earlier ones. An item that is gone is a delete with no value.
 #[tokio::test]
 async fn a_watch_delivers_the_state_at_delivery_and_a_gone_item_as_one_delete() {
     let f = F::new().await;
@@ -133,17 +133,10 @@ async fn a_watch_delivers_the_state_at_delivery_and_a_gone_item_as_one_delete() 
     f.write(vec![write_temp(Verb::DELETE, "node-a/r3", b"")], &[])
         .await
         .unwrap();
-    let ids: Vec<_> = {
-        let mut v = Vec::new();
-        for _ in 0..1 {
-            let m = w.msg().await;
-            v.push((kind_of(&m), id_of(&m)));
-        }
-        v
-    };
-    assert_eq!(ids[0].1, "node-a/r3");
+    let m = w.msg().await;
+    assert_eq!(id_of(&m), "node-a/r3");
     // Whatever the timing, r3 ends as a delete, and a repeat of the same state is the consumer's to skip.
-    let mut last = ids[0].0;
+    let mut last = kind_of(&m);
     while let Some(Ok(m)) = w.next(SHORT).await {
         assert_eq!(id_of(&m), "node-a/r3");
         last = kind_of(&m);
@@ -494,9 +487,9 @@ async fn a_watch_is_refused_like_a_read() {
 // ---- a config kind ----
 
 /// verifies: REQ-DATA-058
-/// A config kind has no change log: a watcher is told each item that a swap of the snapshot added, changed or
-/// removed, with resume point 0, and a swap of another kind tells it nothing. A resume point is refused, so that the
-/// watcher reads the kind again.
+/// A config kind has no change log: a watcher is sent the snapshot in force as puts, then each item that a swap of
+/// the snapshot added, changed or removed, with resume point 0, and a swap of another kind tells it nothing. A
+/// resume point is refused, so that the watcher reads the kind again.
 #[tokio::test]
 async fn a_swap_of_the_snapshot_is_delivered_to_the_watchers_of_that_kind() {
     let f = F::new().await;
@@ -512,9 +505,16 @@ async fn a_swap_of_the_snapshot_is_delivered_to_the_watchers_of_that_kind() {
     set("key-plan", "default", b"plan-1", 1);
     set("front-host", "a", b"host-1", 1);
     let mut w = f.watch("key-plan", "", 0).await.unwrap();
+    // The snapshot in force comes first, as puts: a swap between a listing and the watch is not lost.
+    let m = w.msg().await;
+    assert_eq!(
+        (kind_of(&m), id_of(&m).as_str(), m.resume_point),
+        (ChangeType::CHANGE_TYPE_PUT, "default", 0)
+    );
+    assert_eq!(m.item.as_option().unwrap().value, b"plan-1".to_vec());
     assert!(
         w.quiet(SHORT).await,
-        "nothing changed since the watch began"
+        "nothing changed since the snapshot was sent"
     );
     // A swap of another kind tells this watcher nothing.
     set("front-host", "a", b"host-2", 2);
@@ -557,5 +557,163 @@ async fn a_swap_of_the_snapshot_is_delivered_to_the_watchers_of_that_kind() {
     assert_eq!(
         (e.code, reason(&e)),
         (ErrorCode::FailedPrecondition, "resume_point_expired".into())
+    );
+}
+
+/// verifies: REQ-DATA-103
+/// A config watch says a bookmark, with resume point 0, after a silence, as a watch of the log does.
+#[tokio::test]
+async fn an_idle_config_watch_sends_a_bookmark() {
+    let f = F::new_with(Duration::from_millis(250)).await;
+    f.as_("key");
+    f.docs
+        .items
+        .lock()
+        .unwrap()
+        .insert(("key-plan".into(), "default".into()), b"p".to_vec());
+    f.docs.versions.lock().unwrap().insert("key-plan".into(), 1);
+    let mut w = f.watch("key-plan", "", 0).await.unwrap();
+    assert_eq!(kind_of(&w.msg().await), ChangeType::CHANGE_TYPE_PUT);
+    let m = w.msg().await;
+    assert_eq!(
+        (kind_of(&m), m.resume_point),
+        (ChangeType::CHANGE_TYPE_BOOKMARK, 0)
+    );
+    assert!(m.item.as_option().is_none());
+}
+
+// ---- a consumer that dedupes by the sequence ----
+
+/// What a consumer of a watch holds: the state of each address, and the sequence it has applied. A change at or
+/// below the sequence of the address is a repeat (at-least-once) and is skipped; a version is not an identity,
+/// because a re-created item starts again at 1.
+#[derive(Default)]
+struct Consumer {
+    state: std::collections::BTreeMap<String, Vec<u8>>,
+    applied: u64,
+    deletes: Vec<String>,
+}
+
+impl Consumer {
+    fn apply(&mut self, m: &WatchResponse) {
+        if kind_of(m) == ChangeType::CHANGE_TYPE_BOOKMARK || m.resume_point <= self.applied {
+            return;
+        }
+        self.applied = m.resume_point;
+        let item = m.item.as_option().expect("an item");
+        let id = id_of(m);
+        if kind_of(m) == ChangeType::CHANGE_TYPE_DELETE {
+            self.state.remove(&id);
+            self.deletes.push(id);
+        } else {
+            self.state.insert(id, item.value.clone());
+        }
+    }
+
+    async fn drain(&mut self, w: &mut Watcher) {
+        while let Some(Ok(m)) = w.next(Duration::from_millis(600)).await {
+            self.apply(&m);
+        }
+    }
+}
+
+/// verifies: REQ-DATA-100
+/// An item removed and made again starts at version 1 again, so a version is not an identity: the delete is delivered
+/// and then the new put, whatever the batching, and a consumer that dedupes by the sequence ends with the new value.
+#[tokio::test]
+async fn a_delete_and_the_re_creation_that_follows_it_are_both_delivered() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    f.write(vec![write_temp(Verb::CREATE, "node-a/n1", b"old")], &[])
+        .await
+        .unwrap();
+    f.write(vec![write_temp(Verb::DELETE, "node-a/n1", b"")], &[])
+        .await
+        .unwrap();
+    f.write(vec![write_temp(Verb::CREATE, "node-a/n1", b"new")], &[])
+        .await
+        .unwrap();
+    // The re-created item is at version 1, as the first was.
+    assert_eq!(
+        f.get(TEMP, "", "node-a/n1")
+            .await
+            .unwrap()
+            .item
+            .as_option()
+            .unwrap()
+            .version,
+        1
+    );
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let mut seen = Vec::new();
+    while let Some(Ok(m)) = w.next(Duration::from_millis(600)).await {
+        seen.push(m);
+    }
+    let types: Vec<_> = seen.iter().map(kind_of).collect();
+    let delete = types
+        .iter()
+        .position(|t| *t == ChangeType::CHANGE_TYPE_DELETE);
+    let last_put = types
+        .iter()
+        .rposition(|t| *t == ChangeType::CHANGE_TYPE_PUT);
+    assert!(
+        delete.is_some() && last_put > delete,
+        "the delete, then the new put: {types:?}"
+    );
+    let mut c = Consumer::default();
+    for m in &seen {
+        c.apply(m);
+    }
+    assert_eq!(
+        c.state.get("node-a/n1").map(Vec::as_slice),
+        Some(b"new".as_slice())
+    );
+    // Each change carries the sequence of its row, and they only grow.
+    assert!(
+        seen.windows(2)
+            .all(|p| p[0].resume_point < p[1].resume_point)
+    );
+}
+
+/// verifies: REQ-DATA-100, REQ-DATA-101
+/// An item that expired, was swept and was made again: the consumer sees the delete of the expiry and then the new
+/// put, and ends with the new value.
+#[tokio::test]
+async fn expiry_then_re_creation_ends_with_the_new_value() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    f.write(
+        vec![with_ttl(
+            op(Verb::CREATE, TEMP, "", "node-a/x1", b"first"),
+            30,
+        )],
+        &[],
+    )
+    .await
+    .unwrap();
+    f.advance(31);
+    f.temp.sweep();
+    f.write(
+        vec![with_ttl(
+            op(Verb::CREATE, TEMP, "", "node-a/x1", b"second"),
+            600,
+        )],
+        &[],
+    )
+    .await
+    .unwrap();
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let mut c = Consumer::default();
+    c.drain(&mut w).await;
+    assert_eq!(
+        c.deletes,
+        vec!["node-a/x1".to_owned()],
+        "the expiry was delivered"
+    );
+    assert_eq!(
+        c.state.get("node-a/x1").map(Vec::as_slice),
+        Some(b"second".as_slice())
     );
 }

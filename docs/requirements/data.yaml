@@ -852,10 +852,11 @@ requirements:
     issues: [1204]
     verification:
       - {kind: integration-test, ref: "a snapshot swap that changes one config kind notifies its watchers and no others"}
+      - {kind: integration-test, ref: "a config watch sends the snapshot in force as puts before any swap"}
   - id: REQ-DATA-100
     area: DATA
-    statement: "store@ MUST deliver a change of a watched kind with the item as read at delivery, once when later rows are at or below its version, and a change of an item that is gone as a delete with no value."
-    rationale: "The change log holds no value, so a watcher applies the state and not the edits, as in the Kubernetes list-watch contract (ADR 0005)."
+    statement: "store@ MUST deliver a change of a watched kind with its log sequence and the item as read at delivery, skip a put row only for a later row of the same address, and deliver an item that is gone as a delete with no value."
+    rationale: "The change log holds no value, so a watcher applies the state and not the edits; a version restarts at 1 after a re-create, so the sequence is the identity of a change (ADR 0005)."
     level: MUST
     source: design-decision
     status: done
@@ -865,10 +866,11 @@ requirements:
     standards: []
     issues: [1204]
     verification:
-      - {kind: integration-test, ref: "an item changed three times since the resume point is delivered once at its current version; an item made and removed is one delete with no value"}
+      - {kind: integration-test, ref: "an item changed three times since the resume point is delivered once at its current version; an item made and removed is a delete with no value"}
+      - {kind: integration-test, ref: "an item removed and made again is delivered as the delete and then the new put, on both engines; a consumer that dedupes by the sequence ends with the new value"}
   - id: REQ-DATA-101
     area: DATA
-    statement: "A driver's sweeper MUST write a delete row of the change log for an expired item that was written with a log row, which store@ delivers to a watcher as a delete."
+    statement: "A driver MUST write a delete row of the change log whenever an item that was written with a log row is removed, expiry and a delete of an expired item included, which store@ delivers to a watcher as a delete."
     rationale: "A watcher that holds an item must learn that it expired, and an expired item is gone for every read (ADR 0005)."
     level: MUST
     source: design-decision
@@ -879,7 +881,8 @@ requirements:
     standards: []
     issues: [1204]
     verification:
-      - {kind: integration-test, ref: "an item with a short time to live is swept and its watcher gets a delete; an item written without a log row writes none"}
+      - {kind: integration-test, ref: "an item with a short time to live is swept and its watcher gets a delete, then the item made again arrives as a new put, on both engines"}
+      - {kind: integration-test, ref: "an expired item that was not swept and is deleted leaves its delete row; an item written without a log row leaves none"}
   - id: REQ-DATA-102
     area: DATA
     statement: "A listing of a watched kind MUST name a resume point, the same on every page, that a watch can start from without missing a change after the listing."
@@ -909,6 +912,7 @@ requirements:
     issues: [1204]
     verification:
       - {kind: integration-test, ref: "an idle watch sends the resume point it started from, then the point of the last change it was told, with a short interval"}
+      - {kind: integration-test, ref: "an idle config watch sends a bookmark with resume point 0"}
   - id: REQ-DATA-104
     area: DATA
     statement: "store@ MUST refuse a caller's watch beyond 16 open at once."

@@ -49,6 +49,7 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("log_order_and_from_sequence", s.log_order()).await,
         run_case("sequence_expired", s.sequence_expired()).await,
         run_case("query_log_head", s.query_log_head()).await,
+        run_case("expired_delete_is_logged", s.expired_delete_is_logged()).await,
     ];
     // What the cases wrote is removed; a failure to do so is a failed case of its own, so a driver
     // that cannot delete does not pass.
@@ -835,6 +836,42 @@ impl Suite {
         );
         self.transact(vec![], vec![], vec![del(&a), del(&b)])
             .await?;
+        Ok(())
+    }
+
+    /// An item that was written with a log row is logged when it is removed, whatever the path: a delete of an
+    /// expired item that is not swept yet, which no read shows, still leaves its delete row, because nothing else
+    /// would. An item written without a log row leaves none.
+    async fn expired_delete_is_logged(&self) -> anyhow::Result<()> {
+        let (a, b) = (self.key("xdel", "a"), self.key("xdel", "b"));
+        let past = ms_to_ts(now_ms() - 10_000);
+        let mut tail = self.open_tail(0).await?;
+        let expiring = |k: &[u8], log: bool| Put {
+            expires_at: past.clone().into(),
+            log,
+            ..put(k, b"v")
+        };
+        self.transact(vec![absent(&a)], vec![expiring(&a, true)], vec![])
+            .await?;
+        self.transact(vec![absent(&b)], vec![expiring(&b, false)], vec![])
+            .await?;
+        let written = tail.row(&a, ARRIVES).await?;
+        ensure!(
+            !written.deleted,
+            "the write of a logged item came as a delete"
+        );
+        // Removed without asking for a row: the item had one, so the removal has one.
+        self.transact(vec![], vec![], vec![del(&a), del(&b)])
+            .await?;
+        let removed = tail.row(&a, ARRIVES).await?;
+        ensure!(
+            removed.deleted && removed.version == 1,
+            "the removal of an expired logged item left no delete row (or the wrong one)"
+        );
+        ensure!(
+            matches!(tail.tick(&b, SILENT).await, Tick::Silent),
+            "the removal of an item written without a log row left a row"
+        );
         Ok(())
     }
 

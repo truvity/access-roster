@@ -45,5 +45,7 @@ file = { path = "../../drivers/store/file" }
 # The secret source driver, served in the tests over its real contract.
 credential = { path = "../../drivers/store/credential" }
 sluis-conformance = { path = "../../kits/rust/sluis-conformance", features = ["memory"] }
+# The rqlite driver and the memory engine, served in the tests over their real contract: Watch end to end.
+rqlite = { path = "../../drivers/store/rqlite" }
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
 tempfile = "3"

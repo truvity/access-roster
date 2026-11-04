@@ -281,8 +281,8 @@ impl ItemEngine for Mem {
         }
         for d in &tx.deletes {
             let held = items.remove(&d.key);
-            self.0.logged.lock().unwrap().remove(&d.key);
-            if let (true, Some(old)) = (d.log, held) {
+            let was_logged = self.0.logged.lock().unwrap().remove(&d.key);
+            if let (true, Some(old)) = (d.log || was_logged, held) {
                 self.append(&d.key, old.version, true);
             }
         }

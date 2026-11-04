@@ -94,7 +94,9 @@ impl Driver {
             .context("the schema is not there: run serve once")?;
         anyhow::ensure!(
             version == SCHEMA_VERSION,
-            "the schema is version {version}, this driver speaks {SCHEMA_VERSION}"
+            "the schema is version {version}, this driver speaks {SCHEMA_VERSION}: a development or board installation \
+             recreates its data (local: just local-down, then just local-up; boards: SLUIS_PURGE_STATE=1 just \
+             boards-undeploy, then just boards-deploy)"
         );
         Ok(())
     }
@@ -255,9 +257,8 @@ impl ItemService for Driver {
         let guards = stmts.len();
         for d in &req.deletes {
             let key = text(&d.key);
-            if d.log {
-                stmts.push(ns.log_delete(&key, now));
-            }
+            // Always asked: an item that was written with a log row is logged when it is removed, whatever the request.
+            stmts.push(ns.log_delete(&key, now, d.log));
             stmts.push(ns.delete_index(&key));
             stmts.push(ns.delete_item(&key));
         }
