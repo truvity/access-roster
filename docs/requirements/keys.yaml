@@ -154,6 +154,19 @@ requirements:
     issues: [774]
     verification:
       - {kind: integration-test, ref: "a GET of the key set answers with Cache-Control public, max-age=300, from the server and through the edge"}
+  - id: REQ-KEYS-084
+    area: KEYS
+    split_from: REQ-KEYS-006
+    statement: "The edge cache in front of the published key set MUST NOT keep it for longer than its max-age of 300 seconds."
+    rationale: "The edge time to live is a part of the lead time of a new token-signing key, so it is bounded by the same figure (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the edge configuration of a test installation is read: the time to live of the key set is at most 300 seconds, and a key removed at the server is gone from the edge within it"}
   - id: REQ-KEYS-007
     area: KEYS
     statement: "Key rotation MUST overlap for at least the token lifetime plus allowed clock skew."
@@ -1130,16 +1143,16 @@ requirements:
     issues: [1208]
     verification:
       - {kind: integration-test, ref: "a generation is kept for 90 days after its last seal and deleted after that, with a moved clock"}
-  - id: REQ-KEYS-084
+  - id: REQ-KEYS-085
     area: KEYS
-    split_from: REQ-KEYS-006
-    statement: "The edge cache in front of the published key set MUST NOT keep it for longer than its max-age of 300 seconds."
-    rationale: "The edge time to live is a part of the lead time of a new token-signing key, so it is bounded by the same figure (ADR 0006)."
+    statement: "signer MUST make a token-signing key active only after the lead time has passed since the key was seen in every published key set."
+    rationale: "A static key set is published later than the store is written, so counting from the write could let a key sign before a verifier can have it (ADR 0006)."
     level: MUST
     source: design-decision
     status: planned
     runtimes: all
+    actors: [signer]
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "the edge configuration of a test installation is read: the time to live of the key set is at most 300 seconds, and a key removed at the server is gone from the edge within it"}
+      - {kind: integration-test, ref: "the published key set lags the store by an hour; the new key stays pre-published until 30 minutes after it is read back from the public URL, and the live key set counts from the write"}
