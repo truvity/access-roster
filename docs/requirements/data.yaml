@@ -14,7 +14,9 @@ requirements:
     rationale: "A kind outside the registry has no schema, class, writer or rule, so nothing could be checked about it (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -27,7 +29,9 @@ requirements:
     rationale: "A kind with two classes would have two writers and two backup rules, and where a thing is written decides its class (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
@@ -39,7 +43,9 @@ requirements:
     rationale: "One writer per kind is what lets the store refuse every other caller and lets a reviewer find the owner of a rule (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
@@ -51,7 +57,9 @@ requirements:
     rationale: "A compromised work actor must not be able to write what its rules refuse (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -65,7 +73,8 @@ requirements:
     rationale: "Lease, ReplayGuard and SpentGrant have many writers, and the id prefix keeps one writer per item (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -78,7 +87,9 @@ requirements:
     rationale: "A temp item with no expiry would grow without bound and be neither temporary nor lost (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
@@ -90,7 +101,9 @@ requirements:
     rationale: "A tenant never appears in config, so a tenant's change never waits for a review (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
@@ -102,7 +115,9 @@ requirements:
     rationale: "Treatment follows the data, so personal data is sealed, or hashed when it is compare-only (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
@@ -114,7 +129,9 @@ requirements:
     rationale: "A rule over a name that no actor has is a rule nobody enforces (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
@@ -126,7 +143,8 @@ requirements:
     rationale: "A new question is a new declared index, reviewed with the kind, and there is no query language and no SQL (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -141,7 +159,9 @@ requirements:
     rationale: "Only two scope dimensions exist, and the flat address is what makes a prefix rule and a sealed value bound to its address possible (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -154,7 +174,9 @@ requirements:
     rationale: "Ids appear in indexes, logs and addresses that are not sealed, so personal data in an id cannot be erased by shredding a key (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
@@ -167,7 +189,9 @@ requirements:
     rationale: "A scope taken from the request would let any caller name another boundary's data (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -182,6 +206,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1205]
@@ -195,7 +220,9 @@ requirements:
     rationale: "Where a thing is written decides its class, and a value with two writers would have two classes (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -210,6 +237,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -223,7 +251,9 @@ requirements:
     rationale: "A secret that reaches a file or a log is copied beyond the reach of its source (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -237,6 +267,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1202]
@@ -248,7 +279,9 @@ requirements:
     rationale: "The store never seals or opens, so a compromised store yields no sealed data (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -262,7 +295,9 @@ requirements:
     rationale: "The store cannot read a sealed field, so the writing actor validates before it seals (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
@@ -275,7 +310,9 @@ requirements:
     rationale: "A generated secret is ordinary data, and the secret class is only for values that IaC writes into a source (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1206]
@@ -288,6 +325,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1206]
@@ -300,6 +338,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1206]
@@ -313,7 +352,9 @@ requirements:
     rationale: "A Fixed kind changes only by a reviewed, signed document, and a change at run time would bypass the review (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -339,7 +380,8 @@ requirements:
     rationale: "A product writes through the same path as a tenant admin and may reach only its own tenant (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -352,7 +394,8 @@ requirements:
     rationale: "The store's rule and the grant are one of the two independent checks between an actor and a tenant's data (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -444,6 +487,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -456,7 +500,9 @@ requirements:
     rationale: "Who connects decides: a tenant never appears in config, and a customer's change does not wait for review (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1214]
@@ -469,7 +515,8 @@ requirements:
     rationale: "The owning actor validates a write with its own logic, so the console cannot become a second writer (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     actors: [console]
     standards: []
@@ -485,6 +532,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [864, 1177]
@@ -496,7 +544,9 @@ requirements:
     rationale: "Decoding an unvalidated document first lets an unknown key or a bad value reach code before a check (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [864, 1177]
@@ -509,6 +559,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1177]
@@ -521,6 +572,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [864]
@@ -532,7 +584,9 @@ requirements:
     rationale: "An error that shows a value could leak a secret, and a silent unknown key hides a typo (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [864]
@@ -544,7 +598,9 @@ requirements:
     rationale: "Strictness comes from the schema, and a reviewed document can be fixed and published again where a stored item cannot (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1205]
@@ -557,6 +613,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1205]
@@ -568,7 +625,9 @@ requirements:
     rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards: []
     issues: [1177]
@@ -583,6 +642,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1177]
@@ -595,7 +655,9 @@ requirements:
     rationale: "One service for every kind keeps the wire small, and the rules of the registry give the isolation that a service per kind would only repeat (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -608,7 +670,9 @@ requirements:
     rationale: "The store is the one place that sees every write, so it is where a malformed item must stop (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -621,7 +685,8 @@ requirements:
     rationale: "A rule the caller can skip is not a control, and an unlisted call must fail (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -635,7 +700,9 @@ requirements:
     rationale: "Only the transport identity cannot be forged by the request (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -648,7 +715,8 @@ requirements:
     rationale: "A flow over several items is idempotent steps with a recovery marker, so there are no interactive transactions (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -661,7 +729,8 @@ requirements:
     rationale: "A compare-and-set on the version is what makes concurrent writers safe (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -675,6 +744,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -687,7 +757,8 @@ requirements:
     rationale: "An operator must see which rule refused a call, and a pattern of refusals is a signal (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -700,7 +771,9 @@ requirements:
     rationale: "The client is generated from the kind's message, and the identity belongs to the transport (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [861]
@@ -712,7 +785,9 @@ requirements:
     rationale: "An engine that does not rewrite non-deterministic defaults would let a replica compute its own time (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -727,7 +802,9 @@ requirements:
     rationale: "A watcher must neither miss a change nor see one that did not happen (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -740,7 +817,8 @@ requirements:
     rationale: "A hot counter such as an allowance stays one conditional update (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -754,6 +832,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -767,6 +846,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -779,7 +859,9 @@ requirements:
     rationale: "A function cannot hold a stream, so freshness costs one small reply (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: ["serverless"]
     actors: [store]
     standards: []
@@ -792,7 +874,8 @@ requirements:
     rationale: "Correctness cannot depend on when a sweeper runs (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -806,7 +889,8 @@ requirements:
     rationale: "A tunable may shorten a TTL and never lengthen it past the maximum (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -819,7 +903,8 @@ requirements:
     rationale: "The sweep only frees space, and a lease must keep growing its version (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -832,7 +917,9 @@ requirements:
     rationale: "A fencing token lets a write be refused when its holder lost the lease (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -846,7 +933,8 @@ requirements:
     rationale: "A swept lease would restart its version and break the fencing token (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -860,6 +948,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1203]
@@ -873,7 +962,9 @@ requirements:
     rationale: "A driver holds a credential, and a socket another actor could open would be a second holder (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: smoke-not-in-ci
     runtimes: all
     actors: [store]
     standards: []
@@ -886,7 +977,9 @@ requirements:
     rationale: "One contract and one command line per port is what lets an installation check a driver before it runs (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -899,7 +992,9 @@ requirements:
     rationale: "A driver that interpreted kinds would be a second place where rules could differ (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -912,7 +1007,9 @@ requirements:
     rationale: "Verification must run over the exact bytes before anything is parsed (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
@@ -925,7 +1022,8 @@ requirements:
     rationale: "A hot counter such as an allowance reaches its peak only with a conditional update (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -939,6 +1037,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [864]
@@ -951,6 +1050,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1216]
@@ -962,7 +1062,8 @@ requirements:
     rationale: "Another listener on a board would be a path around store@ (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -975,7 +1076,8 @@ requirements:
     rationale: "A follower can be stale by about 50 ms, and an authority decision on stale data is a wrong decision (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: smoke-not-in-ci
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -990,7 +1092,8 @@ requirements:
     rationale: "A parser reached by an unsigned document is an attack surface (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1003,7 +1106,8 @@ requirements:
     rationale: "The pin is the trust anchor of config, so config cannot choose its own publisher (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1016,7 +1120,8 @@ requirements:
     rationale: "A narrow header closes the confusions of JWS that fetch a key or choose an algorithm from the document itself (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1029,7 +1134,8 @@ requirements:
     rationale: "Neither party can change the policy alone (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1042,7 +1148,8 @@ requirements:
     rationale: "An older document would silently undo a reviewed change (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1055,7 +1162,9 @@ requirements:
     rationale: "A store with nothing in force has nothing to compare with, and a persisted mark would be one more state to lose (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1069,7 +1178,9 @@ requirements:
     rationale: "A document applied alone would run a set that nobody reviewed as a whole (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -1082,7 +1193,8 @@ requirements:
     rationale: "There is no cached copy, no default and no fallback to a weaker source (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1095,7 +1207,9 @@ requirements:
     rationale: "Applying the part that validates would run a document that nobody reviewed (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -1108,7 +1222,9 @@ requirements:
     rationale: "A reviewer matches the fact to the digest of the file at the commit and sees a lag (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1121,7 +1237,9 @@ requirements:
     rationale: "A change that applied in parts would run a set that nobody reviewed as a whole (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1134,7 +1252,9 @@ requirements:
     rationale: "The credentials of store@ are platform-provided, and the file is the one local setting that config cannot change (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1148,7 +1268,9 @@ requirements:
     rationale: "The credentials of store@ are platform-provided, as a systemd credential, a role or a service account (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1161,7 +1283,8 @@ requirements:
     rationale: "Whoever can write the file can choose the publisher keys that anchor config (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -1175,6 +1298,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [864, 1157]
@@ -1187,6 +1311,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1157]
@@ -1198,7 +1323,9 @@ requirements:
     rationale: "A change must reach the store without a restart where the platform can say so (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
@@ -1212,6 +1339,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     actors: [store]
     standards: []
@@ -1227,6 +1355,7 @@ requirements:
     level: MUST
     source: design-decision
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards: []
     issues: [798]
@@ -1239,7 +1368,9 @@ requirements:
     rationale: "These live in a key store, in the memory of key@, or in flight, and a copy in the store would be a second place to protect (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1202]
@@ -1251,7 +1382,8 @@ requirements:
     rationale: "A lease's version is a fencing token, so nothing may remove the item or set its version back (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []
@@ -1264,7 +1396,9 @@ requirements:
     rationale: "The store keeps no tombstone, so a caller must not rely on a version across a deletion (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [864]

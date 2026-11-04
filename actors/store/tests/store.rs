@@ -123,6 +123,7 @@ async fn the_kinds_scope_is_enforced_both_ways() {
 
 // ---- rules and writers ----
 
+/// verifies: REQ-DATA-047
 #[tokio::test]
 async fn no_rule_means_denied_and_the_refusal_is_audited_without_the_id() {
     let f = F::new().await;
@@ -169,6 +170,7 @@ async fn no_rule_means_denied_and_the_refusal_is_audited_without_the_id() {
     assert!(!format!("{events:?}").contains("secret-looking-id"));
 }
 
+/// verifies: REQ-DATA-005
 #[tokio::test]
 async fn a_self_scoped_kind_takes_only_ids_under_the_callers_name() {
     let f = F::new().await;
@@ -215,6 +217,7 @@ async fn watch_is_unimplemented() {
 
 // ---- the grant ----
 
+/// verifies: REQ-DATA-026, REQ-DATA-027
 #[tokio::test]
 async fn a_tenant_write_without_a_good_grant_is_refused() {
     let f = F::new().await;
@@ -342,6 +345,7 @@ async fn a_batch_costs_one_open_of_the_grant() {
     assert_eq!(f.key.opens.load(Ordering::SeqCst), 1);
 }
 
+/// verifies: REQ-DATA-026
 #[tokio::test]
 async fn one_operation_for_another_tenant_refuses_the_whole_batch() {
     let f = F::new().await;
@@ -375,6 +379,7 @@ async fn key_unreachable_fails_closed() {
     assert!(f.durable.keys().is_empty());
 }
 
+/// verifies: REQ-DATA-027
 #[tokio::test]
 async fn a_boundary_scoped_write_needs_no_grant() {
     let f = F::new().await;
@@ -578,6 +583,7 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
 
 // ---- schema ----
 
+/// verifies: REQ-DATA-020
 #[tokio::test]
 async fn a_sealed_value_is_checked_for_its_envelope_and_never_opened() {
     let f = F::new().await;
@@ -637,6 +643,7 @@ async fn an_unmapped_plain_kind_passes_its_bytes() {
 
 // ---- TTL ----
 
+/// verifies: REQ-DATA-061
 #[tokio::test]
 async fn ttl_default_max_and_the_expiry_store_computes() {
     let f = F::new().await;
@@ -711,6 +718,7 @@ async fn ttl_default_max_and_the_expiry_store_computes() {
     );
 }
 
+/// verifies: REQ-DATA-064
 #[tokio::test]
 async fn a_lease_gets_no_engine_expiry_and_is_taken_over_by_a_conditional_update() {
     let f = F::new().await;
@@ -757,6 +765,7 @@ async fn a_lease_gets_no_engine_expiry_and_is_taken_over_by_a_conditional_update
     );
 }
 
+/// verifies: REQ-DATA-097
 #[tokio::test]
 async fn a_leases_version_only_grows_and_a_stale_holder_loses() {
     let f = F::new().await;
@@ -846,6 +855,7 @@ async fn a_leases_version_only_grows_and_a_stale_holder_loses() {
     );
 }
 
+/// verifies: REQ-DATA-060
 #[tokio::test]
 async fn an_expired_item_reads_as_absent_whatever_the_engine_holds() {
     let f = F::new().await;
@@ -896,6 +906,7 @@ async fn an_expired_item_reads_as_absent_whatever_the_engine_holds() {
 
 // ---- indexes ----
 
+/// verifies: REQ-DATA-010
 #[tokio::test]
 async fn only_declared_indexes_are_taken_and_listed_by() {
     let f = F::new().await;
@@ -934,6 +945,7 @@ async fn only_declared_indexes_are_taken_and_listed_by() {
 
 // ---- batches and versions ----
 
+/// verifies: REQ-DATA-049
 #[tokio::test]
 async fn a_batch_of_65_is_refused_and_a_batch_of_2_is_all_or_none() {
     let f = F::new().await;
@@ -1023,6 +1035,7 @@ async fn a_batch_names_one_item_once_and_one_engine() {
     );
 }
 
+/// verifies: REQ-DATA-050
 #[tokio::test]
 async fn versions_come_from_the_engine_and_conflicts_have_their_reasons() {
     let f = F::new().await;
@@ -1094,6 +1107,7 @@ async fn versions_come_from_the_engine_and_conflicts_have_their_reasons() {
     assert!(f.durable.keys().is_empty());
 }
 
+/// verifies: REQ-DATA-056
 #[tokio::test]
 async fn the_change_log_is_asked_for_only_on_watched_kinds() {
     let f = F::new().await;
@@ -1762,6 +1776,7 @@ async fn an_audit_emit_that_fails_never_fails_the_call() {
     assert_eq!(f.audit().len(), 1);
 }
 
+/// verifies: REQ-DATA-052
 #[tokio::test]
 async fn every_refusal_is_an_audit_fact_whatever_its_code() {
     let f = F::new().await;
@@ -1869,6 +1884,7 @@ fn wire(address: &str) -> Option<(String, String, String)> {
     ))
 }
 
+/// verifies: REQ-DATA-011
 #[tokio::test]
 async fn the_shared_address_vectors_hold_on_the_wire() {
     let v = vectors();

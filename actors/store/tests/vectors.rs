@@ -36,7 +36,7 @@ fn publishers(v: &Value, set: &str) -> Vec<Publisher> {
         .collect()
 }
 
-/// verifies: REQ-KEYS-110
+/// verifies: REQ-DATA-076, REQ-DATA-077, REQ-DATA-078, REQ-DATA-079, REQ-KEYS-110
 #[test]
 fn every_case_of_the_shared_vectors_gets_the_same_verdict_as_in_go() {
     let v = vectors();
@@ -88,7 +88,7 @@ fn digest(h: &str) -> [u8; 48] {
     d
 }
 
-/// verifies: REQ-KEYS-110
+/// verifies: REQ-DATA-080, REQ-KEYS-110
 #[test]
 fn the_sequence_vectors_get_the_same_verdict_as_in_go() {
     let v = vectors();

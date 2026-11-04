@@ -257,6 +257,7 @@ async fn the_two_ports_do_not_see_each_other() {
     b.stop().await;
 }
 
+/// verifies: REQ-DATA-062
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     let Some(bin) = rqlited() else { return };
