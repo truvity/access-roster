@@ -1,0 +1,27 @@
+[package]
+name = "sluis-audit"
+description = "The audit emitter library (ADR 0028, Four pieces): OCSF audit records as RFC 8785 canonical JSON, handed to the audit transport."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.22"
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client"] }
+rustix = { version = "1", features = ["rand"] }
+serde_json = "1"
+sluis-kit = { path = "../sluis-kit" }
+sluis-proto = { path = "../sluis-proto" }
+
+[dev-dependencies]
+anyhow = "1"
+buffa = { version = "=0.9.2", features = ["json"] }
+rustix = { version = "1", features = ["rand", "process"] }
+sluis-kit = { path = "../sluis-kit", features = ["test-identities"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

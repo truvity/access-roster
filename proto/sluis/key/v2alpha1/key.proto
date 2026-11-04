@@ -3,6 +3,7 @@ syntax = "proto3";
 
 package sluis.key.v2alpha1;
 
+import "google/protobuf/timestamp.proto";
 import "sluis/type/v2alpha1/type.proto";
 
 // KeyService seals, opens, signs and macs; key material never leaves key@.
@@ -54,7 +55,11 @@ message SealGrantRequest {
 
 // SealGrantResponse carries the sealed grant.
 message SealGrantResponse {
-  bytes sealed_grant = 1;  // the grant sealed under purpose grant
+  // The grant sealed under the boundary's grant data key, in the wire form
+  //   u16 length | decision_id | envelope
+  // with the length big-endian and the envelope of store-api.md "The sealed envelope" (purpose grant, address:
+  // tenant "-", kind "grant", id the decision id). Callers carry it as opaque bytes.
+  bytes sealed_grant = 1;
 }
 
 // OpenGrantRequest asks key@ to open a sealed grant.
@@ -118,4 +123,15 @@ message DataKeyWrap {
   string recipient = 3;          // the key@ that may unwrap it
   bytes ephemeral_public = 4;    // SEC1 uncompressed P-384 point of the ECDH-ES sender key
   bytes wrapped_key = 5;         // AES-KW (RFC 3394) of the 32-byte data key under HKDF-SHA384(shared secret)
+}
+
+// KeyCertificate is the kind KeyCertificate (0006 "Keys sign in place"): the public key of a key purpose and the
+// chain the root custodian returned for it. key@ is its only writer. Tonight it holds the wrapping public key of
+// each node, with id wrapping/<recipient> and no chain.
+message KeyCertificate {
+  string purpose = 1;                         // the key purpose
+  string recipient = 2;                       // the recipient label of a wrapping key: <node>-<16 characters>
+  bytes spki_der = 3;                         // the public key, SubjectPublicKeyInfo in DER
+  repeated bytes chain = 4;                   // the certificate chain, DER, leaf first; empty when there is none
+  google.protobuf.Timestamp added_at = 5;     // when key@ published it
 }

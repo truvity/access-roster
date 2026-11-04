@@ -68,6 +68,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arraydeque"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d902e3d592a523def97af8f317b08ce16b7ab854c1985a0c671e6f15cebc236"
+
+[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -909,6 +915,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "rqlite"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "buffa",
+ "buffa-types",
+ "bytes",
+ "clap",
+ "connectrpc",
+ "futures",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rustix",
+ "serde_json",
+ "sluis-conformance",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -926,6 +959,16 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "saphyr-parser"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48cf5a82d41247a625f040af08e91008fec945bce3b0bffba992c44af092caa2"
+dependencies = [
+ "arraydeque",
+ "thiserror",
+]
 
 [[package]]
 name = "serde"
@@ -1006,6 +1049,40 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
+name = "sluis-audit"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "buffa",
+ "connectrpc",
+ "rustix",
+ "serde_json",
+ "sluis-kit",
+ "sluis-proto",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "sluis-conformance"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "buffa",
+ "buffa-types",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "sluis-conformance",
+ "sluis-kit",
+ "sluis-proto",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "sluis-driver-writer-fs"
@@ -1121,6 +1198,30 @@ checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
  "windows-sys",
+]
+
+[[package]]
+name = "store"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64",
+ "buffa",
+ "buffa-types",
+ "clap",
+ "connectrpc",
+ "rustix",
+ "saphyr-parser",
+ "serde_json",
+ "sluis-audit",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "sluis-version",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
