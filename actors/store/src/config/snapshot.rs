@@ -442,7 +442,9 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
         ));
     }
     // A development difference is configuration checked against a floor in code: plain HTTP is
-    // for a development boundary only.
+    // for a development boundary only. The loopback redirects of a native client are the one
+    // exception, allowed everywhere (ADR 0011, "The local installation"; RFC 8252 section 7.3):
+    // the payload rule has already refused every other plain-http redirect (REQ-AUTHN-004).
     if b.environment != "development" {
         let plain = |u: &str| !u.starts_with("https://");
         let mut at: Option<(&'static str, String)> = plain(&b.issuer).then(|| {
@@ -482,7 +484,9 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
         }
         for (_, bytes) in s.list(kind("InstallationClient").segment) {
             if let Ok(c) = pb::InstallationClient::decode_from_slice(&bytes)
-                && c.redirects.iter().any(|r| plain(r))
+                && c.redirects
+                    .iter()
+                    .any(|r| plain(r) && !super::payload::loopback_http(r))
             {
                 at = at.or(Some((
                     "InstallationClient",
