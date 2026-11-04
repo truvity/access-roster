@@ -69,7 +69,7 @@ osrel() { # id id_like
 # pkcheck, a real dpkg) answers.
 run() {
 	(
-		export PATH="$work/bin" os_release_file="$work/os-release" card_polkit_policy="$work/policy" state_root="$work/state"
+		export PATH="$work/bin" os_release_file="$work/os-release" card_polkit_policy="$work/policy" state_root="$work/state" manifest="$work/manifest"
 		# shellcheck source=/dev/null
 		. "$here/remote-lib.sh"
 		"$@"
@@ -130,8 +130,14 @@ mkdir -p "$work/state"
 : >"$RESTORECON_LOG"
 FAKE_SELINUX=0 run relabel
 if [ ! -s "$RESTORECON_LOG" ]; then echo "ok   SELinux off: restorecon is not run"; else echo "FAIL restorecon ran with SELinux off"; fail=1; fi
+mkdir -p "$work/etc/systemd/system" "$work/etc/tmpfiles.d"
+: >"$work/etc/systemd/system/sluis-key@.service"
+: >"$work/etc/tmpfiles.d/sluis-pcscd-dev.conf"
+printf 'file\t%s\nfile\t%s\ndir\t%s\nunit\tsluis-key@dev.service\nfile\t%s\n' "$work/etc/systemd/system/sluis-key@.service" "$work/etc/tmpfiles.d/sluis-pcscd-dev.conf" "$work/etc/tmpfiles.d" "$work/state/not-a-single" >"$work/manifest"
 FAKE_SELINUX=1 run relabel
-if grep -q -- "-RF" "$RESTORECON_LOG" && grep -q "$work/state" "$RESTORECON_LOG"; then echo "ok   SELinux on: restorecon -RF over the state directory and the sluis paths that exist"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
+if grep -qx -- "-R $work/state" "$RESTORECON_LOG"; then echo "ok   SELinux on: -R over the state directory (the sluis paths that exist)"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
+if grep -qx -- "-- $work/etc/systemd/system/sluis-key@.service $work/etc/tmpfiles.d/sluis-pcscd-dev.conf $work/etc/tmpfiles.d" "$RESTORECON_LOG"; then echo "ok   and the files and directories of the manifest, each alone, without -R"; else echo "FAIL restorecon log: $(cat "$RESTORECON_LOG")"; fail=1; fi
+if grep -q -- "-F\|-RF\|^-R .*etc/systemd\|^-R .*tmpfiles\|-R /etc/systemd\|-R /etc/sysusers\|-R /etc/polkit" "$RESTORECON_LOG"; then echo "FAIL restorecon is recursive or forced over a directory of the system: $(cat "$RESTORECON_LOG")"; fail=1; else echo "ok   and no directory of the system is relabelled recursively, nor forced"; fi
 rm "$work/bin/selinuxenabled"
 : >"$RESTORECON_LOG"
 accept "no selinuxenabled: nothing to do" run relabel

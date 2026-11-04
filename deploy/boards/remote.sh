@@ -17,7 +17,7 @@ state_root=/var/lib/sluis-state
 # second does the same through polkit on a board whose pcscd is built with it.
 card_serial_env=/etc/sluis/yubikey-piv-$boundary.env
 card_pcscd_dropin=/etc/systemd/system/pcscd.socket.d/10-sluis.conf
-card_pcscd_service_dropin=/etc/systemd/system/pcscd.service.d/10-sluis.conf
+card_pcscd_tmpfiles=/etc/tmpfiles.d/sluis-pcscd-"$boundary".conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 
@@ -34,7 +34,7 @@ allowed_path() {
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
-	"$card_pcscd_dropin" | "$card_pcscd_service_dropin" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
+	"$card_pcscd_dropin" | "$card_pcscd_tmpfiles" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
 	esac
 	return 1
 }
@@ -43,7 +43,7 @@ allowed_dir() {
 	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
-	/etc/systemd/system/pcscd.socket.d | /etc/systemd/system/pcscd.service.d | /etc/polkit-1/rules.d) return 0 ;;
+	/etc/systemd/system/pcscd.socket.d | /etc/polkit-1/rules.d | /etc/tmpfiles.d) return 0 ;;
 	/etc/sluis/config | /etc/sluis/config/"$boundary" | /etc/sluis/bootstrap.d) return 0 ;;
 	/etc/sluis/credentials | /etc/sluis/credentials/"$boundary" | /etc/sluis/credentials/"$boundary"/sluis-*) return 0 ;;
 	"$state_root" | "$state_root"/*) return 0 ;;
@@ -70,7 +70,9 @@ deploy)
 	if [ -d "$stage/files/card" ]; then
 		check_card_prerequisites || exit 1
 	fi
-	if [ -d "$stage/files/etc/credentials" ]; then
+	# The units read their credentials with LoadCredentialEncrypted=, which a systemd older than 252 does not know: any unit that
+	# has the line needs the floor, whether or not this deploy stages a credential file.
+	if [ -d "$stage/files/etc/credentials" ] || grep -qsE '^LoadCredentialEncrypted=' "$stage"/files/systemd/*; then
 		require_credential_encryption || exit 1
 	fi
 	# /etc/sysusers.d does not exist on every image; both directories are listed if deploy has to make them.
@@ -161,7 +163,23 @@ deploy)
 			install -m "${3:-0644}" -o root -g root "$1" "$2"
 		}
 		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
-		install_card "$stage/files/card/pcscd-service.dropin" "$card_pcscd_service_dropin"
+		# A pcscd that runs as a user of its own (Ubuntu 26.04) has RuntimeDirectory=pcscd in its unit, and at its start systemd
+		# hands /run/pcscd and what is in it, the socket included, to that user when the directory is not already the user's
+		# (MEASURED 2026-11-04: the socket became pcscd:pcscd and the card driver was refused). The directory is made the user's
+		# before the socket binds, by tmpfiles at boot and now, so that systemd leaves the socket alone and its group, from the
+		# socket drop-in, stays. Nothing runs as root at the start of pcscd. A pcscd that runs as root needs no entry.
+		pcscd_user=$(systemctl show -p User --value pcscd.service 2>/dev/null || true)
+		if [ -n "$pcscd_user" ]; then
+			if ! [[ "$pcscd_user" =~ ^[a-z_][a-z0-9_-]*$ ]] || ! pcscd_group=$(id -gn "$pcscd_user"); then
+				echo "remote: pcscd.service runs as an unusable user '$pcscd_user'" >&2
+				exit 1
+			fi
+			printf '# Made by sluis deploy: the runtime directory of pcscd belongs to the user pcscd runs as.\nd /run/pcscd 0755 %s %s -\n' "$pcscd_user" "$pcscd_group" >"$stage/files/card/pcscd-tmpfiles.conf"
+			install_card "$stage/files/card/pcscd-tmpfiles.conf" "$card_pcscd_tmpfiles"
+			systemd-tmpfiles --create "$card_pcscd_tmpfiles"
+		elif [ -e "$card_pcscd_tmpfiles" ]; then
+			rm -f -- "$card_pcscd_tmpfiles"
+		fi
 		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" 0600 # the card the driver is bound to; systemd reads it as root
 		# A pcscd that ships its polkit policy asks polkit about every client and refuses a system service by default (Ubuntu 26.04,
 		# Rocky 10): the rule is what admits the card driver, and the socket group is the second lock. A pcscd without polkit (Ubuntu
@@ -171,7 +189,7 @@ deploy)
 		fi
 		card_changed=1
 	else
-		for f in "$card_pcscd_dropin" "$card_pcscd_service_dropin" "$card_polkit_rules" "$card_serial_env"; do
+		for f in "$card_pcscd_dropin" "$card_pcscd_tmpfiles" "$card_polkit_rules" "$card_serial_env"; do
 			if [ -e "$f" ]; then
 				rm -f -- "$f"
 				echo "removed $f"
