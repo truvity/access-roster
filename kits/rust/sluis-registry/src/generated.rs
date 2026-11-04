@@ -2135,6 +2135,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("ca", "issued-certificate", 0x003f), // get list create update delete apply
     ("ca", "key-certificate", 0x0003), // get list
     ("ca", "key-plan", 0x0043), // get list watch
+    ("ca", "key-revocation", 0x0043), // get list watch
     ("ca", "lease", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("ca", "log-level-override", 0x21c3), // get(self) list(self) watch(self)
     ("ca", "log-settings", 0x21c3), // get(self) list(self) watch(self)
@@ -2186,7 +2187,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("entry", "front-host", 0x0043), // get list watch
     ("entry", "installation-client", 0x0043), // get list watch
     ("entry", "key-certificate", 0x0003), // get list
-    ("entry", "key-revocation", 0x0003), // get list
+    ("entry", "key-revocation", 0x0043), // get list watch
     ("entry", "lease", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("entry", "log-level-override", 0x21c3), // get(self) list(self) watch(self)
     ("entry", "log-settings", 0x21c3), // get(self) list(self) watch(self)
@@ -2267,7 +2268,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("exporter", "issued-certificate", 0x0003), // get list
     ("exporter", "issued-ssh-certificate", 0x0003), // get list
     ("exporter", "key-certificate", 0x0043), // get list watch
-    ("exporter", "key-revocation", 0x0003), // get list
+    ("exporter", "key-revocation", 0x0043), // get list watch
     ("exporter", "krl", 0x0043), // get list watch
     ("exporter", "lease", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("exporter", "log-level-override", 0x21c3), // get(self) list(self) watch(self)
@@ -2446,7 +2447,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("signer", "installation-client", 0x0043), // get list watch
     ("signer", "key-certificate", 0x0003), // get list
     ("signer", "key-plan", 0x0043), // get list watch
-    ("signer", "key-revocation", 0x0003), // get list
+    ("signer", "key-revocation", 0x0043), // get list watch
     ("signer", "lease", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("signer", "log-level-override", 0x21c3), // get(self) list(self) watch(self)
     ("signer", "log-settings", 0x21c3), // get(self) list(self) watch(self)

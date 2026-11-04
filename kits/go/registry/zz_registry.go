@@ -689,6 +689,7 @@ var storeRules = map[string]map[string]uint16{
 		"issued-certificate": 0x003f, // get list create update delete apply
 		"key-certificate":    0x0003, // get list
 		"key-plan":           0x0043, // get list watch
+		"key-revocation":     0x0043, // get list watch
 		"lease":              0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"log-level-override": 0x21c3, // get(self) list(self) watch(self)
 		"log-settings":       0x21c3, // get(self) list(self) watch(self)
@@ -744,7 +745,7 @@ var storeRules = map[string]map[string]uint16{
 		"front-host":          0x0043, // get list watch
 		"installation-client": 0x0043, // get list watch
 		"key-certificate":     0x0003, // get list
-		"key-revocation":      0x0003, // get list
+		"key-revocation":      0x0043, // get list watch
 		"lease":               0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"log-level-override":  0x21c3, // get(self) list(self) watch(self)
 		"log-settings":        0x21c3, // get(self) list(self) watch(self)
@@ -829,7 +830,7 @@ var storeRules = map[string]map[string]uint16{
 		"issued-certificate":     0x0003, // get list
 		"issued-ssh-certificate": 0x0003, // get list
 		"key-certificate":        0x0043, // get list watch
-		"key-revocation":         0x0003, // get list
+		"key-revocation":         0x0043, // get list watch
 		"krl":                    0x0043, // get list watch
 		"lease":                  0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"log-level-override":     0x21c3, // get(self) list(self) watch(self)
@@ -1022,7 +1023,7 @@ var storeRules = map[string]map[string]uint16{
 		"installation-client":   0x0043, // get list watch
 		"key-certificate":       0x0003, // get list
 		"key-plan":              0x0043, // get list watch
-		"key-revocation":        0x0003, // get list
+		"key-revocation":        0x0043, // get list watch
 		"lease":                 0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"log-level-override":    0x21c3, // get(self) list(self) watch(self)
 		"log-settings":          0x21c3, // get(self) list(self) watch(self)
