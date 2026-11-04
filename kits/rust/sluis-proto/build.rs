@@ -20,6 +20,8 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
     let root = manifest.join("../../../proto");
+    // Cargo scans a directory recursively by mtime, so a changed .proto anywhere under it reruns this script.
+    println!("cargo:rerun-if-changed={}", root.display());
     let mut files = Vec::new();
     collect(&root, &mut files)?;
     if files.is_empty() {
