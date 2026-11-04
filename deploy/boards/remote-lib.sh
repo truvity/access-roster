@@ -103,21 +103,25 @@ encrypt_credential() {
 
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux
 # is not enabled. The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
-# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis, /etc/sluis and the state
-# directory, and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
+# state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis and /etc/sluis (root's), and
+# the state root and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
 # tmpfiles files, the polkit rule), each one alone, never a whole directory of the system. A failure is a warning: the files are
 # there, and the label is what a later restorecon or a policy module is for.
 relabel() {
 	command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled || return 0
 	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the files keep the labels they were made with" >&2; return 0; }
 	local p kind value roots=() singles=()
-	for p in /opt/sluis /etc/sluis "$state_root"; do
+	# The state directories belong to the sluis service users, who could swap one for a link while a recursive walk is in it: the
+	# state root and the directories this deploy made (they are in the manifest) are relabelled alone, never walked. The
+	# services make their own files with the labels the policy gives them.
+	for p in /opt/sluis /etc/sluis; do
 		[ ! -e "$p" ] || roots+=("$p")
 	done
+	[ ! -e "$state_root" ] || singles+=("$state_root")
 	if [ -f "$manifest" ]; then
 		while IFS=$'\t' read -r kind value; do
 			case "$kind" in file | dir) ;; *) continue ;; esac
-			case "$value" in /opt/sluis | /opt/sluis/* | /etc/sluis | /etc/sluis/* | "$state_root" | "$state_root"/*) continue ;; esac
+			case "$value" in /opt/sluis | /opt/sluis/* | /etc/sluis | /etc/sluis/*) continue ;; esac
 			[ ! -e "$value" ] || singles+=("$value")
 		done <"$manifest"
 	fi
