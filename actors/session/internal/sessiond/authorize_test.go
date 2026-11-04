@@ -260,6 +260,43 @@ func TestAuthorizeAcceptsALoopbackRedirectOnAnyPort(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUTHN-004
+func TestAuthorizeNeverRedirectsOverPlainHTTPOffLoopbackEvenWhenRegistered(t *testing.T) {
+	// store@ refuses such a registration at load; a declaration that holds one anyway is not a way past the rule.
+	for _, uri := range []string{
+		"http://app.example.com/callback",
+		"http://localhost/callback",
+		"http://localhost:43210/callback",
+		"http://127.0.0.2/callback",
+		"http://192.0.2.1/callback",
+	} {
+		t.Run(uri, func(t *testing.T) {
+			e := newEnv(t, func(o *options) { o.client.Redirects = []string{uri} })
+			p := newAuthorize()
+			p.req.RedirectUri = uri
+			assertErrorPage(t, e.authorize(p.req))
+			if len(e.upstream.begins) != 0 {
+				t.Error("the upstream was called")
+			}
+			if recs := e.records(); len(recs) != 1 || recs[0]["status_code"] != "redirect_uri" {
+				t.Errorf("records = %v", recs)
+			}
+		})
+	}
+	// The loopback IP literals stay, with a registered port or any port (RFC 8252 section 7.3).
+	for reg, uri := range map[string]string{
+		"http://[::1]/callback":          "http://[::1]:43210/callback",
+		"http://127.0.0.1:8080/callback": "http://127.0.0.1:8080/callback",
+	} {
+		e := newEnv(t, func(o *options) { o.client.Redirects = []string{reg} })
+		p := newAuthorize()
+		p.req.RedirectUri = uri
+		if got := location(t, e.authorize(p.req)); got.Host != "idp.example.test" {
+			t.Errorf("%s registered, %s asked: redirected to %s", reg, uri, got)
+		}
+	}
+}
+
 func TestAuthorizeRefusesClientsItDoesNotServe(t *testing.T) {
 	cases := map[string]func(*sessionv2alpha1.AuthorizeRequest){
 		"unknown client":        func(r *sessionv2alpha1.AuthorizeRequest) { r.ClientId = "nobody" },
