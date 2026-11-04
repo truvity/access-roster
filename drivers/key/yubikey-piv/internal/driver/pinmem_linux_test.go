@@ -67,6 +67,9 @@ func TestThePageIsReallyLockedAndOutOfCoreDumps(t *testing.T) {
 			continue
 		}
 		if inMapping && strings.HasPrefix(line, "VmFlags:") {
+			if !strings.Contains(line, " me") {
+				t.Skipf("SKIP: smaps has only %q for the page: an emulated kernel, as under QEMU", line)
+			}
 			found = true
 			if !strings.Contains(line, " lo") || !strings.Contains(line, " dd") {
 				t.Fatalf("the mapping of the page has %q, want lo and dd", line)
