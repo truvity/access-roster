@@ -126,7 +126,7 @@ message WatchRequest {
 
 // WatchResponse is one change.
 message WatchResponse {
-  uint64 resume_point = 1;   // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind
+  uint64 resume_point = 1;   // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind: apply every config change
   ChangeType type = 2;       // PUT, DELETE or BOOKMARK
   Item item = 3;             // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 }

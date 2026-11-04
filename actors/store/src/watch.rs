@@ -14,8 +14,9 @@
 //! - A resume point that the change log no longer holds is `failed_precondition` / `resume_point_expired`: the
 //!   watcher lists again.
 //! - A caller has at most 16 watches at once.
-//! - A config kind has no change log: a watch sends the snapshot in force as puts, then each item that a swap
-//!   added, changed or removed, with resume point 0.
+//! - A config kind has no change log: a watch sends the snapshot in force as puts and then a bookmark, and the
+//!   watcher replaces its state of the kind with the items before that bookmark; then each item that a swap added,
+//!   changed or removed, with resume point 0. A config change has no sequence: the watcher applies every one.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -323,9 +324,10 @@ fn gone(sequence: u64, version: u64, address: Address) -> WatchResponse {
     }
 }
 
-/// The stream of a config kind: the snapshot in force as puts, then each item that a swap of the snapshot added,
-/// changed or removed, with resume point 0 (a config kind has no change log; a watcher that reconnects reads the kind
-/// again).
+/// The stream of a config kind: the snapshot in force as puts and a bookmark that closes it, then each item that a
+/// swap of the snapshot added, changed or removed, with resume point 0 (a config kind has no change log; a watcher
+/// that reconnects reads the kind again). A watcher replaces its state of the kind with the items before the first
+/// bookmark, and applies every later change: a config change has no sequence to dedupe by.
 pub struct ConfigWatch {
     config: Arc<dyn ConfigSnapshot>,
     segment: &'static str,
@@ -383,16 +385,16 @@ impl ConfigWatch {
 
     /// Looks at the snapshot and queues what changed since the last look.
     fn look(&mut self) {
-        let version = self.config.version(self.segment);
-        if self.started && version == self.version {
+        if self.started && self.config.version(self.segment) == self.version {
             return;
         }
+        let first = !self.started;
         self.started = true;
+        // The seq and the items from one snapshot: a swap between two reads would stamp them with another seq.
+        let (version, items) = self.config.listing(self.segment);
         self.version = version;
         let seq = version.unwrap_or(0);
-        let now: BTreeMap<String, Vec<u8>> = self
-            .config
-            .list(self.segment)
+        let now: BTreeMap<String, Vec<u8>> = items
             .into_iter()
             .filter(|(id, _)| id.starts_with(&self.id_prefix))
             .collect();
@@ -417,6 +419,11 @@ impl ConfigWatch {
         }
         self.seen = now;
         self.queue.extend(out);
+        // The snapshot is whole: a watcher replaces its state of the kind with the items before this bookmark, so an
+        // item removed between its listing and the watch is dropped too.
+        if first {
+            self.queue.push_back(bookmark(0));
+        }
     }
 
     /// The next message: the snapshot, then the changes of a swap, or a bookmark after a silence.

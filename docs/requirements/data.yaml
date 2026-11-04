@@ -852,7 +852,8 @@ requirements:
     issues: [1204]
     verification:
       - {kind: integration-test, ref: "a snapshot swap that changes one config kind notifies its watchers and no others"}
-      - {kind: integration-test, ref: "a config watch sends the snapshot in force as puts before any swap"}
+      - {kind: integration-test, ref: "a config watch sends the snapshot in force as puts, then a bookmark"}
+      - {kind: integration-test, ref: "an item removed between the listing and the watch is dropped at the first bookmark"}
   - id: REQ-DATA-100
     area: DATA
     statement: "store@ MUST deliver a change of a watched kind with its log sequence and the item as read at delivery, skip a put row only for a later row of the same address, and deliver an item that is gone as a delete with no value."
