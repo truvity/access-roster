@@ -451,3 +451,27 @@ requirements:
     issues: [1211]
     verification:
       - {kind: integration-test, ref: "revoke a grant: one audit record names the tenant and the time"}
+  - id: REQ-SEC-034
+    area: SEC
+    statement: "A key revocation MUST write an audit record and raise an alert that name the key or the purpose, the reason and the operator."
+    rationale: "A revocation is the most urgent event for a key, and it must be visible to the people who answer it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a key: one audit record and one alert within the alert interval, both naming the key, the reason and the operator"}
+  - id: REQ-SEC-035
+    area: SEC
+    statement: "An alarm MUST be raised when the key service records a signature or an unwrap by a principal other than key@, or more signatures for a key than the audit log records."
+    rationale: "The use of a stolen key outside key@ is otherwise invisible (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a key service log fixture with a call by another principal, and one with extra signatures: both raise the alarm"}

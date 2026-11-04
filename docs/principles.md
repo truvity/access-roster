@@ -18,7 +18,7 @@ An authority key or a wrapping key is made inside its key store, a cloud KMS or 
 
 **Shared with ritueel.**
 
-Roots are offline: they sign at a ceremony or, for a key service, under a declared renewal policy that can extend trust and never create it. Intermediates are re-signed every year, and leaf certificates are short. Redundancy protects against losing a key, not against its compromise: use two cards where a key cannot be copied, and a replica where the store can replicate. A compromise is answered by revocation and a transition. See [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/) and [Keys](/concepts/keys/).
+Roots are offline: they sign at a ceremony or, for a key service, under a declared renewal policy that can extend trust and never create it. Intermediates are re-signed every year, and leaf certificates are short. Redundancy protects against losing a key, not against its compromise: use two cards where a key cannot be copied, and a replica where the store can replicate. A compromise is answered by revocation and a transition, and a revocation skips every overlap period that exists for healthy rotation. See [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/), [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/) and [Keys](/concepts/keys/).
 
 ## 3. Keys are shared, rotated and given to tenants by rule
 
@@ -86,7 +86,7 @@ Every installation runs the same actors and the same holders; what differs is th
 
 A change that lets less happen takes effect at once and stays: a revocation, a shorter lifetime, a stricter sign-in, a paused job. A change that lets more happen is allowed only as far as the layer below permits, and when it is made at run time it carries an expiry: a debug log level, a break-glass link. Making a loosening permanent goes through the reviewed path that sets the layer below. A restore never loosens what was tightened after the archive was taken. See [Layers and the direction rule](/decisions/0004-the-data-model/#layers-and-the-direction-rule) and [ADR 0010](/decisions/0010-backup-and-recovery/).
 
-*Questions it settles:* may an operator raise a limit for a tenant without review? (Only up to config's bound, and only with an expiry.) Must a revocation wait for a deploy? (No.) Does a roll-forward after a restore undo a switch turned on later? (No.)
+*Questions it settles:* may an operator raise a limit for a tenant without review? (Only up to config's bound, and only with an expiry.) Must a revocation wait for a deploy? (No.) Does a compromised token key wait for its pre-publication or its 65 minutes of retention? (No: it leaves the key set at once, and its replacement signs at once; [ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-token-signing-key).) Does a roll-forward after a restore undo a switch turned on later, or bring a revoked key back? (No.)
 
 13 to 15 are ritueel's own; see [ritueel's principles](https://ritueel.id/principles/). A new principle takes the next free number, whichever product adds it.
 
