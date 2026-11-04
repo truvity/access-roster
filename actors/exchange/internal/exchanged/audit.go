@@ -78,8 +78,19 @@ func (a *attempt) event(err error) audit.Event {
 		}
 	}
 	sluis := map[string]any{}
+	token := map[string]any{}
 	if a.audience != "" {
-		sluis["token"] = map[string]any{"audience": a.audience}
+		token["audience"] = a.audience
+	}
+	// The client the subject token was issued to, beside the client that asked: they differ when a confidential
+	// client exchanges a public client's token (confirmation C-3).
+	if a.subject != nil {
+		if id := audienceForRecord(a.subject.ClientID); id != "" {
+			token["subject_client"] = id
+		}
+	}
+	if len(token) > 0 {
+		sluis["token"] = token
 	}
 	if s := a.subject; s != nil && (s.ACR != nil || s.AMRPresent) {
 		m := map[string]any{}

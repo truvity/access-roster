@@ -176,6 +176,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 			return nil, invalidClient()
 		}
 		a.client, a.method = audienceForRecord(r.GetClientId()), "none"
+		requester = subject.Client
 	}
 
 	// Everything that does not depend on the audience is checked first, so that a caller with a valid subject token
@@ -209,7 +210,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	if known {
 		audience = r.GetAudience()
 	}
-	verdict, err := s.decide(ctx, tenant, audience, client.GetRequires(), client.GetKind(), subject, &person)
+	verdict, err := s.decide(ctx, tenant, audience, client.GetRequires(), client.GetKind(), requester, subject, &person)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +241,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	if err != nil {
 		return nil, err
 	}
-	claims, err := claimsOf(b.GetIssuer(), sub, r.GetAudience(), iat, exp, jti, subject, narrow(verdict.GetGrantNames(), client.GetRequires()))
+	claims, err := claimsOf(b.GetIssuer(), sub, r.GetAudience(), requester.GetId(), iat, exp, jti, subject, narrow(verdict.GetGrantNames(), client.GetRequires()))
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +331,7 @@ func checkRequest(r *exchangev2alpha1.TokenExchangeRequest) error {
 
 // decide asks policy whether the person's token may become a token for the audience (action token.exchange). The
 // answer carries the full set of held grant names; exchange narrows it (policy.md, "How a person's grants are found").
-func (s *Service) decide(ctx context.Context, t Tenant, audience string, requires []string, kind string, sub *Subject, p *Person) (*policyv2alpha1.DecideResponse, error) {
+func (s *Service) decide(ctx context.Context, t Tenant, audience string, requires []string, kind string, requester *configv2alpha1.InstallationClient, sub *Subject, p *Person) (*policyv2alpha1.DecideResponse, error) {
 	amr := append([]string{}, sub.AMR...)
 	res, err := s.opts.Policy.Decide(ctx, connect.NewRequest(&policyv2alpha1.DecideRequest{
 		Action:    "token.exchange",
@@ -342,6 +343,9 @@ func (s *Service) decide(ctx context.Context, t Tenant, audience string, require
 		},
 		Person: &policyv2alpha1.PersonFacts{Subject: p.ID, Accounts: p.Accounts, State: p.State, Org: p.Org},
 		Client: &policyv2alpha1.ClientFacts{Id: audience, Requires: requires, Kind: kind},
+		// The client that asks, authenticated or the public client's own: policy decides whether the person's and
+		// the requester's facts together allow the credential (ADR 0007, ADR 0022).
+		Requester: &policyv2alpha1.ClientFacts{Id: requester.GetId(), Requires: requester.GetRequires(), Kind: requester.GetKind()},
 		// The grant lets exchange ask key@ for the pairwise Mac.
 		GrantKeyOps: []string{"mac"},
 	}))

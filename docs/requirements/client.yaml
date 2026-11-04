@@ -13,7 +13,7 @@ requirements:
     standards:
       - {id: ST-01, section: "2.3", depth: Full}
     issues: [789]
-    tests: [actors/exchange/internal/exchanged/exchange_test.go]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go, actors/session/internal/sessiond/token_test.go]
     verification:
       - {kind: integration-test, ref: "negative test"}
   - id: REQ-CLIENT-002

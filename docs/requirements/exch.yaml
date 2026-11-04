@@ -138,7 +138,7 @@ requirements:
   - id: REQ-EXCH-007
     area: EXCH
     statement: "A client that exchanges tokens MUST be confidential, except a public client of the native profile that exchanges a token issued to itself (decision of 2026-11-04, ADR 0022)."
-    rationale: "Public clients cannot hold an exchange authority."
+    rationale: "A public client cannot keep a secret, so it holds no exchange authority beyond its own token (ADR 0022)."
     level: MUST
     source: v1-parity
     status: done
@@ -154,7 +154,7 @@ requirements:
     area: EXCH
     split_from: REQ-EXCH-007
     statement: "A client that exchanges tokens MUST authenticate, except a public client of the native profile that exchanges a token issued to itself (decision of 2026-11-04, ADR 0022)."
-    rationale: "Public clients cannot hold an exchange authority."
+    rationale: "A public client cannot keep a secret, so it holds no exchange authority beyond its own token (ADR 0022)."
     level: MUST
     source: v1-parity
     status: done

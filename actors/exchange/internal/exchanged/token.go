@@ -92,11 +92,14 @@ type accessClaims struct {
 	Groups   []string  `json:"groups"`
 }
 
-// claimsOf builds the claims of the new token. `acr`, `amr`, `auth_time` and `sid` pass from the subject token as
+// claimsOf builds the claims of the new token. `client_id` is the client the token is issued to (RFC 9068 section 2.2):
+// the client that asked, authenticated or the public client's own. It is not the client of the subject token when a
+// confidential client exchanges a public client's token; exchange adds no `act` claim, since a standard's core comes
+// before its extensions (principle 5) and the audit record names both clients. `acr`, `amr`, `auth_time` and `sid` pass from the subject token as
 // they are, and an absent one stays absent (ADR 0020): exchange fills in nothing the upstream did not send.
-func claimsOf(issuer, sub, audience string, iat, exp int64, jti string, s *Subject, groups []string) ([]byte, error) {
+func claimsOf(issuer, sub, audience, clientID string, iat, exp int64, jti string, s *Subject, groups []string) ([]byte, error) {
 	c := accessClaims{
-		Iss: issuer, Sub: sub, Aud: audience, Exp: exp, Iat: iat, JTI: jti, ClientID: s.ClientID,
+		Iss: issuer, Sub: sub, Aud: audience, Exp: exp, Iat: iat, JTI: jti, ClientID: clientID,
 		AuthTime: s.AuthTime, ACR: s.ACR, SID: s.SID, Groups: groups,
 	}
 	if s.AMRPresent {

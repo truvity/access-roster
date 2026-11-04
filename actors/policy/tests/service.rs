@@ -7,7 +7,7 @@ mod common;
 use common::{Rig, accounts, audit, auth_age, fresh_mfa, open_sealed, requires, subject, token};
 use connectrpc::error::ErrorCode;
 use sluis_kit::refusal_reason;
-use sluis_proto::sluis::policy::v2alpha1::{Authentication, Decision};
+use sluis_proto::sluis::policy::v2alpha1::{Authentication, ClientFacts, DecideRequest, Decision};
 
 fn allowed(d: Decision) -> bool {
     d == Decision::ALLOW
@@ -651,4 +651,90 @@ fn subject_and_principal(
 ) -> sluis_proto::sluis::policy::v2alpha1::DecideRequest {
     r.principal = common::entity("Person", s).into();
     subject(r, s)
+}
+
+// ---- the requester of an exchange (ADR 0022) ----
+
+fn with_requester(mut r: DecideRequest, id: &str, kind: &str) -> DecideRequest {
+    r.requester = ClientFacts {
+        id: id.into(),
+        kind: kind.into(),
+        ..ClientFacts::default()
+    }
+    .into();
+    r
+}
+
+#[tokio::test]
+async fn a_confidential_requester_gets_a_token_for_itself_and_for_no_other_client() {
+    let rig = Rig::new("exchange").await;
+    let base = || token("token.exchange", &["workforce/u-1001"], "live", fresh_mfa());
+    // The requester is the audience client: allowed.
+    let r = rig
+        .client
+        .decide(with_requester(base(), "example-app", "confidential"))
+        .await
+        .unwrap()
+        .into_owned();
+    assert!(allowed(r.decision.as_known().unwrap()));
+    // Another confidential client asks for a token for example-app: the policy of the installation forbids it.
+    let r = rig
+        .client
+        .decide(with_requester(base(), "other-app", "confidential"))
+        .await
+        .unwrap()
+        .into_owned();
+    assert!(!allowed(r.decision.as_known().unwrap()));
+    assert!(
+        r.reasons
+            .iter()
+            .any(|x| x.policy_id == "exchange-confidential-for-itself")
+    );
+    // The public client that exchanges its own token is not held to it.
+    let r = rig
+        .client
+        .decide(with_requester(base(), "sluis-cli", "public"))
+        .await
+        .unwrap()
+        .into_owned();
+    assert!(allowed(r.decision.as_known().unwrap()));
+    // No requester: the rule does not apply (an older caller).
+    let r = rig.client.decide(base()).await.unwrap().into_owned();
+    assert!(allowed(r.decision.as_known().unwrap()));
+}
+
+#[tokio::test]
+async fn a_requester_is_checked_like_a_client_and_belongs_to_an_exchange_only() {
+    let rig = Rig::new("exchange").await;
+    let base = || token("token.exchange", &["workforce/u-1001"], "live", fresh_mfa());
+    for (id, kind, path) in [
+        ("", "confidential", "requester.id"),
+        ("a/b", "confidential", "requester.id"),
+        ("other-app", "", "requester.kind"),
+        ("other-app", "wizard", "requester.kind"),
+    ] {
+        let e = rig
+            .client
+            .decide(with_requester(base(), id, kind))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidArgument, "{id:?} {kind:?}");
+        assert_eq!(
+            refusal_reason(&e).as_deref(),
+            Some("schema"),
+            "{id:?} {kind:?} ({path})"
+        );
+    }
+    // session asks token.issue, which has no requester.
+    let rig = Rig::new("session").await;
+    let e = rig
+        .client
+        .decide(with_requester(
+            token("token.issue", &["workforce/u-1001"], "live", fresh_mfa()),
+            "example-app",
+            "confidential",
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidArgument);
 }

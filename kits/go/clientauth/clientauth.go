@@ -3,9 +3,14 @@
 // (client_secret_post), and the check of a secret against the one the installation holds.
 //
 // The check has one path. A client that is unknown, a client that has no secret and a client whose secret is wrong
-// all fetch a secret, hash both sides to a fixed length and compare them in constant time, so what the caller sees,
-// and how long it takes, does not tell them apart (REQ-EXCH-019). A secret is never logged, returned in an error or
-// kept after the call.
+// all fetch a secret, hash both sides to a fixed length and compare them with subtle.ConstantTimeCompare, so the
+// answer and the work the kit does are the same (REQ-EXCH-019). That is a structural claim, tested by counting the
+// fetches and the comparisons; a measurement of the timing, REQ-CLIENT-015's test, does not exist yet. What the
+// kit cannot equalise is its caller's source: store@ answers a secret it holds in memory sooner than one it must read
+// from the secret source (a cold cache), and answers a client with no secret without reading the source at all, so
+// the time of the fetch can differ between these cases. REQ-CLIENT-015's timing test has to measure that, and until
+// it exists the claim is only the structural one. A secret is never logged, returned in an error or kept after the
+// call.
 package clientauth
 
 import (

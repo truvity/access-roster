@@ -456,7 +456,7 @@ func tamper(token string) string {
 
 func TestANativePublicClientsTokenMayBeExchanged(t *testing.T) {
 	e := newEnv(t, envOptions{})
-	for _, client := range []string{"sluis-cli", "native-app"} { // no profile, and the profile native
+	for _, client := range []string{"sluis-cli", "native-app"} { // the installation's CLI and another native client
 		req := request(e.mint(subjectClaims(map[string]any{"aud": client, "client_id": client})))
 		req.ClientId = client
 		r := e.exchange(req)
@@ -464,11 +464,19 @@ func TestANativePublicClientsTokenMayBeExchanged(t *testing.T) {
 			t.Errorf("%s: %s", client, r.GetBody())
 		}
 	}
-	// The relying party's own sign-in token is refused before policy, signer or the directory.
+	// The relying party's own sign-in token, a public client with no profile and a browser client's are refused
+	// before policy, signer or the directory.
 	n := len(e.policy.requests())
-	failure(t, e.exchange(request(e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"})))), "invalid_request")
+	for _, client := range []string{"example-app", "bare-app", "browser-app"} {
+		req := request(e.mint(subjectClaims(map[string]any{"aud": client, "client_id": client})))
+		req.ClientId = client
+		failure(t, e.exchange(req), "invalid_request")
+		if got := get(e.lastRecord(), "status_code"); got != "client_kind" {
+			t.Errorf("%s: reason = %v", client, got)
+		}
+	}
 	if len(e.policy.requests()) != n {
-		t.Error("a relying party's token reached policy")
+		t.Error("a token that may not be a subject reached policy")
 	}
 }
 
@@ -770,7 +778,7 @@ func recordsText(t *testing.T, e *env) []string {
 
 func TestAnExchangeAsAConfidentialClientMayCarryTheTokenOfAnotherClient(t *testing.T) {
 	// The subject token was issued to sluis-cli; the request is example-app's. That is allowed only because the
-	// subject is a public native client's (REQ-EXCH-020), which a relying party's own token is not.
+	// subject is a public native client's (REQ-EXCH-020), which a relying party's own token is not (confirmation C-3).
 	e := newEnv(t, envOptions{})
 	rep := e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
 		r.Authorization = basicHeader("example-app", appSecret)
@@ -778,6 +786,25 @@ func TestAnExchangeAsAConfidentialClientMayCarryTheTokenOfAnotherClient(t *testi
 	if rep.GetStatus() != 200 {
 		t.Fatalf("%s", rep.GetBody())
 	}
+	// The token is issued to the client that asked (RFC 9068 section 2.2), and carries no `act` claim.
+	claims, _ := claimsOf(t, body(t, rep)["access_token"].(string))
+	if claims["client_id"] != "example-app" || claims["aud"] != "example-app" {
+		t.Errorf("claims = %v", claims)
+	}
+	if _, ok := claims["act"]; ok {
+		t.Error("the token carries an act claim")
+	}
+	// The record names both clients: the one that asked and the one the subject token was issued to.
+	rec := e.lastRecord()
+	if get(rec, "unmapped", "sluis", "client", "id") != "example-app" || get(rec, "unmapped", "sluis", "token", "subject_client") != "sluis-cli" {
+		t.Errorf("record = %v", rec)
+	}
+	// Policy decides on the person and on the requester (ADR 0022).
+	q := e.policy.requests()[len(e.policy.requests())-1]
+	if q.GetRequester().GetId() != "example-app" || q.GetRequester().GetKind() != "confidential" {
+		t.Errorf("policy was told the requester %v", q.GetRequester())
+	}
+
 	other := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
 		r.Authorization = basicHeader("example-app", appSecret)
 	})
@@ -786,6 +813,47 @@ func TestAnExchangeAsAConfidentialClientMayCarryTheTokenOfAnotherClient(t *testi
 	if got := get(e.lastRecord(), "status_code"); got != "client_kind" {
 		t.Errorf("reason = %v", got)
 	}
+}
+
+// ADR 0022: the exchange of an authenticated client is limited by policy on the person and on the requester. A
+// confidential client that asks for an audience that policy does not grant to it is refused with the one
+// invalid_target (REQ-EXCH-003), the same answer as for an audience that does not exist.
+func TestAConfidentialClientIsRefusedAnAudiencePolicyDoesNotGrantToIt(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	// The rule of the local installation (tests/installations/local/policy/local.cedar): a confidential requester
+	// gets a token for itself and no other client.
+	e.policy.decide = func(q *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
+		if q.GetRequester().GetKind() == "confidential" && q.GetRequester().GetId() != q.GetClient().GetId() {
+			return &policyv2alpha1.DecideResponse{Decision: policyv2alpha1.Decision_DENY, DecisionId: "0192a000-0000-7000-8000-000000000009",
+				Reasons: []*policyv2alpha1.Reason{{PolicyId: "exchange-confidential-for-itself"}}}, nil
+		}
+		return allow("dev:example-app:user")(q)
+	}
+	refusedFor := func(audience string) string {
+		r := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.Authorization = basicHeader("example-app", appSecret)
+		})
+		r.Audience = audience
+		return e.answer(r)
+	}
+	if rep := e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	})); rep.GetStatus() != 200 {
+		t.Fatalf("its own audience: %s", rep.GetBody())
+	}
+	other := refusedFor("native-app")
+	if other != refusedFor("no-such-app") || !strings.Contains(other, "invalid_target") {
+		t.Errorf("a refused audience answers %s, an unknown one %s", other, refusedFor("no-such-app"))
+	}
+	if got := get(e.lastRecord(), "status_code"); got != "audience" {
+		t.Errorf("reason = %v", got)
+	}
+	// The refusal by policy is recorded with the policy that denied it.
+	r := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	})
+	r.Audience = "native-app"
+	failure(t, e.exchange(r), "invalid_target")
 }
 
 func TestREQ_EXCH_019_EveryFailureOfClientAuthenticationIsTheOneInvalidClient(t *testing.T) {
@@ -868,7 +936,8 @@ func TestREQ_EXCH_019_AnUnknownClientAndAWrongSecretAreTheSameAnswerWithTheSameC
 		for k, v := range e.store.gets {
 			d[k] = v - before[k]
 		}
-		// The subject token's own client is read in every case; the cases differ only in the client asked about.
+		// A failed authentication stops before the subject token is read: store@ is asked for the secret and the
+		// declaration of the client named, and nothing else.
 		return outcome{ans, d}
 	}
 	wrong, unknown, none := measure("example-app"), measure("nobody"), measure("no-secret-app")
