@@ -1,0 +1,137 @@
+{
+  "note": "Known answers for key@'s Mac (REQ-KEYS-042): HMAC-SHA384 under the data key over u16be(len(label)) | label | input. The epoch of a pseudonym is not in the input; it names the key's generation. key, input and mac are hex; the keys are test values, sha384('sluis mac vector key: ' + name)[:32]. Generated with Python 3's hmac and hashlib, not with the Go code: for each case, hmac.new(key, struct.pack('>H', len(label)) + label + input, hashlib.sha384).hexdigest().",
+  "cases": [
+    {
+      "name": "mac: link-id",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "link-id",
+      "input": "616c696365",
+      "mac": "af7b6489d1fb7da1ecf7e060817275682625870e3b4f2ca5d0ec873031c08cd7ee8047dbfd3792f6afad47f80733fd2c"
+    },
+    {
+      "name": "mac: another label, same input",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "upstream-session",
+      "input": "616c696365",
+      "mac": "a1b5eb567f827894367b6aba7a6b5003746bb839e58868879500d8efd45fe97728bd11f7c834c8a587ce79cbb875c095"
+    },
+    {
+      "name": "mac: another input",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "link-id",
+      "input": "626f62",
+      "mac": "be9aa7bbdcb3fc1b16da68728b5faabadb898978f830b2751f71d1920c4b14e93d92f74abd74f6a92670805a714ca7ec"
+    },
+    {
+      "name": "mac: label ab, input c",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "ab",
+      "input": "63",
+      "mac": "9d07daaa80963eaac48732523a226a499f866085b72df5376dd6629a899c2f7b8bf7491a38425dd02cd47ab291958bf5"
+    },
+    {
+      "name": "mac: label a, input bc",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "a",
+      "input": "6263",
+      "mac": "aaac4c2620148e413b99bd6c41f77341ea74f13dd05162f5e915c0f4a0bca286469de81cf1a5a2fc8e5bc340843791d3"
+    },
+    {
+      "name": "mac: empty input",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "link-id",
+      "input": "",
+      "mac": "06485ff8fe1b11ab40f10a7cca4c248bff058cd3ea7c2749f745d3404f2b7c6f0163824c25f7e1906e2818001395a223"
+    },
+    {
+      "name": "mac: a 300-byte label (the high byte of the length)",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "input": "616c696365",
+      "mac": "c88e962dd5e8697877ec27f2aeb322348874c118e309188d4c6e76dceb5bf188e05c3aa81a68334a59e73b32551a22e8"
+    },
+    {
+      "name": "mac: binary input",
+      "caller": "session",
+      "purpose": "mac",
+      "tenant": "",
+      "epoch": "",
+      "generation": 1,
+      "key": "a701e65c432b7ad0f5de0a8a4b04835d329a95b36b7a83587ff52446e11d99bf",
+      "label": "link-id",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "mac": "0cd1f781da3d36b4f04076affb5071f809999a080a1c830de0f5b1c1898b13726e38a160be2227ad6030edd78c557e32"
+    },
+    {
+      "name": "pseudonym: epoch 202611 is generation 202611",
+      "caller": "reader",
+      "purpose": "pseudonym",
+      "tenant": "acme",
+      "epoch": "202611",
+      "generation": 202611,
+      "key": "9f029a893199eba529b1f4c99931372c86c3605331edf44621a8236f02119205",
+      "label": "audit-subject",
+      "input": "616c696365",
+      "mac": "fd657a0fff07809bad8270fa2298ddcd94668748d590338f5aa27e76199734a8ae20b224cb9b6723259cc59afa781c2f"
+    },
+    {
+      "name": "pseudonym: epoch 202612 is another key",
+      "caller": "reader",
+      "purpose": "pseudonym",
+      "tenant": "acme",
+      "epoch": "202612",
+      "generation": 202612,
+      "key": "d08409cb3542080e3452f81a8f061d80881eb1d5ae3a0ad41224046fef4e8190",
+      "label": "audit-subject",
+      "input": "616c696365",
+      "mac": "21f409379df27eb1e6d0067424600c93ebee7cadee0103b893b49bea86471af104533459bc83038fe467475ad49032ae"
+    },
+    {
+      "name": "pairwise: generation 1",
+      "caller": "session",
+      "purpose": "pairwise",
+      "tenant": "acme",
+      "epoch": "",
+      "generation": 1,
+      "key": "14e0581857473ab7c0666d7b0c393085954e9b7e3cd47f6914e2185efbe41bf5",
+      "label": "sector",
+      "input": "616c696365",
+      "mac": "c6507d98745dac7c4c992c5ccb6a2c81287b0eb9a6561653af8bff166c947464fcb7ade4d360d4bf2004aa5a293a9fd0"
+    }
+  ]
+}

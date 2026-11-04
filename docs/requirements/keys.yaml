@@ -673,13 +673,13 @@ requirements:
     rationale: "Two uses then never give the same keyed hash for the same input, and the key never leaves key@ (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [800]
+    tests: [actors/key/internal/keyd/mac_vectors_test.go, actors/key/internal/keyd/sign_test.go]
     verification:
       - {kind: test-vectors, ref: "Mac vectors: one input under two labels gives two values; the label is bound by key@"}
   - id: REQ-KEYS-043
