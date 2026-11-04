@@ -135,6 +135,8 @@ struct Refuse {
     /// The kind, when the call got as far as naming one.
     kind: Option<&'static str>,
     verb: &'static str,
+    /// The id of a secret kind that was asked for: a client id, never a value. Only a secret kind sets it.
+    id: Option<String>,
     /// The operation of a batch a transaction refusal is about.
     op: Option<usize>,
 }
@@ -146,6 +148,7 @@ fn refuse(code: ErrorCode, reason: &'static str, path: impl Into<String>) -> Ref
         path: path.into(),
         kind: None,
         verb: "",
+        id: None,
         op: None,
     }
 }
@@ -360,6 +363,9 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         let blame = |mut r: Refuse| {
             r.kind = Some(t.kind.name);
             r.verb = "get";
+            if t.kind.class == Class::Secret {
+                r.id = Some(t.id.clone());
+            }
             r
         };
         let item = match t.kind.class {
@@ -419,18 +425,35 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         let absent = || refuse(ErrorCode::NotFound, "absent", "address");
         let client = sluis_registry::kind_by_name("InstallationClient")
             .unwrap_or_else(|| unreachable!("the registry has InstallationClient"));
+        // Without the InstallationClient document the secret cannot be located: unavailable, never empty, as for
+        // a config kind. Otherwise a config outage would read as an unknown client.
+        self.config
+            .version(client.segment)
+            .ok_or_else(engine_down)?;
         let bytes = self.config.get(client.segment, id).ok_or_else(absent)?;
-        let declared =
-            pb::InstallationClient::decode_from_slice(&bytes).map_err(|_| engine_down())?;
+        let declared = pb::InstallationClient::decode_from_slice(&bytes).map_err(|_| {
+            // A document the loader accepted that does not decode is a bug: the operator needs to see it.
+            tracing::warn!(client = id, "InstallationClient does not decode");
+            engine_down()
+        })?;
         if declared.secret.is_empty() {
             return Err(absent());
         }
+        // The caller gets the one answer `absent` for every case below; the operator gets the name of the
+        // credential in the log, never a value.
         let secret = self
             .secrets
             .read(&declared.secret)
             .await
             .map_err(|e| match e {
-                SecretError::Absent => absent(),
+                SecretError::Absent => {
+                    tracing::warn!(
+                        client = id,
+                        credential = declared.secret.as_str(),
+                        "the credential a client names is not in the secret source"
+                    );
+                    absent()
+                }
                 SecretError::Down => engine_down(),
             })?;
         let value = pb::InstallationClientSecret {
@@ -1002,6 +1025,9 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         }
         if !r.verb.is_empty() {
             fields.push(("verb", r.verb.to_owned()));
+        }
+        if let Some(id) = &r.id {
+            fields.push(("id", id.clone()));
         }
         fields.push(("code", r.code.as_str().to_owned()));
         self.audit

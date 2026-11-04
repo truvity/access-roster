@@ -130,8 +130,27 @@ fn the_credential_a_client_names_is_a_name_and_only_a_confidential_client_has_on
         e.contains("app.secret: a public client has no secret"),
         "{e}"
     );
-    // A name is one part: no separator, no dot-dot, no capital, no value that looks like a path.
-    for bad in ["../x", "a/b", "Upper", "\"has space\""] {
+    // The credential driver's rule (systemd's): letters, digits, `-`, `_` and `.`, starting with a letter or a digit.
+    for ok in ["Client_App.1", "client-app", "a"] {
+        assert!(
+            payload::decode(
+                kind("InstallationClient"),
+                client("confidential", ok).as_bytes()
+            )
+            .is_ok(),
+            "{ok}"
+        );
+    }
+    let long = "a".repeat(129);
+    for bad in [
+        "../x",
+        "a/b",
+        ".hidden",
+        "-x",
+        "_x",
+        "\"has space\"",
+        long.as_str(),
+    ] {
         let e = refused("InstallationClient", &client("confidential", bad));
         assert!(
             e.contains("app.secret: is not a credential name"),
