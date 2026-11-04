@@ -1,5 +1,5 @@
 //! The indexer over a log the merged Go writer made (`actors/writer`), not one made by this crate's test
-//! support: the writer's real bundles, tiles, signed notes (SHA-384 over the note text, D-25), sealed
+//! support: the writer's real bundles, tiles, signed notes (P-256, SHA-256 over the note text, D-25), sealed
 //! entries and seal entries. The fixture is in `testdata/go-writer/`; how it was made is in
 //! `export_fixture_test.go.txt` beside it. The stand-in for key@ answers from what the writer's own stand-in
 //! opened each entry to, at the address the entry was sealed at, so a wrong address is a refusal.

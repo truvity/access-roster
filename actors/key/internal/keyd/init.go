@@ -23,9 +23,11 @@ import (
 )
 
 // The algorithms the key store is asked for. The KeyPlan may spell the key-agreement one with the curve's
-// hyphen, as keys.yaml does.
+// hyphen, as keys.yaml does. ES256 (P-256, SHA-256) is the audit-log purpose's alone (ADR 0006, "Named
+// exceptions"; D-25); every other signing purpose is ES384.
 const (
 	algES384 = "ES384"
+	algES256 = "ES256"
 	algECDH  = "ECDH-P384"
 )
 
@@ -41,6 +43,8 @@ func planAlgorithm(a string) (string, bool) {
 	switch a {
 	case algES384:
 		return algES384, true
+	case algES256:
+		return algES256, true
 	case algECDH, "ECDH-P-384":
 		return algECDH, true
 	}
@@ -122,7 +126,7 @@ func (s *Server) Init(ctx context.Context) error {
 }
 
 // ensureKeys asks the driver to Ensure each asymmetric purpose of the KeyPlan (tonight: wrapping ECDH-P384,
-// token-signing ES384, audit-log ES384) and keeps its public key. A purpose the KeyPlan does not list gets no key.
+// token-signing ES384, audit-log ES256) and keeps its public key. A purpose the KeyPlan does not list gets no key.
 func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) error {
 	s.keys = map[string]purposeKey{}
 	for _, p := range plan.GetPurposes() {
@@ -141,7 +145,7 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 		if err != nil {
 			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
 		}
-		pub, err := parseP384(res.Msg.GetSpkiDer())
+		pub, err := parseKey(res.Msg.GetSpkiDer(), alg)
 		if err != nil {
 			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
 		}
@@ -188,14 +192,22 @@ func (s *Server) publishCertificate(ctx context.Context) error {
 }
 
 // parseP384 reads an SPKI DER public key and requires a P-384 key.
-func parseP384(spki []byte) (*ecdsa.PublicKey, error) {
+func parseP384(spki []byte) (*ecdsa.PublicKey, error) { return parseKey(spki, algES384) }
+
+// parseKey reads an SPKI DER public key and requires the curve of the algorithm: P-256 for ES256, P-384 for the
+// others.
+func parseKey(spki []byte, algorithm string) (*ecdsa.PublicKey, error) {
 	k, err := x509.ParsePKIXPublicKey(spki)
 	if err != nil {
 		return nil, errors.New("public key does not parse")
 	}
+	curve, name := elliptic.P384(), "P-384"
+	if algorithm == algES256 {
+		curve, name = elliptic.P256(), "P-256"
+	}
 	pub, ok := k.(*ecdsa.PublicKey)
-	if !ok || pub.Curve != elliptic.P384() {
-		return nil, errors.New("public key is not a P-384 key")
+	if !ok || pub.Curve != curve {
+		return nil, fmt.Errorf("public key is not a %s key", name)
 	}
 	return pub, nil
 }
@@ -208,9 +220,14 @@ func thumbprint(pub *ecdsa.PublicKey) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	point := ek.Bytes() // 0x04 | X | Y, each coordinate 48 bytes
+	point := ek.Bytes() // 0x04 | X | Y, each coordinate the size of the curve
+	n := (len(point) - 1) / 2
+	crv := "P-384"
+	if pub.Curve == elliptic.P256() {
+		crv = "P-256"
+	}
 	enc := base64.RawURLEncoding
-	j := `{"crv":"P-384","kty":"EC","x":"` + enc.EncodeToString(point[1:49]) + `","y":"` + enc.EncodeToString(point[49:97]) + `"}`
+	j := `{"crv":"` + crv + `","kty":"EC","x":"` + enc.EncodeToString(point[1:1+n]) + `","y":"` + enc.EncodeToString(point[1+n:]) + `"}`
 	sum := sha256.Sum256([]byte(j))
 	return enc.EncodeToString(sum[:]), nil
 }

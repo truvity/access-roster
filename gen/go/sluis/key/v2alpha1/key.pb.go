@@ -489,7 +489,7 @@ type SignRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // a purpose name from the key registry, e.g. token-signing or audit-log
 	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`     // the content key@ checks and signs
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // "ES384"
+	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // the purpose's own: "ES256" (P-256, SHA-256) for audit-log, "ES384" for every other signing purpose
 	Grant         []byte                 `protobuf:"bytes,4,opt,name=grant,proto3" json:"grant,omitempty"`         // only for purposes that carry an effect
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -794,7 +794,7 @@ type PublicKeyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
 	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // e.g. "ES384"
+	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // "ES256" for audit-log, else e.g. "ES384"
 	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, when the purpose has one
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

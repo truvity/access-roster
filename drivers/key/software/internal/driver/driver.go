@@ -122,7 +122,7 @@ func refuse(ctx context.Context, method string, code connect.Code, reason, field
 // Capabilities says what the store can do.
 func (*Service) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
 	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{
-		Store: "software", Attests: false, Algorithms: []string{keystore.ES384, keystore.ECDHP384},
+		Store: "software", Attests: false, Algorithms: []string{keystore.ES384, keystore.ES256, keystore.ECDHP384},
 	}), nil
 }
 
@@ -133,7 +133,7 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 	if !ok {
 		return nil, refuse(ctx, "Ensure", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if algorithm != keystore.ES384 && algorithm != keystore.ECDHP384 {
+	if algorithm != keystore.ES384 && algorithm != keystore.ES256 && algorithm != keystore.ECDHP384 {
 		return nil, refuse(ctx, "Ensure", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	if algorithm != want {
@@ -153,10 +153,12 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 // Sign signs a digest with the key of a purpose, in place.
 func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha1.KeyStoreSignRequest]) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
 	purpose := req.Msg.GetPurpose()
-	if _, ok := keystore.AlgorithmFor(purpose); !ok {
+	want, ok := keystore.AlgorithmFor(purpose)
+	if !ok {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if req.Msg.GetAlgorithm() != keystore.ES384 {
+	// The algorithm must be the purpose's own: ES256 (SHA-256) for audit-log, ES384 (SHA-384) for the rest.
+	if a := req.Msg.GetAlgorithm(); (a != keystore.ES384 && a != keystore.ES256) || (want != keystore.ECDHP384 && a != want) {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	sig, err := s.store.Sign(purpose, req.Msg.GetDigest())

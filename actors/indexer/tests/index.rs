@@ -275,7 +275,7 @@ async fn a_log_that_does_not_extend_the_last_checkpoint_halts_it() {
 
 fn clone_key(l: &TestLog) -> aws_lc_rs::signature::EcdsaKeyPair {
     aws_lc_rs::signature::EcdsaKeyPair::from_pkcs8(
-        &aws_lc_rs::signature::ECDSA_P384_SHA384_ASN1_SIGNING,
+        &aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1_SIGNING,
         l.key.to_pkcs8v1().unwrap().as_ref(),
     )
     .unwrap()

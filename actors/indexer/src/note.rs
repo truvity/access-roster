@@ -7,29 +7,25 @@
 //!   `name+hex(key hash)+base64(0x02 || SubjectPublicKeyInfo)`.
 //! - **tlog-checkpoint** (C2SP): the origin line, the tree size in decimal, the root hash in standard
 //!   base64, then optional extension lines.
-//! - **The digest** is the one difference from the witness implementation and is decision D-25: the
-//!   log key is a P-384 key that key@ and AWS KMS use only for SHA-384, so the note text is signed as
-//!   its SHA-384, and the signature is ASN.1 DER. It is named once, in [`DIGEST`].
+//! - **The signature** is the standard one, as the witness implementation of transparency-dev has it
+//!   (decision D-25; ADR 0006, "Named exceptions"): the log key is a P-256 key, the one exception to
+//!   P-384, and the signature is ASN.1 DER ECDSA over the SHA-256 of the note text.
 //!
 //! A signature line of another name or another key hash is ignored (signed-note: a verifier ignores a
 //! signer it does not know); one that names this key and does not verify refuses the note.
 
 use aws_lc_rs::digest;
-use aws_lc_rs::signature::{ECDSA_P384_SHA384_ASN1, UnparsedPublicKey};
+use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 
-/// The digest key@ signs for a checkpoint (decision D-25): the SHA-384 of the note text. The ECDSA
-/// verifier below hashes with it; there is no other place that names it.
-pub const DIGEST: &digest::Algorithm = &digest::SHA384;
-
 /// The signature type byte of an ECDSA key in a signed note.
 const SIG_TYPE_ECDSA: u8 = 0x02;
-/// The DER prefix of a P-384 `SubjectPublicKeyInfo` (RFC 5480): SEQUENCE { SEQUENCE { id-ecPublicKey,
-/// secp384r1 }, BIT STRING of 98 octets (no unused bits) } up to the point, which begins with 0x04.
-const SPKI_P384_PREFIX: [u8; 23] = [
-    0x30, 0x76, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b,
-    0x81, 0x04, 0x00, 0x22, 0x03, 0x62, 0x00,
+/// The DER prefix of a P-256 `SubjectPublicKeyInfo` (RFC 5480): SEQUENCE { SEQUENCE { id-ecPublicKey,
+/// prime256v1 }, BIT STRING of 66 octets (no unused bits) } up to the point, which begins with 0x04.
+const SPKI_P256_PREFIX: [u8; 26] = [
+    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
 ];
 /// The em dash and the space that open a signature line.
 const SIG_LINE: &str = "\u{2014} ";
@@ -37,7 +33,7 @@ const SIG_LINE: &str = "\u{2014} ";
 /// Why a note or a key is refused. Each is a closed word; none carries a value of the note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// The verifier key is not `name+hash+key` of a P-384 ECDSA key.
+    /// The verifier key is not `name+hash+key` of a P-256 ECDSA key.
     Key,
     /// The note is not a signed note.
     Format,
@@ -93,7 +89,7 @@ impl LogKey {
     ///
     /// # Errors
     ///
-    /// [`Error::Key`] when it is not that, when the key is not P-384, or when the hash is not the
+    /// [`Error::Key`] when it is not that, when the key is not P-256, or when the hash is not the
     /// key's.
     pub fn parse(text: &str) -> Result<Self, Error> {
         // The key data is base64 and may hold a plus sign, so split into three at most.
@@ -117,10 +113,10 @@ impl LogKey {
         if key_id(spki) != id {
             return Err(Error::Key);
         }
-        // A P-384 key has one DER form, so the prefix check also checks the curve.
+        // A P-256 key has one DER form, so the prefix check also checks the curve.
         let point = spki
-            .strip_prefix(&SPKI_P384_PREFIX[..])
-            .filter(|p| p.len() == 97 && p[0] == 0x04)
+            .strip_prefix(&SPKI_P256_PREFIX[..])
+            .filter(|p| p.len() == 65 && p[0] == 0x04)
             .ok_or(Error::Key)?;
         Ok(Self {
             name: name.to_owned(),
@@ -149,7 +145,7 @@ impl LogKey {
         if sigs.is_empty() || !sigs.ends_with('\n') {
             return Err(Error::Format);
         }
-        let key = UnparsedPublicKey::new(&ECDSA_P384_SHA384_ASN1, &self.point);
+        let key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, &self.point);
         let mut good = false;
         for line in sigs.strip_suffix('\n').unwrap_or(sigs).split('\n') {
             let rest = line.strip_prefix(SIG_LINE).ok_or(Error::Format)?;
@@ -163,7 +159,7 @@ impl LogKey {
             if name != self.name || hash != self.id.to_be_bytes() {
                 continue;
             }
-            // The key aws-lc-rs verifies is the one SHA-384 of the text (D-25).
+            // ECDSA over the SHA-256 of the text, as C2SP signature type 0x02 fixes (D-25).
             if key.verify(text.as_bytes(), sig).is_err() {
                 return Err(Error::Signature);
             }
@@ -207,7 +203,9 @@ fn parse_checkpoint(text: &str) -> Result<Checkpoint, Error> {
 #[cfg(test)]
 mod tests {
     use aws_lc_rs::rand::SystemRandom;
-    use aws_lc_rs::signature::{ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
+    use aws_lc_rs::signature::{
+        ECDSA_P256_SHA256_ASN1_SIGNING, ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _,
+    };
 
     use super::*;
 
@@ -217,8 +215,8 @@ mod tests {
     }
 
     fn signer() -> Signer {
-        let pair = EcdsaKeyPair::generate(&ECDSA_P384_SHA384_ASN1_SIGNING).expect("key");
-        let spki = [&SPKI_P384_PREFIX[..], pair.public_key().as_ref()].concat();
+        let pair = EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).expect("key");
+        let spki = [&SPKI_P256_PREFIX[..], pair.public_key().as_ref()].concat();
         Signer { pair, spki }
     }
 
@@ -322,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn a_verifier_key_must_be_a_p384_ecdsa_key_with_its_own_hash() {
+    fn a_verifier_key_must_be_a_p256_ecdsa_key_with_its_own_hash() {
         let s = signer();
         let good = s.vkey("log");
         assert!(LogKey::parse(&good).is_ok());
@@ -351,15 +349,19 @@ mod tests {
             Some(Error::Key)
         );
         assert_eq!(LogKey::parse("").err(), Some(Error::Key));
-        // A P-256 key is not accepted: the prefix of the SubjectPublicKeyInfo names the curve.
-        let mut p256 = s.spki.clone();
-        p256[18] = 0x07;
-        let id: String = key_id(&p256)
+        // A P-384 key is not accepted: the prefix of the SubjectPublicKeyInfo names the curve.
+        let p384 = EcdsaKeyPair::generate(&ECDSA_P384_SHA384_ASN1_SIGNING).expect("key");
+        let p384_prefix: [u8; 23] = [
+            0x30, 0x76, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
+            0x05, 0x2b, 0x81, 0x04, 0x00, 0x22, 0x03, 0x62, 0x00,
+        ];
+        let spki = [&p384_prefix[..], p384.public_key().as_ref()].concat();
+        let id: String = key_id(&spki)
             .to_be_bytes()
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        let d = STANDARD.encode([&[SIG_TYPE_ECDSA][..], &p256].concat());
+        let d = STANDARD.encode([&[SIG_TYPE_ECDSA][..], &spki].concat());
         assert_eq!(
             LogKey::parse(&format!("{name}+{id}+{d}")).err(),
             Some(Error::Key)

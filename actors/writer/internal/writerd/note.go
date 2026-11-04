@@ -4,7 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -17,21 +16,21 @@ import (
 	"golang.org/x/mod/sumdb/tlog"
 )
 
-// The checkpoint is a C2SP signed note of type 0x02 (ECDSA), exactly as `sluis audit verify` reads it
-// (cli/sluis/auditverify.go, which this file repeats because a command's package cannot be imported):
+// The checkpoint is a standard C2SP signed note of type 0x02 (ECDSA), as the witness implementation of
+// transparency-dev reads it (decision D-25; ADR 0006, "Named exceptions"; ADR 0029, "Tiled log"):
 //
+//   - the log key is a P-256 key and the signature is ASN.1 DER ECDSA over the SHA-256 of the note text;
 //   - the key ID is the first four octets of the SHA-256 of the DER SubjectPublicKeyInfo;
 //   - the verifier key is name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo);
 //   - the signature line is "— " name " " base64(key ID || ASN.1 DER ECDSA signature).
 //
-// The one difference from the witness implementation is the digest (decision D-25): the log key is a P-384 key
-// that key@ and AWS KMS use only for SHA-384 digests, so the note text is signed as its SHA-384. The constant is
-// kept in this one place.
+// A generic verifier checks it without sluis code (TestACheckpointVerifiesWithAnIndependentVerifier).
 const sigTypeECDSA = 0x02
 
-// checkpointDigest is the digest key@ signs for a checkpoint: the SHA-384 of the note body.
+// checkpointDigest is the digest the log key signs for a checkpoint: the SHA-256 of the note body (C2SP
+// signed-note, signature type 0x02).
 func checkpointDigest(body []byte) []byte {
-	d := sha512.Sum384(body)
+	d := sha256.Sum256(body)
 	return d[:]
 }
 
@@ -43,7 +42,7 @@ type logKey struct {
 	pub  *ecdsa.PublicKey
 }
 
-// newLogKey reads the DER SubjectPublicKeyInfo key@ returns for the audit-log purpose. The key must be P-384.
+// newLogKey reads the DER SubjectPublicKeyInfo key@ returns for the audit-log purpose. The key must be P-256.
 func newLogKey(name string, spki []byte) (*logKey, error) {
 	if name == "" || strings.ContainsAny(name, " \t\n+") {
 		return nil, errors.New("the log's origin cannot name a note key")
@@ -53,8 +52,8 @@ func newLogKey(name string, spki []byte) (*logKey, error) {
 		return nil, errors.New("the log key is not a DER SubjectPublicKeyInfo")
 	}
 	pub, ok := pk.(*ecdsa.PublicKey)
-	if !ok || pub.Curve != elliptic.P384() {
-		return nil, errors.New("the log key is not a P-384 key")
+	if !ok || pub.Curve != elliptic.P256() {
+		return nil, errors.New("the log key is not a P-256 key")
 	}
 	sum := sha256.Sum256(spki)
 	return &logKey{name: name, spki: spki, id: binary.BigEndian.Uint32(sum[:4]), pub: pub}, nil
