@@ -24,6 +24,7 @@ const (
 	reasonAudience      = "audience"
 	reasonClient        = "client"
 	reasonClientAuth    = "client_authentication"
+	reasonClientMethods = "client_authentication_methods"
 	reasonClientKind    = "client_kind"
 	reasonIssuer        = "issuer"
 	reasonSignature     = "signature"
@@ -42,9 +43,6 @@ const (
 type refused struct {
 	code   string
 	reason string
-	// basic is set on an invalid_client for a request that used HTTP Basic: the answer then names the scheme
-	// (RFC 6749 section 5.2, contracts.md "Uniform refusals at the edge").
-	basic bool
 }
 
 func (r *refused) Error() string { return fmt.Sprintf("refused: %s (%s)", r.code, r.reason) }
@@ -53,8 +51,8 @@ func invalidRequest(reason string) error { return &refused{code: codeInvalidRequ
 func invalidTarget(reason string) error  { return &refused{code: codeInvalidTarget, reason: reason} }
 
 // invalidClient is the answer to a client whose authentication is not accepted (RFC 6749 section 5.2).
-func invalidClient(basic bool) error {
-	return &refused{code: codeInvalidClient, reason: reasonClientAuth, basic: basic}
+func invalidClient() error {
+	return &refused{code: codeInvalidClient, reason: reasonClientAuth}
 }
 
 // outage is a dependency that did not answer. exchange fails closed: the call ends in a Connect error, never in an

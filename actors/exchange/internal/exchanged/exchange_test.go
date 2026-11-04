@@ -685,13 +685,13 @@ func TestARequestWithClientCredentialsIsInvalidClientBeforeAnythingElse(t *testi
 	e := newEnv(t, envOptions{})
 	subject := e.mint(subjectClaims(nil))
 	for _, c := range []struct {
-		name      string
-		mutate    func(*exchangev2alpha1.TokenExchangeRequest)
-		challenge bool
+		name   string
+		mutate func(*exchangev2alpha1.TokenExchangeRequest)
+		both   bool // two methods in one request: invalid_request, not a failed authentication
 	}{
-		{"Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Basic dXNlcjpwdw==" }, true},
+		{"Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Basic dXNlcjpwdw==" }, false},
 		{"client_secret", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientSecret = "s3cret-value" }, false},
-		{"both", func(r *exchangev2alpha1.TokenExchangeRequest) {
+		{"both (RFC 6749 section 2.3)", func(r *exchangev2alpha1.TokenExchangeRequest) {
 			r.Authorization, r.ClientSecret = "Basic dXNlcjpwdw==", "s3cret-value"
 		}, true},
 		{"with a bad subject token", func(r *exchangev2alpha1.TokenExchangeRequest) {
@@ -702,20 +702,25 @@ func TestARequestWithClientCredentialsIsInvalidClientBeforeAnythingElse(t *testi
 			r := request(subject)
 			c.mutate(r)
 			rep := e.exchange(r)
-			if rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
+			wantStatus, wantCode, wantReason := int32(401), "invalid_client", "client_authentication"
+			if c.both {
+				wantStatus, wantCode, wantReason = 400, "invalid_request", "client_authentication_methods"
+			}
+			if rep.GetStatus() != wantStatus || body(t, rep)["error"] != wantCode {
 				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
 			}
+			// Every 401 of the token endpoint carries WWW-Authenticate (contracts.md), whatever method was used.
 			var www string
 			for _, h := range rep.GetHeaders() {
 				if h.GetName() == "WWW-Authenticate" {
 					www = h.GetValue()
 				}
 			}
-			if (www != "") != c.challenge || (c.challenge && !strings.HasPrefix(www, "Basic ")) {
-				t.Errorf("WWW-Authenticate = %q, want a Basic challenge: %v", www, c.challenge)
+			if (www != "") != !c.both || (!c.both && !strings.HasPrefix(www, "Basic ")) {
+				t.Errorf("WWW-Authenticate = %q", www)
 			}
 			rec := e.lastRecord()
-			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != "client_authentication" {
+			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != wantReason {
 				t.Errorf("record = %v", rec)
 			}
 		})

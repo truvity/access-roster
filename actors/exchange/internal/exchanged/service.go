@@ -131,8 +131,12 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	// audience. exchange checks no client credential yet, so a request that carries one is refused rather than run
 	// as if it were unauthenticated (ADR 0022, "Proofs and the exchange").
 	// planned: authenticate a confidential client (REQ-EXCH-018)
+	if r.GetAuthorization() != "" && r.GetClientSecret() != "" {
+		// A client uses one method in a request (RFC 6749 section 2.3; contracts.md "The token exchange request").
+		return nil, invalidRequest(reasonClientMethods)
+	}
 	if r.GetAuthorization() != "" || r.GetClientSecret() != "" {
-		return nil, invalidClient(r.GetAuthorization() != "")
+		return nil, invalidClient()
 	}
 	if err := checkRequest(r); err != nil {
 		return nil, err
