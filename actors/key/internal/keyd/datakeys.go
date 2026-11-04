@@ -83,14 +83,14 @@ func (s *Server) load(ctx context.Context, ref keyRef, create bool) (*entry, err
 // errNotWrapped when there are wraps and none is ours.
 func (s *Server) openOwn(ctx context.Context, ref keyRef) ([]byte, error) {
 	id := wrapID(ref.purpose, ref.generation, s.recipient)
-	w, found, err := s.wraps.get(ctx, ref.tenant, id)
+	w, found, err := s.getWrap(ctx, ref.tenant, id)
 	if err != nil {
 		return nil, unavailable(reasonStore)
 	}
 	if found {
 		return s.unwrap(ctx, ref, w)
 	}
-	others, err := s.wraps.list(ctx, ref.tenant, ref.purpose)
+	others, err := s.listWraps(ctx, ref.tenant, ref.purpose)
 	if err != nil {
 		return nil, unavailable(reasonStore)
 	}
@@ -168,7 +168,7 @@ func (s *Server) recipients(ctx context.Context) ([]recipient, error) {
 		out = append(out, recipient{label: s.recipient, pub: s.wrappingPub})
 	}
 	slices.SortFunc(out, func(a, b recipient) int { return strings.Compare(a.label, b.label) })
-	if len(out) > maxBatch {
+	if len(out) > store.MaxBatch {
 		return nil, errors.New("keyd: more recipients than one batch holds")
 	}
 	return out, nil
@@ -209,7 +209,7 @@ func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, error) {
 		}
 		items = append(items, it)
 	}
-	err = s.wraps.create(ctx, ref.tenant, items)
+	err = s.createWraps(ctx, ref.tenant, items)
 	switch {
 	case err == nil:
 	case errors.Is(err, errTaken):
@@ -256,7 +256,7 @@ func (s *Server) Rewrap(ctx context.Context) error {
 }
 
 func (s *Server) rewrapTenant(ctx context.Context, tenant string, recips []recipient) error {
-	all, err := s.wraps.list(ctx, tenant, "")
+	all, err := s.listWraps(ctx, tenant, "")
 	if err != nil {
 		return err
 	}
@@ -293,7 +293,7 @@ func (s *Server) rewrapTenant(ctx context.Context, tenant string, recips []recip
 				if err != nil {
 					return err
 				}
-				switch err := s.wraps.create(ctx, tenant, []wrapItem{it}); {
+				switch err := s.createWraps(ctx, tenant, []wrapItem{it}); {
 				case err == nil:
 					s.auditWrap(ctx, ref, r.label)
 				case errors.Is(err, errTaken): // another node was first

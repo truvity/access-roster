@@ -77,7 +77,11 @@ func (s *Server) Init(ctx context.Context) error {
 	if s.defaultTenant != "" && !validTenant(s.defaultTenant) {
 		return errors.New("boundary/default: default_tenant is not a valid tenant id")
 	}
-	s.cache = newCache(cacheTTL(plan), s.now)
+	ttl, err := cacheTTL(plan)
+	if err != nil {
+		return err
+	}
+	s.cache = newCache(ttl, s.now)
 
 	if err := s.ensureKeys(ctx, plan); err != nil {
 		return err
@@ -85,9 +89,12 @@ func (s *Server) Init(ctx context.Context) error {
 	if err := s.publishCertificate(ctx); err != nil {
 		return err
 	}
+	// planned: #1216 — with Tenant items the rewrap pass lists the tenants of the boundary; until then it
+	// visits only the default tenant and the tenants this process has used since it started.
 	if s.defaultTenant != "" {
 		s.tenants.Store(s.defaultTenant, struct{}{})
 	}
+	slog.Info("rewrap visits only the default tenant and the tenants used since start", "default_tenant", s.defaultTenant)
 	s.audit(ctx, Event{Action: ActionStart, Fields: map[string]any{
 		"node": s.cfg.Node, "recipient": s.recipient, "purposes": int64(len(s.keys)),
 	}})

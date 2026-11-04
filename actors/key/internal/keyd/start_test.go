@@ -13,8 +13,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/envelope"
 	"github.com/truvity/sluis/v2/kits/go/registry"
@@ -108,6 +110,21 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			t.Fatal("started without a wrapping key")
 		}
 	})
+	for name, ttl := range map[string]time.Duration{"above the maximum": 2 * time.Hour, "negative": -time.Second} {
+		t.Run("cache_ttl "+name, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			plan := defaultPlan()
+			plan.CacheTtl = durationpb.New(ttl)
+			e.store.put("key-plan", "", "default", plan)
+			n := e.newNode(nodeOpts{})
+			if err := n.srv.Init(ctx); err == nil {
+				t.Fatal("started with a cache_ttl outside the range")
+			}
+			if len(n.driver.keys) != 0 {
+				t.Fatal("the driver made keys for a refused KeyPlan")
+			}
+		})
+	}
 	t.Run("caller directory missing", func(t *testing.T) {
 		e := newTestEnv(t, "development")
 		n := e.newNode(nodeOpts{})
@@ -227,5 +244,14 @@ func TestAuditFactsCarryNoValues(t *testing.T) {
 	if n.audit.count(ActionDataKeyMake) != 1 || n.audit.count(ActionWrapWrite) != 1 || n.audit.count(ActionRefuse) != 1 {
 		t.Fatalf("events: %d keys, %d wraps, %d refusals; want 1, 1, 1",
 			n.audit.count(ActionDataKeyMake), n.audit.count(ActionWrapWrite), n.audit.count(ActionRefuse))
+	}
+}
+
+func TestStartLogsTheRewrapLimit(t *testing.T) {
+	log := captureLog(t)
+	e := newTestEnv(t, "development")
+	e.startedNode(nodeOpts{})
+	if !strings.Contains(log.String(), "rewrap visits only the default tenant and the tenants used since start") {
+		t.Fatalf("the rewrap limit was not logged:\n%s", log.String())
 	}
 }
