@@ -28,6 +28,7 @@ const (
 	maxParam   = 2048 // code, redirect_uri
 	maxToken   = 512  // state, nonce
 	maxClaim   = 256  // a claim the assertion carries
+	maxSubject = 255  // the subject claim, in bytes (REQ-SUBJ-040, OpenID Connect Core 1.0 section 2)
 	maxAMR     = 16   // methods in amr
 	pkceLenS   = 43   // an S256 challenge: 32 octets in base64url without padding (RFC 7636 section 4.2)
 	verifierLo = 43   // RFC 7636 section 4.1
@@ -274,8 +275,11 @@ func assertionOf(issuer string, up *configv2alpha1.Upstream, c oidc.Claims) (*in
 		// OpenID Connect Core 1.0 section 5.1: sub is the subject.
 		claim = "sub"
 	}
+	// At most 255 characters (REQ-SUBJ-040), the bound OpenID Connect Core 1.0 section 2 sets on sub: "MUST NOT exceed
+	// 255 ASCII characters". It is counted in bytes, so 255 ASCII characters pass and a value with multi-byte
+	// characters is bounded by its encoded length, which keeps the issuer, a space and the subject in one audit string.
 	subject, ok := c.String(claim)
-	if !ok || subject == "" || len(subject) > maxClaim {
+	if !ok || subject == "" || len(subject) > maxSubject {
 		return nil, oidc.Invalid("id_token." + claim)
 	}
 	a := &integrationv2alpha1.Assertion{Issuer: issuer, SubjectClaim: claim, Subject: subject}

@@ -261,6 +261,13 @@ func TestCallbackTheUpstreamRefuses(t *testing.T) {
 				return nil, refusal.New(connect.CodeFailedPrecondition, "REJECTED", "code")
 			}
 		}, "access_denied"},
+		// The adapter refuses an ID token whose subject claim is absent, not a string or over 255 characters; session
+		// then creates no person.
+		"REQ-SUBJ-040/adapter refuses the subject claim": {func(_ *sessionv2alpha1.CallbackRequest, e *env) {
+			e.upstream.completeFn = func(*integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) {
+				return nil, refusal.New(connect.CodeInvalidArgument, "INVALID", "id_token.preferred_username")
+			}
+		}, "access_denied"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
