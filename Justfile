@@ -438,3 +438,11 @@ local-smoke-tamper:
 # project of its own, sluis-deny, and removes it; a `local-up` project is left alone. Exit 1 on any violation.
 local-deny:
     tests/deny/run.sh
+
+# The M1 proof against the running local installation (`just local-up` first): a client under the uid of exchange asks
+# policy for a token.exchange decision and signer for a token; the token is checked against /jwks through the forwarder
+# (trusting only the harness CA), the records of the run are found in the audit log, `sluis audit verify` checks the log,
+# and SigningRing and DataKeyWrap are read through store@. Exits non-zero on any failure. Needs Docker; CI does not run it.
+local-smoke:
+    CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
+    SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
