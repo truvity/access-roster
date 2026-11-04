@@ -1024,6 +1024,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sluis-conformance"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "buffa",
+ "buffa-types",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "sluis-conformance",
+ "sluis-kit",
+ "sluis-proto",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "sluis-driver-writer-fs"
 version = "0.0.0"
 dependencies = [
