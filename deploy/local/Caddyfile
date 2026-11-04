@@ -13,3 +13,9 @@ https://sluis.dev.local.test:8443 {
 	tls /tls/leaf.pem /tls/leaf.key
 	reverse_proxy unix//run/sluis/entry/dev.sock
 }
+
+# The audit front (ADR 0028): the sibling host of the boundary's, with its own `entry` instance.
+https://sluis-audit.dev.local.test:8443 {
+	tls /tls/leaf.pem /tls/leaf.key
+	reverse_proxy unix//run/sluis/entry/dev-audit.sock
+}

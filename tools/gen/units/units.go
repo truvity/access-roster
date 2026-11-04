@@ -46,6 +46,8 @@ type Unit struct {
 	Needs []string
 	// Joins are the registry names whose groups the unit joins (SupplementaryGroups=); a subset of Needs.
 	Joins []string
+	// Front is "audit" for the second instance of entry, the audit front (ADR 0028); empty for every other unit.
+	Front string
 }
 
 // A driver the generator knows how to run. A driver of the registry that has no row here is "pending" until
@@ -78,6 +80,16 @@ type driverProc struct {
 	After           []string // units outside the generator that this one starts after
 	// Credentials are systemd credentials the unit loads: name -> source file below LoadRoot/<boundary>/<stem>/.
 	Credentials []string
+	// StateMode is the mode of the state directory when it is not 0700: the blob directory of the writer's driver is 0750,
+	// because the read-only driver of the indexer and the reader reads it through the group.
+	StateMode string
+	// Socket2 is a second socket for another caller, below the same directory: its file name, the flag that names it, the
+	// flag that gives it its group, and the registry name of the caller, whose group (its uid) the socket is given to. The
+	// driver joins that group to give the socket away.
+	Socket2, Flag2, GidFlag2, Caller2 string
+	// Joins are registry names whose groups the unit joins besides its owner's: the writer's driver, whose files the
+	// read-only driver reads, and the caller of the second socket.
+	Joins []string
 }
 
 var drivers = map[string]driverSpec{
@@ -92,7 +104,7 @@ var drivers = map[string]driverSpec{
 	// drivers/writer/fs: serve --socket --root [--socket-gid].
 	"driver-writer-fs": {
 		Language: "Rust",
-		Units:    []driverProc{{Socket: "blob.sock", State: true, Args: []string{"--root", "%STATE%"}}},
+		Units:    []driverProc{{Socket: "blob.sock", State: true, StateMode: "0750", Args: []string{"--root", "%STATE%"}}},
 	},
 	// drivers/writer/spool: serve --socket-dir --root [--socket-gid]. It makes emit.sock (every emitting actor) and
 	// receive.sock (the writer) in one directory, 0660 for the spool's group, which the emitters and the writer join.
@@ -101,6 +113,30 @@ var drivers = map[string]driverSpec{
 		Units: []driverProc{{
 			Socket: "emit.sock", Dir: "/run/sluis/audit/%i", DirMode: "1771", SocketFlag: "--socket-dir", State: true,
 			Args: []string{"--root", "%STATE%"},
+		}},
+	},
+	// drivers/indexer/fs: serve --socket --reader-socket --root [--socket-gid --reader-socket-gid]. The read-only driver of the
+	// indexer (blob.sock) and the reader (blob-ro.sock): the directory of driver-writer-fs, read through that driver's group.
+	"driver-indexer-fs": {
+		Language: "Rust",
+		Units: []driverProc{{
+			Socket:  "blob.sock",
+			Args:    []string{"--root", "%WRITERSTATE%"},
+			Socket2: "blob-ro.sock", Flag2: "--reader-socket", GidFlag2: "--reader-socket-gid", Caller2: "reader",
+			Joins:   []string{"driver-writer-fs", "reader"},
+			DirMode: "1771",
+		}},
+	},
+	// drivers/indexer/sqlite: serve --socket --ro-socket --state-dir [--socket-gid --ro-socket-gid]. The index: index.sock for
+	// the indexer, index-ro.sock for the reader, which passes through the directory (1771) to it.
+	"driver-indexer-sqlite": {
+		Language: "Rust",
+		Units: []driverProc{{
+			Socket: "index.sock", State: true,
+			Args:    []string{"--state-dir", "%STATE%"},
+			Socket2: "index-ro.sock", Flag2: "--ro-socket", GidFlag2: "--ro-socket-gid", Caller2: "reader",
+			Joins:   []string{"reader"},
+			DirMode: "1771",
 		}},
 	},
 	// drivers/store/rqlite: serve --socket --rqlite-url --namespace durable|temp. One process per port. The engine's URL is
@@ -141,7 +177,7 @@ func rqliteUnit(port string) driverProc {
 
 // pendingDrivers are the drivers of the registry that no package has built yet. A driver that is in neither
 // this list nor `drivers` fails the generator, so a new driver cannot be forgotten.
-var pendingDrivers = []string{"driver-indexer-sqlite"}
+var pendingDrivers = []string{}
 
 // actorSpec is what an actor's command line has beyond `serve --boundary B --socket S`. An actor that is not here
 // takes only those; the package that builds an actor adds its row when it needs more.
@@ -180,6 +216,10 @@ var actorSpecs = map[string]actorSpec{
 	// actors/writer: a client only (the audit transport's receive.sock, the blob driver, store@, key@, policy), so it serves
 	// no socket; every socket has the default of the plan. --instance is the node's name in the entries it stamps.
 	"writer": {NoSocket: true, Args: []string{"--instance", "%H"}},
+	// actors/indexer: a client only (the blob and the index drivers, store@, key@, policy), so it serves no socket. The verifier
+	// key of each log it follows is a file <log id>.vkey in /etc/sluis/vkeys/<boundary>, which the deploy writes from the key
+	// the writer logs at its start (a public key; the directory is root's, 0755).
+	"indexer": {NoSocket: true, Args: []string{"--verifier-key-dir", "/etc/sluis/vkeys/%i"}},
 	// actors/signer: the sockets of store@, key@ and the audit transport have the defaults of the plan; --node is the board's
 	// short name, which keeps each board's token-signing key its own. The listener is the default group, signer's own,
 	// which session and exchange join.
@@ -200,6 +240,9 @@ var actorSpecs = map[string]actorSpec{
 	// secret of the Upstream `workforce` is the credential upstream.workforce.client-secret (upstreamd.CredentialDir).
 	"adapter-upstream-oidc": {Credentials: []string{"upstream.workforce.client-secret"}},
 }
+
+// writerDriver is the driver whose directory the read-only blob driver reads.
+const writerDriver = "driver-writer-fs"
 
 // keyDriverSocket is the key-store driver's socket below key@'s run directory (actors/key/main.go).
 const keyDriverSocket = "driver/key-store.sock"
@@ -300,6 +343,9 @@ func plan(o Options) ([]Unit, error) {
 			u.Port = du.Port
 			u.Name = driverTemplate(d, du.Port)
 			u.Instance = strings.TrimSuffix(u.Name, "@.service") + "@" + o.Boundary + ".service"
+			u.Needs = append(u.Needs, du.Joins...)
+			slices.Sort(u.Needs)
+			u.Needs = slices.Compact(u.Needs)
 			out = append(out, u)
 		}
 	}
@@ -308,6 +354,11 @@ func plan(o Options) ([]Unit, error) {
 			return nil, fmt.Errorf("the generator names the driver %s, which the registry does not have", n)
 		}
 	}
+	front, err := auditFront(o)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, front)
 	slices.SortStableFunc(out, func(a, b Unit) int {
 		if a.Order != b.Order {
 			return a.Order - b.Order
@@ -315,6 +366,23 @@ func plan(o Options) ([]Unit, error) {
 		return strings.Compare(a.Name, b.Name)
 	})
 	return out, nil
+}
+
+// auditFront is the second instance of entry, the audit front of ADR 0028: the same executable with `--front audit`, in
+// the same user, with a listener beside entry's (<boundary>-audit.sock) and the reader as the one actor it calls. The
+// registry gives entry no edge to the reader, so its groups are listed here and not derived from the call graph.
+func auditFront(o Options) (Unit, error) {
+	u, err := unit(o, "entry", "actor", "actors/entry", orderOf("work"))
+	if err != nil {
+		return Unit{}, err
+	}
+	u.Name = "sluis-entry-audit@.service"
+	u.Instance = "sluis-entry-audit@" + o.Boundary + ".service"
+	u.Front = "audit"
+	u.Joins = []string{"driver-writer-spool", "reader", forwarder}
+	slices.Sort(u.Joins)
+	u.Needs = slices.Clone(u.Joins)
+	return u, nil
 }
 
 // orderOf is the start order of PLAN.md: drivers (0), then store@ and the other data actors, key@, the audit pieces and
@@ -479,9 +547,16 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	}
 	b := &unitText{}
 	b.line("[Unit]")
-	b.line("Description=sluis %s (%%i)", a.Name)
+	if u.Front == "audit" {
+		b.line("Description=sluis %s audit front (%%i)", a.Name)
+	} else {
+		b.line("Description=sluis %s (%%i)", a.Name)
+	}
 	b.line("Documentation=https://sluis.id/runtimes/bare-metal/")
 	owned := driverInstances(a.Name) // the drivers this actor owns, which start first
+	if u.Front == "audit" {
+		owned = nil // the identity front's unit starts them
+	}
 	if len(owned) > 0 {
 		b.line("Requires=%s", strings.Join(owned, " "))
 		b.line("After=%s", strings.Join(owned, " "))
@@ -500,7 +575,9 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	}
 	spec := actorSpecs[a.Name]
 	exec := fmt.Sprintf("%s/%s serve --boundary %%i", BinDir, u.Binary)
-	if !spec.NoSocket {
+	if u.Front == "audit" {
+		exec += fmt.Sprintf(" --front audit --socket /run/sluis/%s/%%i-audit.sock", a.Name)
+	} else if !spec.NoSocket {
 		exec += fmt.Sprintf(" --socket /run/sluis/%s/%%i.sock", a.Name)
 	}
 	args := slices.Clone(spec.Args)
@@ -652,16 +729,33 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("Group=%s-%%i", stem)
 	// The directory of the boundary below the owner's directory is open to the owner and to the group of the owner's
 	// drivers alone: the driver creates its socket there. The socket's own group is the driver's (--socket-gid).
-	b.line("SupplementaryGroups=%s", driversGroup(owner, "%i"))
+	groups := []string{driversGroup(owner, "%i")}
+	for _, n := range du.Joins {
+		groups = append(groups, unitStem(n)+"-%i")
+	}
+	b.line("SupplementaryGroups=%s", strings.Join(groups, " "))
 	state := ""
 	if du.State {
 		state = fmt.Sprintf("%s/%%i/%s", StateRoot, strings.TrimPrefix(stem, "sluis-"))
 		b.line("StateDirectory=%s", strings.TrimPrefix(state, "/var/lib/"))
-		b.line("StateDirectoryMode=0700")
+		mode := "0700"
+		if du.StateMode != "" {
+			mode = du.StateMode
+		}
+		b.line("StateDirectoryMode=%s", mode)
 	}
-	args := make([]string, 0, len(du.Args)+2)
+	// The read-only blob driver reads the directory of the writer's driver.
+	writerState := fmt.Sprintf("%s/%%i/%s", StateRoot, strings.TrimPrefix(unitStem(writerDriver), "sluis-"))
+	args := make([]string, 0, len(du.Args)+4)
 	for _, a := range du.Args {
-		args = append(args, strings.ReplaceAll(a, "%STATE%", state))
+		args = append(args, strings.ReplaceAll(strings.ReplaceAll(a, "%STATE%", state), "%WRITERSTATE%", writerState))
+	}
+	if du.Socket2 != "" {
+		caller, ok := registry.UID(du.Caller2, o.UIDBlock)
+		if !ok {
+			return "", "", "", fmt.Errorf("%s has no uid in block %d", du.Caller2, o.UIDBlock)
+		}
+		args = append(args, du.Flag2, socketDir+"/"+du.Socket2, du.GidFlag2, strconv.FormatUint(uint64(caller), 10))
 	}
 	// The driver's socket is 0600 for its own user by default; --socket-gid opens it (0660) to the driver's own group,
 	// whose number is its uid (sysusers.d makes the group of a user with the same number), and only the owner joins

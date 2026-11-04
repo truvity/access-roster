@@ -3,13 +3,15 @@
 [Unit]
 Description=sluis indexer (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+Requires=sluis-drv-indexer-sqlite@%i.service sluis-drv-indexer-fs@%i.service
+After=sluis-drv-indexer-sqlite@%i.service sluis-drv-indexer-fs@%i.service
 
 [Service]
 Type=simple
 User=sluis-indexer-%i
 Group=sluis-indexer-%i
-SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/indexer serve --boundary %i --socket /run/sluis/indexer/%i.sock
+SupplementaryGroups=sluis-drv-indexer-fs-%i sluis-drv-indexer-sqlite-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i
+ExecStart=/opt/sluis/bin/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i
 Restart=on-failure
 RestartSec=2s
 
