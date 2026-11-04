@@ -177,6 +177,9 @@ var actorSpecs = map[string]actorSpec{
 	// actors/store: the bootstrap file is required; the sockets of key@ and of the audit transport have the defaults, which
 	// are those of PLAN.md "Socket layout", and the destinations are in the bootstrap file.
 	"store": {Args: []string{"--bootstrap", "/etc/sluis/bootstrap.d/%i.yaml"}},
+	// actors/writer: a client only (the audit transport's receive.sock, the blob driver, store@, key@, policy), so it serves
+	// no socket; every socket has the default of the plan. --instance is the node's name in the entries it stamps.
+	"writer": {NoSocket: true, Args: []string{"--instance", "%H"}},
 	// actors/signer: the sockets of store@, key@ and the audit transport have the defaults of the plan; --node is the board's
 	// short name, which keeps each board's token-signing key its own. The listener is the default group, signer's own,
 	// which session and exchange join.
