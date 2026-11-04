@@ -9,7 +9,7 @@
 #
 # The driver of a board's card talks to pcscd through libpcsclite (ADR 0006, 0013), so the oldest supported userland
 # decides which glibc and which pcsc-lite it runs on. The Go toolchain is the release of go.mod's `toolchain` line,
-# taken from go.dev and checked against the SHA-256 below (a pinned release binary, as for rqlite).
+# taken from go.dev and checked against the SHA-256 that Google publishes for it.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -25,14 +25,11 @@ aarch64) goarch=arm64 ;;
 *) echo "native-build: unsupported machine $(uname -m)" >&2; exit 1 ;;
 esac
 
-# go.dev/dl, checked 2026-11-04. Update both lines with the toolchain line of go.mod.
-go_version=1.27.3
-declare -A go_sha256=(
-	[amd64]=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
-	[arm64]=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
-)
-want=$(sed -n 's/^toolchain go//p' go.mod)
-[ "$want" = "$go_version" ] || { echo "native-build: go.mod wants Go $want, this script pins $go_version" >&2; exit 1; }
+# The Go release is the one of go.mod's `toolchain` line, so that a bump of the toolchain needs no change here. The tarball
+# comes from go.dev and is checked against the SHA-256 that Google publishes for it at dl.google.com, a host other than
+# the one that serves the tarball.
+go_version=$(sed -n 's/^toolchain go//p' go.mod)
+[[ "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "native-build: go.mod has no toolchain line of the form go1.2.3" >&2; exit 1; }
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -41,7 +38,9 @@ apt-get install -y -qq --no-install-recommends ca-certificates curl gcc libc6-de
 if ! command -v go >/dev/null || [ "$(go env GOVERSION 2>/dev/null)" != "go$go_version" ]; then
 	tgz=$(mktemp)
 	curl -fsSL --retry 3 "https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz" -o "$tgz"
-	echo "${go_sha256[$goarch]}  $tgz" | sha256sum -c - >/dev/null
+	want_sha=$(curl -fsSL --retry 3 "https://dl.google.com/go/go${go_version}.linux-${goarch}.tar.gz.sha256")
+	[[ "$want_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "native-build: no SHA-256 published for Go ${go_version}" >&2; exit 1; }
+	echo "${want_sha}  $tgz" | sha256sum -c - >/dev/null
 	rm -rf /usr/local/go
 	tar -C /usr/local -xzf "$tgz"
 	rm -f "$tgz"
