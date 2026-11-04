@@ -2141,3 +2141,27 @@ requirements:
     issues: [841]
     verification:
       - {kind: integration-test, ref: "an installation whose probes run for a minute writes no audit entry at any actor (a_health_probe_is_not_audited_and_a_real_call_is covers entry only)"}
+  - id: REQ-AUDIT-163
+    area: AUDIT
+    statement: "sluis audit verify MUST accept more than one log key, each with the checkpoint size from which it applies."
+    rationale: "A replaced log key must verify the history it signed up to the last size a witness cosigned, and the new key after it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a log with a key-change record: the old key verifies up to the cut-off size and fails after it, and the new key verifies after it"}
+  - id: REQ-AUDIT-164
+    area: AUDIT
+    statement: "A suspected compromise of a tenant's pseudonym key MUST start a new epoch at once."
+    rationale: "Until now only prose says so, and the thief must not link new records (ADR 0029, ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare the pseudonym key in the middle of a month: the next record uses a new epoch and older records keep their pseudonyms"}
