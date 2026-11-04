@@ -4,10 +4,53 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"regexp"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
 )
+
+// ScalarKind is what the strict profile makes of a scalar (bootstrap-file.md, "Format", rule 4).
+type ScalarKind int
+
+// KindString is a quoted or block scalar, or a plain scalar that is none of the others. KindNull is a plain scalar that
+// is empty, "~" or "null". KindBool is a plain "true" or "false". KindNumber is a plain scalar that matches the JSON
+// number grammar.
+const (
+	KindString ScalarKind = iota
+	KindNull
+	KindBool
+	KindNumber
+)
+
+var jsonNumber = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+
+// ScalarOf types a scalar node as the strict profile does, and not as yaml.v3 does. The profile exists so that Go and
+// Rust read the same document: yaml.v3 reads Null, NULL, True, TRUE, False and FALSE as null and booleans, and the Rust
+// reader reads them as strings, so a node's own tag is never trusted. A scalar that is not plain is a string.
+func ScalarOf(n *yaml.Node) ScalarKind {
+	if n.Style&(yaml.DoubleQuotedStyle|yaml.SingleQuotedStyle|yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
+		return KindString
+	}
+	switch n.Value {
+	case "", "~", "null":
+		return KindNull
+	case "true", "false":
+		return KindBool
+	}
+	if jsonNumber.MatchString(n.Value) {
+		return KindNumber
+	}
+	return KindString
+}
+
+// IsString reports whether the node is a scalar the profile reads as a string.
+func IsString(n *yaml.Node) bool { return n.Kind == yaml.ScalarNode && ScalarOf(n) == KindString }
+
+// IsNull reports whether the node is absent or a scalar the profile reads as null.
+func IsNull(n *yaml.Node) bool {
+	return n == nil || (n.Kind == yaml.ScalarNode && ScalarOf(n) == KindNull)
+}
 
 // StrictYAML reads one YAML document under the checks of the strict profile that a node tree can show
 // (bootstrap-file.md, "Format"): one document, no anchors, aliases or explicit tags, no duplicate key, no tab, no

@@ -87,9 +87,7 @@ func (o *mapping) take(k string) *yaml.Node {
 	return n
 }
 
-func isNull(n *yaml.Node) bool {
-	return n == nil || (n.Kind == yaml.ScalarNode && n.ShortTag() == "!!null")
-}
+func isNull(n *yaml.Node) bool { return signedconfig.IsNull(n) }
 
 // str is a string; an absent or null key is empty.
 func (o *mapping) str(k string) (string, error) {
@@ -97,7 +95,7 @@ func (o *mapping) str(k string) (string, error) {
 	if isNull(n) {
 		return "", nil
 	}
-	if n.Kind != yaml.ScalarNode || n.ShortTag() != "!!str" {
+	if !signedconfig.IsString(n) {
 		return "", fmt.Errorf("%s: must be a string", o.at(k))
 	}
 	return n.Value, nil
@@ -177,7 +175,7 @@ func decodeKeyPlan(payload []byte) (*configv2alpha1.KeyPlan, error) {
 			return nil, fmt.Errorf("%s: must be a list", o.at("recipients"))
 		}
 		for i, r := range n.Content {
-			if r.Kind != yaml.ScalarNode || r.ShortTag() != "!!str" || r.Value == "" {
+			if !signedconfig.IsString(r) || r.Value == "" {
 				return nil, fmt.Errorf("%s[%d]: must be a non-empty string", o.at("recipients"), i)
 			}
 			plan.Recipients = append(plan.Recipients, r.Value)

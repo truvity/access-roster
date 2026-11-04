@@ -93,7 +93,7 @@ func decodeBoundary(payload []byte) (*configv2alpha1.Boundary, error) {
 			return nil, fmt.Errorf("%s: must be a list", o.at("declared_kinds"))
 		}
 		for i, k := range n.Content {
-			if k.Kind != yaml.ScalarNode || k.ShortTag() != "!!str" || k.Value == "" {
+			if !signedconfig.IsString(k) || k.Value == "" {
 				return nil, fmt.Errorf("%s[%d]: must be a non-empty string", o.at("declared_kinds"), i)
 			}
 			if kind, ok := registry.KindByName(k.Value); !ok || kind.Class != "config" {
@@ -137,8 +137,8 @@ var jsonInteger = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
 // parseUint32 reads a plain scalar that is a non-negative integer of 32 bits.
 func parseUint32(n *yaml.Node) (uint32, error) {
 	// The strict profile reads a plain scalar as a number only where it matches the JSON grammar, so 010, 0x1F, +1 and
-	// 1_000 are strings there; a field that wants a number refuses them.
-	if n.Kind != yaml.ScalarNode || n.ShortTag() != "!!int" || !jsonInteger.MatchString(n.Value) {
+	// 1_000 are strings there, and a field that wants a number refuses them; 1.5 and 1e3 are numbers that are no integer.
+	if n.Kind != yaml.ScalarNode || signedconfig.ScalarOf(n) != signedconfig.KindNumber || !jsonInteger.MatchString(n.Value) {
 		return 0, errors.New("not an integer")
 	}
 	u, err := strconv.ParseUint(n.Value, 10, 32)
