@@ -273,10 +273,11 @@ impl ItemService for MemoryEngine {
         }
         // Nothing below can fail: the transaction is all or none.
         for d in &req.deletes {
-            let version = st.live(&d.key, now).map(|r| r.version);
-            st.items.remove(&d.key);
-            if let (true, Some(version)) = (d.log, version) {
-                st.append(&d.key, version, true);
+            // An item that was written with a log row is logged when it is removed, expired and not swept or not.
+            if let Some(row) = st.items.remove(&d.key)
+                && (d.log || row.logged)
+            {
+                st.append(&d.key, row.version, true);
             }
         }
         let mut written = Vec::with_capacity(req.puts.len());
@@ -368,7 +369,7 @@ mod tests {
     use super::*;
     use crate::{item_suite, report};
 
-    /// verifies: REQ-DATA-102
+    /// verifies: REQ-DATA-101, REQ-DATA-102
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_memory_engine_passes_the_item_suite() {
         let dir = tempfile::tempdir().unwrap();

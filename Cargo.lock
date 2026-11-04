@@ -2289,6 +2289,7 @@ dependencies = [
  "credential",
  "file",
  "futures",
+ "rqlite",
  "rustix",
  "saphyr-parser",
  "serde",

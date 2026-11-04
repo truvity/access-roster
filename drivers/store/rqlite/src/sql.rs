@@ -280,22 +280,23 @@ impl Ns {
         }
     }
 
-    /// The change-log row of a delete: the item as it is now, if it is live. It runs before the
-    /// delete, so the row holds the version the item had.
+    /// The change-log row of a delete: the item as it is now, if it is there at all, expired or not, and it was
+    /// written with a log row or the delete asks for one. It runs before the delete, so the row holds the version
+    /// the item had. An item that had a log row is never removed without one, whatever the path: an expired item
+    /// that is not swept yet and is deleted would otherwise leave nothing for the sweeper to log.
     #[must_use]
-    pub fn log_delete(&self, key: &str, now: i64) -> Stmt {
+    pub fn log_delete(&self, key: &str, now: i64, asked: bool) -> Stmt {
         Stmt::new(
             format!(
                 "INSERT INTO {log}(key, version, deleted, logged_at) \
-                 SELECT key, version, 1, ? FROM {items} \
-                 WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
+                 SELECT key, version, 1, ? FROM {items} WHERE key = ? AND (logged = 1 OR ?)",
                 log = self.log,
                 items = self.items
             ),
             vec![
                 Param::Int(now),
                 Param::Text(key.to_owned()),
-                Param::Int(now),
+                Param::Int(i64::from(asked)),
             ],
         )
     }
