@@ -1638,3 +1638,16 @@ requirements:
     issues: [1023]
     verification:
       - {kind: integration-test, ref: "a Tenant write that names the issuer host of another tenant is refused"}
+  - id: REQ-ISO-117
+    area: ISO
+    statement: "The compiled policy MUST refuse to load a cross-tenant grant on a kind that no integration declares as shared on both sides."
+    rationale: "There is no general sharing of data between tenants; each share is a specific integration's contract, decided case by case (ADR 0008)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1220]
+    verification:
+      - {kind: integration-test, ref: "a bundle with a cross-tenant grant on DirectoryUser fails to load, and one on DesiredState for a declared pair loads"}

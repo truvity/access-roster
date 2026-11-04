@@ -242,6 +242,7 @@ A directory adapter asks for the members of the targets its directory feeds, onc
 | The missing declarations | For each target that is owned by another company, whether the connection's company allows its group to be provisioned there; a target without the allowance is listed and gets no member |
 | The reasons and the digest | As for a decision |
 | The sealed grant | For each owner's tenant of a target both sides declared, the grant for writing its part, an empty part included |
+| Withdrawn | Set on every member when the connection's tenant is `erasing`, so that the adapter writes each part as a withdrawal ([0026](/decisions/0026-reconcilers/#when-a-source-tenant-exits)) |
 
 - **The answer is the decision, and the adapter only writes it.** The adapter adds, removes and reorders no member ([0025](/decisions/0025-integrations/#the-rule)).
 - **A fact that has passed its `max_age` is stale,** and a target whose answer rests on it is listed as such, so that the adapter writes no part for it.
