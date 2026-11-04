@@ -9,6 +9,7 @@ import cloudflareKvId from './src/cloudflare-kv-id.mjs';
 import cloudflareWorkerMain from './src/cloudflare-worker-main.mjs';
 import { satteri } from '@astrojs/markdown-satteri';
 import { statusPlugin } from './src/remark-status.mjs';
+import { coveragePlugin } from './src/remark-coverage.mjs';
 
 // Starlight's default (prefetch every link on hover), stated here so the Vite
 // plugin below fills in the same values Astro's prefetch script is configured with.
@@ -164,9 +165,10 @@ export default defineConfig({
     build: { chunkSizeWarningLimit: 4000 },
   },
   // Astro's Markdown processor is Sätteri; statusPlugin puts each page's status
-  // in its first paragraph (src/remark-status.mjs). Starlight adds its own
+  // in its first paragraph (src/remark-status.mjs), and coveragePlugin draws the coverage table of the
+  // conformance page from the catalogue (src/remark-coverage.mjs). Starlight adds its own
   // plugins (asides, heading links) to the same processor.
-  markdown: { processor: satteri({ mdastPlugins: [statusPlugin] }) },
+  markdown: { processor: satteri({ mdastPlugins: [statusPlugin, coveragePlugin] }) },
   integrations: [
     ...(workers ? [cloudflareKvId(), cloudflareWorkerMain()] : []),
     // Must come before Starlight so the ```mermaid fences are claimed first.

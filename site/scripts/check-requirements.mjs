@@ -33,16 +33,16 @@
 //   L22 attestations.yaml: each entry names a live record that has a manual verification, with who, when and what
 //   ISS a planned or partial record links the issues that deliver it (one warning with the count;
 //       the summary line gives the count per area). The schema checks the numbers themselves.
-//   COV the coverage figures on docs/standards/conformance.md equal the catalogue: the share of
-//       requirements (not withdrawn), and of MUSTs, whose verification includes an external suite
-//       or a vector set (`conformance-suite` or `test-vectors`). --write-coverage rewrites the block.
+//   COV the coverage figures are printed in the summary: the share of requirements (not withdrawn), and of MUSTs,
+//       whose verification includes an external suite or a vector set (`conformance-suite` or `test-vectors`).
+//       The conformance page holds no number; the site build draws its table (site/src/remark-coverage.mjs).
 //
 // No dependency beyond `yaml`: the JSON Schema subset the schema uses is checked by the small
 // validator below. Errors fail the run; warnings print and do not, unless --strict is given.
 //
-// usage: site/scripts/check-requirements.mjs [--strict] [--write-coverage] [--require-milestone] [--board file] [dir]
+// usage: site/scripts/check-requirements.mjs [--strict] [--require-milestone] [--board file] [dir]
 //   (dir defaults to docs/requirements)
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
@@ -56,7 +56,6 @@ const MILESTONE_REQUIRED = false;
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
-const writeCoverage = args.includes('--write-coverage');
 const requireMilestone = MILESTONE_REQUIRED || args.includes('--require-milestone');
 const boardFile = args.includes('--board') ? args[args.indexOf('--board') + 1] : undefined;
 const dir = resolve(args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--board') ?? join(root, 'docs', 'requirements'));
@@ -415,27 +414,10 @@ function computeCoverage(all) {
   };
 }
 
-// The generated block between the coverage markers of the conformance page. Only the default
-// catalogue has a page; a run against another directory computes the figures and checks nothing.
+// The coverage figures, as one console line. The conformance page draws the same table at build time.
 function checkCoverage(c) {
   const share = (a, b) => (b === 0 ? '0.0' : ((100 * a) / b).toFixed(1));
-  const body = [
-    '| Requirements | Externally checked | Share |',
-    '|---|---|---|',
-    `| All, not withdrawn (${c.total}) | ${c.external} | ${share(c.external, c.total)}% |`,
-    `| MUST (${c.musts}) | ${c.mustsExternal} | ${share(c.mustsExternal, c.musts)}% |`,
-  ].join('\n');
   console.log(`check-requirements: coverage ${c.external}/${c.total} (${share(c.external, c.total)}%), MUST ${c.mustsExternal}/${c.musts} (${share(c.mustsExternal, c.musts)}%)`);
-  if (dir !== join(root, 'docs', 'requirements')) return;
-  const page = join(root, 'docs', 'standards', 'conformance.md');
-  const text = readFileSync(page, 'utf8');
-  const m = /(<!-- coverage:begin[^>]*-->\n)([\s\S]*?)(<!-- coverage:end -->)/.exec(text);
-  if (!m) return E(`COV ${relative(root, page)}: no coverage:begin / coverage:end markers`);
-  const want = `${body}\n`;
-  if (m[2] === want) return;
-  if (!writeCoverage) return E(`COV ${relative(root, page)}: the coverage block is stale; run site/scripts/check-requirements.mjs --write-coverage`);
-  writeFileSync(page, text.slice(0, m.index) + m[1] + want + m[3] + text.slice(m.index + m[0].length));
-  console.log(`check-requirements: wrote the coverage block of ${relative(root, page)}`);
 }
 
 function finish(n) {
