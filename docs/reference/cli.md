@@ -76,9 +76,9 @@ The root list is part of `TrustAnchors`, the config kind that holds the root lis
 
 ### `sluis audit verify`
 
-`sluis audit verify DIR --key VKEY` checks a tiled log ([0029](/decisions/0029-the-audit-log/#tiled-log)) from its files alone, offline, with no server. `DIR` is the log's prefix: the `checkpoint` object, `checkpoints/<size>` and the `tile/` tree of C2SP tlog-tiles. `VKEY` is the log's verifier key, `name+hash+key`, and `--key-file FILE` reads it from a file. `--origin LINE` also requires the origin line the checkpoints name.
+`sluis audit verify DIR --key VKEY` checks a tiled log ([0029](/decisions/0029-the-audit-log/#tiled-log)) from its files alone, offline, with no server. `DIR` is the log's prefix: the `checkpoint` object, `checkpoints/<size>` and the `tile/` tree of C2SP tlog-tiles. `VKEY` is the log's verifier key, `name+hash+key`, and `--key-file FILE` reads it from a file. `--origin LINE` also requires the origin line the checkpoints name. <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 
-It verifies the signature of the checkpoint and of every checkpoint in `checkpoints/`, takes the largest as the head, and rebuilds the tree from the hash tiles with the RFC 6962 hashes, so a tile that does not belong to the head is refused. It hashes every entry bundle to the leaf hashes, and checks that each earlier checkpoint is a prefix of the head. It prints `ok` with the origin, the size and the root hash, and exits 0. It exits 3, naming the file in `reasons`, for a bad signature, a tile or an entry that was changed or is missing, or a checkpoint whose size or hash does not fit the tree; and 1 for a directory it cannot read.
+It verifies the signature of the checkpoint and of every checkpoint in `checkpoints/`, takes the largest as the head, and rebuilds the tree from the hash tiles with the RFC 6962 hashes, so a tile that does not belong to the head is refused. It hashes every entry bundle to the leaf hashes, and checks that each earlier checkpoint is a prefix of the head. It prints `ok` with the origin, the size and the root hash, and exits 0. It exits 3, naming the file in `reasons`, for a bad signature, a tile or an entry that was changed or is missing, or a checkpoint whose size or hash does not fit the tree; and 1 for a directory it cannot read. <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 
 The log key is a P-384 key in a signed note: the type byte `0x02` and the DER `SubjectPublicKeyInfo`, with the signature in ASN.1 DER over the SHA-384 of the note text.
 
@@ -121,7 +121,7 @@ And these where they apply:
 | `installed` | `key install` | A list of `{ "stem", "outcome", "reasons" }`. |
 | `token` | `token` | `{ "access_token", "expires_at", "audience", "issuer" }`. |
 | `login` | `login` | `{ "issuer", "client_id", "subject", "expires_at" }`; no token. |
-| `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. |
+| `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 
 Members are lower-case words with underscores; times are RFC 3339 in UTC; the object is not in canonical form. A new member is not a new version, so a reader ignores a member it does not know; a member renamed, removed or changed in meaning is version 2.
 
