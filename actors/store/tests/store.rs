@@ -1591,3 +1591,20 @@ async fn the_shared_address_vectors_hold_on_the_wire() {
         }
     }
 }
+
+#[tokio::test]
+async fn a_refusal_carries_the_correlation_id_of_the_call() {
+    let f = F::new().await;
+    f.as_("quota");
+    let call = f.get("person", "acme", "x");
+    let r = sluis_kit::correlation::scope(Some("req-42".into()), call).await;
+    refused(r, ErrorCode::PermissionDenied, "rule");
+    refused(
+        f.get("person", "acme", "x").await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    let ev = f.audit();
+    assert_eq!(ev[0].correlation_id.as_deref(), Some("req-42"));
+    assert_eq!(ev[1].correlation_id, None, "a call without an id has none");
+}

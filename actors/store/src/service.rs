@@ -99,6 +99,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 failure: false,
                 reason: String::new(),
                 fields,
+                correlation_id: None,
             })
             .await;
     }
@@ -941,6 +942,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 failure: true,
                 reason: r.reason.to_owned(),
                 fields,
+                correlation_id: sluis_kit::correlation::current(),
             })
             .await;
         if r.code == ErrorCode::Unimplemented {
