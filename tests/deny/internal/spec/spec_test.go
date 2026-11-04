@@ -136,8 +136,37 @@ func TestJudgeADriverSocketNeedsARefusalAtTheSocket(t *testing.T) {
 		}
 	}
 	for _, tg := range Targets("dev") {
-		if strings.HasPrefix(tg.ID, "drv-") != tg.SocketOnly || (tg.SocketOnly && tg.Server == "") {
+		want := strings.HasPrefix(tg.ID, "drv-") || strings.HasPrefix(tg.ID, "key/")
+		if want != tg.SocketOnly || (tg.SocketOnly && tg.Server == "") {
 			t.Errorf("%s: SocketOnly %v, Server %q", tg.ID, tg.SocketOnly, tg.Server)
+		}
+		if strings.HasPrefix(tg.ID, "key/") && tg.Server != "key" {
+			t.Errorf("%s: Server %q, want key", tg.ID, tg.Server)
+		}
+	}
+}
+
+// A key@ socket is its caller's alone at the directory (REQ-KEYS-044): a caller of that caller, which joins the
+// caller's own group to reach its socket, must not open the directory. key@, which owns the directory, is the server.
+func TestJudgeAKeySocketNeedsARefusalAtTheDirectory(t *testing.T) {
+	var tg Target
+	for _, x := range Targets("dev") {
+		if x.ID == "key/store" {
+			tg = x
+		}
+	}
+	for _, c := range []struct {
+		name, caller string
+		r            Result
+		violated     bool
+	}{
+		{"its caller reaches it", "store", Result{Outcome: Reached, Detail: "ok"}, false},
+		{"a caller of store is refused at the directory", "entry", Result{Outcome: Socket, Detail: "EACCES"}, false},
+		{"a caller of store opens it and the guard refuses", "entry", Result{Outcome: Guard, Detail: "call_graph"}, true},
+		{"key@ opens its own directory", "key", Result{Outcome: Guard, Detail: "call_graph"}, false},
+	} {
+		if got := Judge(c.caller, tg, c.r).Violated; got != c.violated {
+			t.Errorf("%s: violated = %v, want %v", c.name, got, c.violated)
 		}
 	}
 }

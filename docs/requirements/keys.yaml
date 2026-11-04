@@ -705,7 +705,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: partly-built
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []

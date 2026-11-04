@@ -173,6 +173,25 @@ func UID(name string, uidBlock uint32) (uint32, bool) {
 	return uint32(uid), true
 }
 
+// keyCallerGIDOffset puts the group of a caller's directory of key@ above everything else of the uid block: the uids
+// (ordinals below 128) and the groups of the owners' drivers in Compose (the owner's uid plus 500).
+const keyCallerGIDOffset = 700
+
+// KeyCallerGID returns the group of a caller's own directory of key@ (/run/sluis/key/<boundary>/<caller>) in the
+// boundary with the uid block: the caller's uid plus 700. Only that caller joins it, so the directory opens to it
+// alone (REQ-KEYS-044; ADR 0006, "Exclusive card access"). The caller's own group would not do, because the callers of
+// that caller join it to reach its socket. It is false for a name that is not a caller of key@ or has no uid there.
+func KeyCallerGID(caller string, uidBlock uint32) (uint32, bool) {
+	if !slices.Contains(callers["key"], caller) {
+		return 0, false
+	}
+	uid, ok := UID(caller, uidBlock)
+	if !ok || uint64(uid)+keyCallerGIDOffset > 1<<32-3 {
+		return 0, false
+	}
+	return uid + keyCallerGIDOffset, true
+}
+
 // NameForUID is the reverse of UID.
 func NameForUID(uid uint32) (name string, uidBlock uint32, ok bool) {
 	if uid < uidBase {

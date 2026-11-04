@@ -280,3 +280,42 @@ func TestOnlyKeyMountsItsStateVolume(t *testing.T) {
 		t.Error("key@ is not told where its state is")
 	}
 }
+
+// TestAKeyDirectoryOpensToItsCallerAlone: each caller's directory of key@ has a group of its own
+// (registry.KeyCallerGID), and the caller is the only service that joins that group. The caller's own group would not
+// do: the callers of that caller join it to reach its socket (REQ-KEYS-044; the deny matrix shows it on the project).
+func TestAKeyDirectoryOpensToItsCallerAlone(t *testing.T) {
+	files := generate(t)
+	svcs := services(t, files["compose.yaml"])
+	groupAdd := regexp.MustCompile(`(?m)^    group_add:\n((?:      - "\d+"\n)+)`)
+	members := map[string][]string{} // gid -> the services that join it
+	for svc, body := range svcs {
+		m := groupAdd.FindStringSubmatch(body)
+		if m == nil {
+			continue
+		}
+		for _, l := range strings.Split(strings.TrimSpace(m[1]), "\n") {
+			g := strings.Trim(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "-")), `"`)
+			members[g] = append(members[g], svc)
+		}
+	}
+	key, _ := registry.UID("key", 0)
+	for _, c := range registry.CallersOf("key") {
+		g, ok := registry.KeyCallerGID(c, 0)
+		if !ok {
+			t.Fatalf("%s has no group for its directory of key@", c)
+		}
+		line := fmt.Sprintf("dir /v/key-%s %d %d 2750\n", c, key, g)
+		if !strings.Contains(files["init.sh"], line) {
+			t.Errorf("init.sh does not make key@'s directory of %s with its own group: want %q", c, line)
+		}
+		got := members[fmt.Sprint(g)]
+		_, runs := svcs[c]
+		switch {
+		case runs && !slices.Equal(got, []string{c}):
+			t.Errorf("the group %d of key@'s directory of %s is joined by %v, want [%s] alone", g, c, got, c)
+		case !runs && len(got) != 0:
+			t.Errorf("the group %d of key@'s directory of %s, which does not run here, is joined by %v", g, c, got)
+		}
+	}
+}

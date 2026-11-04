@@ -126,7 +126,7 @@ func smoke() error {
 	}
 	// The indexer opens evidence (a built-in permit of policy); the log is a copy of the blob below the writer's driver,
 	// whose directory only its own uid may enter.
-	indexer := spec{user: "indexer", groups: []string{"policy"},
+	indexer := spec{user: "indexer", groups: []string{"policy", ownKeyDir},
 		mounts: []string{"run-policy:/run/sluis/policy", "key-indexer:/run/sluis/key/" + boundary}}
 	var found auditOut
 	var lastErr error
@@ -273,12 +273,16 @@ func requireHealthy() error {
 type docker struct{ self, cli string }
 
 // spec is the identity and the mounts of a container: the actor whose uid it has, the actors whose socket groups it
-// joins, and the volumes of the project to mount read-only.
+// joins (ownKeyDir for the group of its own directory of key@), and the volumes of the project to mount read-only.
 type spec struct {
 	user   string
 	groups []string
 	mounts []string
 }
+
+// ownKeyDir in the groups of a spec is the group of the user's own directory of key@ (registry.KeyCallerGID), which
+// only that user joins; the user's own group does not open the directory.
+const ownKeyDir = "key@"
 
 func uidOf(name string) (string, error) {
 	u, ok := registry.UID(name, 0)
@@ -296,6 +300,14 @@ func (d *docker) args(s spec, entrypoint, binary string) ([]string, error) {
 	a := []string{"run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
 		"--user", u + ":" + u}
 	for _, g := range s.groups {
+		if g == ownKeyDir {
+			kg, ok := registry.KeyCallerGID(s.user, 0)
+			if !ok {
+				return nil, fmt.Errorf("%s has no group for its directory of key@", s.user)
+			}
+			a = append(a, "--group-add", strconv.FormatUint(uint64(kg), 10))
+			continue
+		}
 		gid, err := uidOf(g)
 		if err != nil {
 			return nil, err

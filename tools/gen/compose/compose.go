@@ -336,6 +336,15 @@ func (p *plan) auditFront(b boundary, fwd uint32, _ func(string) (string, string
 // owner's uid plus 500, which no uid of a block uses (a block holds fewer than 128 ordinals).
 func (p *plan) drvGID(owner string) uint32 { return p.uid(owner) + 500 }
 
+// keyCallerGID is the group of a caller's own directory of key@ (registry.KeyCallerGID): the caller's uid plus 700.
+func (p *plan) keyCallerGID(caller string) uint32 {
+	g, ok := registry.KeyCallerGID(caller, p.o.UIDBlock)
+	if !ok {
+		panic("not a caller of key@ with a uid in the block: " + caller)
+	}
+	return g
+}
+
 func (b boundary) path(s string) string { return strings.ReplaceAll(s, "%B", string(b)) }
 
 type boundary string
@@ -377,9 +386,12 @@ func (p *plan) build() error {
 		u := p.uid("writer")
 		return p.volume(volume{Name: "audit", Owner: u, Group: p.drvGID("writer"), Mode: "1771"}), b.path("/run/sluis/audit/%B")
 	}
+	// A caller's directory of key@ has a group of its own, which only that caller joins (ADR 0006, "Exclusive card
+	// access"; REQ-KEYS-044). The caller's own group would open it to the callers of that caller, who join that group to
+	// reach the caller's socket.
 	keyCallerVol := func(caller string) string {
 		k := p.uid("key")
-		return p.volume(volume{Name: "key-" + caller, Owner: k, Group: p.uid(caller), Mode: "2750"})
+		return p.volume(volume{Name: "key-" + caller, Owner: k, Group: p.keyCallerGID(caller), Mode: "2750"})
 	}
 	// key@'s run directory holds the driver's directory and one directory per caller, built or not: key@ refuses to start
 	// without any of them (actors/key/internal/keyd/server.go, checkRunDir).
@@ -467,6 +479,7 @@ func (p *plan) build() error {
 				if a.Name != "key" && slices.Contains(callers, a.Name) {
 					v := keyCallerVol(a.Name)
 					s.Mounts = append(s.Mounts, mount{v, fmt.Sprintf("/run/sluis/key/%s/%s", b, a.Name), true})
+					groups[p.keyCallerGID(a.Name)] = true
 				}
 			case "audit-emit", "transport":
 				// The indexer has both ports, and they are the one directory.
