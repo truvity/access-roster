@@ -569,7 +569,7 @@ func TestTokenLosingRedemptionEndsTheWinnersChain(t *testing.T) {
 			ac.SealedFacts = nil
 			raw, _ := proto.Marshal(ac)
 			s.items[k] = &storedItem{value: raw, version: s.items[k].version + 1}
-			facts, err := e.key.sealForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: winner}, &sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
+			facts, err := e.key.sealForTest("chain", &typev2alpha1.Address{Kind: "session-chain", Tenant: testTenant, Id: winner}, &sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
 			if err != nil {
 				panic(err)
 			}
@@ -621,9 +621,9 @@ func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-082: the chain carries the sign-in facts twice (0006, "Data keys"): under the cookie key for session's own refresh, and
-// under the chain key for exchange. Session seals the second and never opens it, through a redemption and a refresh.
-func TestChainFactsAreSealedUnderTheChainKeyAndSessionNeverOpensThem(t *testing.T) {
+// REQ-KEYS-082: the chain carries the sign-in facts once (0006, "Data keys"), sealed under the chain key of the chain's
+// tenant. Session opens that copy at a refresh, and exchange would open it with the same tenant and address.
+func TestChainFactsAreSealedOnceUnderTheTenantsChainKey(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()
 	rt := b["refresh_token"].(string)
@@ -639,36 +639,41 @@ func TestChainFactsAreSealedUnderTheChainKeyAndSessionNeverOpensThem(t *testing.
 	if err := proto.Unmarshal(it.value, &chain); err != nil {
 		t.Fatal(err)
 	}
-	if len(chain.GetSealedChainFacts()) == 0 {
-		t.Fatal("the chain holds no facts sealed for exchange")
+	if len(chain.GetSealedFacts()) == 0 {
+		t.Fatal("the chain holds no sealed facts")
 	}
-	if string(chain.GetSealedChainFacts()) == string(chain.GetSealedFacts()) {
-		t.Error("the two copies are one envelope")
-	}
-	// What exchange would open: the chain purpose at the address of the chain with no tenant.
-	pt, err := e.key.openForTest("chain", &typev2alpha1.Address{Kind: "session-chain", Id: sid}, chain.GetSealedChainFacts())
+	// What exchange would open: the chain purpose at the address of the chain in its tenant.
+	addr := &typev2alpha1.Address{Kind: "session-chain", Tenant: testTenant, Id: sid}
+	pt, err := e.key.openForTest("chain", addr, chain.GetSealedFacts())
 	if err != nil {
-		t.Fatalf("the chain facts do not open under the chain key: %v", err)
+		t.Fatalf("the chain facts do not open under the tenant's chain key: %v", err)
 	}
 	var facts sessionv2alpha1.SignInFacts
 	if err := proto.Unmarshal(pt, &facts); err != nil || len(facts.GetAccounts()) == 0 {
 		t.Fatalf("facts = %v, %v", &facts, err)
 	}
-	// The cookie key does not open the chain copy, nor the chain key the cookie copy.
-	if _, err := e.key.openForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: sid}, chain.GetSealedChainFacts()); err == nil {
-		t.Error("the cookie key opened the chain copy")
+	// The cookie key does not open them, nor does another tenant's chain key.
+	if _, err := e.key.openForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: sid}, chain.GetSealedFacts()); err == nil {
+		t.Error("the cookie key opened the chain facts")
+	}
+	if _, err := e.key.openForTest("chain", &typev2alpha1.Address{Kind: "session-chain", Tenant: "globex", Id: sid}, chain.GetSealedFacts()); err == nil {
+		t.Error("another tenant's chain key opened the chain facts")
 	}
 
+	// A refresh opens the facts under the chain key, never under the cookie key, and seals nothing again.
+	e.key.reset()
 	e.clk.advance(time.Hour)
 	if r := e.token(refreshRequest(rt)); r.GetStatus() != http.StatusOK {
 		t.Fatalf("refresh: %s", r.GetBody())
 	}
-	for _, c := range e.key.called() {
-		if c == "open chain" {
-			t.Error("session opened the chain key")
-		}
+	calls := e.key.called()
+	if !slices.Contains(calls, "open chain") {
+		t.Errorf("a refresh did not open the chain key: %v", calls)
 	}
-	if !slices.Contains(e.key.called(), "seal chain") {
-		t.Errorf("session never sealed under the chain key: %v", e.key.called())
+	if slices.Contains(calls, "seal chain") {
+		t.Errorf("a refresh sealed the chain facts again: %v", calls)
+	}
+	if slices.Contains(calls, "open cookie") {
+		t.Errorf("a refresh opened the chain facts under the cookie key: %v", calls)
 	}
 }

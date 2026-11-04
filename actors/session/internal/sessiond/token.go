@@ -156,12 +156,9 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	if err != nil {
 		return nil, internal("random", err)
 	}
-	chainFacts, err := s.keys.sealFlow(ctx, chainKind, sid, &facts)
-	if err != nil {
-		return nil, unavailable("key", err)
-	}
-	// The same facts under the chain key, for exchange to open; session cannot open them (REQ-KEYS-082).
-	exchangeFacts, err := s.keys.sealChain(ctx, sid, &facts)
+	// One copy of the facts, under the chain key of the tenant: session opens it at a refresh, exchange for a token
+	// exchange, and the tenant's exit deletes the key (REQ-KEYS-082).
+	chainFacts, err := s.keys.sealChain(ctx, tc.tenant, sid, &facts)
 	if err != nil {
 		return nil, unavailable("key", err)
 	}
@@ -175,7 +172,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 		Subject: ac.GetSubject(), ClientId: tc.client.GetId(), Class: chainClassHuman, Scope: ac.GetScope(),
 		RefreshHash: secretHash(secret), StartedAt: ac.GetAuthenticatedAt(), EndsAt: timestamppb.New(ends),
 		RefreshedAt: timestamppb.New(tc.now), AuthTime: ac.GetAuthTime(), Acr: ac.Acr, Amr: ac.GetAmr(),
-		AmrPresent: ac.GetAmrPresent(), SealedFacts: chainFacts, SealedChainFacts: exchangeFacts,
+		AmrPresent: ac.GetAmrPresent(), SealedFacts: chainFacts,
 	}
 	if err := s.spendAndBegin(ctx, tc.tenant, id, ac, it.Version, sid, chain, ends.Sub(tc.now), v.grant); err != nil {
 		if errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound) {

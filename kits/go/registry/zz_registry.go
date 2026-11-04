@@ -1138,9 +1138,9 @@ var keyRules = map[string]map[KeyUse]uint8{
 		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"exchange": {
-		{Scope: "boundary", Purpose: "chain"}:     0x02, // open
 		{Scope: "boundary", Purpose: "data"}:      0x03, // seal open
 		{Scope: "boundary", Purpose: "enrolment"}: 0x12, // open public-key
+		{Scope: "tenant", Purpose: "chain"}:       0x02, // open
 		{Scope: "tenant", Purpose: "data"}:        0x03, // seal open
 		{Scope: "tenant", Purpose: "pairwise"}:    0x08, // mac
 		{Scope: "tenant", Purpose: "pseudonym"}:   0x08, // mac
@@ -1173,9 +1173,9 @@ var keyRules = map[string]map[KeyUse]uint8{
 		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"session": {
-		{Scope: "boundary", Purpose: "chain"}:   0x01, // seal
 		{Scope: "boundary", Purpose: "cookie"}:  0x03, // seal open
 		{Scope: "boundary", Purpose: "mac"}:     0x08, // mac
+		{Scope: "tenant", Purpose: "chain"}:     0x03, // seal open
 		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
 		{Scope: "tenant", Purpose: "pairwise"}:  0x08, // mac
 		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
