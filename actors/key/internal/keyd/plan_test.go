@@ -127,7 +127,7 @@ func TestForgedKeyPlanAfterTheStartIsRefused(t *testing.T) {
 		t.Fatalf("wrap recipients = %v, want this node only", got)
 	}
 	r := refusals(a)
-	if len(r) != 1 || !r[0].Failure || r[0].Fields["op"] != "keyplan" || r[0].Fields["keeps_the_verified_plan"] != true ||
+	if len(r) != 1 || !r[0].Failure || r[0].Fields["op"] != "keyplan" || r[0].Fields["keeps_the_verified_one"] != true ||
 		!strings.Contains(r[0].Fields["why"].(string), "step 4") {
 		t.Fatalf("audited refusals = %+v, want one that names step 4 and says the verified plan stays", r)
 	}
@@ -217,7 +217,7 @@ func TestColdStartWithoutAMarkTakesTheLatestSignedDocumentWhateverItsSeq(t *test
 	e.store.signed["key-plan"] = older // the store serves the older one at the cold start
 	e.store.mu.Unlock()
 	first.start()
-	if seq, ok := first.srv.planSeq.Held(); !ok || seq != e.seq-1 {
+	if seq, ok := first.srv.plan.seq.Held(); !ok || seq != e.seq-1 {
 		t.Fatalf("held seq = %d, %v; want the older document's %d", seq, ok, e.seq-1)
 	}
 }
@@ -355,7 +355,7 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 		e := newTestEnv(t, "development")
 		state := shortDir(t)
 		n := e.newNode(nodeOpts{stateDir: state})
-		good := planMark{seq: 1}.text()
+		good := seqMark{seq: 1}.text()
 		path := filepath.Join(state, planMarkFile)
 		if err := os.WriteFile(path, []byte(good), 0o644); err != nil { //nolint:gosec // the point of the test: a mark that is too open
 			t.Fatal(err)
@@ -369,7 +369,7 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 		state := shortDir(t)
 		n := e.newNode(nodeOpts{stateDir: state})
 		target := filepath.Join(shortDir(t), "elsewhere")
-		if err := os.WriteFile(target, []byte(planMark{seq: 1}.text()), 0o600); err != nil {
+		if err := os.WriteFile(target, []byte(seqMark{seq: 1}.text()), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(target, filepath.Join(state, planMarkFile)); err != nil {

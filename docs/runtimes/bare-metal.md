@@ -137,12 +137,12 @@ The map goes on in slots `82` to `86` (the two SSH authorities, the audit log ke
 - **AWS KMS** is the key mode on an AWS virtual machine ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). The key policy of every key names key@'s role alone, so no other actor and no instance role reaches KMS.
 - **Software key:** development only; the code refuses it in production ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
 
-### A KeyPlan mark that is ahead of the store
+### A mark that is ahead of the store
 
-key@ keeps the highest `seq` of the `KeyPlan` it verified in `keyplan.mark`, in its state directory (`/var/lib/sluis-state/<boundary>/key`), and refuses a lower one ([Who may receive a wrap](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). After a restore of the store, or a reset of the `seq`, the mark can be ahead of every document the store serves, and key@ does not start: its error names the mark file, the `seq` it holds and step 5 of the document. Two ways out:
+key@ keeps the highest `seq` it verified of the `KeyPlan` and of the `Boundary` in `keyplan.mark` and `boundary.mark`, in its state directory (`/var/lib/sluis-state/<boundary>/key`), and refuses a lower one ([Who may receive a wrap](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). After a restore of the store, or a reset of the `seq`, a mark can be ahead of every document the store serves, and key@ does not start: its error names the mark file, the `seq` it holds and step 5 of the document. Two ways out:
 
-1. **Publish a `KeyPlan` with a higher `seq`** (`just boards-prepare`, then `just boards-deploy`). This is the way to take: rollback protection stays on.
-2. **Remove `keyplan.mark` on purpose,** on that board only, and restart key@. key@ then takes the newest validly signed `KeyPlan` the store shows, and has no rollback protection until it verifies the next plan. Do this only when you know the store serves the right document.
+1. **Publish a document of that kind with a higher `seq`** (`just boards-prepare`, then `just boards-deploy`). This is the way to take: rollback protection stays on.
+2. **Remove that mark on purpose,** on that board only, and restart key@. key@ then takes the newest validly signed document of that kind the store shows, and has no rollback protection for it until it verifies the next one. Do this only when you know the store serves the right document.
 
 ## Board capacity
 

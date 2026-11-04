@@ -185,3 +185,71 @@ fn the_keyplan_payload_vectors_are_read_as_key_reads_them_in_go() {
         }
     }
 }
+
+/// verifies: REQ-KEYS-111
+/// The Boundary payload vectors: key@ reads the same text in Go (actors/key/internal/keyd/boundary_vectors_test.go) and
+/// must read the same environment, because it applies the floor of the software key driver to what it verified.
+#[test]
+fn the_boundary_payload_vectors_are_read_as_key_reads_them_in_go() {
+    use buffa::Message as _;
+    use sluis_proto::sluis::config::v2alpha1 as pb;
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/testdata/signed-config/boundary-payloads.json"
+    );
+    let v: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let cases = v["cases"].as_array().unwrap();
+    assert!(
+        cases.len() >= 35,
+        "too few cases: a sweep over nothing proves nothing"
+    );
+    let kind = sluis_registry::kind_by_name("Boundary").unwrap();
+    for c in cases {
+        let name = c["name"].as_str().unwrap();
+        let got = store::config::payload::decode(kind, c["payload"].as_str().unwrap().as_bytes());
+        if let Some(read) = c.get("read") {
+            let items = got.unwrap_or_else(|e| panic!("{name}: want it read, got {e}"));
+            assert_eq!(items.len(), 1, "{name}");
+            let b = pb::Boundary::decode_from_slice(&items[0].1).unwrap();
+            let s = |k: &str| read[k].as_str().unwrap().to_owned();
+            assert_eq!(
+                (
+                    b.name,
+                    b.kind,
+                    b.level,
+                    b.environment,
+                    b.issuer,
+                    b.default_tenant
+                ),
+                (
+                    s("name"),
+                    s("kind"),
+                    s("level"),
+                    s("environment"),
+                    s("issuer"),
+                    s("default_tenant")
+                ),
+                "{name}"
+            );
+            assert_eq!(
+                u64::from(b.uid_block),
+                read["uid_block"].as_u64().unwrap(),
+                "{name}: uid_block"
+            );
+            let kinds: Vec<String> = read["declared_kinds"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|k| k.as_str().unwrap().to_owned())
+                .collect();
+            assert_eq!(b.declared_kinds, kinds, "{name}: declared_kinds");
+        } else {
+            let e = got.expect_err(name).to_string();
+            let path = c["refused_path"].as_str().unwrap();
+            assert!(
+                e.contains(path),
+                "{name}: the refusal {e:?} does not name {path:?}"
+            );
+        }
+    }
+}

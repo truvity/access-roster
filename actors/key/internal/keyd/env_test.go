@@ -411,6 +411,8 @@ type testEnv struct {
 	bootstrap string // the path of the bootstrap file
 	seq       uint64 // the seq of the last KeyPlan signed
 	plan      *configv2alpha1.KeyPlan
+	seqB      uint64 // the seq of the last Boundary signed
+	boundary  *configv2alpha1.Boundary
 }
 
 // defaultPlan is the KeyPlan of tonight.
@@ -429,9 +431,10 @@ func defaultPlan() *configv2alpha1.KeyPlan {
 func newTestEnv(t *testing.T, environment string) *testEnv {
 	t.Helper()
 	e := &testEnv{t: t, clock: newClock(), store: newFakeStore()}
-	e.store.put("boundary", "", "default", &configv2alpha1.Boundary{Name: testBoundary, Environment: environment, DefaultTenant: "acme"})
 	e.pub = newPublisher(t)
 	e.bootstrap = writeBootstrap(t, publisherEntry("publisher-1", &e.pub.PublicKey))
+	e.putBoundary(&configv2alpha1.Boundary{Name: testBoundary, Kind: "environment", Level: "L2", Environment: environment,
+		Issuer: "https://sluis.example.test", DefaultTenant: "acme"})
 	e.putPlan(defaultPlan())
 	e.sock = filepath.Join(shortDir(t), "st.sock")
 	path, h := storev2alpha1connect.NewStoreServiceHandler(e.store)
@@ -448,6 +451,16 @@ func (e *testEnv) putPlan(plan *configv2alpha1.KeyPlan) {
 	e.store.mu.Lock()
 	defer e.store.mu.Unlock()
 	e.store.signed["key-plan"] = e.sign("publisher-1", e.pub, e.seq, planPayload(e.t, plan))
+}
+
+// putBoundary publishes a Boundary as the pipeline would: signed by the publisher, under a seq higher than the last.
+func (e *testEnv) putBoundary(b *configv2alpha1.Boundary) {
+	e.t.Helper()
+	e.boundary = b
+	e.seqB++
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	e.store.signed["boundary"] = e.signKind("publisher-1", e.pub, e.seqB, boundaryKind, boundaryPayload(e.t, b))
 }
 
 // sign signs a payload under a key and seq, as a document of the KeyPlan kind.

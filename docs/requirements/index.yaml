@@ -59,7 +59,6 @@ catalogue:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
     keyplan-trust: "A recipient that leaves the KeyPlan keeps its wraps: removing one deletes none of them and makes no new generation. This waits for the key-compromise work (REQ-KEYS-094). key@ already verifies the KeyPlan itself and keeps the highest seq in state of its own; a node with no state takes the newest validly signed document (ADR 0005, Freshness at a cold start)."
-    boundary-unverified: "key@ reads the Boundary document through store@ and does not verify it; a compromised store@ can serve environment development and relax the floor of the software key driver. Closed by verifying the Boundary document as the KeyPlan is verified."
     proposed-design: "The design is proposed in research and not yet decided."
     partly-built: "Part of the statement is built; the rest is not yet."
     no-proving-test: "The code exists, but no test that runs in CI would fail if the statement were broken."

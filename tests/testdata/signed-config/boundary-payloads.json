@@ -1,0 +1,250 @@
+{
+ "description": "Test vectors of the Boundary payload (docs/reference/signed-config.md 'The payload'; the strict profile of docs/reference/bootstrap-file.md): the payload text, and either what both readers must read from it or the path that a refusal must contain. store@ (Rust, actors/store/tests/vectors.rs) and key@ (Go, actors/key/internal/keyd/boundary_vectors_test.go) read the same file: key@ takes the environment of the floor of the software key driver from the bytes it verified.",
+ "cases": [
+  {
+   "name": "the local Boundary source",
+   "payload": "# The Boundary document of the local installation (ADR 0005, \"The snapshot\"): the boundary `dev`\n# and the config kinds it declares. The harness signs this file as boundary.jws into the\n# directory of the `file` driver; the payload is this file, byte for byte.\n# One mapping from item id to item; a singleton kind has the one item `default` (decision D-17).\ndefault:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n  default_tenant: acme\n  declared_kinds:\n    - KeyPlan\n    - TokenLifetime\n    - GrantVocabulary\n    - Policy\n    - AuditLog\n    - AuditCatalogue\n    - Upstream\n    - InstallationClient\n    - ExchangeTrust\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.dev.local.test",
+    "uid_block": 0,
+    "default_tenant": "acme",
+    "declared_kinds": [
+     "KeyPlan",
+     "TokenLifetime",
+     "GrantVocabulary",
+     "Policy",
+     "AuditLog",
+     "AuditCatalogue",
+     "Upstream",
+     "InstallationClient",
+     "ExchangeTrust"
+    ]
+   }
+  },
+  {
+   "name": "production, the least",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: production\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "production",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "staging with plain http, which the set checks and the reader does not",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: staging\n  issuer: http://sluis.example.test\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "staging",
+    "issuer": "http://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "JSON, which is YAML",
+   "payload": "{\"default\": {\"name\": \"dev\", \"kind\": \"environment\", \"level\": \"L2\", \"environment\": \"staging\", \"issuer\": \"https://x.test\", \"uid_block\": 61000, \"default_tenant\": \"acme\"}}",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "staging",
+    "issuer": "https://x.test",
+    "uid_block": 61000,
+    "default_tenant": "acme",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "declared_kinds null",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: ~\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name missing",
+   "payload": "default:\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "kind missing",
+   "payload": "default:\n  name: dev\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.kind"
+  },
+  {
+   "name": "level missing",
+   "payload": "default:\n  name: dev\n  kind: environment\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.level"
+  },
+  {
+   "name": "environment missing",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.environment"
+  },
+  {
+   "name": "issuer missing",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n",
+   "refused_path": "default.issuer"
+  },
+  {
+   "name": "environment is not one of the three",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: prod\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.environment"
+  },
+  {
+   "name": "environment is in upper case",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: Production\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.environment"
+  },
+  {
+   "name": "environment is a boolean-looking plain scalar",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: yes\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.environment"
+  },
+  {
+   "name": "issuer is not a URL",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: sluis.example.test\n",
+   "refused_path": "default.issuer"
+  },
+  {
+   "name": "issuer has a space",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: \"https://sluis example.test\"\n",
+   "refused_path": "default.issuer"
+  },
+  {
+   "name": "issuer is the scheme alone",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://\n",
+   "refused_path": "default.issuer"
+  },
+  {
+   "name": "an unknown key",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  extra: 1\n",
+   "refused_path": "default"
+  },
+  {
+   "name": "uid_block as a string",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: \"7\"\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block negative",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: -1\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block with a leading zero, a string in the profile",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: 010\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block in hex, a string in the profile",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: 0x1F\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block above 32 bits",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: 4294967296\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block a float",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: 1.5\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "declared_kinds names a kind that is not config",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: [DataKeyWrap]\n",
+   "refused_path": "declared_kinds[0]"
+  },
+  {
+   "name": "declared_kinds names no kind",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: [NoSuchKind]\n",
+   "refused_path": "declared_kinds[0]"
+  },
+  {
+   "name": "declared_kinds is not a list",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: KeyPlan\n",
+   "refused_path": "default.declared_kinds"
+  },
+  {
+   "name": "declared_kinds holds a number",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: [1]\n",
+   "refused_path": "declared_kinds[0]"
+  },
+  {
+   "name": "default_tenant has upper case",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: Acme\n",
+   "refused_path": "default.default_tenant"
+  },
+  {
+   "name": "default_tenant is a dot",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: \".\"\n",
+   "refused_path": "default.default_tenant"
+  },
+  {
+   "name": "default_tenant has a slash",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: a/b\n",
+   "refused_path": "default.default_tenant"
+  },
+  {
+   "name": "default_tenant is a number",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: 7\n",
+   "refused_path": "default.default_tenant"
+  },
+  {
+   "name": "no default item",
+   "payload": "other:\n  name: dev\n",
+   "refused_path": ""
+  },
+  {
+   "name": "two items",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\nother:\n  name: dev\n",
+   "refused_path": ""
+  },
+  {
+   "name": "the item is null",
+   "payload": "default:\n",
+   "refused_path": "default"
+  },
+  {
+   "name": "a duplicate key",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  name: other\n",
+   "refused_path": ""
+  },
+  {
+   "name": "an anchor",
+   "payload": "default: &a\n  name: dev\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a second document",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n---\ndefault:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a tab",
+   "payload": "default:\n\tname: dev\n",
+   "refused_path": ""
+  }
+ ]
+}
