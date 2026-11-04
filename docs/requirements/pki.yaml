@@ -211,7 +211,7 @@ requirements:
   - id: REQ-PKI-007
     area: PKI
     statement: "sluis MUST publish a static certificate revocation list for each intermediate."
-    rationale: "Static revocation fits short-lived certificates."
+    rationale: "Static revocation fits short-lived certificates, and where hosts anchor a root the list is the control for a leaf of a compromised intermediate (ADR 0023, ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -691,8 +691,8 @@ requirements:
       - {kind: test-vectors, ref: "hand-off fixtures: a request with a back-signature for each of two active primaries verifies, and one missing a primary is refused"}
   - id: REQ-PKI-052
     area: PKI
-    statement: "On a declared compromise of an intermediate key, ca MUST stop issuing under it and remove its certificate from the trust bundle that it renders, without waiting for the root's revocation list."
-    rationale: "The trust bundle is the control that relying parties apply, and the root's list follows later (ADR 0041)."
+    statement: "On a declared compromise of an intermediate key, ca MUST stop issuing under it."
+    rationale: "The first step needs no one else, and ritueel's root list follows later (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -700,4 +700,16 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "declare an intermediate: ca refuses a new request under it and the next trust bundle lacks its certificate"}
+      - {kind: integration-test, ref: "declare an intermediate: ca refuses a new request under it"}
+  - id: REQ-PKI-053
+    area: PKI
+    statement: "On a declared compromise of an intermediate key, ca MUST remove its certificate from the trust bundle that it renders, without waiting for the root's revocation list."
+    rationale: "The trust bundle is the control that hosts apply, on the assumption that the sync replaces the anchors with the bundle (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare an intermediate: the next trust bundle lacks its certificate, and a sync removes the anchor"}

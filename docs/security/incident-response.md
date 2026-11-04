@@ -22,8 +22,8 @@ A revocation is never undone. A restore, a roll-forward or a write by the key's 
 
 This is the path with the most at stake, and the one a drill rehearses.
 
-1. **Declare.** `sluis key revoke --purpose token-signing --kid KID --reason compromise` (or `suspected`). Any node's `signer` may revoke any node's key, so a compromised or powered-off node does not block you.
-2. **The key leaves the key set at once.** `signer` writes the ring without it, `exporter@` publishes the new set and purges the edge copy.
+1. **Declare.** `sluis key revoke --purpose token-signing --kid KID --reason compromise` (or `suspected`). The command asks `key@` to write a `KeyRevocation` item, and the `key@` of any node can, so a compromised or powered-off node does not block you. `store@` accepts only creates of that kind, so the revocation cannot be undone.
+2. **The key leaves the key set at once.** `exporter@` and `entry` omit every revoked `kid` from every key set they publish, and `exporter@` purges the edge copy. `signer` neither promotes nor signs with the revoked `kid`.
 3. **The replacement signs at once when no other key is active.** On a multi-node installation the other nodes' keys are already published and cached, so nothing else is needed when the compromise is one node's. On a single-key installation a new key is made, published and purged before its first token.
 4. **Wait for "confirmed".** If it stays "not confirmed", the edge copy is stale: purge it by hand and run `sluis key status`.
 5. **Find the forgeries.** Every signature is an audit fact, so a token in the window that has no matching fact is forged. A relying party that logs `jti` can do the same; ask the relying parties for their logs.
@@ -43,26 +43,27 @@ The certificate revocation list is no control for tokens. A standard verifier ig
 
 ## Data keys
 
-Declare with `sluis key revoke --purpose PURPOSE [--tenant TENANT] --reason compromise`. `key@` makes a new generation, stops opening the compromised one at once, and starts the re-seal job. The old wraps are deleted when the job ends.
+Declare with `sluis key revoke --purpose PURPOSE [--tenant TENANT] --reason compromise`. `key@` makes a new generation that every later seal uses and refuses every seal under the compromised one. Whether it also stops opening the compromised generation depends on what the key protects: the integrity keys (`grant`, `cookie`, `chain`) stop opening at once, because a forged value is the threat; the confidentiality keys (`data`, `pseudonym`, `evidence`) keep opening, because the thief already holds the key and refusing opens would only take the data offline. For `data` the re-seal job rewrites every value and then the old wraps are deleted.
 
 | Purpose | What stops | What people see | After the declaration |
 |---|---|---|---|
-| `grant` | The old generation is deleted at once | Nothing; a grant lives about 60 seconds | No re-seal |
-| `cookie` | Every browser session of the boundary ends | People sign in again, silently while the upstream session lives | Refresh-token chains are not affected |
-| `chain` | That tenant's session chains end | That tenant's people sign in again | Only that tenant |
-| `data` (a tenant's, or the boundary's) | The generation stops opening | Nothing, apart from latency during the job | Re-seal runs in pages and can be resumed |
-| `pseudonym` | The epoch ends | Past audit records keep their pseudonyms | A new epoch starts at once |
+| `grant` | Seals and opens under the old generation are refused | Nothing; a grant lives about 60 seconds | No re-seal |
+| `cookie` | Seals and opens under the old generation are refused; every browser session of the boundary ends | People sign in again, silently while the upstream session lives | Refresh-token chains are not affected |
+| `chain` | Seals and opens under the old generation are refused; that tenant's session chains end | That tenant's people sign in again | Only that tenant |
+| `data` (a tenant's, or the boundary's) | Seals under the old generation are refused; it keeps opening until the re-seal ends, then its wraps are deleted | Nothing, apart from latency during the job | Re-seal runs in pages and can be resumed |
+| `pseudonym` | The epoch ends; no new hash under it | Past audit records keep their pseudonyms | A new epoch starts at once |
+| `evidence` | Seals under the old generation are refused; it keeps opening for the retention | Nothing; what it already sealed stays exposed (accepted) | New evidence is sealed under a new generation |
 
-On Lambda a warm function keeps its cached keys until their time to live ends, so a revoked generation can still open values for that long. This delay is accepted for now and revisited after the first drill ([Accepted risks](#accepted-risks)).
+On Lambda a warm function keeps its cached keys until their time to live ends, so an integrity key's revoked generation can still open values for that long. This delay is accepted for now and revisited after the first drill ([Accepted risks](#accepted-risks)).
 
 An archive keeps the wraps and the values it held. Re-sealing cannot reach it, and its retention is the bound on that exposure.
 
 ## A board
 
 1. **Remove the board.** `sluis key revoke --node NODE --reason compromise` removes its recipient and keys at once. `key@` makes no new wrap for it and deletes its existing wraps; its token-signing key is revoked as above; the other boards go on signing with theirs.
-2. **Check that its PIN is not given away.** A peer refuses a PIN-release request from a board that the recipient list does not name, so a stolen board that reconnects gets nothing.
+2. **Check that its PIN is not given away.** A peer releases a PIN only to a board that the `KeyPlan` lists and `KeyRevocation` does not revoke, so a stolen board that reconnects gets nothing.
 3. **Replace the board.** A new board has a new card and a new key, and the other boards rewrap every data key for it. ritueel revokes the old certificate in the root lists ([ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning)).
-4. **Make the removal permanent.** A reviewed `KeyPlan` commit drops the board from the signed list.
+4. **Make the removal visible.** A reviewed `KeyPlan` commit drops the board from the signed list. The revocation is permanent: a board comes back only as a new key, listed in the `KeyPlan` by its new thumbprint.
 5. **A suspected PIN** is changed with `sluis node pin`, which delivers the new PIN to the board over the unlock channel. Until that command exists, replace the board.
 
 ## An audit or issuance log key
@@ -73,8 +74,8 @@ With no witness, nothing before the compromise can be trusted from the old key a
 
 ## An intermediate, an SSH CA and a release subkey
 
-- **An X.509 intermediate.** `sluis key revoke --purpose x509 --trust-domain DOMAIN` makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the root lists; sluis does not wait for it. Leaves carry no revocation address, so the bundle, not the list, is the control.
-- **An SSH user CA or host CA.** A key revocation list cannot name certificates nobody knows exist. Replace the key on ritueel's signed list of SSH CA keys. `sluis-host` fetches the list at the interval below, and alerts when its copy is older than twice that interval. For a host CA, also replace the `@cert-authority` line in every client's known-hosts file.
+- **An X.509 intermediate.** `sluis key revoke --purpose x509 --trust-domain DOMAIN --reason compromise` makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the root lists; sluis does not wait for it. **Assumption (not yet checked):** the host sync replaces its anchors with the bundle, and the anchors are the intermediates. If a host anchors a root, leaving the bundle stops nothing for it, and the controls are ritueel's root CRL and the short lifetimes of leaves; leaves carry no revocation address, so most clients never fetch a list. The follow-up in [#1341](https://github.com/truvity/sluis/issues/1341) states what the bundle holds and what the sync removes, and this step is corrected to the result.
+- **An SSH user CA or host CA.** A key revocation list cannot name certificates nobody knows exist. Replace the key on ritueel's signed list of SSH CA keys. `sluis-host` fetches the list at the interval the documentation states ([REQ-SSH-009](/requirements/ssh/#REQ-SSH-009)), and alerts when its copy is older than twice that interval ([REQ-SSH-010](/requirements/ssh/#REQ-SSH-010)). The time for a list to reach a host is the last row of the [measured times](#measured-times). For a host CA, also replace the `@cert-authority` line in every client's known-hosts file.
 - **An OpenPGP release subkey.** Revoke it under both primaries, as the release signing page describes ([REQ-SUPPLY-012](/requirements/supply/#REQ-SUPPLY-012)).
 
 ## A wrapping key, a recipient or an archive key
@@ -101,7 +102,7 @@ Each figure is the time from the declaration to the first refusal by a verifier 
 | `cookie`, boards | | | | |
 | `cookie`, Lambda (the cache's time to live) | | | | |
 | A board's removal | | | | |
-| SSH CA list refresh (stated interval) | | | | |
+| SSH CA list reaches a host (the stated refresh interval) | | | | |
 | X.509 trust bundle sync | | | | |
 
 ## Accepted risks
@@ -112,8 +113,8 @@ These are written in the [threat model](/security/threat-model/#accepted-risks) 
 |---|---|---|---|
 | `pairwise` | The thief links a person's subjects across relying parties | A replacement changes every `sub` and breaks every account link | When CIAM gives subjects their meaning |
 | `mac` | The thief confirms guessed e-mail addresses or upstream ids offline against any id seen | A new key changes every link id, and a migration needs sealed inputs | At v1 parity, after a migration is measured |
-| `evidence` | The thief reads a tenant's audit and usage evidence | Shredding it destroys evidence the law may require | When the retention is revisited |
-| Lambda cache | A warm function opens a revoked generation until its entry expires | A shorter time to live costs key service calls | After the first drill |
+| `evidence` (what it sealed before the declaration) | The thief reads a tenant's audit and usage evidence from before | Shredding it destroys evidence the law may require | When the first tenant with an evidence retention exits, or at v1 parity |
+| Lambda cache | A warm function opens a revoked integrity-key generation until its entry expires | A shorter time to live costs key service calls | After the first drill |
 
 ## Drills
 
