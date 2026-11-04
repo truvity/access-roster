@@ -217,6 +217,50 @@ func TestCompleteReadsTheConfiguredSubjectClaimAndLeavesAbsentValuesUnknown(t *t
 	}
 }
 
+// verifies: REQ-SUBJ-040
+func TestCompleteBoundsTheSubjectClaimAt255Characters(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any // nil: the claim is not in the token
+		ok    bool
+	}{
+		{"255 characters", strings.Repeat("a", 255), true},
+		{"256 characters", strings.Repeat("a", 256), false},
+		{"300 characters", strings.Repeat("a", 300), false},
+		{"a number", 42, false},
+		{"empty", "", false},
+		{"absent", nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, func(_ *envOptions, idp *fakeIDP) {
+				idp.claims = func(m map[string]any) {
+					if c.value == nil {
+						delete(m, "preferred_username")
+					} else {
+						m["preferred_username"] = c.value
+					}
+				}
+			})
+			a, err := f.complete(context.Background(), f.completeReq())
+			if c.ok {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if a.GetSubject() != c.value {
+					t.Errorf("subject of %d bytes", len(a.GetSubject()))
+				}
+				return
+			}
+			// No assertion, so session has nothing to create a person from.
+			if a != nil {
+				t.Fatal("an assertion was returned")
+			}
+			refused(t, err, "INVALID", connect.CodeInvalidArgument, "id_token.preferred_username")
+		})
+	}
+}
+
 func TestAnEmptyAMRIsPresent(t *testing.T) {
 	f := newFixture(t, func(_ *envOptions, idp *fakeIDP) {
 		idp.claims = func(c map[string]any) { c["amr"] = []string{} }
