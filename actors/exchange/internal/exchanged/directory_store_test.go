@@ -55,6 +55,7 @@ type openKey struct {
 	opens []*keyv2alpha1.OpenItem
 	good  []byte
 	plain []byte
+	rule  bool // refuse every open as key@ does an actor with no rule: permission_denied, reason rule
 }
 
 func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenRequest]) (*connect.Response[keyv2alpha1.OpenResponse], error) {
@@ -62,6 +63,9 @@ func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenR
 	defer k.mu.Unlock()
 	it := req.Msg.GetItems()[0]
 	k.opens = append(k.opens, it)
+	if k.rule {
+		return nil, refusal.New(connect.CodePermissionDenied, "rule", "items.purpose")
+	}
 	if string(it.GetEnvelope()) != string(k.good) {
 		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
 	}
@@ -134,6 +138,7 @@ func claimsOf2(over func(*exchanged.Subject)) *exchanged.Subject {
 	return s
 }
 
+// REQ-KEYS-082: exchange opens the chain facts under the chain key.
 func TestStoreDirectoryFindsThePersonOfALiveChain(t *testing.T) {
 	e := newDirEnv(t)
 	e.session(t0.Add(time.Hour))
@@ -217,6 +222,16 @@ func TestStoreDirectoryCheck(t *testing.T) {
 	e.store.fail = true
 	if err := e.dir.Check(context.Background()); err == nil {
 		t.Fatal("a directory that cannot read store@ is bound")
+	}
+}
+
+// A directory whose exchange has no rule to open the chain key is not bound.
+func TestStoreDirectoryCheckProvesTheChainRule(t *testing.T) {
+	e := newDirEnv(t)
+	e.store.items["boundary//default"] = mustMarshal(t, &configv2alpha1.Boundary{Name: testBoundary, DefaultTenant: testTenant})
+	e.key.rule = true
+	if err := e.dir.Check(context.Background()); err == nil {
+		t.Fatal("a directory whose exchange may not open the chain key is bound")
 	}
 }
 

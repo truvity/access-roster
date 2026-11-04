@@ -42,8 +42,8 @@ type StoreDirectory struct {
 	now    func() time.Time
 }
 
-// chainSegment is the address segment of the kind SessionChain, and the kind of the address the facts are sealed at.
-// The three segments are those of the registry; the constructor checks them.
+// segChain is the address segment of the kind SessionChain, and the kind of the address the facts are sealed at;
+// segHold and segPerso are those of PersonHold and Person. The three are the registry's; the constructor checks them.
 const (
 	segChain = "session-chain"
 	segHold  = "person-hold"
@@ -122,7 +122,8 @@ func (d *StoreDirectory) Person(ctx context.Context, tenant string, c *Subject) 
 
 // Check says whether the directory is bound: store@ answers a read of the chain kind, and exchange is allowed to make
 // it. An id that cannot exist is "not found" for a reader and "permission denied" for one the rule of the kind does not
-// name.
+// name. It also proves exchange's rule for the chain key at key@: an Open of an envelope that cannot open is refused for
+// the reason `open` when the rule allows it and for the reason `rule` when it does not, and it needs no real envelope.
 func (d *StoreDirectory) Check(ctx context.Context) error {
 	b, err := d.cfg.Boundary(ctx)
 	if err != nil {
@@ -134,10 +135,19 @@ func (d *StoreDirectory) Check(ctx context.Context) error {
 	}
 	// A valid id that no chain has: 26 characters of the id alphabet.
 	_, err = d.chains.Get(ctx, t.ID, "aaaaaaaaaaaaaaaaaaaaaaaaaa")
-	if err == nil || errors.Is(err, store.ErrNotFound) {
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	_, err = d.keys.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: []*keyv2alpha1.OpenItem{{
+		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Id: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, Envelope: []byte("check"),
+	}}}))
+	if r, ok := refusal.Reason(err); ok && r == "open" && connect.CodeOf(err) == connect.CodePermissionDenied {
 		return nil
 	}
-	return err
+	if err == nil {
+		return errors.New("exchanged: key@ opened a check envelope")
+	}
+	return fmt.Errorf("key open chain: %w", err)
 }
 
 // exists says whether an item of a sealed kind exists, without opening it: store@ checks the envelope's header and
@@ -153,8 +163,8 @@ func (d *StoreDirectory) exists(ctx context.Context, segment, tenant, id string)
 	return false, fmt.Errorf("store get %s: %w", segment, err)
 }
 
-// facts opens the facts of a chain that session sealed for exchange. An envelope that does not open (key@ gives one answer for every cause) is a
-// chain that this boundary did not make, which ends the exchange.
+// facts opens the facts of a chain that session sealed for exchange. An envelope that does not open (key@ gives one
+// answer for every cause) is a chain that this boundary did not make, which ends the exchange.
 func (d *StoreDirectory) facts(ctx context.Context, sid string, envelope []byte) (*sessionv2alpha1.SignInFacts, error) {
 	if len(envelope) == 0 {
 		return nil, ErrSessionEnded

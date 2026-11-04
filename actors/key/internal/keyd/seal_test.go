@@ -17,6 +17,7 @@ import (
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // The vector of store-api.md, "The sealed envelope".
@@ -431,7 +432,7 @@ func TestGrantWindowIsBoundedByNow(t *testing.T) {
 	}
 }
 
-// The chain key is sealed by session alone and opened by exchange alone (REQ-KEYS-082, decision D-28).
+// REQ-KEYS-082: the chain key is sealed by session alone and opened by exchange alone (decision D-28).
 func TestChainKeySealedBySessionOpenedByExchangeAlone(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
@@ -454,13 +455,31 @@ func TestChainKeySealedBySessionOpenedByExchangeAlone(t *testing.T) {
 	// exchange cannot seal.
 	_, err = seal1(n.client("exchange"), "chain", "session-chain", "", vecID, facts, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
-	// No other actor seals or opens: the rule is the registry's, not a list in this test.
-	for _, who := range []string{"policy", "signer", "writer", "reader", "ca", "console", "store"} {
-		if _, err := seal1(n.client(who), "chain", "session-chain", "", vecID, facts, nil); connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("%s seals under chain: %v", who, err)
-		}
-		if _, err := open1(n.client(who), "chain", "session-chain", "", vecID, env, nil); connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Errorf("%s opens under chain: %v", who, err)
+	// No other actor seals or opens. Every actor of the registry is checked, not a list kept here: a grant added to any
+	// actor in actors.yaml fails this test. An actor that may call key@ reaches the rule and is refused by it; one that
+	// may not has no socket, and the registry says it has no rule.
+	callers := map[string]bool{}
+	for _, c := range registry.CallersOf("key") {
+		callers[c] = true
+	}
+	for _, act := range registry.Actors() {
+		for _, op := range []string{"seal", "open"} {
+			allowed := (act.Name == "session" && op == "seal") || (act.Name == "exchange" && op == "open")
+			if got := registry.KeyAllows(act.Name, registry.ScopeBoundary, "chain", op); got != allowed {
+				t.Errorf("registry: %s %s chain = %v, want %v", act.Name, op, got, allowed)
+			}
+			if allowed || !callers[act.Name] {
+				continue
+			}
+			var err error
+			if op == "seal" {
+				_, err = seal1(n.client(act.Name), "chain", "session-chain", "", vecID, facts, nil)
+			} else {
+				_, err = open1(n.client(act.Name), "chain", "session-chain", "", vecID, env, nil)
+			}
+			if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "rule" {
+				t.Errorf("%s %ss under chain: %v, want permission_denied/rule", act.Name, op, err)
+			}
 		}
 	}
 	// The envelope does not open as another purpose or at another address, and the chain key has no tenant.
