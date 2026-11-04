@@ -1101,7 +1101,7 @@ requirements:
     standards: []
     issues: [838]
     verification:
-      - {kind: test-vectors, ref: "a checkpoint signed through key@ verifies with the C2SP signed-note verifier of transparency-dev"}
+      - {kind: test-vectors, ref: "a checkpoint the writer made through key@ opens with golang.org/x/mod/sumdb/note and a type 0x02 verifier written from the C2SP signed-note text"}
       - {kind: integration-test, ref: "the key plan check refuses an audit-log purpose that is not ES256"}
   - id: REQ-KEYS-082
     area: KEYS

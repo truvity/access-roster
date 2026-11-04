@@ -223,6 +223,8 @@ type fakeDriver struct {
 	keys  map[string]*ecdsa.PrivateKey
 	ecdhs atomic.Int64
 	signs atomic.Int64
+	// wrongCurve makes Ensure answer a P-384 key for an ES256 request, as a driver that does not enforce the pairing would.
+	wrongCurve bool
 	// badSignature makes Sign return a signature over the wrong digest.
 	badSignature bool
 }
@@ -242,7 +244,7 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 	if !ok {
 		var err error
 		curve := elliptic.P384()
-		if req.Msg.GetAlgorithm() == "ES256" {
+		if req.Msg.GetAlgorithm() == "ES256" && !d.wrongCurve {
 			curve = elliptic.P256()
 		}
 		if k, err = ecdsa.GenerateKey(curve, rand.Reader); err != nil {
