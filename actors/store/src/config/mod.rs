@@ -23,6 +23,11 @@ pub trait ConfigSnapshot: Send + Sync {
     /// The document's seq. None: no document of this kind is loaded, which the store service
     /// answers as `unavailable`/`engine` (fail closed), never as an empty kind.
     fn version(&self, segment: &str) -> Option<u64>;
+    /// The document's seq and the items of a config kind, read from one snapshot, so that a swap between the two
+    /// reads cannot stamp the items with the seq of another document.
+    fn listing(&self, segment: &str) -> (Option<u64>, Vec<(String, Vec<u8>)>) {
+        (self.version(segment), self.list(segment))
+    }
     /// The signed document in force for a kind: the bytes the config source gave, exactly. None: no
     /// document of this kind is loaded. store@ vouches for nothing in them; a caller verifies them
     /// itself (signed-config.md "Verifying a document").
@@ -58,6 +63,10 @@ impl ConfigSnapshot for Loader {
     }
     fn version(&self, segment: &str) -> Option<u64> {
         self.snapshot().version(segment)
+    }
+    fn listing(&self, segment: &str) -> (Option<u64>, Vec<(String, Vec<u8>)>) {
+        let snapshot = self.snapshot();
+        (snapshot.version(segment), snapshot.list(segment))
     }
     fn signed(&self, segment: &str) -> Option<Vec<u8>> {
         self.snapshot().signed(segment)

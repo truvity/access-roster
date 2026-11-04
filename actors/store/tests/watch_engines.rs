@@ -366,20 +366,55 @@ fn id_of(m: &WatchResponse) -> String {
         .clone()
 }
 
-/// What a consumer holds if it dedupes by the log sequence: a change at or below what it has applied is a repeat.
+/// What a consumer of a watch holds, as the store API tells it to behave:
+/// - a change of the log carries its sequence, and one at or below the sequence applied is a repeat (at-least-once);
+///   a version is not an identity, because a re-created item starts again at 1;
+/// - a config change has no sequence (resume point 0) and is applied, every one; a config watch begins with the full
+///   snapshot, and the items before the first bookmark replace the state of the kind.
 #[derive(Default)]
 struct Consumer {
     state: std::collections::BTreeMap<String, Vec<u8>>,
     applied: u64,
     deletes: Vec<String>,
+    /// The items of a config watch's opening snapshot, until its first bookmark.
+    opening: std::collections::BTreeMap<String, Vec<u8>>,
+    synced: bool,
 }
 
 impl Consumer {
+    /// A consumer of a config kind, which begins with what a listing gave it.
+    #[allow(dead_code)] // one of the two test files watches a config kind
+    fn listed(state: std::collections::BTreeMap<String, Vec<u8>>) -> Self {
+        Self {
+            state,
+            ..Self::default()
+        }
+    }
+
     fn apply(&mut self, m: &WatchResponse) {
-        if kind_of(m) == ChangeType::CHANGE_TYPE_BOOKMARK || m.resume_point <= self.applied {
+        let config = m.resume_point == 0;
+        if kind_of(m) == ChangeType::CHANGE_TYPE_BOOKMARK {
+            // The first bookmark of a config watch closes its snapshot: it replaces the state of the kind.
+            if config && !self.synced {
+                self.state = std::mem::take(&mut self.opening);
+                self.synced = true;
+            }
             return;
         }
-        self.applied = m.resume_point;
+        if config {
+            if !self.synced {
+                if kind_of(m) == ChangeType::CHANGE_TYPE_PUT {
+                    self.opening
+                        .insert(id_of(m), m.item.as_option().unwrap().value.clone());
+                }
+                return;
+            }
+        } else {
+            if m.resume_point <= self.applied {
+                return;
+            }
+            self.applied = m.resume_point;
+        }
         let id = id_of(m);
         if kind_of(m) == ChangeType::CHANGE_TYPE_DELETE {
             self.state.remove(&id);

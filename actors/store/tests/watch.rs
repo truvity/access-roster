@@ -487,8 +487,8 @@ async fn a_watch_is_refused_like_a_read() {
 // ---- a config kind ----
 
 /// verifies: REQ-DATA-058
-/// A config kind has no change log: a watcher is sent the snapshot in force as puts, then each item that a swap of
-/// the snapshot added, changed or removed, with resume point 0, and a swap of another kind tells it nothing. A
+/// A config kind has no change log: a watcher is sent the snapshot in force as puts and a bookmark, then each item
+/// that a swap of the snapshot added, changed or removed, with resume point 0, and a swap of another kind tells it nothing. A
 /// resume point is refused, so that the watcher reads the kind again.
 #[tokio::test]
 async fn a_swap_of_the_snapshot_is_delivered_to_the_watchers_of_that_kind() {
@@ -512,6 +512,12 @@ async fn a_swap_of_the_snapshot_is_delivered_to_the_watchers_of_that_kind() {
         (ChangeType::CHANGE_TYPE_PUT, "default", 0)
     );
     assert_eq!(m.item.as_option().unwrap().value, b"plan-1".to_vec());
+    // A bookmark closes the snapshot: the items before it are the whole kind.
+    let m = w.msg().await;
+    assert_eq!(
+        (kind_of(&m), m.resume_point),
+        (ChangeType::CHANGE_TYPE_BOOKMARK, 0)
+    );
     assert!(
         w.quiet(SHORT).await,
         "nothing changed since the snapshot was sent"
@@ -574,39 +580,145 @@ async fn an_idle_config_watch_sends_a_bookmark() {
     f.docs.versions.lock().unwrap().insert("key-plan".into(), 1);
     let mut w = f.watch("key-plan", "", 0).await.unwrap();
     assert_eq!(kind_of(&w.msg().await), ChangeType::CHANGE_TYPE_PUT);
-    let m = w.msg().await;
-    assert_eq!(
-        (kind_of(&m), m.resume_point),
-        (ChangeType::CHANGE_TYPE_BOOKMARK, 0)
+    // The bookmark that closes the snapshot, then the one of the silence.
+    for _ in 0..2 {
+        let m = w.msg().await;
+        assert_eq!(
+            (kind_of(&m), m.resume_point),
+            (ChangeType::CHANGE_TYPE_BOOKMARK, 0)
+        );
+        assert!(m.item.as_option().is_none());
+    }
+}
+
+/// verifies: REQ-DATA-058
+/// An item that a swap removes between a listing and the watch: the watch begins with the full snapshot and a
+/// bookmark, and a consumer that replaces its state with the items before that bookmark drops the item. The
+/// changes after it carry no sequence, and the consumer applies every one.
+#[tokio::test]
+async fn a_removal_between_the_listing_and_the_watch_is_not_lost() {
+    let f = F::new().await;
+    f.as_("key");
+    let set = |id: &str, bytes: &[u8], seq: u64| {
+        f.docs
+            .items
+            .lock()
+            .unwrap()
+            .insert(("key-plan".into(), id.into()), bytes.to_vec());
+        f.docs
+            .versions
+            .lock()
+            .unwrap()
+            .insert("key-plan".into(), seq);
+    };
+    set("x", b"plan-x", 1);
+    set("y", b"plan-y", 1);
+    let listed = f
+        .list(ListRequest {
+            kind: "key-plan".into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    let mut c = Consumer::listed(
+        listed
+            .items
+            .iter()
+            .map(|i| (i.address.as_option().unwrap().id.clone(), i.value.clone()))
+            .collect(),
     );
-    assert!(m.item.as_option().is_none());
+    assert_eq!(c.state.len(), 2, "the listing has both items");
+    // A swap removes x before the watch opens.
+    f.docs
+        .items
+        .lock()
+        .unwrap()
+        .remove(&("key-plan".to_owned(), "x".to_owned()));
+    f.docs.versions.lock().unwrap().insert("key-plan".into(), 2);
+    let mut w = f.watch("key-plan", "", 0).await.unwrap();
+    c.drain(&mut w).await;
+    assert!(c.synced, "the snapshot was closed by a bookmark");
+    assert_eq!(
+        c.state.keys().cloned().collect::<Vec<_>>(),
+        vec!["y".to_owned()],
+        "the consumer dropped x"
+    );
+    // Later changes are applied, every one, though they all say resume point 0.
+    {
+        let mut items = f.docs.items.lock().unwrap();
+        items.insert(("key-plan".into(), "y".into()), b"plan-y2".to_vec());
+        items.insert(("key-plan".into(), "z".into()), b"plan-z".to_vec());
+    }
+    f.docs.versions.lock().unwrap().insert("key-plan".into(), 3);
+    c.drain(&mut w).await;
+    assert_eq!(
+        c.state.get("y").map(Vec::as_slice),
+        Some(b"plan-y2".as_slice())
+    );
+    assert_eq!(
+        c.state.get("z").map(Vec::as_slice),
+        Some(b"plan-z".as_slice())
+    );
 }
 
 // ---- a consumer that dedupes by the sequence ----
 
-/// What a consumer of a watch holds: the state of each address, and the sequence it has applied. A change at or
-/// below the sequence of the address is a repeat (at-least-once) and is skipped; a version is not an identity,
-/// because a re-created item starts again at 1.
+/// What a consumer of a watch holds, as the store API tells it to behave:
+/// - a change of the log carries its sequence, and one at or below the sequence applied is a repeat (at-least-once);
+///   a version is not an identity, because a re-created item starts again at 1;
+/// - a config change has no sequence (resume point 0) and is applied, every one; a config watch begins with the full
+///   snapshot, and the items before the first bookmark replace the state of the kind.
 #[derive(Default)]
 struct Consumer {
     state: std::collections::BTreeMap<String, Vec<u8>>,
     applied: u64,
     deletes: Vec<String>,
+    /// The items of a config watch's opening snapshot, until its first bookmark.
+    opening: std::collections::BTreeMap<String, Vec<u8>>,
+    synced: bool,
 }
 
 impl Consumer {
+    /// A consumer of a config kind, which begins with what a listing gave it.
+    #[allow(dead_code)] // one of the two test files watches a config kind
+    fn listed(state: std::collections::BTreeMap<String, Vec<u8>>) -> Self {
+        Self {
+            state,
+            ..Self::default()
+        }
+    }
+
     fn apply(&mut self, m: &WatchResponse) {
-        if kind_of(m) == ChangeType::CHANGE_TYPE_BOOKMARK || m.resume_point <= self.applied {
+        let config = m.resume_point == 0;
+        if kind_of(m) == ChangeType::CHANGE_TYPE_BOOKMARK {
+            // The first bookmark of a config watch closes its snapshot: it replaces the state of the kind.
+            if config && !self.synced {
+                self.state = std::mem::take(&mut self.opening);
+                self.synced = true;
+            }
             return;
         }
-        self.applied = m.resume_point;
-        let item = m.item.as_option().expect("an item");
+        if config {
+            if !self.synced {
+                if kind_of(m) == ChangeType::CHANGE_TYPE_PUT {
+                    self.opening
+                        .insert(id_of(m), m.item.as_option().unwrap().value.clone());
+                }
+                return;
+            }
+        } else {
+            if m.resume_point <= self.applied {
+                return;
+            }
+            self.applied = m.resume_point;
+        }
         let id = id_of(m);
         if kind_of(m) == ChangeType::CHANGE_TYPE_DELETE {
             self.state.remove(&id);
             self.deletes.push(id);
         } else {
-            self.state.insert(id, item.value.clone());
+            self.state
+                .insert(id, m.item.as_option().unwrap().value.clone());
         }
     }
 

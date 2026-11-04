@@ -894,7 +894,7 @@ func (x *WatchRequest) GetResumePoint() uint64 {
 // WatchResponse is one change.
 type WatchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind
+	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind: apply every config change
 	Type          ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
 	Item          *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 	unknownFields protoimpl.UnknownFields
