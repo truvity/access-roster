@@ -162,7 +162,18 @@ impl Service {
         let now = (self.clock)();
         let decision_id = new_uuid_v7(unix_ms(now));
         let digest = engine.digest().to_owned();
-        let verdict = match engine.decide(who.name, &req) {
+        // Cedar recurses: the evaluation runs on a thread with a stack of its own (stack.rs).
+        let (asker, held) = (who.name, Arc::clone(&engine));
+        let decided = crate::stack::run(move || {
+            let verdict = held.decide(asker, &req);
+            (req, verdict)
+        })
+        .await;
+        let Ok((req, verdict)) = decided else {
+            tracing::error!("the evaluation thread ended without a result");
+            return Err(refusal(ErrorCode::Internal, "internal", ""));
+        };
+        let verdict = match verdict {
             Ok(v) => v,
             Err(r) => return Err(self.refuse(who, &req, r, &decision_id, &digest).await),
         };

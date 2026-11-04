@@ -22,3 +22,15 @@ default:
     - signer.ring.add
     - signer.ring.change
     - signer.ring.drop
+    # entry: one action per route, named entry.<route> (actors/entry/src/audit.rs); a request that
+    # matched no route is entry.unrouted (actors/entry/src/handler.rs).
+    - entry.connection
+    - entry.authorize
+    - entry.callback
+    - entry.token
+    - entry.discovery
+    - entry.jwks
+    - entry.unrouted
+    # adapter-upstream-oidc (actors/adapter-upstream-oidc/internal/upstreamd/audit.go).
+    - upstream.begin
+    - upstream.complete

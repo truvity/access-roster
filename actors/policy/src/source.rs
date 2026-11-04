@@ -173,7 +173,7 @@ impl Reloader {
             return Reloaded::Unchanged;
         }
         let count = inputs.policies.len();
-        let outcome = match Engine::build(&inputs) {
+        let outcome = match Engine::build_on_stack(&inputs).await {
             Ok(engine) => {
                 let digest = engine.digest().to_owned();
                 self.service.swap(engine);
