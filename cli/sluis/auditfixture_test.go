@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
@@ -14,7 +15,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
@@ -24,10 +24,26 @@ import (
 
 const fixtureOrigin = "example.com/dev/sluis/audit/main"
 
+// fixtureKey builds the signed-note key and notes of C2SP signed-note type 0x02 on its own, from the standard, and
+// shares no code with the product, so that a mismatch in the product's reading of the format fails a test:
+//
+//	key ID   = SHA-256(DER SubjectPublicKeyInfo)[:4]
+//	vkey     = name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo)
+//	sig line = "\u2014 " name " " base64(key ID || ASN.1 DER ECDSA signature)
+//
+// The signature is over the SHA-384 of the note text (the sluis choice for KMS, see checkpointDigest).
 type fixtureKey struct {
 	priv *ecdsa.PrivateKey
 	name string
+	id   []byte
 	vkey string
+	// digest is what the key signs; the default is SHA-384, and a test sets another to make a note that must be refused.
+	digest func(msg []byte) []byte
+}
+
+func sha384Of(msg []byte) []byte {
+	d := sha512.Sum384(msg)
+	return d[:]
 }
 
 func newFixtureKey(t *testing.T) *fixtureKey {
@@ -40,26 +56,26 @@ func newFixtureKey(t *testing.T) *fixtureKey {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := append([]byte{sigTypeP384}, spki...)
-	var h [4]byte
-	binary.BigEndian.PutUint32(h[:], keyHash(fixtureOrigin, data))
+	sum := sha256.Sum256(spki)
+	id := sum[:4]
 	return &fixtureKey{
-		priv: priv,
-		name: fixtureOrigin,
-		vkey: fixtureOrigin + "+" + hex.EncodeToString(h[:]) + "+" + base64.StdEncoding.EncodeToString(data),
+		priv:   priv,
+		name:   fixtureOrigin,
+		id:     id,
+		vkey:   fixtureOrigin + "+" + hex.EncodeToString(id) + "+" + base64.StdEncoding.EncodeToString(append([]byte{0x02}, spki...)),
+		digest: sha384Of,
 	}
 }
 
-func (k *fixtureKey) Name() string    { return k.name }
-func (k *fixtureKey) KeyHash() uint32 { return keyHash(k.name, mustKeyData(k)) }
-func (k *fixtureKey) Sign(msg []byte) ([]byte, error) {
-	d := sha512.Sum384(msg)
-	return ecdsa.SignASN1(rand.Reader, k.priv, d[:])
-}
-
-func mustKeyData(k *fixtureKey) []byte {
-	spki, _ := x509.MarshalPKIXPublicKey(&k.priv.PublicKey)
-	return append([]byte{sigTypeP384}, spki...)
+// sign returns the signed note: the text, a blank line and one signature line.
+func (k *fixtureKey) sign(t *testing.T, text string) []byte {
+	t.Helper()
+	sig, err := ecdsa.SignASN1(rand.Reader, k.priv, k.digest([]byte(text)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := base64.StdEncoding.EncodeToString(append(append([]byte{}, k.id...), sig...))
+	return []byte(text + "\n\u2014 " + k.name + " " + line + "\n")
 }
 
 type fixtureLog struct {
@@ -92,11 +108,7 @@ func (l *fixtureLog) write(t *testing.T, rel string, b []byte) {
 func (l *fixtureLog) checkpoint(t *testing.T, key *fixtureKey, size int64, hash tlog.Hash) []byte {
 	t.Helper()
 	text := fmt.Sprintf("%s\n%d\n%s\n", fixtureOrigin, size, base64.StdEncoding.EncodeToString(hash[:]))
-	b, err := note.Sign(&note.Note{Text: text}, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
+	return key.sign(t, text)
 }
 
 func (l *fixtureLog) rootAt(t *testing.T, size int64) tlog.Hash {

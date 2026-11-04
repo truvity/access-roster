@@ -155,7 +155,7 @@ func (a *app) login(ctx context.Context, f loginFlags, res *result) error {
 	if tr.IDToken == "" {
 		return refused("login.id_token")
 	}
-	sub, err := idTokenClaims(tr.IDToken, issuer, f.clientID, nonce, a.now())
+	sub, err := verifyIDToken(ctx, a.hc, prov.JWKSURI, tr.IDToken, issuer, f.clientID, nonce, a.now())
 	if err != nil {
 		return err
 	}

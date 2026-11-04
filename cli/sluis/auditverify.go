@@ -73,38 +73,47 @@ func (a *app) auditVerifyCommand() command {
 	}
 }
 
-// sigTypeP384 is the signature type of the log key (docs/standards/index.md, "C2SP signed-note": checkpoints are
-// signed with the P-384 log key, signature type 0x02).
+// sigTypeECDSA is the signature type byte of an ECDSA key in a signed note (C2SP signed-note, "Signature types":
+// 0x02, ECDSA signatures as implemented by github.com/transparency-dev/witness). The standard fixes, for this type:
 //
-// The signed-note format fixes only the shape: a key hash, then the signature. This build takes the key as the
-// type byte followed by the DER SubjectPublicKeyInfo of a P-384 key, and the signature as the ASN.1 DER ECDSA
-// signature over the SHA-384 digest of the note text (FIPS 186-5; RFC 5480 for the key). The key hash is the
-// first four octets of the SHA-256 of the name, a newline, the type byte and the key, as signed-note defines it.
-const sigTypeP384 = 0x02
+//   - the key ID is the first four octets of the SHA-256 of the DER SubjectPublicKeyInfo (not of the name and type
+//     as for Ed25519);
+//   - the verifier key is name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo);
+//   - the signature line carries base64(key ID || ASN.1 DER ECDSA signature).
+//
+// The curve is P-384 here (0029, 0006).
+const sigTypeECDSA = 0x02
+
+// checkpointDigest is the digest that the log key signs, and the one thing in this encoding that differs from the
+// witness implementation (SHA-256): the log key is a P-384 key in AWS KMS (0029, "Tiled log"; 0006), and KMS signs
+// ECDSA_SHA_384 over a digest of exactly 48 octets, so the signer cannot be handed a SHA-256 digest. It is a maintainer
+// decision, kept in this one place: the writer must sign the SHA-384 of the note text, and a verifier of the
+// witness's own kind will not verify these notes.
+func checkpointDigest(msg []byte) []byte {
+	d := sha512.Sum384(msg)
+	return d[:]
+}
 
 // logKey is the verifier of a log's checkpoints, as a note.Verifier.
 type logKey struct {
 	name string
-	hash uint32
+	id   uint32
 	pub  *ecdsa.PublicKey
 }
 
 func (k *logKey) Name() string    { return k.name }
-func (k *logKey) KeyHash() uint32 { return k.hash }
+func (k *logKey) KeyHash() uint32 { return k.id }
 func (k *logKey) Verify(msg, sig []byte) bool {
-	digest := sha512.Sum384(msg)
-	return ecdsa.VerifyASN1(k.pub, digest[:], sig)
+	return ecdsa.VerifyASN1(k.pub, checkpointDigest(msg), sig)
 }
 
-func keyHash(name string, keyData []byte) uint32 {
-	h := sha256.New()
-	h.Write([]byte(name))
-	h.Write([]byte{'\n'})
-	h.Write(keyData)
-	return binary.BigEndian.Uint32(h.Sum(nil)[:4])
+// keyID is the key ID of a DER SubjectPublicKeyInfo.
+func keyID(spki []byte) uint32 {
+	sum := sha256.Sum256(spki)
+	return binary.BigEndian.Uint32(sum[:4])
 }
 
-// parseVerifierKey reads `name+hash+base64(type||key)`.
+// parseVerifierKey reads `name+hex(key ID)+base64(0x02 || SubjectPublicKeyInfo)`.
 func parseVerifierKey(s string) (*logKey, error) {
 	parts := strings.SplitN(s, "+", 3) // the base64 key data may hold a plus sign
 	if len(parts) != 3 || parts[0] == "" || strings.ContainsAny(parts[0], " \t\n") {
@@ -112,19 +121,20 @@ func parseVerifierKey(s string) (*logKey, error) {
 	}
 	h, err := hex.DecodeString(parts[1])
 	if err != nil || len(h) != 4 {
-		return nil, errors.New("the key hash is not eight hex digits")
+		return nil, errors.New("the key ID is not eight hex digits")
 	}
 	data, err := base64.StdEncoding.DecodeString(parts[2])
 	if err != nil || len(data) < 2 {
 		return nil, errors.New("the key data is not base64")
 	}
-	if data[0] != sigTypeP384 {
-		return nil, errors.New("the signature type is not 0x02 (P-384)")
+	if data[0] != sigTypeECDSA {
+		return nil, errors.New("the signature type is not 0x02 (ECDSA)")
 	}
-	if keyHash(parts[0], data) != binary.BigEndian.Uint32(h) {
-		return nil, errors.New("the key hash does not match the key")
+	spki := data[1:]
+	if keyID(spki) != binary.BigEndian.Uint32(h) {
+		return nil, errors.New("the key ID does not match the key")
 	}
-	pk, err := x509.ParsePKIXPublicKey(data[1:])
+	pk, err := x509.ParsePKIXPublicKey(spki)
 	if err != nil {
 		return nil, errors.New("the key is not a DER SubjectPublicKeyInfo")
 	}
@@ -132,7 +142,7 @@ func parseVerifierKey(s string) (*logKey, error) {
 	if !ok || pub.Curve != elliptic.P384() {
 		return nil, errors.New("the key is not a P-384 key")
 	}
-	return &logKey{name: parts[0], hash: binary.BigEndian.Uint32(h), pub: pub}, nil
+	return &logKey{name: parts[0], id: binary.BigEndian.Uint32(h), pub: pub}, nil
 }
 
 // tileHeight is the height of every tlog-tiles tile (C2SP tlog-tiles: 8, so 256 hashes or entries).
