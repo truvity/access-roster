@@ -23,8 +23,8 @@
 //   L18 `tests`, when a record lists it, holds repository paths, each a file that exists inside the repository and
 //       that names the record's id. It is an index for the reader; what counts as evidence is L21
 //   L19 an area with `retired: true` in index.yaml has only withdrawn records; it keeps its file and its ids
-//   L20 `milestone` names a key of catalogue.milestones (index.yaml); a live record without one is a warning while
-//       MILESTONE_REQUIRED is false and an error once it is true (or with --require-milestone). With a board
+//   L20 `milestone` names a key of catalogue.milestones (index.yaml); a live record without one is an error
+//       (MILESTONE_REQUIRED is true; --require-milestone forces it on). With a board
 //       (--board file, or GH_TOKEN/GITHUB_TOKEN to read it) a record whose issues are none of them in its milestone
 //       is a warning
 //   L21 the evidence of a status: a `done` record needs evidence (a test that carries `verifies: REQ-...`, or an
@@ -48,9 +48,9 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 import { collectEvidence } from './collect-evidence.mjs';
 
-// The switch of L20. While false, a live record without `milestone:` is one warning for the whole catalogue (the status
-// page infers its milestone from its issues). It is true now that every live record names its milestone, so a missing
-// milestone is an error. `--require-milestone` stays as a flag that forces it on whatever the constant says.
+// The switch of L20. It is true because every live record names its milestone, so a missing milestone is an error.
+// If it were false, a live record without `milestone:` would be one warning for the whole catalogue (the status page
+// infers its milestone from its issues). `--require-milestone` forces it on whatever the constant says.
 const MILESTONE_REQUIRED = true;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');

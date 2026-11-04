@@ -1417,7 +1417,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: first-version
     issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
@@ -1487,7 +1487,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: first-version
     issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
