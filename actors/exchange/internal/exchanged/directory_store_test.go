@@ -47,15 +47,17 @@ func (s *tenantStore) Get(_ context.Context, req *connect.Request[storev2alpha1.
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: &storev2alpha1.Item{Address: a, Version: 1, Value: v}}), nil
 }
 
-// openKey is a key@ whose Open returns the plaintext it was set up with for one envelope, and refuses the rest as key@
-// does: permission_denied, reason open.
+// openKey is a key@ whose Open returns the plaintext it was set up with for one envelope sealed for one tenant, and
+// refuses the rest as key@ does: permission_denied, reason open. A key opens only at the tenant it was sealed for,
+// as the tenant's chain key does.
 type openKey struct {
 	keyv2alpha1connect.UnimplementedKeyServiceHandler
-	mu    sync.Mutex
-	opens []*keyv2alpha1.OpenItem
-	good  []byte
-	plain []byte
-	rule  bool // refuse every open as key@ does an actor with no rule: permission_denied, reason rule
+	mu        sync.Mutex
+	opens     []*keyv2alpha1.OpenItem
+	good      []byte
+	plain     []byte
+	forTenant string // the tenant the good envelope was sealed for
+	rule      bool   // refuse every open as key@ does an actor with no rule: permission_denied, reason rule
 }
 
 func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenRequest]) (*connect.Response[keyv2alpha1.OpenResponse], error) {
@@ -66,7 +68,7 @@ func (k *openKey) Open(_ context.Context, req *connect.Request[keyv2alpha1.OpenR
 	if k.rule {
 		return nil, refusal.New(connect.CodePermissionDenied, "rule", "items.purpose")
 	}
-	if string(it.GetEnvelope()) != string(k.good) {
+	if string(it.GetEnvelope()) != string(k.good) || it.GetAddress().GetTenant() != k.forTenant {
 		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
 	}
 	return connect.NewResponse(&keyv2alpha1.OpenResponse{Plaintexts: [][]byte{k.plain}}), nil
@@ -86,7 +88,7 @@ func newDirEnv(t *testing.T) *dirEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ky := &openKey{good: []byte("envelope"), plain: facts}
+	ky := &openKey{good: []byte("envelope"), plain: facts, forTenant: testTenant}
 	path, h := storev2alpha1connect.NewStoreServiceHandler(st)
 	serve(t, filepath.Join(d, "store.sock"), "exchange", fakeCfg("store"), rpc.Handler{Path: path, H: h})
 	path, h = keyv2alpha1connect.NewKeyServiceHandler(ky)
@@ -126,7 +128,7 @@ func (e *dirEnv) put(kind, id string, m proto.Message) {
 func (e *dirEnv) session(ends time.Time) {
 	e.put("person", dirSubject, nil)
 	e.put("session-chain", dirSID, &sessionv2alpha1.SessionChain{
-		Subject: dirSubject, ClientId: "sluis-cli", EndsAt: timestamppb.New(ends), SealedChainFacts: []byte("envelope"),
+		Subject: dirSubject, ClientId: "sluis-cli", EndsAt: timestamppb.New(ends), SealedFacts: []byte("envelope"),
 	})
 }
 
@@ -138,7 +140,7 @@ func claimsOf2(over func(*exchanged.Subject)) *exchanged.Subject {
 	return s
 }
 
-// REQ-KEYS-082: exchange opens the chain facts under the chain key.
+// REQ-KEYS-082: exchange opens the chain facts under the chain key of the chain's tenant.
 func TestStoreDirectoryFindsThePersonOfALiveChain(t *testing.T) {
 	e := newDirEnv(t)
 	e.session(t0.Add(time.Hour))
@@ -149,12 +151,12 @@ func TestStoreDirectoryFindsThePersonOfALiveChain(t *testing.T) {
 	if p.ID != dirSubject || p.State != "live" || p.Org != testTenant || len(p.Accounts) != 1 || p.Accounts[0] != "workforce/alice" {
 		t.Errorf("person = %+v", p)
 	}
-	// The facts are opened under the boundary's chain key: purpose chain, no tenant, at the chain's address.
+	// The facts are opened under the tenant's chain key: purpose chain, the chain's tenant, at the chain's address.
 	if len(e.key.opens) != 1 {
 		t.Fatalf("%d opens", len(e.key.opens))
 	}
 	it := e.key.opens[0]
-	if it.GetPurpose() != "chain" || it.GetAddress().GetTenant() != "" || it.GetAddress().GetKind() != "session-chain" || it.GetAddress().GetId() != dirSID {
+	if it.GetPurpose() != "chain" || it.GetAddress().GetTenant() != testTenant || it.GetAddress().GetKind() != "session-chain" || it.GetAddress().GetId() != dirSID {
 		t.Errorf("open = %v", it)
 	}
 }
@@ -184,12 +186,14 @@ func TestStoreDirectoryRefusals(t *testing.T) {
 			e.session(t0.Add(time.Hour))
 			delete(e.store.items, "person/"+testTenant+"/"+dirSubject)
 		}, nil, exchanged.ErrUnknownPerson},
-		{"a chain with only session's own cookie-sealed copy", func(e *dirEnv) {
+		{"a chain with no sealed facts", func(e *dirEnv) {
 			e.session(t0.Add(time.Hour))
 			e.put("session-chain", dirSID, &sessionv2alpha1.SessionChain{
-				Subject: dirSubject, ClientId: "sluis-cli", EndsAt: timestamppb.New(t0.Add(time.Hour)), SealedFacts: []byte("envelope"),
+				Subject: dirSubject, ClientId: "sluis-cli", EndsAt: timestamppb.New(t0.Add(time.Hour)),
 			})
 		}, nil, exchanged.ErrSessionEnded},
+		// REQ-KEYS-082: facts sealed under another tenant's chain key do not open at this tenant's address.
+		{"a chain whose facts were sealed for another tenant", func(e *dirEnv) { e.session(t0.Add(time.Hour)); e.key.forTenant = "globex" }, nil, exchanged.ErrSessionEnded},
 		{"facts that do not open", func(e *dirEnv) { e.session(t0.Add(time.Hour)); e.key.good = []byte("other") }, nil, exchanged.ErrSessionEnded},
 	} {
 		t.Run(c.name, func(t *testing.T) {

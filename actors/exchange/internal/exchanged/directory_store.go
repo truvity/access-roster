@@ -29,9 +29,9 @@ import (
 //   - Person, by the chain's subject: it must exist. Only its existence is read; the item is sealed under the
 //     tenant's data key and opening it needs a grant that a decision gives, which is what these facts are for.
 //   - PersonHold, by the same subject: an item means the person is held (ADR 0019, "States"). Existence only.
-//   - the chain's facts sealed for exchange, opened at key@ under purpose `chain` at the address of the chain with no
-//     tenant (the boundary's chain key, which session seals and exchange alone opens, and which needs no grant; ADR
-//     0006, "Data keys"): the accounts, "<upstream>/<subject claim value>", that policy binds grant names to.
+//   - the chain's facts, opened at key@ under purpose `chain` at the address of the chain in its tenant (the tenant's
+//     chain key, which session seals and opens and exchange opens, and which needs no grant; ADR 0006, "Data keys"):
+//     the accounts, "<upstream>/<subject claim value>", that policy binds grant names to.
 //
 // It writes nothing and holds no state: a call is the reads above.
 type StoreDirectory struct {
@@ -113,7 +113,7 @@ func (d *StoreDirectory) Person(ctx context.Context, tenant string, c *Subject) 
 		state = "held"
 	}
 
-	facts, err := d.facts(ctx, c.SID, chain.GetSealedChainFacts())
+	facts, err := d.facts(ctx, tenant, c.SID, chain.GetSealedFacts())
 	if err != nil {
 		return Person{}, err
 	}
@@ -139,7 +139,7 @@ func (d *StoreDirectory) Check(ctx context.Context) error {
 		return err
 	}
 	_, err = d.keys.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: []*keyv2alpha1.OpenItem{{
-		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Id: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, Envelope: []byte("check"),
+		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Tenant: t.ID, Id: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, Envelope: []byte("check"),
 	}}}))
 	if r, ok := refusal.Reason(err); ok && r == "open" && connect.CodeOf(err) == connect.CodePermissionDenied {
 		return nil
@@ -163,14 +163,15 @@ func (d *StoreDirectory) exists(ctx context.Context, segment, tenant, id string)
 	return false, fmt.Errorf("store get %s: %w", segment, err)
 }
 
-// facts opens the facts of a chain that session sealed for exchange. An envelope that does not open (key@ gives one
-// answer for every cause) is a chain that this boundary did not make, which ends the exchange.
-func (d *StoreDirectory) facts(ctx context.Context, sid string, envelope []byte) (*sessionv2alpha1.SignInFacts, error) {
+// facts opens the facts of a chain that session sealed under the chain key of the chain's tenant. An envelope that does
+// not open (key@ gives one answer for every cause) is a chain that this boundary or this tenant did not make, which
+// ends the exchange.
+func (d *StoreDirectory) facts(ctx context.Context, tenant, sid string, envelope []byte) (*sessionv2alpha1.SignInFacts, error) {
 	if len(envelope) == 0 {
 		return nil, ErrSessionEnded
 	}
 	res, err := d.keys.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: []*keyv2alpha1.OpenItem{{
-		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Id: sid}, Envelope: envelope,
+		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Tenant: tenant, Id: sid}, Envelope: envelope,
 	}}}))
 	if err != nil {
 		if r, ok := refusal.Reason(err); ok && r == "open" && connect.CodeOf(err) == connect.CodePermissionDenied {

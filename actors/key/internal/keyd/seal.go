@@ -32,28 +32,28 @@ func sealable(purpose string) (byte, bool) {
 	return envelope.Code(purpose)
 }
 
-// tenantFits says whether the address's tenant ("" for none) fits the purpose: cookies, chains and grants are the
-// boundary's, and evidence is a tenant's. Data is either (ADR 0006, "Data keys").
+// tenantFits says whether the address's tenant ("" for none) fits the purpose: cookies and grants are the boundary's,
+// and evidence and chains are a tenant's. Data is either (ADR 0006, "Data keys").
 func tenantFits(purpose, tenant string) bool {
 	switch purpose {
-	case "cookie", "chain", "grant":
+	case "cookie", "grant":
 		return tenant == ""
-	case "evidence":
+	case "evidence", "chain":
 		return tenant != ""
 	}
 	return true
 }
 
-// scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies, chains and grants are the
-// boundary's, evidence is a tenant's, and data is the tenant's when the address has a tenant and the boundary's
+// scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies and grants are the boundary's,
+// evidence and chains are a tenant's, and data is the tenant's when the address has a tenant and the boundary's
 // when it has none (ADR 0006, "Data keys"). The rule is about the key in its scope: a right to the tenant `data`
 // key is no right to the boundary `data` key. A purpose in a scope that does not fit it is refused by tenantFits
 // after the rule, as before.
 func scopeOf(purpose string, address *typev2alpha1.Address) string {
 	switch purpose {
-	case "cookie", "chain", "grant":
+	case "cookie", "grant":
 		return registry.ScopeBoundary
-	case "evidence":
+	case "evidence", "chain":
 		return registry.ScopeTenant
 	}
 	if address.GetTenant() == "" {
@@ -62,8 +62,9 @@ func scopeOf(purpose string, address *typev2alpha1.Address) string {
 	return registry.ScopeTenant
 }
 
-// needsGrant says whether a call needs a grant (D-5): a tenant purpose on a tenant address. The boundary
-// purposes are checked by rule only.
+// needsGrant says whether a call needs a grant (D-5): a tenant's data or evidence. The boundary purposes and the
+// tenant's chain are checked by rule only: a grant is a decision of policy, and policy needs the facts that chain
+// seals in order to decide (ADR 0006, "Data keys").
 func needsGrant(purpose, tenant string) bool {
 	return tenant != "" && (purpose == "data" || purpose == "evidence")
 }

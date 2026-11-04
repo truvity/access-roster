@@ -320,7 +320,7 @@ func TestTableSizes(t *testing.T) {
 			}
 		}
 	}
-	if entries != 479 || verbs != 1736 || selfMarks != 704 || keyEntries != 63 || keyOps != 89 {
+	if entries != 479 || verbs != 1736 || selfMarks != 704 || keyEntries != 63 || keyOps != 90 {
 		t.Errorf("store entries %d, verbs %d, self marks %d, key entries %d, key ops %d", entries, verbs, selfMarks, keyEntries, keyOps)
 	}
 }

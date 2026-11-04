@@ -137,7 +137,7 @@ actors:
     calls: [policy, signer, exchange, adapter-upstream-oidc]
     egress: [client-document-hosts]
     key_purposes:
-      - { purpose: chain, ops: [seal] }
+      - { purpose: chain, ops: [seal, open] }
       - { purpose: cookie, ops: [seal, open] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: mac, ops: [mac] }
