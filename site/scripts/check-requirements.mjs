@@ -49,9 +49,9 @@ import { parse } from 'yaml';
 import { collectEvidence } from './collect-evidence.mjs';
 
 // The switch of L20. While false, a live record without `milestone:` is one warning for the whole catalogue (the status
-// page infers its milestone from its issues). The audit that sets `milestone:` on every record flips this to true in the
-// same pull request, and from then on a missing milestone is an error. `--require-milestone` turns it on for one run.
-const MILESTONE_REQUIRED = false;
+// page infers its milestone from its issues). It is true now that every live record names its milestone, so a missing
+// milestone is an error. `--require-milestone` stays as a flag that forces it on whatever the constant says.
+const MILESTONE_REQUIRED = true;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);

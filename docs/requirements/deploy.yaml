@@ -113,6 +113,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-81, section: "8446", depth: Full}
@@ -173,6 +174,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-104, section: "1", depth: Full}

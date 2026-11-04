@@ -788,6 +788,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [960]
@@ -900,6 +901,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards: []
@@ -913,6 +915,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards: []
@@ -926,6 +929,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards: []
@@ -1386,6 +1390,7 @@ requirements:
     source: design-decision
     status: partial
     gap: no-proving-test
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [866]
@@ -1399,6 +1404,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [entry]
     standards: []

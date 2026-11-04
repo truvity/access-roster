@@ -94,6 +94,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [1180]

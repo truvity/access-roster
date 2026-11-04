@@ -52,7 +52,7 @@ An id is `REQ-<AREA>-<nnn>`, for example `REQ-AUTHN-002`.
 | `runtimes` | `all`, or a list of `bare-metal`, `serverless`, `kubernetes`. |
 | `standards` | `{id, section, depth}`: an id from `standards.yaml`, the section, and `Full` or `Partial`. |
 | `features` | Optional: `parity` (part of v1 parity, no single issue) or `design` (specified, no issue yet). Issue numbers go in `issues`, never here. |
-| `milestone` | The Product milestone of the record: a key of `milestones` in `index.yaml` (`first-version`, `v1-parity`, `ciam-upstream`, `quota`, `backlog`), which maps it to the name of an option of the board's `Product milestone` field. Required for a live record once the switch below is on; until then a record without it is placed by its issues and the status page says so. |
+| `milestone` | The Product milestone of the record: a key of `milestones` in `index.yaml` (`first-version`, `v1-parity`, `ciam-upstream`, `quota`, `backlog`), which maps it to the name of an option of the board's `Product milestone` field. Required for every live record (a record that is not `withdrawn`): the switch below is on. |
 | `issues` | Optional: the numbers of the truvity/sluis issues that deliver the record, for example `[915]`. Unique positive integers, at least one when present. They are the work; the `milestone` is where the record belongs. `just check-requirements` warns when a board is at hand and none of the issues is in the record's milestone. |
 | `tests` | Optional: the repository paths of the files that hold the tests, for example `[core/authn/authorize_test.go]`, as an index for the reader. Each path is relative to the repository root, names an existing file, and the file names the record's id. What counts as evidence is the tag, not this list. |
 | `actors` | Optional: the actors that implement the record, by their names in the [actor registry](../architecture/actors.yaml), for example `[policy]`. Each must be an actor whose requirement areas include the record's area; `just check-actors` checks it. A withdrawn record keeps no `actors`. |
@@ -99,10 +99,10 @@ async fn authorize_refuses_plain_challenges() { /* ... */ }
 | A tag names an id the catalogue lacks | error (L21) |
 | A `partial` or `open` record has no `gap:` | error, as before (L15) |
 | `milestone:` names a key `index.yaml` does not declare | error (L20) |
-| A live record has no `milestone:` | warning while the switch is off, error once it is on (L20) |
+| A live record has no `milestone:` | error (L20) |
 | A record names a milestone and none of its issues is in it on the board | warning (L20); needs the board: `--board <file>` (JSON of `{options, issues: [{number, milestone}]}`), or `GH_TOKEN`/`GITHUB_TOKEN` to read the project as the status page does. Without either the check says so and skips this comparison. |
 
-**The switch.** `MILESTONE_REQUIRED` at the top of `site/scripts/check-requirements.mjs` is `false`. The pull request that sets `milestone:` on every live record changes it to `true`, so that a missing milestone is an error from then on. `--require-milestone` turns it on for one run, to see what is left.
+**The switch.** `MILESTONE_REQUIRED` at the top of `site/scripts/check-requirements.mjs` is `true`: every live record names its milestone, and a missing one is an error. `--require-milestone` forces it on whatever the constant says.
 
 ## Attestations
 

@@ -528,6 +528,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -542,6 +543,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -596,6 +598,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}

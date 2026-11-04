@@ -124,11 +124,15 @@ expect('a renumbering map pointing at no record', 'decisions', adr(renumbered([{
 // built with the real schema and vocabulary, one record, and the files its `tests` may name.
 const reqIndex = readFileSync(join(repo, 'docs/requirements/index.yaml'), 'utf8');
 const vocabulary = /^ {2}vocabulary:\n(?: {4}.*\n)+/m.exec(reqIndex)[0];
+// A live record gets `milestone: first-version` unless it names one, is withdrawn, or carries the marker NO_MILESTONE,
+// because a missing milestone is an error now (MILESTONE_REQUIRED).
+const NO_MILESTONE = '    # no milestone on purpose\n';
+const withMilestone = (record) => (/milestone:|status: withdrawn|no milestone on purpose/.test(record) ? record : `${record}    milestone: first-version\n`);
 const catalogueFiles = (record, extra = {}, verification = '{kind: integration-test, ref: "the example test"}') => ({
   'docs/requirements/requirements.schema.json': readFileSync(join(repo, 'docs/requirements/requirements.schema.json'), 'utf8'),
   'docs/requirements/standards.yaml': 'standards:\n  - {id: ST-01, name: "Example standard", group: "Example", register: false}\n',
   'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml}\n  milestones:\n    first-version: "First working version"\n    backlog: "Backlog"\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n`,
-  'docs/requirements/ex.yaml': `schema: 1\narea: EX\nrequirements:\n  - id: REQ-EX-001\n    area: EX\n    statement: "An example MUST do one thing."\n    rationale: "The scratch catalogue needs one record."\n    level: MUST\n    source: design-decision\n    runtimes: all\n    standards: []\n    verification:\n      - ${verification}\n${record}`,
+  'docs/requirements/ex.yaml': `schema: 1\narea: EX\nrequirements:\n  - id: REQ-EX-001\n    area: EX\n    statement: "An example MUST do one thing."\n    rationale: "The scratch catalogue needs one record."\n    level: MUST\n    source: design-decision\n    runtimes: all\n    standards: []\n    verification:\n      - ${verification}\n${withMilestone(record)}`,
   ...extra,
 });
 const reqCheck = join(repo, 'site/scripts/check-requirements.mjs');
@@ -186,10 +190,11 @@ reqExpect('an attestations file that does not parse', catalogueFiles(done(manual
 reqExpect('a catalogue that declares no milestone', catalogueFiles('    status: planned\n    features: [design]\n', { 'docs/requirements/index.yaml': readFileSync(join(repo, 'docs/requirements/index.yaml'), 'utf8').replace(/  milestones:\n(?:    .*\n)+/, '  milestones: {}\n') }), 'fail', { has: ['milestones', 'fewer than 1 properties'] });
 
 const WITH_MILESTONE = (slug) => `    status: planned\n    features: [design]\n    milestone: ${slug}\n`;
-reqExpect('a live record without a milestone is a warning while the switch is off', catalogueFiles('    status: planned\n    features: [design]\n'), 'pass', { has: ['warning: L20 1 live requirements have no milestone'] });
-reqExpect('a live record without a milestone fails when the switch is on', catalogueFiles('    status: planned\n    features: [design]\n'), 'fail', { args: ['--require-milestone'], has: ['error: L20 REQ-EX-001', 'needs a milestone'] });
-reqExpect('a record with a declared milestone, the switch on', catalogueFiles(WITH_MILESTONE('first-version')), 'pass', { args: ['--require-milestone'], lacks: ['L20'] });
-reqExpect('a withdrawn record needs no milestone, the switch on', catalogueFiles('    status: withdrawn\n    superseded_by: [REQ-EX-001]\n'), 'pass', { args: ['--require-milestone'] });
+const NO_MS_RECORD = `    status: planned\n    features: [design]\n${NO_MILESTONE}`;
+reqExpect('a live record without a milestone fails', catalogueFiles(NO_MS_RECORD), 'fail', { has: ['error: L20 REQ-EX-001', 'needs a milestone'] });
+reqExpect('a live record without a milestone fails with --require-milestone too', catalogueFiles(NO_MS_RECORD), 'fail', { args: ['--require-milestone'], has: ['error: L20 REQ-EX-001', 'needs a milestone'] });
+reqExpect('a record with a declared milestone', catalogueFiles(WITH_MILESTONE('first-version')), 'pass', { args: ['--require-milestone'], lacks: ['L20'] });
+reqExpect('a withdrawn record needs no milestone', catalogueFiles('    status: withdrawn\n    superseded_by: [REQ-EX-001]\n'), 'pass', { args: ['--require-milestone'] });
 reqExpect('a milestone that index.yaml does not declare', catalogueFiles(WITH_MILESTONE('someday')), 'fail', { has: ['L20 REQ-EX-001', 'milestone someday is not declared'] });
 reqExpect('a milestone in the board option name instead of the slug', catalogueFiles(WITH_MILESTONE('"First working version"')), 'fail', { has: ['L1', 'does not match'] });
 const board = (issueMilestone) => ({ 'board.json': JSON.stringify({ options: ['First working version', 'Backlog'], issues: [{ number: 5, milestone: issueMilestone }] }) });

@@ -244,6 +244,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.3", depth: Full}
@@ -260,6 +261,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.3", depth: Full}
@@ -274,6 +276,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-11, section: "2", depth: Full}
@@ -288,6 +291,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-11, section: "2", depth: Full}
@@ -302,6 +306,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-11, section: "2", depth: Full}
