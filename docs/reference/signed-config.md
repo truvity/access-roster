@@ -53,6 +53,8 @@ store@ takes these steps in this order and stops at the first failure. Nothing b
 
 A failure names the document by its kind, never the value. A document that is refused is never read.
 
+**A second verifier checks the same steps in Go.** A caller that must not rely on store@ for what a document says reads the signed bytes through [`GetSignedConfig`](/reference/store-api/#getsignedconfig) and takes steps 1 to 5 itself (`kits/go/signedconfig`). key@ does so for the `KeyPlan`, under the `publishers` block of its own copy of the bootstrap file, so a compromised store@ cannot choose who receives a data key ([0006](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). The two verifiers are one contract and not shared code, and the [vectors](#test-vectors) hold them to it.
+
 ## The sequence number
 
 - **A running store takes only a growing sequence.** For a kind, a document with a higher `seq` than the one in force replaces it. A document with the same `seq` and the same digest changes nothing. A document with the same `seq` and another digest, or with a lower `seq`, is refused: two documents must not share a number, and an older one must not come back.
@@ -140,6 +142,8 @@ CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY0
   ]
 }
 ```
+
+The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step.
 
 The payload of a vector is a stand-in: the signature layer does not look into it. Both vectors verify (checked 2026-11-03 with a P-384 verifier outside sluis). The verdicts every implementation, Go and Rust, must give, with the bootstrap file listing both keys and the kind of the vectors under the party's `co_signs`:
 

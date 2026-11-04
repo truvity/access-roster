@@ -941,6 +941,96 @@ func (x *WatchResponse) GetItem() *Item {
 	return nil
 }
 
+// GetSignedConfigRequest asks for the signed document of one config kind.
+type GetSignedConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"` // the kind's segment; a config kind the caller may read
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSignedConfigRequest) Reset() {
+	*x = GetSignedConfigRequest{}
+	mi := &file_sluis_store_v2alpha1_store_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignedConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignedConfigRequest) ProtoMessage() {}
+
+func (x *GetSignedConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_store_v2alpha1_store_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignedConfigRequest.ProtoReflect.Descriptor instead.
+func (*GetSignedConfigRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_store_v2alpha1_store_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetSignedConfigRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+// GetSignedConfigResponse is the signed document in force, so that the caller verifies it itself.
+type GetSignedConfigResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Document      []byte                 `protobuf:"bytes,1,opt,name=document,proto3" json:"document,omitempty"` // the JWS bytes exactly as the config source gave them (signed-config.md); store@ vouches for nothing in them
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSignedConfigResponse) Reset() {
+	*x = GetSignedConfigResponse{}
+	mi := &file_sluis_store_v2alpha1_store_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSignedConfigResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSignedConfigResponse) ProtoMessage() {}
+
+func (x *GetSignedConfigResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_store_v2alpha1_store_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSignedConfigResponse.ProtoReflect.Descriptor instead.
+func (*GetSignedConfigResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_store_v2alpha1_store_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetSignedConfigResponse) GetDocument() []byte {
+	if x != nil {
+		return x.Document
+	}
+	return nil
+}
+
 var File_sluis_store_v2alpha1_store_proto protoreflect.FileDescriptor
 
 const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
@@ -1004,7 +1094,11 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\rWatchResponse\x12!\n" +
 	"\fresume_point\x18\x01 \x01(\x04R\vresumePoint\x124\n" +
 	"\x04type\x18\x02 \x01(\x0e2 .sluis.store.v2alpha1.ChangeTypeR\x04type\x12.\n" +
-	"\x04item\x18\x03 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item*J\n" +
+	"\x04item\x18\x03 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item\",\n" +
+	"\x16GetSignedConfigRequest\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\"5\n" +
+	"\x17GetSignedConfigResponse\x12\x1a\n" +
+	"\bdocument\x18\x01 \x01(\fR\bdocument*J\n" +
 	"\vConsistency\x12\x1b\n" +
 	"\x17CONSISTENCY_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fLINEARIZABLE\x10\x01\x12\f\n" +
@@ -1030,12 +1124,13 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"ChangeType\x12\x1b\n" +
 	"\x17CHANGE_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fCHANGE_TYPE_PUT\x10\x01\x12\x16\n" +
-	"\x12CHANGE_TYPE_DELETE\x10\x022\xcf\x02\n" +
+	"\x12CHANGE_TYPE_DELETE\x10\x022\xbf\x03\n" +
 	"\fStoreService\x12J\n" +
 	"\x03Get\x12 .sluis.store.v2alpha1.GetRequest\x1a!.sluis.store.v2alpha1.GetResponse\x12M\n" +
 	"\x04List\x12!.sluis.store.v2alpha1.ListRequest\x1a\".sluis.store.v2alpha1.ListResponse\x12P\n" +
 	"\x05Write\x12\".sluis.store.v2alpha1.WriteRequest\x1a#.sluis.store.v2alpha1.WriteResponse\x12R\n" +
-	"\x05Watch\x12\".sluis.store.v2alpha1.WatchRequest\x1a#.sluis.store.v2alpha1.WatchResponse0\x01B\xdf\x01\n" +
+	"\x05Watch\x12\".sluis.store.v2alpha1.WatchRequest\x1a#.sluis.store.v2alpha1.WatchResponse0\x01\x12n\n" +
+	"\x0fGetSignedConfig\x12,.sluis.store.v2alpha1.GetSignedConfigRequest\x1a-.sluis.store.v2alpha1.GetSignedConfigResponseB\xdf\x01\n" +
 	"\x18com.sluis.store.v2alpha1B\n" +
 	"StoreProtoP\x01ZEgithub.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1;storev2alpha1\xa2\x02\x03SSX\xaa\x02\x14Sluis.Store.V2alpha1\xca\x02\x14Sluis\\Store\\V2alpha1\xe2\x02 Sluis\\Store\\V2alpha1\\GPBMetadata\xea\x02\x16Sluis::Store::V2alpha1b\x06proto3"
 
@@ -1052,43 +1147,45 @@ func file_sluis_store_v2alpha1_store_proto_rawDescGZIP() []byte {
 }
 
 var file_sluis_store_v2alpha1_store_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_sluis_store_v2alpha1_store_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_sluis_store_v2alpha1_store_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_sluis_store_v2alpha1_store_proto_goTypes = []any{
-	(Consistency)(0),              // 0: sluis.store.v2alpha1.Consistency
-	(Layer)(0),                    // 1: sluis.store.v2alpha1.Layer
-	(Verb)(0),                     // 2: sluis.store.v2alpha1.Verb
-	(ChangeType)(0),               // 3: sluis.store.v2alpha1.ChangeType
-	(*Item)(nil),                  // 4: sluis.store.v2alpha1.Item
-	(*Provenance)(nil),            // 5: sluis.store.v2alpha1.Provenance
-	(*GetRequest)(nil),            // 6: sluis.store.v2alpha1.GetRequest
-	(*GetResponse)(nil),           // 7: sluis.store.v2alpha1.GetResponse
-	(*ListRequest)(nil),           // 8: sluis.store.v2alpha1.ListRequest
-	(*ListResponse)(nil),          // 9: sluis.store.v2alpha1.ListResponse
-	(*WriteRequest)(nil),          // 10: sluis.store.v2alpha1.WriteRequest
-	(*Operation)(nil),             // 11: sluis.store.v2alpha1.Operation
-	(*WriteResponse)(nil),         // 12: sluis.store.v2alpha1.WriteResponse
-	(*WatchRequest)(nil),          // 13: sluis.store.v2alpha1.WatchRequest
-	(*WatchResponse)(nil),         // 14: sluis.store.v2alpha1.WatchResponse
-	(*v2alpha1.Address)(nil),      // 15: sluis.type.v2alpha1.Address
-	(*timestamppb.Timestamp)(nil), // 16: google.protobuf.Timestamp
-	(*v2alpha1.IndexEntry)(nil),   // 17: sluis.type.v2alpha1.IndexEntry
-	(*durationpb.Duration)(nil),   // 18: google.protobuf.Duration
+	(Consistency)(0),                // 0: sluis.store.v2alpha1.Consistency
+	(Layer)(0),                      // 1: sluis.store.v2alpha1.Layer
+	(Verb)(0),                       // 2: sluis.store.v2alpha1.Verb
+	(ChangeType)(0),                 // 3: sluis.store.v2alpha1.ChangeType
+	(*Item)(nil),                    // 4: sluis.store.v2alpha1.Item
+	(*Provenance)(nil),              // 5: sluis.store.v2alpha1.Provenance
+	(*GetRequest)(nil),              // 6: sluis.store.v2alpha1.GetRequest
+	(*GetResponse)(nil),             // 7: sluis.store.v2alpha1.GetResponse
+	(*ListRequest)(nil),             // 8: sluis.store.v2alpha1.ListRequest
+	(*ListResponse)(nil),            // 9: sluis.store.v2alpha1.ListResponse
+	(*WriteRequest)(nil),            // 10: sluis.store.v2alpha1.WriteRequest
+	(*Operation)(nil),               // 11: sluis.store.v2alpha1.Operation
+	(*WriteResponse)(nil),           // 12: sluis.store.v2alpha1.WriteResponse
+	(*WatchRequest)(nil),            // 13: sluis.store.v2alpha1.WatchRequest
+	(*WatchResponse)(nil),           // 14: sluis.store.v2alpha1.WatchResponse
+	(*GetSignedConfigRequest)(nil),  // 15: sluis.store.v2alpha1.GetSignedConfigRequest
+	(*GetSignedConfigResponse)(nil), // 16: sluis.store.v2alpha1.GetSignedConfigResponse
+	(*v2alpha1.Address)(nil),        // 17: sluis.type.v2alpha1.Address
+	(*timestamppb.Timestamp)(nil),   // 18: google.protobuf.Timestamp
+	(*v2alpha1.IndexEntry)(nil),     // 19: sluis.type.v2alpha1.IndexEntry
+	(*durationpb.Duration)(nil),     // 20: google.protobuf.Duration
 }
 var file_sluis_store_v2alpha1_store_proto_depIdxs = []int32{
-	15, // 0: sluis.store.v2alpha1.Item.address:type_name -> sluis.type.v2alpha1.Address
-	16, // 1: sluis.store.v2alpha1.Item.expires_at:type_name -> google.protobuf.Timestamp
-	17, // 2: sluis.store.v2alpha1.Item.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
+	17, // 0: sluis.store.v2alpha1.Item.address:type_name -> sluis.type.v2alpha1.Address
+	18, // 1: sluis.store.v2alpha1.Item.expires_at:type_name -> google.protobuf.Timestamp
+	19, // 2: sluis.store.v2alpha1.Item.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
 	1,  // 3: sluis.store.v2alpha1.Provenance.layer:type_name -> sluis.store.v2alpha1.Layer
-	15, // 4: sluis.store.v2alpha1.GetRequest.address:type_name -> sluis.type.v2alpha1.Address
+	17, // 4: sluis.store.v2alpha1.GetRequest.address:type_name -> sluis.type.v2alpha1.Address
 	0,  // 5: sluis.store.v2alpha1.GetRequest.consistency:type_name -> sluis.store.v2alpha1.Consistency
 	4,  // 6: sluis.store.v2alpha1.GetResponse.item:type_name -> sluis.store.v2alpha1.Item
 	5,  // 7: sluis.store.v2alpha1.GetResponse.provenance:type_name -> sluis.store.v2alpha1.Provenance
 	4,  // 8: sluis.store.v2alpha1.ListResponse.items:type_name -> sluis.store.v2alpha1.Item
 	11, // 9: sluis.store.v2alpha1.WriteRequest.operations:type_name -> sluis.store.v2alpha1.Operation
 	2,  // 10: sluis.store.v2alpha1.Operation.verb:type_name -> sluis.store.v2alpha1.Verb
-	15, // 11: sluis.store.v2alpha1.Operation.address:type_name -> sluis.type.v2alpha1.Address
-	18, // 12: sluis.store.v2alpha1.Operation.ttl:type_name -> google.protobuf.Duration
-	17, // 13: sluis.store.v2alpha1.Operation.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
+	17, // 11: sluis.store.v2alpha1.Operation.address:type_name -> sluis.type.v2alpha1.Address
+	20, // 12: sluis.store.v2alpha1.Operation.ttl:type_name -> google.protobuf.Duration
+	19, // 13: sluis.store.v2alpha1.Operation.indexes:type_name -> sluis.type.v2alpha1.IndexEntry
 	4,  // 14: sluis.store.v2alpha1.WriteResponse.items:type_name -> sluis.store.v2alpha1.Item
 	3,  // 15: sluis.store.v2alpha1.WatchResponse.type:type_name -> sluis.store.v2alpha1.ChangeType
 	4,  // 16: sluis.store.v2alpha1.WatchResponse.item:type_name -> sluis.store.v2alpha1.Item
@@ -1096,12 +1193,14 @@ var file_sluis_store_v2alpha1_store_proto_depIdxs = []int32{
 	8,  // 18: sluis.store.v2alpha1.StoreService.List:input_type -> sluis.store.v2alpha1.ListRequest
 	10, // 19: sluis.store.v2alpha1.StoreService.Write:input_type -> sluis.store.v2alpha1.WriteRequest
 	13, // 20: sluis.store.v2alpha1.StoreService.Watch:input_type -> sluis.store.v2alpha1.WatchRequest
-	7,  // 21: sluis.store.v2alpha1.StoreService.Get:output_type -> sluis.store.v2alpha1.GetResponse
-	9,  // 22: sluis.store.v2alpha1.StoreService.List:output_type -> sluis.store.v2alpha1.ListResponse
-	12, // 23: sluis.store.v2alpha1.StoreService.Write:output_type -> sluis.store.v2alpha1.WriteResponse
-	14, // 24: sluis.store.v2alpha1.StoreService.Watch:output_type -> sluis.store.v2alpha1.WatchResponse
-	21, // [21:25] is the sub-list for method output_type
-	17, // [17:21] is the sub-list for method input_type
+	15, // 21: sluis.store.v2alpha1.StoreService.GetSignedConfig:input_type -> sluis.store.v2alpha1.GetSignedConfigRequest
+	7,  // 22: sluis.store.v2alpha1.StoreService.Get:output_type -> sluis.store.v2alpha1.GetResponse
+	9,  // 23: sluis.store.v2alpha1.StoreService.List:output_type -> sluis.store.v2alpha1.ListResponse
+	12, // 24: sluis.store.v2alpha1.StoreService.Write:output_type -> sluis.store.v2alpha1.WriteResponse
+	14, // 25: sluis.store.v2alpha1.StoreService.Watch:output_type -> sluis.store.v2alpha1.WatchResponse
+	16, // 26: sluis.store.v2alpha1.StoreService.GetSignedConfig:output_type -> sluis.store.v2alpha1.GetSignedConfigResponse
+	22, // [22:27] is the sub-list for method output_type
+	17, // [17:22] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
@@ -1118,7 +1217,7 @@ func file_sluis_store_v2alpha1_store_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_store_v2alpha1_store_proto_rawDesc), len(file_sluis_store_v2alpha1_store_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   11,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

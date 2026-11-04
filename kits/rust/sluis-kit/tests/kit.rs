@@ -18,8 +18,9 @@ use connectrpc::{
 };
 use sluis_kit::{Allow, Identities, ServerConfig, correlation, dial, peer, refusal_reason};
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, GetResponse, Item, ListRequest, ListResponse, StoreService, StoreServiceClient,
-    StoreServiceExt, WatchRequest, WatchResponse, WriteRequest, WriteResponse,
+    GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, Item, ListRequest,
+    ListResponse, StoreService, StoreServiceClient, StoreServiceExt, WatchRequest, WatchResponse,
+    WriteRequest, WriteResponse,
 };
 
 fn my_uid() -> u32 {
@@ -91,6 +92,18 @@ impl StoreService for Fake {
         _request: ServiceRequest<'_, WriteRequest>,
     ) -> ServiceResult<WriteResponse> {
         Ok(Response::new(WriteResponse::default()))
+    }
+
+    async fn get_signed_config(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, GetSignedConfigRequest>,
+    ) -> ServiceResult<GetSignedConfigResponse> {
+        Err(sluis_kit::refusal(
+            ErrorCode::Unimplemented,
+            "unsupported",
+            "",
+        ))
     }
 
     async fn watch(

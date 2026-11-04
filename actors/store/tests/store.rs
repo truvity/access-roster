@@ -1389,6 +1389,50 @@ async fn a_config_kind_is_read_from_the_snapshot_and_never_written() {
     assert!(f.durable.transactions().is_empty() && f.temp.transactions().is_empty());
 }
 
+// REQ-DATA-099: the signed document of a config kind is returned exactly as the source gave it, to the
+// readers of the kind and to nobody else; the answer is a read of the kind, so every refusal of a read applies.
+#[tokio::test]
+async fn req_data_099_the_signed_document_of_a_config_kind_goes_to_its_readers_only() {
+    let f = F::new().await;
+    f.as_("key");
+    // No document loaded: unavailable, never an empty document.
+    refused(
+        f.get_signed_config("key-plan").await,
+        ErrorCode::Unavailable,
+        "engine",
+    );
+    let jws: &[u8] = b"{\"payload\":\"AAAA\",\"signatures\":[]}";
+    f.docs
+        .signed
+        .lock()
+        .unwrap()
+        .insert("key-plan".into(), jws.to_vec());
+    assert_eq!(f.get_signed_config("key-plan").await.unwrap().document, jws);
+    // Another reader of the kind gets it too.
+    f.as_("signer");
+    assert_eq!(f.get_signed_config("key-plan").await.unwrap().document, jws);
+    // An actor with no read rule on the kind does not, and the refusal is the one a read makes.
+    f.as_("session");
+    refused(
+        f.get_signed_config("key-plan").await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    assert!(
+        f.audit()
+            .iter()
+            .any(|e| e.action == "store.refused" && e.reason == "rule"),
+        "a refused read is an audit fact"
+    );
+    // Only a config kind has a signed document: a durable kind, an unknown segment and a bad one are refused.
+    f.as_("key");
+    for kind in ["data-key-wrap", "no-such-kind", "Bad/Kind", ""] {
+        let e = f.get_signed_config(kind).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidArgument, "{kind}");
+        assert_eq!(refusal_path(&e), "kind", "{kind}");
+    }
+}
+
 #[tokio::test]
 async fn a_self_scoped_config_kind_is_read_under_the_callers_name_only() {
     let f = F::new().await;

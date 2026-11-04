@@ -24,7 +24,7 @@ go:
   - { name: "buf.build/go/protovalidate", for: "The protovalidate rules of every Protobuf message, after decoding: the authority in code (protovalidate-go)", needed_by: "ADR 0004" }
   - { name: "connectrpc.com/connect", for: "The Connect protocol, client and server", needed_by: "ADR 0002" }
   - { name: "google.golang.org/protobuf", for: "Protobuf encoding and decoding", needed_by: "ADR 0002" }
-  - { name: "github.com/go-jose/go-jose/v4", for: "JWS, JWK and JWT: verifying tokens and client assertions, reading and writing key sets; never JWE", needed_by: "ADR 0017", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7 (five advisories against v4.1.6 and earlier, published 2026-10-30)" }
+  - { name: "github.com/go-jose/go-jose/v4", for: "JWS, JWK and JWT: verifying tokens and client assertions, verifying signed config documents (kits/go/signedconfig), reading and writing key sets; never JWE", needed_by: "ADR 0017", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7 (five advisories against v4.1.6 and earlier, published 2026-10-30)" }
   - { name: "github.com/go-jose/go-jose/v4/cipher", for: "AES key wrap (RFC 3394) of a data key for the key-agreement key of a board's card; the key-wrap function only", scope: "key@ only; AES-KW only; no JWE", needed_by: "ADR 0006", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7, as the module" }
   - { name: "github.com/zitadel/oidc/v3", for: "The OpenID Provider of session and exchange (pkg/op) and the relying party of the oidc upstream (pkg/client/rp)", needed_by: "ADR 0012", evaluated: "v3.51.16, 2026-10-15; floor v3.47.0 (advisory of 2026-08-24)" }
   - { name: "golang.org/x/oauth2", for: "The OAuth 2.0 client under the relying party of the oidc upstream", needed_by: "ADR 0017", evaluated: "v0.37.0, 2026-08-25" }

@@ -24,8 +24,9 @@ use sluis_proto::sluis::port::item::v2alpha1::{
     DriverItem, QueryRequest, QueryResponse, TransactRequest, TransactResponse, condition::Expect,
 };
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, GetResponse, ListRequest, ListResponse, Operation, StoreServiceClient,
-    StoreServiceExt as _, Verb, WatchRequest, WriteRequest, WriteResponse,
+    GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, ListRequest,
+    ListResponse, Operation, StoreServiceClient, StoreServiceExt as _, Verb, WatchRequest,
+    WriteRequest, WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::{Address, Grant, IndexEntry};
 use store::audit::{AuditEvent, AuditSink};
@@ -320,6 +321,8 @@ pub struct Docs {
     pub items: Mutex<BTreeMap<(String, String), Vec<u8>>>,
     /// segment -> seq
     pub versions: Mutex<HashMap<String, u64>>,
+    /// segment -> the signed document, as a source would give it
+    pub signed: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 impl ConfigSnapshot for Docs {
@@ -341,6 +344,9 @@ impl ConfigSnapshot for Docs {
     }
     fn version(&self, segment: &str) -> Option<u64> {
         self.versions.lock().unwrap().get(segment).copied()
+    }
+    fn signed(&self, segment: &str) -> Option<Vec<u8>> {
+        self.signed.lock().unwrap().get(segment).cloned()
     }
 }
 
@@ -525,6 +531,20 @@ impl F {
 
     pub async fn get_req(&self, r: GetRequest) -> Result<GetResponse, ConnectError> {
         Ok(self.client.get(r).await?.into_owned())
+    }
+
+    pub async fn get_signed_config(
+        &self,
+        kind: &str,
+    ) -> Result<GetSignedConfigResponse, ConnectError> {
+        Ok(self
+            .client
+            .get_signed_config(GetSignedConfigRequest {
+                kind: kind.into(),
+                ..GetSignedConfigRequest::default()
+            })
+            .await?
+            .into_owned())
     }
 
     pub async fn list(&self, r: ListRequest) -> Result<ListResponse, ConnectError> {

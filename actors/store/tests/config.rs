@@ -320,6 +320,30 @@ impl Env {
     }
 }
 
+// REQ-DATA-099: the signed document the snapshot holds is the one in force, byte for byte as the source gave it.
+#[tokio::test]
+async fn req_data_099_the_snapshot_holds_the_signed_bytes_of_the_document_in_force() {
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 3);
+    let loader = e.start().await.unwrap();
+    let on_disk =
+        |segment: &str| std::fs::read(e.docs.path().join(format!("{segment}.jws"))).unwrap();
+    assert_eq!(loader.signed("key-plan"), Some(on_disk("key-plan")));
+    assert_eq!(loader.signed("no-such-kind"), None);
+
+    // A refused reload keeps the document in force, signed bytes included.
+    let before = on_disk("key-plan");
+    e.sign("key-plan", source("key-plan"), 2);
+    let (err, _) = refused_reload(loader.reload().await);
+    assert!(err.to_string().contains("step 5"), "{err}");
+    assert_eq!(loader.signed("key-plan"), Some(before));
+
+    // A reload that takes a newer one serves the newer bytes.
+    e.sign("key-plan", source("key-plan"), 4);
+    assert!(matches!(loader.reload().await, Reloaded::Applied(_)));
+    assert_eq!(loader.signed("key-plan"), Some(on_disk("key-plan")));
+}
+
 #[tokio::test]
 async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
     let e = env().await;

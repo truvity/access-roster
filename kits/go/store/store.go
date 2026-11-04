@@ -191,6 +191,26 @@ func (c *Client[T]) Get(ctx context.Context, tenant, id string, opts ...GetOptio
 	return c.decode(res.Msg.GetItem())
 }
 
+// GetSignedConfig returns the signed document in force of a config kind, named by its registry name ("KeyPlan"):
+// the JWS bytes exactly as the config source holds them (store-api.md, "GetSignedConfig"). Only the readers of the
+// kind may ask. The bytes are returned unread: store@ has verified them, and a caller that must not rely on that
+// verifies them itself (kits/go/signedconfig). A kind with no loaded document is an error from the store, not an
+// empty document.
+func GetSignedConfig(ctx context.Context, c storev2alpha1connect.StoreServiceClient, kind string) ([]byte, error) {
+	k, ok := registry.KindByName(kind)
+	if !ok || k.Class != "config" {
+		return nil, fmt.Errorf("store: %q is not a config kind", kind)
+	}
+	res, err := c.GetSignedConfig(ctx, connect.NewRequest(&storev2alpha1.GetSignedConfigRequest{Kind: k.Segment}))
+	if err != nil {
+		return nil, mapErr("get signed config", err)
+	}
+	if len(res.Msg.GetDocument()) == 0 {
+		return nil, describe("get signed config", refusal.New(connect.CodeInternal, "schema", "document"))
+	}
+	return res.Msg.GetDocument(), nil
+}
+
 // ListOption modifies a List.
 type ListOption func(*listOpts)
 
