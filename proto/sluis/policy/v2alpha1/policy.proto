@@ -27,12 +27,14 @@ message PersonFacts {
   string subject = 1;               // the opaque subject
   repeated string accounts = 2;     // "<upstream>/<subject claim value>"
   string state = 3;                 // the person's state
+  string org = 4;                   // the tenant the person belongs to, from the person's item; required
 }
 
 // ClientFacts are what policy knows about the client asking.
 message ClientFacts {
   string id = 1;                    // the client id
   repeated string requires = 2;     // what the client requires of a sign-in
+  string kind = 3;                  // "public", "confidential" or "exchange", from the client's declaration; required
 }
 
 // ActorFacts are what policy knows about an actor asking; the audit pieces are principals (decision D-6).
