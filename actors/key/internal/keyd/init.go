@@ -152,6 +152,9 @@ func (s *Server) Init(ctx context.Context) error {
 	slog.Info("rewrap visits only the default tenant and the tenants used since start", "default_tenant", s.defaultTenant)
 	s.audit(ctx, Event{Action: ActionStart, Fields: map[string]any{
 		"node": s.cfg.Node, "recipient": s.recipient, "purposes": int64(len(s.keys)),
+		// The KeyPlan this start verified, so that a reviewer matches it to the reviewed file and sees a lag
+		// (ADR 0005, "Freshness at a cold start").
+		"keyplan_seq": int64(s.planLast.seq), "keyplan_sha384": s.planLast.sha384, //nolint:gosec // seq is below 2^53
 	}})
 	listed, _ := plannedRecipients(plan)
 	slog.Info("key@ ready", "boundary", s.cfg.Boundary, "recipient", s.recipient, "purposes", len(s.keys),

@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
-//! The shared vectors of the signed config document: `tests/testdata/signed-config/vectors.json`, which
+//! REQ-KEYS-110: the shared vectors of the signed config document: `tests/testdata/signed-config/vectors.json`, which
 //! `kits/go/signedconfig` runs too. Both implementations must give the same verdict, step for step, because key@
 //! verifies in Go the documents that store@ verifies in Rust (ADR 0005, "Signed config documents"; principle 6: a
 //! contract and vectors, not shared code).
@@ -114,5 +114,71 @@ fn the_sequence_vectors_get_the_same_verdict_as_in_go() {
             other => panic!("{name}: unknown verdict {other}"),
         };
         assert_eq!(got, want, "{name}");
+    }
+}
+
+/// The KeyPlan payload vectors: key@ reads the same text in Go (actors/key/internal/keyd/plan_vectors_test.go) and must
+/// read the same plan, because key@ takes the KeyPlan from the bytes it verified and never from store@'s decoded item.
+#[test]
+fn the_keyplan_payload_vectors_are_read_as_key_reads_them_in_go() {
+    use buffa::Message as _;
+    use sluis_proto::sluis::config::v2alpha1 as pb;
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/testdata/signed-config/keyplan-payloads.json"
+    );
+    let v: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let cases = v["cases"].as_array().unwrap();
+    assert!(
+        cases.len() > 30,
+        "too few cases: a sweep over nothing proves nothing"
+    );
+    let kind = sluis_registry::kind_by_name("KeyPlan").unwrap();
+    for c in cases {
+        let name = c["name"].as_str().unwrap();
+        let got = store::config::payload::decode(kind, c["payload"].as_str().unwrap().as_bytes());
+        if let Some(read) = c.get("read") {
+            let items = got.unwrap_or_else(|e| panic!("{name}: want it read, got {e}"));
+            assert_eq!(items.len(), 1, "{name}");
+            assert_eq!(items[0].0, "default", "{name}");
+            let plan = pb::KeyPlan::decode_from_slice(&items[0].1).unwrap();
+            let strings = |a: &Value| -> Vec<String> {
+                a.as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|s| s.as_str().unwrap().to_owned())
+                    .collect()
+            };
+            assert_eq!(
+                plan.recipients,
+                strings(&read["recipients"]),
+                "{name}: recipients"
+            );
+            assert_eq!(
+                plan.cache_ttl.as_option().map(|d| d.seconds),
+                read["cache_ttl_seconds"].as_i64(),
+                "{name}: cache_ttl"
+            );
+            let want = read["purposes"].as_array().unwrap();
+            assert_eq!(plan.purposes.len(), want.len(), "{name}: purposes");
+            for (p, w) in plan.purposes.iter().zip(want) {
+                assert_eq!(
+                    (p.purpose.as_str(), p.algorithm.as_str(), p.slot.as_str()),
+                    (
+                        w["purpose"].as_str().unwrap(),
+                        w["algorithm"].as_str().unwrap(),
+                        w["slot"].as_str().unwrap()
+                    ),
+                    "{name}"
+                );
+            }
+        } else {
+            let e = got.expect_err(name).to_string();
+            let path = c["refused_path"].as_str().unwrap();
+            assert!(
+                e.contains(path),
+                "{name}: the refusal {e:?} does not name {path:?}"
+            );
+        }
     }
 }

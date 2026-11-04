@@ -38,6 +38,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // testBoundary is the boundary of the vector in store-api.md.
@@ -114,9 +115,15 @@ type fakeStore struct {
 	items      map[string]*storev2alpha1.Item
 	wrapWrites int // CREATE operations of data-key-wrap that were applied
 	failWrites bool
+	// signed holds the signed document of a config kind by its segment, as a config source would. A store@ that is
+	// compromised serves whatever is here, so a test puts a forged document here.
+	signed      map[string][]byte
+	signedCalls int
 }
 
-func newFakeStore() *fakeStore { return &fakeStore{items: map[string]*storev2alpha1.Item{}} }
+func newFakeStore() *fakeStore {
+	return &fakeStore{items: map[string]*storev2alpha1.Item{}, signed: map[string][]byte{}}
+}
 
 func itemKey(a *typev2alpha1.Address) string {
 	return a.GetTenant() + "|" + a.GetKind() + "|" + a.GetId()
@@ -141,6 +148,17 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 		return nil, refusal.New(connect.CodeNotFound, "absent", "")
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: it}), nil
+}
+
+func (f *fakeStore) GetSignedConfig(_ context.Context, req *connect.Request[storev2alpha1.GetSignedConfigRequest]) (*connect.Response[storev2alpha1.GetSignedConfigResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signedCalls++
+	doc, ok := f.signed[req.Msg.GetKind()]
+	if !ok {
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
+	return connect.NewResponse(&storev2alpha1.GetSignedConfigResponse{Document: doc}), nil
 }
 
 func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
@@ -387,6 +405,12 @@ type testEnv struct {
 	clock *clock
 	store *fakeStore
 	sock  string // the store's socket
+
+	// The publisher of the config: its key signs the KeyPlan, and the bootstrap file every node reads pins it.
+	pub       *ecdsa.PrivateKey
+	bootstrap string // the path of the bootstrap file
+	seq       uint64 // the seq of the last KeyPlan signed
+	plan      *configv2alpha1.KeyPlan
 }
 
 // defaultPlan is the KeyPlan of tonight.
@@ -406,29 +430,46 @@ func newTestEnv(t *testing.T, environment string) *testEnv {
 	t.Helper()
 	e := &testEnv{t: t, clock: newClock(), store: newFakeStore()}
 	e.store.put("boundary", "", "default", &configv2alpha1.Boundary{Name: testBoundary, Environment: environment, DefaultTenant: "acme"})
-	e.store.put("key-plan", "", "default", defaultPlan())
+	e.pub = newPublisher(t)
+	e.bootstrap = writeBootstrap(t, publisherEntry("publisher-1", &e.pub.PublicKey))
+	e.putPlan(defaultPlan())
 	e.sock = filepath.Join(shortDir(t), "st.sock")
 	path, h := storev2alpha1connect.NewStoreServiceHandler(e.store)
 	serveFake(t, e.sock, path, h)
 	return e
 }
 
+// putPlan publishes a KeyPlan as the pipeline would: signed by the publisher, under a seq higher than the last. It
+// is what store@ serves from then on.
+func (e *testEnv) putPlan(plan *configv2alpha1.KeyPlan) {
+	e.t.Helper()
+	e.plan = plan
+	e.seq++
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	e.store.signed["key-plan"] = e.sign("publisher-1", e.pub, e.seq, planPayload(e.t, plan))
+}
+
+// sign signs a payload under a key and seq, as a document of the KeyPlan kind.
+func (e *testEnv) sign(kid string, key *ecdsa.PrivateKey, seq uint64, payload []byte) []byte {
+	e.t.Helper()
+	doc, err := signedconfig.Sign(key, kid, seq, payload)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return doc
+}
+
 // list adds recipients to the KeyPlan, as a reviewed and signed commit would.
 func (e *testEnv) list(ids ...string) {
 	e.t.Helper()
-	e.store.mu.Lock()
-	it := e.store.items["|key-plan|default"]
-	e.store.mu.Unlock()
-	plan := &configv2alpha1.KeyPlan{}
-	if err := proto.Unmarshal(it.GetValue(), plan); err != nil {
-		e.t.Fatal(err)
-	}
+	plan := proto.Clone(e.plan).(*configv2alpha1.KeyPlan)
 	for _, id := range ids {
 		if !slices.Contains(plan.Recipients, id) {
 			plan.Recipients = append(plan.Recipients, id)
 		}
 	}
-	e.store.put("key-plan", "", "default", plan)
+	e.putPlan(plan)
 }
 
 // node is one key@ with its driver, its auditor and its sockets.
@@ -481,7 +522,7 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
+		Bootstrap: e.bootstrap, Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)

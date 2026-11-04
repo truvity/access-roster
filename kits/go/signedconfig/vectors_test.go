@@ -79,7 +79,7 @@ func (v vectorFileT) publishers(t *testing.T, set string) []Publisher {
 	return out
 }
 
-// REQ-KEYS-075/signature_vectors: every verdict of the shared vectors, step for step.
+// REQ-KEYS-110/signature_vectors: every verdict of the shared vectors, step for step.
 func TestVectors(t *testing.T) {
 	v := loadVectors(t)
 	// The same floor as the Rust test: a sweep over a file that lost its cases proves nothing.
@@ -125,7 +125,7 @@ func digestOf(t *testing.T, h string) [48]byte {
 	return [48]byte(b)
 }
 
-// REQ-KEYS-075/sequence_vectors: step 5 on the shared vectors, through Compare and through a Sequencer.
+// REQ-KEYS-110/sequence_vectors: step 5 on the shared vectors, through Compare and through a Sequencer.
 func TestSequenceVectors(t *testing.T) {
 	v := loadVectors(t)
 	want := map[string]Sequence{"newer": Newer, "same": Same, "conflict": Conflict, "older": Older}
@@ -158,7 +158,7 @@ func TestSequenceVectors(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075/sequence_keeps_highest: a refused document leaves the held one as it was.
+// REQ-KEYS-110/sequence_keeps_highest: a refused document leaves the held one as it was.
 func TestSequencerKeepsTheHighest(t *testing.T) {
 	var s Sequencer
 	if _, err := s.Admit(&Verified{Seq: 5}); err != nil {
