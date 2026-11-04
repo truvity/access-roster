@@ -29,6 +29,12 @@ const subjectKind = "person"
 
 // attempt is what the audit record of one request says, filled in as the request goes.
 type attempt struct {
+	// client is the client that presented credentials: a value of the shape of a client id, and how it
+	// authenticated. The secret is never here. authenticated is set once the secret was right.
+	client        string
+	method        string
+	authenticated bool
+
 	audience string // only a value that has the shape of a client id
 	tenant   string
 	person   *Person
@@ -84,6 +90,9 @@ func (a *attempt) event(err error) audit.Event {
 			m["amr"] = append([]string{}, s.AMR...)
 		}
 		sluis["assurance"] = m
+	}
+	if a.client != "" {
+		sluis["client"] = map[string]any{"id": a.client, "method": a.method, "authenticated": a.authenticated}
 	}
 	if len(sluis) > 0 {
 		ev.Sluis = sluis

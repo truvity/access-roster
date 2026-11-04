@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -364,13 +366,21 @@ func TestTheRequestIsChecked(t *testing.T) {
 		{"a resource", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Resource = "https://api.example.com" }, "invalid_target", "resource"},
 		{"no audience", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Audience = "" }, "invalid_target", "audience"},
 		{"a long audience", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Audience = strings.Repeat("a", 200) }, "invalid_target", "audience"},
-		{"another client", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "example-app" }, "invalid_request", "client"},
+		// A client that names itself, is not the client of the token and sends no credentials is not authenticated.
+		{"another client with no credentials", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "example-app" }, "invalid_client", "client_authentication"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			r := request(subject)
 			c.mutate(r)
-			failure(t, e.exchange(r), c.code)
+			rep := e.exchange(r)
+			if c.code == "invalid_client" {
+				if rep.GetStatus() != 401 || body(t, rep)["error"] != c.code {
+					t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
+				}
+			} else {
+				failure(t, rep, c.code)
+			}
 			if got := get(e.lastRecord(), "status_code"); got != c.reason {
 				t.Errorf("reason = %v, want %s", got, c.reason)
 			}
@@ -447,7 +457,9 @@ func tamper(token string) string {
 func TestANativePublicClientsTokenMayBeExchanged(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	for _, client := range []string{"sluis-cli", "native-app"} { // no profile, and the profile native
-		r := e.exchange(request(e.mint(subjectClaims(map[string]any{"aud": client, "client_id": client}))))
+		req := request(e.mint(subjectClaims(map[string]any{"aud": client, "client_id": client})))
+		req.ClientId = client
+		r := e.exchange(req)
 		if r.GetStatus() != 200 {
 			t.Errorf("%s: %s", client, r.GetBody())
 		}
@@ -678,61 +690,284 @@ func TestTheKeySetOfTheBoundaryComesFromSignerAndIsKeptForAMinute(t *testing.T) 
 	}
 }
 
-// Until a confidential client is authenticated, a request that carries client credentials is refused, so nothing
-// authenticates by accident (ADR 0022, "Proofs and the exchange"). The refusal comes before the subject token is
-// read: it shows nothing of the subject or the audience.
-func TestARequestWithClientCredentialsIsInvalidClientBeforeAnythingElse(t *testing.T) {
-	e := newEnv(t, envOptions{})
-	subject := e.mint(subjectClaims(nil))
+// ---- client authentication on the exchange (REQ-EXCH-018, REQ-EXCH-019, REQ-CLIENT-001, REQ-CLIENT-002) ----
+
+// authed is an exchange as the confidential client example-app, whose subject token was issued to the public native
+// client sluis-cli (confirmation C-3: the secret authenticates the requesting client, not the subject).
+func authed(e *env, mutate func(*exchangev2alpha1.TokenExchangeRequest)) *exchangev2alpha1.TokenExchangeRequest {
+	r := request(e.mint(subjectClaims(nil)))
+	r.Audience, r.ClientId = "example-app", "" // the confidential client names itself by its credentials
+	mutate(r)
+	return r
+}
+
+func basicHeader(id, secret string) string {
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(url.QueryEscape(id)+":"+url.QueryEscape(secret)))
+}
+
+func wwwAuthenticate(r *typev2alpha1.HttpReply) string {
+	for _, h := range r.GetHeaders() {
+		if h.GetName() == "WWW-Authenticate" {
+			return h.GetValue()
+		}
+	}
+	return ""
+}
+
+func TestREQ_EXCH_018_AConfidentialClientExchangesWithBasicAndWithClientSecret(t *testing.T) {
 	for _, c := range []struct {
 		name   string
 		mutate func(*exchangev2alpha1.TokenExchangeRequest)
-		both   bool // two methods in one request: invalid_request, not a failed authentication
 	}{
-		{"Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Basic dXNlcjpwdw==" }, false},
-		{"client_secret", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientSecret = "s3cret-value" }, false},
-		{"both (RFC 6749 section 2.3)", func(r *exchangev2alpha1.TokenExchangeRequest) {
-			r.Authorization, r.ClientSecret = "Basic dXNlcjpwdw==", "s3cret-value"
-		}, true},
-		{"with a bad subject token", func(r *exchangev2alpha1.TokenExchangeRequest) {
-			r.ClientSecret, r.SubjectToken, r.Audience = "s3cret-value", "not-a-jwt", ""
-		}, false},
+		{"client_secret_basic", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.Authorization = basicHeader("example-app", appSecret)
+		}},
+		{"client_secret_post", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.ClientId, r.ClientSecret = "example-app", appSecret
+		}},
+		{"basic and the same client_id in the body", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.Authorization, r.ClientId = basicHeader("example-app", appSecret), "example-app"
+		}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			r := request(subject)
-			c.mutate(r)
-			rep := e.exchange(r)
-			wantStatus, wantCode, wantReason := int32(401), "invalid_client", "client_authentication"
-			if c.both {
-				wantStatus, wantCode, wantReason = 400, "invalid_request", "client_authentication_methods"
+			e := newEnv(t, envOptions{})
+			rep := e.exchange(authed(e, c.mutate))
+			if rep.GetStatus() != 200 {
+				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
 			}
-			if rep.GetStatus() != wantStatus || body(t, rep)["error"] != wantCode {
+			// The client that asked is in the record, and how it authenticated; the secret is not.
+			rec := e.lastRecord()
+			if get(rec, "metadata", "event_code") != "exchange.token" ||
+				get(rec, "unmapped", "sluis", "client", "id") != "example-app" ||
+				get(rec, "unmapped", "sluis", "client", "authenticated") != true {
+				t.Errorf("record = %v", rec)
+			}
+			assertNoSecret(t, e, rep)
+		})
+	}
+}
+
+// A secret never reaches a reply, a record or a log line.
+func assertNoSecret(t *testing.T, e *env, rep *typev2alpha1.HttpReply) {
+	t.Helper()
+	enc := base64.StdEncoding.EncodeToString([]byte(url.QueryEscape("example-app") + ":" + url.QueryEscape(appSecret)))
+	for _, text := range append([]string{string(rep.GetBody())}, recordsText(t, e)...) {
+		if strings.Contains(text, appSecret) || strings.Contains(text, url.QueryEscape(appSecret)) || strings.Contains(text, enc) {
+			t.Fatalf("a secret is in %q", text)
+		}
+	}
+}
+
+func recordsText(t *testing.T, e *env) []string {
+	t.Helper()
+	var out []string
+	for _, r := range e.transport.records(t) {
+		raw, _ := json.Marshal(r)
+		out = append(out, string(raw))
+	}
+	return out
+}
+
+func TestAnExchangeAsAConfidentialClientMayCarryTheTokenOfAnotherClient(t *testing.T) {
+	// The subject token was issued to sluis-cli; the request is example-app's. That is allowed only because the
+	// subject is a public native client's (REQ-EXCH-020), which a relying party's own token is not.
+	e := newEnv(t, envOptions{})
+	rep := e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	}))
+	if rep.GetStatus() != 200 {
+		t.Fatalf("%s", rep.GetBody())
+	}
+	other := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	})
+	other.SubjectToken = e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"}))
+	failure(t, e.exchange(other), "invalid_request")
+	if got := get(e.lastRecord(), "status_code"); got != "client_kind" {
+		t.Errorf("reason = %v", got)
+	}
+}
+
+func TestREQ_EXCH_019_EveryFailureOfClientAuthenticationIsTheOneInvalidClient(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	for _, c := range []struct {
+		name   string
+		mutate func(*exchangev2alpha1.TokenExchangeRequest)
+	}{
+		{"a wrong secret, Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = basicHeader("example-app", "wrong") }},
+		{"a wrong secret, post", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "example-app", "wrong" }},
+		{"the secret and more", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.ClientId, r.ClientSecret = "example-app", appSecret+"x"
+		}},
+		{"an unknown client, Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = basicHeader("nobody", appSecret) }},
+		{"an unknown client, post", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "nobody", appSecret }},
+		{"an id that is not an address", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "No Body/..", appSecret }},
+		// REQ-CLIENT-001: a public client that presents a secret is a configuration error that must be visible.
+		{"a public client presents a secret, Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = basicHeader("sluis-cli", appSecret) }},
+		{"a public client presents a secret, post", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.ClientId, r.ClientSecret = "native-app", appSecret
+		}},
+		{"a machine client holds no secret", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "machine-app", appSecret }},
+		{"another scheme", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Bearer " + appSecret }},
+		{"bad base64", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Basic ###" }},
+		{"a secret with no client", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientSecret = appSecret }},
+		{"Basic names another client than the body", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.Authorization, r.ClientId = basicHeader("example-app", appSecret), "sluis-cli"
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rep := e.exchange(authed(e, c.mutate))
+			if rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
 				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
 			}
 			// Every 401 of the token endpoint carries WWW-Authenticate (contracts.md), whatever method was used.
-			var www string
-			for _, h := range rep.GetHeaders() {
-				if h.GetName() == "WWW-Authenticate" {
-					www = h.GetValue()
-				}
-			}
-			if (www != "") != !c.both || (!c.both && !strings.HasPrefix(www, "Basic ")) {
-				t.Errorf("WWW-Authenticate = %q", www)
+			if www := wwwAuthenticate(rep); !strings.HasPrefix(www, "Basic ") {
+				t.Errorf("WWW-Authenticate = %q, want a Basic challenge", www)
 			}
 			rec := e.lastRecord()
-			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != wantReason {
+			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != "client_authentication" {
 				t.Errorf("record = %v", rec)
+			}
+			if get(rec, "unmapped", "sluis", "client", "authenticated") == true {
+				t.Errorf("a refused client is recorded as authenticated: %v", rec)
 			}
 		})
 	}
+	// Nothing past the client check ran: not the directory, policy, key@ or the signer.
 	if n := len(e.policy.requests()) + len(e.signer.requests()) + len(e.key.pairwise()); n != 0 {
-		t.Errorf("a refused request reached policy, signer or key@ %d times", n)
+		t.Errorf("a refused client reached policy, signer or key@ %d times", n)
 	}
-	// No record and no reply holds the credential.
-	for _, rec := range e.transport.records(t) {
-		raw, _ := json.Marshal(rec)
-		if strings.Contains(string(raw), "s3cret-value") || strings.Contains(string(raw), "dXNlcjpwdw") {
-			t.Fatalf("a record carries the credential: %s", raw)
+	// No reply and no record holds the secret.
+	for _, text := range recordsText(t, e) {
+		if strings.Contains(text, appSecret) || strings.Contains(text, url.QueryEscape(appSecret)) {
+			t.Fatalf("a record carries the secret: %s", text)
 		}
 	}
+}
+
+// An unknown client, a client with no secret and a wrong secret are indistinguishable to the caller: the same reply
+// bytes, the same headers, and the same calls to store@ (REQ-EXCH-019). The comparison is in kits/go/clientauth.
+func TestREQ_EXCH_019_AnUnknownClientAndAWrongSecretAreTheSameAnswerWithTheSameCalls(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.store.put("installation-client", "no-secret-app", &configv2alpha1.InstallationClient{Id: "no-secret-app", Kind: "confidential"})
+	type outcome struct {
+		answer string
+		gets   map[string]int
+	}
+	measure := func(id string) outcome {
+		before := map[string]int{}
+		e.store.mu.Lock()
+		for k, v := range e.store.gets {
+			before[k] = v
+		}
+		e.store.mu.Unlock()
+		ans := e.answer(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = id, "wrong secret" }))
+		e.store.mu.Lock()
+		defer e.store.mu.Unlock()
+		d := map[string]int{}
+		for k, v := range e.store.gets {
+			d[k] = v - before[k]
+		}
+		// The subject token's own client is read in every case; the cases differ only in the client asked about.
+		return outcome{ans, d}
+	}
+	wrong, unknown, none := measure("example-app"), measure("nobody"), measure("no-secret-app")
+	for name, o := range map[string]outcome{"unknown": unknown, "no secret": none} {
+		if o.answer != wrong.answer {
+			t.Errorf("%s: answer %s differs from a wrong secret's %s", name, o.answer, wrong.answer)
+		}
+		if fmt.Sprint(o.gets) != fmt.Sprint(wrong.gets) {
+			t.Errorf("%s: store@ was asked %v, a wrong secret asks %v", name, o.gets, wrong.gets)
+		}
+	}
+	if wrong.gets["installation-client-secret"] != 1 || wrong.gets["installation-client"] < 1 {
+		t.Errorf("a failed authentication asks %v", wrong.gets)
+	}
+}
+
+func TestBothAuthenticationMethodsAreAnInvalidRequest(t *testing.T) {
+	// RFC 6749 section 2.3: one method in each request. entry refuses this too; exchange does not trust that.
+	e := newEnv(t, envOptions{})
+	failure(t, e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization, r.ClientSecret = basicHeader("example-app", appSecret), appSecret
+	})), "invalid_request")
+	if got := get(e.lastRecord(), "status_code"); got != "client_authentication_methods" {
+		t.Errorf("reason = %v", got)
+	}
+}
+
+func TestAClientIsAuthenticatedBeforeTheSubjectTokenIsRead(t *testing.T) {
+	// A failure shows nothing of the subject or the audience: a bad subject and a bad audience are not reported
+	// to a caller whose authentication failed.
+	e := newEnv(t, envOptions{})
+	bad := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "example-app", "wrong" })
+	bad.SubjectToken, bad.Audience, bad.Scope = "not-a-jwt", "no-such-app", "openid"
+	good := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "example-app", "wrong" })
+	if e.answer(bad) != e.answer(good) {
+		t.Errorf("a failed authentication shows %s for a bad request and %s for a good one", e.answer(bad), e.answer(good))
+	}
+}
+
+func TestAStoreThatIsDownIsAnOutageNotInvalidClient(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	e.store.fail = true
+	r := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId, r.ClientSecret = "example-app", appSecret })
+	res, err := e.client.Token(context.Background(), connect.NewRequest(r))
+	if err == nil || connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("got %v, %v; want unavailable (the call fails closed)", res, err)
+	}
+}
+
+// The maintainer's decision of 2026-11-04, option (a) (ADR 0022; REQ-EXCH-007, REQ-EXCH-011): a public client of the
+// native profile may exchange a token issued to ITSELF without a secret. Every other exchange is made by an
+// authenticated confidential client. The rule is publicSelfExchange in service.go.
+func TestAPublicNativeClientMayExchangeItsOwnTokenAndNothingElseWithoutASecret(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	// The rule: a native public client, naming itself, with the token it holds.
+	for _, id := range []string{"sluis-cli", "native-app"} { // no profile, and the profile native
+		r := request(e.mint(subjectClaims(map[string]any{"aud": id, "client_id": id})))
+		r.ClientId = id
+		rep := e.exchange(r)
+		if rep.GetStatus() != 200 {
+			t.Errorf("%s: %s", id, rep.GetBody())
+		}
+		rec := e.lastRecord()
+		if get(rec, "unmapped", "sluis", "client", "id") != id || get(rec, "unmapped", "sluis", "client", "authenticated") != false {
+			t.Errorf("%s: record = %v", id, rec)
+		}
+	}
+	// The refusals, each invalid_client and each before anything past the client check ran.
+	for _, c := range []struct {
+		name   string
+		mutate func(*exchangev2alpha1.TokenExchangeRequest)
+	}{
+		{"no client named", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "" }},
+		{"another public client's token", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "native-app" }},
+		{"a confidential client without credentials", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "example-app" }},
+		{"an unknown client", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "nobody" }},
+		{"a machine client without credentials", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientId = "machine-app" }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := request(e.mint(subjectClaims(nil))) // the token of sluis-cli
+			c.mutate(r)
+			n := len(e.policy.requests())
+			rep := e.exchange(r)
+			if rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
+				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
+			}
+			if len(e.policy.requests()) != n {
+				t.Error("a refused client reached policy")
+			}
+		})
+	}
+	// A public client that presents a secret is refused, even for its own token (REQ-CLIENT-001).
+	own := request(e.mint(subjectClaims(nil)))
+	own.ClientId, own.ClientSecret = "sluis-cli", appSecret
+	if rep := e.exchange(own); rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
+		t.Errorf("a public client with a secret: status %d: %s", rep.GetStatus(), rep.GetBody())
+	}
+	// A browser client's own token is not a subject at all (REQ-EXCH-020).
+	br := request(e.mint(subjectClaims(map[string]any{"aud": "browser-app", "client_id": "browser-app"})))
+	br.ClientId = "browser-app"
+	failure(t, e.exchange(br), "invalid_request")
 }

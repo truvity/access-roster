@@ -111,7 +111,8 @@ type fakeStore struct {
 	items  map[string]*storev2alpha1.Item // "<kind>/<tenant>/<id>"
 	ttls   map[string]time.Duration
 	writes int
-	fail   bool // Get and Write answer unavailable
+	fail   bool           // Get and Write answer unavailable
+	gets   map[string]int // Get calls by kind
 }
 
 func addr(a *typev2alpha1.Address) string { return a.GetKind() + "/" + a.GetTenant() + "/" + a.GetId() }
@@ -128,6 +129,10 @@ func (f *fakeStore) put(kind, id string, m proto.Message) {
 func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequest]) (*connect.Response[storev2alpha1.GetResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.gets == nil {
+		f.gets = map[string]int{}
+	}
+	f.gets[req.Msg.GetAddress().GetKind()]++
 	if f.fail {
 		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
 	}
@@ -423,6 +428,9 @@ type env struct {
 	signerCl  signerv2alpha1connect.SignerServiceClient
 }
 
+// appSecret is the secret of example-app: reserved characters on purpose. No record, reply or log may repeat it.
+const appSecret = "s3cret: p@ss/w%rd +ok&=;" //nolint:gosec // G101: a test value, not a credential
+
 var testPerson = exchanged.Person{ID: "p-7f3a", Accounts: []string{"workforce/u-1001"}, State: "live", Org: testTenant}
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -445,6 +453,10 @@ func newEnv(t *testing.T, o envOptions) *env {
 		app.TtlCap = durationpb.New(o.clientCap)
 	}
 	st.put("installation-client", "example-app", app)
+	// The secret of example-app, as store@ answers a get of InstallationClientSecret. It has characters that a
+	// form-URL-encoded Basic header must carry (REQ-CLIENT-002).
+	app.Secret = "client-example-app"
+	st.put("installation-client-secret", "example-app", &configv2alpha1.InstallationClientSecret{Client: "example-app", Secret: []byte(appSecret)})
 	st.put("installation-client", "browser-app", &configv2alpha1.InstallationClient{Id: "browser-app", Kind: "public", Profile: "browser"})
 	st.put("installation-client", "native-app", &configv2alpha1.InstallationClient{Id: "native-app", Kind: "public", Profile: "native"})
 	st.put("installation-client", "machine-app", &configv2alpha1.InstallationClient{Id: "machine-app", Kind: "exchange"})
@@ -553,6 +565,8 @@ const (
 func request(subject string) *exchangev2alpha1.TokenExchangeRequest {
 	return &exchangev2alpha1.TokenExchangeRequest{
 		GrantType: grantType, SubjectToken: subject, SubjectTokenType: accessType, RequestedTokenType: accessType, Audience: "example-app",
+		// The command-line client names itself, as `sluis token` does: a public client's own exchange needs it.
+		ClientId: "sluis-cli",
 	}
 }
 

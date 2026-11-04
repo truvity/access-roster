@@ -137,33 +137,35 @@ requirements:
       - {kind: integration-test, ref: "an exchange between two installations of one operator that both declare the trust is accepted"}
   - id: REQ-EXCH-007
     area: EXCH
-    statement: "A client that exchanges tokens MUST be confidential."
+    statement: "A client that exchanges tokens MUST be confidential, except a public client of the native profile that exchanges a token issued to itself (decision of 2026-11-04, ADR 0022)."
     rationale: "Public clients cannot hold an exchange authority."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.1", depth: Full}
       - {id: ST-01, section: "2.3", depth: Full}
     issues: [785]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
-      - {kind: integration-test, ref: "public client exchange negative test"}
+      - {kind: integration-test, ref: "a public client that exchanges the token of another client, a browser client's token, or a token with a secret is refused; a native public client exchanges its own token"}
   - id: REQ-EXCH-011
     area: EXCH
     split_from: REQ-EXCH-007
-    statement: "A client that exchanges tokens MUST authenticate."
+    statement: "A client that exchanges tokens MUST authenticate, except a public client of the native profile that exchanges a token issued to itself (decision of 2026-11-04, ADR 0022)."
     rationale: "Public clients cannot hold an exchange authority."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.1", depth: Full}
       - {id: ST-01, section: "2.3", depth: Full}
     issues: [785]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
-      - {kind: integration-test, ref: "unauthenticated exchange negative test"}
+      - {kind: integration-test, ref: "a confidential client without credentials, and a public client that names another client than the token's, are refused with invalid_client"}
   - id: REQ-EXCH-012
     area: EXCH
     statement: "The token exchange endpoint MUST refuse an exchange when the directory person of the subject is disabled."
@@ -246,11 +248,12 @@ requirements:
     rationale: "A confidential client's token must not be exchanged by a caller that does not hold its secret (ADR 0022)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     actors: [exchange]
     standards: [{id: ST-07, section: "2.1", depth: Partial}]
     issues: [782]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "a confidential client exchanges with Basic and with client_secret; without either it is refused with invalid_client"}
   - id: REQ-EXCH-019
@@ -259,13 +262,14 @@ requirements:
     rationale: "A wrong secret and an unknown client must look the same (ADR 0022)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     actors: [exchange]
     standards: [{id: ST-01, section: "5.2", depth: Partial}]
     issues: [782]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
-      - {kind: integration-test, ref: "a wrong secret, a retired secret and an unknown client give the same answer"}
+      - {kind: integration-test, ref: "a wrong secret, an unknown client and a client with no secret give the same answer and the same calls to store@; a retired secret joins when rotation exists (#790)"}
   - id: REQ-EXCH-020
     area: EXCH
     statement: "Until private_key_jwt client authentication is supported, exchange MUST accept as a subject token only a token issued to a public client of the native profile."
