@@ -8,7 +8,8 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -25,7 +26,8 @@ requirements:
     rationale: "Verifiers select the key by kid."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -42,7 +44,8 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -79,7 +82,8 @@ requirements:
     rationale: "One curve that every driver supports keeps the default simple."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -97,7 +101,8 @@ requirements:
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -309,7 +314,8 @@ requirements:
     rationale: "Tokens must never be cached."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -403,7 +409,8 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -420,7 +427,8 @@ requirements:
     rationale: "The nonce binds the token to the request."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -437,7 +445,8 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:

@@ -65,3 +65,4 @@ catalogue:
     smoke-not-in-ci: "Covered only by a smoke program that does not run in CI; the record is done once a test that CI runs proves it."
     test-gap: "Built, or true because nothing offers it, but the tests that CI runs do not yet prove the whole statement; the record is done once one does."
     attestation-missing: "Built, and verified by manual review; the check is not yet recorded in attestations.yaml."
+    external-suite-not-run: "The external conformance suite or vector set named in its verification does not run in CI yet; the unit tests that do run are tagged as evidence."
