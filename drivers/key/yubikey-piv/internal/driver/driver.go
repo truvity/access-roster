@@ -105,6 +105,8 @@ type Service struct {
 	keys    map[string]*slotKey
 
 	pin pinMemory
+	// oneTime is the one-time key of this driver's PIN release request in flight, if any (pinrelease.go).
+	oneTime *oneTime
 
 	ages *ages
 	now  func() time.Time
@@ -195,6 +197,7 @@ func (s *Service) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pin.release()
+	s.oneTime = nil
 	return s.card.Close()
 }
 
