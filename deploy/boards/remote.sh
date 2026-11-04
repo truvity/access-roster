@@ -20,6 +20,11 @@ card_pcscd_dropin=/etc/systemd/system/pcscd.socket.d/10-sluis.conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 
+# The checks of the board's operating system (os_family, check_card_prerequisites, relabel) are in remote-lib.sh, which travels
+# in the stage beside this file; they read $card_polkit_policy and $state_root.
+# shellcheck source=/dev/null
+. "$(dirname "$0")/remote-lib.sh"
+
 # What deploy may add, and so what undeploy may remove. Anything else in the manifest is refused.
 allowed_path() {
 	case "$1" in
@@ -135,11 +140,8 @@ deploy)
 	# deploy are taken away (the key@ template of this deploy already names the software driver again).
 	card_changed=0
 	if [ -d "$stage/files/card" ]; then
-		# The card service and its reader driver: on the Orange Pi image they are there already; if not, apt installs them.
-		if ! dpkg -s pcscd libccid >/dev/null 2>&1; then
-			echo "remote: installing pcscd and libccid"
-			DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pcscd libccid
-		fi
+		# The card service, its reader driver and, where pcscd asks polkit, polkit are the image's: checked, never installed.
+		check_card_prerequisites || exit 1
 		install_card() { # source dest [mode]
 			allowed_path "$2" || { echo "remote: refusing $2" >&2; exit 1; }
 			d=$(dirname "$2")
@@ -152,7 +154,9 @@ deploy)
 		}
 		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
 		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" 0600 # the card the driver is bound to; systemd reads it as root
-		# pcsc-lite as Debian and Ubuntu 22.04 build it has no polkit: the socket group above is the control there.
+		# A pcscd that ships its polkit policy asks polkit about every client and refuses a system service by default (Ubuntu 26.04,
+		# Rocky 10): the rule is what admits the card driver, and the socket group is the second lock. A pcscd without polkit (Ubuntu
+		# 22.04) has the socket group alone.
 		if [ -e "$card_polkit_policy" ]; then
 			install_card "$stage/files/card/pcsc-polkit.rules" "$card_polkit_rules"
 		fi
@@ -169,7 +173,7 @@ deploy)
 	sort_manifest
 
 	# The seed: the signed config and the bootstrap file (root's, public), the credentials (root's, mode 0400, read by
-	# systemd's LoadCredential=), and the rqlite address of this board. Every file is listed before it is made.
+	# systemd's LoadCredentialEncrypted=), and the rqlite address of this board. Every file is listed before it is made.
 	if [ -d "$stage/files/etc" ]; then
 		mkdir_noted() { # dir mode
 			if [ ! -d "$1" ]; then
@@ -197,6 +201,7 @@ deploy)
 		note file "$dest"
 		install -m 0644 -o root -g root "$stage/files/etc/rqlite.env" "$dest"
 		if [ -d "$stage/files/etc/credentials" ]; then
+			require_credential_encryption || exit 1
 			mkdir_noted /etc/sluis/credentials 0700
 			mkdir_noted "/etc/sluis/credentials/$boundary" 0700
 			for d in "$stage"/files/etc/credentials/*/; do
@@ -206,12 +211,18 @@ deploy)
 					dest=/etc/sluis/credentials/$boundary/$owner/$(basename "$f")
 					allowed_path "$dest" || { echo "remote: refusing $dest" >&2; exit 1; }
 					note file "$dest"
-					install -m 0400 -o root -g root "$f" "$dest"
+					# The units read the credential with LoadCredentialEncrypted=, so it is encrypted here, on the board, under
+					# the board's own host key (/var/lib/systemd/credential.secret, which systemd-creds makes on first use). A
+					# reflash makes a new key, and a file encrypted under the old one no longer opens: the next deploy encrypts
+					# every credential again, always, from the staged plain file, which the stage removal then deletes.
+					encrypt_credential "$(basename "$f")" "$f" "$dest"
 				done
 			done
 		fi
 		sort_manifest
 	fi
+
+	relabel
 
 	# Verify before anything starts.
 	units=()

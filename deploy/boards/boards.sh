@@ -196,6 +196,7 @@ stage() { # dir
 		[ ! -f "$units/$stem.tmpfiles" ] || cp "$units/$stem.tmpfiles" "$s/files/tmpfiles/$stem-dev.conf"
 	done
 	install -m 0755 "$here/remote.sh" "$s/remote.sh"
+	install -m 0644 "$here/remote-lib.sh" "$s/remote-lib.sh"
 	# The seed: public documents and the credentials, every board alike. The rqlite address is per board and is
 	# written by run_on.
 	if [ -d "$seed/config" ]; then
@@ -542,6 +543,7 @@ undeploy | status)
 	: >"$tmp/plan.tsv"
 	mkdir -p "$tmp/files"
 	install -m 0755 "$here/remote.sh" "$tmp/remote.sh"
+	install -m 0644 "$here/remote-lib.sh" "$tmp/remote-lib.sh"
 	if [ -n "$dry" ]; then
 		echo "dry run: would run remote.sh $mode on ${boards[*]}"
 		exit 0
