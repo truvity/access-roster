@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -59,6 +60,9 @@ func ParsePublishers(bootstrap []byte) ([]Publisher, error) {
 	return out, nil
 }
 
+// kidPattern is the name of a kid as the bootstrap file makes it (bootstrap-file.md, "Schema and validation").
+var kidPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
 func publisher(n *yaml.Node) (Publisher, error) {
 	if n.Kind != yaml.MappingNode {
 		return Publisher{}, errors.New("must be a mapping")
@@ -82,6 +86,9 @@ func publisher(n *yaml.Node) (Publisher, error) {
 	kid, err := str("kid")
 	if err != nil {
 		return Publisher{}, err
+	}
+	if !kidPattern.MatchString(kid) {
+		return Publisher{}, errors.New("kid: must be lower-case kebab-case, 1 to 32 characters, starting with a letter")
 	}
 	text, err := str("public_key")
 	if err != nil {

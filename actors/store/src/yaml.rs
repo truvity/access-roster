@@ -84,6 +84,14 @@ pub fn parse(source: &str) -> Result<Value, YamlError> {
             col,
         });
     }
+    // A byte order mark only at the start: the Go reader of key@ refuses it elsewhere, and the two read alike.
+    if source
+        .strip_prefix('\u{feff}')
+        .unwrap_or(source)
+        .contains('\u{feff}')
+    {
+        return Err(whole("byte order mark"));
+    }
     // Rule 5: a directive before the content.
     for (n, line) in source.lines().enumerate() {
         let t = line.trim_start_matches([' ', '\u{feff}']);
@@ -372,6 +380,8 @@ mod tests {
 
     #[test]
     fn the_profile_vectors_are_read() {
+        // A byte order mark at the start is read; anywhere else it is refused.
+        assert_eq!(parse("\u{feff}a: 1\n").unwrap(), map(vec![("a", n("1"))]));
         assert_eq!(
             parse("a: 1\nb: [x, y]\nc: {d: true}\n").unwrap(),
             map(vec![
@@ -426,6 +436,8 @@ mod tests {
         refused("a: !foo bar\n", "tag");
         refused("a: !!str 12\n", "tag");
         refused("a: ! 12\n", "tag");
+        refused("a: 1\n\u{feff}b: 2\n", "byte order mark");
+        refused("\u{feff}\u{feff}a: 1\n", "byte order mark");
         refused("a: 1\n---\nb: 2\n", "more than one document");
         refused("? [a, b]\n: 1\n", "key is not a scalar");
         refused("a: [1,\n", "syntax error");

@@ -4,9 +4,12 @@ package keyd
 
 import (
 	"context"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -245,7 +248,7 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := parseMark(raw, keyPlanKind)
+	m, _, err := parseMark(raw, keyPlanKind)
 	if err != nil || m.seq != newerSeq {
 		t.Fatalf("mark = %+v, %v; want seq %d", m, err, newerSeq)
 	}
@@ -306,7 +309,7 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 		t.Fatalf("Init with a newer document: %v", err)
 	}
 	raw2, _ := os.ReadFile(filepath.Join(state, planMarkFile)) //nolint:gosec // a path in the test's temporary directory
-	if m2, err := parseMark(raw2, keyPlanKind); err != nil || m2.seq != e.seq {
+	if m2, _, err := parseMark(raw2, keyPlanKind); err != nil || m2.seq != e.seq {
 		t.Fatalf("mark after the newer document = %+v, %v; want seq %d", m2, err, e.seq)
 	}
 }
@@ -486,4 +489,63 @@ func TestOwnershipOfStateIsChecked(t *testing.T) {
 	if err := checkStateDir(dir); err != nil {
 		t.Fatalf("own directory: %v", err)
 	}
+}
+
+// verifies: REQ-KEYS-110
+// A mark of the first form (seq and sha384, no kind line) is read once, with the kind of the file's name, so that an
+// install that holds one keeps its rollback protection; the serving process rewrites it with its kind and the check
+// command does not. A legacy mark that is ahead of the store still refuses the older document.
+func TestMarkOfTheFirstFormIsReadAndRewritten(t *testing.T) {
+	legacy := func(seq uint64, payload []byte) string {
+		d := sha512.Sum384(payload)
+		return fmt.Sprintf("seq %d\nsha384 %s\n", seq, hex.EncodeToString(d[:]))
+	}
+	t.Run("the same document starts, and the mark is rewritten", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		path := filepath.Join(state, planMarkFile)
+		old := legacy(e.seq, planPayload(t, e.plan))
+		if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// The check command reads it and leaves it as it is.
+		if err := n.srv.Check(context.Background()); err != nil && strings.Contains(err.Error(), "mark") {
+			t.Fatalf("Check = %v", err)
+		}
+		if got, _ := os.ReadFile(path); string(got) != old { //nolint:gosec // a path in the test's temporary directory
+			t.Fatalf("the check command rewrote the mark: %q", got)
+		}
+		if err := n.srv.Init(context.Background()); err != nil {
+			t.Fatalf("Init with a mark of the first form: %v", err)
+		}
+		got, err := os.ReadFile(path) //nolint:gosec // a path in the test's temporary directory
+		if err != nil || !strings.HasPrefix(string(got), "kind KeyPlan\nseq "+strconv.FormatUint(e.seq, 10)+"\n") {
+			t.Fatalf("the mark after Init = %q, %v; want the current form with its kind", got, err)
+		}
+	})
+	t.Run("a mark that is ahead still refuses the older document", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		ahead := legacy(e.seq+5, []byte("a later document"))
+		if err := os.WriteFile(filepath.Join(state, planMarkFile), []byte(ahead), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		err := n.srv.Init(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "step 5: a lower seq") {
+			t.Fatalf("Init = %v, want the rollback protection to hold", err)
+		}
+	})
+	t.Run("the mark of the Boundary, too", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		if err := os.WriteFile(filepath.Join(state, boundaryMarkFile), []byte(legacy(e.seqB+5, []byte("later"))), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.srv.Init(context.Background()); err == nil || !strings.Contains(err.Error(), "step 5: a lower seq") {
+			t.Fatalf("Init = %v, want the Boundary's rollback protection to hold", err)
+		}
+	})
 }
