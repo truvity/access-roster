@@ -17,3 +17,5 @@ default:
     - signer.ring.add
     - signer.ring.change
     - signer.ring.drop
+    - exchange.token
+    - exchange.refused
