@@ -12,6 +12,14 @@ bin_dir=/opt/sluis/bin
 manifest=/etc/sluis/deployed-$boundary.manifest
 state_root=/var/lib/sluis-state
 
+# The files of a board that runs the card driver (boards.sh, SLUIS_BOARDS_KEY_DRIVER=yubikey-piv), besides its unit and
+# the key@ unit that requires it: the first closes the card service to everyone but the card driver's group and root, the
+# second does the same through polkit on a board whose pcscd is built with it.
+card_serial_env=/etc/sluis/yubikey-piv-$boundary.env
+card_pcscd_dropin=/etc/systemd/system/pcscd.socket.d/10-sluis.conf
+card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
+card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
+
 # What deploy may add, and so what undeploy may remove. Anything else in the manifest is refused.
 allowed_path() {
 	case "$1" in
@@ -20,6 +28,7 @@ allowed_path() {
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
+	"$card_pcscd_dropin" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
 	esac
 	return 1
 }
@@ -28,6 +37,7 @@ allowed_dir() {
 	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
+	/etc/systemd/system/pcscd.socket.d | /etc/polkit-1/rules.d) return 0 ;;
 	/etc/sluis/config | /etc/sluis/config/"$boundary" | /etc/sluis/bootstrap.d) return 0 ;;
 	/etc/sluis/credentials | /etc/sluis/credentials/"$boundary" | /etc/sluis/credentials/"$boundary"/sluis-*) return 0 ;;
 	"$state_root" | "$state_root"/*) return 0 ;;
@@ -121,6 +131,43 @@ deploy)
 	systemd-tmpfiles --create "${tmpfiles[@]}"
 	sort_manifest
 
+	# The card variant: pcscd and its drivers, the drop-in and the polkit rule. Without it, the files of an earlier card
+	# deploy are taken away (the key@ template of this deploy already names the software driver again).
+	card_changed=0
+	if [ -d "$stage/files/card" ]; then
+		# The card service and its reader driver: on the Orange Pi image they are there already; if not, apt installs them.
+		if ! dpkg -s pcscd libccid >/dev/null 2>&1; then
+			echo "remote: installing pcscd and libccid"
+			DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pcscd libccid
+		fi
+		install_card() { # source dest
+			allowed_path "$2" || { echo "remote: refusing $2" >&2; exit 1; }
+			d=$(dirname "$2")
+			if [ ! -d "$d" ]; then
+				note dir "$d"
+				install -d -m 0755 -o root -g root "$d"
+			fi
+			note file "$2"
+			install -m 0644 -o root -g root "$1" "$2"
+		}
+		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
+		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" # the card the driver is bound to
+		# pcsc-lite as Debian and Ubuntu 22.04 build it has no polkit: the socket group above is the control there.
+		if [ -e "$card_polkit_policy" ]; then
+			install_card "$stage/files/card/pcsc-polkit.rules" "$card_polkit_rules"
+		fi
+		card_changed=1
+	else
+		for f in "$card_pcscd_dropin" "$card_polkit_rules" "$card_serial_env"; do
+			if [ -e "$f" ]; then
+				rm -f -- "$f"
+				echo "removed $f"
+				card_changed=1
+			fi
+		done
+	fi
+	sort_manifest
+
 	# The seed: the signed config and the bootstrap file (root's, public), the credentials (root's, mode 0400, read by
 	# systemd's LoadCredential=), and the rqlite address of this board. Every file is listed before it is made.
 	if [ -d "$stage/files/etc" ]; then
@@ -172,6 +219,18 @@ deploy)
 		units+=("$instance")
 	done <"$stage/plan.tsv"
 	systemctl daemon-reload
+	if [ "$card_changed" = 1 ]; then
+		# The card service takes its socket's group from the drop-in only when it is started again.
+		systemctl stop pcscd.service pcscd.socket 2>/dev/null || true
+		systemctl start pcscd.socket
+	fi
+	# The two key drivers serve one socket: the one this deploy does not start is stopped and disabled.
+	for other in sluis-drv-key-software@$boundary.service sluis-drv-key-yubikey-piv@$boundary.service; do
+		printf '%s\n' "${units[@]}" | grep -qx "$other" && continue
+		if systemctl cat "$other" >/dev/null 2>&1; then
+			systemctl disable --now "$other" 2>&1 | sed "s|^|disable $other: |" || true
+		fi
+	done
 	for u in "${units[@]}"; do
 		if ! out=$(systemd-analyze verify "$u" 2>&1); then
 			printf '%s\n' "$out" | sed "s|^|verify $u: |" >&2
@@ -232,6 +291,10 @@ undeploy)
 		esac
 	done <"$manifest"
 	systemctl daemon-reload
+	if grep -q "pcscd.socket.d" "$manifest"; then
+		systemctl stop pcscd.service pcscd.socket 2>/dev/null || true
+		systemctl start pcscd.socket || true
+	fi
 	# Users and groups that deploy made.
 	while IFS=$'\t' read -r kind value; do
 		case "$kind" in

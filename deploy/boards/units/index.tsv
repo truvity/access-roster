@@ -2,6 +2,7 @@
 sluis-drv-indexer-fs@dev.service	sluis-drv-indexer-fs@.service	driver	drivers/indexer/fs	sluis-drv-indexer-fs-dev	61028	sluis-drv-writer-fs,sluis-indexer,sluis-reader
 sluis-drv-indexer-sqlite@dev.service	sluis-drv-indexer-sqlite@.service	driver	drivers/indexer/sqlite	sluis-drv-indexer-sqlite-dev	61026	sluis-indexer,sluis-reader
 sluis-drv-key-software@dev.service	sluis-drv-key-software@.service	driver	drivers/key/software	sluis-drv-key-software-dev	61023	sluis-key
+sluis-drv-key-yubikey-piv@dev.service	sluis-drv-key-yubikey-piv@.service	driver	drivers/key/yubikey-piv	sluis-drv-key-yubikey-piv-dev	61030	sluis-key
 sluis-drv-store-credential@dev.service	sluis-drv-store-credential@.service	driver	drivers/store/credential	sluis-drv-store-credential-dev	61022	sluis-store
 sluis-drv-store-file@dev.service	sluis-drv-store-file@.service	driver	drivers/store/file	sluis-drv-store-file-dev	61021	sluis-store
 sluis-drv-store-rqlite-durable@dev.service	sluis-drv-store-rqlite-durable@.service	driver	drivers/store/rqlite	sluis-drv-store-rqlite-dev	61020	sluis-store

@@ -31,12 +31,37 @@ const (
 	blobLog   = "/var/lib/sluis-state/dev/drv-writer-fs/audit/main"
 )
 
-// units the smoke needs active on a board before it starts.
-var units = []string{
-	"sluis-drv-key-software", "sluis-drv-store-credential", "sluis-drv-store-file", "sluis-drv-store-rqlite-durable",
-	"sluis-drv-store-rqlite-temp", "sluis-drv-writer-fs", "sluis-drv-writer-spool",
-	"sluis-store", "sluis-key", "sluis-writer", "sluis-entry", "sluis-policy", "sluis-signer",
+// units the smoke needs active on a board before it starts. The key driver is the software one, or the card driver when
+// the boards were deployed with SLUIS_BOARDS_KEY_DRIVER=yubikey-piv (the same variable; boards.sh); the card driver must
+// have been unlocked first (`sluis node unlock`), or key@ cannot sign. SLUIS_SMOKE_STOP_AFTER=token ends the run after
+// the token (steps 0 to 2), which then needs neither the audit writer nor the rest of the trail.
+func unitsFor(keyDriver, stopAfter string) ([]string, error) {
+	var drv string
+	switch keyDriver {
+	case "", "software":
+		drv = "sluis-drv-key-software"
+	case "yubikey-piv":
+		drv = "sluis-drv-key-yubikey-piv"
+	default:
+		return nil, fmt.Errorf("SLUIS_BOARDS_KEY_DRIVER must be software or yubikey-piv, not %q", keyDriver)
+	}
+	l := []string{
+		drv, "sluis-drv-store-credential", "sluis-drv-store-file", "sluis-drv-store-rqlite-durable",
+		"sluis-drv-store-rqlite-temp", "sluis-drv-writer-fs", "sluis-drv-writer-spool",
+		"sluis-store", "sluis-key", "sluis-entry", "sluis-policy", "sluis-signer",
+	}
+	switch stopAfter {
+	case "":
+		l = append(l, "sluis-writer")
+	case "token":
+	default:
+		return nil, fmt.Errorf("SLUIS_SMOKE_STOP_AFTER must be empty or token, not %q", stopAfter)
+	}
+	return l, nil
 }
+
+// units is the list of this run, set by smoke.
+var units []string
 
 // board is one board reached over SSH.
 type board struct {
@@ -56,6 +81,11 @@ func smoke() error {
 	if agent == "" {
 		agent = os.Getenv("SSH_AUTH_SOCK")
 	}
+	stopAfter := os.Getenv("SLUIS_SMOKE_STOP_AFTER")
+	var err error
+	if units, err = unitsFor(os.Getenv("SLUIS_BOARDS_KEY_DRIVER"), stopAfter); err != nil {
+		return err
+	}
 	root, err := repoRoot()
 	if err != nil {
 		return err
@@ -74,18 +104,22 @@ func smoke() error {
 		}
 		b := &board{addr: addr, user: user, agent: agent}
 		fmt.Printf("######## board %s\n", addr)
-		err := b.run(step, cli, done)
+		err := b.run(step, cli, done, stopAfter == "token")
 		b.cleanup()
 		if err != nil {
 			return fmt.Errorf("board %s: %w", addr, err)
 		}
 		done = append(done, b)
 	}
+	if stopAfter == "token" {
+		fmt.Printf("\nsmoke: the token path passed on %d boards (the audit trail and the shared store were not checked)\n", len(done))
+		return nil
+	}
 	fmt.Printf("\nsmoke: M1 passed on %d boards\n", len(done))
 	return nil
 }
 
-func (b *board) run(step, cli string, earlier []*board) error {
+func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 	out, err := b.sh(nil, "hostname")
 	if err != nil {
 		return err
@@ -143,6 +177,11 @@ func (b *board) run(step, cli string, earlier []*board) error {
 	}
 	b.keyID = dec.KeyID
 	fmt.Printf("signature:     ES384, verified with kid %s from /jwks of entry on this board (through its socket, as the forwarder's uid)\n", dec.KeyID)
+
+	if tokenOnly {
+		fmt.Println("stopped after the token (SLUIS_SMOKE_STOP_AFTER=token): the audit trail and the shared store were not checked")
+		return nil
+	}
 
 	// --- 3. The audit trail.
 	fmt.Println("== 3. The audit trail (emitters, spool, writer, fs blob)")
