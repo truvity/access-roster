@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime};
 
 use buffa_types::google::protobuf::Timestamp;
 use sluis_proto::sluis::r#type::v2alpha1::Grant;
+use sluis_registry::KeyScope;
 
 /// How long a grant lives: ADR 0007 says about 60 seconds, and `key@` refuses a grant that lives
 /// longer than 60 seconds or ends later than 65 seconds from its own clock.
@@ -20,12 +21,17 @@ pub const STORE_VERBS: [&str; 6] = ["get", "list", "create", "update", "delete",
 /// `sign` are named for the grant's later users).
 pub const KEY_OPS: [&str; 4] = ["seal", "open", "mac", "sign"];
 
-/// The tenant purposes of the key registry, by the operation a grant can name.
-fn purposes(op: &str) -> &'static [&'static str] {
+/// The purposes of the key registry a grant can reach, with the scope of each, by the operation a
+/// grant can name. The data keys are the tenant's, so the boundary `data` key is not among them:
+/// a grant never reaches it.
+fn purposes(op: &str) -> &'static [(KeyScope, &'static str)] {
     match op {
-        "seal" | "open" => &["data", "evidence"],
-        "mac" => &["pseudonym", "pairwise"],
-        "sign" => &["release-signing"],
+        "seal" | "open" => &[(KeyScope::Tenant, "data"), (KeyScope::Tenant, "evidence")],
+        "mac" => &[
+            (KeyScope::Tenant, "pseudonym"),
+            (KeyScope::Tenant, "pairwise"),
+        ],
+        "sign" => &[(KeyScope::Boundary, "release-signing")],
         _ => &[],
     }
 }
@@ -50,7 +56,7 @@ pub fn ceiling(holder: &str) -> (Vec<&'static str>, Vec<&'static str>) {
         .filter(|op| {
             purposes(op)
                 .iter()
-                .any(|p| sluis_registry::key_allows(holder, p, op))
+                .any(|(scope, p)| sluis_registry::key_allows(holder, *scope, p, op))
         })
         .collect();
     (verbs, ops)

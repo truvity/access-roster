@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -118,26 +119,26 @@ func emitGo(m *model) ([]byte, error) {
 	}
 	p("}\n\n")
 
-	perKeyActor := map[string]map[string]uint8{}
-	for k, ops := range m.keys {
-		if perKeyActor[k[0]] == nil {
-			perKeyActor[k[0]] = map[string]uint8{}
-		}
-		perKeyActor[k[0]][k[1]] = ops
+	krs := make([]keyUse, 0, len(m.keys))
+	for k := range m.keys {
+		krs = append(krs, k)
 	}
-	p("// keyRules: actor, then key purpose, then the ops (bit i is opNames[i]).\nvar keyRules = map[string]map[string]uint8{\n")
-	for _, a := range sortedKeys(perKeyActor) {
-		p("\t%q: {\n", a)
-		for _, s := range sortedKeys(perKeyActor[a]) {
-			var ops []string
-			for i, o := range opNames {
-				if perKeyActor[a][s]&(1<<i) != 0 {
-					ops = append(ops, o)
-				}
-			}
-			p("\t\t%q: 0x%02x, // %s\n", s, perKeyActor[a][s], strings.Join(ops, " "))
+	slices.SortFunc(krs, cmpKeyUse)
+	p("// keyRules: actor, then the scope and the purpose of the key, then the ops (bit i is opNames[i]). The scope is\n// \"boundary\" or \"tenant\": the purpose `data` is both, with different users.\nvar keyRules = map[string]map[KeyUse]uint8{\n")
+	for i, k := range krs {
+		if i == 0 || krs[i-1].Actor != k.Actor {
+			p("\t%q: {\n", k.Actor)
 		}
-		p("\t},\n")
+		var ops []string
+		for j, o := range opNames {
+			if m.keys[k]&(1<<j) != 0 {
+				ops = append(ops, o)
+			}
+		}
+		p("\t\t{Scope: %q, Purpose: %q}: 0x%02x, // %s\n", k.Scope, k.Purpose, m.keys[k], strings.Join(ops, " "))
+		if i == len(krs)-1 || krs[i+1].Actor != k.Actor {
+			p("\t},\n")
+		}
 	}
 	p("}\n\n")
 

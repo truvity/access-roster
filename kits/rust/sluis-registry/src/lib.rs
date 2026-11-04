@@ -1,5 +1,5 @@
 //! The enforcement tables that every process of sluis compiles in: the store's rules
-//! (actor x kind x verb), key's rules (actor x purpose x op), the call graph and the pinned uids.
+//! (actor x kind x verb), key's rules (actor x scope x purpose x op), the call graph and the pinned uids.
 //!
 //! `generated.rs` is made by `tools/gen/registry` from `docs/architecture/actors.yaml`,
 //! `kinds.yaml` and `keys.yaml`, so that nothing that enforces least privilege is written by hand
@@ -165,17 +165,39 @@ pub fn is_writer(actor: &str, segment: &str) -> bool {
     store_rule(actor, segment).is_some_and(|bits| bits & (1 << CREATE) != 0)
 }
 
+/// The scope of a key purpose (`docs/architecture/keys.yaml`): the keys of the key store and the
+/// boundary data keys are the boundary's, the tenant data keys a tenant's. The purpose name `data`
+/// is both, with different users, so a rule is about the purpose in a scope.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyScope {
+    Boundary,
+    Tenant,
+}
+
+impl KeyScope {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Boundary => "boundary",
+            Self::Tenant => "tenant",
+        }
+    }
+}
+
 /// Whether the actor may ask key for the op (`seal`, `open`, `sign`, `mac`, `public-key`, `wrap`
-/// or `unwrap`) under the key purpose.
+/// or `unwrap`) under the key purpose in the scope. An actor allowed the tenant `data` key has no
+/// right to the boundary `data` key unless `keys.yaml` lists it as a user there too.
 #[must_use]
-pub fn key_allows(actor: &str, purpose: &str, op: &str) -> bool {
-    let Ok(i) = KEY_RULES.binary_search_by(|(a, p, _)| (*a, *p).cmp(&(actor, purpose))) else {
+pub fn key_allows(actor: &str, scope: KeyScope, purpose: &str, op: &str) -> bool {
+    let scope = scope.as_str();
+    let Ok(i) =
+        KEY_RULES.binary_search_by(|(a, s, p, _)| (*a, *s, *p).cmp(&(actor, scope, purpose)))
+    else {
         return false;
     };
     let (Some(rule), Some(bit)) = (KEY_RULES.get(i), OPS.iter().position(|o| *o == op)) else {
         return false;
     };
-    rule.2 & (1 << bit) != 0
+    rule.3 & (1 << bit) != 0
 }
 
 fn lookup(
@@ -266,7 +288,7 @@ mod tests {
         assert!(
             KEY_RULES
                 .windows(2)
-                .all(|w| (w[0].0, w[0].1) < (w[1].0, w[1].1))
+                .all(|w| (w[0].0, w[0].1, w[0].2) < (w[1].0, w[1].1, w[1].2))
         );
         assert!(KIND_BY_NAME.windows(2).all(|w| w[0].0 < w[1].0));
         assert!(KIND_BY_SEGMENT.windows(2).all(|w| w[0].0 < w[1].0));
@@ -288,13 +310,13 @@ mod tests {
         assert_eq!(KINDS.len(), 112);
         assert_eq!(ACTORS.len(), 20);
         assert_eq!(STORE_RULES.len(), 480);
-        assert_eq!(KEY_RULES.len(), 59);
+        assert_eq!(KEY_RULES.len(), 61);
         let verbs: u32 = STORE_RULES.iter().map(|r| (r.2 & 0x7f).count_ones()).sum();
         let self_marks: u32 = STORE_RULES
             .iter()
             .map(|r| (r.2 >> SELF_SHIFT).count_ones())
             .sum();
-        let ops: u32 = KEY_RULES.iter().map(|r| r.2.count_ones()).sum();
-        assert_eq!((verbs, self_marks, ops), (1742, 704, 84));
+        let ops: u32 = KEY_RULES.iter().map(|r| r.3.count_ones()).sum();
+        assert_eq!((verbs, self_marks, ops), (1742, 704, 87));
     }
 }

@@ -44,6 +44,24 @@ func tenantFits(purpose, tenant string) bool {
 	return true
 }
 
+// scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies and grants are the
+// boundary's, evidence is a tenant's, and data is the tenant's when the address has a tenant and the boundary's
+// when it has none (ADR 0006, "Data keys"). The rule is about the key in its scope: a right to the tenant `data`
+// key is no right to the boundary `data` key. A purpose in a scope that does not fit it is refused by tenantFits
+// after the rule, as before.
+func scopeOf(purpose string, address *typev2alpha1.Address) string {
+	switch purpose {
+	case "cookie", "grant":
+		return registry.ScopeBoundary
+	case "evidence":
+		return registry.ScopeTenant
+	}
+	if address.GetTenant() == "" {
+		return registry.ScopeBoundary
+	}
+	return registry.ScopeTenant
+}
+
 // needsGrant says whether a call needs a grant (D-5): a tenant purpose on a tenant address. The boundary
 // purposes are checked by rule only.
 func needsGrant(purpose, tenant string) bool {
@@ -94,7 +112,7 @@ func (s *Server) Seal(ctx context.Context, req *connect.Request[keyv2alpha1.Seal
 	if !ok {
 		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if !registry.KeyAllows(caller, m.GetPurpose(), "seal") {
+	if !registry.KeyAllows(caller, scopeOf(m.GetPurpose(), m.GetAddress()), m.GetPurpose(), "seal") {
 		return nil, s.refuse(ctx, caller, "seal", m.GetPurpose(), "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	tenant, addr, ok := s.addressOf(m.GetAddress())
@@ -148,7 +166,7 @@ func (s *Server) Open(ctx context.Context, req *connect.Request[keyv2alpha1.Open
 		if !ok {
 			return nil, s.refuse(ctx, caller, "open", purpose, "", connect.CodeInvalidArgument, reasonPurpose, "items.purpose")
 		}
-		if !registry.KeyAllows(caller, purpose, "open") {
+		if !registry.KeyAllows(caller, scopeOf(purpose, it.GetAddress()), purpose, "open") {
 			return nil, s.refuse(ctx, caller, "open", purpose, "", connect.CodePermissionDenied, reasonRule, "items.purpose")
 		}
 		tenant, addr, ok := s.addressOf(it.GetAddress())

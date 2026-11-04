@@ -246,17 +246,58 @@ func TestSealOpenRules(t *testing.T) {
 func TestBoundaryDataKeyNeedsNoGrant(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
-	env, err := seal1(n.client("session"), "data", "enrolment-token", "", "x", []byte("tok"), nil)
+	// exchange seals and opens the boundary data key (keys.yaml lists exchange and console there), console opens it.
+	env, err := seal1(n.client("exchange"), "data", "enrolment-token", "", "x", []byte("tok"), nil)
 	if err != nil {
 		t.Fatalf("boundary data without a grant: %v", err)
 	}
-	pt, err := open1(n.client("session"), "data", "enrolment-token", "", "x", env, nil)
+	pt, err := open1(n.client("exchange"), "data", "enrolment-token", "", "x", env, nil)
 	if err != nil || string(pt) != "tok" {
 		t.Fatalf("Open = %q, %v", pt, err)
 	}
+	pt, err = open1(n.client("console"), "data", "enrolment-token", "", "x", env, nil)
+	if err != nil || string(pt) != "tok" {
+		t.Fatalf("console Open = %q, %v", pt, err)
+	}
 	// The tenant's data key and the boundary's are different keys: the envelope of one does not open as the other.
-	if _, err := open1(n.client("session"), "data", "enrolment-token", "acme", "x", env, n.grant("session", []string{"acme"}, []string{"open"}, time.Minute)); err == nil {
+	if _, err := open1(n.client("exchange"), "data", "enrolment-token", "acme", "x", env, n.grant("exchange", []string{"acme"}, []string{"open"}, time.Minute)); err == nil {
 		t.Error("a boundary value opened as a tenant's")
+	}
+}
+
+// The rule check is about the key in its scope. An actor that may use the tenant data key, and has a grant for it,
+// has no right to the boundary data key, which keys.yaml gives to exchange and console only (record 0006).
+func TestTenantDataRuleIsNoRightToTheBoundaryDataKey(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	env, err := seal1(n.client("exchange"), "data", "enrolment-token", "", "x", []byte("tok"), nil)
+	if err != nil {
+		t.Fatalf("exchange seals boundary data: %v", err)
+	}
+	// console may open the boundary key but not seal under it.
+	_, err = seal1(n.client("console"), "data", "enrolment-token", "", "x", []byte("tok"), nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	for _, actor := range []string{"session", "policy", "signer", "ca", "ssh-ca", "adapter-github", "exporter"} {
+		g := n.grant(actor, []string{"acme"}, []string{"seal", "open"}, time.Minute)
+		t.Run(actor, func(t *testing.T) {
+			_, err := seal1(n.client(actor), "data", "enrolment-token", "", "x", []byte("tok"), g)
+			wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+			_, err = open1(n.client(actor), "data", "enrolment-token", "", "x", env, g)
+			wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+		})
+	}
+	// The tenant key still works for a tenant-data actor with a grant, and needs the grant.
+	g := n.grant("session", []string{"acme"}, []string{"seal", "open"}, time.Minute)
+	tenantEnv, err := seal1(n.client("session"), "data", "person", "acme", vecID, []byte("x"), g)
+	if err != nil {
+		t.Fatalf("tenant data with a grant: %v", err)
+	}
+	if pt, err := open1(n.client("session"), "data", "person", "acme", vecID, tenantEnv, g); err != nil || string(pt) != "x" {
+		t.Fatalf("tenant Open = %q, %v", pt, err)
+	}
+	_, err = seal1(n.client("session"), "data", "person", "acme", vecID, []byte("x"), nil)
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("tenant data without a grant: code = %v, want permission_denied", connect.CodeOf(err))
 	}
 }
 

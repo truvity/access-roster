@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -101,19 +102,14 @@ func emitRust(m *model) ([]byte, error) {
 	}
 	e.p("];\n\n")
 
-	krs := make([][2]string, 0, len(m.keys))
+	krs := make([]keyUse, 0, len(m.keys))
 	for k := range m.keys {
 		krs = append(krs, k)
 	}
-	sort.Slice(krs, func(i, j int) bool {
-		if krs[i][0] != krs[j][0] {
-			return krs[i][0] < krs[j][0]
-		}
-		return krs[i][1] < krs[j][1]
-	})
-	e.p("// (actor, key purpose, ops): bit i is the op at index i of OPS in lib.rs.\npub(crate) static KEY_RULES: &[(&str, &str, u8)] = &[\n")
+	slices.SortFunc(krs, cmpKeyUse)
+	e.p("// (actor, key scope, key purpose, ops): bit i is the op at index i of OPS in lib.rs.\npub(crate) static KEY_RULES: &[(&str, &str, &str, u8)] = &[\n")
 	for _, k := range krs {
-		e.p("    (%s, %s, 0x%02x),\n", e.rs(k[0]), e.rs(k[1]), m.keys[k])
+		e.p("    (%s, %s, %s, 0x%02x),\n", e.rs(k.Actor), e.rs(k.Scope), e.rs(k.Purpose), m.keys[k])
 	}
 	e.p("];\n\n")
 

@@ -68,12 +68,14 @@ type kindsDoc struct {
 }
 
 type purposeDoc struct {
-	Name string   `yaml:"name"`
-	Ops  []string `yaml:"ops"`
+	Name  string   `yaml:"name"`
+	Ops   []string `yaml:"ops"`
+	Users []string `yaml:"users"`
 }
 
 type dataKeyDoc struct {
-	Ops []string `yaml:"ops"`
+	Ops   []string `yaml:"ops"`
+	Users []string `yaml:"users"`
 }
 
 type keysDoc struct {

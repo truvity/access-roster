@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"regexp"
@@ -47,11 +48,14 @@ type actor struct {
 
 type ruleKey struct{ Actor, Segment string }
 
+// keyUse is the key of a key rule: the actor, the scope of the key (boundary or tenant) and its purpose.
+type keyUse struct{ Actor, Scope, Purpose string }
+
 type model struct {
 	kinds    []kind
 	actors   []actor
 	store    map[ruleKey]uint16
-	keys     map[[2]string]uint8
+	keys     map[keyUse]uint8
 	callees  map[string][]string // caller -> sorted callees
 	callers  map[string][]string // callee -> sorted callers
 	uidNames []string
@@ -195,7 +199,7 @@ func bit(verb string) uint16 {
 
 func build(in *inputs) (*model, error) {
 	b := &builder{in: in, nameSet: map[string]bool{}, contracts: map[string][]string{}}
-	m := &model{store: map[ruleKey]uint16{}, keys: map[[2]string]uint8{}}
+	m := &model{store: map[ruleKey]uint16{}, keys: map[keyUse]uint8{}}
 
 	// the actors; the platform pieces follow
 	for _, a := range in.actors.Actors {
@@ -379,46 +383,99 @@ func (b *builder) kinds(m *model) {
 	sort.Strings(m.ttlNotes)
 }
 
+// cmpKeyUse orders key rules by actor, then scope, then purpose: the order of both generated tables.
+func cmpKeyUse(a, b keyUse) int {
+	return cmp.Or(strings.Compare(a.Actor, b.Actor), strings.Compare(a.Scope, b.Scope), strings.Compare(a.Purpose, b.Purpose))
+}
+
+// keyDecl is one key as keys.yaml declares it: the ops it allows and the actors that use it.
+type keyDecl struct {
+	ops   map[string]bool
+	users []string
+}
+
+// The scope of a key: the keys of the key store and the boundary data keys belong to the boundary, the tenant
+// data keys to a tenant. The purpose name `data` is both, with different users (ADR 0006, "Data keys").
+const (
+	scopeBoundary = "boundary"
+	scopeTenant   = "tenant"
+)
+
+// isKeyUser says whether the actor is one of the users a purpose lists in keys.yaml: by name, by the macro
+// `every work actor` or by the macro `adapter-<vendor>`.
+func isKeyUser(a actorDoc, users []string) bool {
+	for _, u := range users {
+		switch u {
+		case a.Name:
+			return true
+		case "every work actor":
+			if a.Family == "work" {
+				return true
+			}
+		case "adapter-<vendor>":
+			if a.Family == "work" && strings.HasPrefix(a.Name, "adapter-") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// keyRules makes the rules of key: for each key purpose an actor lists in actors.yaml, one rule for each scope in
+// which keys.yaml names the actor as a user of the purpose. An actor that uses `data` as a tenant purpose has
+// no rule on the boundary `data` unless keys.yaml lists it there too.
 func (b *builder) keyRules(m *model) {
-	allowed := map[string]map[string]bool{}
-	note := func(purpose string, ops []string) {
-		if allowed[purpose] == nil {
-			allowed[purpose] = map[string]bool{}
-		}
+	decls := map[[2]string]keyDecl{} // (scope, purpose)
+	note := func(scope, purpose string, ops, users []string) {
+		d := keyDecl{ops: map[string]bool{}, users: users}
 		for _, o := range ops {
-			allowed[purpose][o] = true
+			d.ops[o] = true
 		}
+		decls[[2]string{scope, purpose}] = d
 	}
 	for _, p := range b.in.keys.Purposes {
-		note(p.Name, p.Ops)
+		note(scopeBoundary, p.Name, p.Ops, p.Users)
 	}
 	for n, d := range b.in.keys.DataKeys.Tenant {
-		note(n, d.Ops)
+		note(scopeTenant, n, d.Ops, d.Users)
 	}
 	for n, d := range b.in.keys.DataKeys.Boundary {
-		note(n, d.Ops)
+		note(scopeBoundary, n, d.Ops, d.Users)
 	}
 	users := slices.Concat(b.in.actors.Actors, b.in.actors.Platform, b.in.actors.Externals)
 	for _, a := range users {
 		for _, kp := range a.KeyPurposes {
-			ops, ok := allowed[kp.Purpose]
-			if !ok {
-				b.errorf("%s: key purpose %q is not in %s", a.Name, kp.Purpose, keysFile)
-				continue
-			}
-			var bits uint8
-			for _, o := range kp.Ops {
-				i := slices.Index(opNames, o)
-				switch {
-				case i < 0:
-					b.errorf("%s: key purpose %s: op %q is unknown", a.Name, kp.Purpose, o)
-				case !ops[o]:
-					b.errorf("%s: key purpose %s: op %q is not an op of the purpose in %s", a.Name, kp.Purpose, o, keysFile)
-				default:
-					bits |= 1 << i
+			found, used := false, false
+			for _, scope := range []string{scopeBoundary, scopeTenant} {
+				d, ok := decls[[2]string{scope, kp.Purpose}]
+				if !ok {
+					continue
 				}
+				found = true
+				if !isKeyUser(a, d.users) {
+					continue
+				}
+				used = true
+				var bits uint8
+				for _, o := range kp.Ops {
+					i := slices.Index(opNames, o)
+					switch {
+					case i < 0:
+						b.errorf("%s: key purpose %s: op %q is unknown", a.Name, kp.Purpose, o)
+					case !d.ops[o]:
+						b.errorf("%s: key purpose %s: op %q is not an op of the purpose in %s", a.Name, kp.Purpose, o, keysFile)
+					default:
+						bits |= 1 << i
+					}
+				}
+				m.keys[keyUse{a.Name, scope, kp.Purpose}] |= bits
 			}
-			m.keys[[2]string{a.Name, kp.Purpose}] |= bits
+			switch {
+			case !found:
+				b.errorf("%s: key purpose %q is not in %s", a.Name, kp.Purpose, keysFile)
+			case !used:
+				b.errorf("%s: key purpose %q: %s does not list the actor among its users", a.Name, kp.Purpose, keysFile)
+			}
 		}
 	}
 }

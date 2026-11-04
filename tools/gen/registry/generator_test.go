@@ -57,9 +57,9 @@ func fixture(t *testing.T) *inputs {
 schema: 1
 actors:
   - {name: entry, family: work, language: Rust, ports: [data, keys, audit-emit], calls: [session, adapter-<vendor>], key_purposes: [{purpose: mac, ops: [mac]}]}
-  - {name: session, family: work, language: Go, ports: [data, keys, audit-emit], calls: [], key_purposes: [{purpose: cookie, ops: [seal, open]}]}
-  - {name: adapter-x, family: work, language: Go, contracts: [FactsSource], ports: [data, keys, audit-emit], calls: []}
-  - {name: exporter, family: data, holder: true, language: Rust, ports: [data, keys, audit-emit], calls: []}
+  - {name: session, family: work, language: Go, ports: [data, keys, audit-emit], calls: [], key_purposes: [{purpose: cookie, ops: [seal, open]}, {purpose: data, ops: [seal, open]}]}
+  - {name: adapter-x, family: work, language: Go, contracts: [FactsSource], ports: [data, keys, audit-emit], calls: [], key_purposes: [{purpose: data, ops: [open]}]}
+  - {name: exporter, family: data, holder: true, language: Rust, ports: [data, keys, audit-emit], calls: [], key_purposes: [{purpose: data, ops: [seal, open]}]}
   - {name: store, family: data, holder: true, language: Rust, ports: [keys, audit-emit], calls: []}
   - {name: key, family: keys, holder: true, language: Go, ports: [data], calls: []}
 platform:
@@ -77,13 +77,14 @@ kinds:
 	const keys = `
 schema: 1
 purposes:
-  - {name: wrapping, ops: [wrap, unwrap]}
+  - {name: wrapping, ops: [wrap, unwrap], users: [key]}
 data_keys:
   tenant:
-    data: {ops: [seal, open]}
+    data: {ops: [seal, open], users: [session, exporter, every work actor]}
   boundary:
-    cookie: {ops: [seal, open]}
-    mac: {ops: [mac]}
+    cookie: {ops: [seal, open], users: [session]}
+    mac: {ops: [mac], users: [entry]}
+    data: {ops: [seal, open], users: [session]}
 `
 	const uids = `
 names: [entry, session, adapter-x, exporter, store, key, sluis-node, driver-store-rqlite]
@@ -160,8 +161,15 @@ func TestBuildFixture(t *testing.T) {
 	if m.drivers["driver-store-rqlite"] != "store" {
 		t.Errorf("drivers %v", m.drivers)
 	}
-	if m.keys[[2]string{"session", "cookie"}] != 0b11 {
+	if m.keys[keyUse{"session", "boundary", "cookie"}] != 0b11 {
 		t.Errorf("key rules %v", m.keys)
+	}
+	// "data" is two keys with different users: the tenant key's users are a name and the macro, the boundary
+	// key's only session, so the exporter and the adapter have the tenant key and not the boundary key.
+	for actor, want := range map[string][2]uint8{"session": {0b11, 0b11}, "exporter": {0b11, 0}, "adapter-x": {0b10, 0}} {
+		if got := [2]uint8{m.keys[keyUse{actor, "tenant", "data"}], m.keys[keyUse{actor, "boundary", "data"}]}; got != want {
+			t.Errorf("%s: tenant and boundary data rules %v, want %v", actor, got, want)
+		}
 	}
 }
 
@@ -194,10 +202,13 @@ func TestBuildRefuses(t *testing.T) {
 		"an unknown reader":                   {func(in *inputs) { in.kinds.Kinds[1].Readers = []string{"nobody"} }, "neither an actor nor a known macro"},
 		"an unknown contract":                 {func(in *inputs) { in.kinds.Kinds[4].Readers = []string{"adapter-<vendor> (as wizard)"} }, "names no contract"},
 		"an unknown key purpose":              {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Purpose = "nope" }, "not in docs/architecture/keys.yaml"},
-		"an op the purpose does not allow":    {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"seal"} }, "not an op of the purpose"},
-		"an unknown op":                       {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"explode"} }, "is unknown"},
-		"a call to a non-actor":               {func(in *inputs) { in.actors.Actors[1].Calls = []string{"ghost"} }, "no actor"},
-		"an actor without an ordinal":         {func(in *inputs) { in.uids.Names = in.uids.Names[1:] }, "entry has no ordinal"},
+		"a purpose the actor is no user of": {func(in *inputs) {
+			in.actors.Actors[4].KeyPurposes = []keyPurposeUse{{Purpose: "data", Ops: []string{"open"}}}
+		}, "does not list the actor among its users"},
+		"an op the purpose does not allow": {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"seal"} }, "not an op of the purpose"},
+		"an unknown op":                    {func(in *inputs) { in.actors.Actors[0].KeyPurposes[0].Ops = []string{"explode"} }, "is unknown"},
+		"a call to a non-actor":            {func(in *inputs) { in.actors.Actors[1].Calls = []string{"ghost"} }, "no actor"},
+		"an actor without an ordinal":      {func(in *inputs) { in.uids.Names = in.uids.Names[1:] }, "entry has no ordinal"},
 		"a platform piece without an ordinal": {func(in *inputs) {
 			in.uids.Names = []string{"entry", "session", "adapter-x", "exporter", "store", "key"}
 		}, "sluis-node has no ordinal"},
