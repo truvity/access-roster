@@ -152,6 +152,30 @@ fn a_bootstrap_file_that_others_can_write_is_refused_and_nothing_else_is_run() {
 }
 
 #[test]
+fn a_bootstrap_file_that_is_a_fifo_is_refused_at_once() {
+    let e = env();
+    let fifo = e.run.path().join("dev.yaml");
+    let made = Command::new("mkfifo").arg(&fifo).status().unwrap();
+    assert!(made.success());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let (file, docs) = (fifo.to_str().unwrap().to_owned(), e.docs.path().to_owned());
+    std::thread::spawn(move || tx.send(run(&file, &docs)).unwrap());
+    // A FIFO with no writer would block an open without O_NONBLOCK for ever.
+    let (code, checks, all) = rx
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the check hung on a FIFO");
+    assert_eq!(code, Some(3), "{all}");
+    assert_eq!(checks[0]["result"], "fail", "{all}");
+    assert!(
+        checks[0]["rule"]
+            .as_str()
+            .unwrap()
+            .contains("not a regular file"),
+        "{all}"
+    );
+}
+
+#[test]
 fn each_class_of_rule_refuses_with_its_kind_and_rule() {
     let cases: Vec<(&str, Break, &str)> = vec![
         (
@@ -269,7 +293,9 @@ fn a_key_cache_ttl_at_the_maximum_is_accepted_and_one_second_over_is_refused() {
             assert_eq!(code, Some(3), "{ttl}: {all}");
             assert_eq!(
                 failures(&checks),
-                ["set : KeyPlan: default.cache_ttl: above the built-in maximum of one hour"],
+                [
+                    "document KeyPlan: step 6: default.cache_ttl: above the built-in maximum of one hour"
+                ],
                 "{ttl}"
             );
         }
@@ -401,6 +427,48 @@ async fn the_offline_check_and_the_loader_give_the_same_verdict_on_every_set() {
             Box::new(|e| std::fs::remove_file(e.docs.path().join("exchange-trust.jws")).unwrap()),
         ),
         (
+            "a link that leaves the directory",
+            Box::new(|e| {
+                let outside = e.run.path().join("outside");
+                std::fs::create_dir_all(&outside).unwrap();
+                put(
+                    &outside,
+                    "key-plan",
+                    &e.p.sign("key-plan", source("key-plan").as_bytes(), 1),
+                );
+                std::fs::remove_file(e.docs.path().join("key-plan.jws")).unwrap();
+                std::os::unix::fs::symlink(
+                    outside.join("key-plan.jws"),
+                    e.docs.path().join("key-plan.jws"),
+                )
+                .unwrap();
+            }),
+        ),
+        (
+            "a link that stays in the directory",
+            Box::new(|e| {
+                std::fs::create_dir_all(e.docs.path().join("..data")).unwrap();
+                put(
+                    &e.docs.path().join("..data"),
+                    "key-plan",
+                    &e.p.sign("key-plan", source("key-plan").as_bytes(), 1),
+                );
+                std::fs::remove_file(e.docs.path().join("key-plan.jws")).unwrap();
+                std::os::unix::fs::symlink(
+                    "..data/key-plan.jws",
+                    e.docs.path().join("key-plan.jws"),
+                )
+                .unwrap();
+            }),
+        ),
+        (
+            "a document that is not a regular file",
+            Box::new(|e| {
+                std::fs::remove_file(e.docs.path().join("audit-log.jws")).unwrap();
+                std::fs::create_dir(e.docs.path().join("audit-log.jws")).unwrap();
+            }),
+        ),
+        (
             "a missing boundary",
             Box::new(|e| std::fs::remove_file(e.docs.path().join("boundary.jws")).unwrap()),
         ),
@@ -483,8 +551,19 @@ async fn the_offline_check_and_the_loader_give_the_same_verdict_on_every_set() {
         let e = env();
         break_it(&e);
         let (live, offline) = (loader_verdict(&e).await, offline_verdict(&e));
-        assert_eq!(live, offline, "{name}");
+        match (&live, &offline) {
+            (None, None) => {}
+            // The check may say more than the loader (which refusal of the driver it was), never something else.
+            (Some(l), Some(o)) => assert!(
+                o.contains(l.as_str()),
+                "{name}: the loader says {l}, the check {o}"
+            ),
+            _ => panic!("{name}: the loader says {live:?}, the check {offline:?}"),
+        }
         refused += usize::from(live.is_some());
     }
-    assert_eq!(refused, 13, "every case but the local set is refused");
+    assert_eq!(
+        refused, 15,
+        "every case but the local set and the link inside is refused"
+    );
 }

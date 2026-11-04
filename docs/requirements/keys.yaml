@@ -637,7 +637,7 @@ requirements:
     standards: []
     issues: [1210]
     verification:
-      - {kind: test-vectors, ref: "KeyPlan vectors: a time to live at the maximum is accepted and one second over is refused"}
+      - {kind: test-vectors, ref: "KeyPlan vectors (tests/testdata/signed-config/keyplan-payloads.json, cache_ttl_max_seconds), read by store@ and key@: a time to live at the maximum is accepted and one second over is refused"}
   - id: REQ-KEYS-040
     area: KEYS
     statement: "On boards key@ MUST drop a cached data key when its DataKeyWrap is deleted."

@@ -25,6 +25,9 @@ base64 = "0.22"
 buffa = { version = "=0.9.2", features = ["json"] }
 buffa-types = { version = "=0.9.2", features = ["json"] }
 clap = { version = "4", features = ["derive", "string"] }
+# The reader of the `file` config source, which `store check --validate` reads a directory with, so that the offline
+# check reads exactly what the driver would serve (ADR 0012, "The configuration check runs store@'s own rules").
+file = { path = "../../drivers/store/file" }
 connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
 futures = "0.3"
 rustix = { version = "1", features = ["fs", "process"] }
@@ -40,8 +43,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time",
 tracing = "0.1"
 
 [dev-dependencies]
-# The config source driver, served in the tests over its real contract.
-file = { path = "../../drivers/store/file" }
 # The secret source driver, served in the tests over its real contract.
 credential = { path = "../../drivers/store/credential" }
 sluis-conformance = { path = "../../kits/rust/sluis-conformance", features = ["memory"] }

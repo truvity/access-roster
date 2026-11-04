@@ -93,13 +93,17 @@ fn paths(f: &Flags, boundary: &str) -> Paths {
 }
 
 fn load(f: &Flags) -> anyhow::Result<Bootstrap> {
+    load_as(f, Some(rustix::process::geteuid().as_raw()))
+}
+
+/// [`load`], with the owner rule only when `own` is given (see [`Bootstrap::load_with`]).
+fn load_as(f: &Flags, own: Option<u32>) -> anyhow::Result<Bootstrap> {
     let path = f
         .matches
         .get_one::<String>("bootstrap")
         .filter(|s| !s.is_empty())
         .context("--bootstrap FILE is required")?;
-    let own = rustix::process::geteuid().as_raw();
-    let b = Bootstrap::load(Path::new(path), own).map_err(|e| Refused(e.to_string()))?;
+    let b = Bootstrap::load_with(Path::new(path), own).map_err(|e| Refused(e.to_string()))?;
     if !f.boundary.is_empty() && f.boundary != b.boundary {
         return Err(Refused("--boundary is not the boundary of the bootstrap file".into()).into());
     }
@@ -280,7 +284,8 @@ impl Store {
 /// one line per check, or with `--output json` one object `{"checks": [...]}` on standard output; a failed check is a
 /// refusal (exit 3). Nothing is printed but kinds, paths and rules: never a value of a document.
 fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
-    let checks = match load(f) {
+    // The owner of the file is the host's to check (#1419); its mode and content are the file's.
+    let checks = match load_as(f, None) {
         Ok(b) => {
             let mut c = vec![config::offline::Check {
                 name: "bootstrap",

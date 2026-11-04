@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/truvity/sluis/v2/kits/go/cli"
+	"github.com/truvity/sluis/v2/kits/go/version"
 )
 
 // configCheck is one line of `sluis config check`: the `checks` member of cli.md "JSON output". path names the kind a
@@ -67,6 +68,9 @@ func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper string, re
 	}
 	path, err := a.findHelper(helper)
 	if err != nil {
+		return err
+	}
+	if err := a.sameRelease(ctx, path); err != nil {
 		return err
 	}
 	var stdout, stderr bytes.Buffer
@@ -123,9 +127,9 @@ func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper string, re
 	return nil
 }
 
-// findHelper locates the store executable: --helper, then $SLUIS_STORE_HELPER, then `store` in the directory of this
-// executable (a tarball or a build directory), then the install path of the packages beside it, `../libexec/sluis/
-// actors/store` (ADR 0013, "Packaging per runtime").
+// findHelper locates the store executable: --helper, then $SLUIS_STORE_HELPER, then the install path of the packages
+// beside this executable, `../libexec/sluis/actors/store`, then `store` in the directory of this executable (a tarball
+// or a build directory) (ADR 0013, "One version").
 func (a *app) findHelper(flagValue string) (string, error) {
 	if flagValue != "" {
 		return checkHelper(flagValue, "--helper")
@@ -136,9 +140,11 @@ func (a *app) findHelper(flagValue string) (string, error) {
 	self, err := a.executable()
 	if err == nil {
 		dir := filepath.Dir(self)
+		// The packages' install path first: on a host, a stray `store` beside the CLI must not win over the
+		// package's own.
 		for _, p := range []string{
-			filepath.Join(dir, "store"),
 			filepath.Join(dir, "..", "libexec", "sluis", "actors", "store"),
+			filepath.Join(dir, "store"),
 		} {
 			if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
 				return p, nil
@@ -147,6 +153,38 @@ func (a *app) findHelper(flagValue string) (string, error) {
 	}
 	return "", errors.New("the store helper was not found: config check runs store@'s own validation, so install " +
 		"the store executable beside sluis, or name it with --helper or " + helperEnv)
+}
+
+// sameRelease refuses a helper of another release: the rules are the release's, so a store of another version would
+// check another set of rules than the store@ the config is for (ADR 0013, "One version": every artifact of a release
+// carries the same version). It reads `store version --output json`.
+func (a *app) sameRelease(ctx context.Context, path string) error {
+	var stdout bytes.Buffer
+	cmd := exec.CommandContext(ctx, path, "version", "--output", "json")
+	cmd.Stdout = &limited{w: &stdout, n: helperOutputMax}
+	cmd.Env = []string{}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("the store helper %s did not print its version: %w", path, err)
+	}
+	var v struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &v); err != nil || v.Name != "store" || v.Version == "" {
+		return fmt.Errorf("the helper %s is not the store executable: it printed no store version", path)
+	}
+	if want := a.release(); v.Version != want {
+		return fmt.Errorf("the store helper %s is version %s and this sluis is %s: config check needs the store "+
+			"executable of the same release", path, v.Version, want)
+	}
+	return nil
+}
+
+func (a *app) release() string {
+	if a.version != "" {
+		return a.version
+	}
+	return version.Version
 }
 
 func checkHelper(p, from string) (string, error) {

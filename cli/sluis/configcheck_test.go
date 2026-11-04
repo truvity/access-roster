@@ -13,14 +13,22 @@ import (
 	"time"
 
 	"github.com/truvity/sluis/v2/kits/go/cli"
+	"github.com/truvity/sluis/v2/kits/go/version"
 )
 
 // fakeHelper writes an executable that stands for the store helper: it prints out and exits with code. It checks
 // the mapping of the CLI alone; TestConfigCheckRunsTheStoreHelper runs the real one.
 func fakeHelper(t *testing.T, out string, code int) string {
 	t.Helper()
+	return fakeHelperAt(t, out, code, version.Version)
+}
+
+// fakeHelperAt is fakeHelper of the release v.
+func fakeHelperAt(t *testing.T, out string, code int, v string) string {
+	t.Helper()
 	p := filepath.Join(t.TempDir(), "store")
-	script := "#!/bin/sh\ncat <<'EOF'\n" + out + "\nEOF\nexit " + strconv.Itoa(code) + "\n"
+	script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo '{\"name\":\"store\",\"version\":\"" + v + "\"}'; exit 0; fi\n" +
+		"cat <<'EOF'\n" + out + "\nEOF\nexit " + strconv.Itoa(code) + "\n"
 	if err := os.WriteFile(p, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
 		t.Fatal(err)
 	}
@@ -309,6 +317,7 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 		for _, want := range []string{
 			"TokenLifetime", "default.access_token",
 			"Upstream", "workforce.secret: is not a credential name",
+			"KeyPlan", "default.cache_ttl: above the built-in maximum of one hour",
 		} {
 			if !strings.Contains(all, want) {
 				t.Errorf("%s: %q is not named: %s", output, want, all)
@@ -320,13 +329,56 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 	}
 	// The set rule runs once every document passes.
 	src = copyLocal(t)
-	replaceIn(t, filepath.Join(src, "key-plan.yaml"), "cache_ttl: 15m", "cache_ttl: 2h")
+	replaceIn(t, filepath.Join(src, "boundary.yaml"), "    - GrantVocabulary\n", "")
 	docs, bootstrap = signLocal(t, src)
 	ta = newTestApp(t)
 	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper); got != cli.ExitRefused {
 		t.Fatalf("exit %d: %s", got, ta.err)
 	}
-	if !strings.Contains(ta.err.String(), "fail set: KeyPlan: default.cache_ttl: above the built-in maximum of one hour") {
+	if !strings.Contains(ta.err.String(), "fail set: Boundary: declared_kinds: must declare GrantVocabulary") {
 		t.Errorf("stderr = %s", ta.err)
+	}
+}
+
+func TestConfigCheckRefusesAHelperOfAnotherRelease(t *testing.T) {
+	ta := newTestApp(t)
+	ta.os = "linux"
+	ta.version = "2.0.0-alpha.2"
+	h := fakeHelperAt(t, helperPass, 0, "2.0.0-alpha.1")
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", h); got != cli.ExitFailed {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.err.String(), "is version 2.0.0-alpha.1 and this sluis is 2.0.0-alpha.2") {
+		t.Errorf("stderr = %q", ta.err)
+	}
+	// Something that is not the store executable prints no store version.
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", "/bin/true"); got != cli.ExitFailed {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.err.String(), "is not the store executable") {
+		t.Errorf("stderr = %q", ta.err)
+	}
+}
+
+func TestConfigCheckPrefersTheInstallPathToAStoreBesideIt(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{filepath.Join(root, "bin"), filepath.Join(root, "libexec", "sluis", "actors")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	installed, _ := os.ReadFile(fakeHelper(t, helperPass, 0))
+	stray, _ := os.ReadFile(fakeHelperAt(t, helperPass, 0, "0.0.0-stray"))
+	if err := os.WriteFile(filepath.Join(root, "libexec", "sluis", "actors", "store"), installed, 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bin", "store"), stray, 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	ta := newTestApp(t)
+	ta.os = "linux"
+	ta.selfPath = func() (string, error) { return filepath.Join(root, "bin", "sluis"), nil }
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml"); got != cli.ExitOK {
+		t.Fatalf("exit %d, the stray store beside the CLI won: %s", got, ta.err)
 	}
 }

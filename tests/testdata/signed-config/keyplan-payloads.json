@@ -1,5 +1,6 @@
 {
- "description": "Test vectors of the KeyPlan payload (docs/reference/signed-config.md 'The payload'; the strict profile of docs/reference/bootstrap-file.md): the payload text, and either what both readers must read from it or the path that a refusal must contain. store@ (Rust, actors/store/tests/vectors.rs) and key@ (Go, actors/key/internal/keyd/plan_vectors_test.go) read the same file. A refusal in each language starts or contains the path; the wording of the rest differs.",
+ "description": "Test vectors of the KeyPlan payload (docs/reference/signed-config.md 'The payload'; the strict profile of docs/reference/bootstrap-file.md): the payload text, and either what both readers must read from it or the path that a refusal must contain. store@ (Rust, actors/store/tests/vectors.rs) and key@ (Go, actors/key/internal/keyd/plan_vectors_test.go) read the same file. A refusal in each language starts or contains the path; the wording of the rest differs. cache_ttl_max_seconds is the built-in maximum of key@'s cache (ADR 0006, 'The cache'), which both readers hold as a constant and refuse above.",
+ "cache_ttl_max_seconds": 3600,
  "cases": [
   {
    "name": "the local KeyPlan source",
@@ -60,9 +61,9 @@
   },
   {
    "name": "recipients null",
-   "payload": "default:\n  cache_ttl: 2d\n  recipients: ~\n",
+   "payload": "default:\n  cache_ttl: 30m\n  recipients: ~\n",
    "read": {
-    "cache_ttl_seconds": 172800,
+    "cache_ttl_seconds": 1800,
     "recipients": [],
     "purposes": []
    }
@@ -110,6 +111,25 @@
   {
    "name": "no cache_ttl",
    "payload": "default:\n  recipients: []\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl at the built-in maximum",
+   "payload": "default:\n  cache_ttl: 3600s\n",
+   "read": {
+    "cache_ttl_seconds": 3600,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "cache_ttl one second over the built-in maximum",
+   "payload": "default:\n  cache_ttl: 3601s\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl of two days",
+   "payload": "default:\n  cache_ttl: 2d\n",
    "refused_path": "default.cache_ttl"
   },
   {

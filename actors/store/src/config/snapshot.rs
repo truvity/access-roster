@@ -487,18 +487,6 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     // section 7.3): an app on the person's own host. A browser, confidential or exchange client
     // has no such case. The payload rule has already refused every plain-http redirect that is
     // not on loopback (REQ-AUTHN-004).
-    // The cache of key@ under its built-in maximum (ADR 0006, "The cache"; REQ-KEYS-039).
-    if let Some(bytes) = s.get(kind("KeyPlan").segment, SINGLETON_ID)
-        && let Ok(plan) = pb::KeyPlan::decode_from_slice(&bytes)
-        && plan.cache_ttl.as_option().is_some_and(|d| {
-            u64::try_from(d.seconds).map_or(true, |s| s > payload::KEY_CACHE_TTL_MAX.as_secs())
-        })
-    {
-        return Err(failed(
-            Some("KeyPlan"),
-            "default.cache_ttl: above the built-in maximum of one hour",
-        ));
-    }
     let development = b.environment == "development";
     let (why_url, why_redirect) = if development {
         ("must be https, or http on a loopback IP literal", "")
