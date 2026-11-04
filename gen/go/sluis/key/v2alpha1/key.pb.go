@@ -12,6 +12,7 @@ import (
 	v2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -344,8 +345,14 @@ func (x *SealGrantRequest) GetGrant() *v2alpha1.Grant {
 
 // SealGrantResponse carries the sealed grant.
 type SealGrantResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SealedGrant   []byte                 `protobuf:"bytes,1,opt,name=sealed_grant,json=sealedGrant,proto3" json:"sealed_grant,omitempty"` // the grant sealed under purpose grant
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The grant sealed under the boundary's grant data key, in the wire form
+	//
+	//	u16 length | decision_id | envelope
+	//
+	// with the length big-endian and the envelope of store-api.md "The sealed envelope" (purpose grant, address:
+	// tenant "-", kind "grant", id the decision id). Callers carry it as opaque bytes.
+	SealedGrant   []byte `protobuf:"bytes,1,opt,name=sealed_grant,json=sealedGrant,proto3" json:"sealed_grant,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -929,11 +936,90 @@ func (x *DataKeyWrap) GetWrappedKey() []byte {
 	return nil
 }
 
+// KeyCertificate is the kind KeyCertificate (0006 "Keys sign in place"): the public key of a key purpose and the
+// chain the root custodian returned for it. key@ is its only writer. Tonight it holds the wrapping public key of
+// each node, with id wrapping/<recipient> and no chain.
+type KeyCertificate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`                // the key purpose
+	Recipient     string                 `protobuf:"bytes,2,opt,name=recipient,proto3" json:"recipient,omitempty"`            // the recipient label of a wrapping key: <node>-<16 characters>
+	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
+	Chain         [][]byte               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                    // the certificate chain, DER, leaf first; empty when there is none
+	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"` // when key@ published it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KeyCertificate) Reset() {
+	*x = KeyCertificate{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KeyCertificate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KeyCertificate) ProtoMessage() {}
+
+func (x *KeyCertificate) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KeyCertificate.ProtoReflect.Descriptor instead.
+func (*KeyCertificate) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *KeyCertificate) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+func (x *KeyCertificate) GetRecipient() string {
+	if x != nil {
+		return x.Recipient
+	}
+	return ""
+}
+
+func (x *KeyCertificate) GetSpkiDer() []byte {
+	if x != nil {
+		return x.SpkiDer
+	}
+	return nil
+}
+
+func (x *KeyCertificate) GetChain() [][]byte {
+	if x != nil {
+		return x.Chain
+	}
+	return nil
+}
+
+func (x *KeyCertificate) GetAddedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AddedAt
+	}
+	return nil
+}
+
 var File_sluis_key_v2alpha1_key_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\n" +
-	"\x1csluis/key/v2alpha1/key.proto\x12\x12sluis.key.v2alpha1\x1a\x1esluis/type/v2alpha1/type.proto\"\x93\x01\n" +
+	"\x1csluis/key/v2alpha1/key.proto\x12\x12sluis.key.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\x93\x01\n" +
 	"\vSealRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x126\n" +
 	"\aaddress\x18\x02 \x01(\v2\x1c.sluis.type.v2alpha1.AddressR\aaddress\x12\x1c\n" +
@@ -994,7 +1080,13 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\trecipient\x18\x03 \x01(\tR\trecipient\x12)\n" +
 	"\x10ephemeral_public\x18\x04 \x01(\fR\x0fephemeralPublic\x12\x1f\n" +
 	"\vwrapped_key\x18\x05 \x01(\fR\n" +
-	"wrappedKey2\xc3\x04\n" +
+	"wrappedKey\"\xb0\x01\n" +
+	"\x0eKeyCertificate\x12\x18\n" +
+	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1c\n" +
+	"\trecipient\x18\x02 \x01(\tR\trecipient\x12\x19\n" +
+	"\bspki_der\x18\x03 \x01(\fR\aspkiDer\x12\x14\n" +
+	"\x05chain\x18\x04 \x03(\fR\x05chain\x125\n" +
+	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt2\xc3\x04\n" +
 	"\n" +
 	"KeyService\x12I\n" +
 	"\x04Seal\x12\x1f.sluis.key.v2alpha1.SealRequest\x1a .sluis.key.v2alpha1.SealResponse\x12I\n" +
@@ -1018,52 +1110,55 @@ func file_sluis_key_v2alpha1_key_proto_rawDescGZIP() []byte {
 	return file_sluis_key_v2alpha1_key_proto_rawDescData
 }
 
-var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
-	(*SealRequest)(nil),       // 0: sluis.key.v2alpha1.SealRequest
-	(*SealResponse)(nil),      // 1: sluis.key.v2alpha1.SealResponse
-	(*OpenItem)(nil),          // 2: sluis.key.v2alpha1.OpenItem
-	(*OpenRequest)(nil),       // 3: sluis.key.v2alpha1.OpenRequest
-	(*OpenResponse)(nil),      // 4: sluis.key.v2alpha1.OpenResponse
-	(*SealGrantRequest)(nil),  // 5: sluis.key.v2alpha1.SealGrantRequest
-	(*SealGrantResponse)(nil), // 6: sluis.key.v2alpha1.SealGrantResponse
-	(*OpenGrantRequest)(nil),  // 7: sluis.key.v2alpha1.OpenGrantRequest
-	(*OpenGrantResponse)(nil), // 8: sluis.key.v2alpha1.OpenGrantResponse
-	(*SignRequest)(nil),       // 9: sluis.key.v2alpha1.SignRequest
-	(*SignResponse)(nil),      // 10: sluis.key.v2alpha1.SignResponse
-	(*MacRequest)(nil),        // 11: sluis.key.v2alpha1.MacRequest
-	(*MacResponse)(nil),       // 12: sluis.key.v2alpha1.MacResponse
-	(*PublicKeyRequest)(nil),  // 13: sluis.key.v2alpha1.PublicKeyRequest
-	(*PublicKeyResponse)(nil), // 14: sluis.key.v2alpha1.PublicKeyResponse
-	(*DataKeyWrap)(nil),       // 15: sluis.key.v2alpha1.DataKeyWrap
-	(*v2alpha1.Address)(nil),  // 16: sluis.type.v2alpha1.Address
-	(*v2alpha1.Grant)(nil),    // 17: sluis.type.v2alpha1.Grant
+	(*SealRequest)(nil),           // 0: sluis.key.v2alpha1.SealRequest
+	(*SealResponse)(nil),          // 1: sluis.key.v2alpha1.SealResponse
+	(*OpenItem)(nil),              // 2: sluis.key.v2alpha1.OpenItem
+	(*OpenRequest)(nil),           // 3: sluis.key.v2alpha1.OpenRequest
+	(*OpenResponse)(nil),          // 4: sluis.key.v2alpha1.OpenResponse
+	(*SealGrantRequest)(nil),      // 5: sluis.key.v2alpha1.SealGrantRequest
+	(*SealGrantResponse)(nil),     // 6: sluis.key.v2alpha1.SealGrantResponse
+	(*OpenGrantRequest)(nil),      // 7: sluis.key.v2alpha1.OpenGrantRequest
+	(*OpenGrantResponse)(nil),     // 8: sluis.key.v2alpha1.OpenGrantResponse
+	(*SignRequest)(nil),           // 9: sluis.key.v2alpha1.SignRequest
+	(*SignResponse)(nil),          // 10: sluis.key.v2alpha1.SignResponse
+	(*MacRequest)(nil),            // 11: sluis.key.v2alpha1.MacRequest
+	(*MacResponse)(nil),           // 12: sluis.key.v2alpha1.MacResponse
+	(*PublicKeyRequest)(nil),      // 13: sluis.key.v2alpha1.PublicKeyRequest
+	(*PublicKeyResponse)(nil),     // 14: sluis.key.v2alpha1.PublicKeyResponse
+	(*DataKeyWrap)(nil),           // 15: sluis.key.v2alpha1.DataKeyWrap
+	(*KeyCertificate)(nil),        // 16: sluis.key.v2alpha1.KeyCertificate
+	(*v2alpha1.Address)(nil),      // 17: sluis.type.v2alpha1.Address
+	(*v2alpha1.Grant)(nil),        // 18: sluis.type.v2alpha1.Grant
+	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
 }
 var file_sluis_key_v2alpha1_key_proto_depIdxs = []int32{
-	16, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
-	16, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
+	17, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
+	17, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
 	2,  // 2: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
-	17, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
-	17, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
-	0,  // 5: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
-	3,  // 6: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
-	5,  // 7: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
-	7,  // 8: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
-	9,  // 9: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
-	11, // 10: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
-	13, // 11: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
-	1,  // 12: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
-	4,  // 13: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
-	6,  // 14: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
-	8,  // 15: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
-	10, // 16: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
-	12, // 17: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
-	14, // 18: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
-	12, // [12:19] is the sub-list for method output_type
-	5,  // [5:12] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	18, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
+	18, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
+	19, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
+	0,  // 6: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
+	3,  // 7: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
+	5,  // 8: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
+	7,  // 9: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
+	9,  // 10: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
+	11, // 11: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
+	13, // 12: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
+	1,  // 13: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
+	4,  // 14: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
+	6,  // 15: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
+	8,  // 16: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
+	10, // 17: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
+	12, // 18: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
+	14, // 19: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
+	13, // [13:20] is the sub-list for method output_type
+	6,  // [6:13] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_sluis_key_v2alpha1_key_proto_init() }
@@ -1077,7 +1172,7 @@ func file_sluis_key_v2alpha1_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_key_v2alpha1_key_proto_rawDesc), len(file_sluis_key_v2alpha1_key_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
