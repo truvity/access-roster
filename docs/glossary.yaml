@@ -544,7 +544,7 @@ terms:
     see: ["0007-policy-and-sealed-grants#sealed-grants"]
 
   - term: two independent checks
-    definition: "What stands between any actor and a tenant's sealed value: the store's rule (may this actor use this verb on this kind, with a grant for this tenant on a write) and key@'s grant check on every Seal and Open."
+    definition: "What stands between any actor and a tenant's sealed value: the store's rule (may this actor use this verb on this kind, with a grant for this tenant on a write) and key@'s grant check on a tenant's `data` and `evidence` keys (the rule-only purposes `pairwise`, `pseudonym` and `chain` are checked by rule)."
     category: keys
     see: ["0007-policy-and-sealed-grants#two-independent-checks"]
     avoid: ["three layers per port", "isolation layer"]

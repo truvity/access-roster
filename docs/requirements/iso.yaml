@@ -1143,7 +1143,7 @@ requirements:
       - {kind: integration-test, ref: "harness self-test: each switch is observed off in store@ and in key@ before a vector runs"}
   - id: REQ-ISO-084
     area: ISO
-    statement: "A tenant's sealed value MUST be readable only when both the store's rule and key@'s grant check allow it."
+    statement: "A value sealed under a tenant's data or evidence key MUST be readable only when both the store's rule and key@'s grant check allow it."
     rationale: "Two checks in different holders, with different credentials and different registries, mean a flaw in one is caught by the other (ADR 0007)."
     level: MUST
     source: design-decision
