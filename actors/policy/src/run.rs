@@ -121,8 +121,10 @@ impl Commands for Policy {
         let source = StoreSource::new(&dial(&p.store), &f.boundary).context("the store client")?;
         // A cold start with a set that fails does not start (ADR 0007).
         let inputs = read(&source, START_TIMEOUT).await?;
-        let engine =
-            Engine::build(&inputs).map_err(|e| anyhow::anyhow!("the policy is refused: {e}"))?;
+        // Cedar recurses: the build runs on a thread with a stack of its own (stack.rs).
+        let engine = Engine::build_on_stack(&inputs)
+            .await
+            .map_err(|e| anyhow::anyhow!("the policy is refused: {e}"))?;
         let (digest, count) = (engine.digest().to_owned(), inputs.policies.len());
 
         let key = dial(&p.key);
@@ -179,7 +181,8 @@ impl Policy {
         let p = paths(f)?;
         let source = StoreSource::new(&dial(&p.store), &f.boundary).context("the store client")?;
         let inputs = read(&source, Duration::ZERO).await?;
-        Engine::build(&inputs)
+        Engine::build_on_stack(&inputs)
+            .await
             .map(|_| ())
             .map_err(|e| Refused(e.to_string()).into())
     }
