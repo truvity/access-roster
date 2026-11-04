@@ -14,6 +14,9 @@ default:
     - policy.reload.refused
     - session.authorize
     - session.signin
+    - session.token
+    - session.refresh
+    - session.chain.end
     - signer.refused
     - signer.sign
     - signer.ring.add

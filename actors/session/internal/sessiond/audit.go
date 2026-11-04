@@ -18,11 +18,17 @@ const classAuthentication = 3002
 const (
 	ActionAuthorize = "session.authorize"
 	ActionSignin    = "session.signin"
+	ActionToken     = "session.token"
+	ActionRefresh   = "session.refresh"
+	ActionChainEnd  = "session.chain.end"
 )
 
 var (
 	actionAuthorize = audit.Action{Name: ActionAuthorize, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Authorize"}
 	actionSignin    = audit.Action{Name: ActionSignin, ClassUID: classAuthentication, ActivityID: 1}
+	actionToken     = audit.Action{Name: ActionToken, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Grant"}
+	actionRefresh   = audit.Action{Name: ActionRefresh, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Refresh"}
+	actionChainEnd  = audit.Action{Name: ActionChainEnd, ClassUID: classAuthentication, ActivityID: 2}
 )
 
 // The kinds of identity session names in a record (0029 "Pseudonyms": the kind is part of the pseudonym's input). A

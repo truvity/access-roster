@@ -807,6 +807,157 @@ func (x *AuthCode) GetSessionId() string {
 	return ""
 }
 
+// SessionChain is the kind SessionChain (0018 "Session chains"): a human session, from the sign-in that began it to
+// its last refresh. Its id is the session id (sid) that the refresh token names. It holds hashes of the refresh
+// tokens, never a token: a presented token is compared, not read back.
+type SessionChain struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Subject       string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                             // the person's subject
+	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`           // the client the chain belongs to
+	Class         string                 `protobuf:"bytes,3,opt,name=class,proto3" json:"class,omitempty"`                                 // "human"; fixed when the chain is made, never changed (0018 "The classes")
+	Scope         string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`                                 // the scopes granted, which a refresh may narrow and never widen
+	RefreshHash   []byte                 `protobuf:"bytes,5,opt,name=refresh_hash,json=refreshHash,proto3" json:"refresh_hash,omitempty"`  // SHA-384 of the current refresh token's secret
+	SpentHashes   [][]byte               `protobuf:"bytes,6,rep,name=spent_hashes,json=spentHashes,proto3" json:"spent_hashes,omitempty"`  // SHA-384 of the secrets already rotated away (the spent markers)
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`        // the moment sluis accepted the sign-in; the absolute limit counts from here
+	EndsAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=ends_at,json=endsAt,proto3" json:"ends_at,omitempty"`                 // started_at plus the absolute limit, as it was when the chain began
+	RefreshedAt   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=refreshed_at,json=refreshedAt,proto3" json:"refreshed_at,omitempty"`  // the last refresh; the idle limit counts from here
+	AuthTime      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=auth_time,json=authTime,proto3" json:"auth_time,omitempty"`          // when the person authenticated at the upstream; a refresh never changes it
+	Acr           *string                `protobuf:"bytes,11,opt,name=acr,proto3,oneof" json:"acr,omitempty"`                              // the upstream's acr, if it said one
+	Amr           []string               `protobuf:"bytes,12,rep,name=amr,proto3" json:"amr,omitempty"`                                    // the upstream's amr
+	AmrPresent    bool                   `protobuf:"varint,13,opt,name=amr_present,json=amrPresent,proto3" json:"amr_present,omitempty"`   // true when the upstream said anything about amr
+	SealedFacts   []byte                 `protobuf:"bytes,14,opt,name=sealed_facts,json=sealedFacts,proto3" json:"sealed_facts,omitempty"` // SignInFacts, sealed with the cookie key
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SessionChain) Reset() {
+	*x = SessionChain{}
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SessionChain) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SessionChain) ProtoMessage() {}
+
+func (x *SessionChain) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_session_v2alpha1_session_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SessionChain.ProtoReflect.Descriptor instead.
+func (*SessionChain) Descriptor() ([]byte, []int) {
+	return file_sluis_session_v2alpha1_session_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SessionChain) GetSubject() string {
+	if x != nil {
+		return x.Subject
+	}
+	return ""
+}
+
+func (x *SessionChain) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *SessionChain) GetClass() string {
+	if x != nil {
+		return x.Class
+	}
+	return ""
+}
+
+func (x *SessionChain) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *SessionChain) GetRefreshHash() []byte {
+	if x != nil {
+		return x.RefreshHash
+	}
+	return nil
+}
+
+func (x *SessionChain) GetSpentHashes() [][]byte {
+	if x != nil {
+		return x.SpentHashes
+	}
+	return nil
+}
+
+func (x *SessionChain) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *SessionChain) GetEndsAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.EndsAt
+	}
+	return nil
+}
+
+func (x *SessionChain) GetRefreshedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RefreshedAt
+	}
+	return nil
+}
+
+func (x *SessionChain) GetAuthTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AuthTime
+	}
+	return nil
+}
+
+func (x *SessionChain) GetAcr() string {
+	if x != nil && x.Acr != nil {
+		return *x.Acr
+	}
+	return ""
+}
+
+func (x *SessionChain) GetAmr() []string {
+	if x != nil {
+		return x.Amr
+	}
+	return nil
+}
+
+func (x *SessionChain) GetAmrPresent() bool {
+	if x != nil {
+		return x.AmrPresent
+	}
+	return false
+}
+
+func (x *SessionChain) GetSealedFacts() []byte {
+	if x != nil {
+		return x.SealedFacts
+	}
+	return nil
+}
+
 var File_sluis_session_v2alpha1_session_proto protoreflect.FileDescriptor
 
 const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
@@ -890,6 +1041,25 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\x05spent\x18\r \x01(\bR\x05spent\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x0e \x01(\tR\tsessionIdB\x06\n" +
+	"\x04_acr\"\x94\x04\n" +
+	"\fSessionChain\x12\x18\n" +
+	"\asubject\x18\x01 \x01(\tR\asubject\x12\x1b\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x14\n" +
+	"\x05class\x18\x03 \x01(\tR\x05class\x12\x14\n" +
+	"\x05scope\x18\x04 \x01(\tR\x05scope\x12!\n" +
+	"\frefresh_hash\x18\x05 \x01(\fR\vrefreshHash\x12!\n" +
+	"\fspent_hashes\x18\x06 \x03(\fR\vspentHashes\x129\n" +
+	"\n" +
+	"started_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x123\n" +
+	"\aends_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\x06endsAt\x12=\n" +
+	"\frefreshed_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\vrefreshedAt\x127\n" +
+	"\tauth_time\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\bauthTime\x12\x15\n" +
+	"\x03acr\x18\v \x01(\tH\x00R\x03acr\x88\x01\x01\x12\x10\n" +
+	"\x03amr\x18\f \x03(\tR\x03amr\x12\x1f\n" +
+	"\vamr_present\x18\r \x01(\bR\n" +
+	"amrPresent\x12!\n" +
+	"\fsealed_facts\x18\x0e \x01(\fR\vsealedFactsB\x06\n" +
 	"\x04_acr2\x8b\x02\n" +
 	"\x0eSessionService\x12U\n" +
 	"\tAuthorize\x12(.sluis.session.v2alpha1.AuthorizeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12S\n" +
@@ -909,7 +1079,7 @@ func file_sluis_session_v2alpha1_session_proto_rawDescGZIP() []byte {
 	return file_sluis_session_v2alpha1_session_proto_rawDescData
 }
 
-var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_sluis_session_v2alpha1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_sluis_session_v2alpha1_session_proto_goTypes = []any{
 	(*AuthorizeRequest)(nil),      // 0: sluis.session.v2alpha1.AuthorizeRequest
 	(*CallbackRequest)(nil),       // 1: sluis.session.v2alpha1.CallbackRequest
@@ -919,26 +1089,31 @@ var file_sluis_session_v2alpha1_session_proto_goTypes = []any{
 	(*UpstreamLink)(nil),          // 5: sluis.session.v2alpha1.UpstreamLink
 	(*SignInFacts)(nil),           // 6: sluis.session.v2alpha1.SignInFacts
 	(*AuthCode)(nil),              // 7: sluis.session.v2alpha1.AuthCode
-	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
-	(*v2alpha1.HttpReply)(nil),    // 9: sluis.type.v2alpha1.HttpReply
+	(*SessionChain)(nil),          // 8: sluis.session.v2alpha1.SessionChain
+	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*v2alpha1.HttpReply)(nil),    // 10: sluis.type.v2alpha1.HttpReply
 }
 var file_sluis_session_v2alpha1_session_proto_depIdxs = []int32{
-	8, // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
-	8, // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
-	8, // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
-	8, // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
-	8, // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
-	0, // 5: sluis.session.v2alpha1.SessionService.Authorize:input_type -> sluis.session.v2alpha1.AuthorizeRequest
-	1, // 6: sluis.session.v2alpha1.SessionService.Callback:input_type -> sluis.session.v2alpha1.CallbackRequest
-	2, // 7: sluis.session.v2alpha1.SessionService.Token:input_type -> sluis.session.v2alpha1.TokenRequest
-	9, // 8: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
-	9, // 9: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
-	9, // 10: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
-	8, // [8:11] is the sub-list for method output_type
-	5, // [5:8] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	9,  // 0: sluis.session.v2alpha1.PendingSignIn.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 1: sluis.session.v2alpha1.PendingSignIn.expires_at:type_name -> google.protobuf.Timestamp
+	9,  // 2: sluis.session.v2alpha1.Person.created_at:type_name -> google.protobuf.Timestamp
+	9,  // 3: sluis.session.v2alpha1.AuthCode.authenticated_at:type_name -> google.protobuf.Timestamp
+	9,  // 4: sluis.session.v2alpha1.AuthCode.auth_time:type_name -> google.protobuf.Timestamp
+	9,  // 5: sluis.session.v2alpha1.SessionChain.started_at:type_name -> google.protobuf.Timestamp
+	9,  // 6: sluis.session.v2alpha1.SessionChain.ends_at:type_name -> google.protobuf.Timestamp
+	9,  // 7: sluis.session.v2alpha1.SessionChain.refreshed_at:type_name -> google.protobuf.Timestamp
+	9,  // 8: sluis.session.v2alpha1.SessionChain.auth_time:type_name -> google.protobuf.Timestamp
+	0,  // 9: sluis.session.v2alpha1.SessionService.Authorize:input_type -> sluis.session.v2alpha1.AuthorizeRequest
+	1,  // 10: sluis.session.v2alpha1.SessionService.Callback:input_type -> sluis.session.v2alpha1.CallbackRequest
+	2,  // 11: sluis.session.v2alpha1.SessionService.Token:input_type -> sluis.session.v2alpha1.TokenRequest
+	10, // 12: sluis.session.v2alpha1.SessionService.Authorize:output_type -> sluis.type.v2alpha1.HttpReply
+	10, // 13: sluis.session.v2alpha1.SessionService.Callback:output_type -> sluis.type.v2alpha1.HttpReply
+	10, // 14: sluis.session.v2alpha1.SessionService.Token:output_type -> sluis.type.v2alpha1.HttpReply
+	12, // [12:15] is the sub-list for method output_type
+	9,  // [9:12] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_sluis_session_v2alpha1_session_proto_init() }
@@ -947,13 +1122,14 @@ func file_sluis_session_v2alpha1_session_proto_init() {
 		return
 	}
 	file_sluis_session_v2alpha1_session_proto_msgTypes[7].OneofWrappers = []any{}
+	file_sluis_session_v2alpha1_session_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_session_v2alpha1_session_proto_rawDesc), len(file_sluis_session_v2alpha1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
