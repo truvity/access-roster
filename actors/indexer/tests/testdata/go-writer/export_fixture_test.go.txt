@@ -1,0 +1,72 @@
+//go:build sluis_test
+
+// Regenerates actors/indexer/tests/testdata/go-writer/ from the merged writer, as it stands.
+//
+// This is a Go test of the writer's own package, kept here as text so that no other package's files change.
+// To regenerate the fixture:
+//
+//   1. copy this file to actors/writer/internal/writerd/export_fixture_test.go;
+//   2. from the repository root run
+//        IDX_DUMP=<an empty directory> go test -tags sluis_test -run TestExportFixture -count=1 ./actors/writer/internal/writerd
+//   3. copy <dir>/blob/audit to testdata/go-writer/audit, <dir>/vkey to testdata/go-writer/vkey and
+//      <dir>/opened.json to testdata/go-writer/opened.json;
+//   4. delete the copied test file.
+//
+// The test writes the log with the writer (40 messages, a batch of at most 10, tenants acme, globex and none),
+// checks it with `sluis audit verify`, and records for each sealed entry what the writer's own key stand-in
+// opens it to at its address. The key that sealed the entries is not kept: opened.json is the stand-in for key@
+// in the indexer's test, and the entries stay sealed.
+
+package writerd
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+)
+
+func TestExportFixture(t *testing.T) {
+	out := os.Getenv("IDX_DUMP")
+	if out == "" {
+		t.Skip("SKIP: IDX_DUMP is not set")
+	}
+	e := newEnv(t)
+	e.cfg.BatchMax = 10
+	em := emitterOf(t, e)
+	e.start()
+	const n = 40
+	for i := range n {
+		tenant := []string{"acme", "globex", ""}[i%3]
+		action := []string{"key.sign", "store.start"}[i%2]
+		e.push(newMessage(t, em, action, tenant))
+	}
+	wait(t, "all messages", func() bool { return e.tr.ackedCount() == n })
+	_ = e.mustVerify(t)
+	if err := exec.Command("cp", "-r", e.root, filepath.Join(out, "blob")).Run(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "vkey"), []byte(e.verifier()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	type opened struct {
+		Envelope, Tenant, Kind, ID, Plaintext string
+	}
+	var all []opened
+	for _, en := range recordEntries(logEntries(t, e.logDir())) {
+		md := en["metadata"].(map[string]any)
+		sealed, _ := base64.StdEncoding.DecodeString(en["sealed"].(string))
+		id := SealID("sluis", "audit", "main", md["uid"].(string))
+		pt, err := e.key.open(sealed, md["tenant_uid"].(string), SealKind, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, opened{en["sealed"].(string), md["tenant_uid"].(string), SealKind, id, base64.StdEncoding.EncodeToString(pt)})
+	}
+	b, _ := json.Marshal(all)
+	if err := os.WriteFile(filepath.Join(out, "opened.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
