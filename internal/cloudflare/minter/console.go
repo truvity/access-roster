@@ -142,8 +142,11 @@ func (m *Minter) rotateNow(ctx context.Context, preset string, p config.Cloudfla
 	if err != nil && !errors.Is(err, state.ErrNotFound) && !errors.Is(err, secretstore.ErrSchema) {
 		return nil, &storeError{err: fmt.Errorf("read external/cloudflare/%s: %w", preset, err)}
 	}
+	// Stored at once: an operator who rotates now is answered now. A consumer
+	// that reads the new credential at once may be refused for a while; the
+	// schedule holds its rotations back so that its consumers are not.
 	now := m.now()
-	minted, err := m.rotate(ctx, preset, p, rev, now, actor)
+	minted, err := m.rotate(ctx, preset, p, rev, now, actor, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -263,7 +263,7 @@ func setupWith(t *testing.T, pause minter.Pause, change func(*config.Cloudflare)
 			e.api.mu.Unlock()
 			return e.api, nil
 		},
-		Audit: e.rec, Now: now, Propagation: -1, Maintenance: pause,
+		Audit: e.rec, Now: now, Propagation: -1, PublishAfter: -1, Maintenance: pause,
 	}
 	e.secretsConfig(&mc)
 	e.cfg = mc
