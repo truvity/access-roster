@@ -961,6 +961,38 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
     task.abort();
 }
 
+/// verifies: REQ-ISO-106
+#[tokio::test]
+async fn a_credential_name_belongs_to_one_secret_kind() {
+    // The upstream names the credential of the confidential client example-app: InstallationClientSecret's readers
+    // could otherwise be served the upstream's secret, or the adapter the client's.
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    e.sign(
+        "upstream",
+        &source("upstream").replace("secret: upstream-workforce", "secret: client-example-app"),
+        1,
+    );
+    let err = e
+        .start()
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a credential shared by two secret kinds started"));
+    assert!(
+        err.to_string()
+            .contains("Upstream: secret: names a credential an InstallationClient names"),
+        "{err}"
+    );
+    assert!(
+        !err.to_string().contains("client-example-app"),
+        "an error never shows a value: {err}"
+    );
+    // The local set, where each names its own, starts.
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    assert!(e.start().await.is_ok());
+}
+
 /// verifies: REQ-SEC-037
 #[tokio::test]
 async fn plain_http_is_for_development_and_only_on_a_loopback_ip_literal() {

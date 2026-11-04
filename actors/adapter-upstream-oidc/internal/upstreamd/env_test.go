@@ -8,6 +8,8 @@ import (
 	"crypto/sha512"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,6 +84,16 @@ type fakeStore struct {
 	mu    sync.Mutex
 	items map[string]proto.Message // "<segment>/<id>"
 	gets  map[string]int
+	fails map[string]error // a segment whose gets fail with the error
+}
+
+func (f *fakeStore) failOn(segment string, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.fails == nil {
+		f.fails = map[string]error{}
+	}
+	f.fails[segment] = err
 }
 
 func (f *fakeStore) set(k string, m proto.Message) {
@@ -108,7 +120,11 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	}
 	f.gets[a.GetKind()]++
 	m, ok := f.items[a.GetKind()+"/"+a.GetId()]
+	fail := f.fails[a.GetKind()]
 	f.mu.Unlock()
+	if fail != nil {
+		return nil, fail
+	}
 	if !ok {
 		return nil, refusal.New(connect.CodeNotFound, "absent", "address")
 	}
@@ -119,6 +135,29 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: &storev2alpha1.Item{
 		Address: &typev2alpha1.Address{Kind: a.GetKind(), Id: a.GetId()}, Version: 1, Value: b,
 	}}), nil
+}
+
+// List answers the items of one segment, in one page.
+func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var keys []string
+	for k := range f.items {
+		if seg, _, _ := strings.Cut(k, "/"); seg == req.Msg.GetKind() {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	out := &storev2alpha1.ListResponse{}
+	for _, k := range keys {
+		b, err := proto.Marshal(f.items[k])
+		if err != nil {
+			return nil, err
+		}
+		_, id, _ := strings.Cut(k, "/")
+		out.Items = append(out.Items, &storev2alpha1.Item{Address: &typev2alpha1.Address{Kind: req.Msg.GetKind(), Id: id}, Version: 1, Value: b})
+	}
+	return connect.NewResponse(out), nil
 }
 
 // fakeTransport records what the emitter hands over.
