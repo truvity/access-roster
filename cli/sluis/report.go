@@ -20,6 +20,7 @@ type result struct {
 	Token    *tokenOut `json:"token,omitempty"`
 	Login    *loginOut `json:"login,omitempty"`
 	Audit    *auditOut `json:"audit,omitempty"`
+	Node     *nodeOut  `json:"node,omitempty"`
 
 	// Text is what a person reads on standard output when the command is done.
 	Text string `json:"-"`

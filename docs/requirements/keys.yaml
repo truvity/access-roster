@@ -1158,3 +1158,17 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "the published key set lags the store by an hour; the new key stays pre-published until 30 minutes after it is read back from the public URL, and the live key set counts from the write"}
+  - id: REQ-KEYS-086
+    area: KEYS
+    statement: "`sluis node unlock` MUST deliver the PIN to a locked key@ only over an authenticated channel."
+    rationale: "A PIN that crosses an unauthenticated channel lets anyone who can reach the board unlock it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: partial
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    gap: partly-built
+    verification:
+      - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}
