@@ -22,4 +22,6 @@ mod routes;
 mod serve;
 
 pub use routes::Front;
+#[cfg(feature = "test-identities")]
+pub use serve::serve_with;
 pub use serve::{Config, Sockets, serve};

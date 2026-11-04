@@ -92,7 +92,6 @@ impl Params {
             .unwrap_or_default()
     }
 
-    #[cfg(test)]
     pub(crate) fn has(&self, name: &str) -> bool {
         self.0.iter().any(|(k, _)| k == name)
     }

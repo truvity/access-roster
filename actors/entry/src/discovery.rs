@@ -125,7 +125,9 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["ES384"],
         "code_challenge_methods_supported": ["S256"],
-        "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "none"],
+        // Only what every grant of /token accepts: the exchange grant carries no client
+        // authentication yet (TokenExchangeRequest has no field for it), so a secret is not offered.
+        "token_endpoint_auth_methods_supported": ["none"],
     });
     serde_json::to_vec(&doc).ok()
 }
@@ -147,13 +149,20 @@ fn p384_coordinates(spki: &[u8]) -> Option<(&[u8], &[u8])> {
     (point.len() == 96).then(|| point.split_at(48))
 }
 
-/// The JWK Set (RFC 7517 section 5) of the ring: one ES384 key per ring key that is a P-384 key.
-/// A key the document cannot describe is left out, never guessed.
+/// The states of a ring key that the key set publishes: a key verifiers must know before it signs,
+/// one that signs, and one that has stopped signing but whose tokens are still valid (0006
+/// "Rotation"). Any other state, an unknown or an empty one included, is not published.
+const PUBLISHED: [&str; 3] = ["pre-published", "active", "retiring"];
+
+/// The JWK Set (RFC 7517 section 5) of the ring: one ES384 key per published ring key that is a
+/// P-384 key. A key the document cannot describe, or whose state is not published, is left out,
+/// never guessed.
 pub(crate) fn jwks(ring: &SigningRing) -> Vec<u8> {
     let keys: Vec<Value> = ring
         .keys
         .iter()
         .filter(|k| k.algorithm == "ES384" && !k.key_id.is_empty())
+        .filter(|k| PUBLISHED.contains(&k.state.as_str()))
         .filter_map(|k| {
             let (x, y) = p384_coordinates(&k.spki_der)?;
             let mut jwk = json!({
@@ -192,6 +201,7 @@ mod tests {
             key_id: id.into(),
             algorithm: alg.into(),
             spki_der: spki,
+            state: "active".into(),
             ..SigningKey::default()
         }
     }
@@ -223,6 +233,38 @@ mod tests {
         );
         assert!(keys[0].get("x5c").is_none());
         assert_eq!(keys[1]["x5c"][0], "AQID");
+    }
+
+    #[test]
+    fn only_published_states_are_in_the_key_set() {
+        let with = |id: &str, state: &str| SigningKey {
+            state: state.into(),
+            ..key(id, "ES384", spki(1, 2))
+        };
+        let ring = SigningRing {
+            keys: [
+                "pre-published",
+                "active",
+                "retiring",
+                "revoked",
+                "destroyed",
+                "",
+                "Active",
+            ]
+            .iter()
+            .enumerate()
+            .map(|(i, s)| with(&format!("k{i}"), s))
+            .collect(),
+            ..SigningRing::default()
+        };
+        let v: Value = serde_json::from_slice(&jwks(&ring)).unwrap();
+        let kids: Vec<&str> = v["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["kid"].as_str().unwrap())
+            .collect();
+        assert_eq!(kids, ["k0", "k1", "k2"]);
     }
 
     #[test]

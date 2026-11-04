@@ -41,10 +41,10 @@ impl Commands for Entry {
             .unwrap_or(0o660);
         let group = f
             .matches
-            .get_one::<String>("socket-group")
+            .get_one::<String>("socket-gid")
             .map(|g| g.parse::<u32>())
             .transpose()
-            .context("--socket-group: a numeric group id")?;
+            .context("--socket-gid: a numeric group id")?;
         let sockets = Sockets::under(&run_dir, &boundary);
         entry::serve(
             Config {
@@ -52,7 +52,7 @@ impl Commands for Entry {
                 front,
                 socket,
                 socket_mode: mode,
-                socket_group: group,
+                socket_gid: group,
                 sockets,
                 release: sluis_version::VERSION.to_owned(),
             },
@@ -88,11 +88,11 @@ fn main() {
                 .help("The mode of the listening socket (default 660)"),
         )
         .arg(
-            Arg::new("socket-group")
-                .long("socket-group")
+            Arg::new("socket-gid")
+                .long("socket-gid")
                 .value_name("GID")
                 .global(true)
-                .help("The group of the listening socket, the forwarder's"),
+                .help("The group of the listening socket, the forwarder's (not 0)"),
         )
     })
 }

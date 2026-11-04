@@ -404,6 +404,7 @@ dependencies = [
  "bytes",
  "clap",
  "connectrpc",
+ "entry",
  "http",
  "http-body-util",
  "hyper",
