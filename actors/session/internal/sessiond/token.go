@@ -161,22 +161,21 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 		return nil, unavailable("key", err)
 	}
 
-	// Spend the code first, by a conditional update: of two redemptions of one code, one wins. The loser finds the code
-	// spent and ends the chain the winner made (RFC 6749 section 4.1.2: a replayed code revokes what it issued).
+	// Spend the code and begin the chain in one write: the conditional update of the code makes it single use (of two
+	// redemptions, one wins), and the chain is created with it, so a loser that finds the code spent also finds the
+	// chain to end (RFC 6749 section 4.1.2: a replayed code revokes what it issued). Apart, a replay could land between
+	// the two writes and find no chain.
 	ac.Spent, ac.SessionId = true, sid
-	if _, err := s.codes.Update(ctx, tc.tenant, id, ac, it.Version, store.WithGrant(v.grant)); err != nil {
-		if errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound) {
-			return s.replayed(ctx, tc, id, nil)
-		}
-		return nil, unavailable("store", err)
-	}
 	chain := &sessionv2alpha1.SessionChain{
 		Subject: ac.GetSubject(), ClientId: tc.client.GetId(), Class: chainClassHuman, Scope: ac.GetScope(),
 		RefreshHash: secretHash(secret), StartedAt: ac.GetAuthenticatedAt(), EndsAt: timestamppb.New(ends),
 		RefreshedAt: timestamppb.New(tc.now), AuthTime: ac.GetAuthTime(), Acr: ac.Acr, Amr: ac.GetAmr(),
 		AmrPresent: ac.GetAmrPresent(), SealedFacts: chainFacts,
 	}
-	if _, err := s.chains.Create(ctx, tc.tenant, sid, chain, store.WithGrant(v.grant), store.WithTTL(ends.Sub(tc.now))); err != nil {
+	if err := s.spendAndBegin(ctx, tc.tenant, id, ac, it.Version, sid, chain, ends.Sub(tc.now), v.grant); err != nil {
+		if errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound) {
+			return s.replayed(ctx, tc, id, nil)
+		}
 		return nil, unavailable("store", err)
 	}
 	out, err := s.mint(ctx, tc, mintInput{

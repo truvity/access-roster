@@ -25,10 +25,14 @@ const pendingLife = 10 * time.Minute
 // The bounds of what session takes from a client. They keep a request small enough to seal in a cookie and out of
 // an audit field.
 const (
-	maxState       = 512 // RFC 6749 appendix A.5 gives no bound; 512 is what the upstream adapter accepts too
-	maxNonce       = 512
-	maxRedirectURI = 2048
+	maxState       = 256 // RFC 6749 appendix A.5 gives no bound
+	maxNonce       = 256
+	maxRedirectURI = 1024
 	maxScope       = 256
+
+	// maxCookie is the longest sign-in cookie value entry passes on (HEADER_VALUE_MAX in entry's handler.rs). The
+	// pending sign-in is sealed into it, so the five client-supplied fields above are bounded to keep it under.
+	maxCookie = 4096
 )
 
 // The scopes session grants. The claims for profile and email arrive with the upstream claims allow-list; until
@@ -105,21 +109,26 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if !ok {
 		return fail("invalid_scope", "the openid scope is required", reasonRequest)
 	}
-	switch r.GetPrompt() {
-	case "", "login":
-	case "none":
-		// There is no session cookie of sluis's own yet, so a silent request cannot be answered (OpenID Connect
-		// Core section 3.1.2.6).
-		return fail("login_required", "no session to renew", reasonRequest)
-	default:
-		return fail("invalid_request", "prompt is not served", reasonRequest)
+	// A prompt asks for something the upstream must be told to do: login forces a fresh authentication, none forbids
+	// any interaction. BeginRequest carries neither (0025 names them for the adapter, which does not take them yet), so
+	// an upstream with a single sign-on session could answer silently and session would pass that off as what the
+	// client asked for. A value that cannot be honoured is refused (OpenID Connect Core section 3.1.2.6).
+	if r.GetPrompt() != "" {
+		return fail("login_required", "the prompt cannot be honoured", reasonRequest)
 	}
+	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback (OpenID
+	// Connect Core section 3.1.2.1). max_age=0 asks for a fresh authentication, the same as prompt=login.
+	var maxAge *int64
 	if m := r.GetMaxAge(); m != "" {
-		// Every authorize authenticates the person at the upstream, so the age is always fresh enough; the value
-		// must still be a whole number (OpenID Connect Core section 3.1.2.1).
-		if _, err := strconv.ParseUint(m, 10, 31); err != nil {
+		n, err := strconv.ParseUint(m, 10, 31)
+		if err != nil {
 			return fail("invalid_request", "max_age is malformed", reasonRequest)
 		}
+		if n == 0 {
+			return fail("login_required", "a fresh authentication cannot be forced", reasonRequest)
+		}
+		v := int64(n)
+		maxAge = &v
 	}
 
 	up, err := s.opts.Config.Upstream(ctx, s.opts.UpstreamName)
@@ -160,13 +169,18 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		ClientId: cl.GetId(), RedirectUri: r.GetRedirectUri(), Scope: scope, State: r.GetState(), Nonce: r.GetNonce(),
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
-		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)),
+		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {
 		return nil, unavailable("key", err)
 	}
 	cookie := pid + "." + base64.RawURLEncoding.EncodeToString(envelope)
+	// entry reads a cookie value of at most 4096 bytes (maxCookie). The bounds above keep a request well inside it;
+	// this is the check that no later change to them sets a cookie the browser's return would be refused for.
+	if len(cookie) > maxCookie {
+		return fail("invalid_request", "the request is too large", reasonRequest)
+	}
 	if aerr := s.record(ctx, audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, cl.GetId())}); aerr != nil {
 		return nil, aerr
 	}

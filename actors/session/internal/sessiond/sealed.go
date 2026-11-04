@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/durationpb"
+
+	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
@@ -102,4 +106,33 @@ func (s sealedStore) createAll(ctx context.Context, tenant string, grant []byte,
 		return fmt.Errorf("store create: %w: %w", store.ErrExists, err)
 	}
 	return fmt.Errorf("store create: %w", err)
+}
+
+// spendAndBegin writes, in one all-or-none batch, the conditional update that marks an AuthCode spent and the create
+// of the SessionChain it begins. Both kinds are temp, so one engine takes the batch. A moved version is
+// store.ErrVersion: another redemption won.
+func (s *Service) spendAndBegin(ctx context.Context, tenant, codeID string, code *sessionv2alpha1.AuthCode, version uint64, sid string, chain *sessionv2alpha1.SessionChain, ttl time.Duration, grant []byte) error {
+	m := proto.MarshalOptions{Deterministic: true}
+	cv, err := m.Marshal(code)
+	if err != nil {
+		return refusal.New(connect.CodeInternal, "schema", "value")
+	}
+	sv, err := m.Marshal(chain)
+	if err != nil {
+		return refusal.New(connect.CodeInternal, "schema", "value")
+	}
+	_, err = s.opts.Store.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{
+		Operations: []*storev2alpha1.Operation{
+			{Verb: storev2alpha1.Verb_UPDATE, Address: &typev2alpha1.Address{Kind: authCodeKind, Tenant: tenant, Id: codeID}, Value: cv, IfVersion: version},
+			{Verb: storev2alpha1.Verb_CREATE, Address: &typev2alpha1.Address{Kind: chainKind, Tenant: tenant, Id: sid}, Value: sv, Ttl: durationpb.New(ttl)},
+		},
+		Grant: grant,
+	}))
+	if err == nil {
+		return nil
+	}
+	if connect.CodeOf(err) == connect.CodeAborted {
+		return fmt.Errorf("store write: %w: %w", store.ErrVersion, err)
+	}
+	return fmt.Errorf("store write: %w", err)
 }

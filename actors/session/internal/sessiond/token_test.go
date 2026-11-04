@@ -13,12 +13,14 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/truvity/sluis/v2/actors/session/internal/sessiond"
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 )
 
@@ -542,5 +544,55 @@ func TestTokenGroupsAreNarrowedToTheAudience(t *testing.T) {
 	_, id = tokenClaims(t, b["id_token"].(string))
 	if _, has := id["groups"]; has {
 		t.Errorf("groups = %v", id["groups"])
+	}
+}
+
+func TestTokenLosingRedemptionEndsTheWinnersChain(t *testing.T) {
+	// Another instance redeems the code between this one's read and its write: this one's conditional update aborts,
+	// it finds the code spent, and it ends the chain the winner made. The winner's chain exists by then because the
+	// code is spent and the chain is created in one write.
+	e := newEnv(t, nil)
+	code, p := e.signIn()
+	id := sha384hex(code)
+	const winner = "winnerwinnerwinnerwinner26"
+	var once sync.Once
+	e.store.beforeWrite = func(s *fakeStore, _ []*storev2alpha1.Operation) {
+		once.Do(func() {
+			k := key("auth-code", testTenant, id)
+			ac := protoOf(t, s.items[k].value, &sessionv2alpha1.AuthCode{})
+			ac.Spent, ac.SessionId = true, winner
+			ac.SealedFacts = nil
+			raw, _ := proto.Marshal(ac)
+			s.items[k] = &storedItem{value: raw, version: s.items[k].version + 1}
+			facts, err := e.key.sealForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: winner}, &sessionv2alpha1.SignInFacts{Accounts: []string{"workforce/alice"}})
+			if err != nil {
+				panic(err)
+			}
+			chain, _ := proto.Marshal(&sessionv2alpha1.SessionChain{Subject: ac.GetSubject(), ClientId: testClient, Class: "human", SealedFacts: facts})
+			s.items[key("session-chain", testTenant, winner)] = &storedItem{value: chain, version: 1}
+		})
+	}
+	assertOAuth(t, e.token(codeRequest(code, p)), http.StatusBadRequest, "invalid_grant")
+	if _, _, ok := e.store.raw("session-chain", testTenant, winner); ok {
+		t.Fatal("the winner's chain survives the losing redemption")
+	}
+	if n := e.store.count("session-chain", testTenant); n != 0 {
+		t.Errorf("%d chains", n)
+	}
+}
+
+func TestTokenSpendAndChainAreOneWrite(t *testing.T) {
+	e := newEnv(t, nil)
+	code, p := e.signIn()
+	before := len(e.store.writes)
+	if r := e.token(codeRequest(code, p)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("token: %s", r.GetBody())
+	}
+	writes := e.store.writes[before:]
+	if len(writes) != 1 || len(writes[0]) != 2 {
+		t.Fatalf("%d writes for the redemption, want one batch of two", len(writes))
+	}
+	if writes[0][0].GetAddress().GetKind() != "auth-code" || writes[0][1].GetAddress().GetKind() != "session-chain" {
+		t.Errorf("batch = %v", writes[0])
 	}
 }

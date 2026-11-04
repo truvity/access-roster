@@ -70,6 +70,7 @@ message PendingSignIn {
   string upstream_verifier = 11;                 // the PKCE verifier of the upstream request
   google.protobuf.Timestamp created_at = 12;     // when the request was made
   google.protobuf.Timestamp expires_at = 13;     // when the pending sign-in ends
+  optional int64 max_age = 14;                   // the client's max_age in seconds, if sent; the callback refuses an older auth_time
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.

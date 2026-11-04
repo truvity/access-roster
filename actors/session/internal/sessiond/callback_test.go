@@ -510,3 +510,66 @@ func TestSignInIsAudited(t *testing.T) {
 		t.Errorf("the record does not name the decision: %s", raw)
 	}
 }
+
+func TestCallbackMaxAge(t *testing.T) {
+	signedAgo := func(d time.Duration) func(*env) {
+		return func(e *env) {
+			e.upstream.completeFn = func(_ *integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) {
+				return &integrationv2alpha1.Assertion{
+					Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice",
+					AuthTime: timestampOf(e.clk.now().Add(-d)),
+				}, nil
+			}
+		}
+	}
+	noAuthTime := func(e *env) {
+		e.upstream.completeFn = func(*integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) {
+			return &integrationv2alpha1.Assertion{Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice"}, nil
+		}
+	}
+	cases := map[string]struct {
+		setup  func(*env)
+		maxAge string
+		ok     bool
+	}{
+		"fresh enough":             {signedAgo(30 * time.Second), "60", true},
+		"exactly at the limit":     {signedAgo(60 * time.Second), "60", true},
+		"older than allowed":       {signedAgo(61 * time.Second), "60", false},
+		"an old session":           {signedAgo(8 * time.Hour), "300", false},
+		"no auth_time":             {noAuthTime, "60", false},
+		"no max_age, no auth_time": {noAuthTime, "", true},
+		"no max_age, an old one":   {signedAgo(8 * time.Hour), "", true},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, nil)
+			c.setup(e)
+			p := newAuthorize()
+			p.req.MaxAge = c.maxAge
+			a := e.authorize(p.req)
+			up := location(t, a)
+			cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: up.Query().Get("state"), Cookie: cookieValue(t, a)})
+			q := location(t, cb).Query()
+			if c.ok {
+				if q.Get("code") == "" {
+					t.Fatalf("refused: %v", q)
+				}
+				// The ID token carries auth_time when the client asked for max_age.
+				if c.maxAge != "" {
+					tr := e.token(codeRequest(q.Get("code"), p))
+					_, id := tokenClaims(t, body(t, tr)["id_token"].(string))
+					if id["auth_time"] == nil {
+						t.Error("no auth_time in the ID token of a max_age request")
+					}
+				}
+				return
+			}
+			if q.Get("error") != "login_required" || q.Get("code") != "" || q.Get("state") != p.req.GetState() {
+				t.Errorf("redirect = %v", q)
+			}
+			if len(e.store.writes) != 0 || len(e.policy.requests()) != 0 {
+				t.Error("something was decided or written for a stale authentication")
+			}
+		})
+	}
+}
