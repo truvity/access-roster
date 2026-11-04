@@ -245,7 +245,7 @@ func (s *Service) complete(ctx context.Context, t *target, r *integrationv2alpha
 	// and one that gets an iss other than the upstream's refuses it (REQ-FED-003). The comparison is simple string
 	// comparison (RFC 3986 section 6.2.1).
 	if (p.IssParameter && r.GetIss() == "") || (r.GetIss() != "" && r.GetIss() != p.Issuer) {
-		return nil, oidc.Rejected("iss")
+		return nil, oidc.Invalid("iss")
 	}
 	secret, err := s.opts.Secrets.ClientSecret(r.GetUpstream())
 	if err != nil {
@@ -276,29 +276,29 @@ func assertionOf(issuer string, up *configv2alpha1.Upstream, c oidc.Claims) (*in
 	}
 	subject, ok := c.String(claim)
 	if !ok || subject == "" || len(subject) > maxClaim {
-		return nil, oidc.Rejected("id_token." + claim)
+		return nil, oidc.Invalid("id_token." + claim)
 	}
 	a := &integrationv2alpha1.Assertion{Issuer: issuer, SubjectClaim: claim, Subject: subject}
 	if _, present := c["acr"]; present {
 		acr, ok := c.String("acr")
 		if !ok || len(acr) > maxClaim {
-			return nil, oidc.Rejected("id_token.acr")
+			return nil, oidc.Invalid("id_token.acr")
 		}
 		a.Acr = &acr
 	}
 	amr, present, ok := c.Strings("amr")
 	if !ok || len(amr) > maxAMR {
-		return nil, oidc.Rejected("id_token.amr")
+		return nil, oidc.Invalid("id_token.amr")
 	}
 	for _, m := range amr {
 		if m == "" || len(m) > maxClaim {
-			return nil, oidc.Rejected("id_token.amr")
+			return nil, oidc.Invalid("id_token.amr")
 		}
 	}
 	a.Amr, a.AmrPresent = amr, present
 	at, present, ok := c.Int("auth_time")
 	if !ok {
-		return nil, oidc.Rejected("id_token.auth_time")
+		return nil, oidc.Invalid("id_token.auth_time")
 	}
 	if present {
 		a.AuthTime = timestamppb.New(time.Unix(at, 0))
@@ -307,7 +307,7 @@ func assertionOf(issuer string, up *configv2alpha1.Upstream, c oidc.Claims) (*in
 		if _, present := c[oc]; present {
 			org, ok := c.String(oc)
 			if !ok || len(org) > maxClaim {
-				return nil, oidc.Rejected("id_token." + oc)
+				return nil, oidc.Invalid("id_token." + oc)
 			}
 			a.OrgId = org
 		}
