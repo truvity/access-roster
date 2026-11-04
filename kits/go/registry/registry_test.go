@@ -285,8 +285,8 @@ func TestActors(t *testing.T) {
 		t.Error("an external caller is not an actor")
 	}
 	// The sizes of the registries of 2026-11-03, the same numbers as the Rust crate asserts.
-	if got := len(Kinds()); got != 111 {
-		t.Errorf("%d kinds, want 111", got)
+	if got := len(Kinds()); got != 112 {
+		t.Errorf("%d kinds, want 112", got)
 	}
 	if got := len(Actors()); got != 20 {
 		t.Errorf("%d actors and platform pieces, want 20", got)
@@ -320,7 +320,7 @@ func TestTableSizes(t *testing.T) {
 			}
 		}
 	}
-	if entries != 479 || verbs != 1736 || selfMarks != 704 || keyEntries != 63 || keyOps != 90 {
+	if entries != 484 || verbs != 1755 || selfMarks != 704 || keyEntries != 63 || keyOps != 90 {
 		t.Errorf("store entries %d, verbs %d, self marks %d, key entries %d, key ops %d", entries, verbs, selfMarks, keyEntries, keyOps)
 	}
 }
