@@ -5,6 +5,8 @@ Description=sluis store (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 Requires=sluis-drv-store-rqlite-durable@%i.service sluis-drv-store-rqlite-temp@%i.service sluis-drv-store-file@%i.service sluis-drv-store-credential@%i.service
 After=sluis-drv-store-rqlite-durable@%i.service sluis-drv-store-rqlite-temp@%i.service sluis-drv-store-file@%i.service sluis-drv-store-credential@%i.service
+StartLimitIntervalSec=120
+StartLimitBurst=40
 
 [Service]
 Type=simple

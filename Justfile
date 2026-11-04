@@ -389,6 +389,11 @@ build-arm64:
 units-gen:
     go run ./tools/gen/units
 
+# Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
+# file that pins the key, the credentials). The state is below .cache/boards and never committed.
+boards-prepare:
+    deploy/boards/prepare.sh
+
 # Copy the executables that exist in dist/arm64, with their units, to every board; verify; start in order.
 # Idempotent. SLUIS_BOARDS_DRY_RUN=1 stages and prints the plan without touching a board.
 boards-deploy:
@@ -398,6 +403,16 @@ boards-deploy:
 # /opt/sluis/bin/rqlited or /var/lib/sluis. The state of the units stays unless SLUIS_PURGE_STATE=1.
 boards-undeploy:
     deploy/boards/boards.sh undeploy
+
+# The M1 proof on every board of SLUIS_BOARDS in turn, over SSH (deploy/boards/smoke): a client under the uid of exchange asks
+# policy for a token.exchange decision and signer for a token; the token is checked against /jwks of entry, the records of
+# the run are found in the audit log, `sluis audit verify` checks the log, and SigningRing and DataKeyWrap are read through
+# store@. From the second board on it must find the earlier boards' items, which shows the shared store. Run `just
+# build-arm64` and `just boards-deploy` first. Exits non-zero on any failure. CI builds it and does not run it.
+boards-smoke:
+    CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o dist/arm64/smoke/spine ./tests/e2e/spine
+    CGO_ENABLED=0 go build -trimpath -o dist/boardsmoke ./deploy/boards/smoke
+    dist/boardsmoke
 
 # Read only: the units of boards-deploy on every board, and whether they are active.
 boards-status:

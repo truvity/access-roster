@@ -8,6 +8,13 @@
 #   SLUIS_BOARD_SSH_AUTH_SOCK   the agent socket for ssh; SSH_AUTH_SOCK is the fallback. It is set for the ssh
 #                               commands only, never exported for the whole script.
 #   SLUIS_BOARD_BIN_DIR         must be /opt/sluis/bin if set: the units are generated for it
+#   SLUIS_BOARDS_ONLY           space-separated executables to deploy, as they sit in dist/arm64 (actors/store
+#                               drivers/key/software ...); default: every executable that was built. The users of
+#                               the groups a unit joins come along.
+#   SLUIS_BOARDS_SEED           the directory `just boards-prepare` made (default .cache/boards/seed): the signed
+#                               config, the bootstrap file and the credentials. deploy installs them under
+#                               /etc/sluis, and writes /etc/sluis/rqlite-dev.env with the board's own rqlite address.
+#   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
 #   SLUIS_BOARDS_DRY_RUN=1      stage and print the plan; no ssh, no board touched
 #   SLUIS_PURGE_STATE=1         undeploy also removes the state of the units (their keys)
 #
@@ -31,6 +38,9 @@ if [ "${SLUIS_BOARD_BIN_DIR:-/opt/sluis/bin}" != /opt/sluis/bin ]; then
 fi
 agent=${SLUIS_BOARD_SSH_AUTH_SOCK:-${SSH_AUTH_SOCK:-}}
 dry=${SLUIS_BOARDS_DRY_RUN:-}
+seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
+rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
+only=${SLUIS_BOARDS_ONLY:-}
 
 # shellcheck disable=SC2206 # the boards are a space-separated list
 boards=($SLUIS_BOARDS)
@@ -56,6 +66,9 @@ stage() { # dir
 	while IFS=$'\t' read -r instance template _kind binary user _uid needs; do
 		[[ "$instance" != '#'* ]] || continue
 		[ -f "$dist/$binary" ] || continue
+		if [ -n "$only" ]; then
+			case " $only " in *" $binary "*) ;; *) continue ;; esac
+		fi
 		mkdir -p "$s/files/bin/$(dirname "$binary")"
 		install -m 0755 "$dist/$binary" "$s/files/bin/$binary"
 		cp "$units/$template" "$s/files/systemd/$template"
@@ -73,12 +86,26 @@ stage() { # dir
 		[ ! -f "$units/$stem.tmpfiles" ] || cp "$units/$stem.tmpfiles" "$s/files/tmpfiles/$stem-dev.conf"
 	done
 	install -m 0755 "$here/remote.sh" "$s/remote.sh"
+	# The seed: public documents and the credentials, every board alike. The rqlite address is per board and is
+	# written by run_on.
+	if [ -d "$seed/config" ]; then
+		mkdir -p "$s/files/etc"
+		cp -r "$seed/config" "$s/files/etc/config"
+		cp "$seed/bootstrap.yaml" "$s/files/etc/bootstrap.yaml"
+		[ ! -d "$seed/credentials" ] || cp -r "$seed/credentials" "$s/files/etc/credentials"
+	else
+		echo "boards: no seed in $seed: the units will start without config (run 'just boards-prepare')" >&2
+	fi
 }
 
 # run_on copies the stage to the board, runs remote.sh as root there and removes the stage.
 run_on() { # board mode stage
 	local b=$1 m=$2 s=$3 d rc=0
 	d=$(board_ssh "$b" mktemp -d)
+	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
+		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).
+		printf 'SLUIS_RQLITE_URL=http://%s:%s\n' "$b" "$rqlite_port" >"$s/files/etc/rqlite.env"
+	fi
 	tar -C "$s" -cf - . | board_ssh "$b" "tar -xf - -C '$d'"
 	board_ssh "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
 	board_ssh "$b" "rm -rf '$d'"
