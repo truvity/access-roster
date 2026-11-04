@@ -141,7 +141,7 @@ sluis follows the published specifications and invents no format. The audit chec
 
 | Identifier | Title | What sluis uses it for | Status | Notes |
 |---|---|---|---|---|
-| [C2SP signed-note](https://github.com/C2SP/C2SP/blob/main/signed-note.md) | Signed note | The envelope of an audit checkpoint. | Target in v2 | Checkpoints are signed with the P-384 log key (signature type 0x02). |
+| [C2SP signed-note](https://github.com/C2SP/C2SP/blob/main/signed-note.md) | Signed note | The envelope of an audit checkpoint. | Target in v2 | Audit checkpoints are signed with the P-256 log key over SHA-256 (signature type 0x02), as generic witnesses verify them; the issuance log's checkpoints use a P-384 key ([0006](/decisions/0006-keys-and-sealing/#named-exceptions)). |
 | [C2SP tlog-checkpoint](https://github.com/C2SP/C2SP/blob/main/tlog-checkpoint.md) | Transparency log checkpoint | The signed head of the audit log: size and root hash. | Target in v2 | |
 | [C2SP tlog-tiles](https://github.com/C2SP/C2SP/blob/main/tlog-tiles.md) | Transparency log tiles | The layout of the log as static tiles in a blob store. | Target in v2 | Static objects, readable without a server. |
 | [C2SP tlog-cosignature](https://github.com/C2SP/C2SP/blob/main/tlog-cosignature.md) | Transparency log cosignature | A witness's signature over a checkpoint. | Target in v2 | Witness keys are Ed25519 or ML-DSA-44. |

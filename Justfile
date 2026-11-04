@@ -162,7 +162,7 @@ actors-write: site-install
 # The kind registry (docs/architecture/kinds.yaml), the key registry (docs/architecture/keys.yaml) and the
 # actor registry against each other: one writer per kind except the declared self-scoped kinds, every writer
 # and reader an actor, a time to live on every temp kind, no tenant scope on a config or secret kind, the AWS
-# baseline of one symmetric key and five P-384 keys, and the card slot plan without a collision.
+# baseline of one symmetric key, four P-384 keys and the audit log's P-256 key, and the card slot plan without a collision.
 # Every key purpose an actor uses is defined in keys.yaml with the ops it allows.
 check-registries: site-install
     tools/checks/registries.mjs

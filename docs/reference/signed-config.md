@@ -35,6 +35,8 @@ The protected header of every signature is a JSON object with exactly these memb
 
 - **The payload is the file as it was reviewed, byte for byte.** A reviewer matches it to `sha384sum` of the file at the commit.
 - **The format depends on the kind.** A policy kind (`Policy`, `RegulatedPartyPolicy`) is Cedar text. Every other kind is YAML or JSON, read by the [strict profile](/reference/bootstrap-file/#format) into the kind's Protobuf message, with durations written with a unit ([Durations](/reference/bootstrap-file/#durations)). The record states the format ([0005](/decisions/0005-the-store/#signed-config-documents)).
+- **The payload of a YAML or JSON kind is a mapping from item id to item** (decided 2026-11-04). The key is the item's id and the value is the item, read into the kind's message. A **singleton kind** has one item, with the id `default`: `Boundary`, `KeyPlan`, `TokenLifetime`, `AuditLog`, `AuditCatalogue`, `ExchangeTrust` and `Policy`. A **keyed kind** uses the name of each item as its id, for example `workforce` for an `Upstream` and `sluis-cli` for an `InstallationClient`.
+- **Two kinds are not mappings.** `GrantVocabulary` is the exception: its payload is the vocabulary file itself, which `policy` parses, so it is one document and not a map. `Policy` is Cedar text, one file, and that file is its one item `default`; its grammar and schema are checked by `policy`.
 - **The message is the schema** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). store@ validates the payload against the generated JSON Schema, decodes it, and validates the message with protovalidate. An unknown key is an error that names its path, a retired field in a signed document is refused, and an error never shows a value.
 - **A document that is large is still one document.** The payload is a third larger in base64url than the file. A config service has a size limit of its own; the figure for AWS AppConfig hosted configurations (2 MiB) is UNVERIFIED and is confirmed with the driver ([#1157](https://github.com/truvity/sluis/issues/1157)).
 
@@ -61,7 +63,7 @@ A failure names the document by its kind, never the value. A document that is re
 
 store@ loads the documents of its boundary as one set ([0005](/decisions/0005-the-store/#the-snapshot)):
 
-1. **Read every document** of the boundary from the config source, one for each config kind the boundary declares ([0005](/decisions/0005-the-store/#the-snapshot)). A declared kind with no document is a failure; there is no default and no empty stand-in in its place. A document for a kind that is not declared is refused.
+1. **Read every document** of the boundary from the config source, one for each config kind the boundary declares ([0005](/decisions/0005-the-store/#the-snapshot)). A declared kind with no document is a failure; there is no default and no empty stand-in in its place. A document for a kind that is not declared is ignored: it is not verified, not read and not applied, so a source may hold documents of a later release or of a kind that another installation declares.
 2. **Verify each one** as above.
 3. **Validate the set.** Each document is checked against its kind's schema; then the checks that span kinds and layers run: links resolve, the config bounds sit inside the built-in bounds, a template that a link names exists, and every grant name is in the vocabulary ([Policy](/reference/policy/#the-grant-vocabulary)). An error names the document and the path.
 4. **Swap atomically.** The snapshot replaces the one in force, and each changed kind is delivered to its watchers.
@@ -166,4 +168,4 @@ The payload of a vector is a stand-in: the signature layer does not look into it
 | A valid signature over a payload that is not valid for the kind | Refused at step 6, naming the path |
 | One document of the set invalid, the other documents valid | The whole set is refused; the snapshot in force stays |
 | Every document valid, one declared kind missing from the source | Refused at a cold start and on a reload |
-| A document for a config kind that the boundary does not declare | Refused at a cold start and on a reload |
+| A document for a config kind that the boundary does not declare | Ignored, at a cold start and on a reload; the declared kinds load as usual |

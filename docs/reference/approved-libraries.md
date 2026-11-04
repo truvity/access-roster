@@ -36,15 +36,15 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 
 | Library | For | Needed by |
 |---|---|---|
-| `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384, HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
+| `aws-lc-rs` | AES-256-GCM with `RandomizedNonceKey`, ECDSA P-384 (and P-256 for the audit log key), HKDF, SHA-2, and its random generator | [ADR 0006](/decisions/0006-keys-and-sealing/#algorithms) |
 | `rustls` | TLS, with the `aws-lc-rs` provider and no FIPS pin | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `cedar-policy` | Cedar policy in `policy` | [ADR 0007](/decisions/0007-policy-and-sealed-grants/) |
 | `jsonschema` | The generated JSON Schema, applied to a configuration document before it is decoded | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
-| `prost-protovalidate`, 0.6.x, pinned | The protovalidate rules of every Protobuf message, after decoding, in the Rust binaries. A community crate and a named risk; see [protovalidate](#protovalidate) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
+| `buffa`, `buffa-types`, 0.9.2, pinned | The Protobuf runtime of every Rust component, and its well-known types; the kit validates decoded messages by hand until a protovalidate bridge exists; see [protovalidate](#protovalidate) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table) |
 | `connectrpc` | The Connect protocol over Unix sockets (spike S1 passed on 2026-11-01) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates) |
 | `zeroize` | Wiping secrets from memory | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#context) |
 | `jsonwebtoken`, with its `aws_lc_rs` feature | Verifying JWS and JWT, with an explicit algorithm list | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
-| `signed_note`, `tlog_tiles` | C2SP signed notes, checkpoints and tiles in `indexer` and `reader`; the P-384 verifier of the log key is a `NoteVerifier` on `aws-lc-rs` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
+| `signed_note`, `tlog_tiles` | C2SP signed notes, checkpoints and tiles in `indexer` and `reader`; the verifier of the log key (P-256 for an audit log, P-384 for the issuance log) is a `NoteVerifier` on `aws-lc-rs` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
 | `saphyr-parser` | Reading the bootstrap file and the YAML config documents, through the strict profile of [the bootstrap file](/reference/bootstrap-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `ssh-key` | OpenSSH keys and certificates in `ssh-ca`, with a signing key that signs through the `keys` port; chosen with a condition, see [below](#rust-openssh-certificates) | [ADR 0023](/decisions/0023-certificate-authorities/#ssh) |
 | The AWS SDK for Rust | AWS calls from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
@@ -106,7 +106,7 @@ Each row is a question that stood open until then. The versions are the latest r
 
 ### C2SP transparency logs
 
-- **Go, for `writer`, `witness` and the issuance log of `ca`.** `golang.org/x/mod/sumdb/note` and `tlog` (module v0.42.0, 2026-10-09) are the Go team's signed-note and tile-hash code. Their signer and verifier are interfaces, so the P-384 log key signs through the `keys` port. `filippo.io/torchwood` (v0.10.0, 2026-09-24, BSD-3-Clause, before 1.0) adds the C2SP checkpoint, cosignature and tile functions and a tile client on top of them. `filippo.io/sunlight` (v0.10.2, 2026-10-26, ISC) holds the `static-ct-api` entry and checkpoint code for `ca`'s issuance log.
+- **Go, for `writer`, `witness` and the issuance log of `ca`.** `golang.org/x/mod/sumdb/note` and `tlog` (module v0.42.0, 2026-10-09) are the Go team's signed-note and tile-hash code. Their signer and verifier are interfaces, so the log key signs through the `keys` port. `filippo.io/torchwood` (v0.10.0, 2026-09-24, BSD-3-Clause, before 1.0) adds the C2SP checkpoint, cosignature and tile functions and a tile client on top of them. `filippo.io/sunlight` (v0.10.2, 2026-10-26, ISC) holds the `static-ct-api` entry and checkpoint code for `ca`'s issuance log.
 - **Rust, for `indexer` and `reader`.** `signed_note` and `tlog_tiles` from Cloudflare's `azul` repository (BSD-3-Clause). The released 0.2.0 dates from 2025-04-18, while the repository was changed on 2026-10-27, so the pull request that builds the reader chooses between the release and a pinned revision, and a pinned revision is a pull request to this list. `signed_note` ships only an Ed25519 verifier, with a `NoteVerifier` trait for others: the P-384 verifier of the log key is a few lines on `aws-lc-rs`, and the cosignatures of witnesses are Ed25519 or ML-DSA-44 ([ADR 0029](/decisions/0029-the-audit-log/#witnesses)).
 - **Not chosen: Tessera as the writer's engine** (v1.0.4, 2026-07-16). It sequences entries and publishes checkpoints itself, while [ADR 0029](/decisions/0029-the-audit-log/#the-write-once-fence) puts the batch, the seal entry and the create-if-absent fence in sluis's one writer. This was judged from its documentation on 2026-11-01 and not measured; it comes back if the writer's own tile code turns out to be larger than the engine it replaces.
 
@@ -129,14 +129,14 @@ Both readers were run on 2026-11-01 and again on 2026-11-02 (`go.yaml.in/yaml/v3
 
 | Question | Chosen | Evaluated at | Not chosen, and why |
 |---|---|---|---|
-| [Protovalidate](#protovalidate) | `buf.build/go/protovalidate` in Go; `prost-protovalidate` 0.6.x in Rust, pinned | The schema spike ([#1177](https://github.com/truvity/sluis/issues/1177)), 2026-11-03 | A rule checker of our own per language: two implementations of the same constraints would drift |
+| [Protovalidate](#protovalidate) | `buf.build/go/protovalidate` in Go; hand-written checks in the Rust kit, on `buffa` messages | `connectrpc` 0.9.1 generates only `buffa` types, which `prost-protovalidate` cannot validate (2026-11-04) | `prost-protovalidate` 0.6.x: it validates `prost` messages only, and a second Protobuf runtime in the tree would serve one crate |
 
 ### Protovalidate
 
 - **Protobuf with protovalidate is the authority in code.** The generated JSON Schema is a derived subset for editors and `helm lint`; cross-field rules, duration and timestamp ranges, exact byte lengths and the strictness of `uri` are enforced by protovalidate only ([ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). Every binary validates a document against the embedded JSON Schema before it decodes, and the decoded message against its protovalidate rules.
 - **Go uses protovalidate-go,** the library that Buf publishes. It is the reference: the rules mean what it says they mean.
-- **Rust uses `prost-protovalidate` 0.6.x, pinned.** It is a community crate, because Buf publishes no protovalidate library for Rust, and it is a named risk ([ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). It agreed with protovalidate-go on every document of the schema spike (2026-11-03). Two things bound the risk. The version is pinned, so a release that changes a rule cannot arrive through a lockfile update. And the shared conformance vectors of rule R9 run the same documents through both kits, so the day the crate falls behind protovalidate's rules, a vector fails ([ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules)).
-- **Not recorded here:** the crate's release date, its maintainers and whether it has been audited. The pull request that pins the exact version states them, as [Adding a library](#adding-a-library) asks, and a crate that is marked experimental or unaudited for a security function is refused (rule R7).
+- **Rust uses `buffa` messages and hand-written checks** ([ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The protovalidate annotations stay in the `.proto` files as the documentation of the rules, and the kit checks a decoded message by hand against them. The shared conformance vectors of rule R9 run the same documents through both kits, so a rule that Go enforces and the Rust checks miss fails a vector. A validation bridge replaces the hand-written checks later.
+- **Not recorded here:** the release date of a crate, its maintainers and whether it has been audited. The pull request that pins the exact version states them, as [Adding a library](#adding-a-library) asks, and a crate that is marked experimental or unaudited for a security function is refused (rule R7).
 
 ## Still to build
 

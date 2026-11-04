@@ -875,3 +875,16 @@ requirements:
     issues: [1024]
     verification:
       - {kind: integration-test, ref: "two upstream claim values for one Person give one pairwise subject"}
+  - id: REQ-SUBJ-069
+    area: SUBJ
+    statement: "The input of a pairwise subject MUST prefix the sector and the Person id each with its length as a 4-byte big-endian integer."
+    rationale: "With both parts prefixed, no two pairs of strings give one input, and session and exchange derive one subject (ADR 0034)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [1024]
+    verification:
+      - {kind: test-vectors, ref: "session and exchange give one subject for each vector, including (ab, c) and (a, bc)"}

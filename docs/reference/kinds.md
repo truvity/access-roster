@@ -97,7 +97,7 @@ Issuer and key custody of a regulated party's boundary; written with the party.
 
 ### `KeyPlan`
 
-Enabled key purposes per algorithm, KMS key aliases, slot plan per board, recovery recipient's public key, key@ cache TTL (under the built-in maximum).
+Enabled key purposes per algorithm, KMS key aliases, slot plan per board, the signed list of wrap recipients as node key ids (the recovery recipient's included; key@ wraps to these and to no one else, ADR 0006), key@ cache TTL (under the built-in maximum).
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the keys family.
 - **Writer:** `IaC`.
@@ -496,14 +496,14 @@ Read-write state that must survive, behind the store's durable port; backed up w
 
 ### `DataKeyWrap`
 
-Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has four data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
+Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has four data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated) and `evidence` (audit and usage). Boundary purposes (tenant `-`): `grant`, `cookie`, `chain` (the facts of a session chain that session seals and exchange opens), `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it.
 
 - **Class:** durable; scope boundary+tenant; plain; profile none; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).
 - **Readers:** [`key@`](/reference/actors/#key); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Indexes:** `by_recipient`, `by_purpose`, besides listing by tenant.
-- **Data key purposes:** per tenant `data`, `pseudonym`, `pairwise`, `evidence`; boundary `grant`, `cookie`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
+- **Data key purposes:** per tenant `data`, `pseudonym`, `pairwise`, `evidence`; boundary `grant`, `cookie`, `chain`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
 
 ### `Tenant`
 
@@ -929,7 +929,7 @@ State with a time to live, kept in the temp engine.
 
 ### `PendingSignIn`
 
-State between the authorize request and the upstream callback (state, nonce, PKCE verifier); at most 1000 per connection and 20 per source address.
+State between the authorize request and the upstream callback (state, nonce, PKCE verifier). Not written: it travels in the sealed cookie `__Host-sluis_signin`, and nothing is stored before a person is known (ADR 0025).
 
 - **Class:** temp; scope boundary+tenant; sealed; profile none; module core; serves the work family.
 - **Writer:** [`session`](/reference/actors/#session).
@@ -984,7 +984,7 @@ Id is a keyed hash (key@ Mac, purpose `mac`) of (connection, upstream sid); poin
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session).
 - **Exportable:** no; **backed up:** no.
-- **Lifetime:** default the session's; maximum the session's.
+- **Lifetime:** default the session's; maximum 90d.
 
 ### `ClientDocument`
 

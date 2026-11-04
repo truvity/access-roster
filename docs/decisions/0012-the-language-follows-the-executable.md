@@ -1,7 +1,7 @@
 # 0012 — The language follows the executable: Go by default, Rust at the edge, in the trusted base, in cloud drivers and on the smallest boards
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -40,7 +40,7 @@ The research of 2026-10-30 found:
 
 ### Per-actor table
 
-A Rust row holds once its spikes pass ([The spikes are gates](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates)). S1 and S10 passed on 2026-11-01, and S3 holds the row for `entry` with the two checks listed under Follow-ups. A gate does not stop work: the component is built against its contract and the conformance suite meanwhile, and a failed gate moves it to the fallback candidate. Go rows have no gate.
+The maintainer confirmed every Rust row as accepted on 2026-11-04; a row keeps its gate ([The spikes are gates](/decisions/0012-the-language-follows-the-executable/#the-spikes-are-gates)), and a failed gate moves it to a fallback candidate. S1 and S10 passed on 2026-11-01, and S3 holds the row for `entry` with the two checks listed under Follow-ups. A gate does not stop work: the component is built against its contract and the conformance suite meanwhile, and a failed gate moves it to the fallback candidate. Go rows have no gate.
 
 | Component | Language | Rule | Gate | First working version |
 |---|---|---|---|---|
@@ -69,7 +69,7 @@ A Rust row holds once its spikes pass ([The spikes are gates](/decisions/0012-th
 
 - **key@ is Go with `piv-go`.** One key@ owns each node's card, and `piv-go` enforces that by construction with its exclusive connection, where `ykcs11` resets the card when another client appears and keeps a PIN copy that cannot be wiped. key@ keeps the PIN in locked memory and zeroes its own copy; Go cannot promise the runtime keeps no other, which the zeroisation review records. PKCS#11 stays only for the later YubiHSM 2 and Nitrokey drivers, whose language is chosen with them.
 - **store@ and exporter@ are Rust.** They hold credentials, parse no unauthenticated input and speak the one store contract, so R11 decides. Their code is the code to review hardest ([0002](/decisions/0002-families-of-actors/#credential-holders)).
-- **Rust validates with `prost-protovalidate` 0.6.x, pinned.** It is a community crate, because Buf publishes no protovalidate library for Rust, and it is a named risk: it agreed with protovalidate-go on every document of the schema spike ([#1177](https://github.com/truvity/sluis/issues/1177), 2026-11-03), and the shared vectors of R9 must catch it the day it falls behind protovalidate's rules.
+- **Rust uses the `buffa` Protobuf runtime and validates with hand-written checks** (decided 2026-11-04). `connectrpc` 0.9.1 generates only `buffa` types, so `buffa` is the runtime of every Rust component and `prost` is not in the tree. `prost-protovalidate` cannot validate `buffa` messages. The kit therefore checks a decoded message with hand-written checks that follow the message's rules, and the protovalidate annotations in the `.proto` files stay as the documentation of those rules and as the source of the Go validator and the JSON Schema ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). The shared vectors of R9 are what keep the two in step: a rule that the Go validator enforces and the Rust checks miss fails a vector. A validation bridge from protovalidate to `buffa` messages replaces the hand-written checks later. The schema spike ([#1177](https://github.com/truvity/sluis/issues/1177), 2026-11-03) found `prost-protovalidate` in agreement with protovalidate-go on every document it ran.
 - **The typed store clients are part of both kits.** The Go client `store.Client[T Kind]` and the Rust `Store<K: Kind>` are generated from the kind's message and pass the same conformance suite (R9).
 - **Attestation verification is Go**, in the CLI at node initialisation and in the `yubikey-attestation` verifier of `exchange` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)), anchored on Yubico Attestation Root 1 and its intermediates, supplied by sluis.
 - **`cloud-cloudflare` is Go:** one vendor library in one language weighs more than one language for every driver. It is a driver private to its owner, and it shares its library with the Cloudflare minter of tenant credentials ([0025](/decisions/0025-integrations/#credential-minters)).
@@ -109,12 +109,13 @@ A fallback is not chosen in advance. When a spike fails, the maintainer picks th
 - key@ is the one trusted-base process in Go: its PIN sits in a garbage-collected process and it uses a few megabytes more than a Rust holder, but the card has exactly one owner, enforced by the library.
 - A board runs one engine cluster, not one per owner of state, so the memory budget has more room than the measured full board; the units of a whole board, with the drivers of the holders and `ca` and `ssh-ca` as processes of their own, were measured on 2026-11-03 and fit with room to spare.
 - The Rust components build like any other Rust code, with cargo-zigbuild and no CMake, Perl or pinned clang.
-- The spikes S1, S3 and S10 are on the critical path of the first working version, and the Rust validator is a community crate that the conformance vectors watch. If Connect for Rust stalls, a fallback candidate carries the Rust components; tonic is in maintenance only, so the hand-written codec is the longer-lived one.
+- The spikes S1, S3 and S10 are on the critical path of the first working version, and the Rust checks are hand-written until a validation bridge exists, with the conformance vectors as their only guard. If Connect for Rust stalls, a fallback candidate carries the Rust components; tonic is in maintenance only, so the hand-written codec is the longer-lived one.
 - Two OpenTelemetry stacks, with Rust traces in Beta.
 - The `sluis` CLI stays the only executable people run, and it is Go. The source-layout page follows this record.
 
 ## Roads not taken
 
+- **Rust validates with `prost-protovalidate`.** It cannot validate the `buffa` messages that `connectrpc` generates, and a second Protobuf runtime in the tree would carry `prost` beside `buffa` for one crate.
 - **Go for everything except `policy` and the cloud drivers.** It leaves the public edge with net/http's advisory stream and Go's data-race class, keeps root-run secrets in a garbage-collected heap, and splits the AWS SDK across two languages.
 - **Rust for everything, or for every actor on a tier-0 board.** Rust has no embeddable OpenID Connect provider, no maintained static-ct-api log or C2SP witness, no PIV-attestation library and no maintained vendor clients; each would be written in-house.
 - **Group by piece (core, audit, platform in one language each).** It overrides the library-driven choices, while the contracts already make each executable independent.
@@ -128,3 +129,4 @@ A fallback is not chosen in advance. When a spike fails, the maintainer picks th
 ## Follow-ups
 
 - Spikes S1 ([#939](https://github.com/truvity/sluis/issues/939)) and S10 ([#947](https://github.com/truvity/sluis/issues/947)) pass (2026-11-01); results are on the issues. S3 ([#941](https://github.com/truvity/sluis/issues/941)) holds the Rust row for the slim `entry` on memory, size and threads (latency is parity); two checks remain: the real tunnel client (edge relay tests) and 24-hour fuzz campaigns (CI, [#796](https://github.com/truvity/sluis/issues/796)).
+- A validation bridge from protovalidate to `buffa` messages, to replace the hand-written checks of the Rust kit (the issue is opened with the next maintainer script).

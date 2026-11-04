@@ -1,7 +1,7 @@
 # 0006 — key@ holds a boundary's keys: it seals, opens and signs in place, with four data keys per tenant and one key per purpose and algorithm
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -19,9 +19,9 @@ v1 ADR 0005 made ES384 the default, and v1 ADR 0009 added a per-audience RS256 e
 
 ### Algorithms
 
-- **EC P-384 with ES384 is the default** and what sluis chooses for itself, including the checkpoints of the audit log and of the issuance log (C2SP signed notes with P-384 keys). One curve means one key type in the key set, one verifier path and one wrapping scheme.
+- **EC P-384 with ES384 is the default** and what sluis chooses for itself, with one exception: the checkpoints of the audit log are signed with P-256 and SHA-256 ([Named exceptions](/decisions/0006-keys-and-sealing/#named-exceptions)). The checkpoints of the issuance log are C2SP signed notes with a P-384 key. One curve means one key type in the key set, one verifier path and one wrapping scheme.
 - **sluis supports the FAPI 2.0 set: PS256, ES256 and EdDSA (Ed25519).** ES384 stays the default.
-- **Everything sluis signs, seals, wraps, hashes, derives or encrypts stays within the FIPS-approved set:** P-384 ECDSA and ECDH, AES-256-GCM, AES key wrap, HKDF-SHA384, HMAC-SHA384 (for `Mac` and for audit pseudonyms, [0029](/decisions/0029-the-audit-log/#pseudonyms)) and SHA-384, plus the named exceptions below. There is no FIPS mode and no certified build in 2.0: Go keeps the standard library's defaults (`GOFIPS140` and `fips140` unset), and Rust uses current crates and rustls with no FIPS pin. Keeping to the approved set means a FIPS build can be added later as a build option without changing a format or a stored value. The Rust build facts are in [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
+- **Everything sluis signs, seals, wraps, hashes, derives or encrypts stays within the FIPS-approved set:** P-384 ECDSA and ECDH, AES-256-GCM, AES key wrap, HKDF-SHA384, HMAC-SHA384 (for `Mac` and for audit pseudonyms, [0029](/decisions/0029-the-audit-log/#pseudonyms)) and SHA-384, plus the named exceptions below (P-256 ECDSA with SHA-256 is approved too). There is no FIPS mode and no certified build in 2.0: Go keeps the standard library's defaults (`GOFIPS140` and `fips140` unset), and Rust uses current crates and rustls with no FIPS pin. Keeping to the approved set means a FIPS build can be added later as a build option without changing a format or a stored value. The Rust build facts are in [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
 - **AES-256-GCM takes its nonce from the cryptographic library**, never from the caller (in Rust, `RandomizedNonceKey` of `aws-lc-rs`).
 - **TLS follows the libraries' defaults**, which may negotiate X25519 or ChaCha20-Poly1305. Nothing sluis stores or publishes depends on them.
 - **The only source of randomness is the operating system's CSPRNG**, through Go's `crypto/rand` (tests use `testing/cryptotest.SetGlobalRandom`) or, in Rust, the generator of the cryptographic library. Nothing is mixed into it from a key service or a card. On AWS a data key is made by `GenerateDataKey` and used as it comes. `sluis doctor` checks the platform: kernel 5.18 or newer (a cloned virtual machine reseeds), a hardware generator present or deliberately absent, and the entropy pool initialised before the first key.
@@ -41,13 +41,14 @@ v1 ADR 0005 made ES384 the default, and v1 ADR 0009 added a per-audience RS256 e
    - **no xkey.** The X25519 key that NATS can use to seal callout requests is not used, because X25519 alone is not an approved algorithm under FIPS 140-3. TLS on the client port protects the request instead;
    - Ed25519 is approved (FIPS 186-5) and is in Go's FIPS 140-3 module, so this exception stays within the approved set.
 5. **Formats that fix their own algorithm are followed:** the C2SP tlog-cosignature witness keys use Ed25519 or ML-DSA-44 as that specification requires ([0029](/decisions/0029-the-audit-log/#witnesses)); a witness key authorises nothing and serves no other purpose.
+6. **The audit checkpoint key is P-256 and signs SHA-256** (decided 2026-11-04, [REQ-KEYS-081](/requirements/keys/#REQ-KEYS-081)). The `audit-log` purpose follows the C2SP `signed-note` signature type 0x02 (ECDSA), which the witness implementation of transparency-dev verifies, so that a generic witness or checkpoint verifier accepts a checkpoint without sluis code. In AWS KMS it is `ECC_NIST_P256` with `ECDSA_SHA_256`; on a board it is a P-256 key in the PIV slot of the purpose. The key serves no other purpose, and every other key stays P-384. The issuance log is not part of this exception ([0029](/decisions/0029-the-audit-log/#tiled-log)).
 
 ### Key purposes
 
 A key is shared between two uses only when all of these are equal: **the audience** (who verifies or decrypts), **the required lifetime**, **revocation coupling** (one use would never be disabled without the other), **the callers** (the blast radius of a misuse), and **the key store itself separates the uses** (an encryption context under a key policy). If any one differs, the uses get separate keys.
 
 - **There is one key per purpose and per algorithm.** An asymmetric key never serves two purposes, and a key that issues certificates never signs tokens. Several audiences of one purpose share its key: two audiences of the token purpose need one ES384 key, and an audience that needs RS256 gets a key of its own because the algorithm differs.
-- **The signing purposes are separate keys:** the token-signing key; an X.509 intermediate for each trust domain; the SSH user CA and the SSH host CA; the log key of each audit log. Each is a P-384 key.
+- **The signing purposes are separate keys:** the token-signing key; an X.509 intermediate for each trust domain; the SSH user CA and the SSH host CA; the log key of each audit log. Each is a P-384 key, except the log key of the audit log, which is P-256 ([Named exceptions](/decisions/0006-keys-and-sealing/#named-exceptions)).
 - **A boundary's one symmetric KMS key is shared by all its data keys,** each wrap under its own encryption context ([Keys per boundary on AWS](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). Sharing is safe there because the context names the boundary, the tenant and the purpose, and the key policy lets only `key@` use the key.
 - **A tenant has no authority key and no wrapping key of its own by default.** It has four data keys ([Data keys](/decisions/0006-keys-and-sealing/#data-keys)). A tenant that is declared to keep its keys in a customer account has wrapping keys and an issuer signing key in that account ([Where a tenant's keys live](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)); any other party that needs authority keys of its own is a boundary ([0008](/decisions/0008-boundaries-and-tenants/#tenants)).
 - **Boundaries never share keys.** Two boundaries on one engine are separated by wrapping keys of their own, for example a second card per board ([0008](/decisions/0008-boundaries-and-tenants/#the-ladder)).
@@ -79,18 +80,18 @@ The generated [keys page](/reference/keys/) lists every purpose with its algorit
 
 ### Keys per boundary on AWS
 
-A boundary needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain or writer instance adds one P-384 key. The lambda and kubernetes installations use this layout alike ([0011](/decisions/0011-runtimes-and-installations/#installations)).
+A boundary needs **1 symmetric key and 5 asymmetric keys** in KMS (4 P-384 keys and the audit log's P-256 key), with one trust domain and one audit writer instance. Each further trust domain adds one P-384 key and each further writer instance one P-256 key. The lambda and kubernetes installations use this layout alike ([0011](/decisions/0011-runtimes-and-installations/#installations)).
 
 | Key | Type | Purpose |
 |---|---|---|
-| Symmetric | AES-256 | Wraps every data key of the boundary: the tenants' `data`, `pseudonym`, `pairwise` and `evidence` keys, and the boundary's `grant`, `cookie`, `mac` and `data` keys |
+| Symmetric | AES-256 | Wraps every data key of the boundary: the tenants' `data`, `pseudonym`, `pairwise` and `evidence` keys, and the boundary's `grant`, `cookie`, `chain`, `mac` and `data` keys |
 | Token signing | P-384 | ES384 tokens ([The token-signing key](/decisions/0006-keys-and-sealing/#the-token-signing-key)) |
 | X.509 intermediate | P-384 | One per trust domain, for `ca` |
 | SSH user CA | P-384 | `ssh-ca` |
 | SSH host CA | P-384 | `ssh-ca` |
-| Audit log | P-384 | One per writer instance, for its audit log and its usage log; a log key rotates only on compromise ([Rotation](/decisions/0006-keys-and-sealing/#rotation)) |
+| Audit log | P-256 | One per writer instance, for its audit log and its usage log, signing SHA-256 (`ECC_NIST_P256`, `ECDSA_SHA_256`); a log key rotates only on compromise ([Rotation](/decisions/0006-keys-and-sealing/#rotation)) |
 
-- **The symmetric key's policy names `key@`'s role alone.** `kms:Sign` takes no encryption context, so a P-384 key is protected by its key policy, which also names `key@` only. Every other actor reaches a key through `key@`, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). On Lambda only the role of the `key@` function may reach KMS ([principle 16](/principles/#16-few-credential-holders)).
+- **The symmetric key's policy names `key@`'s role alone.** `kms:Sign` takes no encryption context, so an asymmetric key is protected by its key policy, which also names `key@` only. Every other actor reaches a key through `key@`, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). On Lambda only the role of the `key@` function may reach KMS ([principle 16](/principles/#16-few-credential-holders)).
 - **A data key is made with `GenerateDataKey` under the symmetric key,** with the encryption context {boundary, tenant, purpose}, and only the wrapped copy is stored ([DataKeyWrap](/decisions/0006-keys-and-sealing/#datakeywrap)). The tenant is `-` for the boundary's own purposes. The data key is not a KMS key, so a new tenant costs no KMS key and no key policy.
 - **KMS automatic rotation** applies to the symmetric key.
 - **The topology is a KMS intermediate per environment boundary,** certified through a root that ritueel holds.
@@ -184,11 +185,14 @@ A data key is a software AES-256 key. `key@` makes it, keeps it only wrapped, an
 | `pairwise` | One per tenant, never rotated | Pairwise subjects of the tenant |
 | `evidence` | One per tenant | Audit and usage evidence of the tenant |
 | `grant` | One per boundary | Sealed grants |
-| `cookie` | One per boundary | Session cookies |
+| `cookie` | One per boundary | Session cookies and the sign-in cookie |
+| `chain` | One per boundary | Facts of a session chain that `session` seals and `exchange` opens |
 | `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and the hashed index entries of sealed kinds |
 | `data` | One per boundary, tenant `-` | The sealed kinds that have no tenant in their address |
 
-- **Each tenant has four data keys, one per purpose, and each boundary has four: `grant`, `cookie`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
+- **Each tenant has four data keys, one per purpose, and each boundary has five: `grant`, `cookie`, `chain`, `mac` and `data`.** The purposes never share a key, so a tenant's exit can delete the personal data and keep the evidence ([Erasing a tenant](/decisions/0006-keys-and-sealing/#erasing-a-tenant)). A tenant that exists in several boundaries has separate data keys in each.
+- **`chain` seals the facts of a session chain that more than one actor reads** (decided 2026-11-04, [REQ-KEYS-082](/requirements/keys/#REQ-KEYS-082)). `session` seals them and `exchange` opens them; `cookie` stays `session`'s alone, so `exchange` never holds the key that opens a browser's cookie, and a tenant's `data` key stays out of the sign-in path. The name follows the purposes above: one word, the thing that is sealed. The key belongs to the boundary and is **not crypto-shredded with a tenant**: a tenant's exit ends its chains ([0018](/decisions/0018-sessions/#session-chains)), and what `chain` sealed lives only as long as the chain.
+- **A generation of `chain` is kept for the lifetime of the longest chain.** A new generation is made by count like any data key ([Rotation](/decisions/0006-keys-and-sealing/#rotation)); an older generation keeps opening what it sealed, and is deleted when the longest time to live of a chain has passed since it last sealed, which is 90 days, the built-in maximum of an agent chain ([0018](/decisions/0018-sessions/#session-chains)). Nothing sealed under it outlives its chain, so nothing is lost by the deletion ([REQ-KEYS-083](/requirements/keys/#REQ-KEYS-083)).
 - **A sealed kind is sealed under the `data` key of its address's tenant.** The directory kinds and the connections and apps made through a UI or API flow (`DirectoryUser`, `DirectoryGroup`, `DirectoryMembership`, `DirectoryConnection`, `MinterConnection`, `GitHubApp`, `SlackConnection`, `EntraConnection` and the desired state) belong to a tenant, the operator's own company included ([0008](/decisions/0008-boundaries-and-tenants/#tenants)), so a tenant's exit shreds them with the rest of its personal data. The desired state is sealed for the tenant that owns the container it describes, even when people of another company are in it ([0026](/decisions/0026-reconcilers/#the-desired-state)). Config is never sealed and has no tenant.
 - **A sealed kind that has no tenant in its address is sealed under the boundary's `data` key** (tenant `-`). In the registry that is `EnrolmentToken`, the key of a host's enrolment token, and `PendingEnrolment`, a host's request waiting for approval, and nothing else. The wrap has the same purpose name as the tenant's `data` key and a different address, so the two never meet.
 - **A data key is not a KMS key.** On AWS it is made by `GenerateDataKey` under the boundary's one symmetric key; on boards `key@` generates it in software. Either way only the wrapped copy is stored, and the unwrapped key lives in `key@`'s memory ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
@@ -211,14 +215,20 @@ flowchart LR
 - **On AWS there is one wrap,** the ciphertext that `GenerateDataKey` returned under the encryption context {boundary, tenant, purpose}.
 - **On boards there is one wrap per recipient:** each board's card (its key-agreement key, slot `9d`) and the recovery recipient ([The recovery recipient](/decisions/0006-keys-and-sealing/#the-recovery-recipient)). `key@` makes an ephemeral P-384 key, agrees a secret with the recipient's public key (ECDH), derives a wrapping key with HKDF-SHA384 and wraps the data key with AES key wrap. The wrap is bound to the wrap's own address. Making a wrap needs only the recipient's public key, so no card is touched; opening one needs the recipient's private key, which is the card's ECDH.
 - **A new data key is written with conditional creates,** all its wraps in one atomic write. If two `key@` instances make a key at once, one wins and the other discards its key and reads the winner's.
-- **A new card or board is a rewrap.** An existing `key@` opens each data key, wraps it for the new recipient's public key and writes the new item. The data is not touched. The recipients' public keys are in the `KeyPlan` config kind.
+- **A new card or board is a rewrap.** An existing `key@` opens each data key, wraps it for the new recipient's public key and writes the new item. The data is not touched. **The recipients are the signed list in the `KeyPlan` config kind** ([Who may receive a wrap](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)).
 - **The wrap for a lost recipient is deleted.** A lost or stolen board's wraps are deleted and its card is revoked ([Keys per board](/decisions/0006-keys-and-sealing/#keys-per-board)).
 - **Measured on two boards' cards on 2026-11-03:** an ECDH takes a median of 143 ms, about 7 a second per card. Cached afterwards ([The cache](/decisions/0006-keys-and-sealing/#the-cache)).
+
+### Who may receive a wrap
+
+- **`KeyPlan` carries a signed list of wrap recipients,** each a node key id: the RFC 7638 thumbprint of the node's wrapping public key (decided 2026-11-04). The list is signed config, like the rest of `KeyPlan` ([0005](/decisions/0005-the-store/#signed-config-documents)), so changing it takes a reviewed commit and a publisher's signature.
+- **`key@` wraps a data key to the recipients of that list and to no one else.** It never takes a recipient from the `KeyCertificate` items that sit in the store, because those are not signed: a compromised `store@` could add a certificate of its own and receive every data key. A `KeyCertificate` only supplies the public key of a recipient the list already names, and `key@` uses it only when its thumbprint equals the listed id ([REQ-KEYS-075](/requirements/keys/#REQ-KEYS-075)).
+- **The recovery recipient is in the list too,** under its own id ([The recovery recipient](/decisions/0006-keys-and-sealing/#the-recovery-recipient)).
 
 ### The recovery recipient
 
 - **The recovery recipient is an offline P-384 key held under ritueel's custody.** On boards every data key is also wrapped for it, so that the loss of all cards does not lose the data.
-- **It opens every wrap and rewraps an archive for another installation** ([0010](/decisions/0010-backup-and-recovery/#restore)). Its public key is in the `KeyPlan`; its private key is never in sluis.
+- **It opens every wrap and rewraps an archive for another installation** ([0010](/decisions/0010-backup-and-recovery/#restore)). Its public key is in the `KeyPlan`, in the signed list of recipients; its private key is never in sluis.
 - **Using it is a ceremony,** not a run-time path. No actor, not even `key@`, can open a wrap for it.
 
 ### The cache
@@ -245,13 +255,17 @@ flowchart LR
 - **The symmetric KMS key uses KMS automatic rotation.**
 - **A data key rotates by generation, before its AES-GCM usage limit.** `key@` counts the seals under each data key and makes a new generation before the limit for random nonces (2^32 seals). A busy kind therefore rotates its key by count, and a new seal uses the newest generation while older ones keep opening what they sealed. A generation is retired when nothing sealed under it remains. A new generation is also made after an event that touches the wrapping key.
 - **A rotation makes the new key first and retires the old one after.** On a card the new key goes into a free spare slot while the old one finishes; in KMS it is a new key under the same alias. A new intermediate is requested like the first one ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
+- **A token-signing key moves through three states, in this order and never back:** `pre-published`, `active`, `retiring`. A new key is **pre-published for 12 hours**: it is in the published key set and signs nothing, so a relying party that caches the set has it before the first token carries it. A key that stops signing is **retained for 65 minutes**: the access-token cap of one hour plus 5 minutes of clock skew, so a token signed just before the change still verifies for its whole life. Then the key leaves the key set. Both figures are the lesson of v1 ([REQ-KEYS-076](/requirements/keys/#REQ-KEYS-076), [REQ-KEYS-078](/requirements/keys/#REQ-KEYS-078)).
+- **A retiring key never becomes active again** ([REQ-KEYS-079](/requirements/keys/#REQ-KEYS-079)). To keep a key in use, make a new one.
 
 ### The token-signing key
 
 - **Token-signing and workload-issuer keys are hardware-held, separate from the CA key and from each other, one of each per board.** `signer` uses the token-signing key and `sluis-node` the workload-issuer key, each in a slot of its own through `key@`; the two are never shared, because their callers and their blast radius differ. The board's own intermediate certifies each with a **non-CA certificate that allows digital signatures only**, issued on the board without a ceremony under the profile of [0023](/decisions/0023-certificate-authorities/), so a key that signs tokens cannot issue a certificate.
 - **`sluis-node` signs its workload tokens through `key@`** (purpose `workload-issuer`, boards only), because `key@` has exclusive access to the card ([Exclusive card access](/decisions/0006-keys-and-sealing/#exclusive-card-access)). `sluis-node` holds no key credential.
 - **Each key-set entry carries an `x5c` chain:** the token certificate, the board's intermediate, then up to the root. A standard client ignores it and fetches the key over TLS; a verifier that wants to can check custody down to a root it trusts. The chain is in the key set, not in each token.
-- **The key set carries every active token key, and a next key only while an event rotation is in progress.**
+- **Each node rotates only its own key.** `SigningKey.node` names the node whose `key@` holds the key, and only that node's `signer` moves the key between states or removes it from the key set. A node never changes the key of another node, so one node's rotation cannot retire the key that another node is signing with ([REQ-KEYS-077](/requirements/keys/#REQ-KEYS-077)).
+- **On a first deploy a node's first key is active at once,** while no key in the key set is older than 15 minutes, because there is nothing yet for a relying party to have cached. Once any key is older, a new node's key is pre-published for 12 hours like any other ([REQ-KEYS-080](/requirements/keys/#REQ-KEYS-080)).
+- **The key set carries every pre-published, active and retiring token key.** It carries a pre-published key only while the 12 hours run and a retiring key only for the 65 minutes.
 
 ### Touch and PIN
 
@@ -304,7 +318,9 @@ flowchart LR
 ## Roads not taken
 
 - **RSA as the default.** It taxes every relying party for the least capable one; the per-audience exception serves that verifier and costs the others nothing.
-- **P-256 (ES256) as the default.** A 128-bit security level for a speed that low volume does not need; ES256 stays supported where required.
+- **P-256 (ES256) as the default.** A 128-bit security level for a speed that low volume does not need; ES256 stays supported where required, and signs the audit checkpoints.
+- **SHA-384 on a P-384 checkpoint key.** One curve and one hash everywhere, and KMS signs a SHA-384 digest of a P-384 key; but C2SP signature type 0x02 signs SHA-256, so a generic witness or checkpoint verifier cannot check the signature (decided against 2026-11-04).
+- **A signature type of sluis's own for checkpoints.** No witness would cosign a format it does not know.
 - **Ed25519 as the default.** Not every key mode offers it (PIV needs firmware 5.7 or newer) and fewer verifiers accept it than ES384.
 - **FIPS mode and a certified build now, in Go or in both languages.** The cost lands on every build before any installation needs it, and a Go-only mode would be a half claim; the approved set keeps a later variant possible.
 - **NATS keys under the format rule, without a named exception.** That rule is written for witness keys, which authorise nothing; NATS keys authorise access to accounts and subjects, so they get the scrutiny of a named exception with one key per purpose.
@@ -330,9 +346,13 @@ flowchart LR
 - **Grants sealed with the card's key-agreement key.** Every grant would cost an ECDH on the card, about 7 a second per card; a boundary data key is cached and costs a memory operation.
 - **A KMS HMAC key for keyed hashes on AWS, and a data key on boards.** Two mechanisms for one operation, and `GenerateMac` takes no encryption context, so each purpose and boundary would need a key.
 - **Keyed hashes as a `LinkKey` kind opened by `session`.** A plaintext MAC key in the memory of a work actor, against principle 18.
+- **Session-chain facts under the tenant's `data` key, with a grant for `exchange`.** `exchange` would hold a key that opens all of a tenant's personal data to read a few facts of a chain.
+- **`exchange` asking `session` for the facts.** A hop from `exchange` to `session` on every exchange, and a call edge that the call graph does not otherwise need.
+- **The facts under the `cookie` key.** `exchange` would then open anything a browser cookie carries.
 - **`session` holding the opened cookie key.** The same: a data key outside `key@`; it returns only as a named exception, and only on a measurement.
 - **Software signing for authority keys.** A key in memory can be copied; the software driver is for development and CI and refuses production.
 - **The PIN on disk, automatic PIN retries, or touch always on board cards.** A PIN on disk is open to anyone who reads the disk, three wrong attempts block the card, and touch would stop a board from signing unattended.
+- **Activate a new token key as soon as it is published.** A relying party with a cached key set would meet tokens it cannot verify for as long as its cache lives (the v1 lesson).
 - **A key set with no `x5c`.** Custody could then be checked only in the audit log; standard clients ignore the member anyway.
 
 ## Follow-ups

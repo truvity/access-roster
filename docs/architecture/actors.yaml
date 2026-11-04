@@ -136,6 +136,7 @@ actors:
     calls: [policy, signer, exchange, adapter-upstream-oidc]
     egress: [client-document-hosts]
     key_purposes:
+      - { purpose: chain, ops: [seal] }
       - { purpose: cookie, ops: [seal, open] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: mac, ops: [mac] }
@@ -178,6 +179,7 @@ actors:
     calls: [policy, quota, signer, ca, adapter-<vendor>]
     egress: [proof-issuer-keys]
     key_purposes:
+      - { purpose: chain, ops: [open] }
       - { purpose: enrolment, ops: [open, public-key] }
       - { purpose: data, ops: [seal, open] }
       - { purpose: pairwise, ops: [mac] }

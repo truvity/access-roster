@@ -9,7 +9,7 @@ use core::time::Duration;
 //   ReplayGuard: default 0 (the writer must give a TTL): "the lifetime of the token or proof"
 //   SessionChain: default 1d taken from "human chain 24h absolute; agent chain 14d idle and 30d absolute"; max 90d taken from "90d (agent chain, built-in maximum)"
 //   UpstreamMetadata: default 0 (the writer must give a TTL): "from HTTP caching"
-//   UpstreamSession: default 0 (the writer must give a TTL): "the session's"; max taken from the max of SessionChain: "the session's"
+//   UpstreamSession: default 0 (the writer must give a TTL): "the session's"
 //   VerifierKeyCache: default 0 (the writer must give a TTL): "from HTTP caching"
 
 pub(crate) const UID_BASE: u32 = 61000;
@@ -2544,6 +2544,7 @@ pub(crate) static KEY_RULES: &[(&str, &str, u8)] = &[
     ("console", "pseudonym", 0x08),
     ("entry", "mac", 0x08),
     ("entry", "pseudonym", 0x08),
+    ("exchange", "chain", 0x02),
     ("exchange", "data", 0x03),
     ("exchange", "enrolment", 0x12),
     ("exchange", "pairwise", 0x08),
@@ -2561,6 +2562,7 @@ pub(crate) static KEY_RULES: &[(&str, &str, u8)] = &[
     ("quota", "pseudonym", 0x08),
     ("reader", "evidence", 0x02),
     ("reader", "pseudonym", 0x08),
+    ("session", "chain", 0x01),
     ("session", "cookie", 0x03),
     ("session", "data", 0x03),
     ("session", "mac", 0x08),

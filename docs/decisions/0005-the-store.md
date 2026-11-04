@@ -63,7 +63,7 @@ The verbs:
 ```rust
 trait Kind {
     type Id;
-    type Value: prost::Message;
+    type Value: buffa::Message;
     const NAME: &'static str;
 }
 ```
@@ -129,10 +129,11 @@ trait Kind {
 - **A read checks the expiry.** An item past its expiry reads as absent, whatever the engine still holds, and a create may write it again (a `Lease` is taken over by a conditional update instead, [Leases](/decisions/0005-the-store/#leases)).
 - **A sweeper removes expired items:** rqlite's leader runs it, and DynamoDB TTL does it on AWS. The sweep only frees space; correctness comes from the read-time check. A `Lease` item is the one exemption ([Leases](/decisions/0005-the-store/#leases)).
 - **store@ sets every timestamp,** never the engine.
+- **A version restarts at 1 when an item is created again** (decided 2026-11-04). After a delete, or after the sweeper removed an expired item, the next create of the same address is a new item with version 1; no tombstone keeps the old counter. A caller that holds a version of a deleted item therefore must not take an equal version of a re-created item to be the same item. `Lease` is the exception that makes this safe where a version is a fencing token: it is never swept and never deleted, so its version only grows.
 
 ### Leases
 
-- **A lease is a temp kind,** `Lease`: a conditional create plus a TTL (30 s by default, 10 min at most). Its version is the fencing token: it grows each time the lease changes hands, and the holder passes it with its writes. A lease item is never swept: an expired lease is taken over by a conditional update of the same item, so its version only grows. Its expiry is read-time only (on DynamoDB, a TTL attribute far in the future). A lease needs nothing of its own in the store, and there is no local lock on any installation.
+- **A lease is a temp kind,** `Lease`: a conditional create plus a TTL (30 s by default, 10 min at most). Its version is the fencing token: it grows each time the lease changes hands, and the holder passes it with its writes. A lease item is never swept: an expired lease is taken over by a conditional update of the same item, so its version only grows. `store@` refuses `DELETE` and `APPLY` on `Lease`, so nothing can remove the item or set its version back ([REQ-DATA-097](/requirements/data/#REQ-DATA-097)). Its expiry is read-time only (on DynamoDB, a TTL attribute far in the future). A lease needs nothing of its own in the store, and there is no local lock on any installation.
 - **Only background jobs take a lease:** a reconciler, a scheduled adapter, the backup job. A lease is self-scoped: its id starts with the name of the actor that takes it ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)).
 - **Where the target store can fence, it fences.** An audit batch is created only if absent, so the log cannot fork ([0029](/decisions/0029-the-audit-log/#the-write-once-fence)); that fence is the correctness guarantee, and a concurrency limit on a serverless writer is only an optimisation.
 - **External side effects rely on the lease plus idempotent reconcilers** ([0026](/decisions/0026-reconcilers/)). A database session or advisory lock is never used alone, because it gives no fencing token.

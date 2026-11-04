@@ -10,7 +10,7 @@ import "time"
 //   ReplayGuard: default 0 (the writer must give a TTL): "the lifetime of the token or proof"
 //   SessionChain: default 1d taken from "human chain 24h absolute; agent chain 14d idle and 30d absolute"; max 90d taken from "90d (agent chain, built-in maximum)"
 //   UpstreamMetadata: default 0 (the writer must give a TTL): "from HTTP caching"
-//   UpstreamSession: default 0 (the writer must give a TTL): "the session's"; max taken from the max of SessionChain: "the session's"
+//   UpstreamSession: default 0 (the writer must give a TTL): "the session's"
 //   VerifierKeyCache: default 0 (the writer must give a TTL): "from HTTP caching"
 
 const (
@@ -1142,6 +1142,7 @@ var keyRules = map[string]map[string]uint8{
 		"pseudonym": 0x08, // mac
 	},
 	"exchange": {
+		"chain":     0x02, // open
 		"data":      0x03, // seal open
 		"enrolment": 0x12, // open public-key
 		"pairwise":  0x08, // mac
@@ -1175,6 +1176,7 @@ var keyRules = map[string]map[string]uint8{
 		"pseudonym": 0x08, // mac
 	},
 	"session": {
+		"chain":     0x01, // seal
 		"cookie":    0x03, // seal open
 		"data":      0x03, // seal open
 		"mac":       0x08, // mac

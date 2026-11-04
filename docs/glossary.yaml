@@ -486,7 +486,7 @@ terms:
     avoid: ["unwrap (for a value)", "decrypt in the store"]
 
   - term: data key
-    definition: "A software AES-256 key. Each tenant has four, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated) and `evidence` (audit and usage); each boundary has four: `grant`, `cookie`, `mac` and `data` (the last, with tenant `-`, seals the kinds that have no tenant). key@ makes it, keeps it only wrapped, and opens it only in its own memory."
+    definition: "A software AES-256 key. Each tenant has four, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated) and `evidence` (audit and usage); each boundary has five: `grant`, `cookie`, `chain`, `mac` and `data` (the last, with tenant `-`, seals the kinds that have no tenant). key@ makes it, keeps it only wrapped, and opens it only in its own memory."
     category: keys
     see: ["0006-keys-and-sealing#data-keys"]
     avoid: ["data key per kind", "data-key record"]

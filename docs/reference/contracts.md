@@ -52,6 +52,18 @@ Every major component of sluis is a ConnectRPC contract, written in Protobuf und
 - **Idempotency.** Every public method that changes something takes a `request_id` field, chosen by the client; `entry` also accepts an `Idempotency-Key` header and copies it in, and refuses both with different values. A request id is scoped to the client and the method and remembered for 24 hours with its outcome. A repeat returns the first outcome; a reused id with another payload is refused (`failed_precondition`); a repeat while the first is still running is `aborted` (HTTP 409). An admit is idempotent in this way ([0039](/decisions/0039-quota-allowance/#countdown-and-refusal)); a push keeps its marker for 7 days by default and answers "already applied" with the allowance as it is now ([0039](/decisions/0039-quota-allowance/#the-push)).
 - **Pagination by cursor.** A list method takes `page_size` (at most the maximum its contract declares) and `page_token`, and returns `next_page_token`, empty on the last page. A token is opaque, bound to the query that made it and to the caller, and expires; a token used with another query is `invalid_argument`.
 
+### The token exchange request
+
+`sluis.exchange.v2alpha1.TokenExchangeRequest` is the Connect form of an RFC 8693 request that `entry` parses from the token endpoint. It carries the RFC 8693 parameters (`grant_type`, `subject_token`, `subject_token_type`, `audience`, `resource`, `scope`, `requested_token_type`, `client_id`, and `actor_token` with its type, which is refused) and the client's authentication:
+
+| Field | Carries | When |
+|---|---|---|
+| `authorization` | The HTTP `Authorization` header, for HTTP Basic (`client_secret_basic`) | Now |
+| `client_secret` | The secret in the body (`client_secret_post`) | Now |
+| `private_key_jwt` assertion fields | A signed client assertion (RFC 7523) | Later ([#912](https://github.com/truvity/sluis/issues/912)) |
+
+A request that carries both `authorization` and `client_secret` is refused with `invalid_request`, because a client uses one method in a request (RFC 6749, section 2.3). A public client sends `client_id` and no secret. The rules, and the restriction on which tokens may be subjects until `private_key_jwt` lands, are in [0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange); a failed authentication is `invalid_client` with the uniform answer of [Uniform refusals at the edge](#uniform-refusals-at-the-edge).
+
 ## Errors
 
 ### Connect codes

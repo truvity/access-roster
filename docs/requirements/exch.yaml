@@ -233,3 +233,56 @@ requirements:
     issues: [1214]
     verification:
       - {kind: integration-test, ref: "a MinterTarget one step outside each bound in turn is refused on write"}
+  - id: REQ-EXCH-018
+    area: EXCH
+    statement: "exchange MUST authenticate the client of a token exchange request by the HTTP Basic authorization or the client_secret of the request when the client is confidential."
+    rationale: "A confidential client's token must not be exchanged by a caller that does not hold its secret (ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exchange]
+    standards: [{id: ST-07, section: "2.1", depth: Partial}]
+    issues: [782]
+    verification:
+      - {kind: integration-test, ref: "a confidential client exchanges with Basic and with client_secret; without either it is refused with invalid_client"}
+  - id: REQ-EXCH-019
+    area: EXCH
+    statement: "exchange MUST refuse a token exchange request whose client authentication fails with invalid_client."
+    rationale: "A wrong secret and an unknown client must look the same (ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exchange]
+    standards: [{id: ST-01, section: "5.2", depth: Partial}]
+    issues: [782]
+    verification:
+      - {kind: integration-test, ref: "a wrong secret, a retired secret and an unknown client give the same answer"}
+  - id: REQ-EXCH-020
+    area: EXCH
+    statement: "Until private_key_jwt client authentication is supported, exchange MUST accept as a subject token only a token issued to a public client of the native profile."
+    rationale: "A client that must authenticate by a method exchange cannot check yet must not have its tokens exchanged (ADR 0022)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exchange]
+    standards: []
+    issues: [782]
+    verification:
+      - {kind: integration-test, ref: "a token issued to a browser client, to a confidential client and to a fapi2 client is refused as a subject; a native client's is accepted"}
+  - id: REQ-EXCH-021
+    area: EXCH
+    statement: "exchange SHOULD authenticate the client of a token exchange request by private_key_jwt."
+    rationale: "Asymmetric client authentication removes shared secrets and lifts the restriction on subjects (ADR 0022)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [exchange]
+    standards: [{id: ST-07, section: "2.1", depth: Partial}]
+    issues: [912]
+    verification:
+      - {kind: integration-test, ref: "a client authenticates the exchange with a signed assertion"}
+      - {kind: conformance-suite, ref: "the FAPI 2.0 plan includes a token exchange"}

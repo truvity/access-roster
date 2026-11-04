@@ -1,7 +1,7 @@
 # 0025 — Integrations are adapters, work actors that return facts or carry out authorised effects, hold nothing at rest, and mint only for declared targets
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-04
 
 Proposal: [issue #997](https://github.com/truvity/sluis/issues/997).
 
@@ -67,9 +67,11 @@ The workload verifier is not an adapter but a verifier driver of `exchange`, whi
 
 ### The upstream contract
 
-- **`Begin`** takes the `state`, the `nonce` and the S256 `code_challenge` that `session` made, sluis's callback URL, and optionally `acr_values`, `max_age`, a login hint, `prompt` and `ui_locales`, and returns the authorization URL. `prompt` and `ui_locales` are the request's own, passed on as given, or `none` for a silent renewal ([0035](/decisions/0035-customer-pages/#templates-and-locales), [0018](/decisions/0018-sessions/#customers)). `session` keeps the sign-in's state in a `PendingSignIn`; the adapter keeps none.
+- **`Begin`** takes the `state`, the `nonce` and the S256 `code_challenge` that `session` made, sluis's callback URL, and optionally `acr_values`, `max_age`, a login hint, `prompt` and `ui_locales`, and returns the authorization URL. `prompt` and `ui_locales` are the request's own, passed on as given, or `none` for a silent renewal ([0035](/decisions/0035-customer-pages/#templates-and-locales), [0018](/decisions/0018-sessions/#customers)). `session` keeps the sign-in's state in a `PendingSignIn`, which travels in a cookie ([below](#the-pending-sign-in-is-a-cookie)); the adapter keeps none.
+- **The pending sign-in is a cookie, and nothing is stored before a person is known** (decided 2026-11-04). `session` seals the `PendingSignIn` message (what the authorize request and the upstream leg need to finish the sign-in: the client's request, the state, nonce and PKCE values sent upstream, and the tenant) into the cookie `__Host-sluis_signin`, under the boundary's `cookie` data key ([0006](/decisions/0006-keys-and-sealing/#data-keys)). The cookie is valid for 10 minutes, is bound to the request that began the sign-in, and is at most 4 KiB ([REQ-SESS-047](/requirements/sess/#REQ-SESS-047), [REQ-SESS-048](/requirements/sess/#REQ-SESS-048), [REQ-SESS-049](/requirements/sess/#REQ-SESS-049), [REQ-SESS-050](/requirements/sess/#REQ-SESS-050)). The reason is the order of events: a grant for a tenant's keys exists only once a person is decided, so a sealed item in the store could not be written, and an unauthenticated request must not create stored state ([0036](/decisions/0036-volumetric-abuse/#inside-sluis)). The kind `PendingSignIn` of the registry is therefore not written.
 - **`Complete`** takes the callback's `code` and `iss` parameter, the `code_verifier`, the `nonce` and the callback URL. `adapter-upstream-oidc` exchanges the code at the upstream's token endpoint with the client credential, checks the ID token strictly (signature against the upstream's key set, an allow-list of algorithms, `iss`, `aud`, `azp`, `nonce` and the time claims), and returns the verified assertion to `session`. The client credential never leaves the adapter, so `session` holds no upstream credential and has no rule for `UpstreamSecret`.
 - **The credential is the operator's.** It is the `UpstreamSecret` of a secret source. A customer organisation's own provider is configured in the broker and not in sluis ([0033](/decisions/0033-customer-connections/#which-upstreams-an-installation-has)).
+- **The callback ignores response parameters it does not know,** as RFC 6749 section 4.1.2 asks of a client. The closed lists of the protocol endpoints cover requests made to sluis only ([REQ-AUTHN-012](/requirements/authn/#REQ-AUTHN-012), [REQ-AUTHN-078](/requirements/authn/#REQ-AUTHN-078)).
 - **A missing subject claim, a bad token or a missing `iss` in the response is refused with `INVALID`.** There is no lenient fallback, and no fallback to another claim or to the e-mail address.
 
 ### How core authorises an effect

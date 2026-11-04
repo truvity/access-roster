@@ -458,10 +458,11 @@ requirements:
     rationale: "Unauthenticated requests must not create unbounded state."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-SESS-047]
     verification:
       - {kind: integration-test, ref: "pending sign-in cap test"}
   - id: REQ-FED-035

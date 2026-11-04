@@ -8,7 +8,7 @@
 # docs/architecture/actors.yaml (who uses what) and docs/architecture/kinds.yaml (DataKeyWrap).
 #
 # `tools/checks/registries.mjs` (`just check-registries`) keeps it true: the closed fields below, every
-# algorithm declared, the AWS baseline of one symmetric key and five P-384 keys, the slot plan without a
+# algorithm declared, the AWS baseline of one symmetric key, four P-384 keys and the audit log's P-256 key, the slot plan without a
 # collision, exactly one using actor for each signing or key-agreement key, the data key purposes equal
 # to the purposes DataKeyWrap lists, and every user and every use agreeing with the actor registry.
 #
@@ -16,7 +16,7 @@
 #   algorithms    the algorithms in use; the FIPS-approved set is the default, a named exception says why
 #   purposes      the keys that live in a key store: `kind` signing | key-agreement | wrapping
 #   slot_plan     the default card slot map, version 1, for the boards
-#   data_keys     the data keys, which key generates in software and wraps: four per tenant and four per boundary
+#   data_keys     the data keys, which key generates in software and wraps: four per tenant and five per boundary
 #   wrapping      how a data key is wrapped on AWS and on a board
 #
 # Fields of a purpose:
@@ -27,8 +27,8 @@
 #               on-use (a purpose outside the baseline: no key until an installation enables it, then a
 #               dedicated key) | named-exception (the algorithm is an exception; dedicated key)
 #   ops         seal | open | sign | mac | public-key | wrap | unwrap
-#   aws         key_spec (the cloud key service's key spec), per (boundary | trust domain | log) and
-#               baseline (true for the five P-384 keys and the one symmetric key)
+#   aws         key_spec (the cloud key service's key spec), per (boundary | trust domain | writer instance) and
+#               baseline (true for the four P-384 keys, the audit log's P-256 key and the one symmetric key)
 #   board       slot (a card slot, `spare` for the spare range, `none` for a key that is not a card key)
 #               and, when it differs from `algorithm`, the board's algorithm; runtimes when the key
 #               exists on some runtimes only
@@ -43,7 +43,7 @@ algorithms:
     family: signature
     curve: P-384
     status: default
-    note: "ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself, including the checkpoints of the audit logs and of the issuance log."
+    note: "ECDSA over P-384 with SHA-384, the default of everything sluis signs for itself, the checkpoints of the issuance log included. The audit checkpoints are the one exception (ES256)."
   ECDH-P-384:
     family: key-agreement
     curve: P-384
@@ -65,7 +65,7 @@ algorithms:
     family: signature
     curve: P-256
     status: exception
-    note: "FAPI 2.0 and cloud federation for GCP. A dedicated key."
+    note: "FAPI 2.0, cloud federation for GCP and the checkpoints of the audit logs (ECDSA over P-256 with SHA-256, the C2SP signature type 0x02 that generic witnesses verify). A dedicated key."
   EdDSA:
     family: signature
     curve: Ed25519
@@ -81,7 +81,7 @@ algorithms:
     note: "A witness format that the C2SP tlog-cosignature specification allows; a witness key authorises nothing."
 
 purposes:
-  # ---- the AWS baseline: one symmetric key and five P-384 keys per boundary (per trust domain, per audit writer instance)
+  # ---- the AWS baseline: one symmetric key, four P-384 keys and the audit log's P-256 key per boundary (per trust domain, per audit writer instance)
   - name: wrapping
     kind: wrapping
     algorithm: AES-256-GCM
@@ -134,13 +134,13 @@ purposes:
 
   - name: audit-log
     kind: signing
-    algorithm: ES384
+    algorithm: ES256
     enabled: baseline
     ops: [sign, public-key]
-    aws: { key_spec: ECC_NIST_P384, per: writer instance, baseline: true }
+    aws: { key_spec: ECC_NIST_P256, per: writer instance, baseline: true }
     board: { slot: '84' }
     users: [writer]
-    notes: "Signs the checkpoints of a project's audit log and usage log; one key per writer instance (one per project, and per node on boards); only that writer may use it."
+    notes: "Signs the checkpoints of a project's audit log and usage log with ECDSA over P-256 and SHA-256 (KMS ECDSA_SHA_256), the standard C2SP signed note, so that a generic witness verifies it. One key per writer instance (one per project, and per node on boards); only that writer may use it."
 
   # ---- enabled on use: each a dedicated key
   - name: issuance-log
@@ -320,7 +320,12 @@ data_keys:
       ops: [seal, open]
       users: [session]
       erased: never
-      notes: "Seals and opens the session cookie, per request, batched."
+      notes: "Seals and opens the session cookie and the sign-in cookie, per request, batched."
+    chain:
+      ops: [seal, open]
+      users: [session, exchange]
+      erased: never
+      notes: "Seals the facts of a session chain that exchange must read: session seals them, exchange opens them. A boundary key, not shredded with a tenant; a generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
     mac:
       ops: [mac]
       users: [entry, session, ca, adapter-github]

@@ -128,9 +128,9 @@ Served at the root of the public host, for example `https://sluis.example.com`.
 | Endpoint | Method and path | Caller |
 | -------- | --------------- | ------ |
 | Discovery | `GET /.well-known/openid-configuration`, `GET /.well-known/oauth-authorization-server` | Anyone. Public, CORS-open, no credentials |
-| Key set | `GET /keys` | Anyone. Public |
+| Key set | `GET /jwks`, found by a relying party through the `jwks_uri` of discovery | Anyone. Public |
 | Authorization | `GET /authorize` (PKCE `S256` only, `response_mode=query` or `form_post` ([0017](/decisions/0017-identity-and-sign-in/)), `resource`, `prompt`) | A browser |
-| Sign-in | `GET /login`, `GET /login/<provider>/start`, `GET /authorize/callback` | A browser, bound to the request by a `__Host-` cookie |
+| Sign-in | `GET /login`, `GET /login/<provider>/start`, `GET /callback` | A browser, bound to the request by the `__Host-sluis_signin` cookie ([0025](/decisions/0025-integrations/#the-upstream-contract)) |
 | Token | `POST /token` with `authorization_code` or `refresh_token` | A client, public with PKCE or confidential with a secret. Refresh tokens are single use |
 | UserInfo | `GET\|POST /userinfo` | A bearer of a live sign-in |
 | Revocation | `POST /revoke` (RFC 7009) | The client the token was issued to |

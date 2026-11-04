@@ -28,7 +28,7 @@ message Address {
 
 message Item {
   Address address = 1;
-  uint64 version = 2;                         // 1 at create, plus 1 at each change; set by store@
+  uint64 version = 2;                         // 1 at create, plus 1 at each change; set by store@; a re-created item starts at 1 again (0005, Time to live)
   bytes value = 3;                            // the kind's Protobuf message; for a sealed kind, the envelope
   google.protobuf.Timestamp expires_at = 4;   // set by store@ when the kind has a TTL
   repeated IndexEntry indexes = 5;            // the declared indexes, computed by the writer
@@ -140,7 +140,7 @@ A refusal is a Connect error with the `Refusal` detail and a reason that names t
 
 ## Typed clients
 
-- **A client is generated from the kind's Protobuf message** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). In Go it is `store.Client[T Kind]`; in Rust a kind implements `trait Kind { type Id; type Value: prost::Message; const NAME: &'static str; }` and the client is `Store<K: Kind>` ([0005](/decisions/0005-the-store/#typed-clients)).
+- **A client is generated from the kind's Protobuf message** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). In Go it is `store.Client[T Kind]`; in Rust a kind implements `trait Kind { type Id; type Value: buffa::Message; const NAME: &'static str; }` and the client is `Store<K: Kind>` ([0005](/decisions/0005-the-store/#typed-clients)).
 - **The client does the encoding on this page:** the kind's name becomes its segment, the id is validated against [Address encoding](#address-encoding), and a sealed kind's value is sealed at key@ before it is written and opened after it is read ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
 - **Both kits pass one conformance suite** ([0012](/decisions/0012-the-language-follows-the-executable/#the-rules), rule R9), which includes the vectors of this page.
 
@@ -186,7 +186,7 @@ service ItemService {
 
 message DriverItem {
   bytes key = 1;                              // the address as text
-  uint64 version = 2;                         // set by the driver: 1 at creation, plus 1 at each change
+  uint64 version = 2;                         // set by the driver: 1 at creation, plus 1 at each change; a re-created item starts at 1 again
   bytes value = 3;
   google.protobuf.Timestamp expires_at = 4;   // set by store@, never by the engine
   repeated IndexEntry indexes = 5;
@@ -206,6 +206,7 @@ message TailLogResponse { uint64 sequence = 1; bytes key = 2; uint64 version = 3
 - **`Transact` with one put and one condition is one conditional update,** not a transaction. A counter that many callers change depends on it ([0005](/decisions/0005-the-store/#drivers)).
 - **`log` asks the driver to write a change-log row in the same transaction.** store@ sets it for a kind that some actor may watch and leaves it off for the rest. `TailLog` streams the rows from a sequence; a sequence the log no longer holds is `failed_precondition` with the reason `sequence_expired`.
 - **An item past its expiry reads as absent,** and a sweeper frees the space: rqlite's leader, or DynamoDB TTL. A `Lease` is the one item never swept ([0005](/decisions/0005-the-store/#leases)).
+- **A re-created item starts at version 1.** After a delete or a sweep the driver keeps no counter for the address ([0005](/decisions/0005-the-store/#time-to-live)); a `Lease`, which is never swept or deleted, is the item whose version only grows.
 - **Timestamps come from store@,** because rqlite does not rewrite non-deterministic defaults and a replica would compute its own ([0005](/decisions/0005-the-store/#engines)).
 
 ### The source contract

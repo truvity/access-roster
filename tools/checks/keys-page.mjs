@@ -52,7 +52,8 @@ function render() {
   const baseline = purposes.filter((p) => p.enabled === 'baseline');
   const sym = baseline.filter((p) => p.aws?.key_spec === 'SYMMETRIC_DEFAULT').length;
   const p384 = baseline.filter((p) => p.aws?.key_spec === 'ECC_NIST_P384').length;
-  out.push(`${purposes.length} key purposes and ${Object.keys(algorithms).length} algorithms (key registry checked ${reg.checked}). The AWS baseline is ${sym} symmetric key and ${p384} P-384 keys.`, '');
+  const p256 = baseline.filter((p) => p.aws?.key_spec === 'ECC_NIST_P256').length;
+  out.push(`${purposes.length} key purposes and ${Object.keys(algorithms).length} algorithms (key registry checked ${reg.checked}). The AWS baseline is ${sym} symmetric key, ${p384} P-384 keys and ${p256} P-256 key.`, '');
 
   out.push(heading(2, 'Algorithms'), '', `The FIPS-approved set is the default; an exception says why ([algorithms](${adrHref('0006', 'algorithms')}), [named exceptions](${adrHref('0006', 'named-exceptions')})).`, '');
   out.push(...table(['Algorithm', 'Family', 'Curve', 'Status', 'Purposes', 'Note'], Object.entries(algorithms).map(([n, a]) => [
@@ -73,7 +74,7 @@ function render() {
   }
 
   out.push(heading(2, 'AWS baseline'), '',
-    `On AWS every boundary has ${sym} symmetric key and ${p384} P-384 keys, one per boundary, per trust domain or per writer instance as the table says ([keys per boundary on AWS](${adrHref('0006', 'keys-per-boundary-on-aws')})).`, '');
+    `On AWS every boundary has ${sym} symmetric key, ${p384} P-384 keys and ${p256} P-256 key (the audit log's), one per boundary, per trust domain or per writer instance as the table says ([keys per boundary on AWS](${adrHref('0006', 'keys-per-boundary-on-aws')})).`, '');
   out.push(...table(['Purpose', 'Algorithm', 'AWS key spec', 'One per', 'Used by'], baseline.map((p) => [`[${code(p.name)}](#${p.name})`, algo(p.algorithm), code(p.aws.key_spec), p.aws.per, users(p.users)])), '');
 
   out.push(heading(2, 'Enabled on use'), '', 'No key exists until an installation enables the purpose; then it gets a dedicated key.', '');

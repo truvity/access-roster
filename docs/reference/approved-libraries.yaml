@@ -35,11 +35,12 @@ go:
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
 rust:
-  - { name: "aws-lc-rs", for: "AES-256-GCM with RandomizedNonceKey, ECDSA P-384, HKDF, SHA-2 and the library's random generator", needed_by: "ADR 0006" }
+  - { name: "aws-lc-rs", for: "AES-256-GCM with RandomizedNonceKey, ECDSA P-384 (and P-256 for the audit log key), HKDF, SHA-2 and the library's random generator", needed_by: "ADR 0006" }
   - { name: "rustls", for: "TLS, with the aws-lc-rs provider and no FIPS pin", needed_by: "ADR 0012" }
   - { name: "cedar-policy", for: "Parsing, validating and evaluating Cedar policy in policy", needed_by: "ADR 0007" }
   - { name: "jsonschema", for: "Applying the generated JSON Schema to a configuration document before it is decoded", needed_by: "ADR 0004" }
-  - { name: "prost-protovalidate", for: "The protovalidate rules of every Protobuf message, after decoding, in the Rust binaries. A community crate (Buf publishes none for Rust) and a named risk: pinned, and watched by the shared conformance vectors", needed_by: "ADR 0012", evaluated: "0.6.x, pinned; agreed with protovalidate-go on every document of the schema spike (#1177, 2026-11-03)" }
+  - { name: "buffa", for: "The Protobuf runtime of every Rust component, because connectrpc generates only buffa types; the kit's hand-written checks validate decoded messages until a protovalidate bridge exists", needed_by: "ADR 0012", evaluated: "0.9.2, pinned; decided 2026-11-04" }
+  - { name: "buffa-types", for: "The well-known Protobuf types (Duration, Timestamp) for buffa messages", needed_by: "ADR 0012", evaluated: "0.9.2, pinned; decided 2026-11-04" }
   - { name: "connectrpc", for: "The Connect protocol over Unix sockets (spike S1 passed on 2026-11-01)", needed_by: "ADR 0012" }
   - { name: "zeroize", for: "Wiping secrets from memory when they are dropped", needed_by: "ADR 0012" }
   - { name: "jsonwebtoken (feature aws_lc_rs)", for: "Verifying JWS and JWT with an explicit algorithm list", needed_by: "ADR 0017", evaluated: "11.1.0, 2026-09-16" }
