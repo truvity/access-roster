@@ -72,9 +72,6 @@ type driverProc struct {
 	SocketFlag string
 	Args       []string // the driver's own flags; %STATE% is its state directory
 	State      bool     // the driver has a state directory, below StateRoot, given to --state-dir or --root
-	// NoSocketGID is set for a binary that has no --socket-gid yet; its socket then stays 0600 for its own user, which the
-	// owner cannot open. The row says so until the driver takes the flag.
-	NoSocketGID bool
 	// Environment and EnvironmentFile are for a value that differs per board and that no flag may carry in the repository.
 	Environment     []string
 	EnvironmentFile string
@@ -108,7 +105,7 @@ var drivers = map[string]driverSpec{
 	},
 	// drivers/store/rqlite: serve --socket --rqlite-url --namespace durable|temp. One process per port. The engine's URL is
 	// the board's own and differs per board, so the repository carries the loopback default of bare-metal.md ("Engines")
-	// and the deploy may override it in /etc/sluis/rqlite-<boundary>.env. The driver has no --socket-gid yet.
+	// and the deploy may override it in /etc/sluis/rqlite-<boundary>.env.
 	"driver-store-rqlite": {
 		Language: "Rust", Network: true,
 		Units: []driverProc{
@@ -134,7 +131,7 @@ var drivers = map[string]driverSpec{
 
 func rqliteUnit(port string) driverProc {
 	return driverProc{
-		Port: port, Socket: port + ".sock", NoSocketGID: true,
+		Port: port, Socket: port + ".sock",
 		Args:            []string{"--rqlite-url", "${SLUIS_RQLITE_URL}", "--namespace", port},
 		Environment:     []string{"SLUIS_RQLITE_URL=http://127.0.0.1:4001"},
 		EnvironmentFile: "-/etc/sluis/rqlite-%i.env",
@@ -666,9 +663,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	// The driver's socket is 0600 for its own user by default; --socket-gid opens it (0660) to the driver's own group,
 	// whose number is its uid (sysusers.d makes the group of a user with the same number), and only the owner joins
 	// that group. The driver still answers the owner's uid alone (the OwnerOnly check of the kit).
-	if !du.NoSocketGID {
-		args = append(args, "--socket-gid", strconv.FormatUint(uint64(u.UID), 10))
-	}
+	args = append(args, "--socket-gid", strconv.FormatUint(uint64(u.UID), 10))
 	b.line("ExecStart=%s/%s serve --boundary %%i %s %s %s", BinDir, u.Binary, socketFlag, socket, strings.Join(args, " "))
 	b.line("Restart=on-failure")
 	b.line("RestartSec=2s")

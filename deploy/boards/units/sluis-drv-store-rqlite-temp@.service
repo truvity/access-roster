@@ -10,7 +10,7 @@ Type=simple
 User=sluis-drv-store-rqlite-%i
 Group=sluis-drv-store-rqlite-%i
 SupplementaryGroups=sluis-store-drv-%i
-ExecStart=/opt/sluis/bin/drivers/store/rqlite serve --boundary %i --socket /run/sluis/store/%i/temp.sock --rqlite-url ${SLUIS_RQLITE_URL} --namespace temp
+ExecStart=/opt/sluis/bin/drivers/store/rqlite serve --boundary %i --socket /run/sluis/store/%i/temp.sock --rqlite-url ${SLUIS_RQLITE_URL} --namespace temp --socket-gid 61020
 Restart=on-failure
 RestartSec=2s
 Environment=SLUIS_RQLITE_URL=http://127.0.0.1:4001
