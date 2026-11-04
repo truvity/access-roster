@@ -258,7 +258,7 @@ The only holder of storage credentials: one generic store service over four port
 - **Egress:** `engine`, `config-store`, `secret-store`.
 - **Key purposes:** `grant` (open), `backup-archive` (unwrap).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0004](/decisions/0004-the-data-model/), [ADR 0005](/decisions/0005-the-store/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
-- **Requirement areas:** [ISO](/requirements/iso/), [OPS](/requirements/ops/), [DATA](/requirements/data/), [BACKUP](/requirements/backup/), [EXCH](/requirements/exch/).
+- **Requirement areas:** [ISO](/requirements/iso/), [OPS](/requirements/ops/), [DATA](/requirements/data/), [BACKUP](/requirements/backup/), [EXCH](/requirements/exch/), [KEYS](/requirements/keys/).
 - **Standards:** none.
 - **Issues:** none; label `actor:store`.
 
