@@ -264,9 +264,10 @@ flowchart LR
   | Time to live of the edge cache, at most `max-age` | 300 s |
   | Allowance for a verifier that throttles its fetch on an unknown `kid` | 10 min |
   | Clock skew | 5 min |
-  | **Worst case** | **25 min, set to 30 min** |
+  | **Sum** (300 s + 300 s + 600 s + 300 s = 1500 s) | **25 min** |
+  | **Lead time**, the sum rounded up to leave a margin | **30 min** |
 
-  The lead time is therefore `max-age` + edge time to live + the refetch allowance + the clock skew, rounded up to 30 minutes. A change of `max-age` or of the edge time to live moves the lead time with it; the figure is not chosen on its own.
+  The lead time is therefore `max-age` + edge time to live + the refetch allowance + the clock skew: 25 minutes, rounded up to 30 minutes to leave a margin. A change of `max-age` or of the edge time to live moves the lead time with it; the figure is not chosen on its own.
 - **A verifier that holds the key set for longer than `max-age` and does not fetch it again on an unknown `kid` is broken, and sluis detects it instead of accommodating it** (decided 2026-11-04). v1 published a key for 12 hours before it signed, because such a verifier broke every daily rotation. v2 rotates rarely, so a rotation can be announced and the stragglers can be found: the relying-party contract is documented ([Verifying tokens](/integrations/applications/#verifying-tokens)), each fetch of the key set is a metric by client and network ([REQ-OBS-018](/requirements/obs/#REQ-OBS-018)), and a rotation drill in a staging installation lists the verifiers that fail ([REQ-OPS-078](/requirements/ops/#REQ-OPS-078)).
 - **A retiring key never becomes active again** ([REQ-KEYS-079](/requirements/keys/#REQ-KEYS-079)). To keep a key in use, make a new one.
 
