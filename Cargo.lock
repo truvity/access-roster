@@ -1137,6 +1137,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "sluis-driver-writer-spool"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "buffa",
+ "clap",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "serde_json",
+ "sluis-audit",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sluis-kit"
 version = "0.0.0"
 dependencies = [
