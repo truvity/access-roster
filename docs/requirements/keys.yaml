@@ -466,7 +466,8 @@ requirements:
     rationale: "The rules are generated from the actor registry, so a compromised actor cannot ask for a purpose it was not given (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     actors: [key]
@@ -542,7 +543,8 @@ requirements:
     rationale: "A value copied to another row, kind, tenant or boundary then no longer opens, so a flaw that lets an actor write somewhere does not let it read what it moved (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     actors: [key]
