@@ -4,7 +4,8 @@
 Description=sluis driver key-yubikey-piv (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 Requires=pcscd.socket
-After=pcscd.socket
+Wants=time-sync.target
+After=pcscd.socket time-sync.target
 
 [Service]
 Type=simple

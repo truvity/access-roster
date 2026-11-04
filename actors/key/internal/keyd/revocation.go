@@ -3,6 +3,7 @@ package keyd
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -29,11 +30,18 @@ func revocationID(kind, target string) string {
 	return kind + "/" + target
 }
 
+// clockSkew is how far ahead of this node's clock the age of a key may be and still count. A key store whose clock
+// runs ahead could stamp a key as newer than a revocation; an age later than now plus this is not believed, and the
+// key is treated as of unknown age (refused while its purpose is revoked). Time sync on the nodes keeps the skew small
+// (ADR 0041).
+const clockSkew = 5 * time.Minute
+
 // revoked says which target of KeyRevocation stops the key of a purpose from signing: "" when none does.
 //
 // A revocation of the key's kid refuses it for ever. A revocation of the purpose refuses the keys made at or before
 // the time of the declaration, and not a replacement made after it ("a replacement signs at once", ADR 0041): a key
-// whose age the key store cannot say is refused, because a key of unknown age cannot be shown to be a replacement.
+// whose age the key store cannot say, or says to be later than now (plus clockSkew), is refused, because a key of
+// unknown age cannot be shown to be a replacement.
 func (s *Server) revoked(ctx context.Context, purpose string, pk purposeKey) (string, error) {
 	if _, err := s.revocations.Get(ctx, "", revocationID(targetKid, pk.keyID)); err == nil {
 		return targetKid, nil
@@ -48,7 +56,7 @@ func (s *Server) revoked(ctx context.Context, purpose string, pk purposeKey) (st
 		return "", err
 	}
 	at := it.Value.GetRevokedAt()
-	if at == nil || pk.created.IsZero() || !pk.created.After(at.AsTime()) {
+	if at == nil || pk.created.IsZero() || pk.created.After(s.now().Add(clockSkew)) || !pk.created.After(at.AsTime()) {
 		return targetPurpose, nil
 	}
 	return "", nil
