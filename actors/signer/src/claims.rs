@@ -434,6 +434,7 @@ mod tests {
         assert_eq!(p.as_object().unwrap().len(), 6);
     }
 
+    /// verifies: REQ-TOKEN-034, REQ-TOKEN-039
     #[test]
     fn a_claim_outside_the_set_is_not_issued() {
         for extra in [
@@ -450,6 +451,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-TOKEN-022
     #[test]
     fn a_claim_that_the_type_does_not_carry_is_refused() {
         assert_eq!(
@@ -474,6 +476,7 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-TOKEN-018
     #[test]
     fn a_missing_required_claim_is_refused() {
         for name in ["iss", "sub", "aud", "exp", "iat"] {
@@ -494,6 +497,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-TOKEN-003
     #[test]
     fn a_claim_of_the_wrong_shape_is_refused() {
         let bad = [

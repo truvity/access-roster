@@ -9,6 +9,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -25,6 +26,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -40,7 +42,9 @@ requirements:
     rationale: "Reuse indicates theft."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -54,7 +58,8 @@ requirements:
     rationale: "A session limit that tokens can outlive is no limit."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -69,7 +74,9 @@ requirements:
     rationale: "A session limit that tokens can outlive is no limit."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -83,7 +90,8 @@ requirements:
     rationale: "Refresh must not upgrade or hide a state change, so a person whom the directory has disabled gets no new tokens once sluis knows of it."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -97,7 +105,9 @@ requirements:
     rationale: "Refresh must not upgrade or hide a state change."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -110,7 +120,9 @@ requirements:
     rationale: "The sid links tokens to a session for revocation."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -127,7 +139,8 @@ requirements:
     rationale: "The sid links tokens to a session for revocation."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -141,7 +154,9 @@ requirements:
     rationale: "Durable, minimal records keep privacy and availability."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -155,7 +170,9 @@ requirements:
     rationale: "Durable, minimal records keep privacy and availability."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -181,7 +198,9 @@ requirements:
     rationale: "Host-prefixed cookies cannot be set by a sibling origin."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "6265bis", depth: Full}
@@ -195,7 +214,9 @@ requirements:
     rationale: "Two installations on one parent domain must not read each other's cookies."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "6265bis", depth: Full}
@@ -209,6 +230,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-30, section: "2", depth: Full}
@@ -225,6 +247,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-30, section: "2", depth: Full}
@@ -282,6 +305,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-31, section: "2.4", depth: Full}
@@ -353,7 +377,8 @@ requirements:
     rationale: "The classes differ in their limits and in what ends them (ADR 0018)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -366,7 +391,9 @@ requirements:
     rationale: "A machine client has no session; it presents its credential again (ADR 0018)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "4.4", depth: Partial}
@@ -379,7 +406,8 @@ requirements:
     rationale: "Use must not extend a person's sign-in (v1 ADR 0001, ADR 0018)."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -392,7 +420,9 @@ requirements:
     rationale: "Step-up refreshes freshness, not the sign-in (ADR 0018)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -458,6 +488,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -484,6 +515,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [793, 916]
@@ -496,6 +528,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -508,6 +541,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -570,6 +604,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -581,7 +616,9 @@ requirements:
     rationale: "A boundary trusts a browser sign-in only when the group issuer authenticated the person, at an exact redirect that no other client can claim (ADR 0017)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: smoke-not-in-ci
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "4.1", depth: Partial}
@@ -597,7 +634,9 @@ requirements:
     rationale: "A copy of the store must not yield a usable refresh token, and a lost temp class costs only a sign-in (ADR 0018)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -610,7 +649,9 @@ requirements:
     rationale: "session never holds the cookie key (ADR 0018)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -624,6 +665,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]
@@ -635,7 +677,9 @@ requirements:
     rationale: "An unauthenticated request must create no stored state, and no grant for a tenant's keys exists before a person is decided (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -648,7 +692,9 @@ requirements:
     rationale: "A cookie from another browser or another request must not complete a sign-in (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -661,7 +707,8 @@ requirements:
     rationale: "An unfinished sign-in must not stay completable (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -674,7 +721,9 @@ requirements:
     rationale: "A cookie over the browser's limit is dropped silently and would break the sign-in (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []

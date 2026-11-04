@@ -748,6 +748,7 @@ fn verify_at(
 
 // ---------------------------------------------------------------- tests
 
+/// verifies: REQ-TOKEN-001, REQ-TOKEN-017, REQ-TOKEN-019
 #[tokio::test]
 async fn a_token_signed_through_key_verifies_with_go_jose_against_the_published_key_set() {
     let w = World::new().await;

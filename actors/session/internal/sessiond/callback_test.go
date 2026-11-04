@@ -30,6 +30,7 @@ func (e *env) started() (cb *sessionv2alpha1.CallbackRequest, p authorizeParams)
 	}, p
 }
 
+// verifies: REQ-AUTHN-005
 func TestCallbackIssuesACodeForTheClient(t *testing.T) {
 	e := newEnv(t, nil)
 	cb, p := e.started()
@@ -166,6 +167,7 @@ func TestCallbackAsksPolicyWithTheFacts(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SESS-049
 func TestCallbackRefusesACallbackThatIsNotOurs(t *testing.T) {
 	cases := map[string]func(cb *sessionv2alpha1.CallbackRequest, e *env){
 		"no cookie":      func(cb *sessionv2alpha1.CallbackRequest, _ *env) { cb.Cookie = "" },
@@ -511,6 +513,7 @@ func TestSignInIsAudited(t *testing.T) {
 	}
 }
 
+// verifies: REQ-TOKEN-031
 func TestCallbackMaxAge(t *testing.T) {
 	signedAgo := func(d time.Duration) func(*env) {
 		return func(e *env) {
