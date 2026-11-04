@@ -194,7 +194,8 @@ type ChangeType int32
 const (
 	ChangeType_CHANGE_TYPE_UNSPECIFIED ChangeType = 0 // not set
 	ChangeType_CHANGE_TYPE_PUT         ChangeType = 1 // the item was written
-	ChangeType_CHANGE_TYPE_DELETE      ChangeType = 2 // the item was removed
+	ChangeType_CHANGE_TYPE_DELETE      ChangeType = 2 // the item was removed, or it expired
+	ChangeType_CHANGE_TYPE_BOOKMARK    ChangeType = 3 // no change: the latest resume point, sent on a stream that has been idle (no item)
 )
 
 // Enum value maps for ChangeType.
@@ -203,11 +204,13 @@ var (
 		0: "CHANGE_TYPE_UNSPECIFIED",
 		1: "CHANGE_TYPE_PUT",
 		2: "CHANGE_TYPE_DELETE",
+		3: "CHANGE_TYPE_BOOKMARK",
 	}
 	ChangeType_value = map[string]int32{
 		"CHANGE_TYPE_UNSPECIFIED": 0,
 		"CHANGE_TYPE_PUT":         1,
 		"CHANGE_TYPE_DELETE":      2,
+		"CHANGE_TYPE_BOOKMARK":    3,
 	}
 )
 
@@ -588,6 +591,7 @@ type ListResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*Item                `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`                                        // the items of the page
 	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty on the last page
+	ResumePoint   uint64                 `protobuf:"varint,3,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`        // the change-log position that the snapshot reflects or is older than; Watch from it misses nothing (at-least-once). 0 for a config kind
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -634,6 +638,13 @@ func (x *ListResponse) GetNextPageToken() string {
 		return x.NextPageToken
 	}
 	return ""
+}
+
+func (x *ListResponse) GetResumePoint() uint64 {
+	if x != nil {
+		return x.ResumePoint
+	}
+	return 0
 }
 
 // WriteRequest is a batch of operations, applied all or none.
@@ -823,8 +834,8 @@ func (x *WriteResponse) GetItems() []*Item {
 type WatchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`                                   // the kind's segment
-	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`                               // empty: every tenant of the boundary the caller's rules allow
-	ResumePoint   uint64                 `protobuf:"varint,3,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"` // the change-log sequence last seen; 0 starts from now
+	Tenant        string                 `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`                               // empty only for a kind with no tenant, and for DataKeyWrap and KeyRevocation, as for List
+	ResumePoint   uint64                 `protobuf:"varint,3,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"` // the change-log sequence last seen, or ListResponse.resume_point; 0 starts from now
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -883,9 +894,9 @@ func (x *WatchRequest) GetResumePoint() uint64 {
 // WatchResponse is one change.
 type WatchResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // hand this back after a restart
-	Type          ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT or DELETE
-	Item          *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // the item the change is about
+	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // hand this back after a restart; 0 for a config kind
+	Type          ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
+	Item          *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1068,10 +1079,11 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"indexValue\x12\x1b\n" +
 	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x06 \x01(\tR\tpageToken\"h\n" +
+	"page_token\x18\x06 \x01(\tR\tpageToken\"\x8b\x01\n" +
 	"\fListResponse\x120\n" +
 	"\x05items\x18\x01 \x03(\v2\x1a.sluis.store.v2alpha1.ItemR\x05items\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"e\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12!\n" +
+	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\"e\n" +
 	"\fWriteRequest\x12?\n" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2\x1f.sluis.store.v2alpha1.OperationR\n" +
@@ -1119,12 +1131,13 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\x06UPDATE\x10\x02\x12\n" +
 	"\n" +
 	"\x06DELETE\x10\x03\x12\t\n" +
-	"\x05APPLY\x10\x04*V\n" +
+	"\x05APPLY\x10\x04*p\n" +
 	"\n" +
 	"ChangeType\x12\x1b\n" +
 	"\x17CHANGE_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fCHANGE_TYPE_PUT\x10\x01\x12\x16\n" +
-	"\x12CHANGE_TYPE_DELETE\x10\x022\xbf\x03\n" +
+	"\x12CHANGE_TYPE_DELETE\x10\x02\x12\x18\n" +
+	"\x14CHANGE_TYPE_BOOKMARK\x10\x032\xbf\x03\n" +
 	"\fStoreService\x12J\n" +
 	"\x03Get\x12 .sluis.store.v2alpha1.GetRequest\x1a!.sluis.store.v2alpha1.GetResponse\x12M\n" +
 	"\x04List\x12!.sluis.store.v2alpha1.ListRequest\x1a\".sluis.store.v2alpha1.ListResponse\x12P\n" +

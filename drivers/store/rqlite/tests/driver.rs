@@ -167,6 +167,8 @@ fn rqlite_command(args: &[&str]) -> std::process::Output {
         .expect("run the rqlite binary")
 }
 
+/// verifies: REQ-DATA-102
+/// The suite includes the log head of a query: never 0, and a tail from it misses nothing written after the page.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_driver_passes_the_item_suite_on_both_ports() {
     let Some(bin) = rqlited() else { return };
@@ -257,7 +259,9 @@ async fn the_two_ports_do_not_see_each_other() {
     b.stop().await;
 }
 
-/// verifies: REQ-DATA-062
+/// verifies: REQ-DATA-062, REQ-DATA-101
+/// The sweeper writes a delete row for the expiry of an item that was written with a log row, so that a watcher sees
+/// expiry as a delete; it trims the log to the retention; and it never frees a lease.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     let Some(bin) = rqlited() else { return };
@@ -298,10 +302,39 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     // A second logged write, so the first rows can be trimmed and a later one kept.
     tokio::time::sleep(Duration::from_millis(30)).await;
 
-    let freed = sweeper::sweep_once(&d, Duration::from_millis(1))
+    // A sweep that trims nothing (the retention is an hour): the expired item is freed, and its expiry
+    // is a delete row of the log, because it was written with one (a watcher sees expiry as a delete).
+    let freed = sweeper::sweep_once(&d, Duration::from_secs(3600))
         .await
         .unwrap();
     assert_eq!(freed, 1, "the sweeper frees the one expired item");
+    let swept = d
+        .poll(4)
+        .await
+        .unwrap()
+        .expect("the sweep wrote a row of the log");
+    assert_eq!(
+        swept
+            .iter()
+            .map(|r| (r.key.clone(), r.version, r.deleted))
+            .collect::<Vec<_>>(),
+        vec![(b"sweep/expired".to_vec(), 1, true)],
+        "the expiry of a logged item is a delete row, and the live and the lease items write none"
+    );
+    // The sweep is idempotent: the item is gone, so there is nothing to log again.
+    assert_eq!(
+        sweeper::sweep_once(&d, Duration::from_secs(3600))
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(d.poll(5).await.unwrap().is_none(), "no second delete row");
+
+    // Now a sweep with a retention that trims every row (the marker, the three writes, the expiry).
+    tokio::time::sleep(Duration::from_millis(30)).await;
+    sweeper::sweep_once(&d, Duration::from_millis(1))
+        .await
+        .unwrap();
 
     let rq = Rq::new(&node.url, None).unwrap();
     let out = rq
@@ -328,11 +361,11 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
         ["sweep/live"],
         "the index entries of the expired item are freed too"
     );
-    // Sweeping an expired item wrote no log row, and the old rows were trimmed.
+    // The rows were trimmed.
     let logged = sluis_rqlite::client::rows(&out, 2).unwrap()[0][0]
         .as_i64()
         .unwrap();
-    assert_eq!(logged, 0, "the three writes are older than the retention");
+    assert_eq!(logged, 0, "every row is older than the retention");
 
     // A sequence the trim dropped is `sequence_expired`; one at the floor is fine.
     rpc.transact(TransactRequest {
@@ -341,9 +374,10 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     })
     .await
     .unwrap();
-    // A tail that fell behind the retention is refused, not skipped ahead: rows 1..=3 are gone, so
-    // a tail at 1 or 2 has missed rows, one at the floor (3) has not, and the later row is next.
-    for behind in [0, 1, 2] {
+    // A tail that fell behind the retention is refused, not skipped ahead: rows 1..=5 are gone (the marker, the
+    // three writes, the expiry), so a tail at 1 to 4 has missed rows, one at the floor (5) has not, and the later
+    // row is next.
+    for behind in [1, 2, 3, 4] {
         let err = d
             .poll(behind)
             .await
@@ -352,10 +386,10 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
         assert_eq!(err.code, ErrorCode::FailedPrecondition, "behind {behind}");
         assert_eq!(refusal_reason(&err).as_deref(), Some("sequence_expired"));
     }
-    let next = d.poll(3).await.unwrap().expect("the row after the floor");
+    let next = d.poll(5).await.unwrap().expect("the row after the floor");
     assert_eq!(next.len(), 1);
     assert!(
-        d.poll(4).await.unwrap().is_none(),
+        d.poll(6).await.unwrap().is_none(),
         "at the head there is nothing yet"
     );
 
@@ -383,17 +417,17 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
         refusal_reason(&expired).as_deref(),
         Some("sequence_expired")
     );
-    // The floor itself is held: from 3 (the newest row of the three writes) the log yields the
-    // row written after, and from the head it is quiet.
-    let row = tail(3)
+    // The floor itself is held: from 5 (the newest row trimmed) the log yields the row written after, and from the
+    // head it is quiet.
+    let row = tail(5)
         .await
         .unwrap()
         .expect("a tail from the floor gets the later row");
     assert_eq!(
         (row.sequence, row.key.as_slice()),
-        (4, b"sweep/after".as_slice())
+        (6, b"sweep/after".as_slice())
     );
-    assert!(tail(4).await.unwrap().is_none(), "nothing after the head");
+    assert!(tail(6).await.unwrap().is_none(), "nothing after the head");
     served.stop().await;
 }
 

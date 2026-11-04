@@ -67,7 +67,7 @@ message ListRequest {
   int32 page_size = 5;
   string page_token = 6;
 }
-message ListResponse { repeated Item items = 1; string next_page_token = 2; }
+message ListResponse { repeated Item items = 1; string next_page_token = 2; uint64 resume_point = 3; }  // the log position to watch from ([Watch](#watch))
 ```
 
 - **`Get` is linearizable by default.** A reader that tolerates lag may ask for a follower read. A read that carries `if_none_match` and finds the same version answers `unchanged`; on Lambda, where nothing is pushed, that is how a reader re-reads cheaply ([0005](/decisions/0005-the-store/#watch-and-the-resume-point)).
@@ -126,19 +126,26 @@ A `Lease` carries a typed Protobuf message with one field the store reads, `expi
 ```proto
 message WatchRequest {
   string kind = 1;
-  string tenant = 2;          // empty: every tenant of the boundary the caller's rules allow
-  uint64 resume_point = 3;    // the change-log sequence last seen; 0 starts from now
+  string tenant = 2;          // empty only for a kind with no tenant, and for DataKeyWrap and KeyRevocation, as for List
+  uint64 resume_point = 3;    // the change-log sequence last seen, or ListResponse.resume_point; 0 starts from now
 }
 message WatchResponse {
-  uint64 resume_point = 1;    // hand this back after a restart
-  ChangeType type = 2;        // PUT or DELETE
-  Item item = 3;
+  uint64 resume_point = 1;    // hand this back after a restart; 0 for a config kind
+  ChangeType type = 2;        // PUT, DELETE or BOOKMARK
+  Item item = 3;              // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 }
 ```
 
-- **A watcher gets every change of the kind after its resume point,** in order, with none missed and none invented ([0005](/decisions/0005-the-store/#watch-and-the-resume-point)).
-- **A resume point the change log no longer holds** is refused with `failed_precondition` and the reason `resume_point_expired`. The watcher lists the kind again and watches from the new point.
-- **A config kind has no change log.** When the snapshot swaps, store@ delivers each changed config kind to its watchers with `resume_point` 0; a watcher that reconnects reads the kind again.
+Watch is the Kubernetes list-watch contract ([0005](/decisions/0005-the-store/#watch-and-the-resume-point), decided 2026-11-04).
+
+- **List, then watch.** `ListResponse.resume_point` is the change-log position that the snapshot reflects or is older than, read before the first page and the same on every page of one listing. A watcher lists, then watches from that point; nothing between the two is lost. A watch from 0 starts from now. A kind that nobody may watch has no log, and its listing names 0.
+- **A change carries the address, the type and the version; the value is read at delivery.** The change log holds no value. A `PUT` is the item as it is when the change is delivered. If the item is above the version of the row, it is delivered once and the later rows at or below its version are skipped. An item that is gone, expired included, is a `DELETE` with no value, once however many rows it left. **Expiry is a delete:** the driver's sweeper writes the delete row for an item that was written with a log row.
+- **Delivery is at-least-once, in the order of the log.** A watcher dedupes by (address, version). A watch gives the rows after its resume point.
+- **No buffer beyond the driver's log.** The stream is read at the pace of its consumer, and HTTP/2 flow control is the backpressure. An idle stream sends a `BOOKMARK` with the latest resume point every 30 seconds.
+- **A resume point the change log no longer holds, or has not reached,** is refused with `failed_precondition` and the reason `resume_point_expired`, path `resume_point`. The watcher lists the kind again and watches from the new point. The driver keeps the log for one hour by default and at most seven days.
+- **At most 16 watches per caller.** The 17th is refused with `resource_exhausted` and the reason `watch_limit`; a watch that ends gives its place back.
+- **Who may watch.** A watch is judged as a read is: the actor needs a `watch` rule on the kind (`watched_by`, [rules](/reference/rules/)), a kind with a tenant is watched under a tenant, a rule bound to the caller's own ids watches only those, and a kind the registry does not declare is `invalid_argument` with the reason `address`. A read needs no grant today, so a watch needs none.
+- **A config kind has no change log.** When the snapshot swaps, store@ delivers each item that the swap added or changed (`PUT`, at the document's `seq`) and each item it removed (`DELETE`) to the watchers of that kind, with `resume_point` 0. A swap of another kind tells a watcher nothing. A resume point on a config kind is refused with `resume_point_expired`: the watcher reads the kind again.
 
 ### Refusals
 
@@ -152,6 +159,7 @@ A refusal is a Connect error with the `Refusal` detail and a reason that names t
 | `already_exists` | `taken` | A `CREATE` found the address in use |
 | `aborted` | `version` | An `UPDATE` or `DELETE` named a version that is no longer current |
 | `failed_precondition` | `bound`, `direction`, `link`, `maintenance`, `resume_point_expired` | A bound or the direction rule refuses the value; a link does not resolve; `MaintenanceMode` is set; the resume point is gone |
+| `resource_exhausted` | `watch_limit` | The caller already holds 16 watches |
 | `unavailable` | `engine` | An engine or a source is down; store@ fails closed |
 
 ## Typed clients
@@ -221,6 +229,8 @@ message TailLogResponse { uint64 sequence = 1; bytes key = 2; uint64 version = 3
 - **`Transact` is all or none.** A failed condition aborts it with `aborted` and the index of the first condition that failed.
 - **`Transact` with one put and one condition is one conditional update,** not a transaction. A counter that many callers change depends on it ([0005](/decisions/0005-the-store/#drivers)).
 - **`log` asks the driver to write a change-log row in the same transaction.** store@ sets it for a kind that some actor may watch and leaves it off for the rest. `TailLog` streams the rows from a sequence; a sequence the log no longer holds is `failed_precondition` with the reason `sequence_expired`.
+- **`QueryResponse.log_head` is the newest sequence of the change log,** read before the page. It is never 0: a log starts with a marker row at sequence 1 (no key), so that a listing of an empty log still names a position, because a resume point of 0 means "from now". store@ returns it as the `resume_point` of a listing.
+- **The sweeper writes a delete row for an expired item that was written with a log row,** and trims the log to the retention (`--changelog-retention`, one hour by default, at most seven days). A trim raises a floor, and a tail that is behind the floor is refused.
 - **An item past its expiry reads as absent,** and a sweeper frees the space: rqlite's leader, or DynamoDB TTL. A `Lease` is the one item never swept ([0005](/decisions/0005-the-store/#leases)).
 - **A re-created item starts at version 1.** After a delete or a sweep the driver keeps no counter for the address ([0005](/decisions/0005-the-store/#time-to-live)); a `Lease`, which is never swept or deleted, is the item whose version only grows.
 - **Timestamps come from store@,** because rqlite does not rewrite non-deterministic defaults and a replica would compute its own ([0005](/decisions/0005-the-store/#engines)).

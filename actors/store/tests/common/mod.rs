@@ -21,17 +21,18 @@ use sluis_proto::sluis::key::v2alpha1::{
     SealGrantResponse, SealRequest, SealResponse, SignRequest, SignResponse,
 };
 use sluis_proto::sluis::port::item::v2alpha1::{
-    DriverItem, QueryRequest, QueryResponse, TransactRequest, TransactResponse, condition::Expect,
+    DriverItem, QueryRequest, QueryResponse, TailLogResponse, TransactRequest, TransactResponse,
+    condition::Expect,
 };
 use sluis_proto::sluis::store::v2alpha1::{
     GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, ListRequest,
     ListResponse, Operation, StoreServiceClient, StoreServiceExt as _, Verb, WatchRequest,
-    WriteRequest, WriteResponse,
+    WatchResponse, WriteRequest, WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::{Address, Grant, IndexEntry};
 use store::audit::{AuditEvent, AuditSink};
 use store::config::ConfigSnapshot;
-use store::engine::{EngineError, ItemEngine};
+use store::engine::{EngineError, ItemEngine, LogRows};
 use store::grant::KeyOpener;
 use store::secret::{Secret, SecretError, SecretSource};
 use store::service::{Deps, Service};
@@ -74,7 +75,6 @@ impl SecretSource for Secrets {
 
 // ---- the engine ----
 
-#[derive(Default)]
 pub struct MemState {
     /// The test clock, in seconds; the engine uses it for the one rule it must keep: an item past
     /// its expiry does not exist for a condition (the item contract, as the rqlite driver keeps it).
@@ -82,6 +82,29 @@ pub struct MemState {
     pub items: Mutex<BTreeMap<Vec<u8>, DriverItem>>,
     pub down: AtomicBool,
     pub txs: Mutex<Vec<TransactRequest>>,
+    /// The change log, as a driver keeps it: it starts with a marker row (sequence 1), so its head is never 0.
+    pub log: Mutex<Vec<TailLogResponse>>,
+    /// The sequence below which the log was trimmed (rows up to it are gone).
+    pub floor: AtomicU64,
+    /// The keys written with a log row: their expiry is a delete row once swept.
+    pub logged: Mutex<std::collections::HashSet<Vec<u8>>>,
+}
+
+impl Default for MemState {
+    fn default() -> Self {
+        MemState {
+            clock: None,
+            items: Mutex::default(),
+            down: AtomicBool::default(),
+            txs: Mutex::default(),
+            log: Mutex::new(vec![TailLogResponse {
+                sequence: 1,
+                ..TailLogResponse::default()
+            }]),
+            floor: AtomicU64::new(0),
+            logged: Mutex::default(),
+        }
+    }
 }
 
 /// An engine that keeps what it is given, even past its expiry (a driver hides expired items; this
@@ -103,6 +126,49 @@ impl Mem {
             return false;
         };
         e.seconds <= i64::try_from(clock.load(Ordering::SeqCst)).unwrap()
+    }
+
+    fn append(&self, key: &[u8], version: u64, deleted: bool) {
+        let mut log = self.0.log.lock().unwrap();
+        let sequence = log.last().map_or(0, |r| r.sequence) + 1;
+        log.push(TailLogResponse {
+            sequence,
+            key: key.to_vec(),
+            version,
+            deleted,
+            ..TailLogResponse::default()
+        });
+    }
+
+    /// The newest sequence of the log.
+    pub fn head(&self) -> u64 {
+        self.0.log.lock().unwrap().last().map_or(0, |r| r.sequence)
+    }
+
+    /// One tick of the sweeper: frees the items past their expiry on the test clock and logs the removal of those
+    /// that were written with a log row (expiry is a delete to a watcher).
+    pub fn sweep(&self) {
+        let gone: Vec<(Vec<u8>, u64)> = self
+            .0
+            .items
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, i)| self.dead(i))
+            .map(|(k, i)| (k.clone(), i.version))
+            .collect();
+        for (key, version) in gone {
+            self.0.items.lock().unwrap().remove(&key);
+            if self.0.logged.lock().unwrap().remove(&key) {
+                self.append(&key, version, true);
+            }
+        }
+    }
+
+    /// Trims the change log up to and including `sequence`: a watch from before it has missed rows.
+    pub fn trim(&self, sequence: u64) {
+        self.0.floor.fetch_max(sequence, Ordering::SeqCst);
+        self.0.log.lock().unwrap().retain(|r| r.sequence > sequence);
     }
 
     pub fn keys(&self) -> Vec<String> {
@@ -165,6 +231,7 @@ impl ItemEngine for Mem {
         Ok(QueryResponse {
             items: hits,
             next_page_token: next,
+            log_head: self.head(),
             ..QueryResponse::default()
         })
     }
@@ -204,15 +271,67 @@ impl ItemEngine for Mem {
                 ..DriverItem::default()
             };
             items.insert(p.key.clone(), item.clone());
+            if p.log {
+                self.0.logged.lock().unwrap().insert(p.key.clone());
+                self.append(&p.key, version, false);
+            } else {
+                self.0.logged.lock().unwrap().remove(&p.key);
+            }
             written.push(item);
         }
         for d in &tx.deletes {
-            items.remove(&d.key);
+            let held = items.remove(&d.key);
+            self.0.logged.lock().unwrap().remove(&d.key);
+            if let (true, Some(old)) = (d.log, held) {
+                self.append(&d.key, old.version, true);
+            }
         }
         Ok(TransactResponse {
             items: written,
             ..TransactResponse::default()
         })
+    }
+
+    async fn tail_log(&self, from: u64) -> Result<LogRows, EngineError> {
+        if self.0.down.load(Ordering::SeqCst) {
+            return Err(EngineError::Unavailable);
+        }
+        let head = self.head();
+        let floor = self.0.floor.load(Ordering::SeqCst);
+        let mut last = match from {
+            0 => head,
+            n if n > head.max(floor) || n < floor => return Err(EngineError::SequenceExpired),
+            n => n,
+        };
+        let (tx, rx) = tokio::sync::mpsc::channel(8);
+        let this = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let rows: Vec<TailLogResponse> = this
+                    .0
+                    .log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|r| r.sequence > last)
+                    .cloned()
+                    .collect();
+                if rows.is_empty() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                    if tx.is_closed() {
+                        return;
+                    }
+                    continue;
+                }
+                for row in rows {
+                    last = row.sequence;
+                    if tx.send(Ok(row)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+        Ok(rx)
     }
 }
 
@@ -378,6 +497,11 @@ pub async fn wait_for(path: &std::path::Path) {
 
 impl F {
     pub async fn new() -> F {
+        F::new_with(store::watch::BOOKMARK_EVERY).await
+    }
+
+    /// A store whose idle watches say their resume point after `bookmark_every`.
+    pub async fn new_with(bookmark_every: Duration) -> F {
         let dir = tempfile::tempdir().unwrap();
         let me = rustix::process::geteuid().as_raw();
 
@@ -421,7 +545,8 @@ impl F {
             clock: Arc::new(move || {
                 SystemTime::UNIX_EPOCH + Duration::from_secs(c.load(Ordering::SeqCst))
             }),
-        });
+        })
+        .with_watch_timing(bookmark_every, Duration::from_millis(20));
 
         // store@, called as whichever actor the test says.
         let caller: Arc<Mutex<&'static str>> = Arc::new(Mutex::new("session"));
@@ -564,27 +689,113 @@ impl F {
         Ok(self.client.write(r).await?.into_owned())
     }
 
-    pub async fn watch(&self) -> ConnectError {
-        // The error may come with the response head or as the first thing the stream says.
-        let mut stream = match self
-            .client
-            .watch(WatchRequest {
-                kind: "person".into(),
-                ..WatchRequest::default()
-            })
-            .await
-        {
-            Err(e) => return e,
-            Ok(s) => s,
+    /// Opens a watch. The refusal of a watch comes as the answer to the call, or as the first thing the stream says;
+    /// either way it is the `Err` here.
+    pub async fn watch_open(&self, r: WatchRequest) -> Result<Watcher, ConnectError> {
+        let mut stream = self.client.watch(r).await?;
+        let (tx, rx) = tokio::sync::mpsc::channel(256);
+        let task = tokio::spawn(async move {
+            loop {
+                let next = match stream.message().await {
+                    Ok(Some(m)) => Ok(m.to_owned_message()),
+                    Ok(None) => return,
+                    Err(e) => Err(e),
+                };
+                let failed = next.is_err();
+                if tx.send(next).await.is_err() || failed {
+                    return;
+                }
+            }
+        });
+        let mut w = Watcher {
+            rx,
+            task,
+            held: None,
         };
-        match stream.message().await {
-            Err(e) => e,
-            Ok(m) => panic!("watch must not be served, got {}", m.is_some()),
+        // A refusal that rides in the stream: wait a moment for it.
+        if let Some(Err(e)) = w.peek_error(Duration::from_millis(150)).await {
+            return Err(e);
         }
+        Ok(w)
+    }
+
+    pub async fn watch(
+        &self,
+        kind: &str,
+        tenant: &str,
+        resume_point: u64,
+    ) -> Result<Watcher, ConnectError> {
+        self.watch_open(WatchRequest {
+            kind: kind.into(),
+            tenant: tenant.into(),
+            resume_point,
+            ..WatchRequest::default()
+        })
+        .await
     }
 
     pub fn audit(&self) -> Vec<AuditEvent> {
         self.sink.events.lock().unwrap().clone()
+    }
+}
+
+/// A watch that is open: what it said is read with a bound, so that a test never waits for ever.
+pub struct Watcher {
+    rx: tokio::sync::mpsc::Receiver<Result<WatchResponse, ConnectError>>,
+    task: tokio::task::JoinHandle<()>,
+    /// A message that `peek_error` read while it looked for a refusal.
+    held: Option<WatchResponse>,
+}
+
+impl Drop for Watcher {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+impl Watcher {
+    async fn peek_error(&mut self, within: Duration) -> Option<Result<(), ConnectError>> {
+        // Only an error is consumed; a message stays for the test (it is put back by reading it again below).
+        match tokio::time::timeout(within, self.rx.recv()).await {
+            Ok(Some(Err(e))) => Some(Err(e)),
+            Ok(Some(Ok(m))) => {
+                self.held = Some(m);
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// The next message within the bound, or None when the stream is quiet or ended. An error is a message.
+    pub async fn next(&mut self, within: Duration) -> Option<Result<WatchResponse, ConnectError>> {
+        if let Some(m) = self.held.take() {
+            return Some(Ok(m));
+        }
+        tokio::time::timeout(within, self.rx.recv())
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// The next message, which must come within five seconds and must not be an error.
+    pub async fn msg(&mut self) -> WatchResponse {
+        self.next(Duration::from_secs(5))
+            .await
+            .expect("the watch said nothing in five seconds")
+            .expect("the watch ended in an error")
+    }
+
+    /// The next message, which must come within five seconds and must be an error.
+    pub async fn error(&mut self) -> ConnectError {
+        self.next(Duration::from_secs(5))
+            .await
+            .expect("the watch said nothing in five seconds")
+            .expect_err("the watch said a message, not an error")
+    }
+
+    /// True when the stream says nothing within `within`.
+    pub async fn quiet(&mut self, within: Duration) -> bool {
+        self.next(within).await.is_none()
     }
 }
 

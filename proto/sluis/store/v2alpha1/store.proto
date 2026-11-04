@@ -54,7 +54,8 @@ enum Verb {
 enum ChangeType {
   CHANGE_TYPE_UNSPECIFIED = 0;  // not set
   CHANGE_TYPE_PUT = 1;          // the item was written
-  CHANGE_TYPE_DELETE = 2;       // the item was removed
+  CHANGE_TYPE_DELETE = 2;       // the item was removed, or it expired
+  CHANGE_TYPE_BOOKMARK = 3;     // no change: the latest resume point, sent on a stream that has been idle (no item)
 }
 
 // Provenance says which layer set a field of a layered kind.
@@ -92,6 +93,7 @@ message ListRequest {
 message ListResponse {
   repeated Item items = 1;       // the items of the page
   string next_page_token = 2;    // empty on the last page
+  uint64 resume_point = 3;       // the change-log position that the snapshot reflects or is older than; Watch from it misses nothing (at-least-once). 0 for a config kind
 }
 
 // WriteRequest is a batch of operations, applied all or none.
@@ -118,15 +120,15 @@ message WriteResponse {
 // WatchRequest asks for the changes of a kind from a resume point.
 message WatchRequest {
   string kind = 1;           // the kind's segment
-  string tenant = 2;         // empty: every tenant of the boundary the caller's rules allow
-  uint64 resume_point = 3;   // the change-log sequence last seen; 0 starts from now
+  string tenant = 2;         // empty only for a kind with no tenant, and for DataKeyWrap and KeyRevocation, as for List
+  uint64 resume_point = 3;   // the change-log sequence last seen, or ListResponse.resume_point; 0 starts from now
 }
 
 // WatchResponse is one change.
 message WatchResponse {
-  uint64 resume_point = 1;   // hand this back after a restart
-  ChangeType type = 2;       // PUT or DELETE
-  Item item = 3;             // the item the change is about
+  uint64 resume_point = 1;   // hand this back after a restart; 0 for a config kind
+  ChangeType type = 2;       // PUT, DELETE or BOOKMARK
+  Item item = 3;             // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
 }
 
 // GetSignedConfigRequest asks for the signed document of one config kind.

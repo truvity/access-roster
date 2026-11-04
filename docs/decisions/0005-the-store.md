@@ -89,9 +89,16 @@ trait Kind {
 
 ### Watch and the resume point
 
+`Watch` follows the Kubernetes list-watch contract, because it is well known and settles the questions of delivery (decided 2026-11-04, [principle 5](/principles/#5-open-standards-as-their-consumers-implement-them)).
+
 - **Watch streams the changes of a kind from a resume point.** The store writes a change-log row in the same transaction as each change of a kind that some actor may watch, so no change to a watched kind is missed or invented; a kind that nobody may watch writes none, and a hot counter such as an allowance stays one conditional update ([Drivers](/decisions/0005-the-store/#drivers)); the resume point is the change-log sequence a watcher hands back after a restart.
-- **A resume point that the change log no longer holds** is refused with a distinct error, and the watcher lists the kind again.
-- **Config has no change log.** When the store swaps a snapshot, it delivers each changed config kind to the watchers of that kind; a watcher that reconnects reads the kind again.
+- **A change carries the address, the type and the version, and the value is read when it is delivered.** The rows of the log hold no value, and a watcher applies state, not edits (level-triggered). If the item is above the version of the row, it is delivered once with the version it has, and the later rows at or below that version are skipped. An item that is gone is a delete with no value, once, however many rows it left. **Expiry is a delete:** the sweeper that frees an item written with a log row writes its delete row, and an item past its expiry that is not swept yet is already read as gone.
+- **Delivery is at-least-once, in the order of the log.** A watcher dedupes by (address, version). A watch from a resume point gives the rows after it, so a watcher that hands back the last point it saw repeats nothing but a state that changed again.
+- **List, then watch.** `List` returns a `resume_point`: the log position that its snapshot reflects or is older than, read before the page, the same on every page of one listing. The documented start is `List`, then `Watch` from that point: nothing between the two is lost, and a change the listing already shows may come again. A watch from 0 starts from now and has no listing behind it.
+- **No buffer beyond the driver's log.** store@ reads the log at the pace of the stream's consumer, and HTTP/2 flow control is the backpressure. A stream that is idle for 30 seconds says its latest resume point as a bookmark, so that a watcher that restarts does not fall behind the log. A caller has at most 16 watches at once; the 17th is refused.
+- **The change log is kept for a bounded window,** one hour by default, set in the driver and at most seven days, and the driver's sweeper trims it. A resume point that the change log no longer holds, or has not reached, is refused with a distinct error, and the watcher lists the kind again.
+- **A tenant-scoped kind is watched under a tenant.** A watch needs the `watched_by` rule of the kind and the same tenant as a read of it needs: the empty tenant is for a kind with no tenant, and for the boundary's own `DataKeyWrap` and `KeyRevocation`. A read needs no grant today, so a watch needs none.
+- **Config has no change log.** When the store swaps a snapshot, it delivers each item that the swap added, changed or removed to the watchers of that kind, with resume point 0; a watcher that reconnects reads the kind again, and a resume point on a config kind is refused.
 - **On Lambda nothing is pushed.** A reader re-reads with an ETag, and an unchanged answer costs one small reply.
 - **policy recompiles on watch,** and exporter@ watches the exportable kinds ([0009](/decisions/0009-export/#watch-and-reconcile)).
 
