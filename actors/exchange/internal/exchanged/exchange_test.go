@@ -1038,6 +1038,7 @@ func TestAStoreThatIsDownIsAnOutageNotInvalidClient(t *testing.T) {
 // The maintainer's decision of 2026-11-04, option (a) (ADR 0022; REQ-EXCH-007, REQ-EXCH-011): a public client of the
 // native profile may exchange a token issued to ITSELF without a secret. Every other exchange is made by an
 // authenticated confidential client. The rule is publicSelfExchange in service.go.
+// verifies: REQ-EXCH-007, REQ-EXCH-011
 func TestAPublicNativeClientMayExchangeItsOwnTokenAndNothingElseWithoutASecret(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	// The rule: a native public client, naming itself, with the token it holds.

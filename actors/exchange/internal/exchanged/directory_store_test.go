@@ -141,6 +141,7 @@ func claimsOf2(over func(*exchanged.Subject)) *exchanged.Subject {
 }
 
 // REQ-KEYS-082: exchange opens the chain facts under the chain key of the chain's tenant.
+// verifies: REQ-KEYS-082
 func TestStoreDirectoryFindsThePersonOfALiveChain(t *testing.T) {
 	e := newDirEnv(t)
 	e.session(t0.Add(time.Hour))

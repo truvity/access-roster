@@ -79,7 +79,8 @@ async fn authorize_refuses_plain_challenges() { /* ... */ }
 ```
 
 - Several ids go in one tag, separated by commas. The tag is for the test that fails when the behaviour breaks; a test that only touches the behaviour does not carry it.
-- A table-driven Go test whose cases prove different records names the id at the start of the case, in a literal passed to `t.Run`: `t.Run("REQ-AUTHN-002/plain_method", ...)`. That is the same tag, on that line.
+- A table-driven Go test whose cases prove different records names the id at the start of the case, in a string literal that begins `REQ-...-nnn/`: the name given to `t.Run` (`t.Run("REQ-AUTHN-002/plain_method", ...)`) or the key of the table of cases. That is the same tag, on that line.
+- A Go test function named `TestREQ_AUTHN_002_...` is read as a tag too. This and the case name are the spellings that tests used before the comment tag; write new tests with the comment.
 - Rust: `#[test]`, `#[tokio::test]`, `#[rstest]` and `#[test_case]` count. The doc comment (`///`) goes above or between the attributes.
 - An id that is only mentioned (in a comment inside a body, in an assertion message, in the doc of a function that is not a test) is not a tag, and a test with no tag is ignored.
 
