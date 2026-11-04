@@ -37,7 +37,7 @@ fn every_local_document_is_read_into_its_kinds_message() {
         let ids: Vec<_> = items.iter().map(|(i, _)| i.as_str()).collect();
         match segment {
             "upstream" => assert_eq!(ids, ["workforce"]),
-            "installation-client" => assert_eq!(ids, ["sluis-cli"]),
+            "installation-client" => assert_eq!(ids, ["example-app", "sluis-cli"]),
             _ => assert_eq!(ids, ["default"], "{segment}"),
         }
     }
@@ -63,13 +63,28 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
         ),
         ("dev", "development", "acme")
     );
-    assert_eq!(b.declared_kinds.len(), 8);
+    assert_eq!(b.declared_kinds.len(), 9);
     let u = pb::Upstream::decode_from_slice(&one("Upstream")).unwrap();
     assert_eq!(u.name, "workforce");
     assert_eq!(u.issuer, "http://127.0.0.1:8180/realms/sluis-test");
     assert_eq!(u.subject_claim, "preferred_username");
     let c = pb::InstallationClient::decode_from_slice(&one("InstallationClient")).unwrap();
-    assert_eq!((c.id.as_str(), c.kind.as_str()), ("sluis-cli", "public"));
+    // The items of a keyed kind are in the order of their ids: the audience comes before the command-line client.
+    assert_eq!(
+        (c.id.as_str(), c.kind.as_str()),
+        ("example-app", "confidential")
+    );
+    let all = payload::decode(
+        kind("InstallationClient"),
+        source("installation-client").as_bytes(),
+    )
+    .unwrap();
+    let cli = pb::InstallationClient::decode_from_slice(&all[1].1).unwrap();
+    assert_eq!(
+        (cli.id.as_str(), cli.kind.as_str(), cli.profile.as_str()),
+        ("sluis-cli", "public", "native")
+    );
+    assert!(!cli.requires.is_empty() && !c.requires.is_empty());
     let t = pb::TokenLifetime::decode_from_slice(&one("TokenLifetime")).unwrap();
     assert_eq!(t.access_token.seconds, 600);
     assert_eq!(t.human_session_absolute.seconds, 12 * 3600);
@@ -226,9 +241,9 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
 
     assert_eq!(loader.version("boundary"), Some(7));
     assert_eq!(loader.version("upstream"), Some(7));
-    // A kind the boundary does not declare has no document in the snapshot.
-    assert_eq!(loader.version("exchange-trust"), None);
-    assert!(loader.get("exchange-trust", "default").is_none());
+    // Every kind the boundary declares has its document in the snapshot, ExchangeTrust (declared, no issuer) among them.
+    assert_eq!(loader.version("exchange-trust"), Some(7));
+    assert!(loader.get("exchange-trust", "default").is_some());
 
     let b = pb::Boundary::decode_from_slice(&loader.get("boundary", "default").unwrap()).unwrap();
     assert_eq!(b.name, "dev");
@@ -239,7 +254,7 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
 
     // The audit fact names each document's kind, seq and the SHA-384 of its payload.
     let summaries = loader.snapshot().summaries();
-    assert_eq!(summaries.len(), 9);
+    assert_eq!(summaries.len(), 10);
     let up = summaries.iter().find(|s| s.kind == "Upstream").unwrap();
     assert_eq!(up.seq, 7);
     assert_eq!(up.sha384.len(), 96);
@@ -368,6 +383,13 @@ async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     assert!(e.start().await.is_ok());
 }
 
+/// The local Boundary document without the kind ExchangeTrust in its declaration.
+fn without_trust() -> String {
+    let b = source("boundary");
+    assert!(b.contains("    - ExchangeTrust\n"));
+    b.replace("    - ExchangeTrust\n", "")
+}
+
 fn refused_reload(r: Reloaded) -> (store::config::LoadError, bool) {
     match r {
         Reloaded::Refused { error, report } => (error, report),
@@ -414,7 +436,7 @@ async fn a_bad_document_on_reload_keeps_the_snapshot_and_is_reported_once() {
     let Reloaded::Applied(applied) = loader.reload().await else {
         panic!("not applied")
     };
-    assert_eq!(applied.len(), 9);
+    assert_eq!(applied.len(), 10);
     assert_eq!(loader.version("token-lifetime"), Some(2));
     assert_eq!(loader.version("key-plan"), Some(4));
     let t = pb::TokenLifetime::decode_from_slice(&loader.get("token-lifetime", "default").unwrap())
@@ -477,10 +499,13 @@ async fn a_declared_kind_that_is_added_or_dropped_follows_the_boundary() {
     let e = env().await;
     write_local(e.docs.path(), &e.pipeline, 1);
     let loader = e.start().await.unwrap();
+    // The local boundary declares ExchangeTrust; leaving it out drops the kind from the snapshot.
+    e.sign("boundary", &without_trust(), 2);
+    assert!(matches!(loader.reload().await, Reloaded::Applied(_)));
+    assert_eq!(loader.version("exchange-trust"), None);
     // Declaring a kind with no document is a failure, and the set stays.
-    let with_trust =
-        source("boundary").replace("    - Upstream\n", "    - Upstream\n    - ExchangeTrust\n");
-    e.sign("boundary", &with_trust, 2);
+    std::fs::remove_file(e.docs.path().join("exchange-trust.jws")).unwrap();
+    e.sign("boundary", source("boundary"), 3);
     let (err, _) = refused_reload(loader.reload().await);
     assert!(
         err.to_string()
@@ -493,7 +518,7 @@ async fn a_declared_kind_that_is_added_or_dropped_follows_the_boundary() {
     assert!(matches!(loader.reload().await, Reloaded::Applied(_)));
     assert_eq!(loader.version("exchange-trust"), Some(1));
     // Dropping it from the declaration removes it from the snapshot.
-    e.sign("boundary", source("boundary"), 3);
+    e.sign("boundary", &without_trust(), 4);
     assert!(matches!(loader.reload().await, Reloaded::Applied(_)));
     assert_eq!(loader.version("exchange-trust"), None);
 }
@@ -575,7 +600,7 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
         &source("token-lifetime").replace("10m", "20m"),
         2,
     );
-    wait_for("applied 9").await;
+    wait_for("applied 10").await;
     assert_eq!(loader.version("token-lifetime"), Some(2));
 
     e.sign("key-plan", "default: {}\n", 9);
@@ -624,11 +649,12 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
         }
     };
 
-    // The boundary declares a kind whose document is not in the source yet: the reload is refused
-    // and the snapshot stays. The kind is not in the snapshot, so nothing watches its name.
-    let with_trust =
-        source("boundary").replace("    - Upstream\n", "    - Upstream\n    - ExchangeTrust\n");
-    e.sign("boundary", &with_trust, 2);
+    // The boundary stops declaring ExchangeTrust, and declares it again while its document is not in the source: the
+    // reload is refused and the snapshot stays. The kind is not in the snapshot, so nothing watches its name.
+    e.sign("boundary", &without_trust(), 2);
+    wait_for("applied 9").await;
+    std::fs::remove_file(e.docs.path().join("exchange-trust.jws")).unwrap();
+    e.sign("boundary", source("boundary"), 3);
     wait_for("refused true: ExchangeTrust: the source has no document").await;
     assert_eq!(loader.version("exchange-trust"), None);
 
@@ -636,7 +662,7 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
     e.sign("exchange-trust", "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n", 1);
     wait_for("applied 10").await;
     assert_eq!(loader.version("exchange-trust"), Some(1));
-    assert_eq!(loader.version("boundary"), Some(2));
+    assert_eq!(loader.version("boundary"), Some(3));
     task.abort();
 }
 
