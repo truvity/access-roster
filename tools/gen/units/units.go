@@ -48,6 +48,9 @@ type Unit struct {
 	Joins []string
 	// Front is "audit" for the second instance of entry, the audit front (ADR 0028); empty for every other unit.
 	Front string
+	// Driver is, for an actor, the alternative driver it starts instead of the default one of its owner's drivers (the
+	// card driver for key@ on a board with a card); empty for the default.
+	Driver string
 }
 
 // A driver the generator knows how to run. A driver of the registry that has no row here is "pending" until
@@ -55,6 +58,10 @@ type Unit struct {
 type driverSpec struct {
 	Language string // Go or Rust, for the memory ceiling of the Go ones
 	Network  bool   // the driver reaches the network (an engine); every other unit has AF_UNIX only
+	// Instead names the driver of the same owner that this one replaces on a board that has the hardware: the owner's unit
+	// starts the first by default, and a drop-in (cardDropin) switches it to this one. The two serve the same socket, so
+	// a board runs one of them. An alternative is not in the owner's Requires= or groups.
+	Instead string
 	// Units are the processes of the driver. Most drivers are one process; the rqlite driver serves one port per process
 	// (--namespace), so it is two units of one binary and one user.
 	Units []driverProc
@@ -78,6 +85,13 @@ type driverProc struct {
 	Environment     []string
 	EnvironmentFile string
 	After           []string // units outside the generator that this one starts after
+	Requires        []string // units outside the generator that this one needs (and starts after: list them in After too)
+	// RuntimeDirectory is a directory below /run that systemd makes for the unit's user, mode 0700, and removes with it:
+	// the card driver's admin socket. %i is the boundary.
+	RuntimeDirectory string
+	// ExtraGroups are groups of the unit's own that no registry name stands for (%i is the boundary): the card driver joins
+	// the one that opens the card service to it alone.
+	ExtraGroups []string
 	// Credentials are systemd credentials the unit loads: name -> source file below LoadRoot/<boundary>/<stem>/.
 	Credentials []string
 	// StateMode is the mode of the state directory when it is not 0700: the blob directory of the writer's driver is 0750,
@@ -99,6 +113,27 @@ var drivers = map[string]driverSpec{
 		Units: []driverProc{{
 			Socket: keyDriverSocket, State: true,
 			Args: []string{"--state-dir", "%STATE%", "--environment", "development"},
+		}},
+	},
+	// drivers/key/yubikey-piv: serve --socket --admin-socket --node --environment [--serial] [--socket-gid]. The card driver of
+	// a board (ADR 0006), the alternative to the software driver: same socket, same owner. It needs the card service; its
+	// admin socket, the only way the PIN reaches it, is in a directory of its own that only it and root enter. The unit does
+	// not set --serial: a board has one card, and a driver that sees two refuses to choose.
+	"driver-key-yubikey-piv": {
+		Language: "Go", Instead: "driver-key-software",
+		Units: []driverProc{{
+			Socket: keyDriverSocket,
+			Args: []string{
+				"--environment", "development", "--node", "%H",
+				"--admin-socket", "/run/sluis-drv-key-yubikey-piv-%i/admin.sock",
+				"--serial", "${SLUIS_CARD_SERIAL}",
+			},
+			// The serial of the board's card binds the driver to it; the deploy writes it from the environment of the run
+			// (SLUIS_BOARD_CARD_SERIALS) and no serial is in the repository. A unit without the file does not start.
+			EnvironmentFile: "/etc/sluis/yubikey-piv-%i.env",
+			ExtraGroups:     []string{pcscGroup},
+			Requires:        []string{"pcscd.socket"}, After: []string{"pcscd.socket"},
+			RuntimeDirectory: "sluis-drv-key-yubikey-piv-%i",
 		}},
 	},
 	// drivers/writer/fs: serve --socket --root [--socket-gid].
@@ -177,10 +212,7 @@ func rqliteUnit(port string) driverProc {
 
 // pendingDrivers are the drivers of the registry that no package has built yet. A driver that is in neither
 // this list nor `drivers` fails the generator, so a new driver cannot be forgotten.
-//
-// driver-key-yubikey-piv is built (drivers/key/yubikey-piv) and waits for its unit: the boards wiring (pcscd, the polkit
-// rule, the admin socket) is the next change.
-var pendingDrivers = []string{"driver-key-yubikey-piv"}
+var pendingDrivers = []string{}
 
 // actorSpec is what an actor's command line has beyond `serve --boundary B --socket S`. An actor that is not here
 // takes only those; the package that builds an actor adds its row when it needs more.
@@ -247,6 +279,10 @@ var actorSpecs = map[string]actorSpec{
 // writerDriver is the driver whose directory the read-only blob driver reads.
 const writerDriver = "driver-writer-fs"
 
+// pcscGroup is the group of the card service's socket (%i is the boundary). Only the card driver joins it; the key-store
+// socket has the driver's own group, which key@ joins, so key@ cannot reach the card service through it.
+const pcscGroup = "sluis-pcsc-%i"
+
 // keyDriverSocket is the key-store driver's socket below key@'s run directory (actors/key/main.go).
 const keyDriverSocket = "driver/key-store.sock"
 
@@ -303,6 +339,11 @@ func Generate(o Options) ([]File, error) {
 		files = append(files, File{unitStem(name) + ".sysusers", sysusersFor(o, piece)})
 	}
 	files = append(files, File{"base.tmpfiles", baseTmpfiles(o)}, File{"index.tsv", index(units)})
+	card, err := cardFiles(o, units)
+	if err != nil {
+		return nil, err
+	}
+	files = append(files, card...)
 	return files, nil
 }
 
@@ -447,11 +488,15 @@ func driverTemplate(regName, port string) string {
 	return unitStem(regName) + "-" + port + "@.service"
 }
 
-// driverInstances are the instances (at %i) of the units of the drivers an actor owns.
-func driverInstances(owner string) []string {
+// driverInstances are the instances (at %i) of the units of the drivers an actor owns. An alternative driver (Instead)
+// is left out, unless chosen, and then it takes the place of the driver it replaces.
+func driverInstances(owner, chosen string) []string {
 	var out []string
 	for _, d := range knownDriverNames() {
 		if ow, _ := registry.DriverOwner(d); ow != owner {
+			continue
+		}
+		if instead := drivers[d].Instead; (instead != "" && d != chosen) || (chosen != "" && d == drivers[chosen].Instead) {
 			continue
 		}
 		for _, du := range drivers[d].Units {
@@ -501,7 +546,7 @@ func groupsOf(regName, kind string) []string {
 	out := callees(regName)
 	for _, d := range knownDriverNames() {
 		if ow, _ := registry.DriverOwner(d); ow == regName {
-			if _, ok := drivers[d]; ok {
+			if spec, ok := drivers[d]; ok && spec.Instead == "" {
 				out = append(out, d)
 			}
 		}
@@ -556,7 +601,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("Description=sluis %s (%%i)", a.Name)
 	}
 	b.line("Documentation=https://sluis.id/runtimes/bare-metal/")
-	owned := driverInstances(a.Name) // the drivers this actor owns, which start first
+	owned := driverInstances(a.Name, u.Driver) // the drivers this actor owns, which start first
 	if u.Front == "audit" {
 		owned = nil // the identity front's unit starts them
 	}
@@ -727,6 +772,9 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("[Unit]")
 	b.line("Description=sluis driver %s (%%i)", desc)
 	b.line("Documentation=https://sluis.id/runtimes/bare-metal/")
+	if len(du.Requires) > 0 {
+		b.line("Requires=%s", strings.Join(du.Requires, " "))
+	}
 	if len(du.After) > 0 {
 		b.line("After=%s", strings.Join(du.After, " "))
 	}
@@ -741,6 +789,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	for _, n := range du.Joins {
 		groups = append(groups, unitStem(n)+"-%i")
 	}
+	groups = append(groups, du.ExtraGroups...)
 	b.line("SupplementaryGroups=%s", strings.Join(groups, " "))
 	state := ""
 	if du.State {
@@ -751,6 +800,10 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 			mode = du.StateMode
 		}
 		b.line("StateDirectoryMode=%s", mode)
+	}
+	if du.RuntimeDirectory != "" {
+		b.line("RuntimeDirectory=%s", du.RuntimeDirectory)
+		b.line("RuntimeDirectoryMode=0700")
 	}
 	// The read-only blob driver reads the directory of the writer's driver.
 	writerState := fmt.Sprintf("%s/%%i/%s", StateRoot, strings.TrimPrefix(unitStem(writerDriver), "sluis-"))
@@ -863,3 +916,67 @@ type unitText struct{ strings.Builder }
 
 func (b *unitText) line(format string, args ...any) { _, _ = fmt.Fprintf(b, format+"\n", args...) }
 func (b *unitText) blank()                          { _, _ = b.WriteString("\n") }
+
+// The files of a board that runs the card driver instead of the software one. The deploy installs them only then
+// (boards.sh, SLUIS_BOARDS_KEY_DRIVER=yubikey-piv):
+//
+//	CardKeyUnitFile  /etc/systemd/system/sluis-key@.service (in place of the template of the default key@ unit)
+//	PcscdSocketFile  /etc/systemd/system/pcscd.socket.d/10-sluis.conf
+//	PolkitRulesFile  /etc/polkit-1/rules.d/49-sluis-pcsc.rules
+const (
+	CardKeyUnitFile = "sluis-key@.service.card"
+	PcscdSocketFile = "pcscd-socket.dropin"
+	PolkitRulesFile = "pcsc-polkit.rules"
+	PcscGroupFile   = "sluis-pcsc.sysusers" // /etc/sysusers.d/sluis-pcsc-<boundary>.conf
+)
+
+// cardFiles makes the files of the card driver's board: the key@ unit that starts after the card driver and joins its
+// group in place of the software driver's (a drop-in cannot take a Requires= away in systemd 249, so the whole unit
+// is the variant), and the two files that let nobody but the card driver (and root) reach the card service
+// (ADR 0006, "Exclusive card access").
+func cardFiles(o Options, units []Unit) ([]File, error) {
+	const reg = "driver-key-yubikey-piv"
+	spec, ok := drivers[reg]
+	if !ok || spec.Instead == "" {
+		return nil, nil
+	}
+	owner, _, err := splitDriver(reg)
+	if err != nil {
+		return nil, err
+	}
+	ownerIdx := slices.IndexFunc(units, func(u Unit) bool { return u.Registry == owner && u.Kind == "actor" })
+	if ownerIdx < 0 {
+		return nil, fmt.Errorf("the owner %s of %s has no unit", owner, reg)
+	}
+	// key@ joins the groups its unit has, with the software driver's replaced by the card driver's.
+	ku := units[ownerIdx]
+	ku.Driver = reg
+	ku.Joins = slices.Clone(ku.Joins)
+	for i, n := range ku.Joins {
+		if n == spec.Instead {
+			ku.Joins[i] = reg
+		}
+	}
+	slices.Sort(ku.Joins)
+	svc, _, _, err := actorUnit(o, ku)
+	if err != nil {
+		return nil, err
+	}
+
+	user := userOf(reg, o.Boundary)
+	sock := "# Generated by tools/gen/units. Installed by `just boards-deploy` with SLUIS_BOARDS_KEY_DRIVER=yubikey-piv.\n" +
+		"# The card service takes connections from the card driver's group and from root, and from nobody else.\n" +
+		"# The stock socket is mode 0666 and the Ubuntu 22.04 build of pcscd has no polkit, so this is the control there.\n" +
+		"# The group is the card driver's alone: key@ joins the driver's own group for the key-store socket, not this one.\n" +
+		"[Socket]\nSocketMode=0660\nSocketUser=root\nSocketGroup=" + strings.ReplaceAll(pcscGroup, "%i", o.Boundary) + "\n"
+	rules := "// Generated by tools/gen/units. Installed by `just boards-deploy` with SLUIS_BOARDS_KEY_DRIVER=yubikey-piv,\n" +
+		"// and only on a board whose pcscd is built with polkit (it ships org.debian.pcsc-lite.policy).\n" +
+		"// Only the card driver's user reaches the card service and the cards (ADR 0006, \"Exclusive card access\").\n" +
+		"polkit.addRule(function(action, subject) {\n" +
+		"    if (action.id == \"org.debian.pcsc-lite.access_pcsc\" || action.id == \"org.debian.pcsc-lite.access_card\") {\n" +
+		"        return subject.user == \"" + user + "\" ? polkit.Result.YES : polkit.Result.NO;\n" +
+		"    }\n" +
+		"});\n"
+	sysusers := header + "g " + strings.ReplaceAll(pcscGroup, "%i", o.Boundary) + " -\n" // a system group with no member: the unit names it
+	return []File{{CardKeyUnitFile, svc}, {PcscdSocketFile, sock}, {PolkitRulesFile, rules}, {PcscGroupFile, sysusers}}, nil
+}

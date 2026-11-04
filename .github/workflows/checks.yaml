@@ -186,6 +186,25 @@ jobs:
           SLUIS_BOARD_SSH_USER: nobody
           SLUIS_BOARDS_DRY_RUN: '1'
         run: devbox run -- just boards-deploy
+      # The card variant of the deploy (SLUIS_BOARDS_KEY_DRIVER=yubikey-piv) takes the card driver in place of the software
+      # one and stages the drop-ins. The real card driver is built natively (the job native-arm64); here a copy of another
+      # executable stands in for its binary, because only the staging is checked.
+      - name: Deploy the card variant, staged only
+        env:
+          SLUIS_BOARDS: board.example.test
+          SLUIS_BOARD_SSH_USER: nobody
+          SLUIS_BOARDS_DRY_RUN: '1'
+          SLUIS_BOARDS_KEY_DRIVER: yubikey-piv
+          SLUIS_BOARD_CARD_SERIALS: board.example.test=1234567
+        run: |
+          set -euo pipefail
+          cp dist/arm64/drivers/key/software dist/arm64/drivers/key/yubikey-piv
+          devbox run -- just boards-deploy | tee staged.txt
+          grep -q 'sluis-drv-key-yubikey-piv@dev.service' staged.txt
+          if grep -q 'sluis-drv-key-software@dev.service' staged.txt; then echo 'the software key driver is staged beside the card driver'; exit 1; fi
+          grep -q 'files/card/pcscd-socket.dropin' staged.txt
+          grep -q 'files/card/pcsc-polkit.rules' staged.txt
+          grep -q 'files/sysusers/sluis-pcsc-dev.conf' staged.txt
 
   # The executables that link a C library (deploy/boards/native.list: the card driver) are built natively, on a hosted
   # arm64 runner, inside the userland of the oldest supported distribution, Ubuntu 22.04 (ADR 0013), so they run on

@@ -26,6 +26,19 @@
 #   SLUIS_BOARDS_STATE          the directory of the harness state (default .cache/boards); `recipients` writes its file
 #                               recipients there and `just boards-prepare` signs the KeyPlan with it
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
+#   SLUIS_BOARDS_KEY_DRIVER     the key driver of key@: software (the default) or yubikey-piv. The card driver replaces the
+#                               software one on every board of the run: its unit, a key@ unit that requires the card
+#                               driver instead (installed in place of the default template), a drop-in that closes the
+#                               card service (pcscd.socket) to everyone but the card driver and root, and, where pcscd
+#                               is built with polkit, a polkit rule. pcscd
+#                               is installed if it is missing. It needs drivers/key/yubikey-piv in dist/arm64, which
+#                               `just build-arm64-native` makes and `just build-arm64` copies. Switching back is a deploy
+#                               with software: the card driver is stopped and its drop-ins removed.
+#   SLUIS_BOARD_CARD_SERIALS    with the card driver, the serial of each board's card: space-separated board=serial pairs
+#                               (the board named as in SLUIS_BOARDS). Required for every board of the run: the driver is
+#                               bound to that card and adopts no other, so a genuine YubiKey that is not the board's is
+#                               refused. The serial is written to /etc/sluis/yubikey-piv-dev.env on the board and is in
+#                               no file of the repository.
 #   SLUIS_BOARDS_DRY_RUN=1      stage and print the plan; no ssh, no board touched
 #   SLUIS_PURGE_STATE=1         undeploy also removes the state of the units (their keys)
 #
@@ -52,6 +65,11 @@ dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
 only=${SLUIS_BOARDS_ONLY:-}
+keydrv=${SLUIS_BOARDS_KEY_DRIVER:-software}
+case "$keydrv" in
+software | yubikey-piv) ;;
+*) echo "boards: SLUIS_BOARDS_KEY_DRIVER must be software or yubikey-piv, not '$keydrv'" >&2; exit 2 ;;
+esac
 
 # shellcheck disable=SC2206 # the boards are a space-separated list
 boards=($SLUIS_BOARDS)
@@ -59,6 +77,19 @@ boards=($SLUIS_BOARDS)
 for b in "${boards[@]}"; do
 	[[ "$b" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "boards: refusing the board name '$b'" >&2; exit 2; }
 done
+
+# card_serial prints the serial of the card of a board, from SLUIS_BOARD_CARD_SERIALS, and fails when there is none.
+card_serial() { # board
+	local pair
+	for pair in ${SLUIS_BOARD_CARD_SERIALS:-}; do
+		if [ "${pair%%=*}" = "$1" ] && [[ "${pair#*=}" =~ ^[0-9]{1,10}$ ]]; then
+			printf '%s\n' "${pair#*=}"
+			return 0
+		fi
+	done
+	echo "boards: no card serial for the board '$1': set SLUIS_BOARD_CARD_SERIALS to board=serial pairs" >&2
+	return 1
+}
 
 board_ssh() { # board command...
 	local b=$1
@@ -92,6 +123,11 @@ stage() { # dir
 	[ -f "$units/index.tsv" ] || { echo "boards: no $units/index.tsv: run 'just units-gen'" >&2; return 1; }
 	while IFS=$'\t' read -r instance template _kind binary user _uid needs; do
 		[[ "$instance" != '#'* ]] || continue
+		# The two key drivers serve one socket: a board runs the one that was asked for.
+		case "$binary" in
+		drivers/key/software) [ "$keydrv" = software ] || continue ;;
+		drivers/key/yubikey-piv) [ "$keydrv" = yubikey-piv ] || continue ;;
+		esac
 		[ -f "$dist/$binary" ] || continue
 		if [ -n "$only" ]; then
 			case " $only " in *" $binary "*) ;; *) continue ;; esac
@@ -107,6 +143,16 @@ stage() { # dir
 		fi
 	done <"$units/index.tsv"
 	[ -s "$s/plan.tsv" ] || { echo "boards: no executable in $dist has a unit: run 'just build-arm64' first" >&2; return 1; }
+	if [ "$keydrv" = yubikey-piv ]; then
+		[ -f "$s/files/systemd/sluis-key@.service" ] || { echo "boards: the card driver needs key@ in the plan (SLUIS_BOARDS_ONLY leaves out actors/key)" >&2; return 1; }
+		[ -f "$dist/drivers/key/yubikey-piv" ] || { echo "boards: no $dist/drivers/key/yubikey-piv: run 'just build-arm64-native' and 'just build-arm64' first" >&2; return 1; }
+		grep -q '^sluis-drv-key-yubikey-piv@' "$s/plan.tsv" || { echo "boards: SLUIS_BOARDS_ONLY leaves out drivers/key/yubikey-piv" >&2; return 1; }
+		mkdir -p "$s/files/card"
+		cp "$units/pcscd-socket.dropin" "$units/pcsc-polkit.rules" "$s/files/card/"
+		# The group of the card service's socket, held by the card driver alone.
+		cp "$units/sluis-pcsc.sysusers" "$s/files/sysusers/sluis-pcsc-dev.conf"
+		cp "$units/sluis-key@.service.card" "$s/files/systemd/sluis-key@.service" # key@ after the card driver, in place of the default
+	fi
 	cp "$units/base.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
 	for stem in "${!want[@]}"; do
 		cp "$units/$stem.sysusers" "$s/files/sysusers/$stem-dev.conf"
@@ -134,6 +180,10 @@ run_on() { # board mode stage
 		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).
 		printf 'SLUIS_RQLITE_URL=http://%s:%s\n' "$b" "$rqlite_port" >"$s/files/etc/rqlite.env"
 	fi
+	if [ "$m" = deploy ] && [ -d "$s/files/card" ]; then
+		# The driver is bound to this board's card.
+		printf 'SLUIS_CARD_SERIAL=%s\n' "$(card_serial "$b")" >"$s/files/card/yubikey-piv.env"
+	fi
 	tar -C "$s" -cf - . | board_ssh "$b" "tar -xf - -C '$d'"
 	board_ssh "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
 	board_ssh "$b" "rm -rf '$d'"
@@ -145,6 +195,9 @@ trap 'rm -rf "$tmp"' EXIT
 case "$mode" in
 deploy)
 	stage "$tmp"
+	if [ -d "$tmp/files/card" ]; then
+		for b in "${boards[@]}"; do card_serial "$b" >/dev/null || exit 2; done
+	fi
 	echo "plan: $(wc -l <"$tmp/plan.tsv") units, in this order:"
 	sed 's/^/  /' "$tmp/plan.tsv" | cut -f1
 	if [ -n "$dry" ]; then
