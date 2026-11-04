@@ -54,7 +54,7 @@ func captureLog(t *testing.T) *syncBuffer {
 
 func TestFloorSoftwareDriverInProduction(t *testing.T) {
 	e := newTestEnv(t, "production")
-	n := e.newNode(nodeOpts{})
+	n := e.newNode(nodeOpts{unlisted: true})
 	err := n.srv.Init(context.Background())
 	if err == nil || err.Error() != "software key driver refused in production" {
 		t.Fatalf("Init = %v, want the refusal of the floor", err)
@@ -119,7 +119,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			plan := defaultPlan()
 			plan.CacheTtl = durationpb.New(ttl)
 			e.store.put("key-plan", "", "default", plan)
-			n := e.newNode(nodeOpts{})
+			n := e.newNode(nodeOpts{unlisted: true})
 			if err := n.srv.Init(ctx); err == nil {
 				t.Fatal("started with a cache_ttl outside the range")
 			}

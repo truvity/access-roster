@@ -29,6 +29,10 @@ type Options struct {
 	BootstrapOut      string // the bootstrap file to write
 	KID               string
 	Seq               uint64
+	// Recipients are the thumbprints put into the KeyPlan's list of wrap recipients (ADR 0006, "Who may receive a
+	// wrap"). The source key-plan.yaml holds the empty list on the line `  recipients: []`; with recipients, that
+	// line is replaced, and a source without it is an error.
+	Recipients []string
 }
 
 // maxSeq is 2^53 - 1: a seq is "a positive integer, below 2^53" (signed-config.md, "The document").
@@ -74,6 +78,11 @@ func Run(o Options) ([]string, error) {
 			return nil, err
 		}
 		kind := strings.TrimSuffix(e.Name(), ext)
+		if kind == "key-plan" && len(o.Recipients) > 0 {
+			if payload, err = WithRecipients(payload, o.Recipients); err != nil {
+				return nil, fmt.Errorf("%s: %w", e.Name(), err)
+			}
+		}
 		doc, err := Sign(key, o.KID, o.Seq, payload)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
@@ -102,6 +111,38 @@ func Run(o Options) ([]string, error) {
 		return nil, err
 	}
 	return names, nil
+}
+
+// recipientsLine is the line of the KeyPlan source that the recipients replace.
+const recipientsLine = "  recipients: []"
+
+// thumbprintPattern is an RFC 7638 thumbprint of SHA-256: 43 characters of unpadded base64url.
+var thumbprintPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
+
+// WithRecipients returns the KeyPlan source with its empty list of wrap recipients replaced by ids. It is an error
+// when an id is not a thumbprint, when one is listed twice, or when the source has no empty list to replace: the
+// harness and the source must not drift apart unseen.
+func WithRecipients(source []byte, ids []string) ([]byte, error) {
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !thumbprintPattern.MatchString(id) {
+			return nil, errors.New("a recipient is not an RFC 7638 thumbprint")
+		}
+		if seen[id] {
+			return nil, errors.New("a recipient is listed twice")
+		}
+		seen[id] = true
+	}
+	lines := strings.Split(string(source), "\n")
+	at := slices.Index(lines, recipientsLine)
+	if at < 0 {
+		return nil, fmt.Errorf("the source has no %q line", recipientsLine)
+	}
+	repl := []string{"  recipients:"}
+	for _, id := range ids {
+		repl = append(repl, "    - "+id)
+	}
+	return []byte(strings.Join(slices.Concat(lines[:at], repl, lines[at+1:]), "\n")), nil
 }
 
 // Sign returns the signed config document of payload: a JWS in the general JSON serialisation (RFC 7515, section

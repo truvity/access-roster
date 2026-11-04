@@ -14,6 +14,7 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -58,6 +59,8 @@ type Config struct {
 	Now func() time.Time
 	// RewrapEvery is the period of the rewrap pass; 0 means DefaultRewrapEvery.
 	RewrapEvery time.Duration
+	// Out receives what the check command reports for a person or a script; nil means os.Stdout.
+	Out io.Writer
 }
 
 // purposeKey is the public half of an authority key that the key store holds for a purpose of the KeyPlan.
@@ -89,6 +92,9 @@ type Server struct {
 	keys          map[string]purposeKey // the asymmetric purposes of the KeyPlan
 	recipient     string                // this node's label
 	wrappingPub   *ecdh.PublicKey
+	wrappingID    string // the RFC 7638 thumbprint of this node's wrapping key: its id in the KeyPlan
+
+	reported sync.Map // the recipient problems already audited, so that a pass repeats none
 
 	cache   *cache
 	loadMu  sync.Mutex // one data key is loaded or made at a time
@@ -152,6 +158,17 @@ func recipientLabel(node string, spki []byte) string {
 	sum := sha256.Sum256(spki)
 	enc := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum[:])
 	return node + "-" + strings.ToLower(enc[:recipientHashChars])
+}
+
+// labelFits reports whether label is the label recipientLabel makes for some node and this public key: a node name,
+// "-" and the 16 characters of the key's hash. A certificate whose label does not fit its key is not used, so
+// that a label in the store never stands for a key it was not made from.
+func labelFits(label string, spki []byte) bool {
+	i := strings.LastIndex(label, "-")
+	if i < 1 {
+		return false
+	}
+	return validNode(label[:i]) && recipientLabel(label[:i], spki) == label
 }
 
 // checkRunDir refuses a run directory, or a per-caller directory below it, that is missing or that group or

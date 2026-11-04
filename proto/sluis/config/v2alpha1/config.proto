@@ -22,6 +22,10 @@ message Boundary {
 message KeyPlan {
   repeated KeyPurposePlan purposes = 1;      // one entry per purpose
   google.protobuf.Duration cache_ttl = 2;    // how long key@ may cache an unwrapped data key
+  // The signed list of wrap recipients (0006 "Who may receive a wrap"): the RFC 7638 thumbprint of each node's
+  // wrapping public key, base64url without padding, the recovery recipient's included. key@ wraps a data key to
+  // these and to no one else.
+  repeated string recipients = 3;
 }
 
 // KeyPurposePlan is the plan of one purpose.

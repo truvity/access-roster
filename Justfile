@@ -418,6 +418,11 @@ boards-smoke:
 boards-status:
     deploy/boards/boards.sh status
 
+# Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, from its journal, into the file that
+# `boards-prepare` signs into the KeyPlan as the wrap recipients. The second step of the first deploy; see boards.sh.
+boards-recipients:
+    deploy/boards/boards.sh recipients
+
 # The local installation (docs/runtimes/local.md): Docker Compose on this workstation, every actor and driver as its
 # pinned uid, config signed by the harness. Needs Docker, and SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS in the
 # environment (the run.env of the build); the repository names neither. Run them as `devbox run -- just local-up`.

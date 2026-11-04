@@ -155,6 +155,40 @@ fn durations_follow_the_grammar_and_the_built_in_cap() {
 }
 
 #[test]
+fn key_plan_recipients_are_thumbprints_listed_once() {
+    // The RFC 7638 section 3.1 thumbprint, and one of a P-384 key (both 43 characters of base64url).
+    let a = "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs";
+    let b = "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw";
+    let doc = |list: &str| format!("default:\n  cache_ttl: 15m\n  recipients: {list}\n");
+    let plan = |text: &[u8]| {
+        let items = payload::decode(kind("KeyPlan"), text).unwrap();
+        pb::KeyPlan::decode_from_slice(&items[0].1).unwrap()
+    };
+    let k = plan(doc(&format!("[{a}, {b}]")).as_bytes());
+    assert_eq!(k.recipients, vec![a.to_owned(), b.to_owned()]);
+    assert!(payload::decode(kind("KeyPlan"), doc("[]").as_bytes()).is_ok());
+    // The field may be left out: nobody is listed then.
+    assert!(plan(b"default:\n  cache_ttl: 15m\n").recipients.is_empty());
+    for (bad, why) in [
+        ("[node-1-abcdefghijklmnop]".to_owned(), "a label"),
+        (format!("[{}]", &a[..42]), "too short"),
+        (format!("[{a}=]"), "padded"),
+        // The last character of a canonical encoding of 32 bytes ends in one of 16 values.
+        (
+            format!("[{}B]", &a[..42]),
+            "a last character with bits that are not the key's",
+        ),
+        (format!("[{a}, {a}]"), "listed twice"),
+        (a.to_owned(), "not a list"),
+        ("[1]".to_owned(), "not a string"),
+    ] {
+        let e = refused("KeyPlan", &doc(&bad));
+        assert!(e.starts_with("default.recipients"), "{why}: {e}");
+        assert!(!e.contains(a), "an error never shows a value: {e}");
+    }
+}
+
+#[test]
 fn a_singleton_has_one_item_default_and_a_keyed_kind_uses_its_name() {
     let k = "default:\n  cache_ttl: 15m\n";
     assert!(payload::decode(kind("KeyPlan"), k.as_bytes()).is_ok());

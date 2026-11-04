@@ -128,9 +128,13 @@ func (x *Boundary) GetDefaultTenant() string {
 
 // KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".
 type KeyPlan struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Purposes      []*KeyPurposePlan      `protobuf:"bytes,1,rep,name=purposes,proto3" json:"purposes,omitempty"`                 // one entry per purpose
-	CacheTtl      *durationpb.Duration   `protobuf:"bytes,2,opt,name=cache_ttl,json=cacheTtl,proto3" json:"cache_ttl,omitempty"` // how long key@ may cache an unwrapped data key
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Purposes []*KeyPurposePlan      `protobuf:"bytes,1,rep,name=purposes,proto3" json:"purposes,omitempty"`                 // one entry per purpose
+	CacheTtl *durationpb.Duration   `protobuf:"bytes,2,opt,name=cache_ttl,json=cacheTtl,proto3" json:"cache_ttl,omitempty"` // how long key@ may cache an unwrapped data key
+	// The signed list of wrap recipients (0006 "Who may receive a wrap"): the RFC 7638 thumbprint of each node's
+	// wrapping public key, base64url without padding, the recovery recipient's included. key@ wraps a data key to
+	// these and to no one else.
+	Recipients    []string `protobuf:"bytes,3,rep,name=recipients,proto3" json:"recipients,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -175,6 +179,13 @@ func (x *KeyPlan) GetPurposes() []*KeyPurposePlan {
 func (x *KeyPlan) GetCacheTtl() *durationpb.Duration {
 	if x != nil {
 		return x.CacheTtl
+	}
+	return nil
+}
+
+func (x *KeyPlan) GetRecipients() []string {
+	if x != nil {
+		return x.Recipients
 	}
 	return nil
 }
@@ -940,10 +951,13 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\x06issuer\x18\x05 \x01(\tR\x06issuer\x12\x1b\n" +
 	"\tuid_block\x18\x06 \x01(\rR\buidBlock\x12%\n" +
 	"\x0edeclared_kinds\x18\a \x03(\tR\rdeclaredKinds\x12%\n" +
-	"\x0edefault_tenant\x18\b \x01(\tR\rdefaultTenant\"\x84\x01\n" +
+	"\x0edefault_tenant\x18\b \x01(\tR\rdefaultTenant\"\xa4\x01\n" +
 	"\aKeyPlan\x12A\n" +
 	"\bpurposes\x18\x01 \x03(\v2%.sluis.config.v2alpha1.KeyPurposePlanR\bpurposes\x126\n" +
-	"\tcache_ttl\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bcacheTtl\"\\\n" +
+	"\tcache_ttl\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bcacheTtl\x12\x1e\n" +
+	"\n" +
+	"recipients\x18\x03 \x03(\tR\n" +
+	"recipients\"\\\n" +
 	"\x0eKeyPurposePlan\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1c\n" +
 	"\talgorithm\x18\x02 \x01(\tR\talgorithm\x12\x12\n" +

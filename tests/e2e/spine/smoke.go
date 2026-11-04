@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -28,7 +29,6 @@ import (
 
 // The local installation (docs/runtimes/local.md). These are the public names of the harness, not of any real host.
 const (
-	project  = "sluis-local" // the Compose project
 	boundary = "dev"
 	tenant   = "acme" // the default tenant of the boundary (tests/installations/local/config/boundary.yaml)
 	host     = "sluis.dev.local.test"
@@ -37,6 +37,11 @@ const (
 	// batchWait is the writer's batch interval (5 s) with margin.
 	batchWait = 20 * time.Second
 )
+
+// project is the Compose project of the installation under test: sluis-local, or the COMPOSE_PROJECT_NAME of the
+// environment, which is how a second installation runs beside the first on one machine (deploy/local/local.sh uses the
+// same variable).
+var project = cmp.Or(os.Getenv("COMPOSE_PROJECT_NAME"), "sluis-local")
 
 // services the smoke needs healthy before it starts.
 var services = []string{"policy", "signer", "key", "store", "writer", "entry", "forwarder", "rqlite", "drv-key-software", "drv-writer-spool", "drv-writer-fs"}
@@ -234,7 +239,7 @@ func repoRoot() (string, error) {
 
 // requireHealthy fails with the name of every service of the project that is missing or not healthy.
 func requireHealthy() error {
-	out, err := exec.Command("docker", "ps", "--all", "--filter", "label=com.docker.compose.project="+project,
+	out, err := exec.Command("docker", "ps", "--all", "--filter", "label=com.docker.compose.project="+project, //nolint:gosec // the project name is the operator's own environment
 		"--format", `{{.Label "com.docker.compose.service"}} {{.State}} {{.Status}}`).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker is not usable: %s", strings.TrimSpace(string(out)))
@@ -410,7 +415,7 @@ var verifierRE = regexp.MustCompile(`"verifier_key":"([^"]+)"`)
 
 // verifierKey is the public key of the log, which the writer logs when it starts.
 func verifierKey() (string, error) {
-	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+project,
+	out, err := exec.Command("docker", "ps", "-q", "--filter", "label=com.docker.compose.project="+project, //nolint:gosec // the project name is the operator's own environment
 		"--filter", "label=com.docker.compose.service=writer").Output()
 	id := strings.TrimSpace(string(out))
 	if err != nil || id == "" {

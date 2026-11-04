@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
-# Put the skeleton on the boards, take it off again, or look at it: `boards.sh deploy|undeploy|status`.
-# The recipes are `just boards-deploy`, `boards-undeploy` and `boards-status`.
+# Put the skeleton on the boards, take it off again, or look at it: `boards.sh deploy|undeploy|status|recipients`.
+# The recipes are `just boards-deploy`, `boards-undeploy`, `boards-status` and `boards-recipients`.
+#
+# The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
+# board's software key is made at its first start, so the first deploy is two-phase, as `local.sh up` is:
+#   1. just boards-prepare && just boards-deploy      the KeyPlan lists nobody; key@ runs, and no actor has a data key
+#   2. just boards-recipients                         reads each board's wrapping key id from the journal of its key@
+#                                                     into $SLUIS_BOARDS_STATE/recipients (default .cache/boards)
+#   3. just boards-prepare && just boards-deploy      signs the KeyPlan with those ids and puts it on the boards
+# A board that joins later takes the same three steps.
 #
 # The repository names no host. The boards come from the environment (the run.env of the build):
 #   SLUIS_BOARDS                space-separated host names or addresses (required)
@@ -14,6 +22,8 @@
 #   SLUIS_BOARDS_SEED           the directory `just boards-prepare` made (default .cache/boards/seed): the signed
 #                               config, the bootstrap file and the credentials. deploy installs them under
 #                               /etc/sluis, and writes /etc/sluis/rqlite-dev.env with the board's own rqlite address.
+#   SLUIS_BOARDS_STATE          the directory of the harness state (default .cache/boards); `recipients` writes its file
+#                               recipients there and `just boards-prepare` signs the KeyPlan with it
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
 #   SLUIS_BOARDS_DRY_RUN=1      stage and print the plan; no ssh, no board touched
 #   SLUIS_PURGE_STATE=1         undeploy also removes the state of the units (their keys)
@@ -24,7 +34,7 @@
 # nothing else; sluis-rqlite, the user sluis, /opt/sluis/bin/rqlited and /var/lib/sluis are never in it.
 set -euo pipefail
 
-mode=${1:?usage: boards.sh deploy|undeploy|status}
+mode=${1:?usage: boards.sh deploy|undeploy|status|recipients}
 cd "$(git rev-parse --show-toplevel)"
 here=deploy/boards
 units=$here/units
@@ -131,6 +141,31 @@ deploy)
 	done
 	exit "$rc"
 	;;
+recipients)
+	# The wrapping key id of each board: the journal of its key@ says it when it starts ("key ready" line,
+	# wrapping_key_id). Every board must give one; the file is written only then.
+	state=${SLUIS_BOARDS_STATE:-.cache/boards}
+	if [ -n "$dry" ]; then
+		echo "dry run: would read the wrapping key id from the journal of sluis-key@dev on ${boards[*]} into $state/recipients"
+		exit 0
+	fi
+	: >"$tmp/ids"
+	rc=0
+	for b in "${boards[@]}"; do
+		id=$(board_ssh "$b" "sudo -n journalctl -u sluis-key@dev.service -o cat --no-pager" | grep -o '"wrapping_key_id":"[A-Za-z0-9_-]\{43\}"' | tail -1 | cut -d'"' -f4 || true)
+		if [ -z "$id" ]; then
+			echo "board $b: no wrapping key id in the journal of sluis-key@dev; is key@ running?" >&2
+			rc=1
+			continue
+		fi
+		echo "board $b: wrapping key id $id"
+		printf '%s\n' "$id" >>"$tmp/ids"
+	done
+	[ "$rc" = 0 ] || exit "$rc"
+	mkdir -p "$state"
+	{ echo "# the wrapping keys of the boards (boards.sh recipients)"; sort -u "$tmp/ids"; } >"$state/recipients"
+	echo "recipients: $(sort -u "$tmp/ids" | wc -l) ids in $state/recipients; run 'just boards-prepare' and 'just boards-deploy' to list them"
+	;;
 undeploy | status)
 	: >"$tmp/plan.tsv"
 	mkdir -p "$tmp/files"
@@ -147,7 +182,7 @@ undeploy | status)
 	exit "$rc"
 	;;
 *)
-	echo "usage: boards.sh deploy|undeploy|status" >&2
+	echo "usage: boards.sh deploy|undeploy|status|recipients" >&2
 	exit 2
 	;;
 esac

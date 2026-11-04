@@ -332,6 +332,33 @@ fn boundary(mut o: Obj) -> R<pb::Boundary> {
     })
 }
 
+/// A wrap recipient is named by the RFC 7638 thumbprint of its wrapping key (ADR 0006, "Who may receive a wrap"):
+/// SHA-256, so 43 characters of unpadded base64url. The last character carries 4 bits, so only 16 of its 64 values
+/// are the canonical encoding of 32 bytes.
+fn is_thumbprint(s: &str) -> bool {
+    s.len() == 43
+        && s.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        && matches!(
+            s.as_bytes()[42],
+            b'A' | b'E'
+                | b'I'
+                | b'M'
+                | b'Q'
+                | b'U'
+                | b'Y'
+                | b'c'
+                | b'g'
+                | b'k'
+                | b'o'
+                | b's'
+                | b'w'
+                | b'0'
+                | b'4'
+                | b'8'
+        )
+}
+
 fn key_plan(mut o: Obj) -> R<pb::KeyPlan> {
     let mut purposes = Vec::new();
     for mut p in o.objects("purposes")? {
@@ -344,10 +371,23 @@ fn key_plan(mut o: Obj) -> R<pb::KeyPlan> {
         p.done()?;
     }
     let cache_ttl = o.required_duration("cache_ttl")?;
+    let recipients = o.strings("recipients")?;
+    for (i, r) in recipients.iter().enumerate() {
+        if !is_thumbprint(r) {
+            return err(
+                &format!("{}[{i}]", o.at("recipients")),
+                "not an RFC 7638 thumbprint",
+            );
+        }
+        if recipients[..i].contains(r) {
+            return err(&format!("{}[{i}]", o.at("recipients")), "listed twice");
+        }
+    }
     o.done()?;
     Ok(pb::KeyPlan {
         purposes,
         cache_ttl: pb_duration(cache_ttl),
+        recipients,
         ..pb::KeyPlan::default()
     })
 }
