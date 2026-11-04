@@ -85,6 +85,7 @@ type driverProc struct {
 	Environment     []string
 	EnvironmentFile string
 	After           []string // units outside the generator that this one starts after
+	Wants           []string // units outside the generator that this one wants, without failing when they fail
 	Requires        []string // units outside the generator that this one needs (and starts after: list them in After too)
 	// RuntimeDirectory is a directory below /run that systemd makes for the unit's user, mode 0700, and removes with it:
 	// the card driver's admin socket. %i is the boundary.
@@ -133,7 +134,9 @@ var drivers = map[string]driverSpec{
 			// (SLUIS_BOARD_CARD_SERIALS) and no serial is in the repository. A unit without the file does not start.
 			EnvironmentFile: "/etc/sluis/yubikey-piv-%i.env",
 			ExtraGroups:     []string{pcscGroup},
-			Requires:        []string{"pcscd.socket"}, After: []string{"pcscd.socket"},
+			Requires:        []string{"pcscd.socket"},
+			// The age of a key is a time the driver reads from this clock (ADR 0041): start after the clock is in sync.
+			Wants: []string{"time-sync.target"}, After: []string{"pcscd.socket", "time-sync.target"},
 			RuntimeDirectory: "sluis-drv-key-yubikey-piv-%i",
 		}},
 	},
@@ -786,6 +789,9 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("Documentation=https://sluis.id/runtimes/bare-metal/")
 	if len(du.Requires) > 0 {
 		b.line("Requires=%s", strings.Join(du.Requires, " "))
+	}
+	if len(du.Wants) > 0 {
+		b.line("Wants=%s", strings.Join(du.Wants, " "))
 	}
 	if len(du.After) > 0 {
 		b.line("After=%s", strings.Join(du.After, " "))

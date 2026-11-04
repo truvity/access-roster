@@ -5,6 +5,7 @@ package keyd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -92,6 +93,36 @@ func TestSignWithARevokedKeyIsRefused(t *testing.T) {
 					t.Fatalf("the driver signed after the revocation (%d, was %d): a revoked key must not reach it", got, signed)
 				}
 			})
+		}
+	}
+}
+
+// verifies: REQ-KEYS-109
+// An age later than this node's clock (plus the skew allowed) is not believed: a key store whose clock runs ahead could
+// stamp a key as newer than the revocation, so the key is treated as of unknown age and refused while its purpose is
+// revoked. A small difference between the clocks is allowed.
+func TestAKeyStampedInTheFutureIsOfUnknownAge(t *testing.T) {
+	e := newTestEnv(t, "development")
+	e.revoke(targetPurpose, "token-signing")
+	for i, tc := range []struct {
+		name  string
+		ahead time.Duration
+		signs bool
+	}{
+		{"a minute", time.Minute, true},
+		{"just inside the skew", clockSkew, true},
+		{"just outside the skew", clockSkew + time.Second, false},
+		{"an hour", time.Hour, false},
+	} {
+		d := newFakeDriver("software")
+		d.now = func() time.Time { return e.clock.now().Add(tc.ahead) }
+		n := e.startedNode(nodeOpts{name: fmt.Sprintf("node-%d", i), driver: d})
+		err := n.signFor("token-signing", signContent(t, n, "token-signing"))
+		if tc.signs && err != nil {
+			t.Errorf("a key stamped %s ahead is refused: %v", tc.name, err)
+		}
+		if !tc.signs {
+			n.refusal(t, err, connect.CodePermissionDenied, reasonRevoked, targetPurpose)
 		}
 	}
 }
