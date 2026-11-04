@@ -148,6 +148,13 @@ fn main() {
                 .help("Where emit.sock and receive.sock are made"),
         )
         .arg(
+            Arg::new("socket-gid")
+                .long("socket-gid")
+                .value_name("GID")
+                .global(true)
+                .help("Open both sockets (mode 0660) to this group; the default is 0600"),
+        )
+        .arg(
             Arg::new("limit-bytes")
                 .long("limit-bytes")
                 .value_name("N")
