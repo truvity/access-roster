@@ -575,6 +575,7 @@ func TestWithoutAGrantNothingIsSealedOrAcknowledged(t *testing.T) {
 	e.mustVerify(t)
 }
 
+// verifies: REQ-ISO-022
 func TestASecondWriterCannotFork(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)

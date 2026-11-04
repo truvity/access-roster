@@ -159,6 +159,7 @@ fn the_credential_a_client_names_is_a_name_and_only_a_confidential_client_has_on
     }
 }
 
+/// verifies: REQ-OPS-010
 #[test]
 fn a_payload_is_refused_by_place_and_an_error_shows_no_value() {
     let e = refused(

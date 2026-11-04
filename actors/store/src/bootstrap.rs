@@ -454,6 +454,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-OPS-010
     #[test]
     fn an_unknown_key_is_refused_by_place_and_the_error_shows_no_value() {
         let e = refusal(&local(&[(

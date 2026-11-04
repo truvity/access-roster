@@ -33,6 +33,7 @@ func echo(ctx context.Context, c interface {
 	return err
 }
 
+// verifies: REQ-DEPLOY-003
 func TestIdentityIsThePeerUID(t *testing.T) {
 	// The premise: exchange is allowed to call policy.
 	if !registry.MayCall("exchange", "policy") {

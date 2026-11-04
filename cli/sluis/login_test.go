@@ -132,6 +132,7 @@ func TestLoginAcceptsTheAllowedAlgorithms(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-012
 func TestLoginRefusals(t *testing.T) {
 	t.Run("issuer in the metadata differs", func(t *testing.T) {
 		f := newFakeIDP(t)
