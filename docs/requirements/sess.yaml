@@ -681,3 +681,15 @@ requirements:
     issues: [793]
     verification:
       - {kind: integration-test, ref: "an authorize request whose state would exceed 4 KiB is refused"}
+  - id: REQ-SESS-051
+    area: SESS
+    statement: "Dropping a generation of a tenant's chain data key MUST end the session chains sealed under it."
+    rationale: "A forged chain fact must stop working, and the blast radius is one tenant (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "drop a tenant's chain key generation: its chains refuse to open and another tenant's chains still work"}
