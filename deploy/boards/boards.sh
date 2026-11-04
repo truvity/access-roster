@@ -160,8 +160,14 @@ u=sluis-key@dev.service
 exec_start=$(systemctl show -p ExecStart --value "$u")
 argv=$(printf '%s\n' "$exec_start" | sed -n 's/.*argv\[\]=\(.*\) ; ignore_errors=.*/\1/p' | head -1)
 [ -n "$argv" ] || exit 1
+# The word split below must not expand a glob in an argument.
+set -f
 # shellcheck disable=SC2086 # the unit's arguments hold no space
 set -- ${argv/ serve / check }
+set +f
+# The probe runs as a transient unit with the unit's user, group and supplementary groups, which is what reaches the
+# sockets; it copies none of the unit's hardening (no sandbox, no syscall filter). That is acceptable for one run of
+# `check`, which writes nothing: the same binary runs, as the same user, in a unit that has less restriction.
 exec systemd-run --pipe --wait --collect --quiet \
 	-p "User=$(systemctl show -p User --value "$u")" -p "Group=$(systemctl show -p Group --value "$u")" \
 	-p "SupplementaryGroups=$(systemctl show -p SupplementaryGroups --value "$u")" "$@"

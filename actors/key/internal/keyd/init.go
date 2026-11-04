@@ -91,7 +91,7 @@ func (s *Server) Check(ctx context.Context) error {
 	if err := s.checkTransport(ctx); err != nil {
 		return err
 	}
-	return s.checkRecipients(ctx, plan)
+	return s.checkRecipients(ctx, plan, b.GetDefaultTenant())
 }
 
 // checkTransport reaches the audit transport's emit socket: a facts-less connection, so the check writes no
