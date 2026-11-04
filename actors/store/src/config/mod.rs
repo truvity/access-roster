@@ -6,6 +6,7 @@
 //! set, and holds the snapshot in force.
 
 pub mod document;
+pub mod offline;
 pub mod payload;
 pub mod reload;
 pub mod snapshot;
