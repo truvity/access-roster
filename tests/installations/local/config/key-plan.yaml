@@ -1,0 +1,9 @@
+# KeyPlan: which keys exist and where they live (keys.yaml). The software key driver ignores the
+# slots; a board's card follows them.
+default:
+  cache_ttl: 15m
+  purposes:
+    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }
+    - { purpose: token-signing, algorithm: ES384, slot: 9a }
+    - { purpose: audit-log, algorithm: ES384, slot: "84" }
+    - { purpose: data, algorithm: AES-256-GCM }

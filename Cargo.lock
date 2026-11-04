@@ -341,6 +341,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "credential"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "defmt"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +443,24 @@ name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
+
+[[package]]
+name = "file"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "clap",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "find-msvc-tools"
@@ -1239,8 +1274,10 @@ dependencies = [
  "buffa-types",
  "clap",
  "connectrpc",
+ "file",
  "rustix",
  "saphyr-parser",
+ "serde",
  "serde_json",
  "sluis-audit",
  "sluis-kit",
