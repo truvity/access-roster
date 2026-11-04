@@ -231,18 +231,73 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The deny matrix (ADR 0002, "Enforcement is tested"; REQ-DATA-066, REQ-KEYS-044, REQ-ISO-090): the local installation
+  # under Compose, as `just local-deny` runs it, and a probe as each caller's uid, with its unit's groups, at each socket.
+  # A pair that the registry denies and the installation lets through fails the job. The adapter's health check needs an
+  # upstream that answers discovery, so a Keycloak container serves an empty realm (tests/deny/upstream-realm.json) on the
+  # runner; nobody signs in, and its secrets are random values made for the run.
+  deny:
+    name: 'deny (the deny matrix on the local installation)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The project's network is fixed so that the adapter's forwarder reaches the upstream at the network's gateway.
+      SLUIS_DENY_SUBNET: 10.99.201.0/24
+      SLUIS_UPSTREAM_TARGET: 10.99.201.1:8180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+            .cache/rqlite
+          key: deny-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            deny-${{ runner.os }}-
+      - name: The upstream, Keycloak 26.8 with an empty realm
+        run: |
+          set -euo pipefail
+          admin=$(openssl rand -hex 16)
+          docker run -d --name idp -p 8180:8080 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$admin" \
+            -e KC_HTTP_ENABLED=true -e KC_HOSTNAME_STRICT=false \
+            -v "$PWD/tests/deny/upstream-realm.json:/opt/keycloak/data/import/realm.json:ro" \
+            quay.io/keycloak/keycloak@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332 \
+            start-dev --import-realm >/dev/null
+          for _ in $(seq 1 90); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8180/realms/sluis-test/.well-known/openid-configuration; then exit 0; fi
+            sleep 2
+          done
+          docker logs idp 2>&1 | tail -40
+          exit 1
+      - name: The secrets file of the run (random, never printed)
+        run: |
+          set -euo pipefail
+          umask 077
+          printf 'SLUIS_LOCAL_CLIENT_SECRET=%s\n' "$(openssl rand -hex 24)" >"$RUNNER_TEMP/upstream.env"
+          echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
+      - run: devbox run -- just rqlite-fetch local-deny
+
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, deny]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.deny.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 deny: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done
