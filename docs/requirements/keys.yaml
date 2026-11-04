@@ -1222,6 +1222,7 @@ requirements:
       - {kind: integration-test, ref: "node B relays a declaration for node A's key while A is down; the item exists and the key set lacks the key"}
   - id: REQ-KEYS-091
     area: KEYS
+    actors: [store]
     statement: "store@ MUST refuse an update, a delete and an apply on an existing KeyRevocation item, for every caller."
     rationale: "A revocation is terminal, and the direction rule alone would still allow a delete; Lease allows an update, so its rule is not the model (ADR 0041, ADR 0004)."
     level: MUST
@@ -1343,8 +1344,8 @@ requirements:
       - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
   - id: REQ-KEYS-101
     area: KEYS
-    statement: "On a declared compromise of the grant, cookie, chain, data, pseudonym or evidence data key, key@ MUST make a new generation that every later Seal uses."
-    rationale: "New values must not be sealed under a key the thief holds; mac and pairwise are accepted risks and have no such rule (ADR 0041)."
+    statement: "On a declared compromise of the grant, cookie, chain, data or evidence data key, key@ MUST make a new generation that every later Seal uses."
+    rationale: "New values must not be sealed under a key the thief holds; mac and pairwise are accepted risks, and pseudonym seals nothing (its new epoch is REQ-AUDIT-164) (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1352,10 +1353,10 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "per purpose (grant, cookie, chain, data, pseudonym, evidence): declare, then the next Seal uses the new generation; for mac and pairwise the declaration is refused as not supported"}
+      - {kind: integration-test, ref: "per purpose (grant, cookie, chain, data, evidence): declare, then the next Seal uses the new generation; for mac and pairwise the declaration is refused as not supported"}
   - id: REQ-KEYS-102
     area: KEYS
-    statement: "key@ MUST refuse every Seal under a compromised generation of the grant, cookie, chain, data, pseudonym or evidence data key."
+    statement: "key@ MUST refuse every Seal under a compromised generation of the grant, cookie, chain, data or evidence data key."
     rationale: "A stale cache or a slow caller must not seal new values under it; mac and pairwise are accepted risks (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1364,7 +1365,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a Seal that names the old generation is refused for each of the six purposes; on Lambda, after the time to live of the cache"}
+      - {kind: integration-test, ref: "a Seal that names the old generation is refused for each of the five purposes; on Lambda, after the time to live of the cache"}
   - id: REQ-KEYS-103
     area: KEYS
     statement: "key@ MUST keep opening a compromised generation of a tenant's data key and of the boundary's data key until the re-seal job has rewritten every value sealed under it."
@@ -1436,4 +1437,16 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a signer, an alert and a declaration without fresh authentication each ask key@ to revoke: all refused; a declaration with fresh authentication is accepted"}
+      - {kind: integration-test, ref: "a signer with no declaration, an alert and a declaration without fresh authentication ask key@ to revoke: all refused; a declaration with fresh authentication, relayed or not, is accepted"}
+  - id: REQ-KEYS-109
+    area: KEYS
+    statement: "key@ MUST refuse a Sign with any key that KeyRevocation lists, whatever the signing purpose."
+    rationale: "A revoked key signs nothing more, and this holds for the SSH CAs, the X.509 intermediates, the checkpoint keys and the workload-issuer key as for a token key, whichever actor asks (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a key of each signing purpose (token, x509, ssh-user, ssh-host, log keys, workload-issuer): a Sign with it is refused and audited"}
