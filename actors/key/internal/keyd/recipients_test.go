@@ -439,7 +439,7 @@ func TestOldLabelWrapsAreSaidNotSilent(t *testing.T) {
 	e.store.mu.Lock()
 	e.store.items["|data-key-wrap|cookie/1/"+old] = &storev2alpha1.Item{
 		Address: &typev2alpha1.Address{Kind: "data-key-wrap", Id: "cookie/1/" + old}, Version: 1,
-		Value: mustMarshal(&keyv2alpha1.DataKeyWrap{Purpose: "cookie", Generation: 1, Recipient: old}),
+		Value:   mustMarshal(&keyv2alpha1.DataKeyWrap{Purpose: "cookie", Generation: 1, Recipient: old}),
 		Indexes: []*typev2alpha1.IndexEntry{{Name: indexByPurpose, Value: []byte("cookie")}, {Name: indexByRecipient, Value: []byte(old)}},
 	}
 	e.store.mu.Unlock()
