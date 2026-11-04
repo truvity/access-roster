@@ -1173,7 +1173,7 @@ requirements:
       - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}
   - id: REQ-KEYS-087
     area: KEYS
-    statement: "When an operator declares a token-signing key compromised or suspected, signer MUST move it to revoked and omit it from the published key set at once, with neither the pre-publication period nor the retention period."
+    statement: "When an operator declares a token-signing key compromised or suspected, key@ MUST write a KeyRevocation item for it at once, with neither the pre-publication period nor the retention period."
     rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1182,7 +1182,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "declare a key: the next key set lacks its kid and a token it signed fails against it, with no wait of 65 minutes"}
+      - {kind: integration-test, ref: "declare a key: a KeyRevocation item exists at once and the 65 minutes of retention are not applied"}
   - id: REQ-KEYS-088
     area: KEYS
     statement: "sluis key revoke MUST report a revocation as not confirmed until it has fetched the published key set and found the kid absent."
@@ -1209,7 +1209,7 @@ requirements:
       - {kind: integration-test, ref: "revoke the only key: a new key signs at once after its set is published and purged; a verifier that fetches on an unfamiliar kid accepts the token, and one that does not is reported"}
   - id: REQ-KEYS-090
     area: KEYS
-    statement: "The signer of any node and the operator command MUST each be able to revoke the token-signing key of any node."
+    statement: "The signer of any node and the operator command MUST each be able to have key@ revoke the token-signing key of any node."
     rationale: "A compromised or stopped owner must not decide whether its own key leaves (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1218,11 +1218,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "node B revokes node A's key while A is down; the key set lacks it"}
+      - {kind: integration-test, ref: "node B asks for the revocation of node A's key while A is down; the item exists and the key set lacks the key"}
   - id: REQ-KEYS-091
     area: KEYS
-    statement: "The store MUST refuse every write that moves a token-signing key out of the revoked state."
-    rationale: "A revocation is terminal, whatever the owner node, a restore or a roll-forward writes (ADR 0041)."
+    statement: "store@ MUST refuse every update or delete of a KeyRevocation item."
+    rationale: "A revocation is terminal, and the direction rule alone would still allow a delete, so a verb rule like the one for Lease is the control (ADR 0041, ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -1230,10 +1230,10 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "the owner node rewrites a revoked key as active, and a restore replays an older ring: both are refused or ignored"}
+      - {kind: integration-test, ref: "an update and a delete of a KeyRevocation item are refused for every actor; a create is accepted"}
   - id: REQ-KEYS-092
     area: KEYS
-    statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a tighten-only run-time record that works while the actor of the compromised node is down."
+    statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a KeyRevocation item that works while the actor of the compromised node is down."
     rationale: "One revocation path for every kind lets an operator act without a deploy (ADR 0041, principle 12)."
     level: MUST
     source: design-decision
@@ -1242,11 +1242,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a data key generation, a recipient and a purpose through the command with one actor stopped; each takes effect and none can be undone through the record"}
+      - {kind: integration-test, ref: "revoke a data key generation, a recipient and a purpose through the command with one node stopped; each takes effect"}
   - id: REQ-KEYS-093
     area: KEYS
-    statement: "A peer MUST refuse a PinReleaseRequest from a board that the recipient list of the KeyPlan does not name."
-    rationale: "A stolen board that reconnects must not be given its PIN (ADR 0041)."
+    statement: "A peer MUST release a PIN only to a board that the KeyPlan lists and KeyRevocation does not revoke."
+    rationale: "A stolen board that reconnects must not be given its PIN, and a board that is merely unlisted or revoked is the same case (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1254,11 +1254,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a board removed from the list asks for its PIN: refused and an audit fact; a listed board is answered"}
+      - {kind: integration-test, ref: "a board that is unlisted, and one that is revoked, ask for their PIN: both refused with an audit fact; a listed board is answered"}
   - id: REQ-KEYS-094
     area: KEYS
-    statement: "key@ MUST remove a revoked recipient from the wraps of every new data key at once and delete its existing wraps."
-    rationale: "A lost or stolen board must not receive or keep access to any data key (ADR 0041)."
+    statement: "key@ MUST make no wrap for a revoked recipient in any new data key."
+    rationale: "A lost or stolen board must not receive access to any data key made after its revocation (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1266,11 +1266,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a board: a new data key has no wrap for it, its existing wraps are deleted and the other boards still open"}
+      - {kind: integration-test, ref: "revoke a board: a new data key has no wrap for it and the other boards still open it"}
   - id: REQ-KEYS-095
     area: KEYS
-    statement: "On a declared compromise of a data key other than mac, pairwise and evidence, key@ MUST make a new generation and stop opening the compromised one at once."
-    rationale: "A generation that still opens is a generation the thief can open (ADR 0041)."
+    statement: "key@ MUST refuse every Open under a compromised generation of the grant, cookie or chain data key."
+    rationale: "These keys protect integrity: a forged value is the threat, so it must stop working at once, while a confidentiality key goes on opening because the thief already holds it (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1278,11 +1278,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "per purpose (grant, cookie, chain, data, pseudonym): declare, then the old generation refuses to open and the new one seals"}
+      - {kind: integration-test, ref: "per purpose (grant, cookie, chain): declare, then an Open under the old generation is refused and the new generation opens"}
   - id: REQ-KEYS-096
     area: KEYS
-    statement: "key@ MUST re-seal the values of a compromised data key generation under the new one as a paginated, asynchronous and idempotent job, and delete the old wraps when the job ends."
-    rationale: "Values sealed under a compromised generation must move without a stop of the service, and a job that is run twice must do no harm (ADR 0041)."
+    statement: "key@ MUST re-seal the values of a compromised data key generation under the new one as a paginated, asynchronous and idempotent job."
+    rationale: "The three properties are one job: it runs over a store of any size in pages, in the background, and is run again after a failure without harm (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1290,7 +1290,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "stop the job half way and run it again: every value opens under the new generation and the old wraps are gone"}
+      - {kind: integration-test, ref: "stop the job half way and run it again: every value opens under the new generation"}
   - id: REQ-KEYS-097
     area: KEYS
     statement: "The compromise of the cookie data key MUST end every browser session of the boundary at the next request."
@@ -1340,3 +1340,87 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
+  - id: REQ-KEYS-101
+    area: KEYS
+    statement: "On a declared compromise of a data key, key@ MUST make a new generation that every later Seal uses."
+    rationale: "New values must not be sealed under a key the thief holds (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "per purpose: declare, then the next Seal uses the new generation"}
+  - id: REQ-KEYS-102
+    area: KEYS
+    statement: "key@ MUST refuse every Seal under a compromised generation of a data key."
+    rationale: "A stale cache or a slow caller must not seal new values under it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a Seal that names the old generation is refused; on Lambda, after the time to live of the cache"}
+  - id: REQ-KEYS-103
+    area: KEYS
+    statement: "key@ MUST keep opening a compromised generation of the data key until the re-seal job has rewritten every value sealed under it."
+    rationale: "The thief already holds the key, so refusing opens protects nothing and only takes the data offline (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare the data key: a value sealed before the declaration opens until the job ends and under the new generation after"}
+  - id: REQ-KEYS-104
+    area: KEYS
+    statement: "key@ MUST delete the wraps of a compromised data key generation when the re-seal job ends."
+    rationale: "The old generation must not outlive the values it sealed (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "after the job the old wraps are gone and every value opens"}
+  - id: REQ-KEYS-105
+    area: KEYS
+    statement: "key@ MUST delete the existing wraps of a revoked recipient."
+    rationale: "A lost or stolen board must not keep access to the data keys it already received (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a board: its existing wraps are deleted and the other boards still open"}
+  - id: REQ-KEYS-106
+    area: KEYS
+    statement: "signer MUST NOT promote or sign with a kid that KeyRevocation lists."
+    rationale: "A revoked key must not return to signing even if its own node writes the ring (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the owner node of a revoked key tries to make it active and to sign: both refused"}
+  - id: REQ-KEYS-107
+    area: KEYS
+    statement: "exporter@ and entry MUST omit every kid that KeyRevocation lists from every key set they publish."
+    rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a key: the next published key set, static and live, lacks its kid, and a token it signed fails against the set"}
