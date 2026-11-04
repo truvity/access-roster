@@ -298,6 +298,41 @@ fn check_url(s: &str, path: &str) -> R<()> {
     }
 }
 
+/// A client's redirect URI (REQ-AUTHN-004): `https`, or `http` on a loopback IP literal, `127.0.0.1` or `[::1]`, with
+/// any port or none (RFC 8252 section 7.3). `localhost` is a name that may not resolve to loopback (RFC 8252 section
+/// 8.3), so it is refused like any other host. This holds for every client kind and every environment; the
+/// environment's floor (`snapshot`) adds nothing for a redirect.
+fn check_redirect(s: &str, path: &str) -> R<()> {
+    check_url(s, path)?;
+    if s.starts_with("https://") || loopback_http(s) {
+        Ok(())
+    } else {
+        err(path, "must be https, or http on a loopback IP literal")
+    }
+}
+
+/// Whether `s` is an `http` URL whose host is the loopback IP literal `127.0.0.1` or `[::1]`, with an optional port
+/// of 1 to 65535, followed by nothing, a path, a query or a fragment. A userinfo part or any other host is not.
+pub(crate) fn loopback_http(s: &str) -> bool {
+    let Some(rest) = s.strip_prefix("http://") else {
+        return false;
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    let port = authority
+        .strip_prefix("127.0.0.1")
+        .or_else(|| authority.strip_prefix("[::1]"));
+    match port {
+        Some("") => true,
+        Some(p) => p.strip_prefix(':').is_some_and(|n| {
+            !n.is_empty()
+                && n.bytes().all(|c| c.is_ascii_digit())
+                && n.parse::<u16>().is_ok_and(|n| n != 0)
+        }),
+        None => false,
+    }
+}
+
 fn boundary(mut o: Obj) -> R<pb::Boundary> {
     let name = o.required("name")?;
     let kind = o.required("kind")?;
@@ -532,7 +567,7 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     let kind = o.one_of("kind", &["public", "confidential", "exchange"])?;
     let redirects = o.strings("redirects")?;
     for (i, r) in redirects.iter().enumerate() {
-        check_url(r, &format!("{}[{i}]", o.at("redirects")))?;
+        check_redirect(r, &format!("{}[{i}]", o.at("redirects")))?;
     }
     let requires = o.strings("requires")?;
     let ttl_cap = o.duration("ttl_cap")?;

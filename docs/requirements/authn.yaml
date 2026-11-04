@@ -92,13 +92,14 @@ requirements:
     rationale: "Cleartext redirects expose authorization codes to the network."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "2.1", depth: Full}
       - {id: ST-04, section: "8.3", depth: Full}
     issues: [775, 786]
+    tests: [actors/store/tests/config.rs, actors/session/internal/sessiond/authorize_test.go]
     verification:
       - {kind: integration-test, ref: "policy-load negative test"}
   - id: REQ-AUTHN-005
