@@ -376,9 +376,14 @@ func protoOf[T proto.Message](t *testing.T, b []byte, m T) T {
 	return m
 }
 
-// sealAsWinner seals an UpstreamLink for the subject, as the instance that won a race would have.
-func sealAsWinner(e *env, tenant, id, subject string) ([]byte, error) {
-	return e.key.sealForTest("data", &typev2alpha1.Address{Kind: "upstream-link", Tenant: tenant, Id: id}, &sessionv2alpha1.UpstreamLink{Subject: subject})
+// sealAsWinner seals the UpstreamLink that a racing first sign-in wrote: of the issuer and the claim of the default
+// assertion unless the test names others.
+func sealAsWinner(e *env, tenant, id, subject string, issuerAndClaim ...string) ([]byte, error) {
+	l := &sessionv2alpha1.UpstreamLink{Subject: subject, Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username"}
+	if len(issuerAndClaim) == 2 {
+		l.Issuer, l.SubjectClaim = issuerAndClaim[0], issuerAndClaim[1]
+	}
+	return e.key.sealForTest("data", &typev2alpha1.Address{Kind: "upstream-link", Tenant: tenant, Id: id}, l)
 }
 
 func clientOf(id string) *configv2alpha1.InstallationClient {

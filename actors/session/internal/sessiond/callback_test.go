@@ -17,6 +17,7 @@ import (
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
+	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
@@ -523,6 +524,60 @@ func TestCallbackRaceOnAnIssuersFirstPin(t *testing.T) {
 				t.Errorf("%d pins", n)
 			}
 		})
+	}
+}
+
+// verifies: REQ-SUBJ-041
+func TestCallbackRaceBetweenThePinReadAndTheLinkRead(t *testing.T) {
+	// B signs in with the claim oid and the value X and finds no pin. Before B reads the link, A's first sign-in with
+	// the claim sub and the same value X commits its person, its link and the pin. The link id leaves the claim name
+	// out, so B finds A's link: B is refused, never signed in as A's person.
+	const issuer, value = "https://idp.example.test/realms/test", "same-value-x"
+	e := newEnv(t, nil)
+	e.upstream.completeFn = func(*integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) {
+		return &integrationv2alpha1.Assertion{Issuer: issuer, SubjectClaim: "oid", Subject: value}, nil
+	}
+	cb, _ := e.started()
+	const winner = "winnerwinnerwinnerwinner26"
+	var pinAt *typev2alpha1.Address
+	var once sync.Once
+	e.store.beforeGet = func(s *fakeStore, a *typev2alpha1.Address) {
+		switch a.GetKind() {
+		case "upstream-pin":
+			pinAt = a
+		case "upstream-link":
+			once.Do(func() {
+				if pinAt == nil {
+					panic("the link was read before the pin")
+				}
+				pin, err := proto.Marshal(&sessionv2alpha1.UpstreamPin{Issuer: issuer, SubjectClaim: "sub"})
+				if err != nil {
+					panic(err)
+				}
+				link, err := sealAsWinner(e, a.GetTenant(), a.GetId(), winner, issuer, "sub")
+				if err != nil {
+					panic(err)
+				}
+				s.items[key("upstream-pin", pinAt.GetTenant(), pinAt.GetId())] = &storedItem{value: pin, version: 1}
+				s.items[key("upstream-link", a.GetTenant(), a.GetId())] = &storedItem{value: link, version: 1}
+				s.items[key("person", a.GetTenant(), winner)] = &storedItem{value: []byte{1}, version: 1}
+			})
+		}
+	}
+	before := len(e.records())
+	q := location(t, e.callback(cb)).Query()
+	if q.Get("error") != "access_denied" || q.Get("code") != "" {
+		t.Fatalf("B was not refused: %v", q)
+	}
+	if n := e.store.count("person", testTenant); n != 1 {
+		t.Errorf("%d people, want A's only", n)
+	}
+	if n := len(e.store.ids("auth-code", testTenant)); n != 0 {
+		t.Errorf("%d codes: B signed in", n)
+	}
+	recs := e.records()[before:]
+	if len(recs) == 0 || recs[len(recs)-1]["status_code"] != "subject_claim" {
+		t.Errorf("records = %v", recs)
 	}
 }
 
