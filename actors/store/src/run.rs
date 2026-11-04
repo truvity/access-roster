@@ -13,7 +13,7 @@ use sluis_proto::sluis::store::v2alpha1::StoreServiceExt as _;
 
 use crate::audit::EmitterSink;
 use crate::bootstrap::Bootstrap;
-use crate::config::NoConfig;
+use crate::config::{self, ConfigSnapshot, Loader};
 use crate::engine::DriverEngine;
 use crate::grant::KeyOpener;
 use crate::service::{Deps, Service};
@@ -152,13 +152,18 @@ impl Commands for Store {
             tokio::time::sleep(REACH_PAUSE).await;
         }
 
+        // The signed config, loaded as one snapshot. A cold start refuses on any failure.
+        let left = deadline.saturating_duration_since(Instant::now());
+        let loader = Loader::start(&dial(&b.config_source.socket), &b, left)
+            .await
+            .map_err(|e| anyhow::anyhow!("config: {e}"))?;
+
         let svc = Service::new(Deps {
             boundary: b.boundary.clone(),
             durable: DriverEngine::new(&dial(&b.durable.socket), "durable"),
             temp: DriverEngine::new(&dial(&b.temp.socket), "temp"),
             grants: KeyOpener::new(&dial(&p.key)),
-            // planned: the signed config snapshot (WP-11) replaces NoConfig.
-            config: Arc::new(NoConfig),
+            config: Arc::clone(&loader) as Arc<dyn ConfigSnapshot>,
             audit: EmitterSink(sluis_audit::Emitter::new(sluis_audit::Config {
                 actor: "store".into(),
                 boundary: b.boundary.clone(),
@@ -175,10 +180,23 @@ impl Commands for Store {
                 .into_iter()
                 .map(|(port, d)| (port, d.driver.clone()))
                 .collect(),
+            config::documents_field(&loader.snapshot().summaries()),
         )
         .await;
-        let router = Arc::new(svc).register(Router::new());
-        sluis_kit::serve(
+        let svc = Arc::new(svc);
+        // A changed document reloads the whole set; a bad one keeps the snapshot in force.
+        let reloading = tokio::spawn({
+            let (loader, svc) = (Arc::clone(&loader), Arc::clone(&svc));
+            async move {
+                config::reload::run(loader, |outcome| {
+                    let svc = Arc::clone(&svc);
+                    async move { svc.announce_reload(&outcome).await }
+                })
+                .await;
+            }
+        });
+        let router = svc.register(Router::new());
+        let served = sluis_kit::serve(
             ServerConfig {
                 actor: "store",
                 boundary: b.boundary.clone(),
@@ -191,7 +209,9 @@ impl Commands for Store {
             router,
             shutdown_signal(),
         )
-        .await
+        .await;
+        reloading.abort();
+        served
     }
 
     async fn check(&self, f: Flags) -> Option<anyhow::Result<()>> {

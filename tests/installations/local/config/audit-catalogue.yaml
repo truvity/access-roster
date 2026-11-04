@@ -1,0 +1,10 @@
+# AuditCatalogue, minimal (decision D-15): the action names the writer accepts. The JSON Schema of
+# each action's fields comes with the full catalogue generator.
+default:
+  release: "0.0.0"
+  actions:
+    - key.sign
+    - store.start
+    - store.refused
+    - store.reload
+    - store.reload.refused

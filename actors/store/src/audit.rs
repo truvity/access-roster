@@ -12,7 +12,7 @@ use std::time::Duration;
 /// value of an item and never an id (an id can be a keyed hash).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AuditEvent {
-    /// `metadata.event_code`: `store.start` or `store.refused`.
+    /// `metadata.event_code`: `store.start`, `store.refused`, `store.reload` or `store.reload.refused`.
     pub action: &'static str,
     /// A refusal is a failure; a start is a success.
     pub failure: bool,
@@ -85,6 +85,7 @@ impl EmitterSink {
     pub fn event(e: AuditEvent) -> sluis_audit::Event {
         let name = match e.action {
             "store.start" => "Start",
+            "store.reload" => "Reload",
             _ => "Refuse",
         };
         sluis_audit::Event {

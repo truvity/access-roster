@@ -1,0 +1,20 @@
+# The Boundary document of the local installation (ADR 0005, "The snapshot"): the boundary `dev`
+# and the config kinds it declares. The harness signs this file as boundary.jws into the
+# directory of the `file` driver; the payload is this file, byte for byte.
+# One mapping from item id to item; a singleton kind has the one item `default` (decision D-17).
+default:
+  name: dev
+  kind: environment
+  level: L2
+  environment: development
+  issuer: https://sluis.dev.local.test
+  uid_block: 0
+  default_tenant: acme
+  declared_kinds:
+    - KeyPlan
+    - TokenLifetime
+    - GrantVocabulary
+    - AuditLog
+    - AuditCatalogue
+    - Upstream
+    - InstallationClient
