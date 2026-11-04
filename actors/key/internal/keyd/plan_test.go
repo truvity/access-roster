@@ -25,7 +25,8 @@ func (e *testEnv) forgedPlan(thief outsider, ownID string) *configv2alpha1.KeyPl
 	return plan
 }
 
-// REQ-KEYS-110/forged_plan_stops_the_start. A KeyPlan that store@ makes up, or that the wrong key signed, does not start key@: the
+// verifies: REQ-KEYS-110
+// A KeyPlan that store@ makes up, or that the wrong key signed, does not start key@: the
 // publisher key of key@'s own bootstrap file is the only anchor, and the thief gets no wrap.
 func TestForgedKeyPlanStopsTheStart(t *testing.T) {
 	thief := newOutsider(t)
@@ -101,7 +102,8 @@ func refusals(n *node) []Event {
 	return out
 }
 
-// REQ-KEYS-110/forged_plan_after_start. A KeyPlan that store@ swaps in after the start is refused as a change: key@ keeps the list it verified, makes
+// verifies: REQ-KEYS-110
+// A KeyPlan that store@ swaps in after the start is refused as a change: key@ keeps the list it verified, makes
 // the next data key for it only, and audits the refusal once.
 func TestForgedKeyPlanAfterTheStartIsRefused(t *testing.T) {
 	e := newTestEnv(t, "development")
@@ -144,7 +146,8 @@ func TestForgedKeyPlanAfterTheStartIsRefused(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-110/replayed_lower_seq. A correctly signed older KeyPlan is not taken back in the life of a process, and neither is a second document under the
+// verifies: REQ-KEYS-110
+// A correctly signed older KeyPlan is not taken back in the life of a process, and neither is a second document under the
 // same seq: the list in force stays, and the refusal says step 5.
 func TestReplayedLowerSeqIsRefused(t *testing.T) {
 	e := newTestEnv(t, "development")
@@ -198,7 +201,8 @@ func TestReplayedLowerSeqIsRefused(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-110/cold_start_residual. What key@ cannot guarantee: a node with no mark (a first start, a new disk, a purged volume) has seen no seq,
+// verifies: REQ-KEYS-110
+// What key@ cannot guarantee: a node with no mark (a first start, a new disk, a purged volume) has seen no seq,
 // so it takes the latest document that is validly signed, also an older one that store@ serves in place of the newest.
 // The older document is still one the publisher signed: a compromised store@ can roll the list back to a commit that was
 // reviewed, and cannot write a list of its own. A node that has a mark does better (TestRestartKeepsTheHighestSeq).
@@ -217,7 +221,8 @@ func TestColdStartWithoutAMarkTakesTheLatestSignedDocumentWhateverItsSeq(t *test
 	}
 }
 
-// REQ-KEYS-110/restart_keeps_the_highest_seq. key@ keeps the highest seq it verified in its own state directory, so a restart refuses an older KeyPlan
+// verifies: REQ-KEYS-110
+// key@ keeps the highest seq it verified in its own state directory, so a restart refuses an older KeyPlan
 // and a second payload under the same seq, and takes the same one again and a newer one.
 func TestRestartKeepsTheHighestSeq(t *testing.T) {
 	e := newTestEnv(t, "development")
@@ -299,7 +304,8 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-110/mark_is_not_guessed. A mark that is damaged, a state directory that is missing or open to others, and one that cannot be written, stop the start with the
+// verifies: REQ-KEYS-110
+// A mark that is damaged, a state directory that is missing or open to others, and one that cannot be written, stop the start with the
 // cause. A mark that cannot be saved means the plan is not used: a restart would have forgotten it.
 func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 	cases := map[string]func(t *testing.T, dir string){
@@ -352,7 +358,8 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 	})
 }
 
-// REQ-KEYS-110/payload_is_a_keyplan. A document the right key signed whose payload is not a KeyPlan is refused at step 6, and a payload with a key the
+// verifies: REQ-KEYS-110
+// A document the right key signed whose payload is not a KeyPlan is refused at step 6, and a payload with a key the
 // message does not have is refused by place.
 func TestSignedPayloadThatIsNotAKeyPlanIsRefused(t *testing.T) {
 	for name, c := range map[string]struct{ payload, want string }{
@@ -380,7 +387,8 @@ func TestSignedPayloadThatIsNotAKeyPlanIsRefused(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-110/bootstrap_required. key@ does not start without a bootstrap file that pins a publisher: without the anchor there is nothing to verify
+// verifies: REQ-KEYS-110
+// key@ does not start without a bootstrap file that pins a publisher: without the anchor there is nothing to verify
 // against, and a file that does not read is no anchor.
 func TestKeyDoesNotStartWithoutAPublisherAnchor(t *testing.T) {
 	e := newTestEnv(t, "development")

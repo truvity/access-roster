@@ -50,7 +50,8 @@ func newKey(t *testing.T, c elliptic.Curve) *ecdsa.PublicKey {
 	return &k.PublicKey
 }
 
-// REQ-KEYS-110/bootstrap_publishers: the publishers block of the local bootstrap file verifies the vector it pins.
+// verifies: REQ-KEYS-110
+// the publishers block of the local bootstrap file verifies the vector it pins.
 func TestParsePublishersLocalExampleVerifiesVector1(t *testing.T) {
 	raw, err := os.ReadFile(localBootstrap)
 	if err != nil {

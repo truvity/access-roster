@@ -148,7 +148,8 @@ func (e *testEnv) cookieEnvelope(n *node, id string) []byte {
 	return env
 }
 
-// REQ-KEYS-075. A KeyCertificate that store@ makes up for a key the KeyPlan does not list is never used: its key gets no wrap,
+// verifies: REQ-KEYS-075
+// A KeyCertificate that store@ makes up for a key the KeyPlan does not list is never used: its key gets no wrap,
 // not from a new data key and not from a rewrap pass, and the refusal is audited once.
 func TestUnlistedCertificateIsNeverUsed(t *testing.T) {
 	e := newTestEnv(t, "development")
@@ -185,7 +186,8 @@ func TestUnlistedCertificateIsNeverUsed(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075. A certificate for a listed key under a label other than the one derived from the listed id is
+// verifies: REQ-KEYS-075
+// A certificate for a listed key under a label other than the one derived from the listed id is
 // ignored: the store does not choose the address of a wrap. With the derived label also there, the wrap goes under it
 // and under no other, whatever the order of the labels.
 func TestStrayLabelDoesNotChooseTheAddress(t *testing.T) {
@@ -214,7 +216,8 @@ func TestStrayLabelDoesNotChooseTheAddress(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075. A listed key is used: the certificate only supplies its public key, every data key is wrapped for it, and its
+// verifies: REQ-KEYS-075
+// A listed key is used: the certificate only supplies its public key, every data key is wrapped for it, and its
 // holder opens the wrap.
 func TestListedKeyIsUsed(t *testing.T) {
 	e := newTestEnv(t, "development")
@@ -292,7 +295,8 @@ func TestPlanChangeIsRewrapped(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075. A listed recipient with no key leaves the wrap set incomplete: the wraps go to the keys that are there, the
+// verifies: REQ-KEYS-075
+// A listed recipient with no key leaves the wrap set incomplete: the wraps go to the keys that are there, the
 // check says so and fails, the finding is audited, and it is never filled with an unlisted key. When the key
 // appears, the next pass completes the set and the check passes.
 func TestMissingListedKeyIsReported(t *testing.T) {
@@ -408,7 +412,8 @@ func TestMalformedRecipientsStopTheStart(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075. A certificate that store@ swaps for a listed node's own, with the attacker's key under the listed
+// verifies: REQ-KEYS-075
+// A certificate that store@ swaps for a listed node's own, with the attacker's key under the listed
 // node's label, is not used: the thumbprint of the key in it is not the listed id, so the listed node is missing and
 // the attacker's key is not a recipient.
 func TestSwappedCertificateKeyIsNotUsed(t *testing.T) {
