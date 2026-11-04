@@ -52,17 +52,24 @@ func IsNull(n *yaml.Node) bool {
 	return n == nil || (n.Kind == yaml.ScalarNode && ScalarOf(n) == KindNull)
 }
 
-// StrictYAML reads one YAML document under the checks of the strict profile that a node tree can show
-// (bootstrap-file.md, "Format"): one document, no anchors, aliases or explicit tags, no duplicate key, no tab, no
-// directive. It returns the root of the document (a mapping, a list or a scalar), and the caller decides what a
-// scalar is: a plain scalar is a string where the node's short tag is !!str, and any other tag is a number, a
-// boolean or null, which a field that wants a string refuses.
+// StrictYAML reads one YAML document under the rules of the strict profile (bootstrap-file.md, "Format"): one
+// document, no anchor, alias, merge key (`<<`) or tag of any kind (`!`, `!!str` and `!foo` alike), no duplicate key, no
+// tab, no directive, and a byte order mark only at the start. It returns the root of the document (a mapping, a list or
+// a scalar). The caller types a scalar with ScalarOf, never by the node's own tag.
 //
-// The profile's other rules (flow depth, the exact typing of plain scalars) are store@'s; a document that passes
-// here and not there is refused where it matters. An error names a kind of fault, never a value.
+// A node tree does not show every rule, so a few are checked in the text: yaml.v3 keeps no trace of the non-specific tag
+// `!`, which the Rust reader refuses, so the text is scanned for it (tagToken). The profile's other rules (the depth of
+// flow collections) are store@'s; a document that passes here and not there is refused where it matters. An error
+// names a kind of fault, never a value.
 func StrictYAML(b []byte) (*yaml.Node, error) {
 	if bytes.ContainsRune(b, '\t') {
 		return nil, errors.New("yaml: a tab is refused")
+	}
+	if bytes.Contains(bytes.TrimPrefix(b, []byte("\ufeff")), []byte("\ufeff")) {
+		return nil, errors.New("yaml: a byte order mark is refused anywhere but at the start")
+	}
+	if tagToken(string(b)) {
+		return nil, errors.New("yaml: anchors, aliases and tags are refused")
 	}
 	for l := range strings.SplitSeq(string(b), "\n") {
 		t := strings.TrimLeft(l, " \ufeff")
@@ -92,8 +99,8 @@ func StrictYAML(b []byte) (*yaml.Node, error) {
 	return doc.Content[0], nil
 }
 
-// plain refuses what the strict profile refuses and a node tree shows: an anchor, an alias, an explicit tag and a
-// duplicate key.
+// plain refuses what the strict profile refuses and a node tree shows: an anchor, an alias, an explicit tag, a merge
+// key and a duplicate key.
 func plain(n *yaml.Node) error {
 	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.Style&yaml.TaggedStyle != 0 {
 		return errors.New("yaml: anchors, aliases and tags are refused")
@@ -104,6 +111,9 @@ func plain(n *yaml.Node) error {
 			k := n.Content[i]
 			if k.Kind != yaml.ScalarNode {
 				return errors.New("yaml: a key that is not a scalar is refused")
+			}
+			if k.Value == "<<" {
+				return errors.New("yaml: a merge key is refused")
 			}
 			if seen[k.Value] {
 				return errors.New("yaml: duplicate key")
@@ -117,4 +127,77 @@ func plain(n *yaml.Node) error {
 		}
 	}
 	return nil
+}
+
+// tagToken reports whether the text holds a tag indicator `!` outside a quoted scalar, a block scalar and a comment: a
+// `!` that starts a token, after white space or an opening or separating flow indicator. A plain scalar that has `!`
+// inside (`a: x!y`) holds none. The scan is a little stricter than the Rust reader: a continuation line of a plain
+// scalar that starts with `!` is refused here and read there, which is safe, because it only refuses more.
+func tagToken(src string) bool {
+	var quote byte    // ' or " while inside a quoted scalar (which may span lines)
+	blockIndent := -1 // the indentation above which lines are the content of a block scalar, or -1
+	for _, line := range strings.Split(src, "\n") {
+		ind := len(line) - len(strings.TrimLeft(line, " "))
+		if blockIndent >= 0 {
+			if strings.TrimSpace(line) == "" || ind > blockIndent {
+				continue // block scalar content
+			}
+			blockIndent = -1
+		}
+		for i := 0; i < len(line); i++ {
+			c := line[i]
+			if quote != 0 {
+				switch {
+				case quote == '"' && c == '\\':
+					i++ // an escaped character
+				case c == quote && quote == '\'' && i+1 < len(line) && line[i+1] == '\'':
+					i++ // '' inside a single-quoted scalar
+				case c == quote:
+					quote = 0
+				}
+				continue
+			}
+			prevSpace := i == 0 || line[i-1] == ' ' || strings.IndexByte("[{,", line[i-1]) >= 0
+			switch {
+			case c == '#' && prevSpace:
+				i = len(line) // a comment
+			case (c == '"' || c == '\'') && prevSpace:
+				quote = c
+			case c == '!' && prevSpace:
+				return true
+			}
+		}
+		if quote == 0 {
+			if h := blockHeader(line); h {
+				blockIndent = contentIndent(line)
+			}
+		}
+	}
+	return false
+}
+
+// blockHeader reports whether the line ends in a block scalar header: `|` or `>` with optional indicators and a comment.
+func blockHeader(line string) bool {
+	t := line
+	if i := strings.Index(t, " #"); i >= 0 {
+		t = t[:i]
+	}
+	t = strings.TrimRight(t, " ")
+	t = strings.TrimRight(t, "+-0123456789")
+	if t == "" || (t[len(t)-1] != '|' && t[len(t)-1] != '>') {
+		return false
+	}
+	return len(t) == 1 || t[len(t)-2] == ' ' // an indicator starts a token: `x|` is a plain scalar
+}
+
+// contentIndent is the column of the key or the entry that owns a block scalar: the content lines are indented more.
+func contentIndent(line string) int {
+	i := len(line) - len(strings.TrimLeft(line, " "))
+	for strings.HasPrefix(line[i:], "- ") {
+		i += 2
+		for i < len(line) && line[i] == ' ' {
+			i++
+		}
+	}
+	return i
 }

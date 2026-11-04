@@ -23,7 +23,7 @@ Schema v1 has only the keys that code of the first working version reads ([princ
 
 - **YAML that is plain JSON data, read by one strict profile.** Go and Rust read YAML with different parsers ([Approved libraries](/reference/approved-libraries/#yaml-reader)), and a YAML parser as it comes does not give the same document in both: `010` is the number 8 in one and 10 in another, `yes` is a string or a boolean, an alias is expanded or kept. The profile removes the choice, and the readers give the same verdict on every document below. The profile holds for the bootstrap file and for every config document that is YAML ([Signed config](/reference/signed-config/#the-payload)):
   1. **One document.** A second document is refused.
-  2. **No anchors, aliases, merge keys (`<<`), explicit tags or duplicate keys.** The bare tag `!` is a tag too: `a: ! 12` is refused, and not read as the number 12.
+  2. **No anchors, aliases, merge keys (`<<`), tags or duplicate keys; both readers refuse each.** Every tag is refused: `!!str`, `!foo` and the non-specific tag `!` alike, so `a: ! 12` is refused and not read as the number 12 (a node tree of the Go reader does not show `!`, so it is found in the text). A merge key is refused whatever its quoting.
   3. **Every mapping key is a string,** written plain or quoted; a key that is a mapping or a sequence is refused, and so is an empty plain key (`: 1`).
   4. **A plain scalar is `null` (`null`, `~` or empty), a boolean (`true`, `false`) or a number that matches the JSON grammar, and any other plain scalar is a string.** So `yes`, `y`, `010`, `0x1F`, `+1`, `.inf`, `1_000` and `2026-11-01` are strings, and a field that wants a number refuses them with a type error. A quoted or block scalar is always a string.
   5. **No directive.** A `%YAML`, `%TAG` or any other `%` line before the content is refused.
@@ -40,6 +40,7 @@ Schema v1 has only the keys that code of the first working version reads ([princ
   | a key `<<` | refused: merge key |
   | `a: !foo bar`, `a: !!str 12`, `a: ! 12` | refused: tag |
   | `a: yes`, `b: 0o17`, `c: 010`, `d: y` | read, all four strings |
+  | a byte order mark at the start | read; one anywhere else is refused: byte order mark |
   | `a: Null`, `b: NULL`, `c: True`, `d: TRUE`, `e: False`, `f: FALSE` | read, all six strings: only `null`, `~`, an empty value, `true` and `false` are null and booleans (a YAML 1.1 reader reads the others as null and booleans, and the Go reader of key@ is held to this) |
   | `a: ~`, `c: 0x1F`, `d:` | read: `null`, the string `"0x1F"`, `null` |
   | `a: 1.5e3`, `b: .inf`, `c: +1`, `d: -0`, `e: 1_000` | read: the numbers `1.5e3` and `-0`, the strings `".inf"`, `"+1"` and `"1_000"` |

@@ -396,6 +396,133 @@
    "name": "cache_ttl True is a string that is no duration",
    "payload": "default:\n  cache_ttl: True\n",
    "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "a non-specific tag ! on a value",
+   "payload": "default:\n  cache_ttl: ! 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a non-specific tag ! on a list",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: ! []\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a non-specific tag ! on a key",
+   "payload": "default:\n  ! cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a non-specific tag ! inside a flow list",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [ ! x ]\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a secondary tag !!str on a value",
+   "payload": "default:\n  cache_ttl: !!str 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a named tag on a value",
+   "payload": "default:\n  cache_ttl: !foo 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a merge key at the top",
+   "payload": "<<: {a: 1}\ndefault:\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a merge key in the item",
+   "payload": "default:\n  <<: {a: 1}\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a quoted merge key",
+   "payload": "default:\n  \"<<\": {a: 1}\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a ! inside a plain scalar is text",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: x!y }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "x!y"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ! inside a double-quoted scalar is text",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: \"a !b\" }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "a !b"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ! inside a single-quoted scalar is text",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 'a !b' }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "a !b"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a ! in a comment is text",
+   "payload": "default:\n  cache_ttl: 15m\n  # ! not a tag\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "a ! after a trailing comment mark is text",
+   "payload": "default:\n  cache_ttl: 15m # ! nor this\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "a byte order mark at the start",
+   "payload": "﻿default:\n  cache_ttl: 15m\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "a byte order mark in the middle",
+   "payload": "default:\n  cache_ttl: 15m\n﻿  purposes: []\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a byte order mark after the start",
+   "payload": "﻿﻿default:\n  cache_ttl: 15m\n",
+   "refused_path": ""
   }
  ]
 }

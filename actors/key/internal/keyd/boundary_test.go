@@ -130,7 +130,7 @@ func TestBoundaryPayloadAndMark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the mark of the Boundary is not saved: %v", err)
 	}
-	if m, err := parseMark(raw, boundaryKind); err != nil || m.seq != e.seqB {
+	if m, _, err := parseMark(raw, boundaryKind); err != nil || m.seq != e.seqB {
 		t.Fatalf("mark = %+v, %v; want seq %d", m, err, e.seqB)
 	}
 	if fi, _ := os.Stat(filepath.Join(state, boundaryMarkFile)); fi.Mode().Perm() != 0o600 {
