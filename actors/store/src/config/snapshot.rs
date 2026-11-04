@@ -112,6 +112,10 @@ pub struct LoadError {
     pub reason: String,
     /// The source did not answer: a cold start waits for it, a reload retries.
     pub unreachable: bool,
+    /// The source has no document of a kind that the set needs. Nothing watches a kind that the
+    /// snapshot in force does not hold, so a reload retries this one with a back-off until the
+    /// document appears.
+    pub absent: bool,
     /// The labels of everything read in the attempt: a refusal is reported once per refusal.
     pub(super) fingerprint: String,
 }
@@ -133,6 +137,7 @@ fn failed(kind: Option<&'static str>, reason: impl Into<String>) -> LoadError {
         label: None,
         reason: reason.into(),
         unreachable: false,
+        absent: false,
         fingerprint: String::new(),
     }
 }
@@ -300,10 +305,10 @@ impl Loader {
         let got = match tokio::time::timeout(CALL, read).await {
             Ok(Ok(r)) => r.into_owned(),
             Ok(Err(e)) if e.code == ErrorCode::NotFound => {
-                return Err(failed(
-                    Some(kind.name),
-                    "the source has no document of the kind",
-                ));
+                return Err(LoadError {
+                    absent: true,
+                    ..failed(Some(kind.name), "the source has no document of the kind")
+                });
             }
             Ok(Err(e)) => {
                 tracing::warn!(
@@ -447,6 +452,25 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
                     "Upstream",
                     "issuer: must be https outside development".to_owned(),
                 )));
+            }
+        }
+        for (_, bytes) in s.list(kind("ExchangeTrust").segment) {
+            if let Ok(t) = pb::ExchangeTrust::decode_from_slice(&bytes) {
+                for i in &t.issuers {
+                    if plain(&i.issuer) {
+                        at = at.or(Some((
+                            "ExchangeTrust",
+                            "issuers: issuer must be https outside development".to_owned(),
+                        )));
+                    }
+                    // An empty `jwks_uri` is allowed (the keys come by the issuer's metadata).
+                    if !i.jwks_uri.is_empty() && plain(&i.jwks_uri) {
+                        at = at.or(Some((
+                            "ExchangeTrust",
+                            "issuers: jwks_uri must be https outside development".to_owned(),
+                        )));
+                    }
+                }
             }
         }
         for (_, bytes) in s.list(kind("InstallationClient").segment) {
