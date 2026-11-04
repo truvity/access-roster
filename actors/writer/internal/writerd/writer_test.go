@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
@@ -367,16 +368,15 @@ func TestWriteOrderAndAckAfterDurability(t *testing.T) {
 	}
 	cp := e.ev.index("blob.create:audit/main/checkpoints/", 0)
 	st := e.ev.index("blob.put:state/writer-state", 0)
+	sign := e.ev.index("key.sign", 0)
 	ptr := e.ev.index("blob.put:audit/main/checkpoint", 0)
 	ack := e.ev.index("transport.ack", 0)
-	if lastTile < 0 || cp < 0 || st < 0 || ptr < 0 || ack < 0 {
+	if lastTile < 0 || cp < 0 || st < 0 || ptr < 0 || ack < 0 || sign < 0 {
 		t.Fatalf("events missing: %v", e.ev.all())
 	}
-	if lastTile >= cp || cp >= st || st >= ptr || ptr >= ack {
-		t.Fatalf("order is not tiles, checkpoint, state, pointer, ack: %v", e.ev.all())
-	}
-	if e.ev.index("key.sign", 0) > cp {
-		t.Fatalf("the checkpoint was written before key@ signed it: %v", e.ev.all())
+	// The state is put before key@ is asked to sign, so a writer that loses the put never signs.
+	if lastTile >= st || st >= sign || sign >= cp || cp >= ptr || ptr >= ack {
+		t.Fatalf("order is not tiles, state, signature, checkpoint, pointer, ack: %v", e.ev.all())
 	}
 	// Bundles come before hash tiles (an object that holds a hash always has its entries behind it).
 	firstHash := -1
@@ -411,7 +411,33 @@ func TestNothingIsAcknowledgedWhenTheCheckpointFails(t *testing.T) {
 	}
 }
 
-func TestAnUnknownActionIsRefusedAndReported(t *testing.T) {
+// openQuarantine opens the sealed message of a quarantine object.
+func openQuarantine(t *testing.T, e *env, path string) (map[string]any, *transportv2alpha1.AuditMessage) {
+	t.Helper()
+	b, err := os.ReadFile(path) //nolint:gosec // a test path under a temporary directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep map[string]any
+	if err := json.Unmarshal(b, &rep); err != nil {
+		t.Fatal(err)
+	}
+	env, err := base64.StdEncoding.DecodeString(rep["sealed"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt, err := e.key.open(env, rep["tenant"].(string), quarantineKind, SealID("sluis", "quarantine", "main", rep["sha384"].(string)))
+	if err != nil {
+		t.Fatalf("the quarantined message does not open at its address: %v", err)
+	}
+	var m transportv2alpha1.AuditMessage
+	if err := proto.Unmarshal(pt, &m); err != nil {
+		t.Fatal(err)
+	}
+	return rep, &m
+}
+
+func TestAnUnknownActionIsQuarantinedSealedAndReported(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
 	e.start()
@@ -420,7 +446,6 @@ func TestAnUnknownActionIsRefusedAndReported(t *testing.T) {
 	e.push(bad)
 	wait(t, "the refusal to be acknowledged", func() bool { return e.tr.ackedCount() == 1 })
 
-	// Reported: an object in the blob names the reason and the digest, and not the record. Nothing was sealed.
 	reports, err := filepath.Glob(filepath.Join(e.root, "quarantine", "*"))
 	if err != nil || len(reports) != 1 {
 		t.Fatalf("reports = %v (%v)", reports, err)
@@ -429,21 +454,28 @@ func TestAnUnknownActionIsRefusedAndReported(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var rep map[string]any
-	if err := json.Unmarshal(b, &rep); err != nil {
-		t.Fatal(err)
+	if bytes.Contains(b, []byte("key.nothing")) || bytes.Contains(b, []byte(bad.uid+bad.uid)) {
+		t.Fatalf("the object repeats the record in clear: %s", b)
 	}
-	if rep["reason"] != reasonAction || rep["path"] != "metadata.event_code" || rep["uid"] != bad.uid || rep["emitter"] != "key@dev" {
+	rep, m := openQuarantine(t, e, reports[0])
+	if rep["reason"] != reasonAction || rep["path"] != "metadata.event_code" || rep["uid"] != bad.uid ||
+		rep["emitter"] != "key@dev" || rep["tenant"] != "acme" {
 		t.Fatalf("report = %s", b)
 	}
-	if bytes.Contains(b, []byte("key.nothing")) || bytes.Contains(b, []byte("acme")) {
-		t.Fatalf("the report repeats the record: %s", b)
+	// Not lost: an operator who may open the tenant's evidence gets the bytes the emitter made.
+	if !bytes.Equal(m.GetRecord(), bad.rec) || m.GetUid() != bad.uid {
+		t.Fatal("the quarantined message is not the message that was delivered")
+	}
+	// The seal was made under a grant from policy for that tenant.
+	var granted bool
+	for _, q := range e.pol.requests() {
+		granted = granted || (q.GetAction() == "audit.seal" && q.GetTenant() == "acme")
+	}
+	if !granted {
+		t.Fatal("no grant was asked for the tenant of the quarantined record")
 	}
 	if _, err := os.Stat(filepath.Join(e.logDir(), "checkpoint")); err == nil {
 		t.Fatal("a log of refused messages only was sealed")
-	}
-	if e.key.sealCount() != 0 {
-		t.Fatal("a refused record was sealed")
 	}
 
 	// A good record after it is sealed, and the log verifies.
@@ -455,6 +487,58 @@ func TestAnUnknownActionIsRefusedAndReported(t *testing.T) {
 		t.Fatalf("entries = %v", recs)
 	}
 	e.mustVerify(t)
+}
+
+func TestAMessageWithAUsagePartIsQuarantinedWithIt(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	e.start()
+	m := newMessage(t, em, "key.sign", "globex")
+	usage := []byte(`{"id":"x/0"}`)
+	e.tr.push(&transportv2alpha1.AuditMessage{Uid: m.uid, Record: m.rec, Usage: [][]byte{usage}})
+	wait(t, "the message to be acknowledged", func() bool { return e.tr.ackedCount() == 1 })
+	reports, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*"))
+	if len(reports) != 1 {
+		t.Fatalf("reports = %v", reports)
+	}
+	rep, got := openQuarantine(t, e, reports[0])
+	if rep["reason"] != reasonUsage || rep["tenant"] != "globex" || len(got.GetUsage()) != 1 || !bytes.Equal(got.GetUsage()[0], usage) {
+		t.Fatalf("report = %v, message = %v", rep, got)
+	}
+	if e.key.sealCount() != 1 {
+		t.Fatal("the record was sealed into the log as well")
+	}
+}
+
+func TestAMessageWithoutAReadableTenantIsQuarantinedUnderTheOperators(t *testing.T) {
+	e := newEnv(t)
+	e.start()
+	e.tr.push(&transportv2alpha1.AuditMessage{Uid: "u1", Record: []byte("not json")})
+	wait(t, "the message to be acknowledged", func() bool { return e.tr.ackedCount() == 1 })
+	reports, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*"))
+	if len(reports) != 1 {
+		t.Fatalf("reports = %v", reports)
+	}
+	rep, got := openQuarantine(t, e, reports[0])
+	if rep["tenant"] != testDefault || rep["reason"] != reasonCanonical || string(got.GetRecord()) != "not json" {
+		t.Fatalf("report = %v", rep)
+	}
+}
+
+func TestNothingIsAcknowledgedWhenAQuarantineCannotBeSealed(t *testing.T) {
+	e := newEnv(t)
+	em := emitterOf(t, e)
+	e.pol.mode = "deny"
+	e.start()
+	e.push(newMessage(t, em, "key.nothing", "acme"))
+	wait(t, "policy to be asked", func() bool { return len(e.pol.requests()) > 0 })
+	time.Sleep(200 * time.Millisecond)
+	if e.tr.ackedCount() != 0 {
+		t.Fatal("a refused message was acknowledged without being kept")
+	}
+	if g, _ := filepath.Glob(filepath.Join(e.root, "quarantine", "*")); len(g) != 0 {
+		t.Fatal("a quarantine object was written without a seal")
+	}
 }
 
 func TestAnIdleLogSignsNothing(t *testing.T) {
@@ -552,20 +636,38 @@ func TestASecondWriterCannotFork(t *testing.T) {
 	if n := e.tr.ackedCount(); n != 3 {
 		t.Fatalf("%d acknowledged; the stale writers acknowledged nothing", n)
 	}
+	// The writer that lost the put never signed: no checkpoint of a fork is in the log.
+	e.mustVerify(t)
+	if n := len(e.ev.all()); n == 0 {
+		t.Fatal("no events")
+	}
+	signs := 0
+	for _, s := range e.ev.all() {
+		if s == "key.sign" {
+			signs++
+		}
+	}
+	if cps, _ := filepath.Glob(filepath.Join(e.logDir(), "checkpoints", "*")); len(cps) != signs {
+		t.Fatalf("%d checkpoints for %d signatures", len(cps), signs)
+	}
 }
 
-func TestACrashBetweenTheBundlesAndTheCheckpointIsAdopted(t *testing.T) {
+// crashOnce makes the first operation that matches fail, as if the blob went away, and returns the hook.
+func crashOnce(match func(op, p string) bool) func(op, p string) error {
+	var once sync.Once
+	return func(op, p string) error {
+		var err error
+		if match(op, p) {
+			once.Do(func() { err = connect.NewError(connect.CodeUnavailable, errors.New("the blob went away")) })
+		}
+		return err
+	}
+}
+
+func TestACrashBetweenTheBundlesAndTheStateIsAdopted(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
-	var once sync.Once
-	e.blob.before = func(op, p string) error {
-		if op == "create" && strings.Contains(p, "checkpoints/") {
-			var err error
-			once.Do(func() { err = connect.NewError(connect.CodeUnavailable, errors.New("the blob went away")) })
-			return err
-		}
-		return nil
-	}
+	e.blob.before = crashOnce(func(op, p string) bool { return op == "put" && strings.HasSuffix(p, "writer-state") })
 	r := e.start()
 	msgs := []message{newMessage(t, em, "key.sign", "acme"), newMessage(t, em, "key.sign", "globex")}
 	for _, m := range msgs {
@@ -577,11 +679,11 @@ func TestACrashBetweenTheBundlesAndTheCheckpointIsAdopted(t *testing.T) {
 	if e.tr.ackedCount() != 0 {
 		t.Fatal("something was acknowledged before its checkpoint")
 	}
-	if _, err := os.Stat(filepath.Join(e.logDir(), "checkpoint")); err == nil {
-		t.Fatal("a pointer was written")
+	if e.ev.index("key.sign", 0) >= 0 {
+		t.Fatal("key@ signed before the state was put")
 	}
 
-	// The next start finds the bundles and no checkpoint. The same entries cannot be created again with other
+	// The next start finds the bundles and no state. The same entries cannot be created again with other
 	// contents, so they are adopted; the transport delivers the messages again and they are dropped as repeats.
 	e.start()
 	wait(t, "the messages to be acknowledged after the restart", func() bool { return e.tr.ackedCount() == len(msgs) })
@@ -597,24 +699,26 @@ func TestACrashBetweenTheBundlesAndTheCheckpointIsAdopted(t *testing.T) {
 	}
 }
 
-func TestACrashBetweenTheCheckpointAndTheStateIsFinished(t *testing.T) {
+func TestACrashBetweenTheStateAndTheCheckpointIsFinished(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
-	var once sync.Once
-	e.blob.before = func(op, p string) error {
-		if op == "put" && strings.HasSuffix(p, "writer-state") {
-			var err error
-			once.Do(func() { err = connect.NewError(connect.CodeUnavailable, errors.New("the blob went away")) })
-			return err
-		}
-		return nil
-	}
+	e.blob.before = crashOnce(func(op, p string) bool { return op == "create" && strings.Contains(p, "checkpoints/") })
 	r := e.start()
 	m := newMessage(t, em, "key.sign", "acme")
 	e.push(m)
-	if err := r.result(t); err == nil {
-		t.Fatal("Run returned nil")
+	if err := r.result(t); !errors.As(err, new(*fatalError)) {
+		t.Fatalf("Run returned %v, want a fatal error", err)
 	}
+	if _, err := os.Stat(filepath.Join(e.root, "state", "writer-state")); err != nil {
+		t.Fatalf("the state was not committed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(e.logDir(), "checkpoints")); err == nil {
+		t.Fatal("a checkpoint exists")
+	}
+	if e.tr.ackedCount() != 0 {
+		t.Fatal("acknowledged without a checkpoint")
+	}
+	// The state is the commit: the next start signs the checkpoint that is missing instead of refusing.
 	e.start()
 	wait(t, "the message to be acknowledged", func() bool { return e.tr.ackedCount() == 1 })
 	e.mustVerify(t)
