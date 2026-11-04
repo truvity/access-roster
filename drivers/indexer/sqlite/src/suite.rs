@@ -286,6 +286,11 @@ pub fn run_temp() -> Result<()> {
         i.search(&query(&[("sluis", "audit")], &[])),
         Error::Argument("tenants")
     );
+    // "*" stands alone: with a named tenant it is refused.
+    refused!(
+        i.search(&query(&[("sluis", "audit")], &["acme", "*"])),
+        Error::Argument("tenants")
+    );
     // Rows with no usable tenant, or a hash of the wrong size, are refused.
     refused!(
         apply(&i, "sluis", "audit", 0, None, vec![row("*", "x", 8, 8)]),
