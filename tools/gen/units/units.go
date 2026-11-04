@@ -115,15 +115,16 @@ var drivers = map[string]driverSpec{
 			Args: []string{"--state-dir", "%STATE%", "--environment", "development"},
 		}},
 	},
-	// drivers/key/yubikey-piv: serve --socket --admin-socket --node --environment --serial [--socket-gid]. The card driver of
+	// drivers/key/yubikey-piv: serve --socket --admin-socket --state-dir --node --environment --serial [--socket-gid]. The card driver of
 	// a board (ADR 0006), the alternative to the software driver: same socket, same owner. It needs the card service; its
 	// admin socket, the only way the PIN reaches it, is in a directory of its own that only it and root enter. The unit
 	// passes --serial from a file the deploy writes (EnvironmentFile below): the driver is bound to the board's card.
 	"driver-key-yubikey-piv": {
 		Language: "Go", Instead: "driver-key-software",
 		Units: []driverProc{{
-			Socket: keyDriverSocket,
+			Socket: keyDriverSocket, State: true,
 			Args: []string{
+				"--state-dir", "%STATE%", // when the driver generated each key: a card does not store it (ADR 0041)
 				"--environment", "development", "--node", "%H",
 				"--admin-socket", "/run/sluis-drv-key-yubikey-piv-%i/admin.sock",
 				"--serial", "${SLUIS_CARD_SERIAL}",
