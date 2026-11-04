@@ -171,3 +171,81 @@ func TestBootstrapWithoutAPublishersBlockIsRefused(t *testing.T) {
 		t.Fatal("a template without publishers was accepted")
 	}
 }
+
+// The thumbprints of the RFC 7638 example (section 3.1) and of the P-384 vector of actors/key.
+const (
+	idA = "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+	idB = "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
+)
+
+func TestRecipientsReplaceTheEmptyListOfTheKeyPlan(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoConfig, "key-plan.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := WithRecipients(src, []string{idA, idB})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "  recipients:\n    - " + idA + "\n    - " + idB + "\n"
+	if !strings.Contains(string(got), want) || strings.Contains(string(got), "recipients: []") {
+		t.Fatalf("the list was not replaced:\n%s", got)
+	}
+	// Nothing else changed: the source and the result differ by that one line.
+	if strings.Replace(string(src), "  recipients: []\n", want, 1) != string(got) {
+		t.Fatal("more than the list changed")
+	}
+	for name, ids := range map[string][]string{
+		"a label":      {"node-1-abcdefghijklmnop"},
+		"a repeat":     {idA, idA},
+		"a short one":  {idA[:42]},
+		"a padded one": {idA + "="},
+	} {
+		if _, err := WithRecipients(src, ids); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := WithRecipients([]byte("default:\n  cache_ttl: 15m\n"), []string{idA}); err == nil {
+		t.Error("a source with no empty list was accepted")
+	}
+}
+
+func TestRunSignsTheRecipientsIntoTheKeyPlan(t *testing.T) {
+	dir := t.TempDir()
+	o := Options{
+		ConfigDir: repoConfig, BootstrapTemplate: repoBootstrap, KeyDir: filepath.Join(dir, "key"),
+		Out: filepath.Join(dir, "config"), BootstrapOut: filepath.Join(dir, "bootstrap.yaml"), KID: "publisher-1", Seq: 5,
+		Recipients: []string{idB},
+	}
+	if _, err := Run(o); err != nil {
+		t.Fatal(err)
+	}
+	keyPEM, err := os.ReadFile(filepath.Join(o.KeyDir, "publisher.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode(keyPEM)
+	k, err := x509.ParseECPrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := os.ReadFile(filepath.Join(o.Out, "key-plan.jws"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _, err := Verify(doc, &k.PublicKey)
+	if err != nil || !strings.Contains(string(payload), "    - "+idB+"\n") {
+		t.Fatalf("the signed KeyPlan does not list the recipient: %v\n%s", err, payload)
+	}
+}
+
+func TestReadRecipients(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "r")
+	if err := os.WriteFile(f, []byte("# the nodes\n"+idA+" # node-1\n\n  "+idB+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readRecipients(f)
+	if err != nil || len(got) != 2 || got[0] != idA || got[1] != idB {
+		t.Fatalf("readRecipients = %v, %v", got, err)
+	}
+}

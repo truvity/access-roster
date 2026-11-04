@@ -9,8 +9,18 @@
 #   SLUIS_UPSTREAM_TARGET    host:port of the upstream identity provider, which the sidecar of the adapter forwards to
 #   SLUIS_KEYCLOAK_SECRETS   a file with SLUIS_LOCAL_CLIENT_SECRET (default: $SLUIS_BUILD_DIR/keycloak-secrets.env)
 #   SLUIS_LOCAL_PORT         the loopback port of the forwarder (default 8443)
+#   COMPOSE_PROJECT_NAME     the Compose project (default sluis-local, from compose.yaml); a second installation on one machine
+#                            takes another name and another SLUIS_LOCAL_PORT
 # The state of a run (the CA, the publisher key, the signed config, the credentials) is below .cache/local and is
 # deleted by `down`; the volumes go with it.
+#
+# The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
+# software key is made at the first start, so `up` has two phases. The first start signs the KeyPlan with an empty list
+# and starts key@ with what it needs. No actor can have a data key yet (key@ makes none for a key that is not listed), so
+# the rest waits. Then `up` asks key@ for the thumbprint of its wrapping key (`key check`), keeps it in $state/recipients,
+# signs the KeyPlan again with it, puts the document in the config volume and waits until key@ sees its key in the list.
+# Then it starts everything else. A later `up` of the same run signs the list at once and has one phase. The committed
+# source, tests/installations/local/config/key-plan.yaml, never holds a thumbprint.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -28,6 +38,14 @@ need_env() {
 	[ -n "${secrets:-}" ] && [ -r "$secrets" ] || { echo "local: SLUIS_KEYCLOAK_SECRETS does not name a readable file" >&2; exit 1; }
 }
 
+# sign_config signs the config sources, with the recipients of the KeyPlan when the run has learned them.
+sign_config() {
+	local extra=()
+	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
+	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
+		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" "${extra[@]}"
+}
+
 # prepare makes the state of the run: the harness CA and the forwarder's leaf, the signed config and the bootstrap file
 # that pins its publisher, and the credentials. It prints no secret.
 prepare() {
@@ -35,8 +53,7 @@ prepare() {
 	mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store" "$seed/credentials/adapter"
 	go run ./tools/harness/ca -dir "$state/ca" -host "$host,$audit_host"
 	cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
-	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
-		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml"
+	sign_config
 	# The credentials the config documents name: the upstream's client secret from the harness secrets file, and a random
 	# secret for each client of the installation, kept across runs. Nothing is echoed.
 	(
@@ -71,9 +88,46 @@ images() {
 cmd_up() {
 	prepare
 	images
+	if [ ! -s "$state/recipients" ]; then
+		"${compose[@]}" up -d --wait --wait-timeout 180 key || { echo "local: key@ and what it needs did not become healthy; see 'just local-logs key store'" >&2; exit 1; }
+		list_recipients
+	fi
 	"${compose[@]}" up -d --wait --wait-timeout 180 || { echo "local: the project did not become healthy; see 'just local-status' and 'just local-logs'" >&2; cmd_status || true; exit 1; }
 	publish_vkey
 	cmd_status
+}
+
+# key_check runs key@'s check command inside its container, with the flags the container serves with, and prints its
+# report: the thumbprint of the wrapping key, whether the KeyPlan lists it, and how many recipients it lists. The exit
+# status is the check's.
+key_check() {
+	local id args
+	id=$("${compose[@]}" ps -q key)
+	[ -n "$id" ] || { echo "local: key@ is not running" >&2; return 1; }
+	mapfile -t args < <(docker inspect --format '{{range .Config.Cmd}}{{println .}}{{end}}' "$id")
+	"${compose[@]}" exec -T key /sluis check "${args[@]:1}"
+}
+
+# list_recipients is the second phase of `up`: it reads the thumbprint of key@'s wrapping key, lists it in the signed
+# KeyPlan, and waits until key@ reports it as listed. It does nothing when the run already lists it.
+list_recipients() {
+	local id="" listed="" n
+	if [ ! -s "$state/recipients" ]; then
+		id=$(key_check 2>/dev/null | sed -n 's/^wrapping key id: //p')
+		[[ "$id" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "local: key@'s check gave no wrapping key id" >&2; exit 1; }
+		printf '# the wrapping key of key@ on this run (key check)\n%s\n' "$id" >"$state/recipients"
+		sign_config >/dev/null
+		chmod 0644 "$seed"/config/*.jws
+		# The signed documents go into the config volume again; store@ sees the new KeyPlan and reloads it.
+		"${compose[@]}" run --rm --no-deps init >/dev/null
+	fi
+	for n in $(seq 1 60); do
+		listed=$(key_check 2>/dev/null | sed -n 's/^wrapping key listed: //p' || true)
+		[ "$listed" != true ] || { echo "local: the KeyPlan lists key@'s wrapping key"; return 0; }
+		sleep 1
+	done
+	echo "local: key@ does not see its wrapping key in the KeyPlan after 60 s; see 'just local-logs store key'" >&2
+	exit 1
 }
 
 # publish_vkey gives the indexer the verifier key of the audit log. The writer logs the public half of its log key when it
@@ -121,7 +175,7 @@ cmd_down() {
 # character is put into the payload, so that the signature no longer covers it (signed-config.md, "Verifying a document").
 cmd_tamper() {
 	need_env_quiet
-	local vol=sluis-local_config doc=key-plan.jws image
+	local vol=${COMPOSE_PROJECT_NAME:-sluis-local}_config doc=key-plan.jws image
 	image=$(grep -m1 -o 'alpine@sha256:[0-9a-f]*' deploy/local/compose.yaml)
 	"${compose[@]}" stop store >/dev/null
 	docker run --rm -v "$vol:/c" --entrypoint sh "$image" -c \

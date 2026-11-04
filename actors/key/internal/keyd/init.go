@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -53,14 +54,17 @@ func (s *Server) Check(ctx context.Context) error {
 	if err := s.checkRunDir(); err != nil {
 		return err
 	}
-	b, _, err := s.loadConfig(ctx)
+	b, p, err := s.loadConfig(ctx)
 	if err != nil {
 		return err
 	}
 	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {
 		return err
 	}
-	return s.checkTransport(ctx)
+	if err := s.checkTransport(ctx); err != nil {
+		return err
+	}
+	return s.checkRecipients(ctx, p)
 }
 
 // checkTransport reaches the audit transport's emit socket: a facts-less connection, so the check writes no
@@ -101,6 +105,9 @@ func (s *Server) Init(ctx context.Context) error {
 	}
 	s.cache = newCache(ttl, s.now)
 
+	if _, err := plannedRecipients(plan); err != nil {
+		return err
+	}
 	if err := s.ensureKeys(ctx, plan); err != nil {
 		return err
 	}
@@ -116,8 +123,13 @@ func (s *Server) Init(ctx context.Context) error {
 	s.audit(ctx, Event{Action: ActionStart, Fields: map[string]any{
 		"node": s.cfg.Node, "recipient": s.recipient, "purposes": int64(len(s.keys)),
 	}})
+	listed, _ := plannedRecipients(plan)
 	slog.Info("key@ ready", "boundary", s.cfg.Boundary, "recipient", s.recipient, "purposes", len(s.keys),
-		"cache_ttl", s.cache.ttl.String())
+		"cache_ttl", s.cache.ttl.String(), "wrapping_key_id", s.wrappingID, "listed", slices.Contains(listed, s.wrappingID))
+	if !slices.Contains(listed, s.wrappingID) {
+		slog.Warn("this node's wrapping key is not in the KeyPlan recipients: it makes no data key and gets no wrap until it is listed",
+			"wrapping_key_id", s.wrappingID)
+	}
 	return nil
 }
 
@@ -161,6 +173,7 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 		return err
 	}
 	s.wrappingPub = ek
+	s.wrappingID = w.keyID
 	s.recipient = recipientLabel(s.cfg.Node, w.spki)
 	return nil
 }
@@ -210,7 +223,32 @@ func thumbprint(pub *ecdsa.PublicKey) (string, error) {
 	}
 	point := ek.Bytes() // 0x04 | X | Y, each coordinate 48 bytes
 	enc := base64.RawURLEncoding
-	j := `{"crv":"P-384","kty":"EC","x":"` + enc.EncodeToString(point[1:49]) + `","y":"` + enc.EncodeToString(point[49:97]) + `"}`
-	sum := sha256.Sum256([]byte(j))
-	return enc.EncodeToString(sum[:]), nil
+	return thumbprintOf(`{"crv":"P-384","kty":"EC","x":"` + enc.EncodeToString(point[1:49]) + `","y":"` + enc.EncodeToString(point[49:97]) + `"}`), nil
+}
+
+// thumbprintOf hashes the canonical JSON form of a JWK (RFC 7638, section 3): SHA-256, base64url, no padding.
+func thumbprintOf(canonical string) string {
+	sum := sha256.Sum256([]byte(canonical))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// spkiThumbprint is the thumbprint of the P-384 public key in an SPKI DER.
+func spkiThumbprint(spki []byte) (string, error) {
+	pub, err := parseP384(spki)
+	if err != nil {
+		return "", err
+	}
+	return thumbprint(pub)
+}
+
+// thumbprintLen is the length of an unpadded base64url SHA-256 (RFC 7638 uses SHA-256).
+const thumbprintLen = 43
+
+// validRecipientID reports whether id has the form of a thumbprint: the unpadded base64url of 32 bytes.
+func validRecipientID(id string) bool {
+	if len(id) != thumbprintLen {
+		return false
+	}
+	b, err := base64.RawURLEncoding.Strict().DecodeString(id)
+	return err == nil && len(b) == sha256.Size
 }
