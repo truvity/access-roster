@@ -139,6 +139,7 @@ mod tests {
             label: Some("cd".repeat(48)),
             reason: "step 4: a signature does not verify".into(),
             unreachable: false,
+            absent: false,
             fingerprint: String::new(),
         };
         let first = Reloaded::Refused {

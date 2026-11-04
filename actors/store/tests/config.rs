@@ -587,3 +587,128 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
     );
     task.abort();
 }
+
+#[tokio::test]
+async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives() {
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    let loader = e.start().await.unwrap();
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let task = tokio::spawn({
+        let (loader, seen) = (Arc::clone(&loader), Arc::clone(&seen));
+        async move {
+            store::config::reload::run(loader, move |r| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let line = match &r {
+                        Reloaded::Unchanged => "unchanged".to_owned(),
+                        Reloaded::Applied(d) => format!("applied {}", d.len()),
+                        Reloaded::Refused { error, report } => format!("refused {report}: {error}"),
+                    };
+                    seen.lock().unwrap().push(line);
+                }
+            })
+            .await;
+        }
+    });
+    let wait_for = |want: &'static str| {
+        let seen = Arc::clone(&seen);
+        async move {
+            for _ in 0..200 {
+                if seen.lock().unwrap().iter().any(|l| l.contains(want)) {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            panic!("never saw {want:?} in {:?}", seen.lock().unwrap());
+        }
+    };
+
+    // The boundary declares a kind whose document is not in the source yet: the reload is refused
+    // and the snapshot stays. The kind is not in the snapshot, so nothing watches its name.
+    let with_trust =
+        source("boundary").replace("    - Upstream\n", "    - Upstream\n    - ExchangeTrust\n");
+    e.sign("boundary", &with_trust, 2);
+    wait_for("refused true: ExchangeTrust: the source has no document").await;
+    assert_eq!(loader.version("exchange-trust"), None);
+
+    // The document arrives. No watched name changes, so only the retry can find it.
+    e.sign("exchange-trust", "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n", 1);
+    wait_for("applied 9").await;
+    assert_eq!(loader.version("exchange-trust"), Some(1));
+    assert_eq!(loader.version("boundary"), Some(2));
+    task.abort();
+}
+
+#[tokio::test]
+async fn the_https_floor_covers_the_exchange_trust_issuer_and_jwks_uri() {
+    // A production boundary whose other documents are all https, so that only ExchangeTrust is at
+    // fault; development takes the same document.
+    let set = |e: &Env, environment: &str, trust: &str| {
+        e.sign(
+            "boundary",
+            &source("boundary")
+                .replace(
+                    "environment: development",
+                    &format!("environment: {environment}"),
+                )
+                .replace("    - Upstream\n", "    - Upstream\n    - ExchangeTrust\n"),
+            1,
+        );
+        e.sign(
+            "upstream",
+            &source("upstream").replace("http://", "https://"),
+            1,
+        );
+        e.sign(
+            "installation-client",
+            &source("installation-client").replace("http://", "https://"),
+            1,
+        );
+        e.sign("exchange-trust", trust, 1);
+    };
+    let issuer_http = "default:\n  issuers:\n    - { issuer: \"http://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n";
+    let jwks_http = "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"http://idp.example.com/keys\" }\n";
+    let all_https = "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"https://idp.example.com/keys\" }\n";
+
+    for (trust, want) in [
+        (
+            issuer_http,
+            "ExchangeTrust: issuers: issuer must be https outside development",
+        ),
+        (
+            jwks_http,
+            "ExchangeTrust: issuers: jwks_uri must be https outside development",
+        ),
+    ] {
+        for environment in ["production", "staging"] {
+            let e = env().await;
+            write_local(e.docs.path(), &e.pipeline, 1);
+            set(&e, environment, trust);
+            let err = e.start().await.err().unwrap_or_else(|| {
+                panic!("{environment}: a plain http ExchangeTrust started: {trust}")
+            });
+            assert!(err.to_string().contains(want), "{environment}: {err}");
+        }
+        // The same plain http is a development boundary's own.
+        let e = env().await;
+        write_local(e.docs.path(), &e.pipeline, 1);
+        set(&e, "development", trust);
+        assert!(e.start().await.is_ok(), "development takes plain http");
+    }
+    // Over https, production starts.
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 1);
+    set(&e, "production", all_https);
+    let loader = e.start().await.unwrap();
+    assert_eq!(loader.version("exchange-trust"), Some(1));
+}
+
+#[test]
+fn a_jwks_uri_that_is_not_a_url_is_refused_by_place() {
+    let msg = refused(
+        "ExchangeTrust",
+        "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"ftp://idp.example.com/keys\" }\n",
+    );
+    assert!(msg.contains("jwks_uri"), "{msg}");
+}

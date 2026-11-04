@@ -10,6 +10,9 @@
 //!   followed, because a mounted ConfigMap is a tree of such links and its update is the swap of
 //!   one of them (signed-config.md "What a config source driver returns"); one that leaves the
 //!   directory is refused.
+//! - A file is opened with `O_NONBLOCK`, so that a FIFO in the directory cannot hang the open (and
+//!   the thread with it), and anything that is not a regular file is refused. (`O_NOFOLLOW` is not
+//!   set: a link inside the directory is followed on purpose, see above.)
 //! - `Watch` looks at the file again every [`WATCH_EVERY`] and says when the label changes, so a
 //!   replaced file and the swap of a mounted ConfigMap are both seen.
 
@@ -103,7 +106,8 @@ impl Dir {
         let fd = rustix::fs::openat2(
             &*self.root,
             format!("{name}{EXTENSION}"),
-            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY,
+            // NONBLOCK: the open of a FIFO returns at once, and `is_file` below refuses it.
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
             Mode::empty(),
             ResolveFlags::BENEATH,
         )
@@ -168,4 +172,31 @@ fn label(data: &[u8]) -> String {
             let _ = write!(s, "{b:02x}");
             s
         })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fifo_is_refused_at_once_and_does_not_hang_the_open() {
+        let t = tempfile::tempdir().unwrap();
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            t.path().join("boundary.jws"),
+            rustix::fs::FileType::Fifo,
+            Mode::from_raw_mode(0o600),
+            0,
+        )
+        .unwrap();
+        let dir = Dir::open(t.path()).unwrap();
+        // A blocking open of a FIFO with no writer never returns; run it aside to bound the wait.
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || tx.send(dir.read("boundary").err().map(|e| e.to_string())));
+        let got = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("the open of a FIFO hung");
+        assert_eq!(got.as_deref(), Some("bound"));
+    }
 }
