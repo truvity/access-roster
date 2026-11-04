@@ -131,8 +131,8 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 	}
 	b.node = strings.TrimSpace(out)
 	drv := keyDriverEnv
-	if drv == "" { // the board's own driver: the card driver's unit is active on a board that was switched
-		if out, _ := b.sh(nil, "systemctl is-active sluis-drv-key-yubikey-piv@dev.service"); strings.TrimSpace(out) == "active" {
+	if drv == "" { // the board's own driver, from the unit-file state: the card driver is enabled on a board that was switched
+		if out, _ := b.sh(nil, "systemctl show -p UnitFileState --value sluis-drv-key-yubikey-piv@dev.service"); strings.TrimSpace(out) == "enabled" {
 			drv = "yubikey-piv"
 		}
 	}
