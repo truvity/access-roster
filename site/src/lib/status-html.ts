@@ -33,14 +33,15 @@ export const utc = (iso: string) => iso.replace('T', ' ').replace(/:\d{2}(\.\d+)
 const ISSUES = 'https://github.com/truvity/sluis/issues/';
 const COMMITS = 'https://github.com/truvity/sluis/commit/';
 const shortSha = (sha: string) => (/^[0-9a-f]{7,40}$/.test(sha) ? sha.slice(0, 7) : '');
-const COLS = 1 + 7 + 4 + 4;
+const REQ_COLS = 9;
+const COLS = 1 + REQ_COLS + 4 + 4;
 
 const tag = (text: string, kind: 'live' | 'build' | 'current') => `<span class="ps-tag ps-tag-${kind}">${esc(text)}</span>`;
 const num = (v: number | null, first: boolean, title?: string) =>
   v === null
     ? `<td class="${cls('ps-num', 'ps-zero', first && 'ps-first')}"${title ? ` title="${esc(title)}"` : ''}>—</td>`
     : `<td class="${cls('ps-num', first && 'ps-first', v === 0 && 'ps-zero')}">${esc(v)}</td>`;
-const reqCells = (c: ReqCounts) => [c.total, c.open, c.planned, c.partial, c.done, c.outOfScope, c.auto].map((v, k) => num(v, k === 0)).join('');
+const reqCells = (c: ReqCounts) => [c.total, c.open, c.planned, c.partial, c.done, c.outOfScope, c.auto, c.evidenced, c.inferred].map((v, k) => num(v, k === 0)).join('');
 const frac = (a: number, b: number) => (b ? Math.round((100 * a) / b) : 0);
 const label = (g: Group, i: number) => (g.milestone ? `${i + 1}. ${g.name}` : g.name);
 const runState = (r: Run) => (r.status === 'completed' ? (r.conclusion ?? 'completed') : r.status.replace(/_/g, ' '));
@@ -99,13 +100,20 @@ function cards(groups: Group[], when: string, builtAt?: string): string {
     // open issues only). Closed issues also count decision issues. The two sources are read at
     // different times, and the note says when each is as of.
     const total = iss.open + iss.closed;
+    // Evidence-backed: done or partial, and a test that carries `verifies: <id>` (or an attestation) exists for it.
+    // Placed by inference: the record names no milestone, so its issues placed it.
+    const inferred = g.reqs.inferred;
     const build = barGroup('build', 'Build', 'code and tests',
-      `Build: ${g.reqs.done} done and ${g.reqs.partial} partial of ${g.reqs.total} requirements, ${iss.closed} closed and ${iss.inProgress} in progress of ${total} issues`,
+      `Build: ${g.reqs.done} done and ${g.reqs.partial} partial of ${g.reqs.total} requirements, ${g.reqs.evidenced} evidence-backed, ${iss.closed} closed and ${iss.inProgress} in progress of ${total} issues`,
       [
         { k: 'Requirements', a: g.reqs.done, total: g.reqs.total, more: { n: g.reqs.partial, word: 'partial' }, word: 'done' },
+        { k: 'Evidence-backed', a: g.reqs.evidenced, total: g.reqs.total },
         { k: 'Issues', a: iss.closed, total, more: { n: iss.inProgress, word: 'in progress' }, word: 'closed' },
       ],
-      [builtAt ? `Requirements: build of ${utc(builtAt)}. Issues: ${when}.` : `Issues: ${when}.`]);
+      [
+        builtAt ? `Requirements: build of ${utc(builtAt)}. Issues: ${when}.` : `Issues: ${when}.`,
+        inferred ? `${inferred} of ${g.reqs.total} requirements are placed here by inference from their issues (inferred): they name no milestone.` : '',
+      ]);
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
       + `<p class="ps-card-k">${g.milestone ? `Milestone ${i + 1}` : 'No milestone'}${g.current ? ' · <strong>current</strong>' : ''}</p>`
       + `<p class="ps-card-n" id="card-${esc(g.slug)}"><a href="#${esc(g.slug)}">${esc(g.name)}</a></p>`
@@ -117,7 +125,7 @@ function cards(groups: Group[], when: string, builtAt?: string): string {
 function ledger(groups: Group[], when: string): string {
   const head = '<thead><tr class="ps-groups">'
     + '<th scope="col" rowspan="2">Milestone / area</th>'
-    + `<th scope="colgroup" colspan="7">Requirements ${tag('build-time', 'build')}</th>`
+    + `<th scope="colgroup" colspan="${REQ_COLS}">Requirements ${tag('build-time', 'build')}</th>`
     + `<th scope="colgroup" colspan="4">ADRs ${tag('build-time', 'build')}</th>`
     + `<th scope="colgroup" colspan="4">Issues ${tag('live', 'live')}<span class="ps-asof">${esc(when)}</span></th>`
     + '</tr><tr>'
@@ -128,6 +136,8 @@ function ledger(groups: Group[], when: string): string {
     + '<th scope="col" title="status: done, set by hand in the pull request that adds the passing tests">Done</th>'
     + '<th scope="col" title="status: out-of-scope, a boundary kept as a refusal">Out of scope</th>'
     + '<th scope="col" title="Has a verification other than manual review">Auto-verifiable</th>'
+    + '<th scope="col" title="status: done or partial, and a test that carries verifies: REQ-id (or an attestation) exists for it">Evidence-backed</th>'
+    + '<th scope="col" title="The record names no milestone, so its issues placed it here">Inferred</th>'
     + '<th scope="col" class="ps-first" title="Every decision record, in the group of its proposal issue">Records</th>'
     + '<th scope="col">Accepted</th>'
     + '<th scope="col">Proposed</th>'
@@ -147,7 +157,7 @@ function ledger(groups: Group[], when: string): string {
       + '</tr>';
     const areas = g.areas.map((a) => `<tr class="ps-area-row"><th scope="row"><a href="/requirements/${esc(a.code.toLowerCase())}/">${esc(a.code)}</a></th>`
       + reqCells(a.counts)
-      + Array.from({ length: COLS - 7 }, (_, k) => `<td class="${cls('ps-num', 'ps-zero', [0, 4].includes(k) && 'ps-first')}">—</td>`).join('')
+      + Array.from({ length: COLS - REQ_COLS }, (_, k) => `<td class="${cls('ps-num', 'ps-zero', [0, 4].includes(k) && 'ps-first')}">—</td>`).join('')
       + '</tr>');
     return `<tbody class="${cls('ps-group', g.current && 'ps-current', !g.milestone && 'ps-none-group')}" data-group="${esc(g.name)}">${row}${areas.join('')}</tbody>`;
   });
@@ -160,9 +170,9 @@ function ledger(groups: Group[], when: string): string {
     + '</tr></tfoot>';
   return '<div class="ps-wrap" tabindex="0" role="region" aria-labelledby="ps-caption"><table class="ps-table">'
     + `<caption id="ps-caption">Status by milestone and requirement area: requirements and ADRs from the build, issues ${esc(when)}</caption>`
-    + '<colgroup><col class="ps-col-name" /></colgroup><colgroup span="7" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup>'
+    + `<colgroup><col class="ps-col-name" /></colgroup><colgroup span="${REQ_COLS}" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup><colgroup span="4" class="ps-cg"></colgroup>`
     + head + bodies.join('') + total + '</table></div>'
-    + '<p class="ps-note">Each decision record is counted once, under the milestone of its proposal issue, and each live requirement once, under the earliest milestone of its issues; what has no milestone is under Unassigned, so the milestones add up to the Total row. Area rows count requirements only; issues are counted per milestone.</p>';
+    + '<p class="ps-note">Each decision record is counted once, under the milestone of its proposal issue, and each live requirement once, under the milestone it names (<code>milestone:</code>), or, when it names none, under the earliest milestone of its issues, and that count is in the Inferred column; what has no milestone is under Unassigned, so the milestones add up to the Total row. Area rows count requirements only; issues are counted per milestone.</p>';
 }
 
 function checks(input: BodyInput): string {

@@ -72,15 +72,15 @@ Add `issues:` with the numbers of the issues that deliver the requirement, for e
 `done` means the behaviour exists and its tests pass. Nobody sets it for a plan or an intention, and a new record is never `done`.
 
 - **Who.** The author of the pull request that adds the passing test sets it, by hand, in that pull request. The reviewer confirms that the named test proves the clause. There is no automatic promotion.
-- **How.** Change `status` to `done` and add `tests:` with the repository paths of the files that hold the passing tests, for example `tests: [core/authn/authorize_test.go]`. A test case names its id (`REQ-AUTHN-002/plain_method`, see the README), so the file carries the id of the record. Drop `features` and `decisions` that no longer apply; `issues` stays, because the status page places the record by the milestone of its issues.
-- **What CI checks.** A `done` record has `tests`, every path names an existing file inside the repository, and the file contains the record's id; anything else fails. The check proves that the evidence is present; the reviewer judges whether it proves the clause, and the test's own CI run proves that it passes.
+- **How.** Change `status` to `done` and tag the passing test with the record's id: `// verifies: REQ-AUTHN-002` in the comment directly above the test function (Rust: `/// verifies: REQ-AUTHN-002` above `#[test]`), or a Go sub-test named `REQ-AUTHN-002/case` (see "How a test names a requirement" in the README). A manual verification takes an entry in `docs/requirements/attestations.yaml` instead. `tests:` with the repository paths of the test files is optional. Drop `features` and `decisions` that no longer apply; `issues` stays, as the work that delivered the record, and the record's `milestone` stays too.
+- **What CI checks.** A `done` record has evidence: a tagged test the collector finds, or an attestation; anything else fails. A tag that names an unknown id fails, and evidence on a `planned`, `open` or `withdrawn` record is a warning that names the record. The check proves that the evidence is present; the reviewer judges whether it proves the clause, and the test's own CI run proves that it passes.
 - **Undoing.** When the tests are removed or the behaviour is dropped, the pull request that does it moves the record back (`planned` or `partial`) or withdraws it. A `done` record whose test file is deleted fails the check.
 
-The [status page](/status/) counts `done` records in its Done column, per milestone and per area.
+The [status page](/status/) counts `done` records in its Done column, and the records with evidence beside them as evidence-backed, per milestone and per area. A record sits under its `milestone`; one without it is placed by its issues and counted as inferred.
 
 ### Checking the catalogue
 
-`just check-requirements` checks the schema, one keyword per statement, unique ids, a verification for every MUST, the tests of every `done` record, known standards, and content that must not be public. `just site-lint` runs it too. Run it, then `just check`, before you push.
+`just check-requirements` checks the schema, one keyword per statement, unique ids, a verification for every MUST, the milestone and the evidence of every record, known standards, and content that must not be public. `just site-lint` runs it too. Run it, then `just check`, before you push.
 
 ## Spikes and research
 

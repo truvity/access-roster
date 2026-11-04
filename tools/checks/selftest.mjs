@@ -45,7 +45,7 @@ function fixture(files, commits = []) {
 function expect(name, check, files, want, { env = {}, has = [], lacks = [], commits = [], script = join(here, `${check}.mjs`), target = '', args = [] } = {}) {
   cases++;
   const dir = fixture(files, commits);
-  const res = spawnSync(process.execPath, [script, ...args, join(dir, target)], {
+  const res = spawnSync(process.execPath, [script, ...args.map((a) => (typeof a === 'function' ? a(dir) : a)), join(dir, target)], {
     encoding: 'utf8',
     env: { ...process.env, PUBLIC_CONTENT_DENYLIST: '', REQUIRE_DENYLIST: '', PR_TITLE: '', PR_BODY: '', BASE: 'base', ...env },
   });
@@ -124,11 +124,11 @@ expect('a renumbering map pointing at no record', 'decisions', adr(renumbered([{
 // built with the real schema and vocabulary, one record, and the files its `tests` may name.
 const reqIndex = readFileSync(join(repo, 'docs/requirements/index.yaml'), 'utf8');
 const vocabulary = /^ {2}vocabulary:\n(?: {4}.*\n)+/m.exec(reqIndex)[0];
-const catalogueFiles = (record, extra = {}) => ({
+const catalogueFiles = (record, extra = {}, verification = '{kind: integration-test, ref: "the example test"}') => ({
   'docs/requirements/requirements.schema.json': readFileSync(join(repo, 'docs/requirements/requirements.schema.json'), 'utf8'),
   'docs/requirements/standards.yaml': 'standards:\n  - {id: ST-01, name: "Example standard", group: "Example", register: false}\n',
-  'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml}\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n`,
-  'docs/requirements/ex.yaml': `schema: 1\narea: EX\nrequirements:\n  - id: REQ-EX-001\n    area: EX\n    statement: "An example MUST do one thing."\n    rationale: "The scratch catalogue needs one record."\n    level: MUST\n    source: design-decision\n    runtimes: all\n    standards: []\n    verification:\n      - {kind: integration-test, ref: "the example test"}\n${record}`,
+  'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml}\n  milestones:\n    first-version: "First working version"\n    backlog: "Backlog"\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n`,
+  'docs/requirements/ex.yaml': `schema: 1\narea: EX\nrequirements:\n  - id: REQ-EX-001\n    area: EX\n    statement: "An example MUST do one thing."\n    rationale: "The scratch catalogue needs one record."\n    level: MUST\n    source: design-decision\n    runtimes: all\n    standards: []\n    verification:\n      - ${verification}\n${record}`,
   ...extra,
 });
 const reqCheck = join(repo, 'site/scripts/check-requirements.mjs');
@@ -137,14 +137,89 @@ const withTests = (...paths) => `    tests:\n${paths.map((t) => `      - ${t}\n`
 const testFile = (text = 'func Test(t *testing.T) { t.Run("REQ-EX-001/case", nil) }\n') => ({ 'tests/example_test.go': text });
 reqExpect('a planned record needs no tests', catalogueFiles('    status: planned\n    features: [design]\n'), 'pass', { has: ['1 requirements'] });
 reqExpect('a done record with an existing test file that names it', catalogueFiles(`    status: done\n${withTests('tests/example_test.go')}`, testFile()), 'pass');
-reqExpect('a done record without tests', catalogueFiles('    status: done\n'), 'fail', { has: ['L18 REQ-EX-001', 'needs tests'] });
+reqExpect('a done record without tests or evidence', catalogueFiles('    status: done\n'), 'fail', { has: ['L21 REQ-EX-001', 'no evidence'] });
 reqExpect('a done record whose test file is missing', catalogueFiles(`    status: done\n${withTests('tests/missing_test.go')}`), 'fail', { has: ['L18 REQ-EX-001', 'tests/missing_test.go is not a file'] });
 reqExpect('a done record whose test path is a directory', catalogueFiles(`    status: done\n${withTests('tests')}`, testFile()), 'fail', { has: ['tests is not a file'] });
-reqExpect('a done record whose test file does not name it', catalogueFiles(`    status: done\n${withTests('tests/example_test.go')}`, testFile('func Test(t *testing.T) {}\n')), 'fail', { has: ['does not name REQ-EX-001'] });
+reqExpect('a done record whose test file does not name it', catalogueFiles(`    status: done\n${withTests('tests/example_test.go')}`, testFile('func Test(t *testing.T) {}\n')), 'fail', { has: ['does not name REQ-EX-001', 'L21 REQ-EX-001'] });
 reqExpect('a done record whose test path leaves the repository', catalogueFiles(`    status: done\n${withTests('../outside_test.go')}`), 'fail', { has: ['L1', 'tests'] });
 reqExpect('an empty tests list', catalogueFiles('    status: done\n    tests: []\n'), 'fail', { has: ['fewer than 1 items'] });
 reqExpect('a planned record that names a missing test file', catalogueFiles(`    status: planned\n    features: [design]\n${withTests('tests/missing_test.go')}`), 'fail', { has: ['tests/missing_test.go is not a file'] });
-const retiredIndex = (withRetired) => ({ 'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml${withRetired ? ', retired: true' : ''}}\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n` });
+// ---- requirements catalogue: the milestone (L20), the evidence of a status (L21), attestations (L22) and the collector.
+// The tags are assembled here so that this file carries no tag of its own.
+const verifies = 'verifies:';
+const goTagged = `// ${verifies} REQ-EX-001\nfunc TestTheExample(t *testing.T) {}\n`;
+const rustTagged = `/// ${verifies} REQ-EX-001\n#[tokio::test]\nasync fn the_example() {}\n`;
+const done = (extra = '') => `    status: done\n${extra}`;
+reqExpect('a done record whose test carries a Go tag', catalogueFiles(done(), testFile(goTagged)), 'pass', { has: ['evidence for 1 requirements'] });
+reqExpect('a done record whose test carries a Rust tag', catalogueFiles(done(), { 'actors/example/tests/it.rs': rustTagged }), 'pass');
+reqExpect('a done record whose test carries a Go sub-test tag', catalogueFiles(done(), testFile()), 'pass');
+reqExpect('a done record whose test only mentions the id', catalogueFiles(done(withTests('tests/example_test.go')), testFile('// REQ-EX-001 is mentioned here\nfunc TestTheExample(t *testing.T) {\n\t// REQ-EX-001\n}\n')), 'fail', { has: ['L21 REQ-EX-001', 'no evidence'] });
+reqExpect('a tag that a blank line cuts off from its test is a mention', catalogueFiles(done(), testFile(`// ${verifies} REQ-EX-001\n\nfunc TestTheExample(t *testing.T) {}\n`)), 'fail', { has: ['no evidence'] });
+reqExpect('a tag above a function that is not a test is a mention', catalogueFiles(done(), testFile(`// ${verifies} REQ-EX-001\nfunc helper(t *testing.T) {}\n`)), 'fail', { has: ['no evidence'] });
+reqExpect('a tag in a source tree that is not scanned', catalogueFiles(done(), { 'docs/example_test.go': goTagged }), 'fail', { has: ['no evidence'] });
+reqExpect('a tag that names an unknown requirement', catalogueFiles('    status: planned\n    features: [design]\n', testFile(goTagged.replace('REQ-EX-001', 'REQ-EX-009'))), 'fail', { has: ['L21 REQ-EX-009', 'no such requirement'] });
+reqExpect('evidence on a planned record is a warning that names it', catalogueFiles('    status: planned\n    features: [design]\n', testFile(goTagged)), 'pass', { has: ['warning: L21 REQ-EX-001', 'set it to done or partial'] });
+reqExpect('evidence on a planned record fails under --strict', catalogueFiles('    status: planned\n    features: [design]\n', testFile(goTagged)), 'fail', { args: ['--strict'], has: ['L21 REQ-EX-001'] });
+reqExpect('evidence on a partial record is fine', catalogueFiles('    status: partial\n    gap: example-gap\n', testFile(goTagged)), 'pass', { lacks: ['warning: L21'] });
+reqExpect('a partial record still needs its gap', catalogueFiles('    status: partial\n', testFile(goTagged)), 'fail', { has: ['L15 REQ-EX-001', 'needs a gap key'] });
+const MANUAL = '{kind: manual, ref: "a reviewer reads the example"}';
+const manualRecord = '    manual_reason: "No tool can read the example for the reader."\n';
+const attestation = (line) => ({ 'docs/requirements/attestations.yaml': `schema: 1\nattestations:\n${line}` });
+const goodAttestation = '  - {req: REQ-EX-001, by: example-maintainer, on: "2026-11-04", checked: "The example page was read end to end against the record."}\n';
+reqExpect('a done manual record with no attestation', catalogueFiles(done(manualRecord), {}, MANUAL), 'fail', { has: ['L21 REQ-EX-001', 'no evidence'] });
+reqExpect('a done manual record with an attestation', catalogueFiles(done(manualRecord), attestation(goodAttestation), MANUAL), 'pass', { has: ['1 attestations'] });
+reqExpect('an attestation for a record with no manual verification', catalogueFiles(done(), { ...testFile(goTagged), ...attestation(goodAttestation) }), 'fail', { has: ['L22', 'no manual verification'] });
+reqExpect('an attestation for an unknown requirement', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('REQ-EX-001', 'REQ-EX-007')), MANUAL), 'fail', { has: ['L22', 'no such requirement'] });
+reqExpect('an attestation that does not say what was checked', catalogueFiles(done(manualRecord), attestation('  - {req: REQ-EX-001, by: example-maintainer, on: "2026-11-04"}\n'), MANUAL), 'fail', { has: ['L1 attestations.yaml', 'missing checked'] });
+reqExpect('an attestation dated in the future', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('2026-11-04', '2999-01-01')), MANUAL), 'fail', { has: ['L22', 'in the future'] });
+reqExpect('an attestation that carries an e-mail address', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('The example page', 'dev@example.com read the page')), MANUAL), 'fail', { has: ['L10', 'e-mail'] });
+
+const WITH_MILESTONE = (slug) => `    status: planned\n    features: [design]\n    milestone: ${slug}\n`;
+reqExpect('a live record without a milestone is a warning while the switch is off', catalogueFiles('    status: planned\n    features: [design]\n'), 'pass', { has: ['warning: L20 1 live requirements have no milestone'] });
+reqExpect('a live record without a milestone fails when the switch is on', catalogueFiles('    status: planned\n    features: [design]\n'), 'fail', { args: ['--require-milestone'], has: ['error: L20 REQ-EX-001', 'needs a milestone'] });
+reqExpect('a record with a declared milestone, the switch on', catalogueFiles(WITH_MILESTONE('first-version')), 'pass', { args: ['--require-milestone'], lacks: ['L20'] });
+reqExpect('a withdrawn record needs no milestone, the switch on', catalogueFiles('    status: withdrawn\n    superseded_by: [REQ-EX-001]\n'), 'pass', { args: ['--require-milestone'] });
+reqExpect('a milestone that index.yaml does not declare', catalogueFiles(WITH_MILESTONE('someday')), 'fail', { has: ['L20 REQ-EX-001', 'milestone someday is not declared'] });
+reqExpect('a milestone in the board option name instead of the slug', catalogueFiles(WITH_MILESTONE('"First working version"')), 'fail', { has: ['L1', 'does not match'] });
+const board = (issueMilestone) => ({ 'board.json': JSON.stringify({ options: ['First working version', 'Backlog'], issues: [{ number: 5, milestone: issueMilestone }] }) });
+const boardArg = ['--board', (dir) => join(dir, 'board.json')];
+const issued = (slug) => `    status: planned\n    issues: [5]\n    milestone: ${slug}\n`;
+reqExpect('a milestone that none of the issues is in is a warning', catalogueFiles(issued('first-version'), board('Backlog')), 'pass', { args: boardArg, has: ['warning: L20 REQ-EX-001', 'none of its issues (#5)'] });
+reqExpect('a milestone that one of the issues is in', catalogueFiles(issued('first-version'), board('First working version')), 'pass', { args: boardArg, lacks: ['none of its issues'] });
+reqExpect('a milestone that none of the issues is in, under --strict', catalogueFiles(issued('first-version'), board('Backlog')), 'fail', { args: ['--strict', ...boardArg], has: ['L20 REQ-EX-001'] });
+reqExpect('no board, no comparison', catalogueFiles(issued('first-version')), 'pass', { env: { GH_TOKEN: '', GITHUB_TOKEN: '' }, has: ['milestones are not compared'] });
+
+// The collector itself: what it finds, and what it leaves alone.
+function collect(name, files, check) {
+  cases++;
+  const dir = fixture(files);
+  const res = spawnSync(process.execPath, [join(repo, 'site/scripts/collect-evidence.mjs'), '--root', dir], { encoding: 'utf8' });
+  const problems = [];
+  let out = null;
+  try { out = JSON.parse(res.stdout); } catch { out = null; }
+  if (check) problems.push(...check(res, out));
+  if (problems.length) { failures++; console.error(`FAIL collect-evidence: ${name}: ${problems.join('; ')}`); } else console.log(`ok   collect-evidence: ${name}`);
+}
+collect('a Go tag, a Rust tag, a sub-test tag are found and an untagged test is not', {
+  'actors/a/a_test.go': `package a\n\n// ${verifies} REQ-EX-001, REQ-EX-002\nfunc TestTagged(t *testing.T) {}\n\nfunc TestUntagged(t *testing.T) {\n\t// REQ-EX-003 is only mentioned\n}\n\nfunc TestTable(t *testing.T) {\n\tt.Run("REQ-EX-004/plain_method", func(t *testing.T) {})\n\tt.Run("a case named REQ-EX-005", func(t *testing.T) {})\n}\n`,
+  'actors/b/tests/b.rs': `/// ${verifies} REQ-EX-006\n/// More text.\n#[test]\nfn rust_tagged() {}\n\n#[test]\nfn rust_untagged() {}\n\n/// ${verifies} REQ-EX-007\nfn not_a_test() {}\n\n#[cfg(test)]\nmod tests {\n    /// ${verifies} REQ-EX-008\n    #[tokio::test(flavor = "multi_thread")]\n    #[ignore]\n    async fn nested() {}\n}\n`,
+  'docs/c_test.go': `// ${verifies} REQ-EX-009\nfunc TestOutside(t *testing.T) {}\n`,
+  'actors/d/testdata/d_test.go': `// ${verifies} REQ-EX-010\nfunc TestFixture(t *testing.T) {}\n`,
+}, (res, out) => {
+  const p = [];
+  if (!out) return [`no JSON: ${res.stderr}`];
+  const got = Object.keys(out.evidence).sort().join(' ');
+  if (got !== 'REQ-EX-001 REQ-EX-002 REQ-EX-004 REQ-EX-006 REQ-EX-008') p.push(`found ${got}`);
+  const at = (id) => out.evidence[id]?.[0];
+  if (at('REQ-EX-001')?.file !== 'actors/a/a_test.go' || at('REQ-EX-001')?.line !== 4 || at('REQ-EX-001')?.test !== 'TestTagged') p.push(`REQ-EX-001 at ${JSON.stringify(at('REQ-EX-001'))}`);
+  if (at('REQ-EX-004')?.test !== 'TestTable/REQ-EX-004/plain_method' || at('REQ-EX-004')?.line !== 11) p.push(`REQ-EX-004 at ${JSON.stringify(at('REQ-EX-004'))}`);
+  if (at('REQ-EX-006')?.test !== 'rust_tagged' || at('REQ-EX-006')?.line !== 4) p.push(`REQ-EX-006 at ${JSON.stringify(at('REQ-EX-006'))}`);
+  if (at('REQ-EX-008')?.test !== 'nested') p.push(`REQ-EX-008 at ${JSON.stringify(at('REQ-EX-008'))}`);
+  return p;
+});
+collect('a tree with no test file is an empty sweep', { 'README.md': 'x\n' }, (res, out) => (res.status === 1 && out === null && /empty sweep/.test(res.stderr) ? [] : [`exit ${res.status}`]));
+
+const retiredIndex = (withRetired) => ({ 'docs/requirements/index.yaml': `schema: 1\ncatalogue:\n  title: "example"\n  checked: "2026-10-31"\n${vocabulary}  areas:\n    EX: {title: "Example area", file: ex.yaml${withRetired ? ', retired: true' : ''}}\n  milestones:\n    first-version: "First working version"\n    backlog: "Backlog"\n  gaps:\n    example-gap: "A gap that the scratch catalogue declares."\n` });
 reqExpect('a retired area whose record is live', catalogueFiles('    status: planned\n    features: [design]\n', retiredIndex(true)), 'fail', { has: ['L19 area EX', 'REQ-EX-001'] });
 reqExpect('a retired area whose only record is withdrawn', catalogueFiles('    status: withdrawn\n    superseded_by: [REQ-EX-001]\n', retiredIndex(true)), 'pass');
 reqExpect('an area that is not retired may hold a live record', catalogueFiles('    status: planned\n    features: [design]\n', retiredIndex(false)), 'pass');
