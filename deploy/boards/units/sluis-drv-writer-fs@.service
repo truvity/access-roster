@@ -31,6 +31,7 @@ ProtectClock=yes
 ProtectHostname=yes
 ProtectProc=invisible
 ProcSubset=pid
+RestrictSUIDSGID=yes
 RestrictRealtime=yes
 RestrictNamespaces=yes
 LockPersonality=yes

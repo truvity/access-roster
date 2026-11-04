@@ -15,6 +15,11 @@
 //! - A file is opened with `O_NONBLOCK`, so that a FIFO in the directory cannot hang the open
 //!   (and the worker thread with it), and anything that is not a regular file is refused.
 //! - A symlink is refused in the path and as the file: a credential is a plain file.
+//! - The file is opened with `openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)`. Where that answers
+//!   `ENOSYS` (systemd's `RestrictSUIDSGID=yes` makes its seccomp filter do so, and so does a
+//!   kernel older than 5.6) and only then, the name is opened with `openat(O_NOFOLLOW)` instead:
+//!   a name is one component, so the two refuse the same things, and the owner, mode and type
+//!   checks are made on the open descriptor either way.
 //! - The capability is `NONE`: a credential cannot change under a running service.
 
 pub mod service;
@@ -110,15 +115,10 @@ impl Dir {
         if !valid_name(name) {
             return Err(Error::Name);
         }
-        let fd = rustix::fs::openat2(
-            &*self.root,
-            name,
-            // NONBLOCK: the open of a FIFO returns at once, and `is_file` below refuses it.
-            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK | OFlags::NOFOLLOW,
-            Mode::empty(),
-            ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS,
-        )
-        .map_err(|e| match e {
+        // NONBLOCK: the open of a FIFO returns at once, and `is_file` below refuses it.
+        let flags =
+            OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK | OFlags::NOFOLLOW;
+        let fd = open_beneath(&self.root, name, flags).map_err(|e| match e {
             Errno::NOENT => Error::Absent,
             // ELOOP: a symlink, which a credential is not.
             Errno::LOOP | Errno::XDEV => Error::Bound,
@@ -150,6 +150,52 @@ impl Dir {
     }
 }
 
+/// Opens the one-component `name` below `parent` and follows no symlink: `openat2` where the system
+/// has it, [`open_name`] where it answers `ENOSYS` and for no other error.
+fn open_beneath(parent: &OwnedFd, name: &str, flags: OFlags) -> Result<OwnedFd, Errno> {
+    let first = {
+        #[cfg(test)]
+        let refused = tests::OPENAT2_REFUSED.get();
+        #[cfg(not(test))]
+        let refused = false;
+        if refused {
+            // The seccomp filter's answer, for the tests of the fallback.
+            Err(Errno::NOSYS)
+        } else {
+            rustix::fs::openat2(
+                parent,
+                name,
+                flags,
+                Mode::empty(),
+                ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS,
+            )
+        }
+    };
+    or_fallback(first, || open_name(parent, name, flags))
+}
+
+/// `first`, unless it is `ENOSYS`: only then is `fallback` tried. An `EPERM`, an `ELOOP` or any
+/// other error is the answer and must not be asked again by another road.
+fn or_fallback<T>(
+    first: Result<T, Errno>,
+    fallback: impl FnOnce() -> Result<T, Errno>,
+) -> Result<T, Errno> {
+    match first {
+        Err(Errno::NOSYS) => fallback(),
+        other => other,
+    }
+}
+
+/// What the `openat2` above does for a name of one component, with `openat` only. `O_NOFOLLOW`
+/// refuses a symlink as the file (`ELOOP`); a `/`, `.` or `..` is refused (`EXDEV`) before any
+/// open, so the open cannot leave `parent`.
+fn open_name(parent: &OwnedFd, name: &str, flags: OFlags) -> Result<OwnedFd, Errno> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') {
+        return Err(Errno::XDEV);
+    }
+    rustix::fs::openat(parent, name, flags | OFlags::NOFOLLOW, Mode::empty())
+}
+
 /// The uid this process runs as: the owner a directory and a credential must have.
 fn own_uid() -> u32 {
     rustix::process::geteuid().as_raw()
@@ -179,7 +225,23 @@ pub fn valid_name(name: &str) -> bool {
 #[allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
 mod tests {
     use super::*;
+    use std::cell::Cell;
     use std::os::unix::fs::PermissionsExt as _;
+
+    thread_local! {
+        /// Set, `openat2` answers `ENOSYS` on this thread, as it does under `RestrictSUIDSGID=yes`.
+        pub(super) static OPENAT2_REFUSED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Runs `body` once with `openat2` as the system has it and once with `ENOSYS` answered, so
+    /// each case holds on both roads.
+    fn both(body: impl Fn()) {
+        for refused in [false, true] {
+            OPENAT2_REFUSED.set(refused);
+            body();
+        }
+        OPENAT2_REFUSED.set(false);
+    }
 
     /// A directory the driver takes whatever the umask is.
     fn closed_dir() -> tempfile::TempDir {
@@ -219,20 +281,22 @@ mod tests {
 
     #[test]
     fn a_file_that_is_open_to_group_or_others_is_refused_and_a_closed_one_is_read() {
-        let t = closed_dir();
-        let p = t.path().join("c");
-        std::fs::write(&p, b"v").unwrap();
-        let dir = Dir::open(t.path()).unwrap();
-        for (m, ok) in [
-            (0o400, true),
-            (0o600, true),
-            (0o440, false),
-            (0o404, false),
-            (0o660, false),
-        ] {
-            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(m)).unwrap();
-            assert_eq!(dir.read("c").is_ok(), ok, "{m:o}");
-        }
+        both(|| {
+            let t = closed_dir();
+            let p = t.path().join("c");
+            std::fs::write(&p, b"v").unwrap();
+            let dir = Dir::open(t.path()).unwrap();
+            for (m, ok) in [
+                (0o400, true),
+                (0o600, true),
+                (0o440, false),
+                (0o404, false),
+                (0o660, false),
+            ] {
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(m)).unwrap();
+                assert_eq!(dir.read("c").is_ok(), ok, "{m:o}");
+            }
+        });
     }
 
     #[test]
@@ -258,23 +322,96 @@ mod tests {
 
     #[test]
     fn a_fifo_is_refused_at_once_and_does_not_hang_the_open() {
+        // The seam is per thread: set it in the thread that opens.
+        for refused in [false, true] {
+            let t = closed_dir();
+            let p = t.path().join("pipe");
+            rustix::fs::mknodat(
+                rustix::fs::CWD,
+                &p,
+                rustix::fs::FileType::Fifo,
+                Mode::from_raw_mode(0o600),
+                0,
+            )
+            .unwrap();
+            let dir = Dir::open(t.path()).unwrap();
+            // A blocking open of a FIFO with no writer never returns; run it aside to bound the wait.
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                OPENAT2_REFUSED.set(refused);
+                tx.send(dir.read("pipe").err().map(|e| e.to_string()))
+            });
+            let got = rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("the open of a FIFO hung");
+            assert_eq!(got.as_deref(), Some("bound"), "openat2 refused: {refused}");
+        }
+    }
+
+    #[test]
+    fn a_symlink_as_the_file_is_refused_on_both_roads_and_its_target_is_not_read() {
+        both(|| {
+            let t = closed_dir();
+            let real = t.path().join("real");
+            std::fs::write(&real, b"v").unwrap();
+            std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o600)).unwrap();
+            std::os::unix::fs::symlink("real", t.path().join("inside")).unwrap();
+            let out = tempfile::tempdir().unwrap();
+            let outside = out.path().join("secret");
+            std::fs::write(&outside, b"s").unwrap();
+            std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o600)).unwrap();
+            std::os::unix::fs::symlink(&outside, t.path().join("escape")).unwrap();
+            std::os::unix::fs::symlink("../x", t.path().join("up")).unwrap();
+            let dir = Dir::open(t.path()).unwrap();
+            assert!(dir.read("real").is_ok());
+            for n in ["inside", "escape", "up"] {
+                assert_eq!(
+                    dir.read(n).err().map(|e| e.to_string()).as_deref(),
+                    Some("bound"),
+                    "{n}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn a_name_that_is_not_one_component_is_refused_by_the_name_rule_and_by_the_fallback() {
+        both(|| {
+            let t = closed_dir();
+            let dir = Dir::open(t.path()).unwrap();
+            for n in ["..", "../x", "/etc/passwd", "a/b", ".hidden", ""] {
+                assert_eq!(
+                    dir.read(n).err().map(|e| e.to_string()).as_deref(),
+                    Some("name"),
+                    "{n:?}"
+                );
+            }
+        });
+        // The fallback alone, past the name rule.
         let t = closed_dir();
-        let p = t.path().join("pipe");
-        rustix::fs::mknodat(
-            rustix::fs::CWD,
-            &p,
-            rustix::fs::FileType::Fifo,
-            Mode::from_raw_mode(0o600),
-            0,
-        )
-        .unwrap();
         let dir = Dir::open(t.path()).unwrap();
-        // A blocking open of a FIFO with no writer never returns; run it aside to bound the wait.
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || tx.send(dir.read("pipe").err().map(|e| e.to_string())));
-        let got = rx
-            .recv_timeout(std::time::Duration::from_secs(10))
-            .expect("the open of a FIFO hung");
-        assert_eq!(got.as_deref(), Some("bound"));
+        for n in ["", ".", "..", "../x", "/etc/passwd", "a/b"] {
+            let e = open_name(&dir.root, n, OFlags::RDONLY).err();
+            assert_eq!(e, Some(Errno::XDEV), "{n:?}");
+        }
+    }
+
+    #[test]
+    fn only_enosys_asks_for_the_fallback() {
+        for (first, want_asked) in [
+            (Err(Errno::NOSYS), 1),
+            (Err(Errno::PERM), 0),
+            (Err(Errno::LOOP), 0),
+            (Err(Errno::XDEV), 0),
+            (Err(Errno::NOENT), 0),
+            (Ok(1), 0),
+        ] {
+            let mut asked = 0;
+            let _ = or_fallback(first, || {
+                asked += 1;
+                Ok(2)
+            });
+            assert_eq!(asked, want_asked, "{first:?}");
+        }
     }
 }
