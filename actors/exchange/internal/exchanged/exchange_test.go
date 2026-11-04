@@ -219,13 +219,69 @@ func TestAnUnknownAudienceAndARefusedAudienceAreTheSameAnswer(t *testing.T) {
 	if strings.Join(reasons, ",") != "audience,policy,audience,resource" {
 		t.Errorf("audit reasons = %v", reasons)
 	}
-	// An unknown audience never reaches policy or signer.
-	if n := len(e.policy.requests()); n != 1 {
-		t.Errorf("policy asked %d times, want 1 (the refused one)", n)
+	// An unknown audience takes the path of a known one: policy is asked (about a stand-in client, and its answer is
+	// not used), so the calls are the same. Neither reaches signer.
+	reqs := e.policy.requests()
+	if len(reqs) != 3 {
+		t.Fatalf("policy asked %d times, want 3 (unknown, refused, malformed)", len(reqs))
+	}
+	if reqs[0].GetClient().GetId() != "unknown-audience" || reqs[1].GetClient().GetId() != "example-app" || reqs[2].GetClient().GetId() != "unknown-audience" {
+		t.Errorf("policy was asked about %q, %q, %q", reqs[0].GetClient().GetId(), reqs[1].GetClient().GetId(), reqs[2].GetClient().GetId())
 	}
 	if n := len(e.signer.requests()); n != 0 {
 		t.Errorf("signer signed %d tokens for refused exchanges", n)
 	}
+}
+
+// answer is what a caller sees of a call: the reply, or the Connect error.
+func (e *env) answer(r *exchangev2alpha1.TokenExchangeRequest) string {
+	e.t.Helper()
+	res, err := e.client.Token(context.Background(), connect.NewRequest(r))
+	if err != nil {
+		reason, _ := refusal.Reason(err)
+		return "error " + connect.CodeOf(err).String() + " " + reason
+	}
+	b, _ := json.Marshal(res.Msg.GetHeaders())
+	return string(res.Msg.GetBody()) + string(b)
+}
+
+// With a valid subject token, a caller meets the same answer whatever audience it names, unless the audience itself
+// is what is refused (REQ-EXCH-003): a known and an unknown audience differ only in the final invalid_target.
+func TestEveryRefusalThatDoesNotDependOnTheAudienceIsTheSameForAKnownAndAnUnknownAudience(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		setup func(*env)
+	}{
+		{"the directory is unbound", func(e *env) { e.dir.err = exchanged.ErrUnbound }},
+		{"the directory is down", func(e *env) { e.dir.err = context.DeadlineExceeded }},
+		{"the session has ended", func(e *env) { e.dir.err = exchanged.ErrSessionEnded }},
+		{"nobody has this subject", func(e *env) { e.dir.err = exchanged.ErrUnknownPerson }},
+		{"policy is down", func(e *env) {
+			e.policy.decide = func(*policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
+				return nil, refusal.New(connect.CodeUnavailable, "key", "")
+			}
+		}},
+		{"policy denies", func(e *env) {
+			e.policy.decide = func(*policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
+				return &policyv2alpha1.DecideResponse{Decision: policyv2alpha1.Decision_DENY, DecisionId: "0192a000-0000-7000-8000-000000000005"}, nil
+			}
+		}},
+		{"the store is down", func(e *env) { e.store.fail = true }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newEnv(t, envOptions{})
+			subject := e.mint(subjectClaims(nil))
+			c.setup(e)
+			known := e.answer(request(subject))
+			unknownReq := request(subject)
+			unknownReq.Audience = "no-such-app"
+			unknown := e.answer(unknownReq)
+			if known != unknown {
+				t.Errorf("a known audience answers %s, an unknown one %s", known, unknown)
+			}
+		})
+	}
+
 }
 
 func TestEveryExchangeAndEveryRefusalIsAudited(t *testing.T) {
@@ -359,6 +415,10 @@ func TestASubjectTokenThatIsNotAcceptableIsInvalidRequest(t *testing.T) {
 		{"no client_id", e.mint(subjectClaims(map[string]any{"client_id": nil})), "claims"},
 		// An exchanged token names another audience than its client; it may not be exchanged again.
 		{"an exchanged token", e.mint(subjectClaims(map[string]any{"aud": "example-app"})), "claims"},
+		// Until the exchange can authenticate a client, only a native public client is a subject (REQ-EXCH-007).
+		{"a confidential relying party's own sign-in token", e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"})), "client_kind"},
+		{"a browser client's token", e.mint(subjectClaims(map[string]any{"aud": "browser-app", "client_id": "browser-app"})), "client_kind"},
+		{"a machine client's token", e.mint(subjectClaims(map[string]any{"aud": "machine-app", "client_id": "machine-app"})), "client_kind"},
 		{"a client nobody registered", e.mint(subjectClaims(map[string]any{"aud": "ghost", "client_id": "ghost"})), "client"},
 	}
 	for _, c := range cases {
@@ -382,6 +442,22 @@ func tamper(token string) string {
 	payload = []byte(strings.Replace(string(payload), `"sid":"sid-1"`, `"sid":"sid-2"`, 1))
 	parts[1] = base64.RawURLEncoding.EncodeToString(payload)
 	return strings.Join(parts, ".")
+}
+
+func TestANativePublicClientsTokenMayBeExchanged(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	for _, client := range []string{"sluis-cli", "native-app"} { // no profile, and the profile native
+		r := e.exchange(request(e.mint(subjectClaims(map[string]any{"aud": client, "client_id": client}))))
+		if r.GetStatus() != 200 {
+			t.Errorf("%s: %s", client, r.GetBody())
+		}
+	}
+	// The relying party's own sign-in token is refused before policy, signer or the directory.
+	n := len(e.policy.requests())
+	failure(t, e.exchange(request(e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"})))), "invalid_request")
+	if len(e.policy.requests()) != n {
+		t.Error("a relying party's token reached policy")
+	}
 }
 
 func TestThePersonOfTheTokenIsLookedUpAndAnEndedSessionIsRefused(t *testing.T) {

@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	exchangev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/exchange/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/exchange/v2alpha1/exchangev2alpha1connect"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
@@ -26,6 +27,10 @@ import (
 
 // Actor is the registry name of this actor.
 const Actor = "exchange"
+
+// unknownAudience is the client id policy is asked about when the audience is not a client. It is a valid id that no
+// client may have: ValidateID accepts it, and config declares no client of this name.
+const unknownAudience = "unknown-audience"
 
 // maxField bounds a parameter of the request (the audience is a client id, at most 128 characters).
 const maxField = 128
@@ -156,15 +161,8 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 		return nil, invalidRequest(reasonClient)
 	}
 
-	// An unknown audience is the answer of a refused one (REQ-EXCH-003). The client is the audience's declaration.
-	client, err := s.opts.Config.Client(ctx, r.GetAudience())
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return nil, invalidTarget(reasonAudience)
-	case err != nil:
-		return nil, unavailable("store", err)
-	}
-
+	// Everything that does not depend on the audience is checked first, so that a caller with a valid subject token
+	// meets the same refusal, outage or answer whatever audience it names (REQ-EXCH-003).
 	person, err := s.opts.Directory.Person(ctx, tenant.ID, subject)
 	switch {
 	case errors.Is(err, ErrUnknownPerson):
@@ -175,10 +173,31 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 		return nil, unavailable("directory", err)
 	}
 	a.person = &person
+	if _, _, ok := lifetime(s.now(), accessLife, 0, subject.Exp); !ok {
+		return nil, invalidRequest(reasonLifetime)
+	}
 
-	verdict, err := s.decide(ctx, tenant, r.GetAudience(), client.GetRequires(), client.GetKind(), subject, &person)
+	// An unknown audience takes the path of a known one: policy is asked about a stand-in client, so the calls and
+	// the time are the same, and its answer is not used. Every refusal that depends on the audience is the one
+	// invalid_target.
+	client, err := s.opts.Config.Client(ctx, r.GetAudience())
+	known := err == nil
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		client = &configv2alpha1.InstallationClient{Id: unknownAudience, Kind: "public"}
+	case err != nil:
+		return nil, unavailable("store", err)
+	}
+	audience := client.GetId()
+	if known {
+		audience = r.GetAudience()
+	}
+	verdict, err := s.decide(ctx, tenant, audience, client.GetRequires(), client.GetKind(), subject, &person)
 	if err != nil {
 		return nil, err
+	}
+	if !known {
+		return nil, invalidTarget(reasonAudience)
 	}
 	a.decision = &decision{
 		id: verdict.GetDecisionId(), digest: verdict.GetDigest(), allowed: verdict.GetDecision() == policyv2alpha1.Decision_ALLOW,
@@ -193,7 +212,8 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	now := s.now()
 	iat, exp, ok := lifetime(now, accessLife, client.GetTtlCap().AsDuration(), subject.Exp)
 	if !ok {
-		return nil, invalidRequest(reasonLifetime)
+		// Only a client's ttl_cap of under a second gets here; it is the audience's refusal.
+		return nil, invalidTarget(reasonLifetime)
 	}
 	sub, err := s.subjectOf(ctx, tenant, person.ID, verdict.GetSealedGrant())
 	if err != nil {

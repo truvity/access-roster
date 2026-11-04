@@ -167,13 +167,27 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 		// be exchanged again: an exchange only narrows (REQ-EXCH-004).
 		return nil, invalidRequest(reasonClaims)
 	}
-	if _, err := v.cfg.Client(ctx, s.ClientID); err != nil {
+	c, err := v.cfg.Client(ctx, s.ClientID)
+	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return nil, invalidRequest(reasonClient)
 		}
 		return nil, unavailable("store", err)
 	}
+	if !mayBeExchanged(c) {
+		return nil, invalidRequest(reasonClientKind)
+	}
 	return s, nil
+}
+
+// mayBeExchanged says whether a token issued to the client may be the subject of an exchange. The exchange contract
+// has no client authentication yet, so the subject token is the whole proof, and a relying party's own sign-in token
+// would let that relying party mint a token for any audience. Until it has one, only the native public client that a
+// person runs on their own machine (0021: the profile `native`, as the installation's CLI) is a subject. A
+// confidential client, a machine client and a browser client are not.
+// planned: exchange grants for relying parties, with client authentication on the exchange (REQ-EXCH-001, -007, -011)
+func mayBeExchanged(c *configv2alpha1.InstallationClient) bool {
+	return c.GetKind() == "public" && (c.GetProfile() == "native" || c.GetProfile() == "")
 }
 
 // verifyTrusted checks a token of an issuer that ExchangeTrust names: the keys are the issuer's published ones, the

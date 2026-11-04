@@ -445,6 +445,9 @@ func newEnv(t *testing.T, o envOptions) *env {
 		app.TtlCap = durationpb.New(o.clientCap)
 	}
 	st.put("installation-client", "example-app", app)
+	st.put("installation-client", "browser-app", &configv2alpha1.InstallationClient{Id: "browser-app", Kind: "public", Profile: "browser"})
+	st.put("installation-client", "native-app", &configv2alpha1.InstallationClient{Id: "native-app", Kind: "public", Profile: "native"})
+	st.put("installation-client", "machine-app", &configv2alpha1.InstallationClient{Id: "machine-app", Kind: "exchange"})
 	if o.lifetime > 0 {
 		st.put("token-lifetime", "default", &configv2alpha1.TokenLifetime{AccessToken: durationpb.New(o.lifetime)})
 	}

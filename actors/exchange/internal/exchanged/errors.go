@@ -22,6 +22,7 @@ const (
 	reasonScope         = "scope"
 	reasonAudience      = "audience"
 	reasonClient        = "client"
+	reasonClientKind    = "client_kind"
 	reasonIssuer        = "issuer"
 	reasonSignature     = "signature"
 	reasonClaims        = "claims"
