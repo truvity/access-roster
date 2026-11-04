@@ -57,6 +57,7 @@ services:
       - run-store:/v/run-store
       - state-blob:/v/state-blob
       - state-index:/v/state-index
+      - state-key:/v/state-key
       - state-key-software:/v/state-key-software
       - state-spool:/v/state-spool
       - vkeys:/v/vkeys
@@ -559,7 +560,7 @@ services:
       dockerfile: ../../../deploy/local/Dockerfile
       args:
         BINARY: actors/key
-    command: ["serve", "--boundary", "dev", "--bootstrap", "/etc/sluis/bootstrap.d/dev.yaml", "--run-dir", "/run/sluis/key/dev", "--store-socket", "/run/sluis/store/dev.sock", "--driver-socket", "/run/sluis/key/dev/driver/key-store.sock", "--transport-socket", "/run/sluis/audit/dev/emit.sock", "--node", "node-1"]
+    command: ["serve", "--boundary", "dev", "--bootstrap", "/etc/sluis/bootstrap.d/dev.yaml", "--state-dir", "/var/lib/sluis-state/dev/key", "--run-dir", "/run/sluis/key/dev", "--store-socket", "/run/sluis/store/dev.sock", "--driver-socket", "/run/sluis/key/dev/driver/key-store.sock", "--transport-socket", "/run/sluis/audit/dev/emit.sock", "--node", "node-1"]
     user: "61014:61014"
     group_add:
       - "61012"
@@ -591,12 +592,13 @@ services:
       - run-store:/run/sluis/store:ro
       - audit:/run/sluis/audit/dev:ro
       - bootstrap:/etc/sluis/bootstrap.d:ro
+      - state-key:/var/lib/sluis-state/dev/key
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     tmpfs: ["/tmp"]
     healthcheck:
-      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--bootstrap", "/etc/sluis/bootstrap.d/dev.yaml", "--run-dir", "/run/sluis/key/dev", "--store-socket", "/run/sluis/store/dev.sock", "--driver-socket", "/run/sluis/key/dev/driver/key-store.sock", "--transport-socket", "/run/sluis/audit/dev/emit.sock", "--node", "node-1"]
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--bootstrap", "/etc/sluis/bootstrap.d/dev.yaml", "--state-dir", "/var/lib/sluis-state/dev/key", "--run-dir", "/run/sluis/key/dev", "--store-socket", "/run/sluis/store/dev.sock", "--driver-socket", "/run/sluis/key/dev/driver/key-store.sock", "--transport-socket", "/run/sluis/audit/dev/emit.sock", "--node", "node-1"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -903,6 +905,7 @@ volumes:
   run-store: {}
   state-blob: {}
   state-index: {}
+  state-key: {}
   state-key-software: {}
   state-spool: {}
   vkeys: {}

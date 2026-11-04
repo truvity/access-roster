@@ -453,7 +453,13 @@ func (e *testEnv) putPlan(plan *configv2alpha1.KeyPlan) {
 // sign signs a payload under a key and seq, as a document of the KeyPlan kind.
 func (e *testEnv) sign(kid string, key *ecdsa.PrivateKey, seq uint64, payload []byte) []byte {
 	e.t.Helper()
-	doc, err := signedconfig.Sign(key, kid, seq, payload)
+	return e.signKind(kid, key, seq, keyPlanKind, payload)
+}
+
+// signKind signs a payload as a document that names the kind in its protected header.
+func (e *testEnv) signKind(kid string, key *ecdsa.PrivateKey, seq uint64, kind string, payload []byte) []byte {
+	e.t.Helper()
+	doc, err := signedconfig.Sign(key, kid, seq, kind, payload)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -492,6 +498,8 @@ type nodeOpts struct {
 	transport string // the emit socket, for the check command
 	// unlisted leaves the node's wrapping key out of the KeyPlan, as a node is until a commit lists it.
 	unlisted bool
+	// stateDir is key@'s durable state; empty makes a new one, as a node with a new disk has.
+	stateDir string
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -510,6 +518,9 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	if !o.unlisted {
 		e.list(o.driver.wrappingID())
 	}
+	if o.stateDir == "" {
+		o.stateDir = shortDir(e.t)
+	}
 	runDir := shortDir(e.t)
 	for _, c := range registry.CallersOf("key") {
 		if err := os.Mkdir(filepath.Join(runDir, c), 0o750); err != nil {
@@ -522,7 +533,7 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Bootstrap: e.bootstrap, Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
+		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)

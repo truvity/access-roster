@@ -30,7 +30,7 @@ func TestCommandLine(t *testing.T) {
 		"--boundary", "dev", "--run-dir", filepath.Join(dir, "run"), "--store-socket", filepath.Join(dir, "s.sock"),
 		"--driver-socket", filepath.Join(dir, "d.sock"), "--transport-socket", filepath.Join(dir, "t.sock"), "--node", "node-1",
 		// The bootstrap file of the local installation: key@ reads its publishers block and nothing else.
-		"--bootstrap", "../../tests/installations/local/bootstrap.yaml",
+		"--bootstrap", "../../tests/installations/local/bootstrap.yaml", "--state-dir", filepath.Join(dir, "state"),
 	}
 	if got := run(t, append([]string{"serve", "--boundary", "dev"}, "--node", "node-1")...); got != cli.ExitUsage {
 		t.Errorf("serve without its flags exits %d, want %d", got, cli.ExitUsage)

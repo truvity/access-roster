@@ -53,6 +53,17 @@ func (s *Sequencer) Admit(v *Verified) (Sequence, error) {
 	return r, nil
 }
 
+// Restore sets the document held, before any is admitted: the highest one a previous process saw, which the caller kept
+// in durable state of its own. A process that restores one refuses an older document after a restart, which a process
+// that restores none cannot (ADR 0005, "Freshness at a cold start"). It does nothing once a document is held.
+func (s *Sequencer) Restore(seq uint64, digest [48]byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.held {
+		s.held, s.seq, s.digest = true, seq, digest
+	}
+}
+
 // Held returns the seq of the highest document seen, and whether there is one.
 func (s *Sequencer) Held() (uint64, bool) {
 	s.mu.Lock()

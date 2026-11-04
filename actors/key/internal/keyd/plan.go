@@ -44,10 +44,10 @@ type verifiedPlan struct {
 // that one, audits the refusal once, and logs it; if it holds none (a start), the refusal is the error, so key@ does
 // not start. A store@ that does not answer is "unavailable", as for every read: that is no verdict on the document.
 //
-// What this guards, and what it does not: the sequence is held in memory, so within one process an older document
-// never comes back. A process that starts takes the latest validly signed document the store gives it, as store@ does
-// (ADR 0005, "Freshness at a cold start"): a compromised store@ can serve a validly signed older KeyPlan to a key@
-// that has just started. It cannot sign a new one.
+// What this guards, and what it does not: the highest seq is held in memory and saved in key@'s state directory
+// (plan_state.go), so an older document never comes back, in a process or after a restart on a node that has its
+// state. A node with none takes the latest validly signed document the store gives it, as store@ does (ADR 0005,
+// "Freshness at a cold start"): a compromised store@ can serve it a validly signed older KeyPlan. It cannot sign a new one.
 func (s *Server) keyPlan(ctx context.Context) (*configv2alpha1.KeyPlan, error) {
 	s.planMu.Lock()
 	defer s.planMu.Unlock()
@@ -79,8 +79,13 @@ func (s *Server) verify(doc []byte) (*verifiedPlan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("step 6: %w", err)
 	}
-	sum := sha512.Sum384(v.Payload)
-	s.planLast = &verifiedPlan{plan: plan, seq: v.Seq, sha384: hex.EncodeToString(sum[:])}
+	// The mark is saved before the plan is used: a plan whose mark cannot be saved would be forgotten by a restart.
+	if s.saveMark {
+		if err := s.writeMark(planMark{seq: v.Seq, sha384: v.Digest}); err != nil {
+			return nil, errors.New("the KeyPlan mark cannot be saved")
+		}
+	}
+	s.planLast = &verifiedPlan{plan: plan, seq: v.Seq, sha384: hex.EncodeToString(v.Digest[:])}
 	return s.planLast, nil
 }
 

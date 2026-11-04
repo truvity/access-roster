@@ -78,6 +78,10 @@ func (s *Server) Check(ctx context.Context) error {
 	if err := s.checkRunDir(); err != nil {
 		return err
 	}
+	// The check reads the mark and writes nothing: it refuses what the serving process would.
+	if err := s.restoreMark(false); err != nil {
+		return err
+	}
 	b, plan, err := s.loadConfig(ctx)
 	if err != nil {
 		return err
@@ -112,6 +116,9 @@ func (s *Server) checkTransport(ctx context.Context) error {
 // no start), the floors, the keys of the KeyPlan, and this node's wrapping certificate.
 func (s *Server) Init(ctx context.Context) error {
 	if err := s.checkRunDir(); err != nil {
+		return err
+	}
+	if err := s.restoreMark(true); err != nil {
 		return err
 	}
 	b, plan, err := s.loadConfig(ctx)

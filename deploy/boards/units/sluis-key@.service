@@ -13,10 +13,12 @@ Type=simple
 User=sluis-key-%i
 Group=sluis-key-%i
 SupplementaryGroups=sluis-drv-key-software-%i sluis-drv-writer-spool-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --run-dir /run/sluis/key/%i --store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock --transport-socket /run/sluis/audit/%i/emit.sock --node %H
+ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i --store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock --transport-socket /run/sluis/audit/%i/emit.sock --node %H
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB
+StateDirectory=sluis-state/%i/key
+StateDirectoryMode=0700
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes
