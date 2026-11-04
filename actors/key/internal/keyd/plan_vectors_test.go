@@ -3,6 +3,7 @@
 package keyd
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"slices"
@@ -30,6 +31,16 @@ func TestKeyPlanPayloadVectors(t *testing.T) {
 				Purposes        []struct {
 					Purpose, Algorithm, Slot string
 				} `json:"purposes"`
+				SlotMap []struct {
+					Node  string `json:"node"`
+					Slots []struct {
+						Slot              string `json:"slot"`
+						Purpose           string `json:"purpose"`
+						PublicKey         string `json:"public_key"`
+						Attestation       string `json:"attestation"`
+						AttestationSigner string `json:"attestation_signer"`
+					} `json:"slots"`
+				} `json:"slot_map"`
 			} `json:"read"`
 		} `json:"cases"`
 	}
@@ -67,6 +78,23 @@ func TestKeyPlanPayloadVectors(t *testing.T) {
 				w := c.Read.Purposes[i]
 				if p.GetPurpose() != w.Purpose || p.GetAlgorithm() != w.Algorithm || p.GetSlot() != w.Slot {
 					t.Errorf("purpose %d = %v, want %+v", i, p, w)
+				}
+			}
+			if len(plan.GetSlotMap()) != len(c.Read.SlotMap) {
+				t.Fatalf("%d slot map nodes, want %d", len(plan.GetSlotMap()), len(c.Read.SlotMap))
+			}
+			enc := base64.RawURLEncoding
+			for i, n := range plan.GetSlotMap() {
+				w := c.Read.SlotMap[i]
+				if n.GetNode() != w.Node || len(n.GetSlots()) != len(w.Slots) {
+					t.Fatalf("slot map node %d = %v, want %+v", i, n, w)
+				}
+				for j, k := range n.GetSlots() {
+					ws := w.Slots[j]
+					if k.GetSlot() != ws.Slot || k.GetPurpose() != ws.Purpose || enc.EncodeToString(k.GetPublicKey()) != ws.PublicKey ||
+						enc.EncodeToString(k.GetAttestation()) != ws.Attestation || enc.EncodeToString(k.GetAttestationSigner()) != ws.AttestationSigner {
+						t.Errorf("slot %d of node %d = %v, want %+v", j, i, k, ws)
+					}
 				}
 			}
 		})

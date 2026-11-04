@@ -42,6 +42,10 @@ type Options struct {
 	// its realm (REQ-SUBJ-044: the binding is by `sub`, never by the user name). Each placeholder is replaced with the
 	// user's value; a placeholder with no value, and a value that no placeholder names, are errors.
 	Subjects map[string]string
+	// SlotMap is the slot map of the KeyPlan (ADR 0006, "The slot plan"; D20b): one entry per node, each the JSON object
+	// that the node's key@ check prints after "slot map: ". The source holds the empty map on the line
+	// `  slot_map: []`; with entries, that line is replaced, and a source without it is an error.
+	SlotMap []string
 }
 
 // maxSeq is 2^53 - 1: a seq is "a positive integer, below 2^53" (signed-config.md, "The document").
@@ -100,6 +104,11 @@ func Run(o Options) ([]string, error) {
 		}
 		if payload, err = WithSubjects(payload, o.Subjects, used); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
+		}
+		if kind == "key-plan" && len(o.SlotMap) > 0 {
+			if payload, err = WithSlotMap(payload, o.SlotMap); err != nil {
+				return nil, fmt.Errorf("%s: %w", e.Name(), err)
+			}
 		}
 		doc, err := Sign(key, o.KID, o.Seq, k.Name, payload)
 		if err != nil {
@@ -202,6 +211,42 @@ func WithSubjects(source []byte, subjects map[string]string, used map[string]boo
 		return nil, errors.New("a {{sub:...}} placeholder is not of the form {{sub:<user>}}")
 	}
 	return out, nil
+}
+
+// slotMapLine is the line of the KeyPlan source that the slot map replaces.
+const slotMapLine = "  slot_map: []"
+
+// WithSlotMap returns the KeyPlan source with its empty slot map replaced by the entries, each one line of flow YAML
+// (JSON is YAML). An entry must be a JSON object with a node and a list of slots, and a node is listed once; what the
+// slots say is checked by store@ and key@ when they read the KeyPlan.
+func WithSlotMap(source []byte, entries []string) ([]byte, error) {
+	seen := map[string]bool{}
+	for i, e := range entries {
+		var v struct {
+			Node  string            `json:"node"`
+			Slots []json.RawMessage `json:"slots"`
+		}
+		if err := json.Unmarshal([]byte(e), &v); err != nil || v.Node == "" || v.Slots == nil {
+			return nil, fmt.Errorf("slot map entry %d is not an object with a node and its slots", i)
+		}
+		if seen[v.Node] {
+			return nil, fmt.Errorf("slot map entry %d: the node is listed twice", i)
+		}
+		seen[v.Node] = true
+		if strings.ContainsAny(e, "\n\r") {
+			return nil, fmt.Errorf("slot map entry %d is not one line", i)
+		}
+	}
+	lines := strings.Split(string(source), "\n")
+	at := slices.Index(lines, slotMapLine)
+	if at < 0 {
+		return nil, fmt.Errorf("the source has no %q line", slotMapLine)
+	}
+	repl := []string{"  slot_map:"}
+	for _, e := range entries {
+		repl = append(repl, "    - "+e)
+	}
+	return []byte(strings.Join(slices.Concat(lines[:at], repl, lines[at+1:]), "\n")), nil
 }
 
 // Sign returns the signed config document of payload: a JWS in the general JSON serialisation (RFC 7515, section

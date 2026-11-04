@@ -389,3 +389,19 @@ func TestARefusedStateDirectoryExitsAsRefused(t *testing.T) {
 		t.Fatal("the socket was opened")
 	}
 }
+
+// A software store takes no part in the PIN release: it is never locked and attests nothing, and says so by reason.
+func TestThePINReleaseCallsAreRefusedByReason(t *testing.T) {
+	r := start(t, "development", "key")
+	ctx := context.Background()
+	_, err := r.client.Attest(ctx, connect.NewRequest(&keystorev2alpha1.AttestRequest{Purpose: "pin-release"}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "no_attestation")
+	_, err = r.client.VerifyAttestation(ctx, connect.NewRequest(&keystorev2alpha1.VerifyAttestationRequest{}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "no_attestation")
+	_, err = r.client.BeginPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "unlocked")
+	_, err = r.client.SealPin(ctx, connect.NewRequest(&keystorev2alpha1.SealPinRequest{}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "no_pin")
+	_, err = r.client.FinishPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.FinishPinReleaseRequest{}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "unlocked")
+}

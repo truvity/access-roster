@@ -71,6 +71,8 @@ type Config struct {
 	RewrapEvery time.Duration
 	// Out receives what the check command reports for a person or a script; nil means os.Stdout.
 	Out io.Writer
+	// PinReleaseScale multiplies the polling periods of the PIN release (pinrelease.go); 0 means 1. Tests run it fast.
+	PinReleaseScale float64
 }
 
 // purposeKey is the public half of an authority key that the key store holds for a purpose of the KeyPlan.
@@ -97,6 +99,10 @@ type Server struct {
 	declarations declarations
 	// adminAllow decides from the peer's uid who may use the admin socket (admin.go): root.
 	adminAllow func(uid uint32) bool
+	// pinReqs and pinRels are the temp kinds of the PIN release between boards (pinrelease.go).
+	pinReqs *store.Client[*keyv2alpha1.PinReleaseRequest]
+	pinRels *store.Client[*keyv2alpha1.PinRelease]
+	pins    pinState
 
 	// The KeyPlan and the Boundary are verified here and never taken as decoded items from store@ (signed_kind.go).
 	publishers []signedconfig.Publisher // the publisher keys of the bootstrap file
@@ -173,11 +179,19 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
+	reqs, err := store.New(st, kindPinRequest, func() *keyv2alpha1.PinReleaseRequest { return &keyv2alpha1.PinReleaseRequest{} })
+	if err != nil {
+		return nil, err
+	}
+	rels, err := store.New(st, kindPinRelease, func() *keyv2alpha1.PinRelease { return &keyv2alpha1.PinRelease{} })
+	if err != nil {
+		return nil, err
+	}
 	ring, err := store.New(st, signingRingKind, func() *signerv2alpha1.SigningRing { return &signerv2alpha1.SigningRing{} })
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs,
+	return &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs, pinReqs: reqs, pinRels: rels,
 		adminAllow: rootOnly,
 		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
 		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},

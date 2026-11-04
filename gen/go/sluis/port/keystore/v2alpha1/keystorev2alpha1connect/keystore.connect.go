@@ -47,6 +47,19 @@ const (
 	KeyStoreServicePublicKeyProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/PublicKey"
 	// KeyStoreServiceEcdhProcedure is the fully-qualified name of the KeyStoreService's Ecdh RPC.
 	KeyStoreServiceEcdhProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/Ecdh"
+	// KeyStoreServiceAttestProcedure is the fully-qualified name of the KeyStoreService's Attest RPC.
+	KeyStoreServiceAttestProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/Attest"
+	// KeyStoreServiceVerifyAttestationProcedure is the fully-qualified name of the KeyStoreService's
+	// VerifyAttestation RPC.
+	KeyStoreServiceVerifyAttestationProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/VerifyAttestation"
+	// KeyStoreServiceBeginPinReleaseProcedure is the fully-qualified name of the KeyStoreService's
+	// BeginPinRelease RPC.
+	KeyStoreServiceBeginPinReleaseProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/BeginPinRelease"
+	// KeyStoreServiceSealPinProcedure is the fully-qualified name of the KeyStoreService's SealPin RPC.
+	KeyStoreServiceSealPinProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/SealPin"
+	// KeyStoreServiceFinishPinReleaseProcedure is the fully-qualified name of the KeyStoreService's
+	// FinishPinRelease RPC.
+	KeyStoreServiceFinishPinReleaseProcedure = "/sluis.port.keystore.v2alpha1.KeyStoreService/FinishPinRelease"
 )
 
 // KeyStoreServiceClient is a client for the sluis.port.keystore.v2alpha1.KeyStoreService service.
@@ -56,6 +69,14 @@ type KeyStoreServiceClient interface {
 	Sign(context.Context, *connect.Request[v2alpha1.KeyStoreSignRequest]) (*connect.Response[v2alpha1.KeyStoreSignResponse], error)
 	PublicKey(context.Context, *connect.Request[v2alpha1.KeyStorePublicKeyRequest]) (*connect.Response[v2alpha1.KeyStorePublicKeyResponse], error)
 	Ecdh(context.Context, *connect.Request[v2alpha1.EcdhRequest]) (*connect.Response[v2alpha1.EcdhResponse], error)
+	// The PIN release between boards (0006 "Touch and PIN"). The PIN never leaves the card driver: the driver seals the
+	// PIN it holds, and opens a released one with a one-time key of its own and gives it to its card. key@ makes the
+	// checks and the store writes. A store that has no PIN (software) refuses them with "unlocked" or "no_pin".
+	Attest(context.Context, *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error)
+	VerifyAttestation(context.Context, *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error)
+	BeginPinRelease(context.Context, *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error)
+	SealPin(context.Context, *connect.Request[v2alpha1.SealPinRequest]) (*connect.Response[v2alpha1.SealPinResponse], error)
+	FinishPinRelease(context.Context, *connect.Request[v2alpha1.FinishPinReleaseRequest]) (*connect.Response[v2alpha1.FinishPinReleaseResponse], error)
 }
 
 // NewKeyStoreServiceClient constructs a client for the sluis.port.keystore.v2alpha1.KeyStoreService
@@ -99,16 +120,51 @@ func NewKeyStoreServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(keyStoreServiceMethods.ByName("Ecdh")),
 			connect.WithClientOptions(opts...),
 		),
+		attest: connect.NewClient[v2alpha1.AttestRequest, v2alpha1.AttestResponse](
+			httpClient,
+			baseURL+KeyStoreServiceAttestProcedure,
+			connect.WithSchema(keyStoreServiceMethods.ByName("Attest")),
+			connect.WithClientOptions(opts...),
+		),
+		verifyAttestation: connect.NewClient[v2alpha1.VerifyAttestationRequest, v2alpha1.VerifyAttestationResponse](
+			httpClient,
+			baseURL+KeyStoreServiceVerifyAttestationProcedure,
+			connect.WithSchema(keyStoreServiceMethods.ByName("VerifyAttestation")),
+			connect.WithClientOptions(opts...),
+		),
+		beginPinRelease: connect.NewClient[v2alpha1.BeginPinReleaseRequest, v2alpha1.BeginPinReleaseResponse](
+			httpClient,
+			baseURL+KeyStoreServiceBeginPinReleaseProcedure,
+			connect.WithSchema(keyStoreServiceMethods.ByName("BeginPinRelease")),
+			connect.WithClientOptions(opts...),
+		),
+		sealPin: connect.NewClient[v2alpha1.SealPinRequest, v2alpha1.SealPinResponse](
+			httpClient,
+			baseURL+KeyStoreServiceSealPinProcedure,
+			connect.WithSchema(keyStoreServiceMethods.ByName("SealPin")),
+			connect.WithClientOptions(opts...),
+		),
+		finishPinRelease: connect.NewClient[v2alpha1.FinishPinReleaseRequest, v2alpha1.FinishPinReleaseResponse](
+			httpClient,
+			baseURL+KeyStoreServiceFinishPinReleaseProcedure,
+			connect.WithSchema(keyStoreServiceMethods.ByName("FinishPinRelease")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // keyStoreServiceClient implements KeyStoreServiceClient.
 type keyStoreServiceClient struct {
-	capabilities *connect.Client[v2alpha1.CapabilitiesRequest, v2alpha1.CapabilitiesResponse]
-	ensure       *connect.Client[v2alpha1.EnsureRequest, v2alpha1.EnsureResponse]
-	sign         *connect.Client[v2alpha1.KeyStoreSignRequest, v2alpha1.KeyStoreSignResponse]
-	publicKey    *connect.Client[v2alpha1.KeyStorePublicKeyRequest, v2alpha1.KeyStorePublicKeyResponse]
-	ecdh         *connect.Client[v2alpha1.EcdhRequest, v2alpha1.EcdhResponse]
+	capabilities      *connect.Client[v2alpha1.CapabilitiesRequest, v2alpha1.CapabilitiesResponse]
+	ensure            *connect.Client[v2alpha1.EnsureRequest, v2alpha1.EnsureResponse]
+	sign              *connect.Client[v2alpha1.KeyStoreSignRequest, v2alpha1.KeyStoreSignResponse]
+	publicKey         *connect.Client[v2alpha1.KeyStorePublicKeyRequest, v2alpha1.KeyStorePublicKeyResponse]
+	ecdh              *connect.Client[v2alpha1.EcdhRequest, v2alpha1.EcdhResponse]
+	attest            *connect.Client[v2alpha1.AttestRequest, v2alpha1.AttestResponse]
+	verifyAttestation *connect.Client[v2alpha1.VerifyAttestationRequest, v2alpha1.VerifyAttestationResponse]
+	beginPinRelease   *connect.Client[v2alpha1.BeginPinReleaseRequest, v2alpha1.BeginPinReleaseResponse]
+	sealPin           *connect.Client[v2alpha1.SealPinRequest, v2alpha1.SealPinResponse]
+	finishPinRelease  *connect.Client[v2alpha1.FinishPinReleaseRequest, v2alpha1.FinishPinReleaseResponse]
 }
 
 // Capabilities calls sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities.
@@ -136,6 +192,31 @@ func (c *keyStoreServiceClient) Ecdh(ctx context.Context, req *connect.Request[v
 	return c.ecdh.CallUnary(ctx, req)
 }
 
+// Attest calls sluis.port.keystore.v2alpha1.KeyStoreService.Attest.
+func (c *keyStoreServiceClient) Attest(ctx context.Context, req *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error) {
+	return c.attest.CallUnary(ctx, req)
+}
+
+// VerifyAttestation calls sluis.port.keystore.v2alpha1.KeyStoreService.VerifyAttestation.
+func (c *keyStoreServiceClient) VerifyAttestation(ctx context.Context, req *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error) {
+	return c.verifyAttestation.CallUnary(ctx, req)
+}
+
+// BeginPinRelease calls sluis.port.keystore.v2alpha1.KeyStoreService.BeginPinRelease.
+func (c *keyStoreServiceClient) BeginPinRelease(ctx context.Context, req *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error) {
+	return c.beginPinRelease.CallUnary(ctx, req)
+}
+
+// SealPin calls sluis.port.keystore.v2alpha1.KeyStoreService.SealPin.
+func (c *keyStoreServiceClient) SealPin(ctx context.Context, req *connect.Request[v2alpha1.SealPinRequest]) (*connect.Response[v2alpha1.SealPinResponse], error) {
+	return c.sealPin.CallUnary(ctx, req)
+}
+
+// FinishPinRelease calls sluis.port.keystore.v2alpha1.KeyStoreService.FinishPinRelease.
+func (c *keyStoreServiceClient) FinishPinRelease(ctx context.Context, req *connect.Request[v2alpha1.FinishPinReleaseRequest]) (*connect.Response[v2alpha1.FinishPinReleaseResponse], error) {
+	return c.finishPinRelease.CallUnary(ctx, req)
+}
+
 // KeyStoreServiceHandler is an implementation of the sluis.port.keystore.v2alpha1.KeyStoreService
 // service.
 type KeyStoreServiceHandler interface {
@@ -144,6 +225,14 @@ type KeyStoreServiceHandler interface {
 	Sign(context.Context, *connect.Request[v2alpha1.KeyStoreSignRequest]) (*connect.Response[v2alpha1.KeyStoreSignResponse], error)
 	PublicKey(context.Context, *connect.Request[v2alpha1.KeyStorePublicKeyRequest]) (*connect.Response[v2alpha1.KeyStorePublicKeyResponse], error)
 	Ecdh(context.Context, *connect.Request[v2alpha1.EcdhRequest]) (*connect.Response[v2alpha1.EcdhResponse], error)
+	// The PIN release between boards (0006 "Touch and PIN"). The PIN never leaves the card driver: the driver seals the
+	// PIN it holds, and opens a released one with a one-time key of its own and gives it to its card. key@ makes the
+	// checks and the store writes. A store that has no PIN (software) refuses them with "unlocked" or "no_pin".
+	Attest(context.Context, *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error)
+	VerifyAttestation(context.Context, *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error)
+	BeginPinRelease(context.Context, *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error)
+	SealPin(context.Context, *connect.Request[v2alpha1.SealPinRequest]) (*connect.Response[v2alpha1.SealPinResponse], error)
+	FinishPinRelease(context.Context, *connect.Request[v2alpha1.FinishPinReleaseRequest]) (*connect.Response[v2alpha1.FinishPinReleaseResponse], error)
 }
 
 // NewKeyStoreServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -183,6 +272,36 @@ func NewKeyStoreServiceHandler(svc KeyStoreServiceHandler, opts ...connect.Handl
 		connect.WithSchema(keyStoreServiceMethods.ByName("Ecdh")),
 		connect.WithHandlerOptions(opts...),
 	)
+	keyStoreServiceAttestHandler := connect.NewUnaryHandler(
+		KeyStoreServiceAttestProcedure,
+		svc.Attest,
+		connect.WithSchema(keyStoreServiceMethods.ByName("Attest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	keyStoreServiceVerifyAttestationHandler := connect.NewUnaryHandler(
+		KeyStoreServiceVerifyAttestationProcedure,
+		svc.VerifyAttestation,
+		connect.WithSchema(keyStoreServiceMethods.ByName("VerifyAttestation")),
+		connect.WithHandlerOptions(opts...),
+	)
+	keyStoreServiceBeginPinReleaseHandler := connect.NewUnaryHandler(
+		KeyStoreServiceBeginPinReleaseProcedure,
+		svc.BeginPinRelease,
+		connect.WithSchema(keyStoreServiceMethods.ByName("BeginPinRelease")),
+		connect.WithHandlerOptions(opts...),
+	)
+	keyStoreServiceSealPinHandler := connect.NewUnaryHandler(
+		KeyStoreServiceSealPinProcedure,
+		svc.SealPin,
+		connect.WithSchema(keyStoreServiceMethods.ByName("SealPin")),
+		connect.WithHandlerOptions(opts...),
+	)
+	keyStoreServiceFinishPinReleaseHandler := connect.NewUnaryHandler(
+		KeyStoreServiceFinishPinReleaseProcedure,
+		svc.FinishPinRelease,
+		connect.WithSchema(keyStoreServiceMethods.ByName("FinishPinRelease")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.port.keystore.v2alpha1.KeyStoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KeyStoreServiceCapabilitiesProcedure:
@@ -195,6 +314,16 @@ func NewKeyStoreServiceHandler(svc KeyStoreServiceHandler, opts ...connect.Handl
 			keyStoreServicePublicKeyHandler.ServeHTTP(w, r)
 		case KeyStoreServiceEcdhProcedure:
 			keyStoreServiceEcdhHandler.ServeHTTP(w, r)
+		case KeyStoreServiceAttestProcedure:
+			keyStoreServiceAttestHandler.ServeHTTP(w, r)
+		case KeyStoreServiceVerifyAttestationProcedure:
+			keyStoreServiceVerifyAttestationHandler.ServeHTTP(w, r)
+		case KeyStoreServiceBeginPinReleaseProcedure:
+			keyStoreServiceBeginPinReleaseHandler.ServeHTTP(w, r)
+		case KeyStoreServiceSealPinProcedure:
+			keyStoreServiceSealPinHandler.ServeHTTP(w, r)
+		case KeyStoreServiceFinishPinReleaseProcedure:
+			keyStoreServiceFinishPinReleaseHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -222,4 +351,24 @@ func (UnimplementedKeyStoreServiceHandler) PublicKey(context.Context, *connect.R
 
 func (UnimplementedKeyStoreServiceHandler) Ecdh(context.Context, *connect.Request[v2alpha1.EcdhRequest]) (*connect.Response[v2alpha1.EcdhResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh is not implemented"))
+}
+
+func (UnimplementedKeyStoreServiceHandler) Attest(context.Context, *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.Attest is not implemented"))
+}
+
+func (UnimplementedKeyStoreServiceHandler) VerifyAttestation(context.Context, *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.VerifyAttestation is not implemented"))
+}
+
+func (UnimplementedKeyStoreServiceHandler) BeginPinRelease(context.Context, *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.BeginPinRelease is not implemented"))
+}
+
+func (UnimplementedKeyStoreServiceHandler) SealPin(context.Context, *connect.Request[v2alpha1.SealPinRequest]) (*connect.Response[v2alpha1.SealPinResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.SealPin is not implemented"))
+}
+
+func (UnimplementedKeyStoreServiceHandler) FinishPinRelease(context.Context, *connect.Request[v2alpha1.FinishPinReleaseRequest]) (*connect.Response[v2alpha1.FinishPinReleaseResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.port.keystore.v2alpha1.KeyStoreService.FinishPinRelease is not implemented"))
 }

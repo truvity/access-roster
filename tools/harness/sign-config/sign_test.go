@@ -381,3 +381,33 @@ func TestSignDeclarationFileUsesTheExistingPublisherKey(t *testing.T) {
 		t.Fatalf("VerifyDeclaration = %v, %v", v, err)
 	}
 }
+
+func TestTheSlotMapReplacesTheEmptyMapOfTheKeyPlan(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoConfig, "key-plan.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := `{"node":"board-a","slots":[{"slot":"87","purpose":"pin-release","public_key":"AQID"}]}`
+	b := `{"node":"board-b","slots":[]}`
+	got, err := WithSlotMap(src, []string{a, b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "  slot_map:\n    - " + a + "\n    - " + b + "\n"
+	if strings.Replace(string(src), "  slot_map: []\n", want, 1) != string(got) {
+		t.Fatalf("the map was not replaced, or more changed:\n%s", got)
+	}
+	for name, entries := range map[string][]string{
+		"not JSON":     {"node: board-a"},
+		"no node":      {`{"slots":[]}`},
+		"no slots":     {`{"node":"board-a"}`},
+		"a node twice": {a, a},
+	} {
+		if _, err := WithSlotMap(src, entries); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := WithSlotMap([]byte("default:\n  cache_ttl: 15m\n"), []string{a}); err == nil {
+		t.Error("a source with no empty map was accepted")
+	}
+}

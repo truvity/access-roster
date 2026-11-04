@@ -191,3 +191,24 @@ message KeyRevocation {
   string reason_code = 3;                       // compromise, suspicion, lost-board or drill
   google.protobuf.Timestamp revoked_at = 4;     // when key@ took the declaration
 }
+
+// PinReleaseRequest is the kind PinReleaseRequest (0006 "Touch and PIN"): a locked board asks its peers for the card
+// PIN. key@ alone writes and reads it. Its id is <node>/<request>, the two fields of the text.
+message PinReleaseRequest {
+  // The signed text: "sluis-pin-release-v1", the boundary, the node, the request id (a UUIDv7, RFC 9562) and the
+  // ephemeral P-384 public key (SEC1 uncompressed) that the locked card driver made for this request, each field a
+  // 4-octet big-endian length and its octets (0006 "Touch and PIN"; kits/go/pinrelease). The same octets are the HKDF-SHA384
+  // info and the AES-256-GCM additional data of the answer.
+  bytes text = 1;
+  bytes signature_der = 2;  // ES384 over SHA-384(text) by the node's pin-release key (slot 87), ASN.1 DER
+}
+
+// PinRelease is the kind PinRelease: the one answer to the PinReleaseRequest with the same id, written by the unlocked
+// peer that answered first.
+message PinRelease {
+  // The signed answer text: "sluis-pin-release-answer-v1", the boundary, the releasing node, the requesting node, the
+  // request id, SHA-384 of the request text, the releaser's ephemeral public key and the sealed PIN (AES-256-GCM,
+  // nonce first), each field length-prefixed as in the request.
+  bytes text = 1;
+  bytes signature_der = 2;  // ES384 over SHA-384(text) by the releasing node's pin-release key, ASN.1 DER
+}
