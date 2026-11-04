@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -264,6 +265,12 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "step 5: a lower seq") {
 		t.Fatalf("Init after a rollback = %v, want a refusal at step 5", err)
 	}
+	// The operator is told what to do: the mark file, the seq it holds and the two ways out.
+	for _, want := range []string{filepath.Join(state, planMarkFile), "seq " + strconv.FormatUint(newerSeq, 10), "publish a KeyPlan with a higher seq", "remove the mark on purpose"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Init after a rollback = %v, want the hint to say %q", err, want)
+		}
+	}
 	// A second payload under the seq in force.
 	plan := proto.Clone(e.plan).(*configv2alpha1.KeyPlan)
 	plan.Recipients = plan.Recipients[:1]
@@ -344,6 +351,34 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 			}
 		})
 	}
+	t.Run("a mark file with wider bits than 0600", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		good := planMark{seq: 1}.text()
+		path := filepath.Join(state, planMarkFile)
+		if err := os.WriteFile(path, []byte(good), 0o644); err != nil { //nolint:gosec // the point of the test: a mark that is too open
+			t.Fatal(err)
+		}
+		if err := n.srv.Init(context.Background()); err == nil || !strings.Contains(err.Error(), "not key@'s own regular file with mode 0600") {
+			t.Fatalf("Init = %v, want a refusal of a mark with mode 0644", err)
+		}
+	})
+	t.Run("a mark that is a link", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		target := filepath.Join(shortDir(t), "elsewhere")
+		if err := os.WriteFile(target, []byte(planMark{seq: 1}.text()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, filepath.Join(state, planMarkFile)); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.srv.Init(context.Background()); err == nil || !strings.Contains(err.Error(), "regular file") {
+			t.Fatalf("Init = %v, want a refusal of a linked mark", err)
+		}
+	})
 	t.Run("a mark that cannot be saved", func(t *testing.T) {
 		e := newTestEnv(t, "development")
 		state := shortDir(t)
@@ -419,5 +454,24 @@ func TestRefusalNamesTheStep(t *testing.T) {
 	var r *signedconfig.Refused
 	if !errors.As(err, &r) || r.Step != 1 {
 		t.Fatalf("Verify = %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-110
+// A state directory or a mark of another owner is not key@'s own and is refused; the owner is read from the file.
+func TestOwnershipOfStateIsChecked(t *testing.T) {
+	dir := shortDir(t)
+	fi, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ownedBy(fi, os.Getuid()) {
+		t.Fatal("a directory this process made is not owned by its uid")
+	}
+	if ownedBy(fi, os.Getuid()+1) {
+		t.Fatal("a directory is owned by a uid that is not its owner's")
+	}
+	if err := checkStateDir(dir); err != nil {
+		t.Fatalf("own directory: %v", err)
 	}
 }

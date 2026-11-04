@@ -137,6 +137,13 @@ The map goes on in slots `82` to `86` (the two SSH authorities, the audit log ke
 - **AWS KMS** is the key mode on an AWS virtual machine ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). The key policy of every key names key@'s role alone, so no other actor and no instance role reaches KMS.
 - **Software key:** development only; the code refuses it in production ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)).
 
+### A KeyPlan mark that is ahead of the store
+
+key@ keeps the highest `seq` of the `KeyPlan` it verified in `keyplan.mark`, in its state directory (`/var/lib/sluis-state/<boundary>/key`), and refuses a lower one ([Who may receive a wrap](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). After a restore of the store, or a reset of the `seq`, the mark can be ahead of every document the store serves, and key@ does not start: its error names the mark file, the `seq` it holds and step 5 of the document. Two ways out:
+
+1. **Publish a `KeyPlan` with a higher `seq`** (`just boards-prepare`, then `just boards-deploy`). This is the way to take: rollback protection stays on.
+2. **Remove `keyplan.mark` on purpose,** on that board only, and restart key@. key@ then takes the newest validly signed `KeyPlan` the store shows, and has no rollback protection until it verifies the next plan. Do this only when you know the store serves the right document.
+
 ## Board capacity
 
 Measured on 2026-10-31 on one single-board computer (arm64, 4 cores, 2 GB RAM, eMMC, with a YubiKey 5 Nano on firmware 5.8.0), and again on 2026-11-02 on three identical boards on one gigabit switch with real replication between them (4 x Cortex-A55, 1978 MiB usable RAM, 32 GB eMMC, kernel 5.10.160). Each row says which. The language choice that follows from it is [0012](/decisions/0012-the-language-follows-the-executable/).
