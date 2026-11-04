@@ -923,6 +923,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "sluis-driver-writer-fs"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "buffa",
+ "clap",
+ "connectrpc",
+ "rustix",
+ "sluis-kit",
+ "sluis-proto",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sluis-kit"
 version = "0.0.0"
 dependencies = [

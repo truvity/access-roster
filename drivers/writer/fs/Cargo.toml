@@ -1,0 +1,31 @@
+[package]
+name = "sluis-driver-writer-fs"
+description = "The fs blob driver of the audit writer: the blob port over a local directory (ADR 0029, The write-once fence)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "driver-writer-fs"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+buffa = { version = "=0.9.2", features = ["json"] }
+clap = { version = "4", features = ["derive", "string"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "server"] }
+rustix = { version = "1", features = ["fs", "process"] }
+sluis-kit = { path = "../../../kits/rust/sluis-kit" }
+sluis-proto = { path = "../../../kits/rust/sluis-proto" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+# Lets a test choose which uid is which actor; only a dev edge turns it on.
+sluis-kit = { path = "../../../kits/rust/sluis-kit", features = ["test-identities"] }
