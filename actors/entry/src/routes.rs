@@ -32,8 +32,20 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "acr_values",
 ];
 
-/// `CallbackRequest` without `cookie`, which is a header, not a parameter.
-pub(crate) const CALLBACK: &[&str] = &["code", "state", "error", "error_description", "iss"];
+/// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a
+/// header, and `error_uri` (RFC 6749 section 4.1.2.1), which no contract field carries. They keep
+/// their checks (a repeat is refused). `/callback` is the route where the upstream answers sluis
+/// as a client, and a client MUST ignore any other response parameter (RFC 6749 section 4.1.2):
+/// `session_state` of Keycloak, and what Entra and Google add, are dropped. Every other route is
+/// a request to sluis and keeps its closed list.
+pub(crate) const CALLBACK: &[&str] = &[
+    "code",
+    "state",
+    "error",
+    "error_description",
+    "error_uri",
+    "iss",
+];
 
 /// `TokenRequest` for `authorization_code`: RFC 6749 section 4.1.3 and RFC 7636 section 4.5.
 /// `authorization` is a header.
@@ -102,8 +114,9 @@ mod tests {
     fn the_lists_are_the_fields_of_the_contracts() {
         assert_eq!(fields(SESSION, "AuthorizeRequest"), set(AUTHORIZE, &[]));
         // `cookie` and `authorization` are headers; every other field is a parameter.
+        // `error_uri` is recognised and dropped: no contract field carries it.
         assert_eq!(
-            fields(SESSION, "CallbackRequest"),
+            &fields(SESSION, "CallbackRequest") | &set(&["error_uri"], &[]),
             set(CALLBACK, &["cookie"])
         );
         let token: Vec<&str> = TOKEN_CODE.iter().chain(TOKEN_REFRESH).copied().collect();
