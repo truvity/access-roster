@@ -21,6 +21,8 @@ authorization response (entry's callback takes the closed list of RFC 6749 and R
 
 A second project on one machine sets `COMPOSE_PROJECT_NAME`, `SLUIS_LOCAL_PORT` and `SLUIS_LOCAL_TAG` (the tag of its images),
 and `SLUIS_LOCAL_SUBNET` where the firewall lets only some subnets reach the upstream; the first project is left alone.
+A project that stays on Docker's default subnet on such a machine shows `adapter-upstream-oidc` as unhealthy and `local-up` stops
+waiting: set `SLUIS_LOCAL_SUBNET` to a subnet the firewall allows (for example `SLUIS_LOCAL_SUBNET=10.99.8.0/24`) and run it again.
 
 | File | What it is |
 |---|---|

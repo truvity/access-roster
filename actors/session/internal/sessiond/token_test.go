@@ -621,7 +621,7 @@ func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 	}
 }
 
-// The chain carries the sign-in facts twice (0006, "Data keys"): under the cookie key for session's own refresh, and
+// REQ-KEYS-082: the chain carries the sign-in facts twice (0006, "Data keys"): under the cookie key for session's own refresh, and
 // under the chain key for exchange. Session seals the second and never opens it, through a redemption and a refresh.
 func TestChainFactsAreSealedUnderTheChainKeyAndSessionNeverOpensThem(t *testing.T) {
 	e := newEnv(t, nil)
