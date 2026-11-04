@@ -227,6 +227,10 @@ func TestCompleteBoundsTheSubjectClaimAt255Characters(t *testing.T) {
 		{"255 characters", strings.Repeat("a", 255), true},
 		{"256 characters", strings.Repeat("a", 256), false},
 		{"300 characters", strings.Repeat("a", 300), false},
+		// Counted in bytes of UTF-8: "é" is two.
+		{"255 bytes of multi-byte UTF-8", strings.Repeat("é", 127) + "a", true},
+		{"256 bytes of multi-byte UTF-8", strings.Repeat("é", 128), false},
+		{"under 255 characters but over 255 bytes", strings.Repeat("€", 86), false},
 		{"a number", 42, false},
 		{"empty", "", false},
 		{"absent", nil, false},
