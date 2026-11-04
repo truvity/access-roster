@@ -23,30 +23,31 @@ mkdir -p "$out"
 built=()
 
 # Go: every package main below actors/, drivers/ and cli/. The test binaries (kits/conformance) are not product.
+# The list is made before the loop, outside a process substitution, so that a failed `go list` stops the build.
+# An empty pattern only warns ("matched no packages"); a real error shows, and fails.
+errs=$(mktemp)
+if ! gopkgs=$(go list -f '{{if eq .Name "main"}}{{.ImportPath}}{{end}}' ./actors/... ./drivers/... ./cli/... 2>"$errs"); then
+	cat "$errs" >&2
+	rm -f "$errs"
+	echo "build-arm64: go list failed" >&2
+	exit 1
+fi
+rm -f "$errs"
+gopkgs=${gopkgs//github.com\/truvity\/sluis\/v2\//}
 while IFS= read -r rel; do
 	[ -n "$rel" ] || continue
 	echo "go    $rel"
 	mkdir -p "$out/$(dirname "$rel")"
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X ${version_pkg}.Version=${version}" -o "$out/$rel" "./$rel"
 	built+=("$rel")
-done < <(
-	# An empty pattern only warns ("matched no packages"); a real error must show, so stderr is kept for it.
-	errs=$(mktemp)
-	if ! list=$(go list -f '{{if eq .Name "main"}}{{.ImportPath}}{{end}}' ./actors/... ./drivers/... ./cli/... 2>"$errs"); then
-		cat "$errs" >&2
-		rm -f "$errs"
-		echo "build-arm64: go list failed" >&2
-		exit 1
-	fi
-	rm -f "$errs"
-	printf '%s\n' "${list//github.com\/truvity\/sluis\/v2\//}"
-)
+done <<<"$gopkgs"
 
 # Rust: every package of the workspace below actors/ and drivers/ that has a binary. cargo metadata names the
 # directory of the manifest; the binary is copied to the same place in dist.
 root=$(pwd)
 meta=$(cargo metadata --format-version 1 --no-deps)
 tdir=$(jq -r .target_directory <<<"$meta")
+rustbins=$(jq -r '.packages[] | . as $p | $p.targets[] | select(.kind | index("bin")) | [$p.name, ($p.manifest_path | rtrimstr("/Cargo.toml")), .name] | @tsv' <<<"$meta")
 while IFS=$'\t' read -r pkg dir bin; do
 	[ -n "$pkg" ] || continue
 	rel=${dir#"$root"/}
@@ -56,7 +57,7 @@ while IFS=$'\t' read -r pkg dir bin; do
 	mkdir -p "$out/$(dirname "$rel")"
 	install -m 0755 "$tdir/$target/release/$bin" "$out/$rel"
 	built+=("$rel")
-done < <(jq -r '.packages[] | . as $p | $p.targets[] | select(.kind | index("bin")) | [$p.name, ($p.manifest_path | rtrimstr("/Cargo.toml")), .name] | @tsv' <<<"$meta")
+done <<<"$rustbins"
 
 [ "${#built[@]}" -gt 0 ] || { echo "build-arm64: no executable found below actors/, drivers/ or cli/: nothing was built" >&2; exit 1; }
 

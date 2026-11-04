@@ -128,6 +128,7 @@ async fn serve(driver: &Driver) -> Served {
         boundary: "dev".into(),
         socket: socket.clone(),
         mode: 0o600,
+        socket_gid: None,
         allow: Allow::OwnerOnly("store"),
         default_deadline: Duration::from_secs(30),
     };

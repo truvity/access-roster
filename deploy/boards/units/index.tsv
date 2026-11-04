@@ -3,7 +3,7 @@ sluis-drv-key-software@dev.service	sluis-drv-key-software@.service	driver	driver
 sluis-drv-writer-fs@dev.service	sluis-drv-writer-fs@.service	driver	drivers/writer/fs	sluis-drv-writer-fs-dev	61025	sluis-writer
 sluis-exporter@dev.service	sluis-exporter@.service	actor	actors/exporter	sluis-exporter-dev	61013	sluis-key,sluis-policy,sluis-store
 sluis-store@dev.service	sluis-store@.service	actor	actors/store	sluis-store-dev	61012	sluis-key
-sluis-key@dev.service	sluis-key@.service	actor	actors/key	sluis-key-dev	61014	sluis-drv-key-software,sluis-store
+sluis-key@dev.service	sluis-key@.service	actor	actors/key	sluis-key-dev	61014	sluis-adapter-github,sluis-adapter-slack,sluis-adapter-upstream-oidc,sluis-ca,sluis-console,sluis-drv-key-software,sluis-entry,sluis-exchange,sluis-exporter,sluis-indexer,sluis-policy,sluis-quota,sluis-reader,sluis-session,sluis-signer,sluis-node,sluis-ssh-ca,sluis-store,sluis-witness,sluis-writer
 sluis-indexer@dev.service	sluis-indexer@.service	actor	actors/indexer	sluis-indexer-dev	61017	sluis-key,sluis-policy,sluis-store
 sluis-reader@dev.service	sluis-reader@.service	actor	actors/reader	sluis-reader-dev	61018	sluis-key,sluis-policy,sluis-store
 sluis-witness@dev.service	sluis-witness@.service	actor	actors/witness	sluis-witness-dev	61016	sluis-key,sluis-store

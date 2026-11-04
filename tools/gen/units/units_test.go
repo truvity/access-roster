@@ -180,10 +180,10 @@ func TestDriverUnits(t *testing.T) {
 	for _, want := range []string{
 		"User=sluis-drv-key-software-%i",
 		"SupplementaryGroups=sluis-key-drv-%i",
-		"ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023",
+		"ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/driver/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023",
 		"StateDirectoryMode=0700",
 		"\nPrivateNetwork=yes\n",
-		"ReadWritePaths=/run/sluis/key/%i",
+		"ReadWritePaths=/run/sluis/key/%i/driver",
 	} {
 		if !strings.Contains(key, want) {
 			t.Errorf("the key driver lacks %q:\n%s", want, key)
@@ -202,11 +202,51 @@ func TestDriverUnits(t *testing.T) {
 	if !strings.Contains(k, "Requires=sluis-drv-key-software@%i.service") || !strings.Contains(k, "sluis-drv-key-software-%i") {
 		t.Errorf("key does not wait for, or join, its driver:\n%s", k)
 	}
-	if !strings.Contains(files["sluis-key.tmpfiles"], "d /run/sluis/key/dev 1770 sluis-key-dev sluis-key-drv-dev -") {
+	if !strings.Contains(files["sluis-key.tmpfiles"], "d /run/sluis/key/dev/driver 1770 sluis-key-dev sluis-key-drv-dev -") {
 		t.Errorf("the driver directory is wrong:\n%s", files["sluis-key.tmpfiles"])
 	}
 	if !strings.Contains(files["sluis-key.sysusers"], "g sluis-key-drv-dev -") {
 		t.Errorf("the drivers' group is missing:\n%s", files["sluis-key.sysusers"])
+	}
+}
+
+// The flags of key@ are those of actors/key/main.go, and the platform makes the directories key@ checks: the run
+// directory and one directory per caller of the registry, open to that caller's group alone.
+func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
+	files := generate(t)
+	svc := files["sluis-key@.service"]
+	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --run-dir /run/sluis/key/%i " +
+		"--store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock " +
+		"--transport-socket /run/sluis/audit/%i/emit.sock --node %H\n"
+	if !strings.Contains(svc, want) {
+		t.Errorf("key's ExecStart is not the flags of actors/key:\n%s", svc)
+	}
+	if strings.Contains(svc, "--socket ") {
+		t.Error("key@ has no --socket: it serves one socket per caller")
+	}
+	tmp := files["sluis-key.tmpfiles"]
+	callers := registry.CallersOf("key")
+	if len(callers) < 10 {
+		t.Fatalf("only %d callers of key", len(callers))
+	}
+	for _, c := range callers {
+		line := "d /run/sluis/key/dev/" + c + " 2750 sluis-key-dev " + unitStem(c) + "-dev -\n"
+		if !strings.Contains(tmp, line) {
+			t.Errorf("no directory for the caller %s: want %q", c, line)
+		}
+		// The caller's group must be made: by its own unit's sysusers, or the node agent's.
+		if _, ok := files[unitStem(c)+".sysusers"]; !ok {
+			t.Errorf("no sysusers file for the group of %s", c)
+		}
+	}
+	if !strings.Contains(tmp, "d /run/sluis/key/dev 0751 sluis-key-dev sluis-key-dev -") {
+		t.Errorf("the run directory is wrong:\n%s", tmp)
+	}
+	idx := files["index.tsv"]
+	for _, c := range callers {
+		if !strings.Contains(idx, unitStem(c)) {
+			t.Errorf("the index does not list %s among the users key@ needs", unitStem(c))
+		}
 	}
 }
 

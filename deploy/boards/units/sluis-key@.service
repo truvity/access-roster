@@ -11,7 +11,7 @@ Type=simple
 User=sluis-key-%i
 Group=sluis-key-%i
 SupplementaryGroups=sluis-drv-key-software-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --socket /run/sluis/key/%i.sock
+ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --run-dir /run/sluis/key/%i --store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock --transport-socket /run/sluis/audit/%i/emit.sock --node %H
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB

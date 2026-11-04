@@ -9,7 +9,7 @@ Type=simple
 User=sluis-store-%i
 Group=sluis-store-%i
 SupplementaryGroups=sluis-key-%i
-ExecStart=/opt/sluis/bin/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock
+ExecStart=/opt/sluis/bin/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml
 Restart=on-failure
 RestartSec=2s
 
