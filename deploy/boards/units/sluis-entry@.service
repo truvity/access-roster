@@ -8,8 +8,8 @@ Documentation=https://sluis.id/runtimes/bare-metal/
 Type=simple
 User=sluis-entry-%i
 Group=sluis-entry-%i
-SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter-upstream-oidc-%i sluis-console-%i sluis-exchange-%i sluis-key-%i sluis-quota-%i sluis-session-%i sluis-ssh-ca-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock
+SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter-upstream-oidc-%i sluis-console-%i sluis-drv-writer-spool-%i sluis-exchange-%i sluis-harness-forwarder-%i sluis-key-%i sluis-quota-%i sluis-session-%i sluis-ssh-ca-%i sluis-store-%i
+ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid 61027
 Restart=on-failure
 RestartSec=2s
 
