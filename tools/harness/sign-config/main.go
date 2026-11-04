@@ -28,6 +28,7 @@ func main() {
 	bootstrapOut := flag.String("bootstrap-out", "", "the path of the bootstrap file to write")
 	kid := flag.String("kid", "publisher-1", "the kid of the publisher key")
 	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
+	slotMap := flag.String("slot-map", "", "a file with the slot map entries of the nodes, one JSON object per line as key@'s check prints it after \"slot map: \" (# starts a comment); they replace the empty slot map of the KeyPlan source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
 	flag.Parse()
 	if flag.NArg() != 0 || *keyDir == "" || *out == "" || *bootstrapOut == "" {
@@ -46,9 +47,17 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	var entries []string
+	if *slotMap != "" {
+		var err error
+		if entries, err = readLines(*slotMap); err != nil {
+			fmt.Fprintf(os.Stderr, "sign-config: slot map: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	docs, err := Run(Options{
 		ConfigDir: *configDir, BootstrapTemplate: *template, KeyDir: *keyDir, Out: *out, BootstrapOut: *bootstrapOut,
-		KID: *kid, Seq: n, Recipients: ids,
+		KID: *kid, Seq: n, Recipients: ids, SlotMap: entries,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
@@ -71,4 +80,19 @@ func readRecipients(path string) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// readLines reads the non-empty lines of a file that do not start with #.
+func readLines(path string) ([]string, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // the harness's own state file
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for l := range strings.SplitSeq(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }

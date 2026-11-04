@@ -1222,7 +1222,7 @@ The resume point per destination; losing it costs a full reconcile, which runs a
 
 ### `PinReleaseRequest`
 
-A locked board's request for its card PIN: the node, an ephemeral public key made by the locked key@ for this request, and a signature over both by the board's pin-release key (a card slot with PIN policy never, attested in the slot map). Public values only, so plain. Id &lt;node>/&lt;request>. An unlocked peer's key@ watches the kind, verifies the signature and the slot attestation, and answers with a PinRelease. Default 5 min, at most 15 min; a request that expires is made again.
+A locked board's request for its card PIN: the signed text sluis-pin-release-v1, boundary, node, request id (a UUIDv7) and an ephemeral public key made by the locked board's card driver for this request, each field length-prefixed, and an ES384 signature over it by the board's pin-release key (slot 87, PIN policy never, attested in the KeyPlan's slot map). Public values only, so plain. Id &lt;node>/&lt;request>. An unlocked peer's key@ polls the kind, checks that the node is a listed, unrevoked peer of the boundary, that the request is fresh and its id unused, verifies the signature and, through its own card driver, the slot attestation, and answers with a PinRelease. Default 5 min, at most 15 min; a request that expires is made again.
 
 - **Class:** temp; scope boundary; plain; profile none; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).
@@ -1232,7 +1232,7 @@ A locked board's request for its card PIN: the node, an ephemeral public key mad
 
 ### `PinRelease`
 
-The answer to a PinReleaseRequest, same id: the board's PIN sealed by an unlocked peer's key@ to the ephemeral public key of the request, so only the locked key@ opens it. Already ciphertext, so plain. The PIN crosses only the Raft port, through the store. Default 5 min, at most 15 min.
+The one answer to a PinReleaseRequest, same id: the boundary's PIN sealed by an unlocked peer's card driver to the ephemeral public key of the request (ECDH P-384, HKDF-SHA384, AES-256-GCM, the request text as info and additional data), in a signed answer text that binds the request id, the request's digest and the ciphertext, ES384 by the releaser's pin-release key. The locked key@ verifies the signature before its driver opens it, so a forged answer is never a PIN attempt. Already ciphertext, so plain. The PIN crosses only the Raft port, through the store. Default 5 min, at most 15 min.
 
 - **Class:** temp; scope boundary; plain; profile none; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).

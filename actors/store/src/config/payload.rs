@@ -258,6 +258,33 @@ impl Obj {
         }
     }
 
+    /// The value of a key, without taking it.
+    fn peek(&self, key: &str) -> Option<&Value> {
+        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Bytes written as base64url without padding (RFC 4648, section 5), strictly: the alphabet only, no padding, no
+    /// stray bits in the last character. Absent or null is empty; `required` refuses that.
+    fn base64url(&mut self, key: &str, required: bool) -> R<Vec<u8>> {
+        use base64::Engine as _;
+        let s = self.string(key)?;
+        if s.is_empty() {
+            if required {
+                return err(&self.at(key), "required");
+            }
+            return Ok(Vec::new());
+        }
+        if !s
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+        {
+            return err(&self.at(key), "not base64url without padding");
+        }
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(s.as_bytes())
+            .or_else(|_| err(&self.at(key), "not base64url without padding"))
+    }
+
     fn done(self) -> R<()> {
         if self.entries.is_empty() {
             Ok(())
@@ -418,13 +445,74 @@ fn key_plan(mut o: Obj) -> R<pb::KeyPlan> {
             return err(&format!("{}[{i}]", o.at("recipients")), "listed twice");
         }
     }
+    let slot_map = slot_map(&mut o)?;
     o.done()?;
     Ok(pb::KeyPlan {
         purposes,
         cache_ttl: pb_duration(cache_ttl),
         recipients,
+        slot_map,
         ..pb::KeyPlan::default()
     })
+}
+
+/// The longest node name, as key@ bounds it (`maxNodeChars`).
+const NODE_MAX: usize = 64;
+
+/// The slot map of the KeyPlan (D20b), read for its shape as key@ reads it (plan.go `decodeSlotMap`): a node is an
+/// address part listed once, a slot is two lower-case hex digits listed once per node, a purpose is named, the byte
+/// fields are base64url without padding, and an attestation comes with its signer. What a key or an attestation says
+/// is key@'s check where it uses the entry.
+fn slot_map(o: &mut Obj) -> R<Vec<pb::NodeSlotMap>> {
+    let mut out: Vec<pb::NodeSlotMap> = Vec::new();
+    for mut n in o.objects("slot_map")? {
+        let node = n.required("node")?;
+        if !valid_part(&node) || node.len() > NODE_MAX {
+            return err(&n.at("node"), "not a node name");
+        }
+        if out.iter().any(|x| x.node == node) {
+            return err(&n.at("node"), "listed twice");
+        }
+        if !matches!(n.peek("slots"), Some(Value::Seq(_))) {
+            return err(&n.at("slots"), "must be a list");
+        }
+        let mut slots: Vec<pb::SlotKey> = Vec::new();
+        for mut k in n.objects("slots")? {
+            let slot = k.required("slot")?;
+            if slot.len() != 2 || !slot.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')) {
+                return err(&k.at("slot"), "not a slot of two lower-case hex digits");
+            }
+            if slots.iter().any(|x| x.slot == slot) {
+                return err(&k.at("slot"), "listed twice");
+            }
+            let purpose = k.required("purpose")?;
+            let public_key = k.base64url("public_key", true)?;
+            let attestation = k.base64url("attestation", false)?;
+            let attestation_signer = k.base64url("attestation_signer", false)?;
+            if attestation.is_empty() != attestation_signer.is_empty() {
+                return err(
+                    &k.at("attestation_signer"),
+                    "an attestation comes with its signer",
+                );
+            }
+            k.done()?;
+            slots.push(pb::SlotKey {
+                slot,
+                purpose,
+                public_key,
+                attestation,
+                attestation_signer,
+                ..pb::SlotKey::default()
+            });
+        }
+        n.done()?;
+        out.push(pb::NodeSlotMap {
+            node,
+            slots,
+            ..pb::NodeSlotMap::default()
+        });
+    }
+    Ok(out)
 }
 
 fn token_lifetime(mut o: Obj) -> R<pb::TokenLifetime> {
