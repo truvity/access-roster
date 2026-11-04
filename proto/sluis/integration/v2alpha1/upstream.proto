@@ -32,6 +32,7 @@ message CompleteRequest {
   string redirect_uri = 3;   // the redirect_uri of the begin step
   string code_verifier = 4;  // the PKCE verifier for the begin step's challenge
   string nonce = 5;          // the nonce of the begin step
+  string iss = 6;            // the iss parameter of the callback (RFC 9207); empty when the callback had none
 }
 
 // Assertion is what the upstream says about the person, verified.
