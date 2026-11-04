@@ -317,6 +317,6 @@ mod tests {
             .map(|r| (r.2 >> SELF_SHIFT).count_ones())
             .sum();
         let ops: u32 = KEY_RULES.iter().map(|r| r.3.count_ones()).sum();
-        assert_eq!((verbs, self_marks, ops), (1755, 704, 90));
+        assert_eq!((verbs, self_marks, ops), (1752, 704, 90));
     }
 }

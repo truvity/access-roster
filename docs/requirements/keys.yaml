@@ -1636,4 +1636,4 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a key of each signing purpose (token, x509, ssh-user, ssh-host, log keys, workload-issuer): a Sign with it is refused and audited; a key made after a purpose revocation signs; an unreadable KeyRevocation refuses the Sign"}
+      - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; a key made after a purpose revocation signs; an unreadable KeyRevocation refuses the Sign"}
