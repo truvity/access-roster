@@ -861,12 +861,15 @@ func TestAConfidentialClientIsRefusedAnAudiencePolicyDoesNotGrantToIt(t *testing
 	}
 }
 
-// REQ-EXCH-020 is the only thing that stops an exchanged token from being the subject of another exchange once its
-// audience is its own client: a confidential client that exchanges for itself gets aud == client_id, which is the
-// shape of a sign-in token, and exchange puts no marker in it that session does not. If a change lets a confidential
-// client's token be a subject, this test fails, and the change must first add a structural guard (a claim or token
-// type only exchange sets) and refuse on it in verifyOwn.
-func TestAnExchangedTokenIsNeverASubjectOnlyBecauseOfItsClientKind(t *testing.T) {
+// verifies: REQ-EXCH-020
+//
+// The client's kind is the only thing that stops a token that exchange issued to a confidential client from being the
+// subject of another exchange: a confidential client that exchanges for itself gets aud == client_id, the shape of a
+// sign-in token, and exchange puts no marker in it that session does not. If a change lets a confidential client's
+// token be a subject, this test fails, and the change must first add a structural guard (a claim or token type only
+// exchange sets) and refuse on it in verifyOwn. A native public client's own token for itself is a subject by design
+// and is not covered here.
+func TestREQ_EXCH_020_AConfidentialClientsExchangedTokenIsNotASubjectOnlyByItsClientKind(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	rep := e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
 		r.Authorization = basicHeader("example-app", appSecret)
@@ -891,6 +894,9 @@ func TestAnExchangedTokenIsNeverASubjectOnlyBecauseOfItsClientKind(t *testing.T)
 	// As the public native client, which names itself: the token is another client's.
 	pub := request(token)
 	failure(t, e.exchange(pub), "invalid_request")
+	if got := get(e.lastRecord(), "status_code"); got != "client_kind" {
+		t.Errorf("the CLI's reason = %v, want client_kind", got)
+	}
 }
 
 func TestREQ_EXCH_019_EveryFailureOfClientAuthenticationIsTheOneInvalidClient(t *testing.T) {

@@ -126,7 +126,8 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["ES384"],
         "code_challenge_methods_supported": ["S256"],
-        // What /token accepts for a client, from the handler that parses it.
+        // The union over the grants of /token (RFC 8414 has no list per grant): `none` for sign-in and
+        // refresh, the two secret methods for token exchange. The list is the handler's.
         "token_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
     });
     serde_json::to_vec(&doc).ok()
