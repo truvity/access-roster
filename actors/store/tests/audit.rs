@@ -61,6 +61,7 @@ async fn spool(dir: &std::path::Path) -> (Arc<Spool>, std::path::PathBuf) {
             boundary: "dev".into(),
             socket: sock.clone(),
             mode: 0o660,
+            socket_gid: None,
             allow: Allow::Exact("store"),
             default_deadline: Duration::from_secs(5),
         },
