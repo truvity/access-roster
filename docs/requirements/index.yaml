@@ -51,3 +51,4 @@ catalogue:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
     proposed-design: "The design is proposed in research and not yet decided."
+    partly-built: "The decision is made; the part the record names is not built yet."
