@@ -3,7 +3,7 @@
  "cases": [
   {
    "name": "the local KeyPlan source",
-   "payload": "# KeyPlan: which keys exist and where they live (keys.yaml). The software key driver ignores the\n# slots; a board's card follows them.\ndefault:\n  cache_ttl: 15m\n  # The wrap recipients: the RFC 7638 thumbprint of each node's wrapping key, and no one else receives a wrap of a\n  # data key (ADR 0006, \"Who may receive a wrap\"). A software key is made at the first start, so the committed list\n  # is empty and the harness fills it in when it signs: deploy/local/local.sh up, deploy/boards/prepare.sh. They\n  # replace the line below, which must stay as it is.\n  recipients: []\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }\n    - { purpose: token-signing, algorithm: ES384, slot: 9a }\n    - { purpose: audit-log, algorithm: ES256, slot: \"84\" }\n    - { purpose: data, algorithm: AES-256-GCM }\n",
+   "payload": "# KeyPlan: which keys exist and where they live (keys.yaml). The software key driver ignores the\n# slots; a board's card follows them.\ndefault:\n  cache_ttl: 15m\n  # The wrap recipients: the RFC 7638 thumbprint of each node's wrapping key, and no one else receives a wrap of a\n  # data key (ADR 0006, \"Who may receive a wrap\"). A software key is made at the first start, so the committed list\n  # is empty and the harness fills it in when it signs: deploy/local/local.sh up, deploy/boards/prepare.sh. They\n  # replace the line below, which must stay as it is.\n  recipients: []\n  # The slot map (ADR 0006, \"The slot plan\"): which card slot of each node holds which key, with the attestation of each\n  # slot of a card. A peer releases a board's PIN only to a node the map lists (ADR 0006, \"Touch and PIN\"). The keys\n  # are made at the first start, so the harness fills it in when it signs, from key@'s check on each node\n  # (deploy/boards/prepare.sh). It replaces the line below, which must stay as it is.\n  slot_map: []\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }\n    - { purpose: token-signing, algorithm: ES384, slot: 9a }\n    - { purpose: audit-log, algorithm: ES256, slot: \"84\" }\n    - { purpose: data, algorithm: AES-256-GCM }\n",
    "read": {
     "cache_ttl_seconds": 900,
     "recipients": [],
@@ -28,7 +28,8 @@
       "algorithm": "AES-256-GCM",
       "slot": ""
      }
-    ]
+    ],
+    "slot_map": []
    }
   },
   {
@@ -523,6 +524,130 @@
    "name": "a byte order mark after the start",
    "payload": "﻿﻿default:\n  cache_ttl: 15m\n",
    "refused_path": ""
+  },
+  {
+   "name": "a slot map of two nodes",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 9d, purpose: wrapping, public_key: AQID }\n        - { slot: \"87\", purpose: pin-release, public_key: BAUG, attestation: BwgJ, attestation_signer: CgsM }\n    - { node: board-b, slots: [] }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [],
+    "slot_map": [
+     {
+      "node": "board-a",
+      "slots": [
+       {
+        "slot": "9d",
+        "purpose": "wrapping",
+        "public_key": "AQID",
+        "attestation": "",
+        "attestation_signer": ""
+       },
+       {
+        "slot": "87",
+        "purpose": "pin-release",
+        "public_key": "BAUG",
+        "attestation": "BwgJ",
+        "attestation_signer": "CgsM"
+       }
+      ]
+     },
+     {
+      "node": "board-b",
+      "slots": []
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot_map null is no slot map",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map: ~\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [],
+    "slot_map": []
+   }
+  },
+  {
+   "name": "slot_map is not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map: board-a\n",
+   "refused_path": "default.slot_map"
+  },
+  {
+   "name": "a slot map node listed twice",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [] }\n    - { node: board-a, slots: [] }\n",
+   "refused_path": "slot_map[1].node"
+  },
+  {
+   "name": "a slot map node that is not a name",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: Board A, slots: [] }\n",
+   "refused_path": "slot_map[0].node"
+  },
+  {
+   "name": "a slot map node without slots",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a }\n",
+   "refused_path": "slot_map[0].slots"
+  },
+  {
+   "name": "a slot map node with an unknown key",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [], extra: 1 }\n",
+   "refused_path": "slot_map[0]"
+  },
+  {
+   "name": "a slot in upper-case hex",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9D, purpose: wrapping, public_key: AQID }] }\n",
+   "refused_path": "slot_map[0].slots[0].slot"
+  },
+  {
+   "name": "a slot of three digits",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: \"087\", purpose: pin-release, public_key: AQID }] }\n",
+   "refused_path": "slot_map[0].slots[0].slot"
+  },
+  {
+   "name": "a slot listed twice",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: AQID }, { slot: 9d, purpose: x, public_key: AQID }] }\n",
+   "refused_path": "slot_map[0].slots[1].slot"
+  },
+  {
+   "name": "a slot without a purpose",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, public_key: AQID }] }\n",
+   "refused_path": "slot_map[0].slots[0].purpose"
+  },
+  {
+   "name": "a slot without a public key",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping }] }\n",
+   "refused_path": "slot_map[0].slots[0].public_key"
+  },
+  {
+   "name": "a public key with padding",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: AQI= }] }\n",
+   "refused_path": "slot_map[0].slots[0].public_key"
+  },
+  {
+   "name": "a public key in the standard alphabet",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: \"A+/D\" }] }\n",
+   "refused_path": "slot_map[0].slots[0].public_key"
+  },
+  {
+   "name": "a public key with a line break",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: \"AQ\\nID\" }] }\n",
+   "refused_path": "slot_map[0].slots[0].public_key"
+  },
+  {
+   "name": "a public key with stray bits",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: AQJ }] }\n",
+   "refused_path": "slot_map[0].slots[0].public_key"
+  },
+  {
+   "name": "an attestation without its signer",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: \"87\", purpose: pin-release, public_key: AQID, attestation: BwgJ }] }\n",
+   "refused_path": "slot_map[0].slots[0].attestation_signer"
+  },
+  {
+   "name": "an unknown key of a slot",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: AQID, pin: \"123456\" }] }\n",
+   "refused_path": "slot_map[0].slots[0]"
   }
  ]
 }

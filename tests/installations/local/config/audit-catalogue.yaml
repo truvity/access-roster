@@ -9,6 +9,8 @@ default:
     - key.refuse
     - key.data_key.make
     - key.wrap.write
+    - key.pin.release
+    - key.pin.unlock
     - store.start
     - store.refused
     - store.reload

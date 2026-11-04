@@ -926,7 +926,7 @@ requirements:
     rationale: "The PIN then crosses only the Raft port inside the store's replication and adds no listener (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -1180,6 +1180,34 @@ requirements:
     verification:
       - {kind: test-vectors, ref: "the Boundary payload vectors: the Go and the Rust reader read the same environment from every case"}
       - {kind: integration-test, ref: "a forged Boundary, one for another kind and an unsigned item that says development leave the production floor in force; a lower seq is refused after a restart"}
+  - id: REQ-KEYS-112
+    area: KEYS
+    statement: "A locked key@ MUST give its card driver only a PinRelease whose signature it verified with the pin-release key that the signed KeyPlan's slot map holds for a listed, unrevoked peer."
+    rationale: "Every PIN the card is sent counts against its retry limit, so a forged answer would block a tier-0 card (ADR 0006, Touch and PIN)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "a tampered answer, one signed by an unlisted key, one under a listed name with another key, and one in the requester's own name are refused before the driver is called; the card is sent no PIN"}
+  - id: REQ-KEYS-113
+    area: KEYS
+    statement: "A card PIN MUST NOT leave the card driver of key@: the driver seals it for a peer and opens a released one itself."
+    rationale: "A PIN outside the driver's locked memory could be copied from key@ or swapped to disk (ADR 0006, Touch and PIN)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "two card drivers on test cards release a PIN through the port: the sealed PIN opens with the locked driver's one-time key only, and no answer of the key-store port carries a PIN"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
@@ -1416,12 +1444,12 @@ requirements:
     rationale: "A stolen board that reconnects must not be given its PIN, and a board that is merely unlisted or revoked is the same case (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
-    issues: [1365]
+    actors: [key]
+    issues: [914, 1365]
     runtimes: ["bare-metal"]
     standards: []
-    features: ["design"]
     verification:
       - {kind: integration-test, ref: "a board that is unlisted, and one that is revoked, ask for their PIN: both refused with an audit fact; a listed board is answered"}
   - id: REQ-KEYS-094

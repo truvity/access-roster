@@ -61,10 +61,14 @@ func (s *Server) Serve(ctx context.Context) error {
 			}
 		}()
 	}
-	wg.Add(1)
+	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		s.background(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		s.pinLoops(ctx)
 	}()
 
 	var err error

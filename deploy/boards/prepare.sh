@@ -10,7 +10,9 @@
 #
 # The KeyPlan lists the wrapping keys that may receive a wrap (ADR 0006, "Who may receive a wrap"). A board's key is made at
 # its first start, so the list comes from the file $state/recipients that `just boards-recipients` writes after the first
-# deploy (see deploy/boards/boards.sh). Without the file the KeyPlan lists nobody.
+# deploy (see deploy/boards/boards.sh). Without the file the KeyPlan lists nobody. The same run of `boards-recipients` writes
+# $state/slot-map, each board's slot map entry as its key@ check prints it, which the KeyPlan carries so that a board's
+# peers can release its PIN (ADR 0006, "Touch and PIN"); the boards' KeyPlan names the pin-release purpose (slot 87).
 #
 # Input, from the environment and never from the repository:
 #   SLUIS_UPSTREAM_CLIENT_BOARDS   the OpenID Connect client of the boards' upstream (the run.env of the build;
@@ -43,11 +45,23 @@ replace boundary.yaml "https://sluis.dev.local.test" "https://$host"
 replace audit-log.yaml "sluis.local.test/" "sluis.boards.test/"
 replace upstream.yaml "client_id: sluis-local" "client_id: $client"
 
+# insert_before FILE LINE NEW: NEW goes in as a line of its own before the one line that equals LINE, which must exist.
+insert_before() {
+	local f=$state/config/$1 t
+	[ "$(grep -cxF -- "$2" "$f")" = 1 ] || { echo "prepare: $1 does not hold the line '$2' once; update deploy/boards/prepare.sh" >&2; exit 1; }
+	t=$(mktemp)
+	AT=$2 NEW=$3 awk '$0 == ENVIRON["AT"] { print ENVIRON["NEW"] } { print }' "$f" >"$t"
+	cat "$t" >"$f"
+	rm -f "$t"
+}
+insert_before key-plan.yaml "    - { purpose: data, algorithm: AES-256-GCM }" '    - { purpose: pin-release, algorithm: ES384, slot: "87" }'
+
 recipients=()
 [ ! -s "$state/recipients" ] || recipients=(-recipients "$state/recipients")
 # The policy binds the test users by their sub (REQ-SUBJ-044). M1 on the boards signs nobody in (the upstream's secret
 # below is a placeholder too), so each user gets a random UUID that no account has, and the bindings bind nobody.
 go run ./tools/harness/upstream-subjects -config "$state/config" -unbound -out "$state/subjects"
+[ ! -s "$state/slot-map" ] || recipients+=(-slot-map "$state/slot-map")
 go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
 	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${recipients[@]}"
 
@@ -62,5 +76,5 @@ go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/inst
 		cp "$state/$c" "$seed/credentials/sluis-drv-store-credential/$c"
 	done
 )
-echo "prepare: the KeyPlan lists $(awk '/^[^#[:space:]]/ { n++ } END { print n + 0 }' "$state/recipients" 2>/dev/null || echo 0) wrap recipients"
+echo "prepare: the KeyPlan lists $(awk '/^[^#[:space:]]/ { n++ } END { print n + 0 }' "$state/recipients" 2>/dev/null || echo 0) wrap recipients and $(awk '/^[^#[:space:]]/ { n++ } END { print n + 0 }' "$state/slot-map" 2>/dev/null || echo 0) slot map entries"
 echo "prepare: seed in $seed ($(find "$seed/config" -name '*.jws' | wc -l) signed documents, the bootstrap file, $(find "$seed/credentials" -type f | wc -l) credentials)"
