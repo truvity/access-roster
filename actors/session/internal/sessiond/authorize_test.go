@@ -323,6 +323,37 @@ func TestAuthorizeNeverRedirectsOverPlainHTTPOffLoopbackEvenWhenRegistered(t *te
 			}
 		})
 	}
+	// Outside development, a loopback redirect is a public native client's only (ADR 0011, the floor of store@).
+	for _, environment := range []string{"staging", "production"} {
+		for profile, ok := range map[string]bool{"native": true, "browser": false, "": false} {
+			e := newEnv(t, func(o *options) {
+				o.boundary.Environment = environment
+				o.client.Profile = profile
+			})
+			r := e.authorize(newAuthorize().req)
+			if ok {
+				if got := location(t, r); got.Host != "idp.example.test" {
+					t.Errorf("%s, profile %q: redirected to %s", environment, profile, got)
+				}
+				continue
+			}
+			assertErrorPage(t, r)
+			if len(e.upstream.begins) != 0 {
+				t.Errorf("%s, profile %q: the upstream was called", environment, profile)
+			}
+		}
+		// An https redirect is any public client's.
+		e := newEnv(t, func(o *options) {
+			o.boundary.Environment = environment
+			o.client.Profile = "browser"
+			o.client.Redirects = []string{"https://app.example.com/callback"}
+		})
+		p := newAuthorize()
+		p.req.RedirectUri = "https://app.example.com/callback"
+		if got := location(t, e.authorize(p.req)); got.Host != "idp.example.test" {
+			t.Errorf("%s: an https redirect of a browser client: %s", environment, got)
+		}
+	}
 	// The loopback IP literals stay, with a registered port or any port (RFC 8252 section 7.3).
 	for reg, uri := range map[string]string{
 		"http://[::1]/callback":          "http://[::1]:43210/callback",
