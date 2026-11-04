@@ -569,7 +569,7 @@ requirements:
     runtimes: all
     standards: []
     issues: [1106]
-    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go, actors/session/internal/sessiond/callback_test.go]
+    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go]
     verification:
       - {kind: integration-test, ref: "a token without the claim, and one with a number or a 300-character value, are refused and no person is created"}
   - id: REQ-SUBJ-041
