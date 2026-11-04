@@ -307,7 +307,7 @@ aad      = "sluis-seal-v1"
 | `evidence` | `0x02` | The `evidence` key of the tenant |
 | `cookie` | `0x03` | The `cookie` key of the boundary |
 | `grant` | `0x04` | The `grant` key of the boundary |
-| `chain` | `0x05` | The `chain` key of the boundary |
+| `chain` | `0x05` | The `chain` key of the address's tenant |
 
 - **AES-256-GCM, with a data key per purpose and generation.** The nonce comes from the cryptographic library, never from the caller: `crypto/cipher` with a random nonce in Go, `RandomizedNonceKey` of `aws-lc-rs` in Rust ([0006](/decisions/0006-keys-and-sealing/#algorithms)). Lengths are big-endian. The generation names the data key that sealed the value, so an older generation keeps opening what it sealed ([0006](/decisions/0006-keys-and-sealing/#rotation)).
 - **The additional authenticated data binds the value to its full address** and to its own header: a value copied to another row, kind, tenant or boundary fails to open, and so does a header changed in place. A value that has to move is opened and sealed again ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
