@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 )
 
 // lockedOrSkip sets the PIN, or skips when this environment forbids locking memory (a container with a tiny
@@ -49,19 +51,30 @@ func TestThePageIsReallyLockedAndOutOfCoreDumps(t *testing.T) {
 	var m pinMemory
 	defer m.release()
 	lockedOrSkip(t, &m, "123456")
-	// The kernel says so: the mapping that holds the page is Locked and marked "dd" (do not dump) in smaps.
+	// The kernel says so: the mapping that holds the page is Locked (lo) and marked out of dumps (dd) in smaps.
 	b, err := os.ReadFile("/proc/self/smaps")
 	if err != nil {
 		t.Skipf("SKIP: no /proc/self/smaps: %v", err)
 	}
-	found := false
+	addr := uint64(uintptr(unsafe.Pointer(&m.page[0]))) //nolint:gosec // the address of the page, to find its mapping in smaps
+	inMapping, found := false, false
 	for _, line := range strings.Split(string(b), "\n") {
-		if strings.HasPrefix(line, "VmFlags:") && strings.Contains(line, " lo") && strings.Contains(line, " dd") {
+		if f := strings.Fields(line); len(f) >= 2 && strings.Contains(f[0], "-") && len(f[1]) == 4 {
+			lo, hi, ok := strings.Cut(f[0], "-")
+			start, e1 := strconv.ParseUint(lo, 16, 64)
+			end, e2 := strconv.ParseUint(hi, 16, 64)
+			inMapping = ok && e1 == nil && e2 == nil && addr >= start && addr < end
+			continue
+		}
+		if inMapping && strings.HasPrefix(line, "VmFlags:") {
 			found = true
+			if !strings.Contains(line, " lo") || !strings.Contains(line, " dd") {
+				t.Fatalf("the mapping of the page has %q, want lo and dd", line)
+			}
 		}
 	}
 	if !found {
-		t.Fatal("no mapping of the process is both locked (lo) and out of dumps (dd)")
+		t.Skip("SKIP: the page is in no mapping of /proc/self/smaps (an emulated kernel, as under QEMU)")
 	}
 }
 
