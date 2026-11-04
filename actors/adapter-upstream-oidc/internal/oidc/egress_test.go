@@ -33,6 +33,7 @@ func TestCheckURL(t *testing.T) {
 	}
 }
 
+// verifies: REQ-FED-008
 func TestBlockedAddress(t *testing.T) {
 	cases := []struct {
 		ip       string

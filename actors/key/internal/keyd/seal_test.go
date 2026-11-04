@@ -302,6 +302,7 @@ func TestTenantDataRuleIsNoRightToTheBoundaryDataKey(t *testing.T) {
 	}
 }
 
+// verifies: REQ-POLICY-015
 func TestSealGrantAndOpenGrant(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
