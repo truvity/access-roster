@@ -21,6 +21,8 @@ type result struct {
 	Login    *loginOut `json:"login,omitempty"`
 	Audit    *auditOut `json:"audit,omitempty"`
 	Node     *nodeOut  `json:"node,omitempty"`
+	// Checks is the `checks` member of `config check`.
+	Checks []configCheck `json:"checks,omitempty"`
 
 	// Text is what a person reads on standard output when the command is done.
 	Text string `json:"-"`

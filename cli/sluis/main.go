@@ -1,5 +1,5 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify, node unlock and version; the rest of the tree belongs to later milestones.
+// audit verify, config check, node unlock and version; the rest of the tree belongs to later milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
 // the global flags --boundary, --output and --log-level. The kit's Run knows only serve, check, version and
@@ -36,6 +36,12 @@ type app struct {
 	secretFd func(fd int) io.Reader
 	// boundary is the --boundary flag of the running command.
 	boundary string
+	// jsonOut is true when the running command prints the one JSON object of cli.md.
+	jsonOut bool
+	// selfPath is where this executable is, for the store helper beside it; nil is os.Executable.
+	selfPath func() (string, error)
+	// os is the operating system the command acts as on; empty is runtime.GOOS.
+	os string
 }
 
 func main() {
@@ -68,6 +74,8 @@ commands:
   login                    sign in at an OpenID Connect issuer
   token --audience ID      print an access token for an audience
   audit verify DIR         check a tiled audit log offline
+  config check DIR         validate the bootstrap file and the signed config documents in DIR offline,
+                           with store@'s own rules (runs the store executable; Linux only)
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   version                  print the version
 
@@ -98,6 +106,12 @@ func (a *app) run(ctx context.Context, args []string) int {
 			return a.exec(ctx, a.auditVerifyCommand(), args[2:])
 		}
 		_, _ = fmt.Fprintf(a.stderr, "sluis: audit: expected the command verify\n\n%s", usageText)
+		return cli.ExitUsage
+	case "config":
+		if len(args) > 1 && args[1] == "check" {
+			return a.exec(ctx, a.configCheckCommand(), args[2:])
+		}
+		_, _ = fmt.Fprintf(a.stderr, "sluis: config: expected the command check\n\n%s", usageText)
 		return cli.ExitUsage
 	case "node":
 		if len(args) > 1 && args[1] == "unlock" {
@@ -152,6 +166,7 @@ func (a *app) exec(ctx context.Context, c command, args []string) int {
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(a.stderr, &slog.HandlerOptions{Level: level})))
 	a.boundary = g.boundary
+	a.jsonOut = jsonOut
 	return a.finish(res, c.run(ctx, positional, res), jsonOut)
 }
 
