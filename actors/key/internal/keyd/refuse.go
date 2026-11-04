@@ -34,6 +34,12 @@ const (
 	reasonRevoked              = "revoked"               // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
 	reasonRevocationUnreadable = "revocation-unreadable" // unavailable: KeyRevocation could not be read, so a Sign cannot be shown allowed
 	reasonWrap                 = "wrap"                  // unavailable: the data key exists but this node holds no wrap of it yet
+	// The reasons of a key revocation declaration (declaration.go).
+	reasonDeclaration   = "declaration"    // permission_denied: not a declaration that a pinned publisher key signed
+	reasonSeq           = "seq"            // failed_precondition: a seq not above the highest declaration taken (an old one, or a replay)
+	reasonOtherBoundary = "other-boundary" // permission_denied: the declaration is for another boundary
+	reasonUnknownKid    = "unknown-kid"    // failed_precondition: a kid that is not a signing key this key@ holds or the ring lists
+	reasonState         = "state"          // unavailable: the mark of the declaration could not be saved in the state directory
 )
 
 // refuse audits a refusal and returns it. The audit fact carries the caller, the operation, the purpose, the

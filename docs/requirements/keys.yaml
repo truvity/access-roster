@@ -1179,6 +1179,34 @@ requirements:
     verification:
       - {kind: test-vectors, ref: "the Boundary payload vectors: the Go and the Rust reader read the same environment from every case"}
       - {kind: integration-test, ref: "a forged Boundary, one for another kind and an unsigned item that says development leave the production floor in force; a lower seq is refused after a restart"}
+  - id: REQ-KEYS-112
+    area: KEYS
+    statement: "key@ MUST refuse a key revocation declaration whose seq is not above the highest it has taken, and keep that seq in state of its own."
+    rationale: "A declaration is taken once: a replay or an older declaration must not make a second set of facts, also after a restart; a node whose state is gone takes a valid declaration again, which writes only revocations that exist (ADR 0041, The declaration)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    issues: [1362]
+    runtimes: [bare-metal, kubernetes]
+    actors: [key]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "the same declaration again and a lower seq are refused, in the process and after a restart on the same state; a higher seq is taken"}
+  - id: REQ-KEYS-113
+    area: KEYS
+    statement: "key@ MUST refuse a key revocation declaration that names a key it does not know: a signing key it holds or a token key that SigningRing lists."
+    rationale: "A mistyped key id must not be written as a revocation that stops nothing while the operator believes the key revoked; the ring makes another node's token key known, so it is revoked from any node (ADR 0041, The declaration)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    issues: [1362]
+    runtimes: all
+    actors: [key]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "a declaration with an unknown kid or a wrapping key is refused whole; another node's token key in the ring is taken; a ring that cannot be read is unavailable, not unknown"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
@@ -1397,18 +1425,19 @@ requirements:
       - {kind: integration-test, ref: "an update, a delete and an apply on KeyRevocation are refused for every actor, key@ included, an apply on a free address too; a create is accepted"}
   - id: REQ-KEYS-092
     area: KEYS
-    statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a KeyRevocation item that works while the actor of the compromised node is down."
-    rationale: "One revocation path for every kind lets an operator act without a deploy (ADR 0041, principle 12)."
+    statement: "sluis MUST provide a command that revokes the keys a declaration names, with a reason, as KeyRevocation items, and that works while the actor of the compromised node is down."
+    rationale: "One revocation path for every kind lets an operator act without a deploy, and a declaration names exact keys, never a purpose, because a key a ceremony put on a card has no age that a cutoff could be compared with (ADR 0041, principle 12)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a data key generation, a recipient and a purpose through the command with one node stopped; each takes effect"}
+      - {kind: integration-test, ref: "the command writes and delivers a signed declaration; another node's key is revoked from this node; a data key generation and a recipient with one node stopped"}
   - id: REQ-KEYS-093
     area: KEYS
     statement: "A peer MUST release a PIN only to a board that the KeyPlan lists and KeyRevocation does not revoke."
@@ -1622,22 +1651,22 @@ requirements:
       - {kind: integration-test, ref: "revoke a key: the next published key set, static and live, lacks its kid, and a token it signed fails against the set"}
   - id: REQ-KEYS-108
     area: KEYS
-    statement: "key@ MUST write a KeyRevocation item only on a declaration that an operator made with fresh multi-factor authentication through its admin path."
-    rationale: "Only a person declares; a signal or a signer acting on its own would let an attacker use the alarm to stop sign-in (ADR 0041, principle 7)."
+    statement: "key@ MUST write a KeyRevocation item only on a key revocation declaration for its boundary that a publisher key of its bootstrap file signed."
+    rationale: "Only a person declares; a signal or a signer acting on its own would let an attacker use the alarm to stop sign-in, and the publisher's signature needs neither the token keys nor sign-in, which a compromise may have taken (ADR 0041, The declaration; principle 7)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     issues: [1361, 1362]
     runtimes: all
+    actors: [key]
     standards: []
-    features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a signer with no declaration, an alert and a declaration without fresh authentication ask key@ to revoke: all refused; a declaration with fresh authentication, relayed or not, is accepted"}
+      - {kind: integration-test, ref: "tampered, unpinned, other-kind and other-boundary declarations and another user on the admin socket are refused and write nothing; a signed one writes an item per key"}
   - id: REQ-KEYS-109
     area: KEYS
     statement: "key@ MUST refuse a Sign with any key that KeyRevocation lists, whatever the signing purpose."
-    rationale: "A revoked key signs nothing more, for every signing purpose and whichever actor asks; a purpose revocation refuses keys made at or before it, not a replacement made after it; a key of unknown age and an unreadable KeyRevocation are refused; the PIV driver reports the age of the keys it made (ADR 0041)."
+    rationale: "A revoked key signs nothing more, for every signing purpose and whichever actor asks; a revocation names the key by its kid, so its replacement signs; an unreadable KeyRevocation is refused (ADR 0041)."
     level: MUST
     source: design-decision
     status: partial
@@ -1648,4 +1677,4 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; a key made after a purpose revocation signs; an unreadable KeyRevocation refuses the Sign"}
+      - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; another key of the purpose signs; an unreadable KeyRevocation refuses the Sign"}

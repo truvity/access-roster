@@ -14,6 +14,11 @@
 // A source names a test user's account by the placeholder {{sub:<user>}}, and `-subjects` gives the values: the local
 // installation binds its test users by `sub` (REQ-SUBJ-044), and the identity provider makes a user's `sub` when it
 // imports its realm, so the harness reads it there first (tools/harness/upstream-subjects) and this tool fills it in.
+//
+// With -declaration it signs one key revocation declaration with the same publisher key instead (ADR 0041), the file
+// that `sluis key revoke --out` wrote, into -declaration-out, for `sluis key revoke --declaration` on a node:
+//
+//	go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration revoke.yaml -declaration-out revoke.jws
 package main
 
 import (
@@ -35,7 +40,13 @@ func main() {
 	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
 	subjectsFile := flag.String("subjects", "", "a file with the subjects of the test users, a user and its sub on each line (# starts a comment); each fills the placeholder {{sub:<user>}} of a source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
+	declaration := flag.String("declaration", "", "sign this key revocation declaration (`sluis key revoke --out`) instead of the config sources")
+	declarationOut := flag.String("declaration-out", "", "the path of the signed declaration, with -declaration")
 	flag.Parse()
+	if *declaration != "" {
+		signDeclaration(*keyDir, *kid, *seq, *declaration, *declarationOut)
+		return
+	}
 	if flag.NArg() != 0 || *keyDir == "" || *out == "" || *bootstrapOut == "" {
 		fmt.Fprintln(os.Stderr, "sign-config: -key-dir, -out and -bootstrap-out are required, and there are no arguments")
 		os.Exit(2)
@@ -110,4 +121,21 @@ func readSubjects(path string) (map[string]string, error) {
 		out[f[0]] = f[1]
 	}
 	return out, nil
+}
+
+// signDeclaration signs a key revocation declaration with the publisher key of keyDir, which must exist: a declaration
+// is signed by the key the boards already pin, never by a new one.
+func signDeclaration(keyDir, kid string, seq uint64, in, out string) {
+	if keyDir == "" || out == "" || flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "sign-config: -declaration needs -key-dir and -declaration-out, and there are no arguments")
+		os.Exit(2)
+	}
+	if seq == 0 {
+		seq = uint64(max(time.Now().Unix(), 1))
+	}
+	if err := SignDeclarationFile(keyDir, kid, seq, in, out); err != nil {
+		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("sign-config: the declaration is signed as %s with seq %d (%s)\n", kid, seq, out)
 }

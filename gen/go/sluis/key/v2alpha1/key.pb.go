@@ -25,6 +25,230 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// RevokeRequest delivers a signed key revocation declaration.
+type RevokeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The declaration: a signed document in the general JSON serialisation of RFC 7515, under a publisher key of the
+	// bootstrap file, whose protected header names the kind KeyRevocationDeclaration and whose payload is a
+	// KeyRevocationDeclaration (signed-config.md, "Declarations").
+	Declaration   []byte `protobuf:"bytes,1,opt,name=declaration,proto3" json:"declaration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeRequest) Reset() {
+	*x = RevokeRequest{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeRequest) ProtoMessage() {}
+
+func (x *RevokeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeRequest.ProtoReflect.Descriptor instead.
+func (*RevokeRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RevokeRequest) GetDeclaration() []byte {
+	if x != nil {
+		return x.Declaration
+	}
+	return nil
+}
+
+// RevokeResponse says what key@ did with each key the declaration names.
+type RevokeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`         // the seq of the declaration, now the highest key@ has taken
+	Keys          []*RevokedKey          `protobuf:"bytes,2,rep,name=keys,proto3" json:"keys,omitempty"`        // one per key of the declaration, in its order
+	Audited       bool                   `protobuf:"varint,3,opt,name=audited,proto3" json:"audited,omitempty"` // the audit fact of the revocation was made durable
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeResponse) Reset() {
+	*x = RevokeResponse{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeResponse) ProtoMessage() {}
+
+func (x *RevokeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeResponse.ProtoReflect.Descriptor instead.
+func (*RevokeResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RevokeResponse) GetSeq() uint64 {
+	if x != nil {
+		return x.Seq
+	}
+	return 0
+}
+
+func (x *RevokeResponse) GetKeys() []*RevokedKey {
+	if x != nil {
+		return x.Keys
+	}
+	return nil
+}
+
+func (x *RevokeResponse) GetAudited() bool {
+	if x != nil {
+		return x.Audited
+	}
+	return false
+}
+
+// RevokedKey is one key of a declaration.
+type RevokedKey struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kid           string                 `protobuf:"bytes,1,opt,name=kid,proto3" json:"kid,omitempty"`          // the RFC 7638 thumbprint, base64url
+	Already       bool                   `protobuf:"varint,2,opt,name=already,proto3" json:"already,omitempty"` // the key was revoked before this declaration; nothing new was written
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokedKey) Reset() {
+	*x = RevokedKey{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokedKey) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokedKey) ProtoMessage() {}
+
+func (x *RevokedKey) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokedKey.ProtoReflect.Descriptor instead.
+func (*RevokedKey) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RevokedKey) GetKid() string {
+	if x != nil {
+		return x.Kid
+	}
+	return ""
+}
+
+func (x *RevokedKey) GetAlready() bool {
+	if x != nil {
+		return x.Already
+	}
+	return false
+}
+
+// KeyRevocationDeclaration is the payload of a key revocation declaration (ADR 0041; signed-config.md,
+// "Declarations"): what an operator declares, signed with a publisher key. It names the exact keys, never a purpose.
+type KeyRevocationDeclaration struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Boundary      string                 `protobuf:"bytes,1,opt,name=boundary,proto3" json:"boundary,omitempty"` // the boundary the declaration is for; key@ of another boundary refuses it
+	Kids          []string               `protobuf:"bytes,2,rep,name=kids,proto3" json:"kids,omitempty"`         // the RFC 7638 thumbprints, base64url, of the keys to revoke; 1 to 64, each once
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`     // compromise, suspicion, lost-board or drill
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KeyRevocationDeclaration) Reset() {
+	*x = KeyRevocationDeclaration{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KeyRevocationDeclaration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KeyRevocationDeclaration) ProtoMessage() {}
+
+func (x *KeyRevocationDeclaration) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KeyRevocationDeclaration.ProtoReflect.Descriptor instead.
+func (*KeyRevocationDeclaration) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *KeyRevocationDeclaration) GetBoundary() string {
+	if x != nil {
+		return x.Boundary
+	}
+	return ""
+}
+
+func (x *KeyRevocationDeclaration) GetKids() []string {
+	if x != nil {
+		return x.Kids
+	}
+	return nil
+}
+
+func (x *KeyRevocationDeclaration) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 // SealRequest seals a value under the data key of a purpose.
 type SealRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -38,7 +262,7 @@ type SealRequest struct {
 
 func (x *SealRequest) Reset() {
 	*x = SealRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[0]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50,7 +274,7 @@ func (x *SealRequest) String() string {
 func (*SealRequest) ProtoMessage() {}
 
 func (x *SealRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[0]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -63,7 +287,7 @@ func (x *SealRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealRequest.ProtoReflect.Descriptor instead.
 func (*SealRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{0}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *SealRequest) GetPurpose() string {
@@ -104,7 +328,7 @@ type SealResponse struct {
 
 func (x *SealResponse) Reset() {
 	*x = SealResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[1]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -116,7 +340,7 @@ func (x *SealResponse) String() string {
 func (*SealResponse) ProtoMessage() {}
 
 func (x *SealResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[1]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -129,7 +353,7 @@ func (x *SealResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealResponse.ProtoReflect.Descriptor instead.
 func (*SealResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{1}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *SealResponse) GetEnvelope() []byte {
@@ -151,7 +375,7 @@ type OpenItem struct {
 
 func (x *OpenItem) Reset() {
 	*x = OpenItem{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[2]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -163,7 +387,7 @@ func (x *OpenItem) String() string {
 func (*OpenItem) ProtoMessage() {}
 
 func (x *OpenItem) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[2]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -176,7 +400,7 @@ func (x *OpenItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenItem.ProtoReflect.Descriptor instead.
 func (*OpenItem) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{2}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *OpenItem) GetPurpose() string {
@@ -211,7 +435,7 @@ type OpenRequest struct {
 
 func (x *OpenRequest) Reset() {
 	*x = OpenRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[3]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -223,7 +447,7 @@ func (x *OpenRequest) String() string {
 func (*OpenRequest) ProtoMessage() {}
 
 func (x *OpenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[3]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -236,7 +460,7 @@ func (x *OpenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenRequest.ProtoReflect.Descriptor instead.
 func (*OpenRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{3}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *OpenRequest) GetItems() []*OpenItem {
@@ -263,7 +487,7 @@ type OpenResponse struct {
 
 func (x *OpenResponse) Reset() {
 	*x = OpenResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[4]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -275,7 +499,7 @@ func (x *OpenResponse) String() string {
 func (*OpenResponse) ProtoMessage() {}
 
 func (x *OpenResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[4]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +512,7 @@ func (x *OpenResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenResponse.ProtoReflect.Descriptor instead.
 func (*OpenResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{4}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *OpenResponse) GetPlaintexts() [][]byte {
@@ -308,7 +532,7 @@ type SealGrantRequest struct {
 
 func (x *SealGrantRequest) Reset() {
 	*x = SealGrantRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[5]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -320,7 +544,7 @@ func (x *SealGrantRequest) String() string {
 func (*SealGrantRequest) ProtoMessage() {}
 
 func (x *SealGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[5]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -333,7 +557,7 @@ func (x *SealGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealGrantRequest.ProtoReflect.Descriptor instead.
 func (*SealGrantRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{5}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SealGrantRequest) GetGrant() *v2alpha1.Grant {
@@ -359,7 +583,7 @@ type SealGrantResponse struct {
 
 func (x *SealGrantResponse) Reset() {
 	*x = SealGrantResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[6]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -371,7 +595,7 @@ func (x *SealGrantResponse) String() string {
 func (*SealGrantResponse) ProtoMessage() {}
 
 func (x *SealGrantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[6]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -384,7 +608,7 @@ func (x *SealGrantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SealGrantResponse.ProtoReflect.Descriptor instead.
 func (*SealGrantResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{6}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SealGrantResponse) GetSealedGrant() []byte {
@@ -404,7 +628,7 @@ type OpenGrantRequest struct {
 
 func (x *OpenGrantRequest) Reset() {
 	*x = OpenGrantRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[7]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -416,7 +640,7 @@ func (x *OpenGrantRequest) String() string {
 func (*OpenGrantRequest) ProtoMessage() {}
 
 func (x *OpenGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[7]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -429,7 +653,7 @@ func (x *OpenGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenGrantRequest.ProtoReflect.Descriptor instead.
 func (*OpenGrantRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{7}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *OpenGrantRequest) GetSealedGrant() []byte {
@@ -449,7 +673,7 @@ type OpenGrantResponse struct {
 
 func (x *OpenGrantResponse) Reset() {
 	*x = OpenGrantResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[8]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +685,7 @@ func (x *OpenGrantResponse) String() string {
 func (*OpenGrantResponse) ProtoMessage() {}
 
 func (x *OpenGrantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[8]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +698,7 @@ func (x *OpenGrantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenGrantResponse.ProtoReflect.Descriptor instead.
 func (*OpenGrantResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{8}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *OpenGrantResponse) GetGrant() *v2alpha1.Grant {
@@ -497,7 +721,7 @@ type SignRequest struct {
 
 func (x *SignRequest) Reset() {
 	*x = SignRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[9]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -509,7 +733,7 @@ func (x *SignRequest) String() string {
 func (*SignRequest) ProtoMessage() {}
 
 func (x *SignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[9]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -522,7 +746,7 @@ func (x *SignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignRequest.ProtoReflect.Descriptor instead.
 func (*SignRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{9}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SignRequest) GetPurpose() string {
@@ -565,7 +789,7 @@ type SignResponse struct {
 
 func (x *SignResponse) Reset() {
 	*x = SignResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[10]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -577,7 +801,7 @@ func (x *SignResponse) String() string {
 func (*SignResponse) ProtoMessage() {}
 
 func (x *SignResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[10]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -590,7 +814,7 @@ func (x *SignResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SignResponse.ProtoReflect.Descriptor instead.
 func (*SignResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{10}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *SignResponse) GetSignatureRaw() []byte {
@@ -629,7 +853,7 @@ type MacRequest struct {
 
 func (x *MacRequest) Reset() {
 	*x = MacRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[11]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -641,7 +865,7 @@ func (x *MacRequest) String() string {
 func (*MacRequest) ProtoMessage() {}
 
 func (x *MacRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[11]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -654,7 +878,7 @@ func (x *MacRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MacRequest.ProtoReflect.Descriptor instead.
 func (*MacRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{11}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MacRequest) GetPurpose() string {
@@ -709,7 +933,7 @@ type MacResponse struct {
 
 func (x *MacResponse) Reset() {
 	*x = MacResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[12]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -721,7 +945,7 @@ func (x *MacResponse) String() string {
 func (*MacResponse) ProtoMessage() {}
 
 func (x *MacResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[12]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -734,7 +958,7 @@ func (x *MacResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MacResponse.ProtoReflect.Descriptor instead.
 func (*MacResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{12}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *MacResponse) GetMac() []byte {
@@ -754,7 +978,7 @@ type PublicKeyRequest struct {
 
 func (x *PublicKeyRequest) Reset() {
 	*x = PublicKeyRequest{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[13]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -766,7 +990,7 @@ func (x *PublicKeyRequest) String() string {
 func (*PublicKeyRequest) ProtoMessage() {}
 
 func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[13]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -779,7 +1003,7 @@ func (x *PublicKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyRequest.ProtoReflect.Descriptor instead.
 func (*PublicKeyRequest) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{13}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PublicKeyRequest) GetPurpose() string {
@@ -802,7 +1026,7 @@ type PublicKeyResponse struct {
 
 func (x *PublicKeyResponse) Reset() {
 	*x = PublicKeyResponse{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[14]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -814,7 +1038,7 @@ func (x *PublicKeyResponse) String() string {
 func (*PublicKeyResponse) ProtoMessage() {}
 
 func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[14]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -827,7 +1051,7 @@ func (x *PublicKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublicKeyResponse.ProtoReflect.Descriptor instead.
 func (*PublicKeyResponse) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{14}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *PublicKeyResponse) GetSpkiDer() []byte {
@@ -873,7 +1097,7 @@ type DataKeyWrap struct {
 
 func (x *DataKeyWrap) Reset() {
 	*x = DataKeyWrap{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -885,7 +1109,7 @@ func (x *DataKeyWrap) String() string {
 func (*DataKeyWrap) ProtoMessage() {}
 
 func (x *DataKeyWrap) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[15]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -898,7 +1122,7 @@ func (x *DataKeyWrap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DataKeyWrap.ProtoReflect.Descriptor instead.
 func (*DataKeyWrap) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{15}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DataKeyWrap) GetPurpose() string {
@@ -952,7 +1176,7 @@ type KeyCertificate struct {
 
 func (x *KeyCertificate) Reset() {
 	*x = KeyCertificate{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -964,7 +1188,7 @@ func (x *KeyCertificate) String() string {
 func (*KeyCertificate) ProtoMessage() {}
 
 func (x *KeyCertificate) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[16]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -977,7 +1201,7 @@ func (x *KeyCertificate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyCertificate.ProtoReflect.Descriptor instead.
 func (*KeyCertificate) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{16}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *KeyCertificate) GetPurpose() string {
@@ -1016,23 +1240,24 @@ func (x *KeyCertificate) GetAddedAt() *timestamppb.Timestamp {
 }
 
 // KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
-// is its one writer, on a declaration of an operator; the signer, entry, exporter@ and ca read it. The operator and
-// any free-text reason are in the audit fact, not here: this kind is plain so that the publishers can read it.
-// Its id is <target_kind>/<target>: kid/<recipient label of the kid>, purpose/<purpose>, recipient/<label> or
-// generation/<purpose>/<generation> (the last in the tenant of the data key).
+// is its one writer, on a declaration that an operator signed with a publisher key (KeyRevocationDeclaration); the
+// signer, entry, exporter@ and ca read it. The operator and any free-text reason are in the audit fact, not here: this
+// kind is plain so that the publishers can read it. Its id is <target_kind>/<target>: kid/<recipient label of the kid>
+// for a key, and recipient/<label> or generation/<purpose>/<generation> (the last in the tenant of the data key) for the
+// targets that follow with their declarations. There is no target for a whole purpose: a declaration names keys.
 type KeyRevocation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetKind    string                 `protobuf:"bytes,1,opt,name=target_kind,json=targetKind,proto3" json:"target_kind,omitempty"` // kid, purpose, generation or recipient
-	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`                           // the kid, the purpose, "<purpose>/<generation>" or the recipient
+	TargetKind    string                 `protobuf:"bytes,1,opt,name=target_kind,json=targetKind,proto3" json:"target_kind,omitempty"` // kid, generation or recipient
+	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`                           // the kid, "<purpose>/<generation>" or the recipient
 	ReasonCode    string                 `protobuf:"bytes,3,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"` // compromise, suspicion, lost-board or drill
-	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`    // the time of the declaration; a purpose revocation refuses the keys made at or before it
+	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`    // when key@ took the declaration
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *KeyRevocation) Reset() {
 	*x = KeyRevocation{}
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1044,7 +1269,7 @@ func (x *KeyRevocation) String() string {
 func (*KeyRevocation) ProtoMessage() {}
 
 func (x *KeyRevocation) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1057,7 +1282,7 @@ func (x *KeyRevocation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyRevocation.ProtoReflect.Descriptor instead.
 func (*KeyRevocation) Descriptor() ([]byte, []int) {
-	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{17}
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *KeyRevocation) GetTargetKind() string {
@@ -1092,7 +1317,21 @@ var File_sluis_key_v2alpha1_key_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\n" +
-	"\x1csluis/key/v2alpha1/key.proto\x12\x12sluis.key.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\x93\x01\n" +
+	"\x1csluis/key/v2alpha1/key.proto\x12\x12sluis.key.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"1\n" +
+	"\rRevokeRequest\x12 \n" +
+	"\vdeclaration\x18\x01 \x01(\fR\vdeclaration\"p\n" +
+	"\x0eRevokeResponse\x12\x10\n" +
+	"\x03seq\x18\x01 \x01(\x04R\x03seq\x122\n" +
+	"\x04keys\x18\x02 \x03(\v2\x1e.sluis.key.v2alpha1.RevokedKeyR\x04keys\x12\x18\n" +
+	"\aaudited\x18\x03 \x01(\bR\aaudited\"8\n" +
+	"\n" +
+	"RevokedKey\x12\x10\n" +
+	"\x03kid\x18\x01 \x01(\tR\x03kid\x12\x18\n" +
+	"\aalready\x18\x02 \x01(\bR\aalready\"b\n" +
+	"\x18KeyRevocationDeclaration\x12\x1a\n" +
+	"\bboundary\x18\x01 \x01(\tR\bboundary\x12\x12\n" +
+	"\x04kids\x18\x02 \x03(\tR\x04kids\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x93\x01\n" +
 	"\vSealRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x126\n" +
 	"\aaddress\x18\x02 \x01(\v2\x1c.sluis.type.v2alpha1.AddressR\aaddress\x12\x1c\n" +
@@ -1176,7 +1415,9 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\tOpenGrant\x12$.sluis.key.v2alpha1.OpenGrantRequest\x1a%.sluis.key.v2alpha1.OpenGrantResponse\x12I\n" +
 	"\x04Sign\x12\x1f.sluis.key.v2alpha1.SignRequest\x1a .sluis.key.v2alpha1.SignResponse\x12F\n" +
 	"\x03Mac\x12\x1e.sluis.key.v2alpha1.MacRequest\x1a\x1f.sluis.key.v2alpha1.MacResponse\x12X\n" +
-	"\tPublicKey\x12$.sluis.key.v2alpha1.PublicKeyRequest\x1a%.sluis.key.v2alpha1.PublicKeyResponseB\xcf\x01\n" +
+	"\tPublicKey\x12$.sluis.key.v2alpha1.PublicKeyRequest\x1a%.sluis.key.v2alpha1.PublicKeyResponse2b\n" +
+	"\x0fKeyAdminService\x12O\n" +
+	"\x06Revoke\x12!.sluis.key.v2alpha1.RevokeRequest\x1a\".sluis.key.v2alpha1.RevokeResponseB\xcf\x01\n" +
 	"\x16com.sluis.key.v2alpha1B\bKeyProtoP\x01ZAgithub.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1;keyv2alpha1\xa2\x02\x03SKX\xaa\x02\x12Sluis.Key.V2alpha1\xca\x02\x12Sluis\\Key\\V2alpha1\xe2\x02\x1eSluis\\Key\\V2alpha1\\GPBMetadata\xea\x02\x14Sluis::Key::V2alpha1b\x06proto3"
 
 var (
@@ -1191,57 +1432,64 @@ func file_sluis_key_v2alpha1_key_proto_rawDescGZIP() []byte {
 	return file_sluis_key_v2alpha1_key_proto_rawDescData
 }
 
-var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
-	(*SealRequest)(nil),           // 0: sluis.key.v2alpha1.SealRequest
-	(*SealResponse)(nil),          // 1: sluis.key.v2alpha1.SealResponse
-	(*OpenItem)(nil),              // 2: sluis.key.v2alpha1.OpenItem
-	(*OpenRequest)(nil),           // 3: sluis.key.v2alpha1.OpenRequest
-	(*OpenResponse)(nil),          // 4: sluis.key.v2alpha1.OpenResponse
-	(*SealGrantRequest)(nil),      // 5: sluis.key.v2alpha1.SealGrantRequest
-	(*SealGrantResponse)(nil),     // 6: sluis.key.v2alpha1.SealGrantResponse
-	(*OpenGrantRequest)(nil),      // 7: sluis.key.v2alpha1.OpenGrantRequest
-	(*OpenGrantResponse)(nil),     // 8: sluis.key.v2alpha1.OpenGrantResponse
-	(*SignRequest)(nil),           // 9: sluis.key.v2alpha1.SignRequest
-	(*SignResponse)(nil),          // 10: sluis.key.v2alpha1.SignResponse
-	(*MacRequest)(nil),            // 11: sluis.key.v2alpha1.MacRequest
-	(*MacResponse)(nil),           // 12: sluis.key.v2alpha1.MacResponse
-	(*PublicKeyRequest)(nil),      // 13: sluis.key.v2alpha1.PublicKeyRequest
-	(*PublicKeyResponse)(nil),     // 14: sluis.key.v2alpha1.PublicKeyResponse
-	(*DataKeyWrap)(nil),           // 15: sluis.key.v2alpha1.DataKeyWrap
-	(*KeyCertificate)(nil),        // 16: sluis.key.v2alpha1.KeyCertificate
-	(*KeyRevocation)(nil),         // 17: sluis.key.v2alpha1.KeyRevocation
-	(*v2alpha1.Address)(nil),      // 18: sluis.type.v2alpha1.Address
-	(*v2alpha1.Grant)(nil),        // 19: sluis.type.v2alpha1.Grant
-	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(*RevokeRequest)(nil),            // 0: sluis.key.v2alpha1.RevokeRequest
+	(*RevokeResponse)(nil),           // 1: sluis.key.v2alpha1.RevokeResponse
+	(*RevokedKey)(nil),               // 2: sluis.key.v2alpha1.RevokedKey
+	(*KeyRevocationDeclaration)(nil), // 3: sluis.key.v2alpha1.KeyRevocationDeclaration
+	(*SealRequest)(nil),              // 4: sluis.key.v2alpha1.SealRequest
+	(*SealResponse)(nil),             // 5: sluis.key.v2alpha1.SealResponse
+	(*OpenItem)(nil),                 // 6: sluis.key.v2alpha1.OpenItem
+	(*OpenRequest)(nil),              // 7: sluis.key.v2alpha1.OpenRequest
+	(*OpenResponse)(nil),             // 8: sluis.key.v2alpha1.OpenResponse
+	(*SealGrantRequest)(nil),         // 9: sluis.key.v2alpha1.SealGrantRequest
+	(*SealGrantResponse)(nil),        // 10: sluis.key.v2alpha1.SealGrantResponse
+	(*OpenGrantRequest)(nil),         // 11: sluis.key.v2alpha1.OpenGrantRequest
+	(*OpenGrantResponse)(nil),        // 12: sluis.key.v2alpha1.OpenGrantResponse
+	(*SignRequest)(nil),              // 13: sluis.key.v2alpha1.SignRequest
+	(*SignResponse)(nil),             // 14: sluis.key.v2alpha1.SignResponse
+	(*MacRequest)(nil),               // 15: sluis.key.v2alpha1.MacRequest
+	(*MacResponse)(nil),              // 16: sluis.key.v2alpha1.MacResponse
+	(*PublicKeyRequest)(nil),         // 17: sluis.key.v2alpha1.PublicKeyRequest
+	(*PublicKeyResponse)(nil),        // 18: sluis.key.v2alpha1.PublicKeyResponse
+	(*DataKeyWrap)(nil),              // 19: sluis.key.v2alpha1.DataKeyWrap
+	(*KeyCertificate)(nil),           // 20: sluis.key.v2alpha1.KeyCertificate
+	(*KeyRevocation)(nil),            // 21: sluis.key.v2alpha1.KeyRevocation
+	(*v2alpha1.Address)(nil),         // 22: sluis.type.v2alpha1.Address
+	(*v2alpha1.Grant)(nil),           // 23: sluis.type.v2alpha1.Grant
+	(*timestamppb.Timestamp)(nil),    // 24: google.protobuf.Timestamp
 }
 var file_sluis_key_v2alpha1_key_proto_depIdxs = []int32{
-	18, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
-	18, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
-	2,  // 2: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
-	19, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
-	19, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
-	20, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
-	20, // 6: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
-	0,  // 7: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
-	3,  // 8: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
-	5,  // 9: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
-	7,  // 10: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
-	9,  // 11: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
-	11, // 12: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
-	13, // 13: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
-	1,  // 14: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
-	4,  // 15: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
-	6,  // 16: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
-	8,  // 17: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
-	10, // 18: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
-	12, // 19: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
-	14, // 20: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
-	14, // [14:21] is the sub-list for method output_type
-	7,  // [7:14] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	2,  // 0: sluis.key.v2alpha1.RevokeResponse.keys:type_name -> sluis.key.v2alpha1.RevokedKey
+	22, // 1: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
+	22, // 2: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
+	6,  // 3: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
+	23, // 4: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
+	23, // 5: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
+	24, // 6: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
+	24, // 7: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
+	4,  // 8: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
+	7,  // 9: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
+	9,  // 10: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
+	11, // 11: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
+	13, // 12: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
+	15, // 13: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
+	17, // 14: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
+	0,  // 15: sluis.key.v2alpha1.KeyAdminService.Revoke:input_type -> sluis.key.v2alpha1.RevokeRequest
+	5,  // 16: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
+	8,  // 17: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
+	10, // 18: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
+	12, // 19: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
+	14, // 20: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
+	16, // 21: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
+	18, // 22: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
+	1,  // 23: sluis.key.v2alpha1.KeyAdminService.Revoke:output_type -> sluis.key.v2alpha1.RevokeResponse
+	16, // [16:24] is the sub-list for method output_type
+	8,  // [8:16] is the sub-list for method input_type
+	8,  // [8:8] is the sub-list for extension type_name
+	8,  // [8:8] is the sub-list for extension extendee
+	0,  // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_sluis_key_v2alpha1_key_proto_init() }
@@ -1255,9 +1503,9 @@ func file_sluis_key_v2alpha1_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_key_v2alpha1_key_proto_rawDesc), len(file_sluis_key_v2alpha1_key_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   22,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_sluis_key_v2alpha1_key_proto_goTypes,
 		DependencyIndexes: file_sluis_key_v2alpha1_key_proto_depIdxs,

@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/truvity/sluis/v2/kits/go/registry"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // Options say what to sign and where to put it.
@@ -375,4 +376,31 @@ func writeAtomic(path string, b []byte, mode os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// SignDeclarationFile signs the declaration in `in` with the existing publisher key of keyDir and writes it to out. A
+// missing key is an error: a declaration under a key that no bootstrap file pins would verify nowhere.
+func SignDeclarationFile(keyDir, kid string, seq uint64, in, out string) error {
+	if seq == 0 || seq > maxSeq {
+		return errors.New("seq must be a positive integer below 2^53")
+	}
+	if !kidPattern.MatchString(kid) {
+		return errors.New("kid must be lower-case kebab-case, 1 to 32 characters, starting with a letter")
+	}
+	if _, err := os.Stat(filepath.Join(keyDir, "publisher.key")); err != nil {
+		return fmt.Errorf("no publisher key in %s: a declaration is signed by the key the installation pins", keyDir)
+	}
+	key, err := loadOrMakeKey(keyDir)
+	if err != nil {
+		return err
+	}
+	payload, err := os.ReadFile(in) //nolint:gosec // the operator names the file
+	if err != nil {
+		return fmt.Errorf("declaration: %w", err)
+	}
+	doc, err := Sign(key, kid, seq, signedconfig.KeyRevocationDeclaration, payload)
+	if err != nil {
+		return err
+	}
+	return writeAtomic(out, doc, 0o644)
 }

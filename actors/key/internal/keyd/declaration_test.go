@@ -1,0 +1,314 @@
+//go:build sluis_test
+
+package keyd
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"fmt"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
+
+	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
+	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
+	signerv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/rpc"
+)
+
+// declarationPayload is the payload of a declaration, as `sluis key revoke` produces it.
+func declarationPayload(boundary, reason string, kids ...string) []byte {
+	var b strings.Builder
+	fmt.Fprintf(&b, "boundary: %s\nkids:\n", boundary)
+	for _, k := range kids {
+		fmt.Fprintf(&b, "  - %s\n", k)
+	}
+	fmt.Fprintf(&b, "reason: %s\n", reason)
+	return []byte(b.String())
+}
+
+// declare signs a declaration with the publisher of the test's boundary.
+func (e *testEnv) declare(seq uint64, reason string, kids ...string) []byte {
+	e.t.Helper()
+	return e.signKind("publisher-1", e.pub, seq, declarationKind, declarationPayload(testBoundary, reason, kids...))
+}
+
+// admin is a client of the node's admin socket.
+func (n *node) admin() keyv2alpha1connect.KeyAdminServiceClient {
+	hc, url := rpc.Dial(filepath.Join(n.runDir, adminSocketName))
+	return keyv2alpha1connect.NewKeyAdminServiceClient(hc, url, rpc.ClientOptions()...)
+}
+
+func (n *node) revoke(doc []byte) (*keyv2alpha1.RevokeResponse, error) {
+	res, err := n.admin().Revoke(context.Background(), connect.NewRequest(&keyv2alpha1.RevokeRequest{Declaration: doc}))
+	if err != nil {
+		return nil, err
+	}
+	return res.Msg, nil
+}
+
+// revocations returns the KeyRevocation items of the store, by id.
+func (e *testEnv) revocationItems() map[string]*keyv2alpha1.KeyRevocation {
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	out := map[string]*keyv2alpha1.KeyRevocation{}
+	for _, it := range e.store.items {
+		if it.GetAddress().GetKind() != "key-revocation" {
+			continue
+		}
+		v := &keyv2alpha1.KeyRevocation{}
+		if err := proto.Unmarshal(it.GetValue(), v); err != nil {
+			e.t.Fatal(err)
+		}
+		out[it.GetAddress().GetId()] = v
+	}
+	return out
+}
+
+// refusedAdmin checks a refusal of the admin socket and its audit fact, and that nothing was written.
+func (n *node) refusedAdmin(t *testing.T, err error, code connect.Code, reason, path string) {
+	t.Helper()
+	before := len(n.e.revocationItems())
+	n.refusal(t, err, code, reason, path)
+	if got := len(n.e.revocationItems()); got != before {
+		t.Fatalf("a refused declaration wrote %d items", got-before)
+	}
+}
+
+// verifies: REQ-KEYS-108
+// verifies: REQ-SEC-034
+// A declaration signed with the publisher key revokes exactly the keys it names: one KeyRevocation item each, with
+// the reason, and the revoked keys sign nothing more. One audit fact names the keys, the reason and the operator (the
+// publisher key that signed). A later declaration that names a revoked key again writes nothing new for it.
+func TestADeclarationRevokesTheKeysItNames(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	token, logKey := n.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	tokenIn, logIn := signContent(t, n, "token-signing"), signContent(t, n, "audit-log")
+
+	res, err := n.revoke(e.declare(100, "compromise", token))
+	if err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if res.GetSeq() != 100 || len(res.GetKeys()) != 1 || res.GetKeys()[0].GetKid() != token || res.GetKeys()[0].GetAlready() || !res.GetAudited() {
+		t.Fatalf("Revoke = %v", res)
+	}
+	items := e.revocationItems()
+	it := items[revocationID(targetKid, token)]
+	if len(items) != 1 || it.GetTargetKind() != targetKid || it.GetTarget() != token || it.GetReasonCode() != "compromise" ||
+		!it.GetRevokedAt().AsTime().Equal(e.clock.now()) {
+		t.Fatalf("items = %v", items)
+	}
+	n.refusal(t, n.signFor("token-signing", tokenIn), connect.CodePermissionDenied, reasonRevoked, targetKid)
+	if err := n.signFor("audit-log", logIn); err != nil {
+		t.Fatalf("a key the declaration did not name stopped signing: %v", err)
+	}
+	var facts []Event
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionRevoke {
+			facts = append(facts, ev)
+		}
+	}
+	if len(facts) != 1 {
+		t.Fatalf("%d revocation facts, want 1", len(facts))
+	}
+	f := facts[0].Fields
+	if !slices.Equal(f["kids"].([]string), []string{token}) || f["reason"] != "compromise" ||
+		!slices.Equal(f["operator"].([]string), []string{"publisher-1"}) || f["seq"] != int64(100) || facts[0].Reason != "compromise" {
+		t.Fatalf("the fact = %v", f)
+	}
+
+	// The next declaration names both: the token key is already revoked and only the log key is new.
+	res, err = n.revoke(e.declare(101, "drill", token, logKey))
+	if err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	if !res.GetKeys()[0].GetAlready() || res.GetKeys()[1].GetAlready() {
+		t.Fatalf("Revoke = %v", res)
+	}
+	if got := e.revocationItems()[revocationID(targetKid, token)].GetReasonCode(); got != "compromise" {
+		t.Fatalf("the first revocation was changed: reason %q", got)
+	}
+	n.refusal(t, n.signFor("audit-log", logIn), connect.CodePermissionDenied, reasonRevoked, targetKid)
+}
+
+// verifies: REQ-KEYS-108
+// A declaration that was changed after it was signed, or signed by a key the bootstrap file does not pin, or under
+// the kid of the pinned key by another key, is refused and writes nothing.
+func TestATamperedOrForgedDeclarationIsRefused(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	token := n.srv.keys["token-signing"].keyID
+
+	// One byte of the payload changed: the payload of a valid declaration for another key is swapped in.
+	good := e.declare(10, "compromise", token)
+	other := e.signKind("publisher-1", e.pub, 10, declarationKind, declarationPayload(testBoundary, "drill", token))
+	tampered := swapPayload(t, good, other)
+	_, err := n.revoke(tampered)
+	n.refusedAdmin(t, err, connect.CodePermissionDenied, reasonDeclaration, "declaration")
+
+	stranger, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, doc := range map[string][]byte{
+		"an unpinned kid":           e.signKind("publisher-2", stranger, 11, declarationKind, declarationPayload(testBoundary, "compromise", token)),
+		"another key, a pinned kid": e.signKind("publisher-1", stranger, 11, declarationKind, declarationPayload(testBoundary, "compromise", token)),
+		"not a JWS":                 []byte(`{"payload":"","signatures":[]}`),
+	} {
+		_, err := n.revoke(doc)
+		t.Run(name, func(t *testing.T) {
+			n.refusedAdmin(t, err, connect.CodePermissionDenied, reasonDeclaration, "declaration")
+		})
+	}
+	if err := n.signFor("token-signing", signContent(t, n, "token-signing")); err != nil {
+		t.Fatalf("a refused declaration stopped the key: %v", err)
+	}
+	// The good one is still taken: a refusal burns no seq.
+	if _, err := n.revoke(good); err != nil {
+		t.Fatalf("the untampered declaration: %v", err)
+	}
+}
+
+// swapPayload returns doc with the payload of from: the signature of doc over another payload.
+func swapPayload(t *testing.T, doc, from []byte) []byte {
+	t.Helper()
+	payload := func(b []byte) string {
+		s := string(b)
+		i := strings.Index(s, `"payload":"`) + len(`"payload":"`)
+		return s[i : i+strings.Index(s[i:], `"`)]
+	}
+	out := strings.Replace(string(doc), payload(doc), payload(from), 1)
+	if out == string(doc) {
+		t.Fatal("the payloads are the same")
+	}
+	return []byte(out)
+}
+
+// verifies: REQ-KEYS-112
+// key@ takes a declaration only with a seq above the highest it took: the same declaration again (a replay) and an
+// older one are refused, in the process and after a restart, because the mark is kept in the state directory.
+func TestADeclarationIsTakenOnceAndNeverAnOlderOne(t *testing.T) {
+	e := newTestEnv(t, "development")
+	state := shortDir(t)
+	n := e.startedNode(nodeOpts{stateDir: state})
+	token, logKey := n.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	first := e.declare(50, "suspicion", token)
+	if _, err := n.revoke(first); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+	_, err := n.revoke(first)
+	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
+	_, err = n.revoke(e.declare(49, "suspicion", logKey))
+	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
+
+	// After a restart on the same state the mark still holds 50.
+	n.stop()
+	m := e.startedNode(nodeOpts{stateDir: state, driver: n.driver})
+	_, err = m.revoke(e.declare(50, "suspicion", logKey))
+	m.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
+	if _, err := m.revoke(e.declare(51, "suspicion", logKey)); err != nil {
+		t.Fatalf("a higher seq after the restart: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-113
+// verifies: REQ-KEYS-092
+// Every kid of a declaration must be a key that key@ knows: a signing key it holds, or a token key of any node in
+// the SigningRing. One unknown kid refuses the whole declaration, so a typo is never written as a revocation that
+// stops nothing; a wrapping key is not a signing key. Another node's token key is revoked from this node, and that
+// node's key@ refuses to sign with it.
+func TestEveryKidOfADeclarationMustBeKnown(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{name: "node-1"})
+	token := n.srv.keys["token-signing"].keyID
+	for name, kids := range map[string][]string{
+		"a typo":          {token, "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		"a wrapping key":  {token, n.srv.wrappingID},
+		"another's token": {token, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"},
+	} {
+		_, err := n.revoke(e.declare(e.nextSeq(), "compromise", kids...))
+		t.Run(name, func(t *testing.T) {
+			n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonUnknownKid, "kids[1]")
+		})
+	}
+
+	// node-2's token key is in the ring: node-1 takes a declaration for it.
+	o := e.startedNode(nodeOpts{name: "node-2"})
+	oIn := signContent(t, o, "token-signing")
+	otherToken := o.srv.keys["token-signing"].keyID
+	e.store.put("signing-ring", "", "default", &signerv2alpha1.SigningRing{Keys: []*signerv2alpha1.SigningKey{
+		{KeyId: token, Node: "node-1"}, {KeyId: otherToken, Node: "node-2"},
+	}})
+	if _, err := n.revoke(e.declare(e.nextSeq(), "lost-board", otherToken)); err != nil {
+		t.Fatalf("another node's key: %v", err)
+	}
+	o.refusal(t, o.signFor("token-signing", oIn), connect.CodePermissionDenied, reasonRevoked, targetKid)
+	if err := n.signFor("token-signing", signContent(t, n, "token-signing")); err != nil {
+		t.Fatalf("node-1's key stopped: %v", err)
+	}
+
+	// A ring that cannot be read is "unavailable", not "unknown", and only when a kid is not the node's own.
+	e.store.mu.Lock()
+	e.store.failKind = "signing-ring"
+	e.store.mu.Unlock()
+	_, err := n.revoke(e.declare(e.nextSeq(), "compromise", "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"))
+	n.refusedAdmin(t, err, connect.CodeUnavailable, reasonStore, "")
+	if _, err := n.revoke(e.declare(e.nextSeq(), "compromise", n.srv.keys["audit-log"].keyID)); err != nil {
+		t.Fatalf("the node's own key while the ring is down: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-108
+// A document of another kind is not a declaration: a KeyPlan signed by the same publisher, and a declaration's payload
+// signed under the kind KeyPlan, are refused. So is a declaration for another boundary, and a payload that is not a
+// declaration.
+func TestADocumentOfAnotherKindOrBoundaryIsRefused(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	token := n.srv.keys["token-signing"].keyID
+	_, err := n.revoke(e.signKind("publisher-1", e.pub, 5, keyPlanKind, declarationPayload(testBoundary, "compromise", token)))
+	n.refusedAdmin(t, err, connect.CodePermissionDenied, reasonDeclaration, "declaration")
+	_, err = n.revoke(e.store.signed["key-plan"])
+	n.refusedAdmin(t, err, connect.CodePermissionDenied, reasonDeclaration, "declaration")
+	_, err = n.revoke(e.signKind("publisher-1", e.pub, 6, declarationKind, declarationPayload(testBoundary+"-other", "compromise", token)))
+	n.refusedAdmin(t, err, connect.CodePermissionDenied, reasonOtherBoundary, "boundary")
+	for path, payload := range map[string]string{
+		"reason":   string(declarationPayload(testBoundary, "because", token)),
+		"kids[1]":  string(declarationPayload(testBoundary, "drill", token, token)),
+		"kids":     "boundary: " + testBoundary + "\nkids: []\nreason: drill\n",
+		"purpose":  string(declarationPayload(testBoundary, "drill", token)) + "purpose: token-signing\n",
+		"boundary": "kids: [" + token + "]\nreason: drill\n",
+	} {
+		_, err := n.revoke(e.signKind("publisher-1", e.pub, e.nextSeq(), declarationKind, []byte(payload)))
+		t.Run(path, func(t *testing.T) { n.refusedAdmin(t, err, connect.CodeInvalidArgument, reasonSchema, path) })
+	}
+}
+
+// verifies: REQ-KEYS-108
+// The admin socket serves root only: another user is refused from the transport before the declaration is read.
+func TestTheAdminSocketRefusesAnotherUser(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.newNode(nodeOpts{})
+	n.srv.adminAllow = func(uint32) bool { return false }
+	n.start()
+	_, err := n.revoke(e.declare(1, "compromise", n.srv.keys["token-signing"].keyID))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("Revoke by another user = %v, want permission_denied", err)
+	}
+	if len(e.revocationItems()) != 0 {
+		t.Fatal("a refused caller wrote an item")
+	}
+}
+
+// nextSeq is a seq above every one the test used.
+func (e *testEnv) nextSeq() uint64 {
+	e.seqD += 1000
+	return e.seqD
+}

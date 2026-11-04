@@ -17,6 +17,42 @@ service KeyService {
   rpc PublicKey(PublicKeyRequest) returns (PublicKeyResponse);
 }
 
+// KeyAdminService is served by key@ on its local admin socket, <run-dir>/admin.sock, which only root on the node
+// reaches (ADR 0041, "A person declares, and a suspicion counts"). It is not part of the actor call graph: the caller is
+// a person with a shell on the node, and the authority of a call is the declaration's signature, not the channel.
+service KeyAdminService {
+  rpc Revoke(RevokeRequest) returns (RevokeResponse);
+}
+
+// RevokeRequest delivers a signed key revocation declaration.
+message RevokeRequest {
+  // The declaration: a signed document in the general JSON serialisation of RFC 7515, under a publisher key of the
+  // bootstrap file, whose protected header names the kind KeyRevocationDeclaration and whose payload is a
+  // KeyRevocationDeclaration (signed-config.md, "Declarations").
+  bytes declaration = 1;
+}
+
+// RevokeResponse says what key@ did with each key the declaration names.
+message RevokeResponse {
+  uint64 seq = 1;                    // the seq of the declaration, now the highest key@ has taken
+  repeated RevokedKey keys = 2;      // one per key of the declaration, in its order
+  bool audited = 3;                  // the audit fact of the revocation was made durable
+}
+
+// RevokedKey is one key of a declaration.
+message RevokedKey {
+  string kid = 1;                    // the RFC 7638 thumbprint, base64url
+  bool already = 2;                  // the key was revoked before this declaration; nothing new was written
+}
+
+// KeyRevocationDeclaration is the payload of a key revocation declaration (ADR 0041; signed-config.md,
+// "Declarations"): what an operator declares, signed with a publisher key. It names the exact keys, never a purpose.
+message KeyRevocationDeclaration {
+  string boundary = 1;               // the boundary the declaration is for; key@ of another boundary refuses it
+  repeated string kids = 2;          // the RFC 7638 thumbprints, base64url, of the keys to revoke; 1 to 64, each once
+  string reason = 3;                 // compromise, suspicion, lost-board or drill
+}
+
 // SealRequest seals a value under the data key of a purpose.
 message SealRequest {
   string purpose = 1;                        // a purpose name from the key registry (keys.yaml), not an enum
@@ -137,13 +173,14 @@ message KeyCertificate {
 }
 
 // KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
-// is its one writer, on a declaration of an operator; the signer, entry, exporter@ and ca read it. The operator and
-// any free-text reason are in the audit fact, not here: this kind is plain so that the publishers can read it.
-// Its id is <target_kind>/<target>: kid/<recipient label of the kid>, purpose/<purpose>, recipient/<label> or
-// generation/<purpose>/<generation> (the last in the tenant of the data key).
+// is its one writer, on a declaration that an operator signed with a publisher key (KeyRevocationDeclaration); the
+// signer, entry, exporter@ and ca read it. The operator and any free-text reason are in the audit fact, not here: this
+// kind is plain so that the publishers can read it. Its id is <target_kind>/<target>: kid/<recipient label of the kid>
+// for a key, and recipient/<label> or generation/<purpose>/<generation> (the last in the tenant of the data key) for the
+// targets that follow with their declarations. There is no target for a whole purpose: a declaration names keys.
 message KeyRevocation {
-  string target_kind = 1;                       // kid, purpose, generation or recipient
-  string target = 2;                            // the kid, the purpose, "<purpose>/<generation>" or the recipient
+  string target_kind = 1;                       // kid, generation or recipient
+  string target = 2;                            // the kid, "<purpose>/<generation>" or the recipient
   string reason_code = 3;                       // compromise, suspicion, lost-board or drill
-  google.protobuf.Timestamp revoked_at = 4;     // the time of the declaration; a purpose revocation refuses the keys made at or before it
+  google.protobuf.Timestamp revoked_at = 4;     // when key@ took the declaration
 }
