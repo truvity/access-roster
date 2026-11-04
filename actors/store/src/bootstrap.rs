@@ -251,7 +251,7 @@ fn name(v: Value, path: &str) -> Result<String, BootstrapError> {
 }
 
 /// One whole number and one unit of `s`, `m`, `h` or `d` (bootstrap-file.md "Durations").
-fn duration(v: Value, path: &str) -> Result<Duration, BootstrapError> {
+pub(crate) fn duration(v: Value, path: &str) -> Result<Duration, BootstrapError> {
     let Value::String(s) = v else {
         return err(path, "not a duration string");
     };

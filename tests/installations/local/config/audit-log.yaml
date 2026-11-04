@@ -1,0 +1,8 @@
+# AuditLog: the logs of the boundary. The origin line of a checkpoint is
+# <installation host>/<boundary>/<project>/<kind>/<log> (ADR 0029, "Tiled log").
+default:
+  project: sluis
+  lock_mode: none
+  logs:
+    - { kind: audit, id: main, origin: sluis.local.test/dev/sluis/audit/main }
+    - { kind: usage, id: main, origin: sluis.local.test/dev/sluis/usage/main }
