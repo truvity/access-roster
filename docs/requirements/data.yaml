@@ -293,8 +293,9 @@ requirements:
     rationale: "The store cannot read a sealed field, so the writing actor validates before it seals (ADR 0004)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
@@ -622,8 +623,9 @@ requirements:
     rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern (ADR 0004)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards: []
     issues: [1177]
@@ -1003,8 +1005,9 @@ requirements:
     rationale: "Verification must run over the exact bytes before anything is parsed (ADR 0005)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
