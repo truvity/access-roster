@@ -73,6 +73,7 @@ dir /v/run-store 61012 61012 0751
 dir /v/run-store/dev 61012 61012 0751
 dir /v/state-blob 61025 61025 0750
 dir /v/state-index 61026 61026 0700
+dir /v/state-key 61014 61014 0700
 dir /v/state-key-software 61023 61023 0700
 dir /v/state-spool 61024 61024 0700
 dir /v/vkeys 61017 61017 0750
