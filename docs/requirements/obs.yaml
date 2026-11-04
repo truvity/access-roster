@@ -229,8 +229,8 @@ requirements:
       - {kind: integration-test, ref: "actor X lists the overrides of actor Y; refused"}
   - id: REQ-OBS-018
     area: OBS
-    statement: "sluis SHOULD record each fetch of the key set as a metric labelled by the client's user-agent product and its network."
-    rationale: "A verifier that has not fetched the key set since a rotation can then be found and told (ADR 0006)."
+    statement: "sluis SHOULD record each fetch of the key set at the edge as a metric labelled ua_product, asn and cache."
+    rationale: "A verifier that has not fetched the key set since a rotation can then be found, with labels of bounded cardinality that carry neither free text nor an address, and the edge sees the fetches that its cache answers (ADR 0006, ADR 0016)."
     level: SHOULD
     source: design-decision
     status: planned
@@ -238,4 +238,4 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "two clients fetch the key set; the metric counts each by user-agent product and network, with a bounded set of label values, and a client with no fetch since a rotation is listed"}
+      - {kind: integration-test, ref: "two clients fetch the key set through the edge; the metric counts each by ua_product (allowlist plus other), asn and cache, and no label holds free text or an address"}
