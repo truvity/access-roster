@@ -330,11 +330,42 @@ impl Engine {
             return Err(invalid("request"));
         };
 
-        let context = if spec.name == "audit.seal" || spec.name == "audit.index" {
+        let mut context = if spec.name == "audit.seal" || spec.name == "audit.index" {
             json!({})
         } else {
             context_of(req.context.as_option()).ok_or(invalid("context"))?
         };
+        // The client that asks for an exchange (ADR 0022): a Client entity of the boundary, named in the context.
+        // The audience client's own entity is reused when they are the same client.
+        if let Some(rq) = req.requester.as_option() {
+            if spec.name != "token.exchange" {
+                return Err(invalid("requester"));
+            }
+            if !text_ok(&rq.id) || rq.id.contains('/') {
+                return Err(invalid("requester.id"));
+            }
+            if !CLIENT_KINDS.contains(&rq.kind.as_str()) {
+                return Err(invalid("requester.kind"));
+            }
+            if rq.requires.len() > REQUIRES_MAX {
+                return Err(invalid("requester.requires"));
+            }
+            let id = format!("{}/{}", self.boundary, rq.id);
+            if id != resource_id {
+                let requires: Vec<Value> = rq
+                    .requires
+                    .iter()
+                    .filter_map(|n| self.vocab.parse_name(n))
+                    .map(|g| entity_ref("Grant", &g.id()))
+                    .collect();
+                entities.push(json!({
+                    "uid": {"type": "Client", "id": id},
+                    "attrs": {"kind": rq.kind, "requires": requires},
+                    "parents": [{"type": "Boundary", "id": self.boundary}],
+                }));
+            }
+            context["requester"] = entity_ref("Client", &id);
+        }
 
         entities.extend(self.grant_entities.iter().cloned());
         let mut grant_names = Vec::new();

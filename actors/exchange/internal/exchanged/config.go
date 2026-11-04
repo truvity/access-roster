@@ -36,6 +36,7 @@ type Config struct {
 	trust    *store.Client[*configv2alpha1.ExchangeTrust]
 	life     *store.Client[*configv2alpha1.TokenLifetime]
 	clients  *store.Client[*configv2alpha1.InstallationClient]
+	secrets  *store.Client[*configv2alpha1.InstallationClientSecret]
 	keys     *store.Client[*exchangev2alpha1.VerifierKeyCache]
 	replay   *store.Client[*exchangev2alpha1.ReplayGuard]
 }
@@ -54,6 +55,9 @@ func NewConfig(c storev2alpha1connect.StoreServiceClient) (*Config, error) {
 		return nil, err
 	}
 	if out.clients, err = store.New(c, "InstallationClient", func() *configv2alpha1.InstallationClient { return &configv2alpha1.InstallationClient{} }); err != nil {
+		return nil, err
+	}
+	if out.secrets, err = store.New(c, "InstallationClientSecret", func() *configv2alpha1.InstallationClientSecret { return &configv2alpha1.InstallationClientSecret{} }); err != nil {
 		return nil, err
 	}
 	if out.keys, err = store.New(c, "VerifierKeyCache", func() *exchangev2alpha1.VerifierKeyCache { return &exchangev2alpha1.VerifierKeyCache{} }); err != nil {
@@ -113,6 +117,23 @@ func (c *Config) Client(ctx context.Context, id string) (*configv2alpha1.Install
 		return nil, err
 	}
 	return it.Value, nil
+}
+
+// Secret is the secret of an installation client, from the secret source through store@ (ADR 0005, "Secret sources").
+// found is false when there is none, whatever the reason: no such client, a client with no secret named, or a secret
+// the source does not hold. An error is an outage. It implements clientauth.SecretSource.
+func (c *Config) Secret(ctx context.Context, id string) (secret []byte, found bool, err error) {
+	if store.ValidateID(id) != nil {
+		return nil, false, nil
+	}
+	it, err := c.secrets.Get(ctx, "", id)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return it.Value.GetSecret(), true, nil
 }
 
 // Tenant is the tenant of a client and its sector (ADR 0034, "Subjects and sectors").

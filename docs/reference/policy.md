@@ -84,6 +84,9 @@ type Authentication = {
   amr?: Set<String>,
   // Seconds since the person last authenticated for this boundary, counted by the asking actor.
   auth_age?: Long,
+  // For `token.exchange`: the client that asks for the exchange. A confidential client that authenticated, or the
+  // public client that exchanges its own token (ADR 0022). Absent for `token.issue`.
+  requester?: Client,
 };
 
 // Whether a person holds a grant. The policy files bind accounts to grant names with this action.
@@ -184,6 +187,7 @@ The context of `token.issue` and `token.exchange` is the same record, `Authentic
 | `acr` | `String` | The authentication class reference of the person's latest authentication, as the upstream or sluis states it |
 | `amr` | `Set<String>` | The methods used, with the values of RFC 8176 (`pwd`, `mfa`, `hwk`) |
 | `auth_age` | `Long` | Seconds since the person last authenticated for this boundary, counted by the asker from the session's `auth_time` |
+| `requester` | `Client` | `token.exchange` only: the client that asks for the exchange, which is a confidential client that authenticated or the public client exchanging its own token ([ADR 0022](/decisions/0022-workload-identity-and-host-enrolment/#proofs-and-the-exchange)). A policy limits what a requester may get, as in `exchange-confidential-for-itself` |
 
 - **An absent name is unknown.** An upstream such as Dex sends no `acr`, `amr` or `auth_time` ([ADR 0011](/decisions/0011-runtimes-and-installations/#the-local-installation)), and sluis never fills one in ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token)). The asker leaves the names out, and a policy tests `context has amr` before it reads `context.amr` and treats absence as "not shown": a rule that requires multi-factor authentication is then not met.
 - **`policy` has no clock.** The asker counts `auth_age`, so a request and its answer are the same on any day, which is what makes the vectors below repeatable ([principle 6](/principles/#6-generic-products-joined-by-a-contract)).

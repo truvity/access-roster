@@ -54,6 +54,7 @@ message DecideRequest {
   ActorFacts actor = 8;                     // facts about the actor, if the principal is one
   repeated string grant_store_verbs = 9;    // what the asker needs the grant to allow; policy narrows, never widens
   repeated string grant_key_ops = 10;       // the key operations the asker needs the grant to allow
+  ClientFacts requester = 11;               // token.exchange only: the client that asks for the exchange (ADR 0022); it is the audience client's own entity when they are the same
 }
 
 // Decision is the verdict.
