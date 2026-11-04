@@ -88,6 +88,8 @@ type Server struct {
 	driver keystorev2alpha1connect.KeyStoreServiceClient
 	wraps  *store.Client[*keyv2alpha1.DataKeyWrap]
 	certs  *store.Client[*keyv2alpha1.KeyCertificate]
+	// revocations is the create-only kind of revoked targets (revocation.go).
+	revocations *store.Client[*keyv2alpha1.KeyRevocation]
 
 	// The KeyPlan and the Boundary are verified here and never taken as decoded items from store@ (signed_kind.go).
 	publishers []signedconfig.Publisher // the publisher keys of the bootstrap file
@@ -160,7 +162,11 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, now: now, st: st, driver: driver, wraps: ws, certs: certs,
+	rev, err := store.New(st, "KeyRevocation", func() *keyv2alpha1.KeyRevocation { return &keyv2alpha1.KeyRevocation{} }, store.OptionalTenant())
+	if err != nil {
+		return nil, err
+	}
+	return &Server{cfg: cfg, now: now, st: st, revocations: rev, driver: driver, wraps: ws, certs: certs,
 		plan:     &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
 		boundary: &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
 		limits:   newLimiters(now)}, nil

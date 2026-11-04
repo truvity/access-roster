@@ -53,6 +53,13 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	if m.GetAlgorithm() != want {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
+	// A revoked key signs nothing more, whatever the purpose and whoever asks (REQ-KEYS-109). The check comes before the
+	// content is read, and an unreadable KeyRevocation refuses the Sign: fail closed.
+	if rev, err := s.revoked(ctx, purpose, pk.keyID); err != nil {
+		return nil, unavailable(reasonStore)
+	} else if rev {
+		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRevoked, "purpose")
+	}
 	var cerr error
 	switch purpose {
 	case "token-signing":

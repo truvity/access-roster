@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `store@` treats `KeyRevocation` as create only: for every actor, `key@` included, an update, a delete and an apply on an existing item are refused (REQ-KEYS-091), and `key@` writes it at no tenant and with no grant. `key@` refuses a Sign with a key that `KeyRevocation` lists by its purpose or its kid (REQ-KEYS-109). The command that writes a revocation, `sluis key revoke`, is not built yet.
 - **Breaking:** an `InstallationClient` redirect must be `https`, or `http` on the loopback IP literal `127.0.0.1` or `[::1]` with any port (RFC 8252 section 7.3). store@ refuses any other plain-http redirect at load, `http://localhost` included, in every environment, and `/authorize` never redirects to one; a staging or production boundary now accepts a public native client's loopback redirect, and only that one, as ADR 0011 says.
 - **Breaking:** `/authorize` answers a request with a scope it does not serve with `error=invalid_scope` on the client's redirect URI, where it dropped the scope and signed the person in. Only `openid`, `profile` and `email` are served.
 - **Breaking:** the subject claim of an upstream ID token is at most 255 bytes (255 ASCII characters, the bound of OpenID Connect Core section 2); the adapter took 256. An upstream that sends a longer value now fails the sign-in.

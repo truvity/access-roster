@@ -115,6 +115,8 @@ type fakeStore struct {
 	items      map[string]*storev2alpha1.Item
 	wrapWrites int // CREATE operations of data-key-wrap that were applied
 	failWrites bool
+	// failKind makes every Get of the kind (a segment) unavailable, as a store@ that is down for it.
+	failKind string
 	// signed holds the signed document of a config kind by its segment, as a config source would. A store@ that is
 	// compromised serves whatever is here, so a test puts a forged document here.
 	signed      map[string][]byte
@@ -143,6 +145,9 @@ func (f *fakeStore) put(kind, tenant, id string, v proto.Message) {
 func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequest]) (*connect.Response[storev2alpha1.GetResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failKind != "" && req.Msg.GetAddress().GetKind() == f.failKind {
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
 	it, ok := f.items[itemKey(req.Msg.GetAddress())]
 	if !ok {
 		return nil, refusal.New(connect.CodeNotFound, "absent", "")
