@@ -160,7 +160,8 @@ async fn no_rule_means_denied_and_the_refusal_is_audited_without_the_id() {
         vec![
             ("caller", "exporter".to_owned()),
             ("kind", "Person".to_owned()),
-            ("verb", "create".to_owned())
+            ("verb", "create".to_owned()),
+            ("code", "permission_denied".to_owned())
         ]
     );
     assert!(!format!("{events:?}").contains("secret-looking-id"));
@@ -684,7 +685,7 @@ async fn ttl_default_max_and_the_expiry_store_computes() {
 }
 
 #[tokio::test]
-async fn a_lease_gets_no_engine_expiry_and_its_version_only_grows() {
+async fn a_lease_gets_no_engine_expiry_and_is_taken_over_by_a_conditional_update() {
     let f = F::new().await;
     f.as_("exchange");
     let lease = |verb, v| with_version(op(verb, "lease", "", "exchange/job", b"holder-a"), v);
@@ -721,16 +722,100 @@ async fn a_lease_gets_no_engine_expiry_and_its_version_only_grows() {
     );
     let taken = f.write(vec![lease(Verb::UPDATE, 1)], &[]).await.unwrap();
     assert_eq!(taken.items[0].version, 2);
-    refused(
-        f.write(vec![lease(Verb::UPDATE, 1)], &[]).await,
-        ErrorCode::Aborted,
-        "version",
-    );
     // A create finds the lease taken for ever.
     refused(
         f.write(vec![lease(Verb::CREATE, 0)], &[]).await,
         ErrorCode::AlreadyExists,
         "taken",
+    );
+}
+
+#[tokio::test]
+async fn a_leases_version_only_grows_and_a_stale_holder_loses() {
+    let f = F::new().await;
+    f.as_("exchange");
+    let lease = |verb, v, who: &[u8]| with_version(op(verb, "lease", "", "exchange/job", who), v);
+
+    let a = f
+        .write(vec![lease(Verb::CREATE, 0, b"a")], &[])
+        .await
+        .unwrap()
+        .items[0]
+        .version;
+    assert_eq!(a, 1);
+    // B reads version 1 and takes the lease over; A, still holding 1, now loses.
+    let b = f
+        .write(vec![lease(Verb::UPDATE, 1, b"b")], &[])
+        .await
+        .unwrap()
+        .items[0]
+        .version;
+    assert_eq!(b, 2);
+    refused(
+        f.write(vec![lease(Verb::UPDATE, 1, b"a")], &[]).await,
+        ErrorCode::Aborted,
+        "version",
+    );
+    assert_eq!(
+        f.get("lease", "", "exchange/job").await.unwrap().item.value,
+        b"b"
+    );
+    // A takes it back at the version it reads now, and the token goes on growing.
+    let c = f
+        .write(vec![lease(Verb::UPDATE, 2, b"a")], &[])
+        .await
+        .unwrap()
+        .items[0]
+        .version;
+    assert_eq!(c, 3);
+
+    // A delete followed by a create would start over at 1: a lease is never deleted.
+    refused(
+        f.write(vec![lease(Verb::DELETE, 0, b"")], &[]).await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    refused(
+        f.write(vec![lease(Verb::DELETE, 3, b"")], &[]).await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    // An apply would take the lease without naming the version it read.
+    refused(
+        f.write(vec![lease(Verb::APPLY, 0, b"z")], &[]).await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    refused(
+        f.write(vec![lease(Verb::CREATE, 0, b"z")], &[]).await,
+        ErrorCode::AlreadyExists,
+        "taken",
+    );
+    // An update that names no version (0) can never match.
+    refused(
+        f.write(vec![lease(Verb::UPDATE, 0, b"z")], &[]).await,
+        ErrorCode::Aborted,
+        "version",
+    );
+    // A refused batch applies none of it.
+    let batch = vec![lease(Verb::UPDATE, 3, b"d"), lease(Verb::DELETE, 0, b"")];
+    refused(
+        f.write(batch, &[]).await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+
+    let held = f.get("lease", "", "exchange/job").await.unwrap().item;
+    assert_eq!(
+        (held.version, held.value.clone()),
+        (3, b"a".to_vec()),
+        "nothing moved the lease backwards"
+    );
+    // The refusals are audit facts with the kind and the verb.
+    assert!(
+        f.audit()
+            .iter()
+            .any(|e| e.reason == "rule" && e.fields.contains(&("verb", "delete".to_owned())))
     );
 }
 
@@ -759,9 +844,20 @@ async fn an_expired_item_reads_as_absent_whatever_the_engine_holds() {
         .await
         .unwrap();
     assert!(l.items.is_empty());
-    // A create may write it again, though the engine still holds the old row.
+    // A create may write it again, though the engine still holds the old row: the expired item
+    // does not exist for the condition, and the new item starts at version 1.
     let again = f.write(vec![sc("c1")], &grant).await.unwrap();
-    assert_eq!(again.items[0].version, 2, "the version still grows");
+    assert_eq!(again.items[0].version, 1);
+    // An update at the version of the expired item loses.
+    f.advance(61);
+    let stale = with_version(op(Verb::UPDATE, "session-chain", "acme", "c1", b"h"), 1);
+    refused(
+        f.write(vec![stale], &grant).await,
+        ErrorCode::Aborted,
+        "version",
+    );
+    let again = f.write(vec![sc("c1")], &grant).await.unwrap();
+    assert_eq!(again.items[0].version, 1);
     assert!(f.get("session-chain", "acme", "c1").await.is_ok());
     // An item that is not expired is still taken.
     refused(
@@ -1334,51 +1430,164 @@ async fn an_audit_emit_that_fails_never_fails_the_call() {
 }
 
 #[tokio::test]
-async fn ordinary_outcomes_are_not_audited_as_refusals() {
+async fn every_refusal_is_an_audit_fact_whatever_its_code() {
     let f = F::new().await;
     f.as_("session");
+    let grant = g(&f);
+    let create = |id: &str| vec![op(Verb::CREATE, "person", "acme", id, &sealed())];
+    let update = vec![op(Verb::UPDATE, "person", "acme", "p1", &sealed())];
+
     refused(
         f.get("person", "acme", "none").await,
         ErrorCode::NotFound,
         "absent",
     );
-    let grant = g(&f);
-    f.write(
-        vec![op(Verb::CREATE, "person", "acme", "p1", &sealed())],
-        &grant,
-    )
-    .await
-    .unwrap();
+    f.write(create("p1"), &grant).await.unwrap();
     refused(
-        f.write(
-            vec![op(Verb::CREATE, "person", "acme", "p1", &sealed())],
-            &grant,
-        )
-        .await,
+        f.write(create("p1"), &grant).await,
         ErrorCode::AlreadyExists,
         "taken",
     );
+    refused(f.write(update, &grant).await, ErrorCode::Aborted, "version");
     refused(
-        f.write(
-            vec![op(Verb::UPDATE, "person", "acme", "p1", &sealed())],
-            &grant,
-        )
-        .await,
-        ErrorCode::Aborted,
-        "version",
-    );
-    assert!(f.audit().is_empty(), "{:?}", f.audit());
-    // A rule speaking is.
-    refused(
-        f.write(
-            vec![op(Verb::CREATE, "person", "acme", "p2", &sealed())],
-            &[],
-        )
-        .await,
+        f.write(create("p2"), &[]).await,
         ErrorCode::PermissionDenied,
         "grant",
     );
-    let ev = f.audit();
-    assert_eq!(ev.len(), 1);
-    assert_eq!(ev[0].reason, "grant");
+    refused(
+        f.get("Person", "acme", "x").await,
+        ErrorCode::InvalidArgument,
+        "address",
+    );
+    f.durable.set_down(true);
+    refused(
+        f.get("person", "acme", "p1").await,
+        ErrorCode::Unavailable,
+        "engine",
+    );
+    f.durable.set_down(false);
+    // Not served yet is a refusal too.
+    f.as_("adapter-upstream-oidc");
+    assert_eq!(
+        f.get("upstream-secret", "", "w").await.unwrap_err().code,
+        ErrorCode::Unimplemented
+    );
+    f.as_("key");
+    assert_eq!(f.watch().await.code, ErrorCode::Unimplemented);
+
+    let seen: Vec<(String, String)> = f
+        .audit()
+        .iter()
+        .map(|e| {
+            assert_eq!((e.action, e.failure), ("store.refused", true));
+            let code = e
+                .fields
+                .iter()
+                .find(|(k, _)| *k == "code")
+                .unwrap()
+                .1
+                .clone();
+            (code, e.reason.clone())
+        })
+        .collect();
+    let want = [
+        ("not_found", "absent"),
+        ("already_exists", "taken"),
+        ("aborted", "version"),
+        ("permission_denied", "grant"),
+        ("invalid_argument", "address"),
+        ("unavailable", "engine"),
+        ("unimplemented", "unimplemented"),
+        ("unimplemented", "unimplemented"),
+    ];
+    assert_eq!(seen, want.map(|(c, r)| (c.to_owned(), r.to_owned())));
+    // A call that is answered produces none.
+    let before = f.audit().len();
+    f.as_("session");
+    f.get("person", "acme", "p1").await.unwrap();
+    assert_eq!(f.audit().len(), before);
+}
+
+// ---- the shared vectors ----
+
+fn vectors() -> serde_json::Value {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../kits/conformance/kit/store-address-vectors.json");
+    serde_json::from_slice(&std::fs::read(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())))
+        .unwrap()
+}
+
+/// `<boundary>/<tenant | ->/<kind>/<id>` as the wire fields: the boundary is the connection's, and
+/// a tenant of `-` is the empty tenant.
+fn wire(address: &str) -> Option<(String, String, String)> {
+    let mut it = address.splitn(4, '/');
+    let (boundary, tenant, kind, id) = (it.next()?, it.next()?, it.next()?, it.next()?);
+    if boundary.is_empty() {
+        return None; // the boundary is not a field of the request
+    }
+    Some((
+        kind.to_owned(),
+        if tenant == "-" {
+            String::new()
+        } else {
+            tenant.to_owned()
+        },
+        id.to_owned(),
+    ))
+}
+
+#[tokio::test]
+async fn the_shared_address_vectors_hold_on_the_wire() {
+    let v = vectors();
+    let (valid, invalid, segments) = (
+        v["valid"].as_array().unwrap(),
+        v["invalid"].as_array().unwrap(),
+        v["segments"].as_array().unwrap(),
+    );
+    assert!(
+        !valid.is_empty() && !invalid.is_empty() && !segments.is_empty(),
+        "an empty sweep proves nothing"
+    );
+
+    // The segments are the registry's.
+    for s in segments {
+        let kind = sluis_registry::kind_by_name(s["kind"].as_str().unwrap()).unwrap();
+        assert_eq!(kind.segment, s["segment"].as_str().unwrap());
+    }
+
+    let f = F::new().await;
+    f.as_("session");
+    let mut ran = 0;
+    for c in invalid {
+        let text = c["address"].as_str().unwrap();
+        // The text form of the part the connection supplies (the boundary) is not a request field.
+        let Some((kind, tenant, id)) = wire(text) else {
+            continue;
+        };
+        let e = f.get(&kind, &tenant, &id).await.unwrap_err();
+        assert_eq!(
+            (e.code, reason(&e)),
+            (ErrorCode::InvalidArgument, "address".into()),
+            "{text}: {}",
+            c["why"]
+        );
+        ran += 1;
+    }
+    assert!(
+        ran >= invalid.len() - 1,
+        "only the empty boundary is outside the request ({ran} of {})",
+        invalid.len()
+    );
+    for a in valid {
+        let text = a.as_str().unwrap();
+        let (kind, tenant, id) = wire(text).unwrap();
+        // Whatever the rules say next, it is not a refusal of the address.
+        match f.get(&kind, &tenant, &id).await {
+            Ok(_) => {}
+            Err(e) => assert!(
+                !(e.code == ErrorCode::InvalidArgument && reason(&e) == "address"),
+                "{text} is a valid address"
+            ),
+        }
+    }
 }

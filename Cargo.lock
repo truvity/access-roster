@@ -1135,6 +1135,7 @@ dependencies = [
  "connectrpc",
  "rustix",
  "saphyr-parser",
+ "serde_json",
  "sluis-kit",
  "sluis-proto",
  "sluis-registry",
