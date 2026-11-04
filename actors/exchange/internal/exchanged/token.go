@@ -3,7 +3,6 @@ package exchanged
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"sort"
 	"strings"
@@ -15,16 +14,6 @@ const pairwiseLabel = "pairwise"
 
 // subBytes is how much of the Mac a pairwise subject keeps: 256 bits (ADR 0034, "Subjects and sectors").
 const subBytes = 32
-
-// pairwiseInput is the input of the Mac that makes a pairwise subject (ADR 0034: "the length-prefixed sector and the
-// person's Person id"): the sector with a 4-byte big-endian length in front, as the audit pseudonym has, then the id.
-// The sector is length-prefixed, so ("ab", "c") and ("a", "bc") differ. session derives the subject of a sign-in
-// from the same input, which is why the encoding is written down here.
-func pairwiseInput(sector, personID string) []byte {
-	b := binary.BigEndian.AppendUint32(nil, uint32(len(sector))) //nolint:gosec // a sector is at most 32 characters
-	b = append(b, sector...)
-	return append(b, personID...)
-}
 
 // pairwiseSub turns the Mac into a subject: truncated to 256 bits, base64url without padding.
 func pairwiseSub(mac []byte) string {
