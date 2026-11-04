@@ -1,0 +1,29 @@
+// The unlock service of a card key driver (0006 "Touch and PIN"). It is served on the driver's local admin socket, a
+// socket that only an administrator reaches, and never on the driver's own socket for key@.
+syntax = "proto3";
+
+package sluis.port.keystore.v2alpha1;
+
+// UnlockService lets an administrator give the locked driver the PIN of its card.
+service UnlockService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Unlock(UnlockRequest) returns (UnlockResponse);
+}
+
+// StatusRequest asks whether the driver holds the PIN.
+message StatusRequest {}
+
+// StatusResponse says what the driver is.
+message StatusResponse {
+  string node = 1;          // the node whose card the driver holds
+  bool locked = 2;          // true while the driver has no PIN
+  int32 pin_retries = 3;    // the attempts the card allows before it blocks; -1 when the card does not say
+}
+
+// UnlockRequest delivers the PIN of the card. The driver tries it once and never again.
+message UnlockRequest {
+  bytes pin = 1;  // the PIN, 6 to 8 octets; held in locked memory, never written to disk or to a log
+}
+
+// UnlockResponse says the PIN was accepted by the card.
+message UnlockResponse {}
