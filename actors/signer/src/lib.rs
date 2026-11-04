@@ -8,8 +8,9 @@
 //! the compact JWS (RFC 7515). It holds no key and no secret: the private key never leaves key@.
 //!
 //! It also keeps the published key set, the kind `SigningRing`, in store@: a key is published for at
-//! least the prepublish window before it signs, and stays published for the token lifetime plus
-//! the clock skew after it stops (ADR 0006 "Rotation"; REQ-KEYS-007).
+//! least the prepublish window before it signs (30 minutes, derived from the key set's cache budget:
+//! REQ-KEYS-076), and stays published for the token lifetime plus the clock skew after it stops (ADR
+//! 0006 "Rotation"; REQ-KEYS-007).
 //!
 //! # Refusals
 //!

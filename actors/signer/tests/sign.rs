@@ -1039,10 +1039,10 @@ async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_t
         "key@ signed nothing with the unpublished key"
     );
 
-    // Just short of 12 hours after it was published it still does not sign; a little after, it does.
+    // Just short of 30 minutes after it was published it still does not sign; a little after, it does.
     // (The ring is looked at again when the last look is ten seconds old, so a key signs at most ten
     // seconds after its window; the exact second is the test of `ring::plan`.)
-    w.clock.advance(12 * 3600 - 20);
+    w.clock.advance(30 * 60 - 20);
     let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
         .await
         .unwrap_err();
@@ -1180,7 +1180,7 @@ async fn two_boards_share_one_ring_without_flapping_and_every_new_key_waits_for_
     let rotated_at = w.clock.secs();
     let calls_b = key_b.calls.load(Ordering::SeqCst);
     // The first look adds the key (eleven seconds on); the last is thirty seconds short of its window.
-    for advance in [11u64, 3600, 5 * 3600, 12 * 3600 - 30 - 6 * 3600] {
+    for advance in [11u64, 5 * 60, 10 * 60, 30 * 60 - 30 - 15 * 60] {
         w.clock.advance(advance);
         // B refuses: its new key has not been published for the window. A signs throughout.
         let e = sign(&b, "JWT", w.claims("JWT", "sluis-cli", 600))
