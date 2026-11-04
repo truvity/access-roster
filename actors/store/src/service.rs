@@ -90,9 +90,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     }
 
     /// Tells the audit log that store@ started.
-    pub async fn announce_start(&self, drivers: Vec<(&'static str, String)>) {
+    ///
+    /// `documents` names each config document in force (kind, seq, SHA-384 of the payload), so a
+    /// reviewer matches them to the reviewed files (ADR 0005, "The snapshot").
+    pub async fn announce_start(&self, drivers: Vec<(&'static str, String)>, documents: String) {
         let mut fields = vec![("boundary", self.boundary.clone())];
         fields.extend(drivers);
+        fields.push(("documents", documents));
         self.audit
             .emit(AuditEvent {
                 action: "store.start",
@@ -102,6 +106,15 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 correlation_id: None,
             })
             .await;
+    }
+}
+
+impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
+    /// Tells the audit log how a reload of the config ended (ADR 0005, "A failed reload").
+    pub async fn announce_reload(&self, outcome: &crate::config::Reloaded) {
+        if let Some(event) = crate::config::reload_event(&self.boundary, outcome) {
+            self.audit.emit(event).await;
+        }
     }
 }
 

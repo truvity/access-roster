@@ -1,0 +1,4 @@
+# InstallationClient: the clients of the installation, one item for each client id.
+sluis-cli:
+  kind: public
+  redirects: ["http://127.0.0.1/callback"]

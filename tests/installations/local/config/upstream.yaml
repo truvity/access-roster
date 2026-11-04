@@ -1,0 +1,9 @@
+# Upstream: the keyed kind, one item for each upstream, named by its id. `workforce` is the Keycloak
+# realm of the test run on the loopback (decisions D-11 and D-21: the realm's usernames are the
+# subjects, so the policy binds Account::"workforce/alice").
+workforce:
+  kind: oidc
+  issuer: http://127.0.0.1:8180/realms/sluis-test
+  client_id: sluis-local
+  subject_claim: preferred_username
+  scopes: [openid, profile, email]

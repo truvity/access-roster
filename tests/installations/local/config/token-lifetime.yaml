@@ -1,0 +1,7 @@
+# TokenLifetime: the default lifetime of each issuer; the access token stays inside the built-in
+# cap of one hour (ADR 0020, "The lifetimes are a layered kind").
+default:
+  id_token: 10m
+  access_token: 10m
+  human_session_absolute: 12h
+  refresh_idle: 8h
