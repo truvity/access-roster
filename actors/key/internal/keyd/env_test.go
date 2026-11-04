@@ -123,6 +123,8 @@ func itemKey(a *typev2alpha1.Address) string {
 }
 
 func (f *fakeStore) put(kind, tenant, id string, v proto.Message) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	b, err := proto.Marshal(v)
 	if err != nil {
 		panic(err)
@@ -233,6 +235,19 @@ func newFakeDriver(storeName string) *fakeDriver {
 	return &fakeDriver{store: storeName, keys: map[string]*ecdsa.PrivateKey{}}
 }
 
+// wrappingID makes the wrapping key if there is none and returns its RFC 7638 thumbprint: the id a KeyPlan lists.
+func (d *fakeDriver) wrappingID() string {
+	res, err := d.Ensure(context.Background(), connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "wrapping", Algorithm: "ECDH-P384"}))
+	if err != nil {
+		panic(err)
+	}
+	id, err := spkiThumbprint(res.Msg.GetSpkiDer())
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 func (d *fakeDriver) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
 	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Algorithms: []string{"ES384", "ES256", "ECDH-P384"}}), nil
 }
@@ -257,6 +272,18 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 		return nil, err
 	}
 	return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok}), nil
+}
+
+func (d *fakeDriver) PublicKey(_ context.Context, req *connect.Request[keystorev2alpha1.KeyStorePublicKeyRequest]) (*connect.Response[keystorev2alpha1.KeyStorePublicKeyResponse], error) {
+	k, err := d.key(req.Msg.GetPurpose())
+	if err != nil {
+		return nil, err
+	}
+	der, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&keystorev2alpha1.KeyStorePublicKeyResponse{SpkiDer: der}), nil
 }
 
 func (d *fakeDriver) key(purpose string) (*ecdsa.PrivateKey, error) {
@@ -372,6 +399,24 @@ func newTestEnv(t *testing.T, environment string) *testEnv {
 	return e
 }
 
+// list adds recipients to the KeyPlan, as a reviewed and signed commit would.
+func (e *testEnv) list(ids ...string) {
+	e.t.Helper()
+	e.store.mu.Lock()
+	it := e.store.items["|key-plan|default"]
+	e.store.mu.Unlock()
+	plan := &configv2alpha1.KeyPlan{}
+	if err := proto.Unmarshal(it.GetValue(), plan); err != nil {
+		e.t.Fatal(err)
+	}
+	for _, id := range ids {
+		if !slices.Contains(plan.Recipients, id) {
+			plan.Recipients = append(plan.Recipients, id)
+		}
+	}
+	e.store.put("key-plan", "", "default", plan)
+}
+
 // node is one key@ with its driver, its auditor and its sockets.
 type node struct {
 	e      *testEnv
@@ -390,6 +435,8 @@ type nodeOpts struct {
 	driver    *fakeDriver
 	audit     Auditor
 	transport string // the emit socket, for the check command
+	// unlisted leaves the node's wrapping key out of the KeyPlan, as a node is until a commit lists it.
+	unlisted bool
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -405,6 +452,9 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 		o.audit = &recorder{}
 	}
 	rec, _ := o.audit.(*recorder)
+	if !o.unlisted {
+		e.list(o.driver.wrappingID())
+	}
 	runDir := shortDir(e.t)
 	for _, c := range registry.CallersOf("key") {
 		if err := os.Mkdir(filepath.Join(runDir, c), 0o750); err != nil {

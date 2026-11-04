@@ -1,0 +1,16 @@
+{
+  "description": "Test vectors of the JWK thumbprint (RFC 7638). The first is the example of RFC 7638, section 3.1 (an RSA key): it pins the procedure, SHA-256 over the canonical JSON with the members in lexicographic order, base64url without padding. The second is a P-384 public key, the one the test publisher of the signed config page uses (a public key that guards nothing), with the thumbprint computed outside Go with Python hashlib.",
+  "vectors": [
+    {
+      "name": "rfc7638-3.1-rsa",
+      "canonical": "{\"e\":\"AQAB\",\"kty\":\"RSA\",\"n\":\"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw\"}",
+      "thumbprint": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs"
+    },
+    {
+      "name": "p384",
+      "spki_der_base64": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdptVIkeiLoSFwBZWL2/LzRofOQCC7BA2BYGuTFE2wadFKaURYGvjspVnyguB6GsAACzu7DrWqKQHCCIbBKyxDEBjjhO8P2aVMqgSE/MMGEjXQqtRIMj/MKggB9rQK8MI",
+      "canonical": "{\"crv\":\"P-384\",\"kty\":\"EC\",\"x\":\"dptVIkeiLoSFwBZWL2_LzRofOQCC7BA2BYGuTFE2wadFKaURYGvjspVnyguB6GsA\",\"y\":\"ACzu7DrWqKQHCCIbBKyxDEBjjhO8P2aVMqgSE_MMGEjXQqtRIMj_MKggB9rQK8MI\"}",
+      "thumbprint": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
+    }
+  ]
+}

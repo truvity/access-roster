@@ -2,7 +2,6 @@ package keyd
 
 import (
 	"context"
-	"crypto/ecdh"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -16,7 +15,6 @@ import (
 	"github.com/truvity/sluis/v2/actors/key/internal/wrap"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
-	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
 // errNoKey says there is no wrap for this node and no data key at all, and the caller did not ask to make one.
@@ -78,7 +76,7 @@ func (s *Server) loadLocked(ctx context.Context, ref keyRef, create bool) (*entr
 	case err == nil:
 	case errors.Is(err, errNoKey) && create:
 		if key, events, err = s.makeKey(ctx, ref); err != nil {
-			return nil, nil, err
+			return nil, events, err
 		}
 	default:
 		return nil, nil, err
@@ -138,53 +136,6 @@ func (s *Server) unwrap(ctx context.Context, ref keyRef, w *keyv2alpha1.DataKeyW
 	return key, nil
 }
 
-// recipient is a node that may open data keys: its label and its wrapping public key.
-type recipient struct {
-	label string
-	pub   *ecdh.PublicKey
-}
-
-// recipients lists the wrapping certificates, KeyCertificate items wrapping/*, and always this node. A
-// certificate that does not parse is skipped and logged.
-func (s *Server) recipients(ctx context.Context) ([]recipient, error) {
-	var out []recipient
-	var token string
-	for {
-		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
-		if err != nil {
-			return nil, unavailable(reasonStore)
-		}
-		for _, it := range items {
-			label, ok := strings.CutPrefix(it.ID, certPrefix)
-			if !ok || it.Value.GetPurpose() != wrappingPurpose || it.Value.GetRecipient() != label {
-				continue
-			}
-			pub, err := parseP384(it.Value.GetSpkiDer())
-			if err != nil {
-				slog.Warn("skipping a wrapping certificate that does not parse", "recipient", label)
-				continue
-			}
-			ek, err := pub.ECDH()
-			if err != nil {
-				continue
-			}
-			out = append(out, recipient{label: label, pub: ek})
-		}
-		if next == "" {
-			break
-		}
-		token = next
-	}
-	if !slices.ContainsFunc(out, func(r recipient) bool { return r.label == s.recipient }) {
-		out = append(out, recipient{label: s.recipient, pub: s.wrappingPub})
-	}
-	slices.SortFunc(out, func(a, b recipient) int { return strings.Compare(a.label, b.label) })
-	if len(out) > store.MaxBatch {
-		return nil, errors.New("keyd: more recipients than one batch holds")
-	}
-	return out, nil
-}
-
 // wrapFor wraps dataKey for one recipient.
 func (s *Server) wrapFor(ref keyRef, r recipient, dataKey []byte) (wrapItem, error) {
 	eph, wrapped, err := wrap.Wrap(s.wrapContext(ref, r.label), r.pub, dataKey)
@@ -203,20 +154,26 @@ func (s *Server) wrapFor(ref keyRef, r recipient, dataKey []byte) (wrapItem, err
 // in one batch of CREATEs. A CREATE that loses means another key@ made the key first: ours is discarded, and
 // theirs is read and opened. It returns the audit facts of the new key for the caller to emit.
 func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, []Event, error) {
-	recips, err := s.recipients(ctx)
+	set, err := s.recipients(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	if !set.self {
+		// A key this node could not open again would be lost with its cache entry, and the tenant's data with it.
+		slog.Warn("no data key is made: this node's wrapping key is not in the KeyPlan recipients", "wrapping_key_id", s.wrappingID)
+		return nil, set.events, unavailable(reasonWrap)
+	}
+	recips := set.wrap
 	key := make([]byte, wrap.DataKeyLen)
 	if _, err := rand.Read(key); err != nil {
-		return nil, nil, fmt.Errorf("keyd: random: %w", err)
+		return nil, set.events, fmt.Errorf("keyd: random: %w", err)
 	}
 	items := make([]wrapItem, 0, len(recips))
 	for _, r := range recips {
 		it, err := s.wrapFor(ref, r, key)
 		if err != nil {
 			clear(key)
-			return nil, nil, fmt.Errorf("keyd: wrap: %w", err)
+			return nil, set.events, fmt.Errorf("keyd: wrap: %w", err)
 		}
 		items = append(items, it)
 	}
@@ -227,14 +184,15 @@ func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, []Event, erro
 		clear(key)
 		slog.Info("data key was made by another node first", "purpose", ref.purpose, "generation", ref.generation)
 		key, err := s.openOwn(ctx, ref) // errNotWrapped if the winner left us out
-		return key, nil, err
+		return key, set.events, err
 	default:
 		clear(key)
-		return nil, nil, unavailable(reasonStore)
+		return nil, set.events, unavailable(reasonStore)
 	}
-	events := []Event{{Action: ActionDataKeyMake, Tenant: ref.tenant, Fields: map[string]any{
+	events := append([]Event(nil), set.events...)
+	events = append(events, Event{Action: ActionDataKeyMake, Tenant: ref.tenant, Fields: map[string]any{
 		"purpose": ref.purpose, "generation": int64(ref.generation), "recipients": int64(len(items)),
-	}}}
+	}})
 	for _, it := range items {
 		events = append(events, wrapEvent(ref, it.Wrap.GetRecipient()))
 	}
@@ -251,13 +209,18 @@ func (s *Server) auditWrap(ctx context.Context, ref keyRef, recipient string) {
 	s.audit(ctx, wrapEvent(ref, recipient))
 }
 
-// Rewrap is one rewrap pass: for each data key this node can open, it writes a wrap for every recipient that
-// lacks one (ADR 0006, "Keys per board": the other boards rewrap for a new card). It is idempotent: a CREATE
+// Rewrap is one rewrap pass: for each data key this node can open, it writes a wrap for every recipient of the
+// KeyPlan that lacks one (ADR 0006, "Keys per board": the other boards rewrap for a new card; "Who may receive a
+// wrap"). The plan is read again at each pass, so a change of the list takes effect at the next one. It is idempotent: a CREATE
 // that finds the wrap there is fine. A failure stops the pass for that tenant and is logged.
 func (s *Server) Rewrap(ctx context.Context) error {
-	recips, err := s.recipients(ctx)
+	set, err := s.recipients(ctx)
 	if err != nil {
 		return err
+	}
+	recips := set.wrap
+	for _, ev := range set.events {
+		s.audit(ctx, ev)
 	}
 	tenants := []string{""}
 	s.tenants.Range(func(k, _ any) bool { tenants = append(tenants, k.(string)); return true })

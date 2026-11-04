@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `key@` wraps a data key only to the recipients listed in the signed `KeyPlan` (`recipients`, each the RFC 7638 thumbprint of a node's wrapping key). A `KeyCertificate` in the store only supplies the key of a listed recipient, and one that is not listed is refused and audited. `key@ check` prints the node's wrapping key id and fails while a listed recipient has no key. The local installation starts in two phases to learn the id (`deploy/local/README.md`).
 - A new token-signing key is published for 30 minutes before it signs, not 12 hours: the lead time follows the cache budget of the key set (`max-age` 300 s, edge time to live, a throttled refetch on an unknown `kid`, clock skew). A verifier must honour `max-age` and fetch the key set again on an unknown `kid`.
 - The status page shows build progress: requirements that are partial next to those done, issues in progress on the board next to those closed, and a Design caption that says "not built" only while nothing is done, partial or in progress.
 - The audit log's checkpoints are standard C2SP signed notes (signature type 0x02): the `audit-log` key is a P-256 key that signs SHA-256, so a generic witness or checkpoint verifier checks them, and `sluis audit verify` reads only that form. The software key driver refuses a state directory that holds an older P-384 `audit-log` key: remove its `audit-log.p8` (and the log it signed) on a development installation, or run `just local-down` and `just local-up` again.
