@@ -92,8 +92,8 @@ AppConfig facts, READ 2026-11-02 from the AWS API reference of `GetLatestConfigu
 A declaration is a signed document in the same format that is not config: an operator's act that one actor takes once, and not a state that store@ loads. There is one kind, `KeyRevocationDeclaration`, with which an operator revokes keys ([0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)).
 
 - **The format, the header and steps 1 to 4 are a config document's.** The header has `alg`, `kid`, `seq` and `kind`, the signature is a publisher key's of the bootstrap file, and the `co_signs` rules apply. The `kind` names the declaration, which is not a kind of the registry, so store@ refuses it as config and a config document is never taken as a declaration (`VerifyDeclaration` in `kits/go/signedconfig`).
-- **The sequence is strict.** key@ takes a declaration only with a `seq` above the highest it took, and keeps that `seq` in a mark of its own state directory, `keyrevocation.mark`. The same declaration twice is a replay and is refused, unlike a config document, which may be loaded again.
-- **The payload is YAML under the strict profile,** read into the message `sluis.key.v2alpha1.KeyRevocationDeclaration`: exactly the members `boundary`, `kids` and `reason`. `boundary` is the boundary the declaration is for; `kids` lists 1 to 64 RFC 7638 thumbprints, each once; `reason` is `compromise`, `suspicion`, `lost-board` or `drill`. `sluis key revoke` writes it:
+- **The sequence admits a retry and nothing older.** key@ takes a declaration with a `seq` above the highest it took, and keeps that `seq` and the digest of the payload in a mark of its own state directory, `keyrevocation.mark`. The same `seq` with the same payload is a retry of the last declaration, which completes it; the same `seq` with another payload, and a lower one, are refused.
+- **The payload is YAML under the strict profile,** read into the message `sluis.key.v2alpha1.KeyRevocationDeclaration`: the members `boundary`, `kids` and `reason`, and `allow_unknown` when it is needed. `boundary` is the boundary the declaration is for; `kids` lists 1 to 64 RFC 7638 thumbprints, each once; `reason` is `compromise`, `suspicion`, `lost-board` or `drill`; `allow_unknown: true` revokes keys that key@ does not know. `sluis key revoke` writes it:
 
   ```yaml
   boundary: dev
@@ -102,7 +102,7 @@ A declaration is a signed document in the same format that is not config: an ope
   reason: compromise
   ```
 
-- **key@ refuses a declaration that does not verify (`declaration`), an old `seq` or a replay (`seq`), a payload that is not one (`schema`, with the path), another boundary (`other-boundary`) and a key it does not know (`unknown-kid`, with the path of the key).** It knows a signing key it holds and a token key that `SigningRing` lists for any node. A refused declaration writes nothing and does not move the mark.
+- **key@ refuses a declaration that does not verify (`declaration`), an old `seq` or another payload under the last one (`seq`), a payload that is not one (`schema`, with the path), another boundary (`other-boundary`) and, without `allow_unknown`, a key it does not know (`unknown-kid`, with the path of the key).** It knows a signing key it holds, a token key that `SigningRing` lists for any node, and a key that a `KeyCertificate` of a signing purpose certifies. A refused declaration writes nothing and does not move the mark. A declaration that a store@ failure stopped half way is refused as `partial` (unavailable), with the keys in the detail, and the same declaration completes it.
 
 ## Test vectors
 

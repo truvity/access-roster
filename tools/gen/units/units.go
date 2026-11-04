@@ -86,7 +86,6 @@ type driverProc struct {
 	Environment     []string
 	EnvironmentFile string
 	After           []string // units outside the generator that this one starts after
-	Wants           []string // units outside the generator that this one wants, without failing when they fail
 	Requires        []string // units outside the generator that this one needs (and starts after: list them in After too)
 	// RuntimeDirectory is a directory below /run that systemd makes for the unit's user, mode 0700, and removes with it:
 	// the card driver's admin socket. %i is the boundary.
@@ -117,16 +116,15 @@ var drivers = map[string]driverSpec{
 			Args: []string{"--state-dir", "%STATE%", "--environment", "development"},
 		}},
 	},
-	// drivers/key/yubikey-piv: serve --socket --admin-socket --state-dir --node --environment --serial [--socket-gid]. The card driver of
+	// drivers/key/yubikey-piv: serve --socket --admin-socket --node --environment --serial [--socket-gid]. The card driver of
 	// a board (ADR 0006), the alternative to the software driver: same socket, same owner. It needs the card service; its
 	// admin socket, the only way the PIN reaches it, is in a directory of its own that only it and root enter. The unit
 	// passes --serial from a file the deploy writes (EnvironmentFile below): the driver is bound to the board's card.
 	"driver-key-yubikey-piv": {
 		Language: "Go", Instead: "driver-key-software",
 		Units: []driverProc{{
-			Socket: keyDriverSocket, State: true,
+			Socket: keyDriverSocket,
 			Args: []string{
-				"--state-dir", "%STATE%", // when the driver generated each key: a card does not store it (ADR 0041)
 				"--environment", "development", "--node", "%H",
 				"--admin-socket", "/run/sluis-drv-key-yubikey-piv-%i/admin.sock",
 				"--serial", "${SLUIS_CARD_SERIAL}",
@@ -135,9 +133,7 @@ var drivers = map[string]driverSpec{
 			// (SLUIS_BOARD_CARD_SERIALS) and no serial is in the repository. A unit without the file does not start.
 			EnvironmentFile: "/etc/sluis/yubikey-piv-%i.env",
 			ExtraGroups:     []string{pcscGroup},
-			Requires:        []string{"pcscd.socket"},
-			// The age of a key is a time the driver reads from this clock (ADR 0041): start after the clock is in sync.
-			Wants: []string{"time-sync.target"}, After: []string{"pcscd.socket", "time-sync.target"},
+			Requires:        []string{"pcscd.socket"}, After: []string{"pcscd.socket"},
 			RuntimeDirectory: "sluis-drv-key-yubikey-piv-%i",
 		}},
 	},
@@ -804,9 +800,6 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("Documentation=https://sluis.id/runtimes/bare-metal/")
 	if len(du.Requires) > 0 {
 		b.line("Requires=%s", strings.Join(du.Requires, " "))
-	}
-	if len(du.Wants) > 0 {
-		b.line("Wants=%s", strings.Join(du.Wants, " "))
 	}
 	if len(du.After) > 0 {
 		b.line("After=%s", strings.Join(du.After, " "))

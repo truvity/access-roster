@@ -2,7 +2,7 @@
 // piv-go and pcsc-lite (ADR 0006, 0012, 0013). It holds the card exclusively and starts locked: it has no PIN until
 // an administrator delivers it on the local admin socket with `sluis node unlock`.
 //
-//	yubikey-piv serve --socket PATH --admin-socket PATH --state-dir DIR --node NAME --environment development|staging|production
+//	yubikey-piv serve --socket PATH --admin-socket PATH --node NAME --environment development|staging|production
 //	              [--serial N] [--socket-gid GID]
 //	yubikey-piv check [--serial N]
 //	yubikey-piv conformance --socket PATH
@@ -31,7 +31,6 @@ func main() {
 func flags(fs *flag.FlagSet) {
 	fs.String("environment", "", "development, staging or production (required); only development makes a key with the factory management key")
 	fs.String("node", "", "the node whose card this is (required for serve)")
-	fs.String("state-dir", "", "the driver's own key-store directory (0700, its user): when it generated each key, which a card does not store (required for serve)")
 	fs.String("admin-socket", "", "the absolute path of the local admin socket that takes the PIN (required for serve); root only")
 	fs.Uint("serial", 0, "the serial number of the card the driver is bound to; required outside development (in development, none means the only card, and two cards are refused)")
 	fs.Uint("socket-gid", 0, "open the socket (mode 0660) to this group, which the owner joins; 0 keeps mode 0600 for the driver's user alone")
@@ -68,10 +67,6 @@ func serve(ctx context.Context, f cli.Flags) error {
 	if f.Socket == "" {
 		return cli.Usage(errors.New("--socket is required"))
 	}
-	stateDir := value(f, "state-dir")
-	if stateDir == "" {
-		return cli.Usage(errors.New("--state-dir is required"))
-	}
 	adminSocket, node := value(f, "admin-socket"), value(f, "node")
 	if adminSocket == "" {
 		return cli.Usage(errors.New("--admin-socket is required"))
@@ -106,7 +101,7 @@ func serve(ctx context.Context, f cli.Flags) error {
 	// The administrator of a node is root, reached through sudo: the socket is mode 0600 and the driver checks the
 	// peer's uid again before it reads the PIN.
 	admin := driver.AdminConfig{Socket: adminSocket, Allow: func(uid uint32) bool { return uid == 0 }}
-	return driver.Run(ctx, driver.Options{Environment: env, Node: node, Serial: sn, StateDir: stateDir}, cfg, admin)
+	return driver.Run(ctx, driver.Options{Environment: env, Node: node, Serial: sn}, cfg, admin)
 }
 
 // check opens the card, applies the firmware floor and verifies the attestation of every key it holds. It

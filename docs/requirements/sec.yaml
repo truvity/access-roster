@@ -493,10 +493,11 @@ requirements:
   - id: REQ-SEC-034
     area: SEC
     statement: "A key revocation MUST write an audit record that names the keys, the reason and the operator."
-    rationale: "A revocation is the most urgent event for a key, and it must be on record (ADR 0041)."
+    rationale: "A revocation is the most urgent event for a key, and it must be on record, with the node that took it and the uid that delivered it; a fact whose emit is lost is not sent again yet (ADR 0041)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1362]
     runtimes: all
