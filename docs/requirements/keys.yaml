@@ -1206,7 +1206,7 @@ requirements:
     actors: [key]
     standards: []
     verification:
-      - {kind: integration-test, ref: "an unknown kid or a wrapping key refuses the declaration; the ring and a certificate make a key known; allow_unknown writes an unknown key, marked"}
+      - {kind: integration-test, ref: "an unknown kid refuses it; a wrapping key is refused with allow_unknown too; the ring and a certificate make a key known; allow_unknown writes a marked key"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."

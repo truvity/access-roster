@@ -102,7 +102,7 @@ A declaration is a signed document in the same format that is not config: an ope
   reason: compromise
   ```
 
-- **key@ refuses a declaration that does not verify (`declaration`), an old `seq` or another payload under the last one (`seq`), a payload that is not one (`schema`, with the path), another boundary (`other-boundary`) and, without `allow_unknown`, a key it does not know (`unknown-kid`, with the path of the key).** It knows a signing key it holds, a token key that `SigningRing` lists for any node, and a key that a `KeyCertificate` of a signing purpose certifies. A refused declaration writes nothing and does not move the mark. A declaration that a store@ failure stopped half way is refused as `partial` (unavailable), with the keys in the detail, and the same declaration completes it.
+- **key@ refuses a declaration that does not verify (`declaration`), an old `seq` or another payload under the last one (`seq`), a payload that is not one (`schema`, with the path), another boundary (`other-boundary`) a wrapping key, with or without `allow_unknown` (`wrapping-key`, with the path), and, without `allow_unknown`, a key it does not know (`unknown-kid`, with the path of the key).** It knows a signing key it holds, a token key that `SigningRing` lists for any node, and a key that a `KeyCertificate` of a signing purpose certifies. On a retry, a key that `KeyRevocation` already lists counts as known. A refused declaration writes nothing and does not move the mark. A declaration that a store@ failure stopped half way is refused as `partial` (unavailable), with the keys in the detail, and the same declaration completes it.
 
 ## Test vectors
 
