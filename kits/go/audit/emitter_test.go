@@ -78,6 +78,7 @@ func newTestEmitter(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 
 var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
 
+// verifies: REQ-AUDIT-128
 func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 	keys := &fakeKeys{mac: testMAC()}
 	e := newTestEmitter(t, &fakeTransport{}, keys)
@@ -316,6 +317,7 @@ func TestSubjectNeedsAKindAndTheActivityNeedsAName(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-120
 func TestThePolicyDeclaresItsProfileAndNeedsADecisionID(t *testing.T) {
 	e := newTestEmitter(t, &fakeTransport{}, nil)
 	ev := signEvent

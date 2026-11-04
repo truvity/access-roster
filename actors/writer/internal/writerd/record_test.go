@@ -46,6 +46,7 @@ func TestCheckAcceptsTheEmittersRecord(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-106, REQ-AUDIT-118
 func TestCheckRefusals(t *testing.T) {
 	const uid = "0192e8b0-0000-7000-8000-000000000001"
 	md := func(r map[string]any) map[string]any { return r["metadata"].(map[string]any) }

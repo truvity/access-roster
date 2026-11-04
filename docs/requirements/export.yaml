@@ -9,6 +9,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards:
@@ -25,6 +26,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards:
@@ -100,6 +102,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -114,7 +117,9 @@ requirements:
     rationale: "What may leave sluis is decided in review as a property of the kind and not at run time (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1014]
@@ -127,6 +132,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1217]
@@ -138,7 +144,9 @@ requirements:
     rationale: "A destination needs a credential, and it belongs to one holder of the data family and to no work actor (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     actors: [exporter]
     standards: []
@@ -152,6 +160,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1014, 864]
@@ -164,6 +173,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1014, 864]
@@ -176,6 +186,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -202,6 +213,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -228,6 +240,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -241,6 +254,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []

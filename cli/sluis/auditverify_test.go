@@ -23,6 +23,7 @@ func verifyArgs(l *fixtureLog, extra ...string) []string {
 	return append([]string{"audit", "verify", l.dir, "--key", l.key.vkey}, extra...)
 }
 
+// verifies: REQ-AUDIT-026
 func TestAuditVerifyOK(t *testing.T) {
 	key := newFixtureKey(t)
 	l := newFixtureLog(t, key, fixtureEntries, 100, 300)
@@ -65,6 +66,7 @@ func TestAuditVerifyKeyFileAndEmptyLog(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-026, REQ-AUDIT-056
 func TestAuditVerifyRefusals(t *testing.T) {
 	other := newFixtureKey(t)
 	cases := []struct {

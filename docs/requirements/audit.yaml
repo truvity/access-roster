@@ -8,7 +8,9 @@ requirements:
     rationale: "An action without a record cannot be reviewed."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -22,7 +24,9 @@ requirements:
     rationale: "An action without a record cannot be reviewed."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -36,6 +40,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -49,7 +54,9 @@ requirements:
     rationale: "A closed action table keeps records interpretable."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -62,7 +69,9 @@ requirements:
     rationale: "The trail must not become a personal-data store."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-98, section: "OTLP", depth: Partial}
@@ -76,7 +85,9 @@ requirements:
     rationale: "The trail must not become a personal-data store."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-98, section: "OTLP", depth: Partial}
@@ -89,7 +100,9 @@ requirements:
     rationale: "A canonical form makes hashes reproducible."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
@@ -102,7 +115,8 @@ requirements:
     rationale: "Proofs let anyone verify the log without trusting the operator."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Full}
@@ -117,7 +131,9 @@ requirements:
     rationale: "Proofs let anyone verify the log without trusting the operator."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Full}
@@ -147,7 +163,9 @@ requirements:
     rationale: "A sealed period is the unit of evidence."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Full}
@@ -162,7 +180,8 @@ requirements:
     rationale: "A sealed period is the unit of evidence."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Full}
@@ -176,7 +195,8 @@ requirements:
     rationale: "Two writers fork the chain."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -190,7 +210,9 @@ requirements:
     rationale: "The fence of each log is its blob and not a lease, so a second writer cannot fork the log (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -204,7 +226,9 @@ requirements:
     rationale: "The lock mode defines what tamper-evidence the log gives."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -220,6 +244,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -232,7 +257,9 @@ requirements:
     rationale: "Peers narrow the window in which one node can rewrite its log."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: smoke-not-in-ci
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-73, section: "1", depth: Partial}
@@ -249,6 +276,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-73, section: "1", depth: Partial}
@@ -264,6 +292,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -278,6 +307,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -292,6 +322,7 @@ requirements:
     level: MAY
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-71, section: "1", depth: Full}
@@ -310,6 +341,7 @@ requirements:
     level: MAY
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-79, section: "3161", depth: Full}
@@ -322,7 +354,9 @@ requirements:
     rationale: "The application must not depend on writer availability."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -337,7 +371,8 @@ requirements:
     rationale: "The application must not depend on writer availability."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -352,6 +387,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -365,7 +401,9 @@ requirements:
     rationale: "Direct mode needs durability."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -378,7 +416,8 @@ requirements:
     rationale: "Networks duplicate; the log must not."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -393,7 +432,8 @@ requirements:
     rationale: "Networks duplicate; the log must not."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -406,7 +446,9 @@ requirements:
     rationale: "A change without a record must not happen."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -419,7 +461,8 @@ requirements:
     rationale: "The index is a cache, never the record."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -433,7 +476,9 @@ requirements:
     rationale: "The index is a cache, never the record."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -447,7 +492,9 @@ requirements:
     rationale: "Seal times depend on the clock."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-80, section: "5905", depth: Full}
@@ -461,7 +508,9 @@ requirements:
     rationale: "Seal times depend on the clock."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-80, section: "5905", depth: Full}
@@ -489,6 +538,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -502,7 +552,9 @@ requirements:
     rationale: "A secret in an immutable log can never be removed."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -515,7 +567,8 @@ requirements:
     rationale: "Controllers must not read each other's records."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -529,7 +582,9 @@ requirements:
     rationale: "Controllers must not read each other's records."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -542,7 +597,9 @@ requirements:
     rationale: "Witnesses add dependencies that some installations cannot meet."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: smoke-not-in-ci
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -555,7 +612,8 @@ requirements:
     rationale: "Only key@ touches the log key (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards:
@@ -569,7 +627,9 @@ requirements:
     rationale: "A log key used by another actor could sign a checkpoint that the writer never made (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards:
@@ -583,7 +643,9 @@ requirements:
     rationale: "The notary is folded into the rules of key@, which signs every checkpoint (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Partial}
@@ -597,6 +659,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -609,7 +672,9 @@ requirements:
     rationale: "Each default is proved by the reference installation of its runtime, and direct has no default."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -622,7 +687,9 @@ requirements:
     rationale: "One log per node means one writer per log."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: smoke-not-in-ci
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -635,7 +702,8 @@ requirements:
     rationale: "An immutable log must not hold unbounded typed text."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
@@ -647,7 +715,9 @@ requirements:
     rationale: "A short bound keeps the index and the witnesses within seconds while an idle log signs nothing."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-75, section: "1", depth: Partial}
@@ -660,7 +730,9 @@ requirements:
     rationale: "The offset inside the tree is cosigned by the witnesses with everything else."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-75, section: "1", depth: Partial}
@@ -675,6 +747,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -688,7 +761,8 @@ requirements:
     rationale: "The checkpoint history must survive on a store with no versioning."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-72, section: "1", depth: Partial}
@@ -704,7 +778,9 @@ requirements:
     rationale: "A standard, time-ordered id lets the writer bound how long it remembers ids."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: NC-02, section: "5.7", depth: Partial}
@@ -717,7 +793,9 @@ requirements:
     rationale: "The window must outlast the longest queue retention of a supported transport."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -730,7 +808,9 @@ requirements:
     rationale: "A record outside the window could be a duplicate that the writer can no longer recognise."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -743,7 +823,9 @@ requirements:
     rationale: "A change must not happen when its record could still be lost, and must not wait for a seal."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -756,7 +838,8 @@ requirements:
     rationale: "The envelope lets a reader route without opening, and the evidence key outlives the personal data (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards:
@@ -770,7 +853,8 @@ requirements:
     rationale: "A log must still verify after its records stop opening (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -784,6 +868,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [840]
@@ -796,6 +881,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -809,6 +895,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -822,6 +909,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837]
@@ -834,6 +922,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
@@ -848,6 +937,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837]
@@ -860,6 +950,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837]
@@ -872,6 +963,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
@@ -898,6 +990,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-80, section: "5905", depth: Partial}
@@ -910,7 +1003,9 @@ requirements:
     rationale: "Full text over everything would index personal fields."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
@@ -925,6 +1020,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [indexer]
     standards: []
@@ -938,6 +1034,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless", "kubernetes"]
     standards: []
     issues: [839]
@@ -949,7 +1046,9 @@ requirements:
     rationale: "One conformance suite needs the same answer from every driver."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
@@ -963,6 +1062,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [839]
@@ -975,6 +1075,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1.1", depth: Partial}
@@ -988,7 +1089,9 @@ requirements:
     rationale: "Least privilege per tenant is enforced in one policy language (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [reader]
     standards:
@@ -1002,7 +1105,9 @@ requirements:
     rationale: "Reads of the trail must be accountable."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [839]
@@ -1015,6 +1120,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless", "kubernetes"]
     standards: []
     issues: [839]
@@ -1027,6 +1133,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     standards: []
     issues: [839]
@@ -1038,7 +1145,9 @@ requirements:
     rationale: "The audit front is the same shape on every installation."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [985]
@@ -1051,6 +1160,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "cookie prefixes", depth: Partial}
@@ -1076,6 +1186,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [985]
@@ -1088,6 +1199,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Partial}
@@ -1102,6 +1214,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [985]
@@ -1114,6 +1227,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [985]
@@ -1125,7 +1239,9 @@ requirements:
     rationale: "Auditors and incident responders are never locked out by the front or the issuer."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [838, 985]
@@ -1137,7 +1253,9 @@ requirements:
     rationale: "A sibling inherits no cookie scope, and one origin per host holds (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-59, section: "5.1.4.1", depth: Partial}
@@ -1164,7 +1282,8 @@ requirements:
     rationale: "Any re-encoding would change the hash and could change the record."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Partial}
@@ -1178,7 +1297,8 @@ requirements:
     rationale: "A record of any age is read and validated by the version it names."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1192,6 +1312,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "deprecation", depth: Partial}
@@ -1204,7 +1325,8 @@ requirements:
     rationale: "One actor name serves every layer, and every principal has one home in the record."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "actor", depth: Partial}
@@ -1217,7 +1339,9 @@ requirements:
     rationale: "Derived data stays out of the hashed evidence and is added on export."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-114, section: "base event", depth: Partial}
@@ -1231,6 +1355,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1257,7 +1382,8 @@ requirements:
     rationale: "A crash leaves all of it or none of it, and the writer's state never lives in the store (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     actors: [writer]
     standards:
@@ -1312,7 +1438,7 @@ requirements:
     rationale: "Nobody searches usage, and the indexer then needs no key for it."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     standards: []
     issues: [839]
@@ -1324,7 +1450,9 @@ requirements:
     rationale: "An ill-formed record is refused where it is made, before a blocking emit waits on it; the writer still validates and stays authoritative."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -1338,6 +1466,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "validation", depth: Partial}
@@ -1351,7 +1480,9 @@ requirements:
     rationale: "One schema is enforced in three languages, and a disagreement means one of them accepts what another refuses."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -1379,6 +1510,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-103, section: "blob port", depth: Full}
@@ -1419,7 +1551,8 @@ requirements:
     rationale: "A record that is not canonical would hash differently in another implementation."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
@@ -1432,7 +1565,8 @@ requirements:
     rationale: "RFC 8785 writes numbers as IEEE 754 doubles, and a larger integer would not survive it."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Partial}
@@ -1482,7 +1616,9 @@ requirements:
     rationale: "A core class is read by any OCSF-aware tool, and sluis defines no class of its own."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-114, section: "base event and core classes", depth: Full}
@@ -1495,7 +1631,9 @@ requirements:
     rationale: "One namespaced object keeps sluis facts together and apart from other sources, and the record needs no OCSF extension."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-114, section: "unmapped", depth: Partial}
@@ -1509,6 +1647,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
@@ -1522,6 +1661,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
@@ -1533,7 +1673,9 @@ requirements:
     rationale: "The release identifies the action table, so a log needs no copy of it and no versioned document beside the records."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1121, 1120]
@@ -1545,7 +1687,8 @@ requirements:
     rationale: "The release and `metadata.event_code` identify the action table entry in force, so a record needs no catalogue field."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1558,7 +1701,8 @@ requirements:
     rationale: "A record taken out of its log must still say which boundary it belongs to."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1571,7 +1715,8 @@ requirements:
     rationale: "A record written to the wrong boundary's log would be misattributed for as long as the log is kept."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1585,6 +1730,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
@@ -1596,7 +1742,8 @@ requirements:
     rationale: "OCSF validators refuse profile attributes that the record does not declare."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "profiles", depth: Partial}
@@ -1610,6 +1757,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-114, section: "Event Log Activity", depth: Partial}
@@ -1623,6 +1771,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "authentication", depth: Partial}
@@ -1636,6 +1785,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-114, section: "certificate", depth: Partial}
@@ -1648,7 +1798,9 @@ requirements:
     rationale: "`delegation` exists only for AI operations and carries identifiers only, so the actor chain of an exchange is `actor`, `user` and `unmapped.sluis.actor_chain`."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-114, section: "delegation", depth: Partial}
@@ -1686,7 +1838,9 @@ requirements:
     rationale: "A keyed function cannot be reversed from a list of subjects without the key (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards:
@@ -1700,7 +1854,8 @@ requirements:
     rationale: "No transport, spool or writer then holds a raw subject (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-06, section: "HMAC", depth: Partial}
@@ -1713,7 +1868,8 @@ requirements:
     rationale: "Pseudonyms rotate so the operator's view links a person within a month only (REQ-AUDIT-038, ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-06, section: "HMAC", depth: Partial}
@@ -1727,6 +1883,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-06, section: "HMAC", depth: Partial}
@@ -1740,6 +1897,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-06, section: "HMAC", depth: Partial}
@@ -1804,6 +1962,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [840]
@@ -1816,6 +1975,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [840]
@@ -1828,6 +1988,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [851, 837]
@@ -1840,6 +2001,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837]
@@ -1852,6 +2014,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837]
@@ -1865,7 +2028,9 @@ requirements:
     rationale: "A flaw in one project's writer then cannot write or sign for another (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     actors: [writer]
     standards: []
@@ -1892,6 +2057,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [837, 985]
@@ -1903,7 +2069,9 @@ requirements:
     rationale: "Cedar decides every call on project, log kind and tenant, and the grant is a mandatory filter of the query (ADR 0028, ADR 0007)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [reader]
     standards: []
@@ -1916,7 +2084,8 @@ requirements:
     rationale: "A partition is a boundary the index itself enforces, apart from the grant (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [indexer]
     standards: []
@@ -1930,6 +2099,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
@@ -1943,6 +2113,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
@@ -1954,7 +2125,9 @@ requirements:
     rationale: "A project's log must hold only the records of the product that the AuditLog declares for it (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [writer]
     standards: []
@@ -1967,7 +2140,9 @@ requirements:
     rationale: "Under the foundation audit already depends on store@, so a loader of its own buys no independence (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [837]
@@ -1979,7 +2154,8 @@ requirements:
     rationale: "Evidence never shares a key with personal data and outlives it, so an exit deletes everything personal and keeps the evidence (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     actors: [writer]
     standards: []
@@ -1993,7 +2169,8 @@ requirements:
     rationale: "No caller brings a grant to the writer, so it asks for its own and key@ checks it like any other (ADR 0029, ADR 0007)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
@@ -2006,7 +2183,9 @@ requirements:
     rationale: "The indexer runs with no caller, so its pass carries its own grant, and it may open and never seal (ADR 0028)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [indexer]
     standards: []
@@ -2019,7 +2198,8 @@ requirements:
     rationale: "A writer that cannot decrypt what it wrote holds nothing to leak (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -2033,7 +2213,8 @@ requirements:
     rationale: "Every sealed entry has a tenant key, and the operator's company is a tenant (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
@@ -2046,7 +2227,9 @@ requirements:
     rationale: "A writer that lies in the envelope is then caught by the first reader that opens the record (ADR 0029)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [reader]
     standards: []
@@ -2060,6 +2243,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [writer]
     standards: []
@@ -2073,6 +2257,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [reader]
     standards: []
@@ -2086,6 +2271,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1218]
@@ -2123,7 +2309,9 @@ requirements:
     rationale: "A probe reads and changes nothing, and auditing it grows the log with no callers; a probe that is refused is a real call and stays audited (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [841]

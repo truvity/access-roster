@@ -11,6 +11,7 @@ mod common;
 use common::{Env, by_tenant, value};
 use indexer::run::Runner;
 
+/// verifies: REQ-AUDIT-005
 #[tokio::test]
 async fn the_log_of_the_go_writer_is_indexed_and_every_record_is_found() {
     let env = Env::go_writer().await;
