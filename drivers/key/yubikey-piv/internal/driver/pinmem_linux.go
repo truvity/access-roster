@@ -3,6 +3,7 @@
 package driver
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -59,14 +60,14 @@ func (m *pinMemory) held() bool {
 	return m.n > 0
 }
 
-// get returns a copy of the PIN for one call to the card, or false when none is held.
-func (m *pinMemory) get() (string, bool) {
+// get returns a copy of the PIN for one call to the card, or false when none is held. The caller wipes the copy.
+func (m *pinMemory) get() ([]byte, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.n == 0 {
-		return "", false
+		return nil, false
 	}
-	return string(m.page[:m.n]), true
+	return bytes.Clone(m.page[:m.n]), true
 }
 
 // wipe overwrites the PIN. The page stays locked for the next unlock.

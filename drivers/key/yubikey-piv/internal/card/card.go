@@ -41,8 +41,13 @@ const (
 // TouchPolicy says when a key needs a touch.
 type TouchPolicy int
 
-// TouchNever is the only touch policy of a board: it signs unattended (0006 "Touch and PIN").
-const TouchNever TouchPolicy = iota + 1
+// The touch policies. TouchNever is the only one a board uses: it signs unattended (0006 "Touch and PIN"). The others
+// exist so that an attestation that states them is read as what it is and refused, not read as nothing.
+const (
+	TouchNever TouchPolicy = iota + 1
+	TouchAlways
+	TouchCached
+)
 
 // KeySpec is what a key is generated with. The policies are fixed at generation and show in the attestation.
 type KeySpec struct {
@@ -81,6 +86,12 @@ type Attestation struct {
 var (
 	// ErrNoKey is a slot that holds no key.
 	ErrNoKey = errors.New("card: the slot holds no key")
+	// ErrImportedKey is a slot that holds a key which was imported and not generated on the card. It cannot be attested
+	// and is refused, never treated as empty and never replaced (REQ-KEYS-026).
+	ErrImportedKey = errors.New("card: the slot holds an imported key")
+	// ErrCardGone is a card that cannot be talked to any more: removed, reset, powered off or its reader gone. The
+	// connection the driver holds is dead (piv-go does not reconnect); the driver wipes the PIN and exits.
+	ErrCardGone = errors.New("card: the card is gone")
 	// ErrManagementKey is a management key that the card refuses.
 	ErrManagementKey = errors.New("card: the management key was refused")
 	// ErrNoCardSupport is a build without the card (no sluis_card tag).
@@ -101,9 +112,9 @@ func (e *PINError) Error() string {
 	return fmt.Sprintf("card: the PIN was refused; %d attempts remain", e.Retries)
 }
 
-// PINSource gives the PIN when the card asks for it. It is called only when the card is logged out, and its error
-// ends the operation without a PIN attempt.
-type PINSource func() (string, error)
+// PINSource gives the PIN when the card asks for it, as a copy that the caller wipes after use. It is called only when
+// the card is logged out, and its error ends the operation without a PIN attempt.
+type PINSource func() ([]byte, error)
 
 // DefaultManagementKey is the factory management key of a PIV applet: the 24 octets 01..08 three times (NIST SP 800-78-4;
 // Yubico documents it). It is 3DES before firmware 5.7 and AES-192 from it, with the same octets; piv-go picks the
@@ -124,7 +135,7 @@ type Card interface {
 	// AttestationCertificate is the card's own attestation certificate, signed by Yubico.
 	AttestationCertificate() (*x509.Certificate, error)
 	// Attest is the certificate the card makes for the key of a slot, signed by its attestation key; ErrNoKey when
-	// the slot holds no key or a key that was imported.
+	// the slot holds no key, ErrImportedKey when it holds a key that was imported.
 	Attest(Slot) (*x509.Certificate, error)
 	// VerifyAttestation proves that slotCert chains through attCert to the Yubico root, and reads what it says.
 	VerifyAttestation(attCert, slotCert *x509.Certificate) (Attestation, error)
@@ -132,8 +143,9 @@ type Card interface {
 	// Generate makes a key in the slot, on the card, authenticated with the management key.
 	Generate(managementKey []byte, slot Slot, spec KeySpec) (crypto.PublicKey, error)
 
-	// Login sends the PIN to the card once and never again (a wrong PIN is not retried here or by the caller).
-	Login(pin string) error
+	// Login sends the PIN to the card once and never again (a wrong PIN is not retried here or by the caller). The
+	// caller wipes pin after the call.
+	Login(pin []byte) error
 	// PINRetries is the attempts the card still allows.
 	PINRetries() (int, error)
 

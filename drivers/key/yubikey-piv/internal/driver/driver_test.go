@@ -70,7 +70,7 @@ func startWith(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- driver.Run(ctx, driver.Options{Environment: environment, Node: "node-a", Open: c.Opener()}, cfg, admin)
+		done <- driver.Run(ctx, driver.Options{Environment: environment, Node: "node-a", Serial: c.SerialNo, Open: c.Opener()}, cfg, admin)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -480,7 +480,7 @@ func TestDriverRefusesToStart(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			c := cardtest.New()
 			tt.setup(c)
-			_, err := driver.New(driver.Options{Environment: driver.Production, Open: c.Opener()})
+			_, err := driver.New(driver.Options{Environment: driver.Production, Serial: c.SerialNo, Open: c.Opener()})
 			if tt.want == "" {
 				if err != nil {
 					t.Fatalf("refused: %v", err)
@@ -516,7 +516,7 @@ func TestEnvironmentHasNoDefault(t *testing.T) {
 
 func TestCheckVerifiesAndWritesNothing(t *testing.T) {
 	c := cardtest.New()
-	if err := driver.Check(driver.Options{Environment: driver.Staging, Open: c.Opener()}); err != nil {
+	if err := driver.Check(driver.Options{Environment: driver.Staging, Serial: c.SerialNo, Open: c.Opener()}); err != nil {
 		t.Fatalf("Check: %v", err)
 	}
 	if !c.Closed() {
@@ -527,7 +527,7 @@ func TestCheckVerifiesAndWritesNothing(t *testing.T) {
 	}
 	c = cardtest.New()
 	c.Firmware = card.Version{Major: 5, Minor: 1}
-	if err := driver.Check(driver.Options{Environment: driver.Staging, Open: c.Opener()}); !errors.Is(err, cli.ErrRefused) {
+	if err := driver.Check(driver.Options{Environment: driver.Staging, Serial: c.SerialNo, Open: c.Opener()}); !errors.Is(err, cli.ErrRefused) {
 		t.Fatalf("Check on old firmware: %v, want a refusal", err)
 	}
 }
@@ -555,4 +555,127 @@ func parseECDSA(spki []byte) (*ecdsa.PublicKey, error) {
 		return nil, errors.New("not an EC key")
 	}
 	return pub, nil
+}
+
+// A driver outside development is bound to one card: without a serial it does not start, so a genuine card whose
+// attestations match the slot map is not adopted for being there.
+func TestOutsideDevelopmentTheDriverIsBoundToACard(t *testing.T) {
+	for _, env := range []string{driver.Staging, driver.Production} {
+		c := cardtest.New()
+		_, err := driver.New(driver.Options{Environment: env, Open: c.Opener()})
+		if !errors.Is(err, cli.ErrUsage) {
+			t.Errorf("%s without a serial: %v, want a usage error", env, err)
+		}
+	}
+	// The serial names the card: another card is not opened, and development still takes the only one.
+	c := cardtest.New()
+	if _, err := driver.New(driver.Options{Environment: driver.Production, Serial: c.SerialNo + 7, Open: c.Opener()}); err == nil {
+		t.Error("a card with another serial was adopted")
+	}
+	if s, err := driver.New(driver.Options{Environment: driver.Development, Open: c.Opener()}); err != nil {
+		t.Errorf("development without a serial: %v", err)
+	} else {
+		_ = s.Close()
+	}
+}
+
+func TestAnImportedKeyIsRefusedAndNeverReplaced(t *testing.T) {
+	spec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
+	c := cardtest.New()
+	if err := c.PutImportedKey(0x9a, spec); err != nil {
+		t.Fatal(err)
+	}
+	// REQ-KEYS-026: the start refuses it, in every environment.
+	for _, env := range []string{driver.Development, driver.Production} {
+		_, err := driver.New(driver.Options{Environment: env, Serial: c.SerialNo, Open: c.Opener()})
+		var p *driver.Problems
+		if !errors.As(err, &p) || !strings.Contains(strings.Join(p.List, ";"), "slots.9a.attestation: origin") {
+			t.Errorf("%s: err = %v, want the imported key refused", env, err)
+		}
+	}
+	if _, err := c.Generate(card.DefaultManagementKey, 0x9a, spec); err == nil {
+		t.Error("the fake allowed a replacement: the test would prove nothing")
+	}
+}
+
+func TestAnUnpluggedCardWipesThePINAndEndsTheDriver(t *testing.T) {
+	c := cardtest.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	base := shortDir(t)
+	cfg := rpc.ServerConfig{Actor: driver.Name, Boundary: "test", Socket: filepath.Join(base, "d.sock"), Mode: 0o600, Allow: rpc.OwnerOnly(driver.Owner())}
+	cfg = rpc.WithNameResolver(cfg, asSelf("key"))
+	admin := driver.AdminConfig{Socket: filepath.Join(base, "a.sock"), Allow: self()}
+	done := make(chan error, 1)
+	go func() {
+		done <- driver.Run(ctx, driver.Options{Environment: driver.Development, Node: "n", Serial: c.SerialNo, Open: c.Opener()}, cfg, admin)
+	}()
+	for _, p := range []string{cfg.Socket, admin.Socket} {
+		for i := 0; ; i++ {
+			if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSocket != 0 {
+				break
+			}
+			if i > 500 {
+				t.Fatal("a socket did not appear")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	hc, url := rpc.Dial(cfg.Socket)
+	key := keystorev2alpha1connect.NewKeyStoreServiceClient(hc, url, rpc.ClientOptions()...)
+	ahc, aurl := rpc.Dial(admin.Socket)
+	adm := keystorev2alpha1connect.NewUnlockServiceClient(ahc, aurl, rpc.ClientOptions()...)
+	ensure(t, key, "token-signing", "ES384")
+	if _, err := adm.Unlock(ctx, connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: []byte("123456")})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sign(key, "token-signing", "ES384", digest384()); err != nil {
+		t.Fatal(err)
+	}
+
+	c.Unplug() // not tested on a card: the fake fails the way piv-go is expected to once the transaction is dead
+	_, err := sign(key, "token-signing", "ES384", digest384())
+	wantRefused(t, err, connect.CodeUnavailable, "card")
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "the card is gone") {
+			t.Fatalf("Run returned %v, want an error that says the card is gone", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the driver is still up with a dead card")
+	}
+	if !c.Closed() {
+		t.Error("the card was not closed")
+	}
+}
+
+func TestACardWithOneAttemptLeftIsNotTried(t *testing.T) {
+	c := cardtest.New()
+	c.Retries = 1
+	r := startWith(t, c, driver.Development, "key", self())
+	_, err := r.admin.Unlock(context.Background(), connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: []byte("123456")}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "pin_retries")
+	if c.LoginAttempts != 0 || c.Retries != 1 {
+		t.Fatalf("%d attempts, %d retries: the card was tried", c.LoginAttempts, c.Retries)
+	}
+	st, _ := r.admin.Status(context.Background(), connect.NewRequest(&keystorev2alpha1.StatusRequest{}))
+	if !st.Msg.GetLocked() || st.Msg.GetPinRetries() != 1 {
+		t.Fatalf("Status = %v", st)
+	}
+}
+
+// Two wrong PINs leave one attempt: the third unlock is refused before the card sees the PIN, so the card is never
+// blocked by the driver.
+func TestABadUnlockCannotBlockTheCard(t *testing.T) {
+	c := cardtest.New()
+	r := startWith(t, c, driver.Development, "key", self())
+	for range 2 {
+		_, err := r.admin.Unlock(context.Background(), connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: []byte("654321")}))
+		wantRefused(t, err, connect.CodePermissionDenied, "pin")
+	}
+	_, err := r.admin.Unlock(context.Background(), connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: []byte("654321")}))
+	wantRefused(t, err, connect.CodeFailedPrecondition, "pin_retries")
+	if c.Retries != 1 || c.LoginAttempts != 2 {
+		t.Fatalf("%d retries left after %d attempts, want 1 and 2", c.Retries, c.LoginAttempts)
+	}
 }

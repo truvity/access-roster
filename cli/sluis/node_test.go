@@ -208,3 +208,33 @@ func TestNodeNeedsUnlock(t *testing.T) {
 		t.Fatalf("exit %d, want 2", code)
 	}
 }
+
+func TestNodeUnlockWithOneAttemptLeftSendsNoPIN(t *testing.T) {
+	f := &fakeDriver{node: "node-a", pin: "123456", locked: true, retries: 1}
+	sock := serveDriver(t, f)
+	ta := newTestApp(t)
+	if code := ta.unlockWith("123456\n", "node-a", "--socket", sock); code != 3 {
+		t.Fatalf("exit %d, want 3; %s", code, ta.err.String())
+	}
+	if f.attempts != 0 {
+		t.Fatal("the PIN was sent to a card with one attempt left")
+	}
+	if !strings.Contains(ta.err.String(), "one PIN attempt left") || !strings.Contains(ta.err.String(), "PUK") {
+		t.Fatalf("stderr %q does not say why", ta.err.String())
+	}
+}
+
+func TestNodeUnlockReadsALineWithCRLFAndNoNewline(t *testing.T) {
+	for _, in := range []string{"123456\r\n", "123456", "123456\n"} {
+		f := &fakeDriver{node: "node-a", pin: "123456", locked: true, retries: 3}
+		sock := serveDriver(t, f)
+		ta := newTestApp(t)
+		if code := ta.unlockWith(in, "node-a", "--socket", sock); code != 0 || len(f.got) != 1 || f.got[0] != "123456" {
+			t.Fatalf("input %q: exit %d, got %q; %s", in, code, f.got, ta.err.String())
+		}
+	}
+	ta := newTestApp(t)
+	if code := ta.unlockWith(strings.Repeat("1", 70)+"\n", "node-a", "--socket", "/x"); code != 2 {
+		t.Fatalf("a PIN of 70 octets: exit %d, want 2", code)
+	}
+}

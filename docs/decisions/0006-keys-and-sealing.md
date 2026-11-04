@@ -114,7 +114,7 @@ The design supports two locations, chosen per tenant by a declaration on its `Te
 - **The X.509 intermediate of a board is born on its card, attested, certified for about 13 months and re-signed every year over the same key.** The root is ritueel's. The token-signing key is a second key on the same card, certified by the board's intermediate ([The token-signing key](/decisions/0006-keys-and-sealing/#the-token-signing-key)).
 - **Data keys are not on the card.** `key@` generates a data key in software and wraps it for the key-agreement key of each board's card, so any board opens it with its own card ([DataKeyWrap](/decisions/0006-keys-and-sealing/#datakeywrap)).
 - **A lost or stolen board is replaced, not restored:** a new key on a new card, a new certificate, and ritueel revokes the old one. The card's PIN policy limits the exposure until then. Its wraps are deleted, and the other boards rewrap every data key for the new card.
-- **Signing speed is set by the card.** A YubiKey 5 Nano signs P-384 in about 147 ms, about 7 signatures a second per card, and three boards give about 21 a second (measured 2026-10-31, firmware 5.8.0), against a measured peak of 0.8 tokens a second in v1.
+- **Signing speed is set by the card.** A YubiKey 5 Nano signs P-384 in about 147 ms with yubikit (measured 2026-10-31, firmware 5.8.0) and in 161 to 166 ms through the card driver (the median of 50 signatures on each of the three boards, measured 2026-11-04): the driver adds piv-go's command handling, one Connect call and a check of each signature with the public key. That is about 6 signatures a second per card and about 18 a second for three boards, against a measured peak of 0.8 tokens a second in v1.
 
 ### The slot plan
 
@@ -271,11 +271,11 @@ flowchart LR
 
 - **Board cards are touch never and PIN once,** except the `pin-release` slot, whose PIN policy is never. A board signs unattended, including the back-signature of its subkey. The policies are fixed at key generation and visible in the attestation.
 - **A board starts locked.** `key@` does not have the PIN when it starts:
-  - `sluis node unlock <node>` delivers the PIN over an authenticated channel: an SSH certificate from sluis's own CA, or the admin API;
+  - `sluis node unlock <node>` delivers the PIN over an authenticated channel: an SSH certificate from sluis's own CA, or the admin API ([REQ-KEYS-084](/requirements/keys/#REQ-KEYS-084); today the command runs as root on the node, reached over SSH);
   - a peer that is already unlocked releases the board's PIN through the store, sealed to a one-time key of the locked `key@`, so no flow is added between boards (below); this covers a reboot of one board and a rolling update;
   - after a full power loss one manual unlock is needed, and the first board then unlocks the others;
   - the PIN is never stored in plaintext on disk, and `key@` never retries a wrong PIN, because the card blocks after three attempts and then needs the PUK.
-- **The PIN lives in `key@`'s locked memory** and reaches the card through `key@`'s own driver only.
+- **The PIN lives in the locked memory of `key@`'s card driver,** which is private to `key@`, and reaches the card through that driver only. The unlock call is served by the driver on a local admin socket that only root reaches.
 - **A card keeps a firmware floor of 5.7.** A YubiKey of a board runs firmware 5.7 or newer, which fixes the EUCLEAK flaw and adds Ed25519 in PIV ([Algorithms](/decisions/0006-keys-and-sealing/#algorithms)); `key@` refuses a card whose attestation shows older firmware.
 - **The release of a PIN goes through the store.** The locked `key@` writes a `PinReleaseRequest`: its node, an ephemeral P-384 public key made for this request, whose private half stays in its memory, and a signature over both made with the board's `pin-release` key.
   - **The `pin-release` key is the one card key that signs while the board is locked.** It sits in slot `87`, a slot whose PIN policy is never and whose touch policy is never, so no PIN is needed to sign. Its attestation is in the slot map, with the other slots' ([The slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan)). It signs a request and nothing else, and no other purpose uses it.
@@ -289,7 +289,7 @@ flowchart LR
 
 - **`key@` listens on Unix sockets only, one per caller,** each in a directory only its caller can open, and it checks the peer uid of every connection ([0003](/decisions/0003-units-transports-and-fusion/#transports)). On a board this check comes before `key@`'s own rules; on AWS the key policy and the transport's role check take its place.
 - **The directory of each caller has a group of its own, which only that caller joins.** A group shared with another actor would open the directory to it. Measured on 2026-11-04 by the deny matrix on the local installation: the directories take the group of their caller, which every caller of that caller also joins to reach its socket, so 8 other pairs of 448 are refused by the guard and not at the directory. The group per directory is planned; until then `key@`'s check of the one caller of each socket is the second lock.
-- **On a board `key@` has no network, runs under seccomp and keeps the PIN in locked memory.** Its language is in the table of [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
+- **On a board `key@` has no network, runs under seccomp and keeps the PIN in locked memory (in its card driver).** Its language is in the table of [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table).
 - **Everything that signs on a board signs through `key@`.** No other process uses the card.
 
 ### Floors in code

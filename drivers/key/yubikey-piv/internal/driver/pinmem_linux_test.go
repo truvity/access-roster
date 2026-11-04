@@ -31,7 +31,7 @@ func TestThePINIsKeptInOneLockedPageAndWipedOnRequest(t *testing.T) {
 		t.Fatal("a new holder holds a PIN")
 	}
 	lockedOrSkip(t, &m, "123456")
-	if got, ok := m.get(); !ok || got != "123456" {
+	if got, ok := m.get(); !ok || string(got) != "123456" {
 		t.Fatalf("get = %q, %t", got, ok)
 	}
 	page := m.page

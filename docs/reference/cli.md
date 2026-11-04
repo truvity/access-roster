@@ -74,7 +74,7 @@ A board starts locked: the card driver has no PIN ([0006](/decisions/0006-keys-a
 
 - **The PIN is read from standard input** (one line), or from the descriptor named by `--secret-fd`. It is never a flag or an environment variable, and a terminal is refused because this tool cannot turn the echo off.
 - **`NODE` must be the node the driver serves.** The command asks the driver first, and a different name exits 3 with the reason `node` before any PIN is sent.
-- **A wrong PIN is tried once.** The driver never retries it, because the card blocks after three wrong attempts. The command exits 3 with the reason `pin` and prints how many attempts the card still allows. A blocked card exits 3 with `pin_blocked`; the PUK is a ceremony of the owners and not a command.
+- **A wrong PIN is tried once.** The driver never retries it, because the card blocks after three wrong attempts. The command exits 3 with the reason `pin` and prints how many attempts the card still allows. With one attempt left the PIN is not sent at all: the command exits 3 with the reason `pin_retries`, because one more wrong PIN would block the card and the PUK procedure is the owners'. A blocked card exits 3 with `pin_blocked`; the PUK is a ceremony of the owners and not a command.
 - **`--socket PATH`** names the admin socket; by default it is `/run/sluis-drv-key-yubikey-piv-BOUNDARY/admin.sock`, from `--boundary`.
 - **The driver keeps the PIN in locked memory** and nowhere else; a restart of the driver locks it again.
 

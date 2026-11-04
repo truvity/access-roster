@@ -46,6 +46,9 @@ const (
 	reasonBlocked = "pin_blocked"
 	reasonNode    = "node"
 	reasonMemory  = "memory"
+	// reasonRetries: the card has one attempt left. A wrong PIN would block it and need the PUK, which is the owners'
+	// procedure; the driver does not send a PIN then (ADR 0006: a bad unlock cannot lock the card).
+	reasonRetries = "pin_retries"
 )
 
 // admin implements the unlock service over a Service.
@@ -62,6 +65,9 @@ func (a admin) Status(context.Context, *connect.Request[keystorev2alpha1.StatusR
 	retries, err := a.s.card.PINRetries()
 	if err != nil {
 		retries = -1
+		if errors.Is(err, card.ErrCardGone) {
+			a.s.cardGone("Status")
+		}
 	}
 	return connect.NewResponse(&keystorev2alpha1.StatusResponse{
 		Node: a.s.node, Locked: !a.s.pin.held(), PinRetries: int32(retries),
@@ -82,12 +88,34 @@ func (a admin) Unlock(ctx context.Context, req *connect.Request[keystorev2alpha1
 	if a.s.pin.held() {
 		return connect.NewResponse(&keystorev2alpha1.UnlockResponse{}), nil // already unlocked: the card is not asked again
 	}
+	// Ask the card how many attempts it has left (a VERIFY without a PIN reads the counter and does not change it). With
+	// one left, a wrong PIN would block the card; with none it is blocked already. A counter that cannot be read is a
+	// refusal too: the driver does not guess.
+	retries, rerr := a.s.card.PINRetries()
+	switch {
+	case errors.Is(rerr, card.ErrCardGone):
+		a.s.cardGone("Unlock")
+		return nil, refuse(ctx, "Unlock", connect.CodeUnavailable, reasonCard, "")
+	case rerr != nil:
+		slog.Error("unlock refused: the PIN counter cannot be read", "error", rerr.Error())
+		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonCard, "")
+	case retries == 0:
+		slog.Error("unlock refused: the card is blocked and needs the PUK")
+		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonBlocked, "pin")
+	case retries == 1:
+		slog.Error("unlock refused: the card has one PIN attempt left; the PUK procedure is the owners'")
+		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonRetries, "pin")
+	}
 	if err := a.s.pin.set(pin); err != nil {
 		slog.Error("unlock refused: the PIN cannot be held in locked memory", "error", err.Error())
 		return nil, refuse(ctx, "Unlock", connect.CodeFailedPrecondition, reasonMemory, "")
 	}
-	if err := a.s.card.Login(string(pin)); err != nil {
+	if err := a.s.card.Login(pin); err != nil {
 		a.s.pin.wipe()
+		if errors.Is(err, card.ErrCardGone) {
+			a.s.cardGone("Unlock")
+			return nil, refuse(ctx, "Unlock", connect.CodeUnavailable, reasonCard, "")
+		}
 		var pe *card.PINError
 		if errors.As(err, &pe) {
 			if pe.Retries == 0 {

@@ -68,7 +68,8 @@ type Options struct {
 	Environment string
 	// Node is the node whose card this is; the admin socket reports it so that an unlock for another node is caught.
 	Node string
-	// Serial selects the card; 0 means the only one.
+	// Serial binds the driver to one card. Outside development it is required: without it any genuine YubiKey whose
+	// attestations match the slot map would be adopted. In development, 0 means the only card.
 	Serial uint32
 	// Open opens the card; card.Open when nil. Tests pass a fake.
 	Open card.Opener
@@ -98,6 +99,9 @@ type Service struct {
 	keys    map[string]*slotKey
 
 	pin pinMemory
+
+	dead     chan struct{} // closed when the card is gone: the driver must exit
+	deadOnce sync.Once
 }
 
 // New opens the card, checks its firmware, and verifies the attestation of every key it already holds. It
@@ -105,6 +109,9 @@ type Service struct {
 func New(opts Options) (*Service, error) {
 	if err := Floor(opts.Environment); err != nil {
 		return nil, err
+	}
+	if opts.Environment != Development && opts.Serial == 0 {
+		return nil, cli.Usage(errors.New("--serial is required outside development: the driver is bound to one card"))
 	}
 	open := opts.Open
 	if open == nil {
@@ -114,7 +121,7 @@ func New(opts Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}}
+	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{})}
 	if s.mgmtKey == nil {
 		s.mgmtKey = card.DefaultManagementKey
 	}
@@ -197,6 +204,9 @@ func (e attestationError) Error() string { return string(e) }
 // of the plan. card.ErrNoKey is a slot with no key.
 func (s *Service) adopt(e entry) (*slotKey, error) {
 	cert, err := s.card.Attest(e.slot)
+	if errors.Is(err, card.ErrImportedKey) {
+		return nil, attestationError("origin: the key was imported and not generated on the card")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +315,7 @@ func (s *Service) generate(e entry) (*slotKey, error) {
 	if _, err := s.card.Attest(e.slot); err == nil {
 		// A key that the start did not adopt would have failed it; one that appears now is not ours to trust.
 		return nil, errors.New("the slot holds a key that was not adopted")
-	} else if !errors.Is(err, card.ErrNoKey) {
+	} else if !errors.Is(err, card.ErrNoKey) { // an imported key is not ErrNoKey: it is never replaced
 		return nil, err
 	}
 	pub, err := s.card.Generate(s.mgmtKey, e.slot, e.spec)
@@ -345,11 +355,11 @@ func (s *Service) PublicKey(ctx context.Context, req *connect.Request[keystorev2
 
 // pinSource is what the card asks when it is logged out and the key needs the PIN. It runs inside a card call, which
 // holds mu. It never reads the PIN of a request, only the one the administrator delivered.
-func (s *Service) pinSource() (string, error) {
+func (s *Service) pinSource() ([]byte, error) {
 	if pin, ok := s.pin.get(); ok {
 		return pin, nil
 	}
-	return "", errLocked
+	return nil, errLocked
 }
 
 var errLocked = errors.New("driver: locked")
@@ -371,8 +381,22 @@ func (s *Service) failed(ctx context.Context, method string, err error) *connect
 	if errors.Is(err, errLocked) {
 		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonLocked, "")
 	}
+	if errors.Is(err, card.ErrCardGone) {
+		s.cardGone(method)
+		return refuse(ctx, method, connect.CodeUnavailable, reasonCard, "")
+	}
 	slog.Error("card failed", "method", method, "error", err.Error())
 	return refusal.New(connect.CodeInternal, reasonStore, "")
+}
+
+// cardGone wipes the PIN and tells Run to exit. The connection to a card that was removed, reset or powered off is dead
+// (piv-go does not reconnect), and the driver must not go on holding a PIN it can no longer use: it exits non-zero, and
+// systemd starts it again locked. Not tested on a card; the tests use a fake that fails the way the real one is
+// expected to.
+func (s *Service) cardGone(method string) {
+	s.pin.wipe()
+	slog.Error("the card is gone: the PIN is wiped and the driver exits", "method", method)
+	s.deadOnce.Do(func() { close(s.dead) })
 }
 
 // Sign signs a digest with the key of a purpose, on the card.
@@ -470,12 +494,25 @@ func Run(ctx context.Context, opts Options, cfg rpc.ServerConfig, admin AdminCon
 	errc := make(chan error, 2)
 	go func() { errc <- ServeAdmin(ctx, admin, svc) }()
 	go func() { errc <- rpc.Serve(ctx, cfg, rpc.Handler{Path: path, H: h}) }()
-	err = <-errc
-	cancel()
-	if err2 := <-errc; err == nil {
-		err = err2
+	// The first server to end ends the driver; so does a card that is gone, which wipes the PIN first (cardGone).
+	var first error
+	received, gone := 0, false
+	select {
+	case first = <-errc:
+		received = 1
+	case <-svc.dead:
+		gone = true
 	}
-	return err
+	cancel()
+	for ; received < 2; received++ {
+		if e := <-errc; first == nil {
+			first = e
+		}
+	}
+	if gone {
+		return errors.New("the card is gone (removed, reset or powered off): exiting to be started again locked")
+	}
+	return first
 }
 
 // Check opens the card and verifies it as the start does: the firmware floor, and the attestation of every key it

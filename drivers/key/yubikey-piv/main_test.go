@@ -82,7 +82,7 @@ func TestABuildWithoutCardSupportSaysSoAndMakesNothing(t *testing.T) {
 			t.Fatalf("%s was made", p)
 		}
 	}
-	if code, _, _ := run(t, "check"); code != cli.ExitFailed {
+	if code, _, _ := run(t, "check", "--environment", "development"); code != cli.ExitFailed {
 		t.Fatalf("check: exit %d, want 1", code)
 	}
 }
@@ -97,5 +97,21 @@ func TestVersion(t *testing.T) {
 func TestConformanceNeedsASocket(t *testing.T) {
 	if code, _, _ := run(t, "conformance"); code != cli.ExitUsage {
 		t.Fatalf("exit %d, want 2", code)
+	}
+}
+
+func TestOutsideDevelopmentTheSerialIsRequired(t *testing.T) {
+	base := t.TempDir()
+	args := []string{"--socket", filepath.Join(base, "s"), "--admin-socket", filepath.Join(base, "a"), "--node", "n"}
+	for _, env := range []string{"staging", "production"} {
+		if code, _, stderr := run(t, append([]string{"serve", "--environment", env}, args...)...); code != cli.ExitUsage || !strings.Contains(stderr, "--serial") {
+			t.Errorf("serve in %s without a serial: exit %d; %s", env, code, stderr)
+		}
+		if code, _, _ := run(t, "check", "--environment", env); code != cli.ExitUsage {
+			t.Errorf("check in %s without a serial: exit %d, want 2", env, code)
+		}
+	}
+	if code, _, _ := run(t, "check"); code != cli.ExitUsage {
+		t.Errorf("check with no environment (staging) and no serial: exit %d, want 2", code)
 	}
 }

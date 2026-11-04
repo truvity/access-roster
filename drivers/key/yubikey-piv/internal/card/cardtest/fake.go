@@ -13,9 +13,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
@@ -33,8 +36,9 @@ var (
 )
 
 type slotKey struct {
-	priv *ecdsa.PrivateKey
-	spec card.KeySpec
+	priv     *ecdsa.PrivateKey
+	imported bool
+	spec     card.KeySpec
 	// shown is the policy the attestation states; it differs from spec only when a test makes a card lie.
 	shown card.KeySpec
 }
@@ -53,6 +57,10 @@ type Card struct {
 	AttestedFirmware card.Version
 	// RogueRoot makes the attestation certificates chain to a root that is not the one the card verifies against.
 	RogueRoot bool
+	// AttestedSerial is the serial the attestation certificates state; the SerialNo when zero.
+	AttestedSerial uint32
+	// NoAttestationCert makes AttestationCertificate fail, as a card without one does.
+	NoAttestationCert bool
 	// LoginAttempts counts the PINs the card was sent, right or wrong.
 	LoginAttempts int
 	// Signs counts the signatures made.
@@ -60,12 +68,15 @@ type Card struct {
 	// Loggedin is the PIN state of the powered card.
 	Loggedin bool
 
-	mu      sync.Mutex
-	root    *x509.Certificate
-	attKey  *ecdsa.PrivateKey
-	attCert *x509.Certificate
-	slots   map[card.Slot]*slotKey
-	closed  bool
+	mu       sync.Mutex
+	root     *x509.Certificate
+	inter    *x509.Certificate
+	attKey   *ecdsa.PrivateKey
+	attCert  *x509.Certificate
+	slots    map[card.Slot]*slotKey
+	closed   bool
+	gone     bool
+	rootHash string
 }
 
 // New returns a card in factory state with firmware 5.8.0, the factory PIN and management key.
@@ -97,7 +108,25 @@ func (c *Card) init() error {
 	if c.root, err = x509.ParseCertificate(der); err != nil {
 		return err
 	}
-	signerKey, signerCert := rootKey, c.root
+	interKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return err
+	}
+	interTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(5), Subject: pkix.Name{CommonName: "Yubico PIV Attestation TEST ONLY 1"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
+	}
+	der, err = x509.CreateCertificate(rand.Reader, interTmpl, c.root, &interKey.PublicKey, rootKey)
+	if err != nil {
+		return err
+	}
+	if c.inter, err = x509.ParseCertificate(der); err != nil {
+		return err
+	}
+	sum := sha256.Sum256(c.root.Raw)
+	c.rootHash = hex.EncodeToString(sum[:])
+	signerKey, signerCert := interKey, c.inter
 	if c.RogueRoot {
 		rogue, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
@@ -149,6 +178,52 @@ func (c *Card) Opener() card.Opener {
 	}
 }
 
+// Anchors are what a real attestation verifier needs to trust this card: its root (PEM), the bundle of intermediates (PEM)
+// and the SHA-256 of the root (hex). The fake's own VerifyAttestation does not use them; a test that runs the real code
+// (card.NewVerifier, card.VerifyWith, under the tag sluis_card) does.
+func (c *Card) Anchors() (rootPEM, bundlePEM []byte, rootSHA256 string, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err = c.init(); err != nil {
+		return nil, nil, "", err
+	}
+	enc := func(cs ...*x509.Certificate) (b []byte) {
+		for _, x := range cs {
+			b = append(b, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: x.Raw})...)
+		}
+		return b
+	}
+	return enc(c.root), enc(c.inter), c.rootHash, nil
+}
+
+// Unplug makes every later call fail as a card that was removed does.
+func (c *Card) Unplug() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gone = true
+}
+
+// PutImportedKey puts a key into a slot as if it had been imported: the card holds it and cannot attest it.
+func (c *Card) PutImportedKey(s card.Slot, spec card.KeySpec) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.init(); err != nil {
+		return err
+	}
+	if _, err := c.generate(s, spec); err != nil {
+		return err
+	}
+	c.slots[s].imported = true
+	return nil
+}
+
+func (c *Card) dead() error {
+	if c.gone {
+		return fmt.Errorf("%w: the card was removed", card.ErrCardGone)
+	}
+	return nil
+}
+
 // Closed reports whether the driver closed the card.
 func (c *Card) Closed() bool {
 	c.mu.Lock()
@@ -192,7 +267,11 @@ func (c *Card) generate(s card.Slot, spec card.KeySpec) (*ecdsa.PublicKey, error
 }
 
 // Serial implements card.Card.
-func (c *Card) Serial() (uint32, error) { return c.SerialNo, nil }
+func (c *Card) Serial() (uint32, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.SerialNo, c.dead()
+}
 
 // Version implements card.Card.
 func (c *Card) Version() card.Version { return c.Firmware }
@@ -201,6 +280,12 @@ func (c *Card) Version() card.Version { return c.Firmware }
 func (c *Card) AttestationCertificate() (*x509.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := c.dead(); err != nil {
+		return nil, err
+	}
+	if c.NoAttestationCert {
+		return nil, errors.New("cardtest: the card holds no attestation certificate")
+	}
 	return c.attCert, nil
 }
 
@@ -212,8 +297,13 @@ func policyBytes(spec card.KeySpec) []byte {
 	case card.PINOnce:
 		p = 0x02
 	}
-	if spec.Touch == card.TouchNever {
+	switch spec.Touch {
+	case card.TouchNever:
 		t = 0x01
+	case card.TouchAlways:
+		t = 0x02
+	case card.TouchCached:
+		t = 0x03
 	}
 	return []byte{p, t}
 }
@@ -223,15 +313,25 @@ func policyBytes(spec card.KeySpec) []byte {
 func (c *Card) Attest(s card.Slot) (*x509.Certificate, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := c.dead(); err != nil {
+		return nil, err
+	}
 	k, ok := c.slots[s]
 	if !ok {
 		return nil, card.ErrNoKey
+	}
+	if k.imported {
+		return nil, card.ErrImportedKey
 	}
 	fw := c.AttestedFirmware
 	if fw == (card.Version{}) {
 		fw = c.Firmware
 	}
-	serial, err := asn1.Marshal(int64(c.SerialNo))
+	attested := c.AttestedSerial
+	if attested == 0 {
+		attested = c.SerialNo
+	}
+	serial, err := asn1.Marshal(int64(attested))
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +359,7 @@ func (c *Card) VerifyAttestation(attCert, slotCert *x509.Certificate) (card.Atte
 	roots.AddCert(c.root)
 	inter := x509.NewCertPool()
 	inter.AddCert(attCert)
+	inter.AddCert(c.inter)
 	if _, err := slotCert.Verify(x509.VerifyOptions{Roots: roots, Intermediates: inter, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
 		return card.Attestation{}, err
 	}
@@ -280,8 +381,13 @@ func (c *Card) VerifyAttestation(attCert, slotCert *x509.Certificate) (card.Atte
 			case 0x02:
 				a.PIN = card.PINOnce
 			}
-			if e.Value[1] == 0x01 {
+			switch e.Value[1] {
+			case 0x01:
 				a.Touch = card.TouchNever
+			case 0x02:
+				a.Touch = card.TouchAlways
+			case 0x03:
+				a.Touch = card.TouchCached
 			}
 		}
 	}
@@ -298,6 +404,9 @@ func (c *Card) VerifyAttestation(attCert, slotCert *x509.Certificate) (card.Atte
 func (c *Card) Generate(managementKey []byte, s card.Slot, spec card.KeySpec) (crypto.PublicKey, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if err := c.dead(); err != nil {
+		return nil, err
+	}
 	if !bytes.Equal(managementKey, c.ManagementKey) {
 		return nil, card.ErrManagementKey
 	}
@@ -308,6 +417,9 @@ func (c *Card) Generate(managementKey []byte, s card.Slot, spec card.KeySpec) (c
 }
 
 func (c *Card) login(pin string) error {
+	if err := c.dead(); err != nil {
+		return err
+	}
 	c.LoginAttempts++
 	if c.Retries == 0 {
 		return &card.PINError{Retries: 0}
@@ -323,17 +435,17 @@ func (c *Card) login(pin string) error {
 }
 
 // Login implements card.Card.
-func (c *Card) Login(pin string) error {
+func (c *Card) Login(pin []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.login(pin)
+	return c.login(string(pin))
 }
 
 // PINRetries implements card.Card.
 func (c *Card) PINRetries() (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.Retries, nil
+	return c.Retries, c.dead()
 }
 
 // Reset logs the card out, as a power loss or a reset of the applet does.
@@ -345,6 +457,9 @@ func (c *Card) Reset() {
 
 // auth is what a key of the policy needs before it works.
 func (c *Card) auth(k *slotKey, policy card.PINPolicy, pin card.PINSource) error {
+	if err := c.dead(); err != nil {
+		return err
+	}
 	if policy != card.PINOnce || c.Loggedin {
 		if k.spec.PIN == card.PINOnce && !c.Loggedin {
 			return errors.New("cardtest: security status not satisfied")
@@ -355,7 +470,8 @@ func (c *Card) auth(k *slotKey, policy card.PINPolicy, pin card.PINSource) error
 	if err != nil {
 		return fmt.Errorf("pin prompt: %w", err)
 	}
-	return c.login(p)
+	defer clear(p)
+	return c.login(string(p))
 }
 
 func (c *Card) key(s card.Slot, pub *ecdsa.PublicKey) (*slotKey, error) {

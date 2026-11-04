@@ -58,6 +58,19 @@ func yubicoVerifier() (*piv.Verifier, error) {
 	return verifier, verifierErr
 }
 
+// NewAttestationVerifier is the code of pivCard.VerifyAttestation over a root and a bundle of the caller's, for the tests
+// of other packages: they bring a test PKI, and so run the real reading of an attestation (piv-go's verifier and
+// toAttestation) without a card.
+func NewAttestationVerifier(rootPEM, bundlePEM []byte, wantRootSHA256 string) (func(attCert, slotCert *x509.Certificate) (Attestation, error), error) {
+	v, err := newVerifier(rootPEM, bundlePEM, wantRootSHA256)
+	if err != nil {
+		return nil, err
+	}
+	return func(attCert, slotCert *x509.Certificate) (Attestation, error) {
+		return verifyWith(v, attCert, slotCert)
+	}, nil
+}
+
 // newVerifier builds the piv-go verifier whose trust anchors are the root (checked against wantRootSHA256) and every
 // PIV attestation intermediate of the bundle that chains to it. A bundle with none is refused: a verifier that would
 // accept nothing is not a verifier.

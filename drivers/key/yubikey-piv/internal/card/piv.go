@@ -65,7 +65,13 @@ type pivCard struct {
 	yk *piv.YubiKey
 }
 
-func (c *pivCard) Serial() (uint32, error) { return c.yk.Serial() }
+func (c *pivCard) Serial() (uint32, error) {
+	n, err := c.yk.Serial()
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrCardGone, err)
+	}
+	return n, nil
+}
 
 func (c *pivCard) Version() Version {
 	v := c.yk.Version()
@@ -73,7 +79,8 @@ func (c *pivCard) Version() Version {
 }
 
 func (c *pivCard) AttestationCertificate() (*x509.Certificate, error) {
-	return c.yk.AttestationCertificate()
+	cert, err := c.yk.AttestationCertificate()
+	return cert, c.gone(err)
 }
 
 func (c *pivCard) Attest(s Slot) (*x509.Certificate, error) {
@@ -83,9 +90,34 @@ func (c *pivCard) Attest(s Slot) (*x509.Certificate, error) {
 	}
 	cert, err := c.yk.Attest(ps)
 	if errors.Is(err, piv.ErrNotFound) {
+		// The card does not attest this slot: it is empty, or its key was imported (an imported key cannot be
+		// attested). The card's metadata (firmware 5.3 and later) says which; an imported key is a refusal, and a
+		// slot whose metadata cannot be read is empty.
+		if ki, kerr := c.yk.KeyInfo(ps); kerr == nil && ki.Origin == piv.OriginImported {
+			return nil, ErrImportedKey
+		}
 		return nil, ErrNoKey
 	}
-	return cert, err
+	return cert, c.gone(err)
+}
+
+// gone turns an error of the transport into ErrCardGone. piv-go starts one transaction at Open and never reconnects, so
+// a card that was removed, reset or powered off fails every later call with an error of the PC/SC layer that this
+// package cannot name (its type is not exported). An answer of the applet (a status word, a wrong PIN, a missing
+// object) leaves the transaction alive: the test is whether the card still answers a call that needs nothing.
+func (c *pivCard) gone(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pe *PINError
+	var ae piv.AuthErr
+	if errors.As(err, &pe) || errors.As(err, &ae) || errors.Is(err, piv.ErrNotFound) || errors.Is(err, ErrManagementKey) {
+		return err
+	}
+	if _, serr := c.yk.Serial(); serr != nil {
+		return fmt.Errorf("%w: %v", ErrCardGone, err)
+	}
+	return err
 }
 
 // VerifyAttestation checks the chain of the slot certificate through the card's attestation certificate to Yubico's root
@@ -95,6 +127,10 @@ func (c *pivCard) VerifyAttestation(attCert, slotCert *x509.Certificate) (Attest
 	if err != nil {
 		return Attestation{}, err
 	}
+	return verifyWith(v, attCert, slotCert)
+}
+
+func verifyWith(v *piv.Verifier, attCert, slotCert *x509.Certificate) (Attestation, error) {
 	a, err := v.Verify(attCert, slotCert)
 	if err != nil {
 		return Attestation{}, err
@@ -115,8 +151,13 @@ func toAttestation(a *piv.Attestation) Attestation {
 	case piv.PINPolicyOnce:
 		out.PIN = PINOnce
 	}
-	if a.TouchPolicy == piv.TouchPolicyNever {
+	switch a.TouchPolicy {
+	case piv.TouchPolicyNever:
 		out.Touch = TouchNever
+	case piv.TouchPolicyAlways:
+		out.Touch = TouchAlways
+	case piv.TouchPolicyCached:
+		out.Touch = TouchCached
 	}
 	return out
 }
@@ -153,17 +194,21 @@ func (c *pivCard) Generate(managementKey []byte, s Slot, spec KeySpec) (crypto.P
 		if errors.As(err, &ae) {
 			return nil, ErrManagementKey
 		}
-		return nil, err
+		return nil, c.gone(err)
 	}
 	return pub, nil
 }
 
-func (c *pivCard) Login(pin string) error {
-	err := c.yk.VerifyPIN(pin)
-	return pinError(err)
+func (c *pivCard) Login(pin []byte) error {
+	// piv-go takes a string: one copy, for this call.
+	err := c.yk.VerifyPIN(string(pin))
+	return c.gone(pinError(err))
 }
 
-func (c *pivCard) PINRetries() (int, error) { return c.yk.Retries() }
+func (c *pivCard) PINRetries() (int, error) {
+	n, err := c.yk.Retries()
+	return n, c.gone(err)
+}
 
 func pinError(err error) error {
 	var ae piv.AuthErr
@@ -182,7 +227,16 @@ func (c *pivCard) key(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSou
 	if policy == PINOnce {
 		// The policy is given, so piv-go does not ask the card for it on every call. PINPrompt runs only when the
 		// card is logged out, and an error from it ends the call before any PIN is sent.
-		auth = piv.KeyAuth{PINPolicy: piv.PINPolicyOnce, PINPrompt: pin}
+		prompt := func() (string, error) {
+			b, err := pin()
+			if err != nil {
+				return "", err
+			}
+			s := string(b) // piv-go takes a string: one copy, for this call
+			clear(b)
+			return s, nil
+		}
+		auth = piv.KeyAuth{PINPolicy: piv.PINPolicyOnce, PINPrompt: prompt}
 	}
 	priv, err := c.yk.PrivateKey(ps, pub, auth)
 	if err != nil {
@@ -201,7 +255,7 @@ func (c *pivCard) Sign(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSo
 		return nil, err
 	}
 	sig, err := k.Sign(nil, digest, crypto.Hash(0))
-	return sig, pinError(err)
+	return sig, c.gone(pinError(err))
 }
 
 func (c *pivCard) ECDH(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, peer *ecdh.PublicKey) ([]byte, error) {
@@ -210,7 +264,7 @@ func (c *pivCard) ECDH(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSo
 		return nil, err
 	}
 	secret, err := k.ECDH(peer)
-	return secret, pinError(err)
+	return secret, c.gone(pinError(err))
 }
 
 func (c *pivCard) Close() error { return c.yk.Close() }

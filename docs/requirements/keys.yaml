@@ -1130,3 +1130,17 @@ requirements:
     issues: [1208]
     verification:
       - {kind: integration-test, ref: "a generation is kept for 90 days after its last seal and deleted after that, with a moved clock"}
+  - id: REQ-KEYS-084
+    area: KEYS
+    statement: "`sluis node unlock` MUST deliver the PIN to a locked key@ only over an authenticated channel."
+    rationale: "A PIN that crosses an unauthenticated channel lets anyone who can reach the board unlock it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: partial
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    issues: [914]
+    gap: partly-built
+    verification:
+      - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}

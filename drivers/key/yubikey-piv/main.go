@@ -32,7 +32,7 @@ func flags(fs *flag.FlagSet) {
 	fs.String("environment", "", "development, staging or production (required); only development makes a key with the factory management key")
 	fs.String("node", "", "the node whose card this is (required for serve)")
 	fs.String("admin-socket", "", "the absolute path of the local admin socket that takes the PIN (required for serve); root only")
-	fs.Uint("serial", 0, "the serial number of the card; with none, the only card, and two cards are refused")
+	fs.Uint("serial", 0, "the serial number of the card the driver is bound to; required outside development (in development, none means the only card, and two cards are refused)")
 	fs.Uint("socket-gid", 0, "open the socket (mode 0660) to this group, which the owner joins; 0 keeps mode 0600 for the driver's user alone")
 }
 
@@ -78,6 +78,11 @@ func serve(ctx context.Context, f cli.Flags) error {
 	if err != nil {
 		return err
 	}
+	// The driver is bound to one card outside development, so that a genuine YubiKey that is not the board's cannot be
+	// adopted because its attestations match the slot map.
+	if env != driver.Development && sn == 0 {
+		return cli.Usage(errors.New("--serial is required outside development"))
+	}
 	cfg := rpc.ServerConfig{
 		Actor:    driver.Name,
 		Boundary: f.Boundary,
@@ -109,6 +114,9 @@ func check(_ context.Context, f cli.Flags) error {
 	sn, err := serial(f)
 	if err != nil {
 		return err
+	}
+	if env != driver.Development && sn == 0 {
+		return cli.Usage(errors.New("--serial is required outside development"))
 	}
 	return driver.Check(driver.Options{Environment: env, Serial: sn})
 }

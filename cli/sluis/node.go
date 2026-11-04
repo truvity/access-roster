@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -83,9 +83,17 @@ func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res
 		res.Text = fmt.Sprintf("node %s is already unlocked", node)
 		return nil
 	}
+	// With one attempt left, a wrong PIN would block the card and need the PUK, which is the owners' procedure (ADR 0006:
+	// a bad unlock cannot lock the card). The PIN is not sent. The driver refuses the same, whatever this says.
+	if n := st.Msg.GetPinRetries(); n == 1 {
+		_, _ = fmt.Fprintln(a.stderr, "the card has one PIN attempt left: it is not tried; the PUK procedure is the owners'")
+		return refused("pin_retries")
+	}
 	if _, err := c.Unlock(ctx, connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: pin})); err != nil {
 		// The driver tried the PIN once. Say how many attempts the card has left, so that nobody guesses.
-		if reason, _ := krefusal.Reason(err); reason == "pin" {
+		if reason, _ := krefusal.Reason(err); reason == "pin_retries" {
+			_, _ = fmt.Fprintln(a.stderr, "the card has one PIN attempt left: it is not tried; the PUK procedure is the owners'")
+		} else if reason == "pin" {
 			if st2, serr := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{})); serr == nil {
 				_, _ = fmt.Fprintf(a.stderr, "the card did not accept the PIN; it allows %d more attempts\n", st2.Msg.GetPinRetries())
 			}
@@ -112,8 +120,9 @@ func dialError(step string, err error) error {
 	return fmt.Errorf("node unlock: %s: %s", step, connect.CodeOf(err))
 }
 
-// readPIN reads one line from the descriptor, or from standard input. A terminal is refused: this build cannot
-// turn the echo off, and a PIN that shows on a screen is not delivered.
+// readPIN reads one line from the descriptor, or from standard input, into a buffer that the caller wipes. A terminal is
+// refused: this build cannot turn the echo off, and a PIN that shows on a screen is not delivered. It reads a byte at a
+// time into one array, so that no buffered copy of the line, and no string, is left behind.
 func (a *app) readPIN(fd int) ([]byte, error) {
 	var r io.Reader
 	switch {
@@ -130,18 +139,37 @@ func (a *app) readPIN(fd int) ([]byte, error) {
 			return nil, cli.Usage(errors.New("the PIN is read from a pipe or --secret-fd, not from a terminal that would show it"))
 		}
 	}
-	line, err := bufio.NewReaderSize(io.LimitReader(r, pinMax+2), pinMax+2).ReadBytes('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("reading the PIN: %w", err)
+	var buf [pinMax + 1]byte
+	defer clear(buf[:])
+	n := 0
+	var one [1]byte
+	for {
+		m, err := r.Read(one[:])
+		if m == 1 {
+			if one[0] == '\n' {
+				break
+			}
+			if n == len(buf) {
+				return nil, cli.Usage(errors.New("the PIN is longer than a PIV PIN can be"))
+			}
+			buf[n] = one[0]
+			n++
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("reading the PIN: %w", err)
+		}
 	}
-	pin := []byte(strings.TrimRight(string(line), "\r\n"))
-	clear(line)
-	if len(pin) == 0 {
+	for n > 0 && buf[n-1] == '\r' {
+		n--
+	}
+	if n == 0 {
 		return nil, cli.Usage(errors.New("no PIN on standard input (or --secret-fd)"))
 	}
-	if len(pin) > pinMax {
-		clear(pin)
+	if n > pinMax {
 		return nil, cli.Usage(errors.New("the PIN is longer than a PIV PIN can be"))
 	}
-	return pin, nil
+	return bytes.Clone(buf[:n]), nil
 }
