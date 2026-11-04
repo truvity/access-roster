@@ -184,6 +184,7 @@ impl Commands for Store {
                 boundary: b.boundary.clone(),
                 socket: p.service,
                 mode: 0o660,
+                socket_gid: None,
                 allow: Allow::CallGraph,
                 default_deadline: DEFAULT_DEADLINE,
             },
