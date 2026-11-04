@@ -60,6 +60,7 @@ async fn up_as(
             boundary: "dev".into(),
             socket: socket.clone(),
             mode: 0o660,
+            socket_gid: None,
             allow,
             default_deadline: Duration::from_secs(10),
         };

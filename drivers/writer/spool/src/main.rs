@@ -1,15 +1,15 @@
 //! The `spool` audit transport driver of the writer.
 //!
 //! ```text
-//! driver-writer-spool serve   --boundary B --socket-dir DIR --root DIR [--limit-bytes N] [--segment-bytes N]
+//! driver-writer-spool serve   --boundary B --socket-dir DIR --root DIR [--socket-gid GID] [--limit-bytes N] [--segment-bytes N]
 //! driver-writer-spool check   --root DIR
 //! driver-writer-spool conformance          # the transport suite over a temporary directory
 //! driver-writer-spool version
 //! ```
 //!
 //! `serve` listens on `DIR/emit.sock` (every emitting actor of the call graph) and
-//! `DIR/receive.sock` (the writer only), both mode 0660: the guard of the kit decides by peer uid,
-//! the mode is the second wall.
+//! `DIR/receive.sock` (the writer only), mode 0600, or 0660 for the group of `--socket-gid`: the guard
+//! of the kit decides by peer uid, the mode is the second wall.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -28,6 +28,19 @@ use sluis_proto::sluis::port::transport::v2alpha1::TransportServiceExt;
 const NAME: &str = "driver-writer-spool";
 /// The callee the call graph knows the audit transport by.
 const CALLEE: &str = "transport";
+/// The group of both sockets (`--socket-gid`), if given. The sockets are then 0660 for that group, so
+/// that the emitters and the writer, who join it, can connect; without it they are 0600 for the
+/// driver's user alone. The peer check still decides who may call.
+fn socket_gid(f: &Flags) -> anyhow::Result<Option<u32>> {
+    match f.matches.get_one::<String>("socket-gid") {
+        None => Ok(None),
+        Some(g) => match g.parse::<u32>() {
+            Ok(g) if g != 0 => Ok(Some(g)),
+            _ => bail!("--socket-gid must be a group number other than 0"),
+        },
+    }
+}
+
 /// A consumer stream lives for as long as the writer wants; it reconnects when this ends.
 const STREAM_DEADLINE: Duration = Duration::from_secs(24 * 3600);
 
@@ -66,6 +79,7 @@ impl Commands for Spoold {
             bail!("--socket-dir is required");
         };
         let dir = PathBuf::from(dir);
+        let gid = socket_gid(&f)?;
         // The directory is recovered before a socket exists: no socket, no service.
         let spool = Spool::open(&root(&f)?, config(&f))?;
         tracing::info!(
@@ -77,7 +91,8 @@ impl Commands for Spoold {
             actor: CALLEE,
             boundary: f.boundary.clone(),
             socket: dir.join(socket),
-            mode: 0o660,
+            mode: gid.map_or(0o600, |_| 0o660),
+            socket_gid: gid,
             allow,
             default_deadline,
         };
