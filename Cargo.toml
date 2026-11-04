@@ -4,7 +4,7 @@ members = ["kits/rust/*", "actors/*", "drivers/*/*"]
 # The Go executables live beside the Rust ones (ADR 0012 per-actor table); Cargo must skip them.
 exclude = [
   "actors/key", "actors/session", "actors/exchange", "actors/writer", "actors/adapter-upstream-oidc",
-  "drivers/key/software",
+  "drivers/key/software", "drivers/key/yubikey-piv",
 ]
 
 [workspace.package]
