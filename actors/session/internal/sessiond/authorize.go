@@ -249,14 +249,20 @@ var (
 // grantedScope returns the requested scopes, each once, in the order asked. A scope session does not serve is an
 // error, errScopeUnknown, and not left out (REQ-CLIENT-022): RFC 6749 section 3.3 lets a server grant less than was
 // asked, but a client that asked for a scope it does not get would find out only from the token. A scope over the
-// bound, or one without openid (OpenID Connect Core section 3.1.2.1), is errScopeMalformed.
+// bound, one that is not scope-tokens joined by single spaces, or one without openid (OpenID Connect Core section
+// 3.1.2.1), is errScopeMalformed.
 func grantedScope(requested string) (string, error) {
 	if len(requested) > maxScope {
 		return "", errScopeMalformed
 	}
 	var out []string
 	seen := map[string]bool{}
-	for _, sc := range strings.Fields(requested) {
+	// scope = scope-token *( SP scope-token ), scope-token = 1*NQCHAR (RFC 6749 section 3.3): one space between
+	// tokens, so another whitespace, a doubled, leading or trailing space or a quote makes the scope malformed.
+	for _, sc := range strings.Split(requested, " ") {
+		if !scopeToken(sc) {
+			return "", errScopeMalformed
+		}
 		if !knownScopes[sc] {
 			return "", errScopeUnknown
 		}
@@ -269,6 +275,20 @@ func grantedScope(requested string) (string, error) {
 		return "", errScopeMalformed
 	}
 	return strings.Join(out, " "), nil
+}
+
+// scopeToken reports whether s is a scope-token of RFC 6749 section 3.3: one or more NQCHAR, %x21 / %x23-5B /
+// %x5D-7E (appendix A), which leaves out space, '"' and '\\'.
+func scopeToken(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+	}
+	return true
 }
 
 // redirectRegistered reports whether got is one of the client's registered redirect URIs. The match is an exact string

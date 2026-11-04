@@ -136,6 +136,7 @@ func TestStepUpReadsOnlyTheTwoKnownKeys(t *testing.T) {
 	}
 }
 
+// verifies: REQ-CLIENT-022
 func TestGrantedScope(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -144,7 +145,15 @@ func TestGrantedScope(t *testing.T) {
 	}{
 		{"openid", "openid", nil},
 		{"openid profile email", "openid profile email", nil},
-		{"profile  openid", "profile openid", nil},
+		{"profile openid", "profile openid", nil},
+		// RFC 6749 section 3.3: scope-tokens joined by single spaces, nothing else.
+		{"profile  openid", "", errScopeMalformed},
+		{" openid", "", errScopeMalformed},
+		{"openid ", "", errScopeMalformed},
+		{"openid\tprofile", "", errScopeMalformed},
+		{"openid\nprofile", "", errScopeMalformed},
+		{"openid\u00a0profile", "", errScopeMalformed},
+		{"openid \"profile\"", "", errScopeMalformed},
 		{"openid openid", "openid", nil},
 		{"openid offline_access admin", "", errScopeUnknown},
 		{"openid OPENID", "", errScopeUnknown},
