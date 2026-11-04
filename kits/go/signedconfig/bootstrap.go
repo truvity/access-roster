@@ -11,7 +11,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -27,23 +26,15 @@ import (
 //
 // An error names a path, never a value.
 func ParsePublishers(bootstrap []byte) ([]Publisher, error) {
-	dec := yaml.NewDecoder(bytes.NewReader(bootstrap))
-	var doc yaml.Node
-	if err := dec.Decode(&doc); err != nil {
-		return nil, errors.New("bootstrap: not YAML")
-	}
-	var second yaml.Node
-	if err := dec.Decode(&second); !errors.Is(err, io.EOF) {
-		return nil, errors.New("bootstrap: more than one document")
-	}
-	if err := plain(&doc); err != nil {
+	doc, err := StrictYAML(bootstrap)
+	if err != nil {
 		return nil, err
 	}
-	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+	if doc.Kind != yaml.MappingNode {
 		return nil, errors.New("bootstrap: not a mapping")
 	}
 	var list *yaml.Node
-	top := doc.Content[0]
+	top := doc
 	for i := 0; i+1 < len(top.Content); i += 2 {
 		if top.Content[i].Value == "publishers" {
 			list = top.Content[i+1]
@@ -66,30 +57,6 @@ func ParsePublishers(bootstrap []byte) ([]Publisher, error) {
 		out = append(out, p)
 	}
 	return out, nil
-}
-
-// plain refuses what the strict profile refuses and a node tree shows: an anchor, an alias, an explicit tag and a
-// duplicate key.
-func plain(n *yaml.Node) error {
-	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.Style&yaml.TaggedStyle != 0 {
-		return errors.New("bootstrap: anchors, aliases and tags are refused")
-	}
-	if n.Kind == yaml.MappingNode {
-		seen := map[string]bool{}
-		for i := 0; i+1 < len(n.Content); i += 2 {
-			k := n.Content[i].Value
-			if seen[k] {
-				return errors.New("bootstrap: duplicate key")
-			}
-			seen[k] = true
-		}
-	}
-	for _, c := range n.Content {
-		if err := plain(c); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func publisher(n *yaml.Node) (Publisher, error) {

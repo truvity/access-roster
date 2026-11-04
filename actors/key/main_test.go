@@ -29,6 +29,8 @@ func TestCommandLine(t *testing.T) {
 	flagsOK := []string{
 		"--boundary", "dev", "--run-dir", filepath.Join(dir, "run"), "--store-socket", filepath.Join(dir, "s.sock"),
 		"--driver-socket", filepath.Join(dir, "d.sock"), "--transport-socket", filepath.Join(dir, "t.sock"), "--node", "node-1",
+		// The bootstrap file of the local installation: key@ reads its publishers block and nothing else.
+		"--bootstrap", "../../tests/installations/local/bootstrap.yaml",
 	}
 	if got := run(t, append([]string{"serve", "--boundary", "dev"}, "--node", "node-1")...); got != cli.ExitUsage {
 		t.Errorf("serve without its flags exits %d, want %d", got, cli.ExitUsage)
@@ -36,6 +38,10 @@ func TestCommandLine(t *testing.T) {
 	// A check that cannot reach what it needs is refused: exit 3, never a pass.
 	if got := run(t, append([]string{"check"}, flagsOK...)...); got != cli.ExitRefused {
 		t.Errorf("check with nothing reachable exits %d, want %d", got, cli.ExitRefused)
+	}
+	// A bootstrap file that is not there is a usage error: the flag names nothing, so key@ cannot verify the KeyPlan.
+	if got := run(t, append([]string{"check"}, append(flagsOK, "--bootstrap", filepath.Join(dir, "missing.yaml"))...)...); got != cli.ExitUsage {
+		t.Errorf("check with a missing bootstrap file exits %d, want %d", got, cli.ExitUsage)
 	}
 	if got := run(t, "version"); got != cli.ExitOK {
 		t.Errorf("version exits %d", got)

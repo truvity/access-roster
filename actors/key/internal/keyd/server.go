@@ -31,6 +31,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -53,8 +54,12 @@ type Config struct {
 	// TransportSocket is the emit socket of the audit transport, /run/sluis/audit/<boundary>/emit.sock. The check
 	// command reaches it; the Auditor is what emits.
 	TransportSocket string
-	Node            string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
-	Auditor         Auditor
+	// Bootstrap is the path of the bootstrap file, /etc/sluis/bootstrap.d/<boundary>.yaml. key@ reads its publishers
+	// block and nothing else: the public keys that sign config. They are the trust anchor of the KeyPlan, which key@
+	// verifies itself instead of taking it from store@ (REQ-KEYS-075).
+	Bootstrap string
+	Node      string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
+	Auditor   Auditor
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// RewrapEvery is the period of the rewrap pass; 0 means DefaultRewrapEvery.
@@ -80,7 +85,12 @@ type Server struct {
 	wraps   *store.Client[*keyv2alpha1.DataKeyWrap]
 	certs   *store.Client[*keyv2alpha1.KeyCertificate]
 	boundCl *store.Client[*configv2alpha1.Boundary]
-	planCl  *store.Client[*configv2alpha1.KeyPlan]
+
+	// The KeyPlan is verified here and never taken as a decoded item from store@ (plan.go).
+	publishers []signedconfig.Publisher // the publisher keys of the bootstrap file
+	planMu     sync.Mutex               // one fetch and verification at a time
+	planSeq    signedconfig.Sequencer   // the highest document seen in this process
+	planLast   *verifiedPlan            // the KeyPlan last verified
 
 	// serverConfig, when set, adjusts the ServerConfig of each socket. Tests use it to name their caller; a
 	// normal build has no way to set it, and the name resolver it would set exists only under the sluis_test tag.
@@ -104,8 +114,8 @@ type Server struct {
 
 // New dials store@ and the driver and returns a key@ that has not started.
 func New(cfg Config) (*Server, error) {
-	if cfg.Boundary == "" || cfg.RunDir == "" || cfg.StoreSocket == "" || cfg.DriverSocket == "" || cfg.Node == "" {
-		return nil, errors.New("keyd: boundary, run-dir, store-socket, driver-socket and node are required")
+	if cfg.Boundary == "" || cfg.RunDir == "" || cfg.StoreSocket == "" || cfg.DriverSocket == "" || cfg.Node == "" || cfg.Bootstrap == "" {
+		return nil, errors.New("keyd: boundary, run-dir, store-socket, driver-socket, bootstrap and node are required")
 	}
 	if cfg.Auditor == nil {
 		return nil, errors.New("keyd: no auditor")
@@ -113,11 +123,24 @@ func New(cfg Config) (*Server, error) {
 	if !validNode(cfg.Node) {
 		return nil, errors.New("keyd: node is not a valid label")
 	}
+	raw, err := os.ReadFile(cfg.Bootstrap)
+	if err != nil {
+		return nil, errors.New("keyd: the bootstrap file cannot be read")
+	}
+	pubs, err := signedconfig.ParsePublishers(raw)
+	if err != nil {
+		return nil, fmt.Errorf("keyd: the bootstrap file: %w", err)
+	}
 	hc, url := rpc.Dial(cfg.StoreSocket)
 	st := storev2alpha1connect.NewStoreServiceClient(hc, url, rpc.ClientOptions()...)
 	dc, durl := rpc.Dial(cfg.DriverSocket)
 	driver := keystorev2alpha1connect.NewKeyStoreServiceClient(dc, durl, rpc.ClientOptions()...)
-	return newServer(cfg, st, driver)
+	s, err := newServer(cfg, st, driver)
+	if err != nil {
+		return nil, err
+	}
+	s.publishers = pubs
+	return s, nil
 }
 
 func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver keystorev2alpha1connect.KeyStoreServiceClient) (*Server, error) {
@@ -138,11 +161,7 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
-	plan, err := store.New(st, "KeyPlan", func() *configv2alpha1.KeyPlan { return &configv2alpha1.KeyPlan{} })
-	if err != nil {
-		return nil, err
-	}
-	return &Server{cfg: cfg, now: now, st: st, driver: driver, wraps: ws, certs: certs, boundCl: bnd, planCl: plan,
+	return &Server{cfg: cfg, now: now, st: st, driver: driver, wraps: ws, certs: certs, boundCl: bnd,
 		limits: newLimiters(now)}, nil
 }
 
@@ -189,11 +208,11 @@ func (s *Server) loadConfig(ctx context.Context) (*configv2alpha1.Boundary, *con
 	if err != nil {
 		return nil, nil, fmt.Errorf("boundary/default: %w", err)
 	}
-	p, err := s.planCl.Get(ctx, "", "default")
+	plan, err := s.keyPlan(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("keyplan/default: %w", err)
 	}
-	return b.Value, p.Value, nil
+	return b.Value, plan, nil
 }
 
 // checkFloor applies the floors in code to the driver and the environment (ADR 0006, "Floors in code"): the

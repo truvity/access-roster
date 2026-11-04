@@ -235,7 +235,10 @@ const forwarder = "harness-forwarder"
 var actorSpecs = map[string]actorSpec{
 	// actors/key: the flags of actors/key/main.go. The run directory and the per-caller directories below it are made by
 	// the platform (tmpfiles); the driver's socket is <run-dir>/driver/key-store.sock; --node is the board's short name.
+	// --bootstrap is the root's public file store@ reads too; key@ reads its publishers block to verify the KeyPlan itself
+	// (REQ-KEYS-075). ProtectSystem=strict keeps /etc read-only for the unit, so the file is read-only to it.
 	"key": {NoSocket: true, Args: []string{
+		"--bootstrap", "/etc/sluis/bootstrap.d/%i.yaml",
 		"--run-dir", "/run/sluis/key/%i",
 		"--store-socket", "/run/sluis/store/%i.sock",
 		"--driver-socket", "/run/sluis/key/%i/" + keyDriverSocket,

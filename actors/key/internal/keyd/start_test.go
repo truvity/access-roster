@@ -94,8 +94,9 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 	})
 	t.Run("no KeyPlan", func(t *testing.T) {
 		e := newTestEnv(t, "development")
-		delete(e.store.items, "|key-plan|default")
-		if err := e.newNode(nodeOpts{}).srv.Init(ctx); err == nil {
+		n := e.newNode(nodeOpts{})
+		delete(e.store.signed, "key-plan")
+		if err := n.srv.Init(ctx); err == nil {
 			t.Fatal("started without KeyPlan")
 		}
 	})
@@ -109,7 +110,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 		e := newTestEnv(t, "development")
 		plan := defaultPlan()
 		plan.Purposes = plan.Purposes[1:]
-		e.store.put("key-plan", "", "default", plan)
+		e.putPlan(plan)
 		if err := e.newNode(nodeOpts{}).srv.Init(ctx); err == nil {
 			t.Fatal("started without a wrapping key")
 		}
@@ -125,7 +126,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			e := newTestEnv(t, "development")
 			plan := defaultPlan()
 			set(plan)
-			e.store.put("key-plan", "", "default", plan)
+			e.putPlan(plan)
 			n := e.newNode(nodeOpts{unlisted: true})
 			if err := n.srv.Init(ctx); err == nil || !strings.Contains(err.Error(), "keyplan/default") {
 				t.Fatalf("Init = %v, want a refusal of the key plan", err)
@@ -151,7 +152,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			e := newTestEnv(t, "development")
 			plan := defaultPlan()
 			plan.CacheTtl = durationpb.New(ttl)
-			e.store.put("key-plan", "", "default", plan)
+			e.putPlan(plan)
 			n := e.newNode(nodeOpts{unlisted: true})
 			if err := n.srv.Init(ctx); err == nil {
 				t.Fatal("started with a cache_ttl outside the range")

@@ -79,7 +79,9 @@ type actorSpec struct {
 var actorSpecs = map[string]actorSpec{
 	"store": {Socket: true, Check: true, Boot: true,
 		Args: []string{"--bootstrap", "/etc/sluis/bootstrap.d/%B.yaml"}},
-	"key": {Check: true, Args: []string{
+	// key@ reads the publishers block of the bootstrap file, read-only, to verify the KeyPlan itself (REQ-KEYS-075).
+	"key": {Check: true, Boot: true, Args: []string{
+		"--bootstrap", "/etc/sluis/bootstrap.d/%B.yaml",
 		"--run-dir", "/run/sluis/key/%B",
 		"--store-socket", "/run/sluis/store/%B.sock",
 		"--driver-socket", "/run/sluis/key/%B/driver/key-store.sock",
