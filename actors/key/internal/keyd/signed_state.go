@@ -42,26 +42,38 @@ func (m seqMark) text() string {
 
 // parseMark reads the file strictly. A mark that does not parse is an error: key@ does not start on a damaged file and
 // does not guess, because a guessed mark is a mark the thief could have chosen; the operator removes it knowing why.
-func parseMark(b []byte, kind string) (seqMark, error) {
-	var m seqMark
+func parseMark(b []byte, kind string) (m seqMark, legacy bool, err error) {
 	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-	if len(lines) != 3 || !strings.HasPrefix(lines[0], "kind ") || !strings.HasPrefix(lines[1], "seq ") || !strings.HasPrefix(lines[2], "sha384 ") {
-		return m, errors.New("not a mark")
+	// The first form of the file had no kind line (seq, sha384), and the kind was the file's. It is read once, taking
+	// the kind from the file name, and rewritten in the form below (migrateMark): dropping the mark would drop rollback
+	// protection, which a mark that cannot be read must not do on its own.
+	if len(lines) == 2 {
+		legacy = true
+	} else if len(lines) == 3 {
+		if !strings.HasPrefix(lines[0], "kind ") {
+			return m, false, errors.New("not a mark")
+		}
+		if strings.TrimPrefix(lines[0], "kind ") != kind {
+			return m, false, errors.New("a mark of another kind")
+		}
+		lines = lines[1:]
+	} else {
+		return m, false, errors.New("not a mark")
 	}
-	if strings.TrimPrefix(lines[0], "kind ") != kind {
-		return m, errors.New("a mark of another kind")
+	if !strings.HasPrefix(lines[0], "seq ") || !strings.HasPrefix(lines[1], "sha384 ") {
+		return m, false, errors.New("not a mark")
 	}
-	seq, err := strconv.ParseUint(strings.TrimPrefix(lines[1], "seq "), 10, 64)
+	seq, err := strconv.ParseUint(strings.TrimPrefix(lines[0], "seq "), 10, 64)
 	if err != nil || seq < 1 || seq >= 1<<53 {
-		return m, errors.New("not a mark")
+		return m, false, errors.New("not a mark")
 	}
-	d, err := hex.DecodeString(strings.TrimPrefix(lines[2], "sha384 "))
+	d, err := hex.DecodeString(strings.TrimPrefix(lines[1], "sha384 "))
 	if err != nil || len(d) != len(m.sha384) {
-		return m, errors.New("not a mark")
+		return m, false, errors.New("not a mark")
 	}
 	m.kind, m.seq = kind, seq
 	copy(m.sha384[:], d)
-	return m, nil
+	return m, legacy, nil
 }
 
 // checkStateDir refuses a state directory that is missing, that is not key@'s own (another owner than key@'s uid), or
@@ -121,11 +133,17 @@ func restoreMark[T proto.Message](s *Server, k *signedKind[T]) error {
 	if err != nil {
 		return fmt.Errorf("the %s mark cannot be read: %w", k.label, err)
 	}
-	m, err := parseMark(b, k.kind)
+	m, legacy, err := parseMark(b, k.kind)
 	if err != nil {
 		return fmt.Errorf("the %s mark in %s is damaged (%w): remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", k.label, path, err, k.label)
 	}
 	k.seq.Restore(m.seq, m.sha384)
+	if legacy && s.saveMark {
+		// The mark of the first form is rewritten with its kind, now, by the process that owns the state.
+		if err := s.writeMark(k.markFile, m); err != nil {
+			return fmt.Errorf("the %s mark cannot be rewritten in its current form: %w", k.label, err)
+		}
+	}
 	return nil
 }
 
