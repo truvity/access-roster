@@ -65,6 +65,7 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+// verifies: REQ-DEPLOY-012
 func TestEveryActorHasAUnitWithItsRegistryUID(t *testing.T) {
 	files := generate(t)
 	n := 0
@@ -557,6 +558,7 @@ func TestSpoolReachability(t *testing.T) {
 
 // entry's listener is the forwarder's: entry joins the forwarder's group to give the socket to it, the socket's group is
 // the forwarder's uid, and entry has no network.
+// verifies: REQ-DEPLOY-011
 func TestEntryListenerBelongsToTheForwarder(t *testing.T) {
 	files := generate(t)
 	uid, ok := registry.UID("harness-forwarder", dev.UIDBlock)

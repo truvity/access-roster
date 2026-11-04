@@ -797,6 +797,7 @@ async fn a_token_signed_through_key_verifies_with_go_jose_against_the_published_
     );
 }
 
+/// verifies: REQ-ISO-028
 #[tokio::test]
 async fn a_wrong_issuer_an_unregistered_audience_and_a_lifetime_past_the_cap_are_refused_alike() {
     let w = World::new().await;
