@@ -1,6 +1,7 @@
 package main
 
 import (
+	"regexp"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -118,8 +119,8 @@ func TestHardeningAndNetwork(t *testing.T) {
 				t.Errorf("%s lacks %q", name, m)
 			}
 		}
-		if strings.Contains(body, "LoadCredentialEncrypted=") {
-			t.Errorf("%s uses LoadCredentialEncrypted=, which systemd 249 does not know", name)
+		if regexp.MustCompile(`(?m)^LoadCredential=`).MatchString(body) {
+			t.Errorf("%s uses plain LoadCredential=: a credential is encrypted on the board (systemd 250 and later)", name)
 		}
 	}
 	if units < 15 {
@@ -379,7 +380,7 @@ func TestSearchPath(t *testing.T) {
 	}
 }
 
-func TestCredentialsUseLoadCredential(t *testing.T) {
+func TestCredentialsUseLoadCredentialEncrypted(t *testing.T) {
 	saved := drivers["driver-key-software"]
 	t.Cleanup(func() { drivers["driver-key-software"] = saved })
 	spec := saved
@@ -387,8 +388,8 @@ func TestCredentialsUseLoadCredential(t *testing.T) {
 	spec.Units[0].Credentials = []string{"pin"}
 	drivers["driver-key-software"] = spec
 	body := generate(t)["sluis-drv-key-software@.service"]
-	if !strings.Contains(body, "\nLoadCredential=pin:/etc/sluis/credentials/%i/sluis-drv-key-software/pin\n") {
-		t.Errorf("no LoadCredential=:\n%s", body)
+	if !strings.Contains(body, "\nLoadCredentialEncrypted=pin:/etc/sluis/credentials/%i/sluis-drv-key-software/pin\n") {
+		t.Errorf("no LoadCredentialEncrypted=:\n%s", body)
 	}
 }
 
@@ -511,7 +512,7 @@ func TestStoreDrivers(t *testing.T) {
 	}
 	cred := files["sluis-drv-store-credential@.service"]
 	if !strings.Contains(cred, "--socket /run/sluis/store/%i/secret-source.sock --socket-gid 61022\n") ||
-		!strings.Contains(cred, "\nLoadCredential=client-dev:/etc/sluis/credentials/%i/sluis-drv-store-credential/client-dev\n") {
+		!strings.Contains(cred, "\nLoadCredentialEncrypted=client-dev:/etc/sluis/credentials/%i/sluis-drv-store-credential/client-dev\n") {
 		t.Errorf("the credential driver is wrong:\n%s", cred)
 	}
 	if !strings.Contains(files["sluis-store.tmpfiles"], "d /run/sluis/store/dev 1770 sluis-store-dev sluis-store-drv-dev -\n") {
@@ -593,7 +594,7 @@ func TestEntryListenerBelongsToTheForwarder(t *testing.T) {
 func TestUpstreamAdapter(t *testing.T) {
 	a := generate(t)["sluis-adapter-upstream-oidc@.service"]
 	for _, w := range []string{
-		"LoadCredential=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret\n",
+		"LoadCredentialEncrypted=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret\n",
 		"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n", "Environment=GOMEMLIMIT=24MiB\n",
 	} {
 		if !strings.Contains(a, w) {

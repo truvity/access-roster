@@ -17,7 +17,8 @@ const (
 	BinDir = "/opt/sluis/bin"
 	// StateRoot holds the state of the units. It is not /var/lib/sluis, which is the rqlite user's.
 	StateRoot = "/var/lib/sluis-state"
-	// LoadRoot is where the deploy puts the files that LoadCredential= reads (systemd credentials).
+	// LoadRoot is where the deploy puts the files that LoadCredentialEncrypted= reads (systemd credentials, encrypted on the board
+	// with its own host key, so that a reflash, which makes a new key, is followed by a deploy that encrypts them again).
 	LoadRoot = "/etc/sluis/credentials"
 
 	// maxName is the longest user name that systemd-sysusers accepts (31 characters).
@@ -194,7 +195,7 @@ var drivers = map[string]driverSpec{
 		Units:    []driverProc{{Socket: "config-source.sock", Args: []string{"--dir", "/etc/sluis/config/%i"}}},
 	},
 	// drivers/store/credential: serve --socket [--dir] [--socket-gid]. The directory is $CREDENTIALS_DIRECTORY, which
-	// systemd makes for the LoadCredential= lines. The names are those of tests/installations/local/install.yaml, the
+	// systemd makes for the LoadCredentialEncrypted= lines. The names are those of tests/installations/local/install.yaml, the
 	// credentials that the skeleton's config documents refer to.
 	"driver-store-credential": {
 		Language: "Rust",
@@ -662,7 +663,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("Environment=GOMEMLIMIT=24MiB")
 	}
 	for _, c := range spec.Credentials {
-		b.line("LoadCredential=%s:%s/%%i/%s/%s", c, LoadRoot, unitStem(a.Name), c)
+		b.line("LoadCredentialEncrypted=%s:%s/%%i/%s/%s", c, LoadRoot, unitStem(a.Name), c)
 	}
 	if spec.State {
 		b.line("StateDirectory=%s", strings.TrimPrefix(fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name), "/var/lib/"))
@@ -853,7 +854,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("EnvironmentFile=%s", du.EnvironmentFile)
 	}
 	for _, c := range du.Credentials {
-		b.line("LoadCredential=%s:%s/%%i/%s/%s", c, LoadRoot, stem, c)
+		b.line("LoadCredentialEncrypted=%s:%s/%%i/%s/%s", c, LoadRoot, stem, c)
 	}
 	b.blank()
 	b.harden(!spec.Network)

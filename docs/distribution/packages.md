@@ -34,7 +34,7 @@ apt and dnf handle redirects unreliably, and a redirect chain is one more place 
 - **All of them on amd64 and arm64.**
 - **The systemd floor is 252,** the version in Amazon Linux 2023. Generated units may rely on what 252 provides, such as `LoadCredentialEncrypted=` and `ExecPaths=`.
 - **Serverless and Kubernetes have no host distribution.** An executable that needs cgo is built against the oldest supported glibc, so the same binary runs in a package and in an image.
-- **A board image older than the floor is a declared exception,** not a supported platform: its units use plain `LoadCredential=` where `LoadCredentialEncrypted=` is missing, and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist ([#881](https://github.com/truvity/sluis/issues/881)). Key material is never affected: it stays in the card.
+- **A board image older than the floor is a declared exception,** not a supported platform: the boards deploy refuses to write a credential on it (the units read `LoadCredentialEncrypted=`), and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist ([#881](https://github.com/truvity/sluis/issues/881)). Key material is never affected: it stays in the card.
 - **No FIPS build in v2.0.** Every platform gets the same build, and the algorithms stay in the FIPS-approved set so that a variant can be added when a customer needs it ([0006](/decisions/0006-keys-and-sealing/#algorithms)).
 
 ## Packaging per runtime

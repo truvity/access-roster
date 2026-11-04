@@ -182,6 +182,8 @@ jobs:
       - run: devbox run -- shellcheck deploy/boards/*.sh
       - name: The recipients, the check and the one-board-at-a-time rule, against a stand-in for ssh
         run: devbox run -- deploy/boards/recipients-test.sh
+      - name: The operating-system checks of the board script, against fakes of the package manager
+        run: devbox run -- deploy/boards/prereq-test.sh
       - name: Deploy, staged only
         env:
           SLUIS_BOARDS: board.example.test
