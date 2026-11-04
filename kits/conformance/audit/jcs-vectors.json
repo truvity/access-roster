@@ -1,0 +1,23 @@
+{
+  "comment": "RFC 8785 vectors without floating point, read by kits/go/audit and kits/rust/sluis-audit. expected is the canonical text.",
+  "vectors": [
+    {"name": "empty object", "input": {}, "expected": "{}"},
+    {"name": "empty array", "input": [], "expected": "[]"},
+    {"name": "literals (RFC 8785 section 3.2.4)", "input": [null, true, false], "expected": "[null,true,false]"},
+    {"name": "key order by UTF-16 code units (RFC 8785 section 3.2.3)", "input": {"\u20ac": "Euro Sign", "\r": "Carriage Return", "\ufb33": "Hebrew Letter Dalet With Dagesh", "1": "One", "\ud83d\ude00": "Emoji: Grinning Face", "\u0080": "Control", "\u00f6": "Latin Small Letter O With Diaeresis"}, "expected": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\u0080\":\"Control\",\"\u00f6\":\"Latin Small Letter O With Diaeresis\",\"\u20ac\":\"Euro Sign\",\"\ud83d\ude00\":\"Emoji: Grinning Face\",\"\ufb33\":\"Hebrew Letter Dalet With Dagesh\"}"},
+    {"name": "escaping (RFC 8785 section 3.2.2.2)", "input": "\u0000\u0001\u001f\b\t\n\f\r\"\\/ \u007f\u2028\u00e9\ud83d\ude00", "expected": "\"\\u0000\\u0001\\u001f\\b\\t\\n\\f\\r\\\"\\\\/ \u007f\u2028\u00e9\ud83d\ude00\""},
+    {"name": "nested objects are sorted at every depth", "input": {"b": {"z": 1, "a": [{"y": true, "x": null}]}, "a": "1"}, "expected": "{\"a\":\"1\",\"b\":{\"a\":[{\"x\":null,\"y\":true}],\"z\":1}}"},
+    {"name": "integers at the bound", "input": [0, -1, 9007199254740991, -9007199254740991], "expected": "[0,-1,9007199254740991,-9007199254740991]"},
+    {"name": "array order is kept", "input": ["b", "a", ["d", "c"]], "expected": "[\"b\",\"a\",[\"d\",\"c\"]]"},
+    {"name": "an empty key sorts first", "input": {"a": 1, "": 2}, "expected": "{\"\":2,\"a\":1}"},
+    {"name": "a key that is a prefix of another sorts first", "input": {"ab": 1, "a": 2, "aa": 3}, "expected": "{\"a\":2,\"aa\":3,\"ab\":1}"},
+    {"name": "an astral character sorts before a high BMP one (UTF-16, not code points)", "input": {"\ufb33": 1, "\ud800\udc00": 2}, "expected": "{\"\ud800\udc00\":2,\"\ufb33\":1}"}
+  ],
+  "refused": [
+    {"name": "a float", "input": 1.5},
+    {"name": "a float with an exponent", "input": 1e3},
+    {"name": "a float in a member", "input": {"a":[1,2.25]}},
+    {"name": "an integer above 2^53-1", "input": 9007199254740992},
+    {"name": "an integer below -(2^53-1)", "input": -9007199254740992}
+  ]
+}
