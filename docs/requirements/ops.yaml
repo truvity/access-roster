@@ -996,3 +996,16 @@ requirements:
     issues: [1220]
     verification:
       - {kind: integration-test, ref: "a write across tenants leaves one audit record in each tenant"}
+  - id: REQ-OPS-078
+    area: OPS
+    statement: "A rotation drill in a staging installation MUST list the verifiers that fail."
+    rationale: "A verifier that breaks the cache or discovery rules is found in staging and not by an outage after a rotation (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    manual_reason: "A drill is a procedure whose record is checked by reading it."
+    verification:
+      - {kind: manual, ref: "drill record review: the verifiers that failed to see the new key, with their user-agent product and network"}

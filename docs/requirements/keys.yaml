@@ -142,8 +142,8 @@ requirements:
   - id: REQ-KEYS-016
     area: KEYS
     split_from: REQ-KEYS-006
-    statement: "A published key set MUST be cacheable for no longer than a documented bound."
-    rationale: "Rotation depends on timely discovery."
+    statement: "sluis MUST serve the published key set with `Cache-Control: public, max-age=300`."
+    rationale: "Rotation depends on timely discovery, and the lead time of a new key is derived from this figure (ADR 0006)."
     level: MUST
     source: v1-parity
     status: planned
@@ -153,7 +153,7 @@ requirements:
       - {id: ST-53, section: "3", depth: Full}
     issues: [774]
     verification:
-      - {kind: integration-test, ref: "rotation overlap test"}
+      - {kind: integration-test, ref: "a GET of the key set answers with Cache-Control public, max-age=300, from the server and through the edge"}
   - id: REQ-KEYS-007
     area: KEYS
     statement: "Key rotation MUST overlap for at least the token lifetime plus allowed clock skew."
@@ -1026,8 +1026,8 @@ requirements:
       - {kind: integration-test, ref: "a KeyCertificate whose thumbprint differs from the listed id is not used"}
   - id: REQ-KEYS-076
     area: KEYS
-    statement: "A new token-signing key MUST be pre-published for 12 hours before it signs."
-    rationale: "A relying party that caches the key set must have a key before the first token carries it (ADR 0006)."
+    statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs, the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew, rounded up."
+    rationale: "Every cache between sluis and a relying party must hold the key before the first token carries it, and the lead time follows from the cache budget that sluis publishes (ADR 0006)."
     level: MUST
     source: design-decision
     status: planned
@@ -1036,7 +1036,7 @@ requirements:
     standards: []
     issues: [774]
     verification:
-      - {kind: integration-test, ref: "a key joins the key set as pre-published, signs nothing for 12 hours, and then becomes active"}
+      - {kind: integration-test, ref: "a key joins the key set as pre-published, signs nothing for 30 minutes, and then becomes active"}
   - id: REQ-KEYS-077
     area: KEYS
     statement: "A node MUST rotate only the token-signing key that its own key@ holds."
@@ -1088,7 +1088,7 @@ requirements:
     standards: []
     issues: [774]
     verification:
-      - {kind: integration-test, ref: "three nodes start together and each key is active at once; a node added a day later pre-publishes for 12 hours"}
+      - {kind: integration-test, ref: "three nodes start together and each key is active at once; a node added a day later pre-publishes for 30 minutes"}
   - id: REQ-KEYS-081
     area: KEYS
     statement: "The checkpoint key of an audit log MUST be a P-256 key that signs SHA-256."
@@ -1130,3 +1130,16 @@ requirements:
     issues: [1208]
     verification:
       - {kind: integration-test, ref: "a generation is kept for 90 days after its last seal and deleted after that, with a moved clock"}
+  - id: REQ-KEYS-084
+    area: KEYS
+    split_from: REQ-KEYS-006
+    statement: "The edge cache in front of the published key set MUST NOT keep it for longer than its max-age of 300 seconds."
+    rationale: "The edge time to live is a part of the lead time of a new token-signing key, so it is bounded by the same figure (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the edge configuration of a test installation is read: the time to live of the key set is at most 300 seconds, and a key removed at the server is gone from the edge within it"}

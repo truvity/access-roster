@@ -255,7 +255,19 @@ flowchart LR
 - **The symmetric KMS key uses KMS automatic rotation.**
 - **A data key rotates by generation, before its AES-GCM usage limit.** `key@` counts the seals under each data key and makes a new generation before the limit for random nonces (2^32 seals). A busy kind therefore rotates its key by count, and a new seal uses the newest generation while older ones keep opening what they sealed. A generation is retired when nothing sealed under it remains. A new generation is also made after an event that touches the wrapping key.
 - **A rotation makes the new key first and retires the old one after.** On a card the new key goes into a free spare slot while the old one finishes; in KMS it is a new key under the same alias. A new intermediate is requested like the first one ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)).
-- **A token-signing key moves through three states, in this order and never back:** `pre-published`, `active`, `retiring`. A new key is **pre-published for 12 hours**: it is in the published key set and signs nothing, so a relying party that caches the set has it before the first token carries it. A key that stops signing is **retained for 65 minutes**: the access-token cap of one hour plus 5 minutes of clock skew, so a token signed just before the change still verifies for its whole life. Then the key leaves the key set. Both figures are the lesson of v1 ([REQ-KEYS-076](/requirements/keys/#REQ-KEYS-076), [REQ-KEYS-078](/requirements/keys/#REQ-KEYS-078)).
+- **A token-signing key moves through three states, in this order and never back:** `pre-published`, `active`, `retiring`. A new key is **pre-published for 30 minutes**: it is in the published key set and signs nothing, so every cache between sluis and a relying party has the key before the first token carries it. A key that stops signing is **retained for 65 minutes**: the access-token cap of one hour plus 5 minutes of clock skew, so a token signed just before the change still verifies for its whole life. Then the key leaves the key set. The 30 minutes are derived below; the 65 minutes are the lesson of v1 ([REQ-KEYS-076](/requirements/keys/#REQ-KEYS-076), [REQ-KEYS-078](/requirements/keys/#REQ-KEYS-078)).
+- **The lead time is derived from the cache budget that sluis publishes** (decided 2026-11-04, [REQ-KEYS-076](/requirements/keys/#REQ-KEYS-076)). The key set is served with `Cache-Control: public, max-age=300`, and the edge cache keeps it for no longer than that ([REQ-KEYS-016](/requirements/keys/#REQ-KEYS-016), [REQ-KEYS-084](/requirements/keys/#REQ-KEYS-084)). A verifier that follows HTTP caching (RFC 9111) and OpenID Connect Core section 10.1.1 (fetch `jwks_uri` again when a token names an unfamiliar `kid`) needs, at worst, the sum of these:
+
+  | Part | Figure |
+  |---|---|
+  | `max-age` of the key set, in the verifier's cache | 300 s |
+  | Time to live of the edge cache, at most `max-age` | 300 s |
+  | Allowance for a verifier that throttles its fetch on an unknown `kid` | 10 min |
+  | Clock skew | 5 min |
+  | **Worst case** | **25 min, set to 30 min** |
+
+  The lead time is therefore `max-age` + edge time to live + the refetch allowance + the clock skew, rounded up to 30 minutes. A change of `max-age` or of the edge time to live moves the lead time with it; the figure is not chosen on its own.
+- **A verifier that holds the key set for longer than `max-age` and does not fetch it again on an unknown `kid` is broken, and sluis detects it instead of accommodating it** (decided 2026-11-04). v1 published a key for 12 hours before it signed, because such a verifier broke every daily rotation. v2 rotates rarely, so a rotation can be announced and the stragglers can be found: the relying-party contract is documented ([Verifying tokens](/integrations/applications/#verifying-tokens)), each fetch of the key set is a metric by client and network ([REQ-OBS-018](/requirements/obs/#REQ-OBS-018)), and a rotation drill in a staging installation lists the verifiers that fail ([REQ-OPS-078](/requirements/ops/#REQ-OPS-078)).
 - **A retiring key never becomes active again** ([REQ-KEYS-079](/requirements/keys/#REQ-KEYS-079)). To keep a key in use, make a new one.
 
 ### The token-signing key
@@ -264,8 +276,8 @@ flowchart LR
 - **`sluis-node` signs its workload tokens through `key@`** (purpose `workload-issuer`, boards only), because `key@` has exclusive access to the card ([Exclusive card access](/decisions/0006-keys-and-sealing/#exclusive-card-access)). `sluis-node` holds no key credential.
 - **Each key-set entry carries an `x5c` chain:** the token certificate, the board's intermediate, then up to the root. A standard client ignores it and fetches the key over TLS; a verifier that wants to can check custody down to a root it trusts. The chain is in the key set, not in each token.
 - **Each node rotates only its own key.** `SigningKey.node` names the node whose `key@` holds the key, and only that node's `signer` moves the key between states or removes it from the key set. A node never changes the key of another node, so one node's rotation cannot retire the key that another node is signing with ([REQ-KEYS-077](/requirements/keys/#REQ-KEYS-077)).
-- **On a first deploy a node's first key is active at once,** while no key in the key set is older than 15 minutes, because there is nothing yet for a relying party to have cached. Once any key is older, a new node's key is pre-published for 12 hours like any other ([REQ-KEYS-080](/requirements/keys/#REQ-KEYS-080)).
-- **The key set carries every pre-published, active and retiring token key.** It carries a pre-published key only while the 12 hours run and a retiring key only for the 65 minutes.
+- **On a first deploy a node's first key is active at once,** while no key in the key set is older than 15 minutes, because there is nothing yet for a relying party to have cached. Once any key is older, a new node's key is pre-published for the lead time like any other ([REQ-KEYS-080](/requirements/keys/#REQ-KEYS-080)).
+- **The key set carries every pre-published, active and retiring token key.** It carries a pre-published key only while the 30 minutes run and a retiring key only for the 65 minutes.
 
 ### Touch and PIN
 
@@ -353,7 +365,8 @@ flowchart LR
 - **`session` holding the opened cookie key.** The same: a data key outside `key@`; it returns only as a named exception, and only on a measurement.
 - **Software signing for authority keys.** A key in memory can be copied; the software driver is for development and CI and refuses production.
 - **The PIN on disk, automatic PIN retries, or touch always on board cards.** A PIN on disk is open to anyone who reads the disk, three wrong attempts block the card, and touch would stop a board from signing unattended.
-- **Activate a new token key as soon as it is published.** A relying party with a cached key set would meet tokens it cannot verify for as long as its cache lives (the v1 lesson).
+- **Activate a new token key as soon as it is published (a lead time of 0).** It breaks correct verifiers behind the edge cache and a throttled refetch on an unknown `kid`: a relying party with a cached key set would meet tokens it cannot verify for as long as its cache lives (the v1 lesson; decided against 2026-11-04).
+- **12 hours, sized for verifiers that ignore the cache header.** It is v1's figure and covers a verifier that never fetches again on an unknown `kid`, but it holds every rotation back for half a day to serve a verifier that breaks the standard; sluis finds such verifiers instead (decided against 2026-11-04).
 - **A key set with no `x5c`.** Custody could then be checked only in the audit log; standard clients ignore the member anyway.
 
 ## Follow-ups

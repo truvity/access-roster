@@ -43,6 +43,16 @@ Every token's `aud` is exactly one registered client id, never a URL; a resource
 - **Long-running agents** get a session class with a longer chain, shorter tokens and a consent page that is never silent ([0018](/decisions/0018-sessions/#agent-sessions)).
 - **Groups in the token** are narrowed to the groups the audience requires.
 
+## Verifying tokens
+
+A relying party that verifies sluis tokens itself, such as a gateway, a sidecar or an application, keeps to this contract. It is what the lead time of a new signing key is built on ([0006](/decisions/0006-keys-and-sealing/#rotation), [REQ-TOKEN-042](/requirements/token/#REQ-TOKEN-042)).
+
+- **Honour `max-age`.** The key set at `jwks_uri` is served with `Cache-Control: public, max-age=300`. Keep a copy for no longer than that, and never for hours or days.
+- **Fetch the set again when a token names an unfamiliar `kid`.** This is the rule of [OpenID Connect Core section 10.1.1](https://openid.net/specs/openid-connect-core-1_0.html#RotateSigKeys). You may throttle the fetch, for example to one in ten minutes, so that a flood of forged `kid` values cannot turn into a flood of requests.
+- **Verify with the key that the token's `kid` names,** and refuse a token whose `kid` is still unknown after the fetch.
+
+A new key is in the key set for 30 minutes before it signs: the `max-age`, the edge cache's time to live of at most the same, a refetch that is throttled to 10 minutes, and 5 minutes of clock skew. A verifier that follows both duties never meets a token it cannot verify. A verifier that holds the set for longer than `max-age` and does not fetch it again on an unknown `kid` breaks at a rotation. sluis does not widen the lead time for it: an installation records each fetch of the key set by user-agent product and network ([REQ-OBS-018](/requirements/obs/#REQ-OBS-018)), and a rotation drill in staging lists the verifiers that fail ([REQ-OPS-078](/requirements/ops/#REQ-OPS-078)).
+
 ## What is audited
 
 Every sign-in and its client, every token exchange and its audience, every consent, every certificate issued, every refusal. A client secret's creation, rotation and deletion are recorded without the value.

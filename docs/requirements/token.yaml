@@ -588,3 +588,16 @@ requirements:
     issues: [912]
     verification:
       - {kind: integration-test, ref: "algorithm test for a fapi2 audience"}
+  - id: REQ-TOKEN-042
+    area: TOKEN
+    statement: "The relying-party documentation MUST state the verifier contract: honour the max-age of the key set, and fetch it again when a token names an unfamiliar kid (OpenID Connect Core section 10.1.1)."
+    rationale: "The lead time of a new key assumes a verifier that follows HTTP caching and the discovery rule, so the page must say what sluis relies on (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    manual_reason: "A statement in published documentation is checked by reading it."
+    verification:
+      - {kind: manual, ref: "documentation review: the page Verifying tokens states both duties"}
