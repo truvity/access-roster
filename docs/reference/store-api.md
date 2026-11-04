@@ -1,6 +1,6 @@
 ---
 title: Store API
-description: "The store service on the wire, address encoding, the item and source contracts of drivers, the conformance suite, and the byte layout of the sealed envelope."
+description: "The store service on the wire, address encoding, the item, source and blob contracts of drivers, the conformance suite and the sealed envelope layout."
 status: target
 sidebar:
   order: 5
@@ -105,6 +105,10 @@ message WriteResponse { repeated Item items = 1; }  // the items as written, wit
 - **While `MaintenanceMode` is set,** every write except those of the restore command is refused ([0010](/decisions/0010-backup-and-recovery/#restore)).
 - **A write that changes a watched kind** also writes its change-log row in the same transaction. A kind that nobody watches writes none, and a hot counter is one conditional update ([Item contract](#the-item-contract)).
 
+### The lease value
+
+A `Lease` carries a typed Protobuf message with one field the store reads, `expires_at`, so store@ can hold the expiry to the kind's maximum of 10 minutes (30 seconds by default) at every create and update. A value that does not decode, or an expiry beyond the maximum, is refused with `invalid_argument` and the reason `schema`. The verbs a lease allows are in [0005](/decisions/0005-the-store/#leases). The typed message is planned; until then the value is opaque and store@ checks only the TTL asked for.
+
 ### Watch
 
 ```proto
@@ -126,7 +130,7 @@ message WatchResponse {
 
 ### Refusals
 
-A refusal is a Connect error with the `Refusal` detail and a reason that names the rule, and it is an audit fact ([Contracts and errors](/reference/contracts/#errors)).
+A refusal is a Connect error with the `Refusal` detail and a reason that names the rule ([Contracts and errors](/reference/contracts/#errors)). **Every refusal of store@ is audited,** on every method and for every code and reason below, as an event `store.refused` that names the calling actor, the kind, the verb and the reason, and never a value of the request.
 
 | Code | Reason | When |
 |---|---|---|
@@ -170,7 +174,7 @@ The address of an item is `<boundary>/<tenant | ->/<kind>/<id>` ([0004](/decisio
 
 ## The driver contracts
 
-A driver is a separate binary behind one port, private to its owner ([0005](/decisions/0005-the-store/#drivers)). It sees items and bytes only, and never knows what a kind means. Two contracts serve store@'s four ports: the item contract for the durable and temp ports, and the source contract for the config and secret ports.
+A driver is a separate binary behind one port, private to its owner ([0005](/decisions/0005-the-store/#drivers)). It sees items and bytes only, and never knows what a kind means. Two contracts serve store@'s four ports: the item contract for the durable and temp ports, and the source contract for the config and secret ports. The audit's blob port has its own, the [blob contract](#the-blob-contract).
 
 ### The item contract
 
@@ -230,6 +234,39 @@ message ReadResponse {
 
 - **A config source driver returns bytes and never parses them.** The name is a config kind's segment ([Signed config](/reference/signed-config/#the-document)). The `watch` capability is `none` (a Lambda layer), `notify` (the `file` driver watching its directory) or `poll` (the `appconfig` driver).
 - **A secret source driver returns the value of a named secret.** store@ fetches it on first use and keeps it in memory; it is never written to disk, an audit fact, a log line or a span ([0005](/decisions/0005-the-store/#secret-sources)).
+
+### The blob contract
+
+`sluis.port.blob.v2alpha1.BlobService` is the audit's own port, not one of store@'s four. It is served by the blob drivers (`fs` today, `s3-compatible` later) to the holders of the audit blob: `writer`, `witness`, `indexer` and `reader` ([0029](/decisions/0029-the-audit-log/#the-write-once-fence)). The path of an object is its key.
+
+```proto
+service BlobService {
+  rpc Create(CreateRequest) returns (CreateResponse);      // create if absent
+  rpc Put(PutRequest) returns (PutResponse);               // conditional overwrite of a pointer path only
+  rpc Get(BlobGetRequest) returns (BlobGetResponse);       // path -> bytes and entity tag
+  rpc List(BlobListRequest) returns (BlobListResponse);    // paths by prefix, paged
+}
+message BlobListRequest { string prefix = 1; bytes page_token = 2; int32 page_size = 3; }
+message BlobListResponse { repeated string paths = 1; bytes next_page_token = 2; }
+```
+
+- **`Create` writes an object that must not exist** and answers `already_exists` when it does. It is the fence of the log ([0029](/decisions/0029-the-audit-log/#the-write-once-fence)).
+- **`Put` overwrites only the paths a driver allows** (`checkpoint` and `writer-state`), and only at the entity tag the caller read (`if_match`, empty when the object must be absent).
+- **`List` is paged like every list** ([Contracts and errors](/reference/contracts/#every-call)). The default `page_size` is 1,000 paths and the maximum 10,000; a larger request is cut to the maximum. `page_token` is `bytes` and bound to the prefix that made it.
+- **A path is validated by the driver:** non-empty segments of at most 255 bytes, none starting with `.`, no NUL, at most 1,024 bytes in all, and never a link out of the root. A path that fails is refused with the reason `path`, which names the field and never the value.
+
+The closed list of reasons of the blob port:
+
+| Code | Reason | When |
+|---|---|---|
+| `invalid_argument` | `path` | The path, the prefix, the page size or the page token is not acceptable |
+| `permission_denied` | `rule` | `Put` on a path that is not a pointer |
+| `not_found` | `absent` | No such object |
+| `already_exists` | `taken` | `Create` found the path in use |
+| `aborted` | `version` | `Put` found another entity tag, or an object where none was wanted |
+| `unavailable` | `engine` | The directory or the bucket failed; the driver fails closed |
+
+The proto still has `page_token` as a string and `List` has no maximum in the contract; changing it is a follow-up, not part of this page.
 
 ### The command line and the suite
 

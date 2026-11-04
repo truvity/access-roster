@@ -12,7 +12,7 @@ Checklist:
 - [ ] `devbox run -- just check` passes locally (or the narrow recipes in "Local work" of `docs/contributing/tools.md`, with CI for the rest); say what you ran.
 - [ ] Commits are conventional and keep the tool's attribution lines.
 - [ ] Rebased on the current `main`; pushed with an explicit refspec, never to `main` or `master`, and never forced.
-- [ ] When `main` moved under the branch, or the branch holds a merge commit ("This branch can't be rebased"), rebuild: a new branch from `origin/main`, `git cherry-pick` or `git diff <base> <head> | git apply -3`, a new pull request, and the old one closed with a pointer.
+- [ ] When `main` moved under the branch, run `gh pr update-branch <n> --rebase -R truvity/sluis` on your own pull request and wait for green checks on the new head. Never merge `main` into the branch. When that rebase conflicts, or the branch holds a merge commit ("This branch can't be rebased"), rebuild: a new branch from `origin/main`, `git cherry-pick` or `git diff <base> <head> | git apply -3`, a new pull request, and the old one closed with a pointer.
 - [ ] If another open pull request changes the same generated file, re-run the generator on the second branch after the first lands.
 - [ ] The pull request follows `.github/pull_request_template.md`.
 - [ ] Before each further push, and before the merge, every reviewer and review-bot thread (cubic, code scanning) is read, fixed or answered.

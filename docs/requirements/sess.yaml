@@ -8,12 +8,13 @@ requirements:
     rationale: "Reuse indicates theft."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
       - {id: ST-14, section: "4.14", depth: Full}
     issues: [777]
+    tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
       - {kind: integration-test, ref: "single-use test"}
   - id: REQ-SESS-013

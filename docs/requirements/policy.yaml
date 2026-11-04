@@ -161,10 +161,11 @@ requirements:
     rationale: "A wildcard in requires, a claim, a lifetime or the role position would grant or admit by pattern."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     standards: []
     issues: [892]
+    tests: [actors/policy/tests/load.rs]
     verification:
       - {kind: integration-test, ref: "each misplaced wildcard and an empty expansion are refused"}
   - id: REQ-POLICY-013

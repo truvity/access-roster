@@ -31,6 +31,20 @@ flowchart LR
 - **The forwarder's certificate is not sluis's.** In production the edge holds a certificate that sluis did not issue. Locally it holds one from the harness's `edge` intermediate, certified by the same ritueel root as sluis's own intermediates ([TLS](#tls)).
 - **The Compose file is generated from the registries,** like the systemd units, with the uids pinned ([ADR 0011](/decisions/0011-runtimes-and-installations/#consequences)). The harness services are written by hand beside it.
 
+## Recipes
+
+Run each as `devbox run -- just <recipe>`. The project needs Docker, and `SLUIS_UPSTREAM_TARGET` and `SLUIS_KEYCLOAK_SECRETS` in the environment; the repository names neither value.
+
+| Recipe | What it does |
+|---|---|
+| `local-up` | Builds the executables and the images, makes the state of the run (harness CA, signed config, credentials) and starts the project; returns when every service that has a health check is healthy |
+| `local-smoke` | The M1 proof: a client under the uid of `exchange` asks `policy` for a `token.exchange` decision and `signer` for a token; the token is checked against `/jwks` through the forwarder, trusting only the harness CA; the records of the run are found in the audit log; `sluis audit verify` checks the log; `SigningRing` and `DataKeyWrap` are read through store@ |
+| `local-person-smoke` | The M2 proof: `sluis login` signs a person in through the forwarder, `entry`, `session`, the upstream adapter and the identity provider, and `sluis token` exchanges the token for an audience. It lands after decision D-28 ([roadmap](/roadmap/#what-runs-today)) |
+| `local-deny` | The deny matrix ([ADR 0002](/decisions/0002-families-of-actors/)): for every caller and every socket, a probe as the caller's uid checks the call graph at the socket and at the guard. It starts a Compose project of its own and removes it, and leaves a `local-up` project alone |
+| `local-down` | Stops the project and deletes its volumes and the state of the run |
+
+- **The firewall.** A host firewall may let a container reach the upstream from some Docker subnets only. The Compose project has the subnet Docker picks; the deny matrix, which runs its own project, takes `SLUIS_DENY_SUBNET` (for example `10.99.0.0/24`) to put its network on a subnet the firewall allows.
+
 ## Host names
 
 | Host | Serves | Resolved to |

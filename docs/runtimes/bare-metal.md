@@ -44,6 +44,23 @@ flowchart LR
 - **Hardening per unit:** `ProtectSystem=strict`, `NoNewPrivileges=`, an empty `CapabilityBoundingSet=` and `SystemCallFilter=@system-service`.
 - **The deny tests check the result.** They try every pair of actors against both layers, and they check that nothing else binds a TCP address apart from rqlite's client API on the loopback address.
 
+## Deploy and prove on three boards
+
+The hosts and the account are never in the repository: `SLUIS_BOARDS` and the SSH settings come from the environment. The flow is four recipes, run as `devbox run -- just <recipe>`:
+
+1. `build-arm64` cross-compiles every executable (Go with cgo off, Rust through zig as static musl) into `dist/arm64/` and checks that each is a statically linked ARM aarch64 ELF. `boards-prepare` signs the boards' config with a publisher key made for them and makes the seed (the bootstrap file that pins the key, and the credentials) below `.cache/boards`, which is never committed.
+2. `boards-deploy` copies the executables with their generated units, users and directories to every board, installs the seed under `/etc/sluis`, verifies, and starts the units in order. It is idempotent, and `SLUIS_BOARDS_DRY_RUN=1` stages the plan without touching a board.
+3. `boards-smoke` runs the M1 spine on each board in turn, over SSH, under the uid of each actor, and prints the memory of the board. From the second board on it requires the first boards' `SigningRing` key and `DataKeyWrap` item, which shows the one shared store ([roadmap](/roadmap/#what-runs-today)).
+4. `boards-undeploy` removes what `boards-deploy` added, as the board's manifest lists it, and keeps the engine, the data and the state of the units unless asked.
+
+### `openat2` under `RestrictSUIDSGID`
+
+systemd's `RestrictSUIDSGID=yes` installs a seccomp filter that answers the `openat2` system call with `ENOSYS`. It does so on every systemd version tried (MEASURED 2026-11-04 on the boards' systemd 249, and again on systemd 259 with `systemd-run --user -p RestrictSUIDSGID=yes`). The drivers that open files below a root (`file`, `credential` and the `fs` blob) use `openat2` with `RESOLVE_BENEATH` and `RESOLVE_NO_SYMLINKS`, so on a unit with that line they fail.
+
+- **The units keep the line** (`RestrictSUIDSGID=yes`). The drivers try `openat2` first and fall back only on `ENOSYS`; any other error is the answer.
+- **The fallback keeps the guarantee.** It walks the path one component at a time with `O_NOFOLLOW`, refuses `..`, an empty component and an absolute path before any open, and refuses a symlink anywhere in the path. The `file` driver, which follows links below its directory for ConfigMap trees, keeps a stack of directory descriptors, refuses a link that leaves the root and stops at 40 links.
+- **Both roads are tested,** each case with `openat2` answering `ENOSYS` and with it working.
+
 ## Supported distributions and the systemd floor
 
 The systemd floor is 252. Ubuntu 26.04 LTS, Rocky Linux 10.x and Amazon Linux 2023 meet it, on amd64 and arm64, so the units use `LoadCredentialEncrypted=` where they need it ([Packages](/distribution/packages/#supported-platforms)). There are no build profiles: the packaging is the build. One cluster may mix distributions, because the package set is the same, at the price of a wider test surface.
@@ -104,6 +121,7 @@ Measured on 2026-10-31 on one single-board computer (arm64, 4 cores, 2 GB RAM, e
 |---|---|
 | Memory of a full board, as measured: 10 rqlite clusters, 30 actors, two `entry` instances, the card path, `cloudflared` and the board's other services | About 985 MiB with Go actors, about 680 MiB with Rust actors, of 1978 MiB usable, under a ceiling of 1380 MiB (a quarter of the RAM kept for page cache, 100 MiB for slab and bursts) |
 | The same board with one rqlite cluster, as an installation has | MEASURED 2026-11-03, three boards, one rqlite cluster over the three, 30 Go stand-ins and `ca` and `ssh-ca` as two units: 1,056 MiB of proportional memory on a typical loaded board (53% of the board) and 1,155 MiB on the worst board measured (58%). No Rust actor was built, so the Rust figure is still the estimate of 0012 ([#1180](https://github.com/truvity/sluis/issues/1180), [0037](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity)) |
+| The skeleton on a board | MEASURED 2026-11-04, three boards, the first working version (13 units on each board, one rqlite cluster over the three, the M1 spine passing): about 230 MiB used per board, of which about 110 MiB is the skeleton (the resident set of its processes, 103 to 119 MiB across the boards); the remainder was not broken down. About 1.7 GiB of the 1.9 GiB stays available |
 | Go actor against Rust actor | MEASURED 2026-11-02, 30 actors under load, one language each: a Rust actor holds about 0.2 MiB of private memory and a Go actor 8.0 to 8.7 MiB, so Go costs 235 to 255 MiB more at 30 actors. The estimate of 2026-10-31 was about 300 MiB. Go does not give the memory back after the load |
 | The mix of [0012](/decisions/0012-the-language-follows-the-executable/) next to the rqlite nodes, per board | MEASURED 2026-11-02, 25 Rust actors, 5 Go actors, 2 `entry`, a `session` stand-in and 10 rqlite nodes, light load: 160 to 200 MiB of PSS for the 43 processes, of which rqlite 98 to 134 MiB. The board's own services use about 160 MiB before anything starts, and `MemAvailable` never fell below 1559 of 1978 MiB |
 | rqlite | About 9 MiB per cluster under write load, plus about 22 MiB of binary pages once per board |

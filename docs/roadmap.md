@@ -10,7 +10,19 @@ v1 keeps its own roadmap on the [sluis v1 board](https://github.com/orgs/truvity
 
 ## Where v2 stands
 
-As of 2026-11-03, v2 is in the design phase and has no code. What exists are the [decision records](/decisions/), the [requirements](/requirements/) and the design pages. Root custody lives in [ritueel](https://ritueel.id), a separate project also in design. The test harness certifies its intermediates with any certificate authority that signs a PKCS#10 request; ritueel's software-root mode is the certifier the CI runs when it exists ([#1071](https://github.com/truvity/sluis/issues/1071)).
+As of 2026-11-04, the first working version is being built, and the design is still ahead of the code. What exists are the [decision records](/decisions/), the [requirements](/requirements/), the design pages, and the part of the code listed in [What runs today](#what-runs-today). Root custody lives in [ritueel](https://ritueel.id), a separate project also in design. The test harness certifies its intermediates with any certificate authority that signs a PKCS#10 request; ritueel's software-root mode is the certifier the CI runs when it exists ([#1071](https://github.com/truvity/sluis/issues/1071)).
+
+## What runs today
+
+Measured on 2026-11-04. Each line is a proof you can run; the commands are `devbox run -- just <recipe>`, and the recipes are described on [The local installation](/runtimes/local/#recipes) and on [Bare metal](/runtimes/bare-metal/#deploy-and-prove-on-three-boards).
+
+| Milestone | State | Demo |
+|---|---|---|
+| **M1, the spine** | Passes on the local installation: a client asks `policy` for a decision and `signer` for a token, the token verifies against the key set that `entry` serves, the records of the run are in the audit log, and `sluis audit verify` checks the log | `local-up`, then `local-smoke` |
+| **M3, the boards** | Passes on three boards over one shared three-node rqlite cluster: the same spine runs against each board in turn, and from the second board on it finds the earlier boards' signing key, which shows the shared store | `build-arm64`, `boards-deploy`, then `boards-smoke`; `boards-undeploy` removes it again |
+| **M2, the person** | Passes on its branch and lands after decision D-28: `sluis login` signs a person in through the upstream identity provider, and `sluis token` exchanges the token for an audience (RFC 8693) | `local-up`, then `local-person-smoke` |
+
+The deny matrix of the local installation also runs (`local-deny`): every caller against every socket, at the socket and at the guard.
 
 ## A core and two later modules
 

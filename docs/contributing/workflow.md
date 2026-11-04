@@ -29,11 +29,22 @@ v2 lives on `main`, an orphan branch that shares no history with v1. v1 lives on
 - Do not stack pull requests. Merging is by rebase only, so every merge changes the commits of the next pull request and forces it to be rebuilt. Put dependent work in one linear pull request, with one commit per part.
 - A change comes with its tests and its documentation in the same pull request. Changes to protocols and stored formats also keep the compatibility rules in [GOVERNANCE.md](https://github.com/truvity/sluis/blob/main/GOVERNANCE.md).
 - Open a draft pull request early if you want feedback. Mark it ready when the checks are green.
-- Rebase onto the current `main` before you ask for the merge. A green pull request on a stale base can still break `main`.
+- Rebase onto the current `main` before you ask for the merge. A green pull request on a stale base can still break `main`. The ruleset below requires it.
 - After someone has reviewed the branch, do not rewrite the commits they read. Add commits instead, and let the rebase merge tidy them; rebase only to catch up with `main`.
-- Do not force-push. The repository allows rebase merges only, so a branch with a merge commit cannot be merged ("This branch can't be rebased"), and a branch that `main` has moved under needs a rebase you cannot push. In both cases rebuild the pull request ([below](#rebuilding-a-pull-request)).
+- Do not force-push, and do not merge `main` into the branch: a branch with a merge commit cannot be merged ("This branch can't be rebased").
+- When `main` has moved under your own pull request, bring it up to date with GitHub's server-side rebase: `gh pr update-branch <n> --rebase -R truvity/sluis`. An agent may do this for its own pull request only. Then wait for the checks to go green on the new head. Prefer rebuilding the pull request ([below](#rebuilding-a-pull-request)) when the rebase conflicts, or when you changed a generated file.
+
+### The ruleset on `main`
+
+`main` has an enforced ruleset with no bypass for anyone:
+
+- the `checks` job must pass on a branch that is up to date with `main`;
+- merges are by rebase only;
+- force-push and deletion are blocked.
 
 ### Rebuilding a pull request
+
+Rebuild when the server-side rebase cannot do it, for example on a conflict.
 
 1. Fetch, then start a new branch from the current `origin/main`.
 2. Bring the change over: `git cherry-pick` its commits, or `git diff <base> <head> | git apply -3`, then commit.
@@ -46,7 +57,7 @@ Merge is by rebase. The maintainer merges. An agent working for the maintainer m
 
 1. Read the head commit of the pull request: `gh pr view <n> -R truvity/sluis --json headRefOid,mergeStateStatus,reviewDecision`.
 2. Merge that commit and no other: `gh pr merge <n> -R truvity/sluis --rebase --match-head-commit <sha>`. The flag makes the merge fail when someone pushed after you looked, so what was reviewed is what lands.
-3. An agent never uses `--admin`, which skips the required checks and reviews. If the merge is refused, say what refused it and stop.
+3. An agent never uses `--admin`, which skips the required checks and reviews, and the ruleset has no bypass in any case. If the merge is refused (for example because the branch is behind `main`), say what refused it; bring your own pull request up to date as above, or stop.
 4. Check what the merge started ([After the merge](#after-the-merge)).
 
 ### After the merge

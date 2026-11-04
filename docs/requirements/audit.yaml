@@ -1378,11 +1378,12 @@ requirements:
     rationale: "The blob store is the write-once fence of the audit log, so a second writer cannot overwrite or fork it."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-103, section: "blob port", depth: Full}
     issues: [1121, 837, 851]
+    tests: [drivers/writer/fs/src/suite.rs]
     verification:
       - {kind: conformance-suite, ref: "port conformance suite, blob create-if-absent"}
   - id: REQ-AUDIT-104

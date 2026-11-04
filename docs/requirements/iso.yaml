@@ -1107,10 +1107,11 @@ requirements:
     rationale: "The upstream hosts are known, so an allow-list replaces a general egress proxy (ADR 0033)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     standards: []
     issues: [1214]
+    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go]
     verification:
       - {kind: integration-test, ref: "an upstream that declares host A: the adapter's call to host B is refused before it leaves the adapter"}
   - id: REQ-ISO-082
