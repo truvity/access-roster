@@ -180,6 +180,8 @@ jobs:
             arm64-${{ runner.os }}-
       - run: devbox run -- just build-arm64
       - run: devbox run -- shellcheck deploy/boards/*.sh
+      - name: The recipients, the check and the one-board-at-a-time rule, against a stand-in for ssh
+        run: devbox run -- deploy/boards/recipients-test.sh
       - name: Deploy, staged only
         env:
           SLUIS_BOARDS: board.example.test
@@ -205,6 +207,8 @@ jobs:
           grep -q 'files/card/pcscd-socket.dropin' staged.txt
           grep -q 'files/card/pcsc-polkit.rules' staged.txt
           grep -q 'files/sysusers/sluis-pcsc-dev.conf' staged.txt
+          # key@ of the card variant requires the card driver, not the software one.
+          grep -q '^key@ unit requires: Requires=sluis-drv-key-yubikey-piv@%i.service *$' staged.txt
 
   # The executables that link a C library (deploy/boards/native.list: the card driver) are built natively, on a hosted
   # arm64 runner, inside the userland of the oldest supported distribution, Ubuntu 22.04 (ADR 0013), so they run on

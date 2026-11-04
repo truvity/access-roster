@@ -140,7 +140,7 @@ deploy)
 			echo "remote: installing pcscd and libccid"
 			DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pcscd libccid
 		fi
-		install_card() { # source dest
+		install_card() { # source dest [mode]
 			allowed_path "$2" || { echo "remote: refusing $2" >&2; exit 1; }
 			d=$(dirname "$2")
 			if [ ! -d "$d" ]; then
@@ -148,10 +148,10 @@ deploy)
 				install -d -m 0755 -o root -g root "$d"
 			fi
 			note file "$2"
-			install -m 0644 -o root -g root "$1" "$2"
+			install -m "${3:-0644}" -o root -g root "$1" "$2"
 		}
 		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
-		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" # the card the driver is bound to
+		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" 0600 # the card the driver is bound to; systemd reads it as root
 		# pcsc-lite as Debian and Ubuntu 22.04 build it has no polkit: the socket group above is the control there.
 		if [ -e "$card_polkit_policy" ]; then
 			install_card "$stage/files/card/pcsc-polkit.rules" "$card_polkit_rules"

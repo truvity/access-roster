@@ -139,6 +139,12 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 	var dec decideOut
 	if err := b.step(&dec, "exchange", []string{"policy", "signer"}, "decide-sign", "--boundary", boundary, "--tenant", tenant,
 		"--issuer", "https://"+host, "--audience", audience, "--correlation", corr); err != nil {
+		if strings.Contains(err.Error(), `"key_set"`) {
+			if at, ok := b.newKeyActiveAt(); ok {
+				return fmt.Errorf("the token key of node %s is pre-published and not active yet: it is active at %s (%s from now); re-run then (%w)",
+					b.node, at.Format(time.RFC3339), time.Until(at).Round(time.Second), err)
+			}
+		}
 		return fmt.Errorf("the client under the uid of exchange: %w", err)
 	}
 	fmt.Println("== 1. The decision (policy, asked by the uid of exchange)")
@@ -563,4 +569,45 @@ func verifyToken(token string, set *jose.JSONWebKeySet) error {
 		return errors.New("the signature does not verify with the key set at /jwks")
 	}
 	return nil
+}
+
+// prepublishLead is how long a new token key is published before the signer signs with it (signer, Timing::prepublish,
+// 30 minutes since #1310), counted from when the key entered the state pre-published.
+const prepublishLead = 30 * time.Minute
+
+// newKeyActiveAt reads the signing ring and, when the node of this board has a pre-published key and no active one, says
+// when the signer makes it active. This is the state right after a board switched its key driver (a new key). It is false
+// when the ring cannot be read or does not look like that.
+func (b *board) newKeyActiveAt() (time.Time, bool) {
+	var ring readOut
+	if err := b.step(&ring, "signer", []string{"store"}, "store-read", "--kind", "signing-ring", "--tenant", ""); err != nil || len(ring.Items) != 1 {
+		return time.Time{}, false
+	}
+	return activeAt(ring.Items[0].Detail, b.node)
+}
+
+// activeAt parses the lines "<kid> <alg> <state> node=<node> since=<RFC 3339>" of the signing ring: the time at which the
+// earliest pre-published key of node becomes active, and false if the node has an active key or no pre-published one.
+func activeAt(detail []string, node string) (time.Time, bool) {
+	var at time.Time
+	found := false
+	for _, l := range detail {
+		f := strings.Fields(l)
+		if len(f) < 5 || f[3] != "node="+node {
+			continue
+		}
+		switch f[2] {
+		case "active":
+			return time.Time{}, false
+		case "pre-published":
+			since, err := time.Parse(time.RFC3339, strings.TrimPrefix(f[4], "since="))
+			if err != nil {
+				continue
+			}
+			if t := since.Add(prepublishLead); !found || t.Before(at) {
+				at, found = t, true
+			}
+		}
+	}
+	return at, found
 }
