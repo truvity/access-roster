@@ -166,10 +166,11 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 	if s.JTI == "" || s.ClientID == "" || s.Audience == "" || s.Audience != s.ClientID {
 		// A token that the boundary issued to a client carries that client as aud and client_id (ADR 0020). One that
 		// names another audience is a token for a relying party or the product of an exchange, and an exchange only
-		// narrows (REQ-EXCH-004). This check does NOT stop every exchanged token: a confidential client
-		// that exchanges for itself gets aud == client_id, the shape of a sign-in token, and exchange sets no marker
-		// that session does not. What refuses it is mayBeExchanged below (REQ-EXCH-020), so relaxing that rule needs
-		// a structural guard first (TestAnExchangedTokenIsNeverASubjectOnlyBecauseOfItsClientKind).
+		// narrows (REQ-EXCH-004). This check does NOT stop an exchange for itself by a confidential client, whose
+		// token has aud == client_id like a sign-in token and no marker that session does not set; mayBeExchanged
+		// refuses it by the client's kind (REQ-EXCH-020, TestREQ_EXCH_020_AConfidentialClientsExchangedToken...).
+		// A native public client's exchange for itself is a valid subject by design: it re-issues what the client
+		// holds, bounded by the subject's exp, with policy, the directory and the narrowed groups checked again.
 		return nil, invalidRequest(reasonClaims)
 	}
 	c, err := v.cfg.Client(ctx, s.ClientID)
@@ -193,10 +194,11 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 // installation's CLI) is a subject. A public client with no profile, a confidential client, a machine client and a
 // browser client are not.
 //
-// This rule is also what keeps an exchanged token from being exchanged again: exchange issues client_id = the
-// requester, and a confidential client's token for itself has aud == client_id like a sign-in token. Nothing else
-// in the token tells the two apart (signer's claim set is fixed, ADR 0020), so a change that lets a confidential
-// client's token be a subject must first add a marker that only exchange sets, and refuse on it here.
+// This rule is also what keeps a token that exchange issued to a confidential client from being exchanged again:
+// exchange issues client_id = the requester, and that token has aud == client_id like a sign-in token. Nothing else
+// in the token tells the two apart (signer's claim set is fixed, ADR 0020), so lifting this rule, which lasts until
+// `private_key_jwt` lands, needs a marker that only exchange sets and a refusal on it here first. Only tokens issued
+// to confidential clients are kept out: a native public client's token for itself stays a subject by design.
 func mayBeExchanged(c *configv2alpha1.InstallationClient) bool {
 	return c.GetKind() == "public" && c.GetProfile() == "native"
 }

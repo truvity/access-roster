@@ -955,6 +955,67 @@ async fn client_authentication_by_header_or_form_reaches_session_and_exchange() 
 }
 
 #[tokio::test]
+async fn every_advertised_client_authentication_method_is_accepted_by_a_grant() {
+    // RFC 8414 lists the methods of the endpoint, not of a grant: `none` is what authorization_code and
+    // refresh_token accept (sign-in is for public clients), the secret methods are the token-exchange grant's.
+    // A method that discovery advertises and no grant takes would be a lie, and a method that is added needs a case.
+    let up = up().await;
+    let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+    let doc: Value = serde_json::from_slice(&d.body).unwrap();
+    let methods: Vec<String> = doc["token_endpoint_auth_methods_supported"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m.as_str().unwrap().to_owned())
+        .collect();
+    let ex = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t";
+    for m in &methods {
+        match m.as_str() {
+            "none" => {
+                let code = "grant_type=authorization_code&code=c&client_id=app";
+                assert_eq!(post_token(&up, code).await.status, 200);
+                let refresh = "grant_type=refresh_token&refresh_token=r&client_id=app";
+                assert_eq!(post_token(&up, refresh).await.status, 200);
+                let c = up.fake.calls.lock().unwrap();
+                assert_eq!(c.token.len(), 2);
+                for t in &c.token {
+                    assert_eq!(
+                        (t.authorization.as_str(), t.client_secret.as_str()),
+                        ("", "")
+                    );
+                }
+            }
+            "client_secret_basic" => {
+                let r = http(
+                    &up,
+                    "POST",
+                    "/token",
+                    &[FORM, ("Authorization", "Basic Zm9vOmJhcg==")],
+                    ex.as_bytes(),
+                )
+                .await;
+                assert_eq!(r.status, 200);
+                let c = up.fake.calls.lock().unwrap();
+                assert_eq!(
+                    c.exchange.last().unwrap().authorization,
+                    "Basic Zm9vOmJhcg=="
+                );
+            }
+            "client_secret_post" => {
+                let post = format!("{ex}&client_id=app&client_secret=s");
+                assert_eq!(post_token(&up, &post).await.status, 200);
+                let c = up.fake.calls.lock().unwrap();
+                assert_eq!(c.exchange.last().unwrap().client_secret, "s");
+            }
+            other => {
+                panic!("discovery advertises {other}, and no case shows a grant that accepts it")
+            }
+        }
+    }
+    assert_eq!(methods.len(), 3);
+}
+
+#[tokio::test]
 async fn an_authorization_header_that_is_present_and_empty_is_refused() {
     // An empty header must not read as "no authentication": it would hide a second method beside client_secret.
     let up = up().await;
