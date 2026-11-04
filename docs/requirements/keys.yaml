@@ -1625,7 +1625,7 @@ requirements:
   - id: REQ-KEYS-109
     area: KEYS
     statement: "key@ MUST refuse a Sign with any key that KeyRevocation lists, whatever the signing purpose."
-    rationale: "A revoked key signs nothing more, and this holds for the SSH CAs, the X.509 intermediates, the checkpoint keys and the workload-issuer key as for a token key, whichever actor asks (ADR 0041)."
+    rationale: "A revoked key signs nothing more, and this holds for the SSH CAs, the X.509 intermediates, the checkpoint keys and the workload-issuer key as for a token key, whichever actor asks; a revocation of a purpose refuses the keys made at or before it and not a replacement made after it, and an unreadable KeyRevocation refuses the Sign (ADR 0041)."
     level: MUST
     source: design-decision
     status: partial
@@ -1636,4 +1636,4 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a key of each signing purpose (token, x509, ssh-user, ssh-host, log keys, workload-issuer): a Sign with it is refused and audited"}
+      - {kind: integration-test, ref: "revoke a key of each signing purpose (token, x509, ssh-user, ssh-host, log keys, workload-issuer): a Sign with it is refused and audited; a key made after a purpose revocation signs; an unreadable KeyRevocation refuses the Sign"}

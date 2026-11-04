@@ -1963,21 +1963,29 @@ async fn a_refusal_carries_the_correlation_id_of_the_call() {
 /// verifies: REQ-KEYS-091
 /// A revocation only grows. For every actor of the registry, key@ included, an update, a delete and an apply on an
 /// existing KeyRevocation item are refused and the item is as it was; key@ creates one, at no tenant and at a tenant,
-/// with no grant, and an apply on an address that is free creates it. Nobody else can write the kind at all.
+/// with no grant, and a second create of a target is `taken`. An item that is not a valid revocation, or that sits under
+/// an id that does not name its target, is refused at the write, because the kind could not correct it later. Nobody
+/// else can write the kind at all.
 #[tokio::test]
 async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
     let f = F::new().await;
     f.as_("key");
-    let kid = |id: &str, v: &[u8]| op(Verb::CREATE, "key-revocation", "", id, v);
-    f.write(vec![kid("kid/aaaa", b"first")], &[]).await.unwrap();
+    let create =
+        |tenant: &str, id: &str, v: &[u8]| op(Verb::CREATE, "key-revocation", tenant, id, v);
+    let mac = revocation("purpose", "mac", "compromise");
+    let tok = revocation("purpose", "token-signing", "suspicion");
+    f.write(vec![create("", "purpose/mac", &mac)], &[])
+        .await
+        .unwrap();
+    f.write(vec![create("", "purpose/token-signing", &tok)], &[])
+        .await
+        .unwrap();
     // A tenant's data key generation: a tenant in the address, and still no grant for key@, its one writer.
     f.write(
-        vec![op(
-            Verb::CREATE,
-            "key-revocation",
+        vec![create(
             "acme",
             "generation/data/3",
-            b"gen",
+            &revocation("generation", "data/3", "drill"),
         )],
         &[],
     )
@@ -1985,23 +1993,47 @@ async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
     .unwrap();
     // A second create of the same target is taken, not a replacement.
     refused(
-        f.write(vec![kid("kid/aaaa", b"again")], &[]).await,
+        f.write(
+            vec![create(
+                "",
+                "purpose/mac",
+                &revocation("purpose", "mac", "drill"),
+            )],
+            &[],
+        )
+        .await,
         ErrorCode::AlreadyExists,
         "taken",
     );
-    // An apply on a free address creates it.
-    f.write(
-        vec![op(
-            Verb::APPLY,
-            "key-revocation",
-            "",
-            "purpose/token-signing",
-            b"p",
-        )],
-        &[],
-    )
-    .await
-    .unwrap();
+    // An item that is wrong cannot be corrected, so it is refused: not a message, an id that does not name the target,
+    // a reason outside the list.
+    for (id, v) in [
+        ("purpose/other", b"not a message".to_vec()),
+        ("purpose/other", mac.clone()),
+        ("purpose/other", revocation("purpose", "other", "because")),
+    ] {
+        refused(
+            f.write(vec![create("", id, &v)], &[]).await,
+            ErrorCode::InvalidArgument,
+            "schema",
+        );
+    }
+    // An apply is refused on a free address as well: the kind has no apply (the rule table gives key@ create, get and list).
+    refused(
+        f.write(
+            vec![op(
+                Verb::APPLY,
+                "key-revocation",
+                "",
+                "purpose/other",
+                &revocation("purpose", "other", "drill"),
+            )],
+            &[],
+        )
+        .await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
 
     let actors: Vec<&'static str> = sluis_registry::actors().iter().map(|a| a.name).collect();
     assert!(
@@ -2015,11 +2047,12 @@ async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
             (Verb::DELETE, "delete"),
             (Verb::APPLY, "apply"),
         ] {
-            for id in ["kid/aaaa", "purpose/token-signing"] {
+            for id in ["purpose/mac", "purpose/token-signing"] {
+                let v = revocation("purpose", id.split_once('/').unwrap().1, "drill");
                 let o = if verb == Verb::UPDATE {
-                    with_version(op(verb, "key-revocation", "", id, b"changed"), 1)
+                    with_version(op(verb, "key-revocation", "", id, &v), 1)
                 } else {
-                    op(verb, "key-revocation", "", id, b"changed")
+                    op(verb, "key-revocation", "", id, &v)
                 };
                 let e = f
                     .write(vec![o], &[])
@@ -2036,12 +2069,12 @@ async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
     // The items are as key@ made them.
     f.as_("key");
     assert_eq!(
-        f.get("key-revocation", "", "kid/aaaa")
+        f.get("key-revocation", "", "purpose/mac")
             .await
             .unwrap()
             .item
             .value,
-        b"first"
+        mac
     );
     assert_eq!(
         f.get("key-revocation", "", "purpose/token-signing")
@@ -2049,7 +2082,7 @@ async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
             .unwrap()
             .item
             .value,
-        b"p"
+        tok
     );
     // The refusals were audited.
     assert!(
@@ -2070,7 +2103,13 @@ async fn req_keys_091_only_key_creates_a_key_revocation() {
         f.as_(actor);
         refused(
             f.write(
-                vec![op(Verb::CREATE, "key-revocation", "", "kid/bbbb", b"x")],
+                vec![op(
+                    Verb::CREATE,
+                    "key-revocation",
+                    "",
+                    "purpose/mac",
+                    &revocation("purpose", "mac", "drill"),
+                )],
                 &[],
             )
             .await,

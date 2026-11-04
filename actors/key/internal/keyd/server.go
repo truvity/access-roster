@@ -76,7 +76,8 @@ type Config struct {
 type purposeKey struct {
 	algorithm string // ES384 or ECDH-P384
 	spki      []byte
-	keyID     string // RFC 7638 thumbprint
+	keyID     string    // RFC 7638 thumbprint
+	created   time.Time // when the key store made the key; zero when it cannot say
 	pub       *ecdsa.PublicKey
 }
 

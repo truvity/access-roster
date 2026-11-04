@@ -2324,7 +2324,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("key", "data-key-wrap", 0x007f), // get list create update delete apply watch
     ("key", "key-certificate", 0x003f), // get list create update delete apply
     ("key", "key-plan", 0x0043), // get list watch
-    ("key", "key-revocation", 0x007f), // get list create update delete apply watch
+    ("key", "key-revocation", 0x0047), // get list create watch
     ("key", "lease", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("key", "log-level-override", 0x21c3), // get(self) list(self) watch(self)
     ("key", "log-settings", 0x21c3), // get(self) list(self) watch(self)

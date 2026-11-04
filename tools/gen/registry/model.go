@@ -315,8 +315,14 @@ func (b *builder) kinds(m *model) {
 		if w.outside && k.Class != "config" && k.Class != "secret" && !strings.HasPrefix(k.Writer, "none yet") {
 			b.errorf("%s: writer %s is outside sluis but the kind is %s", k.Name, k.Writer, k.Class)
 		}
+		writes := bit("create") | bit("update") | bit("delete") | bit("apply") | bit("get") | bit("list")
+		if k.CreateOnly {
+			// A kind that only grows (KeyRevocation, ADR 0041): its writer may create and read, and no actor may
+			// update, delete or apply, so the rule table says what store@ enforces.
+			writes = bit("create") | bit("get") | bit("list")
+		}
 		for _, a := range w.actors {
-			add(a, seg, bit("create")|bit("update")|bit("delete")|bit("apply")|bit("get")|bit("list"), w.self)
+			add(a, seg, writes, w.self)
 		}
 		for _, t := range k.Readers {
 			r := b.expand(k.Name, t)

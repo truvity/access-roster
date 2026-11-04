@@ -890,7 +890,7 @@ var storeRules = map[string]map[string]uint16{
 		"data-key-wrap":       0x007f, // get list create update delete apply watch
 		"key-certificate":     0x003f, // get list create update delete apply
 		"key-plan":            0x0043, // get list watch
-		"key-revocation":      0x007f, // get list create update delete apply watch
+		"key-revocation":      0x0047, // get list create watch
 		"lease":               0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"log-level-override":  0x21c3, // get(self) list(self) watch(self)
 		"log-settings":        0x21c3, // get(self) list(self) watch(self)

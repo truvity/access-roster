@@ -266,6 +266,11 @@ type fakeDriver struct {
 	wrongCurve bool
 	// badSignature makes Sign return a signature over the wrong digest.
 	badSignature bool
+	// now stamps the keys it makes; nil is time.Now. noCreatedAt makes Ensure say nothing about the age of a key, as a
+	// store that cannot.
+	now         func() time.Time
+	made        map[string]time.Time
+	noCreatedAt bool
 }
 
 func newFakeDriver(storeName string) *fakeDriver {
@@ -303,12 +308,24 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 			return nil, err
 		}
 		d.keys[req.Msg.GetPurpose()] = k
+		if d.made == nil {
+			d.made = map[string]time.Time{}
+		}
+		at := time.Now()
+		if d.now != nil {
+			at = d.now()
+		}
+		d.made[req.Msg.GetPurpose()] = at
 	}
 	der, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok}), nil
+	res := &keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok}
+	if !d.noCreatedAt {
+		res.CreatedAt = timestamppb.New(d.made[req.Msg.GetPurpose()])
+	}
+	return connect.NewResponse(res), nil
 }
 
 func (d *fakeDriver) PublicKey(_ context.Context, req *connect.Request[keystorev2alpha1.KeyStorePublicKeyRequest]) (*connect.Response[keystorev2alpha1.KeyStorePublicKeyResponse], error) {
@@ -528,6 +545,9 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	}
 	if o.driver == nil {
 		o.driver = newFakeDriver("software")
+	}
+	if o.driver.now == nil {
+		o.driver.now = e.clock.now // the keys are made at the time of the test's clock, which a revocation is compared with
 	}
 	if o.audit == nil {
 		o.audit = &recorder{}

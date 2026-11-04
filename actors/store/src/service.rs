@@ -300,9 +300,10 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             return Err(denied("rule"));
         }
         // A revocation only grows (ADR 0041; REQ-KEYS-091). `Lease`'s rule above allows an update, so it is not the
-        // model: for every caller, key@ included, an update and a delete of a `KeyRevocation` are refused, and an apply is
-        // refused on an item that exists (write_inner turns it into a create that must find the address free).
-        if kind.name == "KeyRevocation" && matches!(verb, "update" | "delete") {
+        // model: for every caller, key@ included, an update, a delete and an apply of a `KeyRevocation` are refused.
+        // The generated rule table says the same (the kind is `create_only` in kinds.yaml), and this check does not
+        // depend on it: it is the control, the table is its description.
+        if kind.name == "KeyRevocation" && matches!(verb, "update" | "delete" | "apply") {
             return Err(denied("rule"));
         }
         let write = matches!(verb, "create" | "update" | "delete" | "apply");
@@ -837,8 +838,6 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             let watched = t.kind.watched || t.kind.exportable;
             let expect = match *verb {
                 "create" => Some(Expect::Absent(true)),
-                // An apply on a revocation must find the address free: it never replaces an item (REQ-KEYS-091).
-                "apply" if t.kind.name == "KeyRevocation" => Some(Expect::Absent(true)),
                 "update" if op.if_version == 0 => {
                     return Err(blame(refuse(
                         ErrorCode::Aborted,
@@ -932,7 +931,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 if !messages::envelope_ok(&op.value) {
                     return Err(schema());
                 }
-            } else if messages::decodes(t.kind.segment, &op.value) == Some(false) {
+            } else if messages::decodes(t.kind.segment, &t.id, &op.value) == Some(false) {
                 return Err(schema());
             }
 
@@ -1047,13 +1046,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 // Without the index, the first condition is the best answer the driver left.
                 let c = idx.unwrap_or(0).min(tx.conditions.len().saturating_sub(1));
                 let op = condition_ops.get(c).copied().unwrap_or(0);
-                let mut r = if verbs.get(op).copied() == Some("apply") {
-                    // Only a revocation's apply has a condition: the item exists, and an apply on it is refused.
-                    let mut r = refuse(ErrorCode::PermissionDenied, "rule", "");
-                    r.kind = Some("KeyRevocation");
-                    r.verb = "apply";
-                    r
-                } else if verbs.get(op).copied() == Some("create") {
+                let mut r = if verbs.get(op).copied() == Some("create") {
                     refuse(
                         ErrorCode::AlreadyExists,
                         "taken",

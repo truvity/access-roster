@@ -1,0 +1,102 @@
+{
+ "description": "The id of a KeyRevocation item for a target (kinds.yaml KeyRevocation; ADR 0041): a kid or a recipient is named by the lower-case base32 of its thumbprint's 32 bytes, without padding, because an address part has no upper case. key@ (Go, actors/key/internal/keyd/revocation_test.go) writes and reads the ids; store@ (Rust, actors/store/src/messages.rs) validates that the id names the target; entry, exporter@ and ca (Rust) that read the kind must derive the same id.",
+ "ids": [
+  {
+   "target_kind": "kid",
+   "target": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "id": "kid/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+   "id": "recipient/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "target_kind": "kid",
+   "target": "__________________________________________8",
+   "id": "kid/777777777777777777777777777777777777777777777777777q"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "__________________________________________8",
+   "id": "recipient/777777777777777777777777777777777777777777777777777q"
+  },
+  {
+   "target_kind": "kid",
+   "target": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+   "id": "kid/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+   "id": "recipient/aaaqeayeaudaocajbifqydiob4ibceqtcqkrmfyydenbwha5dypq"
+  },
+  {
+   "target_kind": "kid",
+   "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
+   "id": "kid/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
+   "id": "recipient/g43mxmlyps4dbhdx52gdobof4fx7xhufs4kzahy6jrm3cemc6v5q"
+  },
+  {
+   "target_kind": "kid",
+   "target": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw",
+   "id": "kid/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw",
+   "id": "recipient/jovsryum54vjuwqrmy2mbkvf4zvry6wks3wsvj6cvep4sd67ng6a"
+  },
+  {
+   "target_kind": "purpose",
+   "target": "token-signing",
+   "id": "purpose/token-signing"
+  },
+  {
+   "target_kind": "generation",
+   "target": "data/3",
+   "id": "generation/data/3"
+  }
+ ],
+ "refused": [
+  {
+   "name": "a thumbprint of 42 characters",
+   "target_kind": "kid",
+   "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9X"
+  },
+  {
+   "name": "a thumbprint with a last character that carries bits",
+   "target_kind": "kid",
+   "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9XB"
+  },
+  {
+   "name": "a padded thumbprint",
+   "target_kind": "kid",
+   "target": "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs="
+  },
+  {
+   "name": "an upper-case purpose",
+   "target_kind": "purpose",
+   "target": "Token"
+  },
+  {
+   "name": "a generation without a number",
+   "target_kind": "generation",
+   "target": "data/"
+  },
+  {
+   "name": "a generation with a leading zero",
+   "target_kind": "generation",
+   "target": "data/03"
+  },
+  {
+   "name": "an unknown target kind",
+   "target_kind": "witness",
+   "target": "x"
+  }
+ ]
+}
