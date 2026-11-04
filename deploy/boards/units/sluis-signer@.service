@@ -9,7 +9,7 @@ Type=simple
 User=sluis-signer-%i
 Group=sluis-signer-%i
 SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-store-%i
-ExecStart=/opt/sluis/bin/actors/signer serve --boundary %i --socket /run/sluis/signer/%i.sock
+ExecStart=/opt/sluis/bin/actors/signer serve --boundary %i --socket /run/sluis/signer/%i.sock --node %H
 Restart=on-failure
 RestartSec=2s
 
