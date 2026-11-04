@@ -433,6 +433,12 @@ local-logs *services:
 local-smoke-tamper:
     deploy/local/local.sh tamper
 
+# The deny matrix (ADR 0002, "Enforcement is tested"): for every caller and every socket of the local installation,
+# a probe as the caller's uid checks that the call graph is enforced at the socket and at the guard. It starts a Compose
+# project of its own, sluis-deny, and removes it; a `local-up` project is left alone. Exit 1 on any violation.
+local-deny:
+    tests/deny/run.sh
+
 # The M1 proof against the running local installation (`just local-up` first): a client under the uid of exchange asks
 # policy for a token.exchange decision and signer for a token; the token is checked against /jwks through the forwarder
 # (trusting only the harness CA), the records of the run are found in the audit log, `sluis audit verify` checks the log,
