@@ -413,7 +413,7 @@ things:
 
 The local installation's boundary `dev` has a `Policy` document, [`policy/local.cedar`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/local.cedar), and the vocabulary above. It also has one client, `example-app` in the boundary `dev`, which requires the grant name `dev:example-app:user`, and the command-line client `sluis-cli`, which requires that or the same role in the scope of the company `acme`, so that its tokens carry the groups of both scopes and a token for `example-app` carries those of `dev` alone. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
 
-The policy has the held-person rule, six bindings, the standard rule, one step-up rule, the signing rule, two templates and two delegation policies.
+The policy has the held-person rule, six bindings, the standard rule, the rule that a confidential client that exchanges a person's token gets a token for itself only, one step-up rule, the signing rule, two templates and two delegation policies.
 
 <!-- example: tests/installations/local/policy/local.cedar -->
 ```text
@@ -486,6 +486,19 @@ permit (
   resource is Client
 )
 when { principal has grants && resource.requires.containsAny(principal.grants) };
+
+// A confidential client that exchanges a person's token gets a token for itself and for no other client. The
+// public client that exchanges its own token (`sluis token`) is not held to this: it is the person's own tool.
+// Without a requester in the context (an exchange asked for by an older caller) the rule does not apply.
+@id("exchange-confidential-for-itself")
+forbid (
+  principal is Person,
+  action == Action::"token.exchange",
+  resource is Client
+)
+when {
+  context has requester && context.requester.kind == "confidential" && context.requester != resource
+};
 
 // ---- Step-up ---------------------------------------------------------------------------
 
