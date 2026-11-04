@@ -20,6 +20,7 @@ import (
 	"connectrpc.com/connect"
 
 	conformancev2alpha1 "github.com/truvity/sluis/v2/kits/conformance/kit/gen/go/sluis/conformance/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/conformance/kit/gen/go/sluis/conformance/v2alpha1/conformancev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
@@ -454,5 +455,43 @@ func TestShutdownRemovesTheSocket(t *testing.T) {
 func TestServeNeedsAnActor(t *testing.T) {
 	if err := rpc.Serve(context.Background(), rpc.ServerConfig{Socket: "/tmp/x.sock"}); err == nil {
 		t.Fatal("Serve accepted a config with no actor")
+	}
+}
+
+// A response over the client's read limit is not a quota: contracts.md reserves resource_exhausted for a quota or a
+// rate limit with Retry-After, and a caller maps it to RATE_LIMITED. The client says internal, with the schema reason
+// and no value; a peer's own resource_exhausted passes unchanged; and the limit can be raised for a caller that
+// knows its bound.
+func TestResponseOverTheReadLimitIsInternalNotResourceExhausted(t *testing.T) {
+	rec := newRecorder()
+	rec.next = func(context.Context) (string, error) { return strings.Repeat("x", 4096), nil }
+	socket, _ := start(t, rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Boundary: "dev"}, asSelf("exchange", 0)), rec)
+	hc, url := rpc.Dial(socket)
+	small := conformancev2alpha1connect.NewEchoServiceClient(hc, url, rpc.ClientOptions(rpc.WithReadMax(1024))...)
+	err := echo(context.Background(), small)
+	if connect.CodeOf(err) != connect.CodeInternal {
+		t.Fatalf("a response over the limit: %v, want internal", err)
+	}
+	if reason, ok := refusal.Reason(err); !ok || reason != "schema" {
+		t.Fatalf("reason = %q, %v; want schema", reason, ok)
+	}
+	// The default limit is far above this message, and a raised limit reads it too.
+	if err := echo(context.Background(), echoClient(socket, true)); err != nil {
+		t.Fatalf("under the default limit: %v", err)
+	}
+	big := conformancev2alpha1connect.NewEchoServiceClient(hc, url, rpc.ClientOptions(rpc.WithReadMax(8192))...)
+	if err := echo(context.Background(), big); err != nil {
+		t.Fatalf("under a raised limit: %v", err)
+	}
+}
+
+func TestPeersOwnResourceExhaustedPassesUnchanged(t *testing.T) {
+	rec := newRecorder()
+	rec.next = func(context.Context) (string, error) {
+		return "", refusal.New(connect.CodeResourceExhausted, "rate", "")
+	}
+	socket, _ := start(t, rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Boundary: "dev"}, asSelf("exchange", 0)), rec)
+	if err := echo(context.Background(), echoClient(socket, true)); connect.CodeOf(err) != connect.CodeResourceExhausted {
+		t.Fatalf("a peer's rate limit: %v, want resource_exhausted", err)
 	}
 }

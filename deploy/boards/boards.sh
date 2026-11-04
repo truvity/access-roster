@@ -66,6 +66,22 @@ board_ssh() { # board command...
 	SSH_AUTH_SOCK=$agent ssh -o BatchMode=yes -o ConnectTimeout=10 "$SLUIS_BOARD_SSH_USER@$b" "$@"
 }
 
+# seed_has_kind refuses a seed whose documents were signed before the protected header named the kind (signed-config.md,
+# "The document"): store@ refuses such a document, so a deploy of these binaries with that seed would leave every board
+# without config. It only reads the files of the seed on this machine; nothing runs on a board.
+seed_has_kind() {
+	command -v jq >/dev/null || { echo "boards: jq is needed to check the seed (it is in devbox)" >&2; return 1; }
+	local f n=0
+	for f in "$seed"/config/*.jws; do
+		[ -e "$f" ] || continue
+		n=$((n + 1))
+		# The protected header of every signature: base64url of a JSON object that has a "kind" member.
+		jq -e '[.signatures[].protected | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson | has("kind")] | length > 0 and all' "$f" >/dev/null 2>&1 \
+			|| { echo "boards: $(basename "$f") in $seed was signed before the header named its kind: re-sign: just boards-prepare" >&2; return 1; }
+	done
+	[ "$n" -gt 0 ] || { echo "boards: $seed/config holds no signed document: re-sign: just boards-prepare" >&2; return 1; }
+}
+
 # stage builds the tree the board receives, from dist/arm64 and deploy/boards/units. Only executables that exist
 # are staged, and so only their units; the users of the groups a unit joins come along without their units.
 stage() { # dir
@@ -100,6 +116,7 @@ stage() { # dir
 	# The seed: public documents and the credentials, every board alike. The rqlite address is per board and is
 	# written by run_on.
 	if [ -d "$seed/config" ]; then
+		seed_has_kind || return 1
 		mkdir -p "$s/files/etc"
 		cp -r "$seed/config" "$s/files/etc/config"
 		cp "$seed/bootstrap.yaml" "$s/files/etc/bootstrap.yaml"
