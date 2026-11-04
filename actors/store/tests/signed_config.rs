@@ -104,6 +104,7 @@ fn vector_1_needs_the_party_only_when_the_party_co_signs_its_kind() {
     assert_eq!((v.seq, hex(&v.digest)), (1, DIGEST_1.to_owned()));
 }
 
+/// verifies: REQ-DATA-077, REQ-DATA-079
 #[test]
 fn a_missing_co_signature_a_foreign_kid_and_a_repeated_kid_are_refused() {
     // Vector 2 with the party's signature removed.
@@ -120,6 +121,7 @@ fn a_missing_co_signature_a_foreign_kid_and_a_repeated_kid_are_refused() {
     assert_eq!(step(&d.to_string(), &both()), 3);
 }
 
+/// verifies: REQ-DATA-076
 #[test]
 fn a_changed_payload_or_header_does_not_verify() {
     // One character of the payload: refused at step 4, before it is parsed.
@@ -149,6 +151,7 @@ fn a_changed_payload_or_header_does_not_verify() {
     assert_eq!(step(&d.to_string(), &plain()), 4);
 }
 
+/// verifies: REQ-DATA-078
 #[test]
 fn only_es384_and_only_the_four_members_of_the_header() {
     let signed = |h: Value| {
@@ -258,6 +261,7 @@ fn a_signature_is_r_then_s_not_der() {
     assert_eq!(step(&d.to_string(), &plain()), 4);
 }
 
+/// verifies: REQ-DATA-079
 #[test]
 fn a_key_that_co_signs_cannot_stand_alone() {
     // Only the party signed, and the party's key has a co_signs list: no publisher key signed it.

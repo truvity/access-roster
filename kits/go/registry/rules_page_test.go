@@ -20,6 +20,7 @@ import (
 //
 // The tables add two things the page does not list, both from the brief of the registry codegen: the writer of
 // a kind also has get, list and apply, and the self-scoped marks.
+// verifies: REQ-DATA-047
 func TestMatchesRulesPage(t *testing.T) {
 	page, err := os.ReadFile("../../../docs/reference/rules.md")
 	if err != nil {

@@ -61,6 +61,7 @@ func validate(addr string) error {
 	return store.ValidateAddress(parts[0], parts[1], parts[2], parts[3])
 }
 
+// verifies: REQ-DATA-011
 func TestAddressVectors(t *testing.T) {
 	v := loadVectors(t)
 	for _, a := range v.Valid {

@@ -191,6 +191,7 @@ func contains(s []string, v string) bool {
 	return false
 }
 
+// verifies: REQ-DATA-006
 func TestBuildRefuses(t *testing.T) {
 	cases := map[string]struct {
 		change func(*inputs)

@@ -62,3 +62,4 @@ catalogue:
     proposed-design: "The design is proposed in research and not yet decided."
     partly-built: "The decision is made; the part the record names is not built yet."
     smoke-not-in-ci: "Covered only by a smoke program that does not run in CI; the record is done once a test that CI runs proves it."
+    no-proving-test: "Built, but no test that CI runs (or recorded manual check) proves the whole statement yet."

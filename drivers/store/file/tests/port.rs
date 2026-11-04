@@ -57,6 +57,7 @@ fn the_source_suite_passes() {
     suite::run_temp().unwrap();
 }
 
+/// verifies: REQ-DATA-070
 #[tokio::test]
 async fn store_reads_a_document_and_every_refusal_names_a_reason() {
     let (docs, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
