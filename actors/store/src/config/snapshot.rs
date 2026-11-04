@@ -504,6 +504,28 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     if let Some((k, why)) = at {
         return Err(failed(Some(k), why));
     }
+    // One credential namespace for the secret kinds (REQ-ISO-106): a credential that an Upstream names is
+    // UpstreamSecret's, served to adapter-upstream-oidc alone, and one that an InstallationClient names is
+    // InstallationClientSecret's, served to session and exchange. A name declared by both would let one kind's reader
+    // be served the other's secret, so the set is refused.
+    let mut client_credentials = std::collections::BTreeSet::new();
+    for (_, bytes) in s.list(kind("InstallationClient").segment) {
+        if let Ok(c) = pb::InstallationClient::decode_from_slice(&bytes)
+            && !c.secret.is_empty()
+        {
+            client_credentials.insert(c.secret);
+        }
+    }
+    for (_, bytes) in s.list(kind("Upstream").segment) {
+        if let Ok(u) = pb::Upstream::decode_from_slice(&bytes)
+            && client_credentials.contains(&u.secret)
+        {
+            return Err(failed(
+                Some("Upstream"),
+                "secret: names a credential an InstallationClient names",
+            ));
+        }
+    }
     debug_assert!(s.docs.values().all(|d| d.kind.class == Class::Config));
     Ok(())
 }

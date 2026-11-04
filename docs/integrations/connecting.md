@@ -211,7 +211,7 @@ For sluis's own actors the provider is the boundary's workload issuer ([Identity
 For any provider that publishes OpenID Connect discovery:
 
 1. Register sluis as a client at the provider, with the callback sluis prints.
-2. **For the operator's own upstream,** commit an `Upstream` (issuer, client id, subject claim) and put the client secret in the secret source as `UpstreamSecret`.
+2. **For the operator's own upstream,** commit an `Upstream` (issuer, client id, subject claim, and the name of its client secret in `secret`) and put the client secret in the secret source under that name; store@ serves it as `UpstreamSecret` to `adapter-upstream-oidc` alone.
 3. **Declare the e-mail domains** the upstream serves in the `Upstream`, then run `sluis integrations check oidc partner`.
 4. Choose what the connection's claims are worth: map the allow-listed claims to facts; asserted groups and roles are never read ([0033](/decisions/0033-customer-connections/#claims-and-groups)).
 
