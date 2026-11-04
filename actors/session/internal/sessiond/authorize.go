@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
@@ -74,7 +75,8 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	if tenant, err = tenantOf(b, cl); err != nil {
 		return nil, internal("tenant", err)
 	}
-	if len(r.GetRedirectUri()) > maxRedirectURI || !redirectRegistered(cl.GetRedirects(), r.GetRedirectUri()) {
+	if len(r.GetRedirectUri()) > maxRedirectURI || !redirectRegistered(cl.GetRedirects(), r.GetRedirectUri()) ||
+		!plainRedirectAllowed(b.GetEnvironment(), cl, r.GetRedirectUri()) {
 		return page(reasonRedirectURI, cl.GetId())
 	}
 
@@ -293,6 +295,21 @@ func redirectRegistered(registered []string, got string) bool {
 		}
 	}
 	return false
+}
+
+// plainRedirectAllowed is store@'s https floor where the redirect is used: outside a development boundary, a
+// plain-http redirect (which redirectRegistered has already held to a loopback IP literal) is only a public client's
+// with the native profile, an app on the person's own host (ADR 0011, "The local installation"; ADR 0021; RFC 8252
+// section 7.3).
+func plainRedirectAllowed(environment string, cl *configv2alpha1.InstallationClient, uri string) bool {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" || environment == "development" {
+		return true
+	}
+	return cl.GetKind() == "public" && cl.GetProfile() == "native"
 }
 
 func loopbackMatch(reg string, got *url.URL) bool {

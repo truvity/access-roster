@@ -217,11 +217,13 @@ fn a_plain_http_redirect_off_loopback_is_refused_for_every_client_kind() {
     }
 }
 
+/// verifies: REQ-AUTHN-004
 #[tokio::test]
-async fn a_loopback_redirect_passes_the_https_floor_and_no_other_http_redirect_does() {
-    // ADR 0011: the loopback redirects of a native client stay allowed everywhere. Every other
-    // URL of the set is https, so only the redirects are at stake.
-    let set = |e: &Env, environment: &str, redirect: &str| {
+async fn only_a_public_native_clients_loopback_redirect_passes_the_https_floor() {
+    // ADR 0011 and ADR 0021: outside development, the one plain-http URL is the loopback redirect
+    // of a public client with the native profile (RFC 8252 section 7.3). Every other URL of the
+    // set is https, and the local clients stay as they are, so only the added client is at stake.
+    let set = |e: &Env, environment: &str, client: &str, redirect: &str| {
         e.sign(
             "boundary",
             &source("boundary")
@@ -239,24 +241,63 @@ async fn a_loopback_redirect_passes_the_https_floor_and_no_other_http_redirect_d
         );
         e.sign(
             "installation-client",
-            &source("installation-client").replace("http://127.0.0.1/callback", redirect),
+            &format!(
+                "{}probe:\n{client}  redirects: [\"{redirect}\"]\n  requires: [\"dev:example-app:user\"]\n",
+                source("installation-client")
+            ),
             1,
         );
     };
+    let native = "  kind: public\n  profile: native\n";
+    let not_native = [
+        ("a browser client", "  kind: public\n  profile: browser\n"),
+        ("a public client with no profile", "  kind: public\n"),
+        (
+            "a confidential client",
+            "  kind: confidential\n  profile: web\n",
+        ),
+        (
+            "a confidential client that says native",
+            "  kind: confidential\n  profile: native\n",
+        ),
+        ("an exchange client", "  kind: exchange\n"),
+    ];
     for environment in ["production", "staging", "development"] {
-        for ok in ["http://127.0.0.1/callback", "http://[::1]:8080/callback"] {
+        for loopback in ["http://127.0.0.1/callback", "http://[::1]:8080/callback"] {
             let e = env().await;
             write_local(e.docs.path(), &e.pipeline, 1);
-            set(&e, environment, ok);
+            set(&e, environment, native, loopback);
             assert!(
                 e.start().await.is_ok(),
-                "{environment}: a loopback redirect did not start: {ok}"
+                "{environment}: a public native client's loopback redirect did not start: {loopback}"
             );
+            for (who, client) in not_native {
+                let e = env().await;
+                write_local(e.docs.path(), &e.pipeline, 1);
+                set(&e, environment, client, loopback);
+                let started = e.start().await;
+                if environment == "development" {
+                    assert!(
+                        started.is_ok(),
+                        "development: {who} with {loopback} did not start"
+                    );
+                } else {
+                    let err = started
+                        .err()
+                        .unwrap_or_else(|| panic!("{environment}: {who} with {loopback} started"));
+                    assert!(
+                        err.to_string().contains(
+                            "InstallationClient: redirects: must be https outside development"
+                        ),
+                        "{environment}: {who}: {err}"
+                    );
+                }
+            }
         }
-        // Refused at step 6, the payload, whatever the environment.
+        // Off loopback, refused at step 6, the payload, whatever the client and the environment.
         let e = env().await;
         write_local(e.docs.path(), &e.pipeline, 1);
-        set(&e, environment, "http://app.example.com/callback");
+        set(&e, environment, native, "http://app.example.com/callback");
         let err = e
             .start()
             .await

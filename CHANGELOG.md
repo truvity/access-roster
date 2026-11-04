@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Breaking:** an `InstallationClient` redirect must be `https`, or `http` on the loopback IP literal `127.0.0.1` or `[::1]` with any port (RFC 8252 section 7.3). store@ refuses any other plain-http redirect at load, `http://localhost` included, in every environment, and `/authorize` never redirects to one; a staging or production boundary now accepts a native client's loopback redirect, as ADR 0011 says.
+- **Breaking:** an `InstallationClient` redirect must be `https`, or `http` on the loopback IP literal `127.0.0.1` or `[::1]` with any port (RFC 8252 section 7.3). store@ refuses any other plain-http redirect at load, `http://localhost` included, in every environment, and `/authorize` never redirects to one; a staging or production boundary now accepts a public native client's loopback redirect, and only that one, as ADR 0011 says.
 - **Breaking:** `/authorize` answers a request with a scope it does not serve with `error=invalid_scope` on the client's redirect URI, where it dropped the scope and signed the person in. Only `openid`, `profile` and `email` are served.
 - The subject claim of an upstream ID token is at most 255 characters, the bound of OpenID Connect Core section 2; the adapter took 256.
 - `key@` verifies the signed `Boundary` document itself, as it does the `KeyPlan`, before it applies the floor of the software key driver, and keeps its highest `seq` in `<state-dir>/boundary.mark`. A compromised store@ can no longer serve `environment: development` to relax the floor in production.
