@@ -79,10 +79,13 @@ async fn authorize_refuses_plain_challenges() { /* ... */ }
 ```
 
 - Several ids go in one tag, separated by commas. The tag is for the test that fails when the behaviour breaks; a test that only touches the behaviour does not carry it.
-- A table-driven Go test whose cases prove different records names the id at the start of the case, in a string literal that begins `REQ-...-nnn/`: the name given to `t.Run` (`t.Run("REQ-AUTHN-002/plain_method", ...)`) or the key of the table of cases. That is the same tag, on that line.
+- A table-driven Go test whose cases prove different records names the id at the start of the case, in a string literal that begins `REQ-...-nnn/`. That is the same tag, on that line, in exactly three places inside the test function: the first argument of `t.Run` (`t.Run("REQ-AUTHN-002/plain_method", ...)`), the key of a map of cases, or the `name:` field of a struct of cases. The same string in a `t.Fatalf`, `t.Log` or any other string, or outside the test function, is not a tag.
 - A Go test function named `TestREQ_AUTHN_002_...` is read as a tag too. This and the case name are the spellings that tests used before the comment tag; write new tests with the comment.
 - Rust: `#[test]`, `#[tokio::test]`, `#[rstest]` and `#[test_case]` count. The doc comment (`///`) goes above or between the attributes.
+- The comment line must start with `verifies:` (after `//` or `///`); "no longer verifies:" in a sentence is not a tag. A Go test is `func TestXxx(t *testing.T)`.
 - An id that is only mentioned (in a comment inside a body, in an assertion message, in the doc of a function that is not a test) is not a tag, and a test with no tag is ignored.
+- **A test that CI does not run is no evidence.** The collector leaves out Rust tests with `#[ignore]` (on either side of `#[test]`) and Rust tests behind a `#[cfg(...)]` other than `cfg(test)`, on the test or on its module (or `#![cfg(...)]` on the file); Go files whose `//go:build` line is not satisfied by the tags CI runs with (`sluis_test`, on Linux; `sluis_card` is not one of them); and Go tests whose first statement is an unconditional `t.Skip`.
+- **Smoke programs have no tag form.** A program under `tests/e2e/` or a `main` with `harness = false` is not a `#[test]` or a `func TestXxx(t *testing.T)`, and it does not run in CI. A requirement that only such a smoke proves stays `partial` with `gap: smoke-not-in-ci` ("covered only by a smoke that does not run in CI", declared in `index.yaml`), and becomes `done` in the pull request that adds a test CI runs.
 
 `site/scripts/collect-evidence.mjs` scans `actors/`, `cli/`, `drivers/`, `kits/`, `tests/` and `tools/` (Go `*_test.go` files and Rust files; `testdata/`, `target/` and `node_modules/` are skipped) and writes the evidence map `REQ id -> [file:line test]`. `site/scripts/collect-evidence.mjs --out evidence.json` prints it. The status page and `/requirements.json` use the same map.
 
@@ -92,7 +95,7 @@ async fn authorize_refuses_plain_challenges() { /* ... */ }
 
 | Rule | Result |
 |---|---|
-| A `done` record has no evidence | error (L21) |
+| A `done` record lacks evidence for any one of its verification kinds | error (L21). A test kind (`conformance-suite`, `test-vectors`, `integration-test`) needs a tagged test; `manual` needs an attestation. A record verified by `[integration-test, manual]` needs both. |
 | A planned, open or withdrawn record has evidence | warning that names it: the status is behind the tests (L21). A `partial` record, and an `out-of-scope` one whose refusal is tested, may have evidence. |
 | A tag names an id the catalogue lacks | error (L21) |
 | A `partial` or `open` record has no `gap:` | error, as before (L15) |
