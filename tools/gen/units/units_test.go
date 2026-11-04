@@ -644,7 +644,7 @@ func TestPolicyUnit(t *testing.T) {
 }
 
 // The card driver is an alternative to the software driver of key@: the same socket, one of the two on a board. The
-// default key@ unit stays on the software driver, and a drop-in switches it (boards.sh, SLUIS_BOARDS_KEY_DRIVER).
+// default key@ unit stays on the software driver, and a whole key@ unit switches it (boards.sh, SLUIS_BOARDS_KEY_DRIVER).
 func TestCardDriver(t *testing.T) {
 	files := generate(t)
 	card := files["sluis-drv-key-yubikey-piv@.service"]
@@ -712,7 +712,7 @@ func TestCardDriver(t *testing.T) {
 		t.Errorf("the pcscd socket drop-in:\n%s", sock)
 	}
 	rules := files[PolkitRulesFile]
-	if !strings.Contains(rules, `subject.user == "sluis-drv-key-yubikey-piv-dev" ? polkit.Result.YES : polkit.Result.NO`) ||
+	if !strings.Contains(rules, `(subject.user == "root" || subject.user == "sluis-drv-key-yubikey-piv-dev") ? polkit.Result.YES : polkit.Result.NO`) ||
 		!strings.Contains(rules, "org.debian.pcsc-lite.access_pcsc") || !strings.Contains(rules, "org.debian.pcsc-lite.access_card") {
 		t.Errorf("the polkit rules:\n%s", rules)
 	}

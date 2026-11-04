@@ -212,7 +212,9 @@ func storeRead(ctx context.Context, socket, kind, tenant string) (*readOut, erro
 		}
 		o := itemOut{ID: it.GetAddress().GetId(), Version: it.GetVersion()}
 		for _, k := range ring.GetKeys() {
-			o.Detail = append(o.Detail, k.GetKeyId()+" "+k.GetAlgorithm()+" "+k.GetState())
+			// "<kid> <alg> <state>" first, which the smoke matches on; then the node that owns the key and when it entered the state.
+			o.Detail = append(o.Detail, k.GetKeyId()+" "+k.GetAlgorithm()+" "+k.GetState()+
+				" node="+k.GetNode()+" since="+k.GetStateSince().AsTime().UTC().Format(time.RFC3339))
 		}
 		out.Items = append(out.Items, o)
 	case "data-key-wrap":

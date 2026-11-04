@@ -431,6 +431,11 @@ boards-status:
 boards-recipients:
     deploy/boards/boards.sh recipients
 
+# Read only: key@'s own check on every board, printed as it is. It fails while a board's wrapping key is not in the KeyPlan or the
+# wrap set is incomplete: the check after a switch of the key driver, before the next board; see boards.sh.
+boards-key-check:
+    deploy/boards/boards.sh check
+
 # The local installation (docs/runtimes/local.md): Docker Compose on this workstation, every actor and driver as its
 # pinned uid, config signed by the harness. Needs Docker, and SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS in the
 # environment (the run.env of the build); the repository names neither. Run them as `devbox run -- just local-up`.
