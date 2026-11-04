@@ -1519,16 +1519,78 @@ async fn a_self_scoped_config_kind_is_read_under_the_callers_name_only() {
 #[tokio::test]
 async fn a_secret_kind_is_not_served_tonight() {
     let f = F::new().await;
-    f.as_("adapter-upstream-oidc");
-    let e = f.get("upstream-secret", "", "workforce").await.unwrap_err();
+    f.as_("adapter-slack");
+    let e = f
+        .get("slack-app-secret", "", "workforce")
+        .await
+        .unwrap_err();
     assert_eq!(e.code, ErrorCode::Unimplemented);
     // The rule still comes first.
     f.as_("session");
     refused(
-        f.get("upstream-secret", "", "workforce").await,
+        f.get("slack-app-secret", "", "workforce").await,
         ErrorCode::PermissionDenied,
         "rule",
     );
+}
+
+// ---- the secret kind UpstreamSecret (REQ-ISO-106) ----
+
+/// verifies: REQ-ISO-106
+/// adapter-upstream-oidc holds no credential of its own: store@ serves the client secret of an Upstream from the
+/// secret source, to that adapter alone, under the credential name the Upstream declares.
+#[tokio::test]
+async fn the_upstream_secret_is_served_to_its_one_reader_from_the_secret_source() {
+    use buffa::Message as _;
+    let f = F::new().await;
+    f.docs.versions.lock().unwrap().insert("upstream".into(), 2);
+    for (name, secret) in [("workforce", "upstream-workforce"), ("bare", "")] {
+        let u = sluis_proto::sluis::config::v2alpha1::Upstream {
+            name: name.into(),
+            kind: "oidc".into(),
+            secret: secret.into(),
+            ..Default::default()
+        };
+        f.docs
+            .items
+            .lock()
+            .unwrap()
+            .insert(("upstream".into(), name.into()), u.encode_to_vec());
+    }
+    f.secrets
+        .items
+        .lock()
+        .unwrap()
+        .insert("upstream-workforce".into(), CLIENT_SECRET.to_vec());
+
+    f.as_("adapter-upstream-oidc");
+    let r = f.get("upstream-secret", "", "workforce").await.unwrap();
+    let item = r.item.as_option().expect("an item");
+    let s = sluis_proto::sluis::config::v2alpha1::UpstreamSecret::decode_from_slice(&item.value)
+        .unwrap();
+    assert_eq!(
+        (s.upstream.as_str(), s.secret.as_slice()),
+        ("workforce", CLIENT_SECRET)
+    );
+    // No such upstream, and an upstream that names no secret: one answer.
+    for name in ["nobody", "bare"] {
+        refused(
+            f.get("upstream-secret", "", name).await,
+            ErrorCode::NotFound,
+            "absent",
+        );
+    }
+    // Nobody else reads it, session included (ADR 0025: the client credential never leaves the adapter).
+    let reads = f.secrets.reads.load(Ordering::SeqCst);
+    for caller in ["session", "exchange", "policy", "signer"] {
+        f.as_(caller);
+        refused(
+            f.get("upstream-secret", "", "workforce").await,
+            ErrorCode::PermissionDenied,
+            "rule",
+        );
+    }
+    assert_eq!(f.secrets.reads.load(Ordering::SeqCst), reads);
 }
 
 // ---- the secret kind InstallationClientSecret (REQ-DATA-016, REQ-DATA-017) ----
@@ -1815,9 +1877,9 @@ async fn every_refusal_is_an_audit_fact_whatever_its_code() {
     );
     f.durable.set_down(false);
     // Not served yet is a refusal too.
-    f.as_("adapter-upstream-oidc");
+    f.as_("adapter-slack");
     assert_eq!(
-        f.get("upstream-secret", "", "w").await.unwrap_err().code,
+        f.get("slack-app-secret", "", "w").await.unwrap_err().code,
         ErrorCode::Unimplemented
     );
     f.as_("key");

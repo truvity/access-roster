@@ -111,7 +111,7 @@ sign_config() {
 # that pins its publisher, and the credentials. It prints no secret.
 prepare() {
 	need_env
-	mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store" "$seed/credentials/adapter"
+	mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store"
 	go run ./tools/harness/ca -dir "$state/ca" -host "$host,$audit_host"
 	cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
 	sign_config
@@ -126,7 +126,6 @@ prepare() {
 		set +a
 		[ -n "${SLUIS_LOCAL_CLIENT_SECRET:-}" ] || { echo "local: the secrets file has no SLUIS_LOCAL_CLIENT_SECRET" >&2; exit 1; }
 		printf '%s' "$SLUIS_LOCAL_CLIENT_SECRET" >"$seed/credentials/store/upstream-workforce"
-		printf '%s' "$SLUIS_LOCAL_CLIENT_SECRET" >"$seed/credentials/adapter/upstream.workforce.client-secret"
 		for c in client-dev client-example-app; do
 			[ -s "$state/$c" ] || head -c 32 /dev/urandom | base64 -w0 | tr '+/' '-_' | tr -d '=' >"$state/$c"
 			cp "$state/$c" "$seed/credentials/store/$c"
