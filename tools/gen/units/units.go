@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -42,6 +43,8 @@ type Unit struct {
 	// Needs are the registry names whose user and directory must exist before this unit can start: the
 	// groups it joins. The deploy installs them even when their own binary is not built yet.
 	Needs []string
+	// Joins are the registry names whose groups the unit joins (SupplementaryGroups=); a subset of Needs.
+	Joins []string
 }
 
 // A driver the generator knows how to run. A driver of the registry that has no row here is "pending" until
@@ -59,7 +62,7 @@ type driverSpec struct {
 var drivers = map[string]driverSpec{
 	// drivers/key/software: serve --socket --state-dir --environment. The floor of the environment is in the driver.
 	"driver-key-software": {
-		Language: "Go", Socket: "key-store.sock", State: true,
+		Language: "Go", Socket: keyDriverSocket, State: true,
 		Args: []string{"--state-dir", "%STATE%", "--environment", "development"},
 	},
 	// drivers/writer/fs: serve --socket --root.
@@ -75,6 +78,30 @@ var pendingDrivers = []string{
 	"driver-store-rqlite", "driver-store-file", "driver-store-credential",
 	"driver-writer-spool", "driver-indexer-sqlite",
 }
+
+// actorSpec is what an actor's command line has beyond `serve --boundary B --socket S`. An actor that is not here
+// takes only those; the package that builds an actor adds its row when it needs more.
+type actorSpec struct {
+	NoSocket bool     // the actor has no --socket (key@ serves one socket per caller below --run-dir)
+	Args     []string // the actor's own flags; %i is the boundary, %H the host's name
+}
+
+var actorSpecs = map[string]actorSpec{
+	// actors/key: the flags of actors/key/main.go. The run directory and the per-caller directories below it are made by
+	// the platform (tmpfiles); the driver's socket is <run-dir>/driver/key-store.sock; --node is the board's short name.
+	"key": {NoSocket: true, Args: []string{
+		"--run-dir", "/run/sluis/key/%i",
+		"--store-socket", "/run/sluis/store/%i.sock",
+		"--driver-socket", "/run/sluis/key/%i/" + keyDriverSocket,
+		"--transport-socket", "/run/sluis/audit/%i/emit.sock",
+		"--node", "%H",
+	}},
+	// actors/store: the bootstrap file is required; the sockets of key@ and the audit transport have the defaults.
+	"store": {Args: []string{"--bootstrap", "/etc/sluis/bootstrap.d/%i.yaml"}},
+}
+
+// keyDriverSocket is the key-store driver's socket below key@'s run directory (actors/key/main.go).
+const keyDriverSocket = "driver/key-store.sock"
 
 // A file of the output, by name below the output directory.
 type File struct {
@@ -107,6 +134,15 @@ func Generate(o Options) ([]File, error) {
 		if tmp != "" {
 			files = append(files, File{stem + ".tmpfiles", tmp})
 		}
+	}
+	// The node agent has no unit yet, but key@ has a directory for it as one of its callers: its user must exist.
+	if a, ok := registry.ActorByName("sluis-node"); ok && a.Family == "platform" {
+		uid, ok := registry.UID(a.Name, o.UIDBlock)
+		if !ok {
+			return nil, fmt.Errorf("%s has no uid in block %d", a.Name, o.UIDBlock)
+		}
+		node := Unit{Registry: a.Name, User: userOf(a.Name, o.Boundary), UID: uid}
+		files = append(files, File{"sluis-node.sysusers", sysusersFor(o, node)})
 	}
 	files = append(files, File{"base.tmpfiles", baseTmpfiles(o)}, File{"index.tsv", index(units)})
 	return files, nil
@@ -188,7 +224,10 @@ func unit(o Options, regName, kind, binary string, order int) (Unit, error) {
 		Name: stem + "@.service", Instance: stem + "@" + o.Boundary + ".service", Kind: kind, Binary: binary,
 		Registry: regName, User: userOf(regName, o.Boundary), UID: uid, Order: order,
 	}
-	u.Needs = groupsOf(regName, kind)
+	u.Joins = groupsOf(regName, kind)
+	u.Needs = append(slices.Clone(u.Joins), extraNeeds(regName, kind)...)
+	slices.Sort(u.Needs)
+	u.Needs = slices.Compact(u.Needs)
 	if len(u.User) > maxName {
 		return Unit{}, fmt.Errorf("the user %s has %d characters, systemd-sysusers takes at most %d", u.User, len(u.User), maxName)
 	}
@@ -198,6 +237,9 @@ func unit(o Options, regName, kind, binary string, order int) (Unit, error) {
 // unitStem: actor "session" is sluis-session; driver "driver-key-software" is sluis-drv-key-software. The driver
 // users carry "drv", not "driver", so that the longest name still fits the 31 characters of a user name.
 func unitStem(regName string) string {
+	if strings.HasPrefix(regName, "sluis-") {
+		return regName // the platform piece sluis-node is already named for sluis
+	}
 	if d, ok := strings.CutPrefix(regName, "driver-"); ok {
 		return "sluis-drv-" + d
 	}
@@ -258,6 +300,15 @@ func groupsOf(regName, kind string) []string {
 	return slices.Compact(out)
 }
 
+// extraNeeds are the registry names whose users must exist for the unit's directories, without the unit joining their
+// groups: key@'s per-caller directories belong to the callers' groups.
+func extraNeeds(regName, kind string) []string {
+	if kind == "actor" && regName == "key" {
+		return registry.CallersOf("key")
+	}
+	return nil
+}
+
 // callees are the actors an actor may call: one for every actor it may call (the call graph of the registry).
 func callees(caller string) []string {
 	var out []string
@@ -304,13 +355,21 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("User=sluis-%s-%%i", a.Name)
 	b.line("Group=sluis-%s-%%i", a.Name)
 	var groups []string
-	for _, n := range u.Needs {
+	for _, n := range u.Joins {
 		groups = append(groups, unitStem(n)+"-%i")
 	}
 	if len(groups) > 0 {
 		b.line("SupplementaryGroups=%s", strings.Join(groups, " "))
 	}
-	b.line("ExecStart=%s/%s serve --boundary %%i --socket /run/sluis/%s/%%i.sock", BinDir, u.Binary, a.Name)
+	spec := actorSpecs[a.Name]
+	exec := fmt.Sprintf("%s/%s serve --boundary %%i", BinDir, u.Binary)
+	if !spec.NoSocket {
+		exec += fmt.Sprintf(" --socket /run/sluis/%s/%%i.sock", a.Name)
+	}
+	if len(spec.Args) > 0 {
+		exec += " " + strings.Join(spec.Args, " ")
+	}
+	b.line("ExecStart=%s", exec)
 	b.line("Restart=on-failure")
 	b.line("RestartSec=2s")
 	if a.Language == "Go" {
@@ -329,13 +388,25 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	// removing another's socket).
 	sysusers = sysusersFor(o, u)
 	tmp := header + fmt.Sprintf("d /run/sluis/%s 0751 %s %s -\n", a.Name, u.User, u.User)
-	if hasDriver(a.Name) {
+	if dd := driverDir(a.Name, o.Boundary); dd != "" {
 		g := driversGroup(a.Name, o.Boundary)
 		if len(g) > maxName {
 			return "", "", "", fmt.Errorf("the group %s has %d characters, at most %d", g, len(g), maxName)
 		}
 		sysusers += fmt.Sprintf("g %s -\n", g) // a system group with a number of the host's choosing
-		tmp += fmt.Sprintf("d /run/sluis/%s/%s 1770 %s %s -\n", a.Name, o.Boundary, u.User, g)
+		if bd := fmt.Sprintf("/run/sluis/%s/%s", a.Name, o.Boundary); dd != bd {
+			// key@: the run directory holds the driver's directory and one directory per caller (below), and key@
+			// refuses a run directory that group or world can write to.
+			tmp += fmt.Sprintf("d %s 0751 %s %s -\n", bd, u.User, u.User)
+		}
+		tmp += fmt.Sprintf("d %s 1770 %s %s -\n", dd, u.User, g)
+	}
+	if a.Name == "key" {
+		// One directory per caller of key@ (ADR 0006, "Exclusive card access"): the caller's group, not writable by
+		// group or world, setgid so that the caller's socket gets the caller's group and only the caller connects.
+		for _, c := range registry.CallersOf("key") {
+			tmp += fmt.Sprintf("d /run/sluis/key/%s/%s 2750 %s %s -\n", o.Boundary, c, u.User, userOf(c, o.Boundary))
+		}
 	}
 	return header + b.String(), sysusers, tmp, nil
 }
@@ -343,15 +414,17 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 // driversGroup is the group that holds the drivers of an owner: the group of its directory of the boundary.
 func driversGroup(owner, boundary string) string { return "sluis-" + owner + "-drv-" + boundary }
 
-func hasDriver(owner string) bool {
+// driverDir is the directory of the boundary in which the drivers of an owner create their sockets, or "" when the
+// owner has no driver with a row. It is the directory of the sockets' path.
+func driverDir(owner, boundary string) string {
 	for _, d := range knownDriverNames() {
 		if ow, _ := registry.DriverOwner(d); ow == owner {
-			if _, ok := drivers[d]; ok {
-				return true
+			if spec, ok := drivers[d]; ok {
+				return path.Dir(fmt.Sprintf("/run/sluis/%s/%s/%s", owner, boundary, spec.Socket))
 			}
 		}
 	}
-	return false
+	return ""
 }
 
 func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
@@ -402,7 +475,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	}
 	b.blank()
 	b.harden(!spec.Network)
-	b.line("ReadWritePaths=/run/sluis/%s/%%i", owner)
+	b.line("ReadWritePaths=%s", path.Dir(socket))
 	b.blank()
 	b.line("[Install]")
 	b.line("WantedBy=multi-user.target")
