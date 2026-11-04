@@ -46,3 +46,5 @@ names:
   - harness-forwarder
   # a driver added after the harness (WP-26): the read-only blob driver of the indexer and the reader
   - driver-indexer-fs
+  # the card key driver (YubiKey PIV): the key driver of a board, owned by key
+  - driver-key-yubikey-piv

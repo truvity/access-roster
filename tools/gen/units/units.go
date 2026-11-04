@@ -177,7 +177,10 @@ func rqliteUnit(port string) driverProc {
 
 // pendingDrivers are the drivers of the registry that no package has built yet. A driver that is in neither
 // this list nor `drivers` fails the generator, so a new driver cannot be forgotten.
-var pendingDrivers = []string{}
+//
+// driver-key-yubikey-piv is built (drivers/key/yubikey-piv) and waits for its unit: the boards wiring (pcscd, the polkit
+// rule, the admin socket) is the next change.
+var pendingDrivers = []string{"driver-key-yubikey-piv"}
 
 // actorSpec is what an actor's command line has beyond `serve --boundary B --socket S`. An actor that is not here
 // takes only those; the package that builds an actor adds its row when it needs more.
