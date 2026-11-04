@@ -2,16 +2,14 @@
 // Begin makes the authorization URL; Complete does the code exchange and returns the verified assertion. It decides
 // nothing: whether the assertion entitles the person to anything is the business of session and policy.
 //
-// The adapter keeps nothing at rest. It reads the Upstream through store@ for each call, reads the client secret from
-// the platform's credential directory, and holds only caches in memory.
+// The adapter keeps nothing at rest (REQ-ISO-106). It reads the Upstream and its client secret (the secret kind
+// UpstreamSecret) through store@ for each call, keeps the secret for that call only, and holds only caches of public
+// metadata in memory.
 package upstreamd
 
 import (
 	"context"
 	"errors"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
@@ -27,14 +25,15 @@ const (
 	// boundaryID is the id of the one Boundary item (decision D-17).
 	boundaryID = "default"
 
-	// maxSecret bounds a client secret file.
+	// maxSecret bounds a client secret.
 	maxSecret = 4096
 )
 
-// Config reads the configuration of the adapter from store@: the Boundary, and the Upstream items.
+// Config reads the configuration of the adapter from store@: the Boundary, the Upstream items and their secrets.
 type Config struct {
 	upstreams *store.Client[*configv2alpha1.Upstream]
 	boundary  *store.Client[*configv2alpha1.Boundary]
+	secrets   *store.Client[*configv2alpha1.UpstreamSecret]
 }
 
 // NewConfig returns the reader of the configuration over the client of store@.
@@ -47,7 +46,11 @@ func NewConfig(c storev2alpha1connect.StoreServiceClient) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Config{upstreams: u, boundary: b}, nil
+	sec, err := store.New(c, "UpstreamSecret", func() *configv2alpha1.UpstreamSecret { return &configv2alpha1.UpstreamSecret{} })
+	if err != nil {
+		return nil, err
+	}
+	return &Config{upstreams: u, boundary: b, secrets: sec}, nil
 }
 
 // Boundary reads the boundary's document.
@@ -92,39 +95,30 @@ func development(b *configv2alpha1.Boundary) bool {
 	return b.GetEnvironment() == developmentEnvironment
 }
 
-// CredentialDir is the directory of the platform's credentials for this process: $CREDENTIALS_DIRECTORY of a systemd
-// unit with LoadCredential=. It is the secret source of the boards and of the local installation (ADR 0005, "Secret
-// sources"). The client secret of the Upstream `<name>` is the file `upstream.<name>.client-secret`.
-type CredentialDir string
-
-// errNoSecret says the credential is not there. It carries no name: a name is a path, not a value, but the caller
-// has it.
+// errNoSecret says the upstream has no client secret that store@ will give: none declared, none in the secret source,
+// or one out of bounds. It carries no name and no value.
 var errNoSecret = errors.New("no client secret")
 
-// ClientSecret reads the client secret of an upstream. A name with a path separator has no file.
-func (d CredentialDir) ClientSecret(upstream string) (string, error) {
-	if d == "" || upstream == "" || strings.ContainsAny(upstream, `/\`) {
+// ClientSecret reads the client secret of an upstream through store@, the secret kind UpstreamSecret (ADR 0025, "The
+// upstream contract"; ADR 0005, "Secret sources"). The caller uses it for one call and keeps it nowhere: the adapter
+// holds no credential at rest (REQ-ISO-106). store@ unavailable is an error of its own, so an outage is not read as a
+// missing secret.
+func (c *Config) ClientSecret(ctx context.Context, upstream string) (string, error) {
+	it, err := c.secrets.Get(ctx, "", upstream)
+	if errors.Is(err, store.ErrNotFound) {
 		return "", errNoSecret
 	}
-	f, err := os.Open(filepath.Join(string(d), "upstream."+upstream+".client-secret")) //nolint:gosec // the name has no separator
 	if err != nil {
+		return "", err
+	}
+	sec := it.Value.GetSecret()
+	if len(sec) > maxSecret || it.Value.GetUpstream() != upstream {
 		return "", errNoSecret
 	}
-	defer func() { _ = f.Close() }()
-	// The file must be the process's own and closed to its group and to everyone else: a credential that others can
-	// read is not one. The check is on the open file, so it holds for the file that is read.
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || !ownedAlone(fi) {
+	// A secret written by a tool ends with a newline that is not part of the secret.
+	out := strings.TrimRight(string(sec), "\r\n")
+	if out == "" {
 		return "", errNoSecret
 	}
-	buf, err := io.ReadAll(io.LimitReader(f, maxSecret+1))
-	if err != nil || len(buf) > maxSecret {
-		return "", errNoSecret
-	}
-	// A file written by a tool ends with a newline that is not part of the secret.
-	s := strings.TrimRight(string(buf), "\r\n")
-	if s == "" {
-		return "", errNoSecret
-	}
-	return s, nil
+	return out, nil
 }

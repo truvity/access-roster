@@ -55,7 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 # The state of the run: as deploy/local/local.sh prepare, below .cache/deny. Nothing is echoed.
-mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store" "$seed/credentials/adapter"
+mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store"
 go run ./tools/harness/ca -dir "$state/ca" -host "$host"
 cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
 go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
@@ -69,7 +69,6 @@ go run ./tools/harness/sign-config -config tests/installations/local/config -boo
 	set +a
 	[ -n "${SLUIS_LOCAL_CLIENT_SECRET:-}" ] || { echo "deny: the secrets file has no SLUIS_LOCAL_CLIENT_SECRET" >&2; exit 1; }
 	printf '%s' "$SLUIS_LOCAL_CLIENT_SECRET" >"$seed/credentials/store/upstream-workforce"
-	printf '%s' "$SLUIS_LOCAL_CLIENT_SECRET" >"$seed/credentials/adapter/upstream.workforce.client-secret"
 	for c in client-dev client-example-app; do
 		head -c 32 /dev/urandom | base64 -w0 | tr '+/' '-_' | tr -d '=' >"$state/$c"
 		cp "$state/$c" "$seed/credentials/store/$c"

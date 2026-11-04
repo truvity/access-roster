@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 
 	"github.com/truvity/sluis/v2/actors/adapter-upstream-oidc/internal/upstreamd"
@@ -23,14 +22,13 @@ import (
 // flags holds the flags beyond the common ones. A flag left empty takes the socket layout of the plan: the sockets
 // are named by the boundary.
 type flags struct {
-	storeSocket, transportSocket, keySocket, credentialsDir string
+	storeSocket, transportSocket, keySocket string
 }
 
 func (f *flags) add(fs *flag.FlagSet) {
 	fs.StringVar(&f.storeSocket, "store-socket", "", "the socket of store@ (default /run/sluis/store/<boundary>.sock)")
 	fs.StringVar(&f.transportSocket, "transport-socket", "", "the emit socket of the audit transport (default /run/sluis/audit/<boundary>/emit.sock)")
 	fs.StringVar(&f.keySocket, "key-socket", "", "the socket of key@ for this actor (default /run/sluis/key/<boundary>/adapter-upstream-oidc/key.sock)")
-	fs.StringVar(&f.credentialsDir, "credentials-dir", "", "the directory of the client secrets (default $CREDENTIALS_DIRECTORY)")
 }
 
 func (f *flags) service(c cli.Flags) (*upstreamd.Service, error) {
@@ -46,7 +44,6 @@ func (f *flags) service(c cli.Flags) (*upstreamd.Service, error) {
 	storeSocket := orDefault(f.storeSocket, filepath.Join("/run/sluis/store", c.Boundary+".sock"))
 	transportSocket := orDefault(f.transportSocket, filepath.Join("/run/sluis/audit", c.Boundary, "emit.sock"))
 	keySocket := orDefault(f.keySocket, filepath.Join("/run/sluis/key", c.Boundary, upstreamd.Actor, "key.sock"))
-	credentials := orDefault(f.credentialsDir, os.Getenv("CREDENTIALS_DIRECTORY"))
 
 	hc, url := rpc.Dial(storeSocket)
 	cfg, err := upstreamd.NewConfig(storev2alpha1connect.NewStoreServiceClient(hc, url, rpc.ClientOptions()...))
@@ -64,7 +61,7 @@ func (f *flags) service(c cli.Flags) (*upstreamd.Service, error) {
 		return nil, cli.Usage(err)
 	}
 	return upstreamd.New(upstreamd.Options{
-		Boundary: c.Boundary, Config: cfg, Secrets: upstreamd.CredentialDir(credentials), Audit: em,
+		Boundary: c.Boundary, Config: cfg, Audit: em,
 	})
 }
 

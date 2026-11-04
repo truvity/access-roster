@@ -1506,13 +1506,15 @@ requirements:
     rationale: "A compromised adapter then yields no tenant's credential, since it opens each one at key@ for one call (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1214]
+    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go, actors/store/tests/store.rs, tools/gen/units/units_test.go]
     verification:
-      - {kind: integration-test, ref: "an adapter's disk, environment and memory between calls are scanned for connection credentials"}
+      - {kind: integration-test, ref: "an adapter holds no credential on disk, in its environment or between calls: connection credentials open at key@ per call, installation secrets come through store@ per call"}
   - id: REQ-ISO-107
     area: ISO
     statement: "An adapter MUST NOT call a work actor other than policy."

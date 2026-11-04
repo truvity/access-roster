@@ -589,19 +589,20 @@ func TestEntryListenerBelongsToTheForwarder(t *testing.T) {
 	}
 }
 
-// The adapter reaches the upstream: no PrivateNetwork, the client secret as a systemd credential, a Go memory ceiling.
+// verifies: REQ-ISO-106
+// The adapter reaches the upstream: no PrivateNetwork, a Go memory ceiling, and no credential of its own: its client
+// secret is the UpstreamSecret that store@ serves, so the unit loads none.
 func TestUpstreamAdapter(t *testing.T) {
 	a := generate(t)["sluis-adapter-upstream-oidc@.service"]
-	for _, w := range []string{
-		"LoadCredential=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret\n",
-		"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n", "Environment=GOMEMLIMIT=24MiB\n",
-	} {
+	for _, w := range []string{"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n", "Environment=GOMEMLIMIT=24MiB\n"} {
 		if !strings.Contains(a, w) {
 			t.Errorf("the adapter lacks %q:\n%s", w, a)
 		}
 	}
-	if strings.Contains(a, "PrivateNetwork") {
-		t.Errorf("the adapter has no network:\n%s", a)
+	for _, w := range []string{"PrivateNetwork", "LoadCredential", "SetCredential", "CREDENTIALS_DIRECTORY"} {
+		if strings.Contains(a, w) {
+			t.Errorf("the adapter has %s:\n%s", w, a)
+		}
 	}
 }
 

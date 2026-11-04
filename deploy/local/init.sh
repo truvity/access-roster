@@ -13,7 +13,6 @@ dir() { # path owner group mode
 dir /v/audit 61015 61515 1771
 dir /v/bootstrap 0 0 0755
 dir /v/config 0 0 0755
-dir /v/creds-adapter 61009 61009 0700
 dir /v/creds-store 61022 61022 0700
 dir /v/drv-indexer 61017 61517 1771
 dir /v/drv-store 61012 61512 1770
@@ -96,7 +95,6 @@ seed_credentials() { # from-directory volume uid
 	done
 }
 seed_credentials /seed/credentials/store creds-store 61022
-seed_credentials /seed/credentials/adapter creds-adapter 61009
 
 # The forwarder's certificate chain and key.
 install -o 61027 -g 61027 -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem

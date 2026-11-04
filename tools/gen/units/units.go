@@ -282,9 +282,10 @@ var actorSpecs = map[string]actorSpec{
 		},
 		Joins: []string{forwarder},
 	},
-	// actors/adapter-upstream-oidc: the sockets of store@, the transport and key@ have the defaults of the plan. The client
-	// secret of the Upstream `workforce` is the credential upstream.workforce.client-secret (upstreamd.CredentialDir).
-	"adapter-upstream-oidc": {Credentials: []string{"upstream.workforce.client-secret"}},
+	// actors/adapter-upstream-oidc: the sockets of store@, the transport and key@ have the defaults of the plan. It holds
+	// no credential: the client secret of an Upstream is the secret kind UpstreamSecret, which store@ serves to it from
+	// the secret source (REQ-ISO-106), so the unit has no LoadCredential=.
+	"adapter-upstream-oidc": {},
 }
 
 // writerDriver is the driver whose directory the read-only blob driver reads.

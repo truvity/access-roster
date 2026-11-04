@@ -15,7 +15,6 @@ ExecStart=/opt/sluis/bin/actors/adapter-upstream-oidc serve --boundary %i --sock
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB
-LoadCredential=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

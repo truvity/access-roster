@@ -539,6 +539,13 @@ fn upstream(mut o: Obj, id: &str) -> R<pb::Upstream> {
     let subject_claim = o.required("subject_claim")?;
     let org_claim = o.string("org_claim")?;
     let scopes = o.strings("scopes")?;
+    // Where sluis's client secret at the upstream is in the secret source (ADR 0005, "Secret sources"; ADR 0025:
+    // the operator's `UpstreamSecret`). The value is never in the document, only the name of a credential; store@
+    // serves it to adapter-upstream-oidc alone. An upstream without one cannot sign anybody in: the adapter refuses.
+    let secret = o.string("secret")?;
+    if !secret.is_empty() && !credential_name(&secret) {
+        return err(&o.at("secret"), "is not a credential name");
+    }
     o.done()?;
     Ok(pb::Upstream {
         name,
@@ -548,6 +555,7 @@ fn upstream(mut o: Obj, id: &str) -> R<pb::Upstream> {
         subject_claim,
         org_claim,
         scopes,
+        secret,
         ..pb::Upstream::default()
     })
 }

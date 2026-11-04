@@ -75,15 +75,40 @@ func serve(t *testing.T, socket, callee, who string, allow func(rpc.Peer, string
 
 func anyone(rpc.Peer, string) bool { return true }
 
-// fakeStore serves Get of the Boundary and the Upstream items, as store@ serves the config kinds.
+// fakeStore serves Get of the Boundary, the Upstream items and their UpstreamSecret, as store@ serves the config kinds
+// and the secret kinds. It counts the gets of each segment.
 type fakeStore struct {
 	storev2alpha1connect.UnimplementedStoreServiceHandler
+	mu    sync.Mutex
 	items map[string]proto.Message // "<segment>/<id>"
+	gets  map[string]int
+}
+
+func (f *fakeStore) set(k string, m proto.Message) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m == nil {
+		delete(f.items, k)
+		return
+	}
+	f.items[k] = m
+}
+
+func (f *fakeStore) count(segment string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.gets[segment]
 }
 
 func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequest]) (*connect.Response[storev2alpha1.GetResponse], error) {
 	a := req.Msg.GetAddress()
+	f.mu.Lock()
+	if f.gets == nil {
+		f.gets = map[string]int{}
+	}
+	f.gets[a.GetKind()]++
 	m, ok := f.items[a.GetKind()+"/"+a.GetId()]
+	f.mu.Unlock()
 	if !ok {
 		return nil, refusal.New(connect.CodeNotFound, "absent", "address")
 	}
@@ -143,7 +168,7 @@ type env struct {
 	client    integrationv2alpha1connect.UpstreamServiceClient
 	transport *fakeTransport
 	key       *fakeKey
-	secrets   string // the credential directory
+	store     *fakeStore
 	svc       *upstreamd.Service
 }
 
@@ -168,9 +193,19 @@ func newEnv(t *testing.T, o envOptions) *env {
 	}
 	if o.upstream != nil {
 		items["upstream/"+o.upstream.GetName()] = o.upstream
+		// The client secret is the UpstreamSecret store@ serves from the secret source, ending with the newline a tool
+		// writes.
+		if !o.noSecret {
+			secret := o.secret
+			if secret == "" {
+				secret = "test-client-secret-value"
+			}
+			items["upstream-secret/"+o.upstream.GetName()] = &configv2alpha1.UpstreamSecret{Upstream: o.upstream.GetName(), Secret: []byte(secret + "\n")}
+		}
 	}
+	fs := &fakeStore{items: items}
 	storeSock := filepath.Join(dir, "store.sock")
-	path, h := storev2alpha1connect.NewStoreServiceHandler(&fakeStore{items: items})
+	path, h := storev2alpha1connect.NewStoreServiceHandler(fs)
 	serve(t, storeSock, "store", "adapter-upstream-oidc", anyone, rpc.Handler{Path: path, H: h})
 
 	tr, key := &fakeTransport{}, &fakeKey{}
@@ -197,21 +232,8 @@ func newEnv(t *testing.T, o envOptions) *env {
 		t.Fatal(err)
 	}
 
-	secrets := filepath.Join(dir, "cred")
-	if err := os.Mkdir(secrets, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if !o.noSecret && o.upstream != nil {
-		secret := o.secret
-		if secret == "" {
-			secret = "test-client-secret-value"
-		}
-		if err := os.WriteFile(filepath.Join(secrets, "upstream."+o.upstream.GetName()+".client-secret"), []byte(secret+"\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	svc, err := upstreamd.New(upstreamd.Options{
-		Boundary: testBoundary, Config: cfg, Secrets: upstreamd.CredentialDir(secrets), Audit: em, Now: o.now,
+		Boundary: testBoundary, Config: cfg, Audit: em, Now: o.now,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -241,7 +263,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	ah, aurl := rpc.Dial(sock)
 	return &env{
 		client:    integrationv2alpha1connect.NewUpstreamServiceClient(ah, aurl, rpc.ClientOptions()...),
-		transport: tr, key: key, secrets: secrets, svc: svc,
+		transport: tr, key: key, store: fs, svc: svc,
 	}
 }
 

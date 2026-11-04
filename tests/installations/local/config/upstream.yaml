@@ -7,3 +7,7 @@ workforce:
   client_id: sluis-local
   subject_claim: preferred_username
   scopes: [openid, profile, email]
+  # Where sluis's client secret at the upstream is in the secret source: the credential `upstream-workforce`, which
+  # `just local-up` makes; store@ serves it to adapter-upstream-oidc alone (UpstreamSecret). The document never holds
+  # the secret.
+  secret: upstream-workforce

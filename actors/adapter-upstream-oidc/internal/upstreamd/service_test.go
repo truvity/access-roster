@@ -14,8 +14,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -543,41 +541,38 @@ func TestEveryRefusalIsAConnectErrorWithADetail(t *testing.T) {
 	}
 }
 
-// A client secret that others can read is not a credential: the file must be the process's own and closed to its
-// group and to everyone else.
-func TestClientSecretFileMustBeClosed(t *testing.T) {
-	for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o660} {
-		t.Run(mode.String(), func(t *testing.T) {
-			f := newFixture(t, nil)
-			file := filepath.Join(f.secrets, "upstream.workforce.client-secret")
-			if err := os.Chmod(file, mode); err != nil {
-				t.Fatal(err)
-			}
-			_, err := f.complete(context.Background(), f.completeReq())
-			refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
-			if f.idp.tokenHits.Load() != 0 {
-				t.Fatal("a token request was made with a credential others can read")
-			}
-			// The owner's own read-only file is fine.
-			if err := os.Chmod(file, 0o400); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := f.complete(context.Background(), f.completeReq()); err != nil {
-				t.Fatalf("a 0400 file of the owner was refused: %v", err)
-			}
-		})
-	}
-}
-
-func TestClientSecretThatIsNotAFileIsRefused(t *testing.T) {
+// verifies: REQ-ISO-106
+// The adapter holds no credential at rest: it reads the client secret through store@ (UpstreamSecret) for each call and
+// keeps it for that call only. A changed secret is used at the next call, and a secret store@ no longer serves stops
+// the next sign-in.
+func TestTheClientSecretIsReadThroughStoreForEachCall(t *testing.T) {
 	f := newFixture(t, nil)
-	file := filepath.Join(f.secrets, "upstream.workforce.client-secret")
-	if err := os.Remove(file); err != nil {
+	if _, err := f.complete(context.Background(), f.completeReq()); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(file, 0o700); err != nil {
-		t.Fatal(err)
+	if f.idp.basicSecret != idpClientSecret || f.store.count("upstream-secret") != 1 {
+		t.Fatalf("token request secret ok=%v, %d reads of UpstreamSecret", f.idp.basicSecret == idpClientSecret, f.store.count("upstream-secret"))
 	}
+	// The upstream's client secret is rotated in the secret source. The fake upstream accepts the new one only.
+	const rotated = "rotated-client-secret-value"
+	f.store.set("upstream-secret/workforce", &configv2alpha1.UpstreamSecret{Upstream: "workforce", Secret: []byte(rotated)})
+	f.idp.mu.Lock()
+	f.idp.basicSecret = ""
+	f.idp.mu.Unlock()
 	_, err := f.complete(context.Background(), f.completeReq())
+	if f.idp.basicSecret != rotated || f.store.count("upstream-secret") != 2 {
+		t.Fatalf("after rotation: secret is the new one=%v, %d reads (%v)", f.idp.basicSecret == rotated, f.store.count("upstream-secret"), err)
+	}
+	// store@ no longer serves it: no token request is made.
+	f.store.set("upstream-secret/workforce", nil)
+	hits := f.idp.tokenHits.Load()
+	_, err = f.complete(context.Background(), f.completeReq())
+	refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
+	if f.idp.tokenHits.Load() != hits {
+		t.Fatal("a token request was made without a credential")
+	}
+	// A secret for another upstream is not this one's.
+	f.store.set("upstream-secret/workforce", &configv2alpha1.UpstreamSecret{Upstream: "other", Secret: []byte(idpClientSecret)})
+	_, err = f.complete(context.Background(), f.completeReq())
 	refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "upstream.client_secret")
 }
