@@ -201,7 +201,7 @@ function collect(name, files, check) {
   if (problems.length) { failures++; console.error(`FAIL collect-evidence: ${name}: ${problems.join('; ')}`); } else console.log(`ok   collect-evidence: ${name}`);
 }
 collect('a Go tag, a Rust tag, a sub-test tag are found and an untagged test is not', {
-  'actors/a/a_test.go': `package a\n\n// ${verifies} REQ-EX-001, REQ-EX-002\nfunc TestTagged(t *testing.T) {}\n\nfunc TestUntagged(t *testing.T) {\n\t// REQ-EX-003 is only mentioned\n}\n\nfunc TestTable(t *testing.T) {\n\tt.Run("REQ-EX-004/plain_method", func(t *testing.T) {})\n\tt.Run("a case named REQ-EX-005", func(t *testing.T) {})\n}\n`,
+  'actors/a/a_test.go': `package a\n\n// ${verifies} REQ-EX-001, REQ-EX-002\nfunc TestTagged(t *testing.T) {}\n\nfunc TestREQ_EX_012_FromTheName(t *testing.T) {}\n\nfunc TestUntagged(t *testing.T) {\n\t// REQ-EX-003 is only mentioned\n}\n\nfunc TestTable(t *testing.T) {\n\tt.Run("REQ-EX-004/plain_method", func(t *testing.T) {})\n\tt.Run("a case named REQ-EX-005", func(t *testing.T) {})\n\tfor name := range map[string]int{\n\t\t"REQ-EX-011/a table key": 1,\n\t} {\n\t\t_ = name\n\t}\n}\n`,
   'actors/b/tests/b.rs': `/// ${verifies} REQ-EX-006\n/// More text.\n#[test]\nfn rust_tagged() {}\n\n#[test]\nfn rust_untagged() {}\n\n/// ${verifies} REQ-EX-007\nfn not_a_test() {}\n\n#[cfg(test)]\nmod tests {\n    /// ${verifies} REQ-EX-008\n    #[tokio::test(flavor = "multi_thread")]\n    #[ignore]\n    async fn nested() {}\n}\n`,
   'docs/c_test.go': `// ${verifies} REQ-EX-009\nfunc TestOutside(t *testing.T) {}\n`,
   'actors/d/testdata/d_test.go': `// ${verifies} REQ-EX-010\nfunc TestFixture(t *testing.T) {}\n`,
@@ -209,10 +209,10 @@ collect('a Go tag, a Rust tag, a sub-test tag are found and an untagged test is 
   const p = [];
   if (!out) return [`no JSON: ${res.stderr}`];
   const got = Object.keys(out.evidence).sort().join(' ');
-  if (got !== 'REQ-EX-001 REQ-EX-002 REQ-EX-004 REQ-EX-006 REQ-EX-008') p.push(`found ${got}`);
+  if (got !== 'REQ-EX-001 REQ-EX-002 REQ-EX-004 REQ-EX-006 REQ-EX-008 REQ-EX-011 REQ-EX-012') p.push(`found ${got}`);
   const at = (id) => out.evidence[id]?.[0];
   if (at('REQ-EX-001')?.file !== 'actors/a/a_test.go' || at('REQ-EX-001')?.line !== 4 || at('REQ-EX-001')?.test !== 'TestTagged') p.push(`REQ-EX-001 at ${JSON.stringify(at('REQ-EX-001'))}`);
-  if (at('REQ-EX-004')?.test !== 'TestTable/REQ-EX-004/plain_method' || at('REQ-EX-004')?.line !== 11) p.push(`REQ-EX-004 at ${JSON.stringify(at('REQ-EX-004'))}`);
+  if (at('REQ-EX-004')?.test !== 'TestTable/REQ-EX-004/plain_method' || at('REQ-EX-004')?.line !== 13) p.push(`REQ-EX-004 at ${JSON.stringify(at('REQ-EX-004'))}`);
   if (at('REQ-EX-006')?.test !== 'rust_tagged' || at('REQ-EX-006')?.line !== 4) p.push(`REQ-EX-006 at ${JSON.stringify(at('REQ-EX-006'))}`);
   if (at('REQ-EX-008')?.test !== 'nested') p.push(`REQ-EX-008 at ${JSON.stringify(at('REQ-EX-008'))}`);
   return p;

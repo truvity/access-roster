@@ -10,9 +10,14 @@
 //   // verifies: REQ-AUTHN-002                    (Go: above `func TestXxx`)
 //   /// verifies: REQ-AUTHN-002, REQ-AUTHN-003    (Rust: above `#[test]`, `#[tokio::test]`, ...)
 //
-// and a Go sub-test whose name starts with the id counts as the same tag on that line:
+// and a Go case name that starts with the id and a slash, a string literal in a test function, counts as the same tag
+// on that line: the name given to t.Run, or the key of a table of cases:
 //
 //   t.Run("REQ-AUTHN-002/plain_method", func(t *testing.T) { ... })
+//   "REQ-AUTHN-002/plain method": {...},
+//
+// Two older spellings are read too, so that no test has to be renamed: a Go test function named
+// `TestREQ_AUTHN_002_...` verifies REQ-AUTHN-002.
 //
 // An id that is only mentioned (in a comment inside a body, in an assertion message, in a doc of a function that is
 // not a test) is not a tag. A test with no tag is ignored.
@@ -32,7 +37,8 @@ const SKIP_DIRS = new Set(['node_modules', 'target', 'dist', '.git', 'testdata']
 const ID = 'REQ-[A-Z][A-Z0-9]{1,11}-[0-9]{3}';
 // `verifies:` then one id or a list of them (comma, "and" or space between), in one line.
 const TAG = new RegExp(`\\bverifies:\\s*(${ID}(?:(?:\\s*,\\s*|\\s+and\\s+|\\s+)${ID})*)`, 'g');
-const SUBTEST = new RegExp(`\\bt\\.Run\\(\\s*"(${ID})(?:[/\\s"])`);
+const SUBTEST = new RegExp(`"(${ID})/([^"]*)"`);
+const FUNC_NAME = new RegExp(`^(?:Test|Fuzz)(REQ_[A-Z][A-Z0-9]{1,11}_[0-9]{3})(?:_|$)`);
 const GO_TEST = /^func\s+((?:Test|Fuzz)(?:[^a-z(\s]\w*)?)\s*\(/;
 const RUST_TEST_ATTR = /^\s*#\[(?:[A-Za-z_]\w*::)*(?:test|test_case|rstest)\b/;
 const RUST_FN = /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?fn\s+(\w+)/;
@@ -61,12 +67,11 @@ export function scanGo(text, file) {
       if (current === 'TestMain') { current = null; return; }
       const doc = blockAbove(lines, i, (l) => /^\s*\/\//.test(l)).join('\n');
       for (const id of idsIn(doc)) found.push({ id, file, line: i + 1, test: current, via: 'comment' });
+      const named = FUNC_NAME.exec(current);
+      if (named) found.push({ id: named[1].replaceAll('_', '-'), file, line: i + 1, test: current, via: 'name' });
     } else if (/^func\s/.test(line)) current = null;
     const s = SUBTEST.exec(line);
-    if (s && current) {
-      const name = /t\.Run\(\s*"([^"]*)"/.exec(line)[1];
-      found.push({ id: s[1], file, line: i + 1, test: `${current}/${name}`, via: 'subtest' });
-    }
+    if (s && current) found.push({ id: s[1], file, line: i + 1, test: `${current}/${s[1]}/${s[2]}`, via: 'subtest' });
   });
   return found;
 }
