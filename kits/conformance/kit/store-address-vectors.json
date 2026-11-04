@@ -1,0 +1,30 @@
+{
+  "source": "docs/reference/store-api.md, Address encoding. Both kits read this file. The address is <boundary>/<tenant | ->/<kind>/<id>; split it at the first three slashes, and the rest is the id. The cases that need a part of 129 characters or an address of 301 bytes are built in each test: a part is 128 characters at most, and the address is 300 bytes at most.",
+  "segments": [
+    { "kind": "DataKeyWrap", "segment": "data-key-wrap" },
+    { "kind": "SessionChain", "segment": "session-chain" },
+    { "kind": "Lease", "segment": "lease" },
+    { "kind": "PredefinedPolicyLinkTemporary", "segment": "predefined-policy-link-temporary" }
+  ],
+  "valid": [
+    "prod/acme/session-chain/q7x2m5nt4kz3c6vdp9ba8hwrfe",
+    "prod/acme/data-key-wrap/data/1/board-a",
+    "prod/-/lease/adapter-github/sync",
+    "dev/example/person/a.b_c-d",
+    "prod/acme/person/0"
+  ],
+  "invalid": [
+    { "address": "prod/Acme/person/x", "why": "an upper-case letter" },
+    { "address": "prod/acme/person/../x", "why": "a part that is .." },
+    { "address": "prod/acme/person/./x", "why": "a part that is ." },
+    { "address": "prod/acme/person//x", "why": "an empty part" },
+    { "address": "prod/acme/person/x/", "why": "an empty part" },
+    { "address": "prod/acme/person/a b", "why": "a space" },
+    { "address": "prod/acme/person/a%2Fb", "why": "a character outside the set" },
+    { "address": "prod/acme/person/", "why": "an empty id" },
+    { "address": "prod//person/x", "why": "an empty tenant" },
+    { "address": "/acme/person/x", "why": "an empty boundary" },
+    { "address": "prod/acme//x", "why": "an empty kind" },
+    { "address": "prod/acme/Person/x", "why": "an upper-case kind" }
+  ]
+}
