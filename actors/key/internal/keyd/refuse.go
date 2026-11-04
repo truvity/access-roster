@@ -30,6 +30,7 @@ const (
 	reasonRate      = "rate"      // resource_exhausted
 	reasonStore     = "store"     // unavailable: store@ failed
 	reasonDriver    = "driver"    // unavailable: the key-store driver failed
+	reasonAudit     = "audit"     // unavailable: the audit fact of a signature could not be made durable
 	reasonWrap      = "wrap"      // unavailable: the data key exists but this node holds no wrap of it yet
 )
 

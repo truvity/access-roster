@@ -30,7 +30,7 @@ func (f *flags) server(c cli.Flags) (*keyd.Server, error) {
 	var missing []string
 	for name, v := range map[string]string{
 		"boundary": c.Boundary, "run-dir": f.runDir, "store-socket": f.storeSocket,
-		"driver-socket": f.driverSocket, "node": f.node,
+		"driver-socket": f.driverSocket, "transport-socket": f.transportSocket, "node": f.node,
 	} {
 		if v == "" {
 			missing = append(missing, "--"+name)
@@ -39,10 +39,14 @@ func (f *flags) server(c cli.Flags) (*keyd.Server, error) {
 	if len(missing) > 0 {
 		return nil, cli.Usage(fmt.Errorf("required: %s", strings.Join(missing, ", ")))
 	}
+	a, err := newEmitter(c.Boundary, f.transportSocket)
+	if err != nil {
+		return nil, cli.Usage(err)
+	}
 	s, err := keyd.New(keyd.Config{
 		Boundary: c.Boundary, RunDir: f.runDir, StoreSocket: f.storeSocket,
-		DriverSocket: f.driverSocket, Node: f.node,
-		Auditor: auditor(f.transportSocket),
+		DriverSocket: f.driverSocket, TransportSocket: f.transportSocket, Node: f.node,
+		Auditor: a,
 	})
 	if err != nil {
 		return nil, cli.Usage(err)

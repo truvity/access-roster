@@ -82,10 +82,13 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	if err != nil {
 		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
 	}
-	// D-24: every token-signing signature is an audit fact; an audit-log signature is not, because the signed
-	// checkpoint is itself the evidence and auditing it would feed a new record into the log for ever.
+	// D-24: every token-signing signature is an audit fact, durable before the signature is returned; if the
+	// fact cannot be made durable the signature is withheld. An audit-log signature is not an audit fact, because
+	// the signed checkpoint is itself the evidence and auditing it would feed a new record into the log for ever.
 	if purpose == "token-signing" {
-		s.audit(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": purpose, "key_id": pk.keyID, "caller": caller}})
+		if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": purpose, "key_id": pk.keyID, "caller": caller}}); err != nil {
+			return nil, unavailable(reasonAudit)
+		}
 	}
 	return connect.NewResponse(&keyv2alpha1.SignResponse{SignatureRaw: raw, SignatureDer: der, KeyId: pk.keyID}), nil
 }
