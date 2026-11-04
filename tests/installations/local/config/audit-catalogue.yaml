@@ -12,6 +12,8 @@ default:
     - policy.start
     - policy.reload
     - policy.reload.refused
+    - session.authorize
+    - session.signin
     - signer.refused
     - signer.sign
     - signer.ring.add
