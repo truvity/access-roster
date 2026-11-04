@@ -31,7 +31,7 @@ const reasonRecipient = "recipient"
 // wrapping public key.
 type recipient struct {
 	id    string // the thumbprint, as the KeyPlan lists it
-	label string // the recipient part of the wrap's id
+	label string // the recipient part of the wrap's id, derived from the id (recipientLabel)
 	pub   *ecdh.PublicKey
 }
 
@@ -92,7 +92,9 @@ func (s *Server) recipients(ctx context.Context) (recipientSet, error) {
 		switch {
 		case !slices.Contains(listed, c.id):
 			set.report("cert:"+c.item+":"+c.id, "certificate-not-listed", c.item, c.id, &s.reported)
-		case found[c.id]:
+		case !c.canonical || found[c.id]:
+			// A certificate for a listed key under another label is ignored: the label is the one every node derives
+			// from the listed id, and a stray one must not choose the address of a wrap.
 		default:
 			found[c.id] = true
 			set.wrap = append(set.wrap, recipient{id: c.id, label: c.label, pub: c.pub})
@@ -115,14 +117,14 @@ func (s *Server) recipients(ctx context.Context) (recipientSet, error) {
 
 // certificate is a wrapping KeyCertificate that parses, with the thumbprint of its key.
 type certificate struct {
-	item  string // the item id, wrapping/<label>
-	id    string // the thumbprint of the key
-	label string
-	pub   *ecdh.PublicKey
+	item      string // the item id, wrapping/<label>
+	id        string // the thumbprint of the key
+	label     string // recipientLabel of id
+	canonical bool   // the item id and the certificate's recipient are that label
+	pub       *ecdh.PublicKey
 }
 
-// listCertificates lists the wrapping certificates in the store. One that does not parse, or whose label does not
-// fit its key, is skipped and logged.
+// listCertificates lists the wrapping certificates in the store. One that does not parse is skipped and logged.
 func (s *Server) listCertificates(ctx context.Context) ([]certificate, error) {
 	var out []certificate
 	var token string
@@ -132,14 +134,12 @@ func (s *Server) listCertificates(ctx context.Context) ([]certificate, error) {
 			return nil, err
 		}
 		for _, it := range items {
-			label, ok := strings.CutPrefix(it.ID, certPrefix)
-			if !ok || it.Value.GetPurpose() != wrappingPurpose || it.Value.GetRecipient() != label {
+			if !strings.HasPrefix(it.ID, certPrefix) || it.Value.GetPurpose() != wrappingPurpose {
 				continue
 			}
-			spki := it.Value.GetSpkiDer()
-			pub, err := parseP384(spki)
-			if err != nil || !labelFits(label, spki) {
-				slog.Warn("skipping a wrapping certificate that does not parse or does not fit its label", "certificate", it.ID)
+			pub, err := parseP384(it.Value.GetSpkiDer())
+			if err != nil {
+				slog.Warn("skipping a wrapping certificate that does not parse", "certificate", it.ID)
 				continue
 			}
 			ek, err := pub.ECDH()
@@ -150,7 +150,11 @@ func (s *Server) listCertificates(ctx context.Context) ([]certificate, error) {
 			if err != nil {
 				continue
 			}
-			out = append(out, certificate{item: it.ID, id: id, label: label, pub: ek})
+			label := recipientLabel(id)
+			out = append(out, certificate{
+				item: it.ID, id: id, label: label, pub: ek,
+				canonical: it.ID == certPrefix+label && it.Value.GetRecipient() == label,
+			})
 		}
 		if next == "" {
 			return out, nil
@@ -202,7 +206,7 @@ func (s *Server) checkRecipients(ctx context.Context, plan *configv2alpha1.KeyPl
 	}
 	var missing []string
 	for _, l := range listed {
-		if l == id || slices.ContainsFunc(certs, func(c certificate) bool { return c.id == l }) {
+		if l == id || slices.ContainsFunc(certs, func(c certificate) bool { return c.id == l && c.canonical }) {
 			continue
 		}
 		missing = append(missing, l)

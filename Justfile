@@ -418,7 +418,7 @@ boards-smoke:
 boards-status:
     deploy/boards/boards.sh status
 
-# Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, from its journal, into the file that
+# Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, by running its check, into the file that
 # `boards-prepare` signs into the KeyPlan as the wrap recipients. The second step of the first deploy; see boards.sh.
 boards-recipients:
     deploy/boards/boards.sh recipients

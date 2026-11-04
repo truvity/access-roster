@@ -174,7 +174,7 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 	}
 	s.wrappingPub = ek
 	s.wrappingID = w.keyID
-	s.recipient = recipientLabel(s.cfg.Node, w.spki)
+	s.recipient = recipientLabel(w.keyID)
 	return nil
 }
 

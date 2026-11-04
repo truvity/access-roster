@@ -5,7 +5,7 @@
 # The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
 # board's software key is made at its first start, so the first deploy is two-phase, as `local.sh up` is:
 #   1. just boards-prepare && just boards-deploy      the KeyPlan lists nobody; key@ runs, and no actor has a data key
-#   2. just boards-recipients                         reads each board's wrapping key id from the journal of its key@
+#   2. just boards-recipients                         runs key@'s check on each board and reads its wrapping key id
 #                                                     into $SLUIS_BOARDS_STATE/recipients (default .cache/boards)
 #   3. just boards-prepare && just boards-deploy      signs the KeyPlan with those ids and puts it on the boards
 # A board that joins later takes the same three steps.
@@ -22,6 +22,7 @@
 #   SLUIS_BOARDS_SEED           the directory `just boards-prepare` made (default .cache/boards/seed): the signed
 #                               config, the bootstrap file and the credentials. deploy installs them under
 #                               /etc/sluis, and writes /etc/sluis/rqlite-dev.env with the board's own rqlite address.
+#   SLUIS_BOARDS_RECIPIENTS_REPLACE  set to replace a recipients file that holds ids no board gave now (default: refuse)
 #   SLUIS_BOARDS_STATE          the directory of the harness state (default .cache/boards); `recipients` writes its file
 #                               recipients there and `just boards-prepare` signs the KeyPlan with it
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
@@ -142,19 +143,32 @@ deploy)
 	exit "$rc"
 	;;
 recipients)
-	# The wrapping key id of each board: the journal of its key@ says it when it starts ("key ready" line,
-	# wrapping_key_id). Every board must give one; the file is written only then.
+	# The wrapping key id of each board, from the `check` command of its key@, run with the flags of the unit on the
+	# board, as local.sh does (never from the journal, which can hold the id of a key that was purged). Every board
+	# must give one. The file is written only then, and only if it drops no board that the file already holds.
 	state=${SLUIS_BOARDS_STATE:-.cache/boards}
 	if [ -n "$dry" ]; then
-		echo "dry run: would read the wrapping key id from the journal of sluis-key@dev on ${boards[*]} into $state/recipients"
+		echo "dry run: would run key@'s check on ${boards[*]} and write the wrapping key ids to $state/recipients"
 		exit 0
 	fi
 	: >"$tmp/ids"
 	rc=0
 	for b in "${boards[@]}"; do
-		id=$(board_ssh "$b" "sudo -n journalctl -u sluis-key@dev.service -o cat --no-pager" | grep -o '"wrapping_key_id":"[A-Za-z0-9_-]\{43\}"' | tail -1 | cut -d'"' -f4 || true)
-		if [ -z "$id" ]; then
-			echo "board $b: no wrapping key id in the journal of sluis-key@dev; is key@ running?" >&2
+		id=$(board_ssh "$b" "sudo -n bash -s" <<'REMOTE' | sed -n 's/^wrapping key id: //p' | head -1 || true
+set -eu
+u=sluis-key@dev.service
+exec_start=$(systemctl show -p ExecStart --value "$u")
+argv=$(printf '%s\n' "$exec_start" | sed -n 's/.*argv\[\]=\(.*\) ; ignore_errors=.*/\1/p' | head -1)
+[ -n "$argv" ] || exit 1
+# shellcheck disable=SC2086 # the unit's arguments hold no space
+set -- ${argv/ serve / check }
+exec systemd-run --pipe --wait --collect --quiet \
+	-p "User=$(systemctl show -p User --value "$u")" -p "Group=$(systemctl show -p Group --value "$u")" \
+	-p "SupplementaryGroups=$(systemctl show -p SupplementaryGroups --value "$u")" "$@"
+REMOTE
+)
+		if ! [[ "$id" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
+			echo "board $b: key@'s check gave no wrapping key id; is sluis-key@dev running?" >&2
 			rc=1
 			continue
 		fi
@@ -162,9 +176,18 @@ recipients)
 		printf '%s\n' "$id" >>"$tmp/ids"
 	done
 	[ "$rc" = 0 ] || exit "$rc"
+	sort -u "$tmp/ids" >"$tmp/ids.sorted"
+	if [ -s "$state/recipients" ]; then
+		grep '^[^#[:space:]]' "$state/recipients" | sort -u >"$tmp/ids.old" || true
+		if [ -n "$(comm -23 "$tmp/ids.old" "$tmp/ids.sorted")" ] && [ -z "${SLUIS_BOARDS_RECIPIENTS_REPLACE:-}" ]; then
+			echo "recipients: $state/recipients holds $(comm -23 "$tmp/ids.old" "$tmp/ids.sorted" | wc -l) id(s) that no board in SLUIS_BOARDS gave now (a board left out, or a key that was replaced)." >&2
+			echo "recipients: nothing was written. Name every board in SLUIS_BOARDS, or set SLUIS_BOARDS_RECIPIENTS_REPLACE=1 to replace the file." >&2
+			exit 1
+		fi
+	fi
 	mkdir -p "$state"
-	{ echo "# the wrapping keys of the boards (boards.sh recipients)"; sort -u "$tmp/ids"; } >"$state/recipients"
-	echo "recipients: $(sort -u "$tmp/ids" | wc -l) ids in $state/recipients; run 'just boards-prepare' and 'just boards-deploy' to list them"
+	{ echo "# the wrapping keys of the boards (boards.sh recipients)"; cat "$tmp/ids.sorted"; } >"$state/recipients"
+	echo "recipients: $(wc -l <"$tmp/ids.sorted") ids in $state/recipients; run 'just boards-prepare' and 'just boards-deploy' to list them"
 	;;
 undeploy | status)
 	: >"$tmp/plan.tsv"

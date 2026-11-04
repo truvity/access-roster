@@ -1016,11 +1016,12 @@ requirements:
     rationale: "The KeyCertificate items in the store are not signed, so a recipient taken from them would let a compromised store@ receive every data key (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     runtimes: all
     actors: [key]
     standards: []
     issues: [1208]
+    gap: keyplan-trust
     tests: [actors/key/internal/keyd/recipients_test.go]
     verification:
       - {kind: integration-test, ref: "a KeyCertificate for a node key id that the KeyPlan does not list is written to the store; a new data key has no wrap for it"}

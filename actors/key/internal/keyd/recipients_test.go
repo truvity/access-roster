@@ -101,7 +101,7 @@ func newOutsider(t *testing.T) outsider {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return outsider{priv: k, spki: der, id: id, label: recipientLabel("outside", der)}
+	return outsider{priv: k, spki: der, id: id, label: recipientLabel(id)}
 }
 
 // inject puts a KeyCertificate into the store as store@ itself could: key@ did not write it.
@@ -175,18 +175,32 @@ func TestUnlistedCertificateIsNeverUsed(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-075. A certificate whose label does not belong to its key is not used even when the key is listed: the label is part
-// of the wrap's address.
-func TestCertificateWithAForeignLabelIsNotUsed(t *testing.T) {
+// REQ-KEYS-075. A certificate for a listed key under a label other than the one derived from the listed id is
+// ignored: the store does not choose the address of a wrap. With the derived label also there, the wrap goes under it
+// and under no other, whatever the order of the labels.
+func TestStrayLabelDoesNotChooseTheAddress(t *testing.T) {
 	e := newTestEnv(t, "development")
 	a := e.startedNode(nodeOpts{name: "node-1"})
 	o := newOutsider(t)
 	e.list(o.id)
-	o.label = "outside-aaaaaaaaaaaaaaaa"
-	e.inject(o)
+	stray := "aaa-aaaaaaaaaaaaaaaa" // sorts before the derived label
+	e.store.put("key-certificate", "", certPrefix+stray, &keyv2alpha1.KeyCertificate{
+		Purpose: wrappingPurpose, Recipient: stray, SpkiDer: o.spki,
+	})
 	e.cookieEnvelope(a, "s1")
 	if got := e.wrapRecipients(); len(got) != 1 {
-		t.Fatalf("wrap recipients = %v, want this node only", got)
+		t.Fatalf("wrap recipients = %v, want this node only: a stray label stood for the listed key", got)
+	}
+	if err := a.srv.Check(context.Background()); err == nil || !strings.Contains(err.Error(), o.id) {
+		t.Fatalf("check = %v, want the listed key reported as without a key", err)
+	}
+	e.inject(o)
+	if err := a.srv.Rewrap(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := e.wrapRecipients()
+	if len(got) != 2 || got[o.label] != 1 || got[stray] != 0 {
+		t.Fatalf("wrap recipients = %v, want the node and the derived label of the listed key", got)
 	}
 }
 
@@ -359,19 +373,26 @@ func TestCheckBeforeTheKeyExists(t *testing.T) {
 // A list that is not thumbprints, or that names one twice, stops key@ at start.
 func TestMalformedRecipientsStopTheStart(t *testing.T) {
 	good := newOutsider(t).id
-	for name, list := range map[string][]string{
-		"a label":   {"node-1-abcdefghijklmnop"},
-		"a repeat":  {good, good},
-		"too short": {good[:40]},
+	for name, c := range map[string]struct {
+		list []string
+		want string
+	}{
+		"a label":   {[]string{"node-1-abcdefghijklmnop"}, "recipients[0] is not an RFC 7638 thumbprint"},
+		"a repeat":  {[]string{good, good}, "a recipient is listed twice"},
+		"too short": {[]string{good[:40]}, "recipients[0] is not an RFC 7638 thumbprint"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t, "development")
 			n := e.newNode(nodeOpts{unlisted: true})
 			plan := defaultPlan()
-			plan.Recipients = list
+			plan.Recipients = c.list
 			e.store.put("key-plan", "", "default", plan)
-			if err := n.srv.Init(context.Background()); err == nil {
-				t.Fatal("started with a malformed list")
+			err := n.srv.Init(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "keyplan/default: "+c.want) {
+				t.Fatalf("Init = %v, want a refusal that says %q", err, c.want)
+			}
+			if len(n.driver.keys) != 0 {
+				t.Fatal("the driver made keys for a refused KeyPlan")
 			}
 		})
 	}

@@ -158,10 +158,10 @@ func TestInitPublishesTheWrappingCertificate(t *testing.T) {
 	e := newTestEnv(t, "development")
 	rec := &recorder{}
 	n := e.startedNode(nodeOpts{name: "node-1", audit: rec})
-	if !regexp.MustCompile(`^node-1-[a-z2-7]{16}$`).MatchString(n.srv.recipient) {
+	if !regexp.MustCompile(`^[a-z2-7]{52}$`).MatchString(n.srv.recipient) {
 		t.Fatalf("recipient = %q", n.srv.recipient)
 	}
-	if want := recipientLabel("node-1", n.srv.keys[wrappingPurpose].spki); n.srv.recipient != want {
+	if want := recipientLabel(n.srv.wrappingID); n.srv.recipient != want {
 		t.Fatalf("recipient = %q, want %q", n.srv.recipient, want)
 	}
 	it := e.store.items["|key-certificate|wrapping/"+n.srv.recipient]

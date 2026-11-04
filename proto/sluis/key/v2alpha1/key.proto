@@ -130,7 +130,7 @@ message DataKeyWrap {
 // each node, with id wrapping/<recipient> and no chain.
 message KeyCertificate {
   string purpose = 1;                         // the key purpose
-  string recipient = 2;                       // the recipient label of a wrapping key: <node>-<16 characters>
+  string recipient = 2;                       // the recipient label of a wrapping key: its RFC 7638 thumbprint in lower-case base32
   bytes spki_der = 3;                         // the public key, SubjectPublicKeyInfo in DER
   repeated bytes chain = 4;                   // the certificate chain, DER, leaf first; empty when there is none
   google.protobuf.Timestamp added_at = 5;     // when key@ published it

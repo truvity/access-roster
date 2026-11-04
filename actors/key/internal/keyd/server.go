@@ -10,8 +10,8 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
-	"crypto/sha256"
 	"encoding/base32"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -40,8 +40,8 @@ const (
 	maxCacheTTL     = time.Hour
 	// DefaultRewrapEvery is the period of the rewrap pass (ADR 0006, "Keys per board").
 	DefaultRewrapEvery = 60 * time.Second
-	// recipientHashChars is the length of the hash part of a recipient label.
-	recipientHashChars = 16
+	// maxNodeChars bounds the node name, which labels logs and audit facts (an address part holds 128 characters).
+	maxNodeChars = 64
 )
 
 // Config is the configuration of one key@.
@@ -53,7 +53,7 @@ type Config struct {
 	// TransportSocket is the emit socket of the audit transport, /run/sluis/audit/<boundary>/emit.sock. The check
 	// command reaches it; the Auditor is what emits.
 	TransportSocket string
-	Node            string // the recipient label base: node-1 locally, the board's short name on a board
+	Node            string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
 	Auditor         Auditor
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -146,29 +146,21 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 		limits: newLimiters(now)}, nil
 }
 
-// validNode reports whether node can be the base of a recipient label: a lower-case address part that leaves
-// room for the hash.
+// validNode reports whether node is a lower-case address part of reasonable length.
 func validNode(node string) bool {
-	return len(node) <= 128-1-recipientHashChars && store.ValidateID(node) == nil && !strings.Contains(node, "/")
+	return len(node) <= maxNodeChars && store.ValidateID(node) == nil && !strings.Contains(node, "/")
 }
 
-// recipientLabel is <node>- plus the first 16 characters of the lower-case base32 of SHA-256(SPKI DER). It fits
-// the id rules of an address.
-func recipientLabel(node string, spki []byte) string {
-	sum := sha256.Sum256(spki)
-	enc := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum[:])
-	return node + "-" + strings.ToLower(enc[:recipientHashChars])
-}
-
-// labelFits reports whether label is the label recipientLabel makes for some node and this public key: a node name,
-// "-" and the 16 characters of the key's hash. A certificate whose label does not fit its key is not used, so
-// that a label in the store never stands for a key it was not made from.
-func labelFits(label string, spki []byte) bool {
-	i := strings.LastIndex(label, "-")
-	if i < 1 {
-		return false
+// recipientLabel is the recipient part of a wrap's id and of its certificate's id: the lower-case base32, without
+// padding, of the thumbprint's 32 bytes (52 characters, which fit the id rules of an address). It depends on the
+// listed id alone, so that every node derives the same label for a recipient and the store cannot choose it: a
+// certificate is used only under the label of its own key, and a stray certificate for the same key is ignored.
+func recipientLabel(id string) string {
+	b, err := base64.RawURLEncoding.DecodeString(id)
+	if err != nil {
+		return ""
 	}
-	return validNode(label[:i]) && recipientLabel(label[:i], spki) == label
+	return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b))
 }
 
 // checkRunDir refuses a run directory, or a per-caller directory below it, that is missing or that group or
