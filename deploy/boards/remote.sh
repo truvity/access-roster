@@ -224,13 +224,6 @@ deploy)
 		systemctl stop pcscd.service pcscd.socket 2>/dev/null || true
 		systemctl start pcscd.socket
 	fi
-	# The two key drivers serve one socket: the one this deploy does not start is stopped and disabled.
-	for other in sluis-drv-key-software@$boundary.service sluis-drv-key-yubikey-piv@$boundary.service; do
-		printf '%s\n' "${units[@]}" | grep -qx "$other" && continue
-		if systemctl cat "$other" >/dev/null 2>&1; then
-			systemctl disable --now "$other" 2>&1 | sed "s|^|disable $other: |" || true
-		fi
-	done
 	for u in "${units[@]}"; do
 		if ! out=$(systemd-analyze verify "$u" 2>&1); then
 			printf '%s\n' "$out" | sed "s|^|verify $u: |" >&2
@@ -245,6 +238,15 @@ deploy)
 	sort_manifest
 	for u in "${units[@]}"; do
 		systemctl enable "$u" 2>&1 | sed "s|^|enable $u: |"
+	done
+	# The two key drivers serve one socket: the one this deploy does not start is stopped and disabled. This comes after the
+	# verify and after the new driver is enabled, so that a refused verify leaves the old driver enabled and running, and a
+	# board never has both disabled (boards.sh reads that as a half-made switch and refuses to go on).
+	for other in sluis-drv-key-software@$boundary.service sluis-drv-key-yubikey-piv@$boundary.service; do
+		printf '%s\n' "${units[@]}" | grep -qx "$other" && continue
+		if systemctl cat "$other" >/dev/null 2>&1; then
+			systemctl disable --now "$other" 2>&1 | sed "s|^|disable $other: |" || true
+		fi
 	done
 	# Stop in reverse order and start in the order of the plan, drivers first. A restart of each unit in turn would
 	# restart the actors that Requires= it again and again, and the start limit (5 in 10 s) would put them out.

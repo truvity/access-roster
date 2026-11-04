@@ -21,6 +21,7 @@ cat >"$work/bin/ssh" <<'STUB'
 board=""
 for a in "$@"; do case "$a" in "$SLUIS_BOARD_SSH_USER"@*) board=${a#*@} ;; esac; done
 cmd="${*: -1}"
+[ -z "${STUB_TRACE:-}" ] || printf "%s: %s\n" "$board" "$cmd" >>"$STUB_TRACE"
 key=${board//./_}
 drv_var="DRV_$key"
 drv=${!drv_var:-none}
@@ -28,6 +29,11 @@ drv=${!drv_var:-none}
 # What exists on this board: the card unit on a card board; the software unit on a software board; both on a board that was
 # switched (the one it left is disabled); none before the first deploy.
 unit_state() { # unit -> "LoadState UnitFileState"
+	case "$drv" in
+	masked) echo "masked masked"; return ;;
+	error) echo "error "; return ;;
+	broken) echo "loaded disabled"; return ;; # a switch that stopped half way: both units exist, neither is enabled
+	esac
 	case "$1:$drv" in
 	*yubikey-piv*:yubikey-piv) echo "loaded enabled" ;;
 	*yubikey-piv*:software | *yubikey-piv*:none) echo "not-found " ;;
@@ -54,7 +60,15 @@ systemctl() {
 	esac
 }
 
+ssh_var="SSHFAIL_$key"
+[ -z "${!ssh_var:-}" ] || exit 255
+
+mark="$STUB_LOG/$board.marker"
 case "$cmd" in
+*remote.sh*) fail_var="DEPLOYFAIL_$key"; [ -z "${!fail_var:-}" ] || exit 1 ;;
+*"date -u"*switch-pending*) mkdir -p "$STUB_LOG"; date -u +%FT%TZ >"$mark" ;;
+*"rm -f"*switch-pending*) rm -f "$mark" ;;
+*switch-pending*cat*) if [ -e "$mark" ]; then cat "$mark"; fi ;;
 "sudo -n bash -s")
 	cat >/dev/null
 	id_var="ID_$key"
@@ -162,6 +176,40 @@ SLUIS_BOARDS="a.test" LISTED=false refuses "check keeps the board pending while 
 SLUIS_BOARDS="a.test" check "check passes for the switched board" ./deploy/boards/boards.sh check
 [ ! -s "$work/state/switch-pending" ] || { echo "FAIL the board is still pending after a passing check"; fail=1; }
 SLUIS_BOARDS="b.test" check "then the next board may switch" ./deploy/boards/boards.sh deploy
+
+# The mark is on the board, and a lost checkout of the operator does not fail the guard open.
+rm -f "$work/state/switch-pending"; rm -rf "$work/log"
+export SLUIS_BOARDS="a.test" DRV_a_test=software DRV_b_test=software SLUIS_BOARDS_KEY_DRIVER=yubikey-piv
+check "a switch marks its board" ./deploy/boards/boards.sh deploy
+[ -s "$work/log/a.test.marker" ] || { echo "FAIL the mark is not on the board"; fail=1; }
+rm -f "$work/state/switch-pending" # the operator's checkout is gone
+export DRV_a_test=yubikey-piv SLUIS_BOARDS="a.test b.test"
+refuses "the mark on the board stops a second switch when the cache is lost" ./deploy/boards/boards.sh deploy
+grep -q "'a.test' switched its key driver and has not been verified" "$work/out" || { echo "FAIL the refusal does not say why: $(cat "$work/out")"; fail=1; }
+SLUIS_BOARDS="a.test" check "the check clears the mark on the board" ./deploy/boards/boards.sh check
+[ ! -e "$work/log/a.test.marker" ] || { echo "FAIL the mark is still on the board after a passing check"; fail=1; }
+
+# A deploy that fails after it switched leaves the mark: the card board starts locked, and the units are not active in time.
+rm -rf "$work/log" "$work/state/switch-pending"
+export DRV_a_test=software SLUIS_BOARDS="a.test"
+DEPLOYFAIL_a_test=1 refuses "a deploy that fails after the switch exits non-zero" ./deploy/boards/boards.sh deploy
+[ -s "$work/log/a.test.marker" ] && [ "$(cat "$work/state/switch-pending")" = a.test ] || { echo "FAIL a failed deploy left no mark"; fail=1; }
+
+# A board in a state the script does not know is refused, whatever the run names, and nothing is sent to it.
+for st in masked error broken; do
+	rm -rf "$work/log" "$work/state/switch-pending"
+	export "DRV_a_test=$st"
+	for var in yubikey-piv software ""; do
+		SLUIS_BOARDS_KEY_DRIVER=$var refuses "a board whose key driver units are '$st' is refused (driver '${var:-unset}')" ./deploy/boards/boards.sh deploy
+		grep -qE "unreadable state|no enabled key driver" "$work/out" || { echo "FAIL no message: $(cat "$work/out")"; fail=1; }
+		[ ! -e "$work/log/a.test.files" ] || { echo "FAIL files were sent to a board in state '$st'"; fail=1; }
+	done
+done
+rm -rf "$work/log"
+export DRV_a_test=software SSHFAIL_a_test=1
+refuses "a board that cannot be reached is refused" ./deploy/boards/boards.sh deploy
+grep -q "cannot read the key driver" "$work/out" || { echo "FAIL no message: $(cat "$work/out")"; fail=1; }
+unset SSHFAIL_a_test
 
 # SLUIS_BOARDS_KEY_DRIVER unset: each board keeps the driver it runs, and the files it gets are those of that driver.
 unset SLUIS_BOARDS_KEY_DRIVER

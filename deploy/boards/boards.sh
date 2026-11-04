@@ -15,15 +15,19 @@
 # still on the key they have, because only a node that holds an old wrapping key can wrap the data keys for the new one:
 #   1. SLUIS_BOARDS=<board> SLUIS_BOARDS_KEY_DRIVER=yubikey-piv SLUIS_BOARD_CARD_SERIALS=<board>=<serial> just boards-deploy
 #      then `sluis node unlock` on that board. Its key@ makes a new wrapping key; it cannot open a data key yet, and the
-#      other boards keep serving. The deploy records the board as pending verification (in $SLUIS_BOARDS_STATE/switch-pending).
+#      other boards keep serving. The deploy marks the board as pending verification BEFORE it changes anything on it, and the
+#      mark stays whatever the deploy does (a card board starts locked, so the wait for its units may end non-zero). The mark is
+#      a file on the board itself, /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so a lost checkout cannot fail
+#      the guard open; $SLUIS_BOARDS_STATE/switch-pending is a cache of it for the boards a run does not name. Name every board
+#      of the fleet when in doubt: the guard reads the mark of each board the run names.
 #   2. SLUIS_BOARDS=<board> SLUIS_BOARDS_RECIPIENTS_SWITCHED=1 just boards-recipients
 #      reads the new id and replaces that board's old id, and only that one, in $SLUIS_BOARDS_STATE/recipients.
 #   3. just boards-prepare, then just boards-deploy for every board, with SLUIS_BOARDS_KEY_DRIVER UNSET: each board keeps the
 #      key driver it runs, so no other board switches. The maintainer's publisher key re-signs the KeyPlan with the new id
 #      and the boards load it.
 #   4. The other boards' key@ wrap the data keys for the new id. Verify with `SLUIS_BOARDS=<board> just boards-key-check`
-#      (key@'s own check: "wrapping key listed: true", and it fails while the wrap set is incomplete). A pass clears the
-#      board's pending mark.
+#      (key@'s own check: "wrapping key listed: true", and it fails while the wrap set is incomplete). A pass is the only
+#      thing that clears the board's mark.
 #   5. Only then the next board: a deploy that would switch another board, and a switch-mode `recipients` for another board,
 #      are refused while a board is pending.
 # Rollback is the same five steps with SLUIS_BOARDS_KEY_DRIVER=software. The software key of a board stays in its state
@@ -236,50 +240,86 @@ done') || {
 		return 1
 	}
 	# One line per unit: name, LoadState (loaded, not-found, masked, error), UnitFileState (empty when the unit does not exist).
-	card=$(printf '%s\n' "$out" | awk '$1 == "sluis-drv-key-yubikey-piv@dev.service" { print $2 " " $3 }')
-	sw=$(printf '%s\n' "$out" | awk '$1 == "sluis-drv-key-software@dev.service" { print $2 " " $3 }')
-	case "$card" in "loaded enabled"* | "loaded disabled"* | "loaded static"* | "not-found"*) ;; *)
-		echo "boards: the board '$1' gave an unreadable state for the card driver unit: '$card'" >&2
-		return 1
-		;;
-	esac
-	case "$sw" in "loaded enabled"* | "loaded disabled"* | "loaded static"* | "not-found"*) ;; *)
-		echo "boards: the board '$1' gave an unreadable state for the software driver unit: '$sw'" >&2
-		return 1
-		;;
-	esac
+	card=$(unit_kind "$out" sluis-drv-key-yubikey-piv@dev.service) || { echo "boards: the board '$1' gave an unreadable state for the card driver unit" >&2; return 1; }
+	sw=$(unit_kind "$out" sluis-drv-key-software@dev.service) || { echo "boards: the board '$1' gave an unreadable state for the software driver unit" >&2; return 1; }
+	# none only when neither unit exists. A board where neither is enabled but a unit exists (a deploy that stopped half way
+	# through a switch), masked, static or erroring units are not a state this script knows, and it goes no further.
 	case "$card:$sw" in
-	"loaded enabled"*:"loaded enabled"*)
+	enabled:enabled)
 		echo "boards: the board '$1' has both key drivers enabled; fix that first" >&2
 		return 1
 		;;
-	"loaded enabled"*:*) echo yubikey-piv ;;
-	*:"loaded enabled"*) echo software ;;
-	*) echo none ;;
+	enabled:*) echo yubikey-piv ;;
+	*:enabled) echo software ;;
+	absent:absent) echo none ;;
+	*)
+		echo "boards: the board '$1' has no enabled key driver (card: $card, software: $sw): a deploy may have stopped half way through a switch. Deploy the driver it should run, or look at the board, before anything else." >&2
+		return 1
+		;;
 	esac
 }
 
-# board_data_keys prints how many DataKeyWrap items the board's rqlite node holds, from a read-only query of its own node (the
+# unit_kind reads the line of one unit in the answer of board_key_driver: enabled, disabled, or absent (LoadState not-found).
+# Any other state (masked, error, static, ...) is an error.
+unit_kind() { # answer unit
+	local line load file
+	line=$(printf '%s\n' "$1" | awk -v u="$2" '$1 == u { print $2 " " $3 }')
+	load=${line%% *}
+	file=${line#* }
+	case "$load:$file" in
+	loaded:enabled) echo enabled ;;
+	loaded:disabled) echo disabled ;;
+	not-found:*) echo absent ;;
+	*) return 1 ;;
+	esac
+}
+
+# board_data_keys prints how many DataKeyWrap items the board's rqlite node holds, from a read-only query of its own node, at the
+# address the actors use (http://<board>:<port>, as run_on writes it to rqlite.env; the board name resolves on the board) (the
 # key of an item is <boundary>/<tenant>/<kind>/<id>). A node whose table does not exist yet holds none. It fails when the
 # answer cannot be read: the guard that uses it refuses then.
 board_data_keys() { # board
 	local out
-	out=$(board_ssh "$1" "curl -fsS --get --data-urlencode \"q=SELECT count(*) FROM durable_items WHERE key LIKE '%/data-key-wrap/%'\" http://127.0.0.1:$rqlite_port/db/query") || return 1
+	out=$(board_ssh "$1" "curl -fsS --get --data-urlencode \"q=SELECT count(*) FROM durable_items WHERE key LIKE '%/data-key-wrap/%'\" http://$1:$rqlite_port/db/query") || return 1
 	if printf '%s' "$out" | grep -q 'no such table'; then echo 0; return 0; fi
 	printf '%s' "$out" | sed -n 's/.*"values":\[\[\([0-9][0-9]*\)\]\].*/\1/p' | grep -E '^[0-9]+$' || return 1
 }
 
-# switch_pending lists the boards that switched their key driver and whose wrap set has not been verified with `check` yet.
+# The mark that a board switched its key driver and has not been verified. The board's own file is the truth:
+# /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so that a lost checkout of the operator cannot make the guard fail
+# open. $state/switch-pending is a cache of it for the boards a run does not name. The mark is made BEFORE the deploy of the
+# board and stays whatever the deploy does (a card board starts locked, so a deploy that waits for the units may end non-zero
+# with the new driver enabled); only `check` clears it.
 pending_file=$state/switch-pending
-pending_has_other() { # board...: is a board other than these pending?
-	[ -s "$pending_file" ] || return 1
+marker=/var/lib/sluis-state/dev/switch-pending
+board_marker_set() { # board
+	board_ssh "$1" "sudo -n sh -c 'umask 077; mkdir -p $(dirname "$marker") && date -u +%Y-%m-%dT%H:%M:%SZ >$marker'"
+}
+board_marker_clear() { # board
+	board_ssh "$1" "sudo -n rm -f $marker"
+}
+board_marker_get() { # board: prints the mark, nothing when there is none; fails when the board cannot be read
+	board_ssh "$1" "sudo -n sh -c 'if [ -e $marker ]; then cat $marker; fi'"
+}
+# pending_has_other prints a board other than the given ones that is pending, from the marks of the boards this run names and
+# from the cache of the others, and returns 0 if there is one. A board that cannot be read counts as pending (fail closed).
+pending_has_other() { # board...
 	local p b skip
-	while read -r p; do
-		[ -n "$p" ] || continue
+	for b in "${boards[@]}"; do
 		skip=0
-		for b in "$@"; do [ "$b" = "$p" ] && skip=1; done
-		[ "$skip" = 1 ] || { printf '%s\n' "$p"; return 0; }
-	done <"$pending_file"
+		for p in "$@"; do [ "$b" = "$p" ] && skip=1; done
+		[ "$skip" = 0 ] || continue
+		if ! m=$(board_marker_get "$b"); then printf '%s\n' "$b"; return 0; fi
+		if [ -n "$m" ]; then printf '%s\n' "$b"; return 0; fi
+	done
+	if [ -s "$pending_file" ]; then
+		while read -r p; do
+			[ -n "$p" ] || continue
+			skip=0
+			for b in "$@"; do [ "$b" = "$p" ] && skip=1; done
+			[ "$skip" = 1 ] || { printf '%s\n' "$p"; return 0; }
+		done <"$pending_file"
+	fi
 	return 1
 }
 
@@ -377,21 +417,20 @@ deploy)
 	first=$tmp/stage-${drv[${boards[0]}]}
 	echo "plan: $(wc -l <"$first/plan.tsv") units, in this order:"
 	sed 's/^/  /' "$first/plan.tsv" | cut -f1
+	# A switching board is marked pending before anything is changed on it, on the board and in the cache. If the mark cannot be
+	# made, nothing is deployed.
+	for b in "${switching[@]}"; do
+		board_marker_set "$b" || { echo "boards: cannot mark the board '$b' as pending; nothing was deployed" >&2; exit 1; }
+		mkdir -p "$state"
+		grep -qxF "$b" "$pending_file" 2>/dev/null || printf '%s\n' "$b" >>"$pending_file"
+	done
 	rc=0
 	for b in "${boards[@]}"; do
 		echo "== board $b: deploy (key driver ${drv[$b]})"
-		if run_on "$b" deploy "$tmp/stage-${drv[$b]}"; then
-			case " ${switching[*]:-} " in
-			*" $b "*)
-				mkdir -p "$state"
-				grep -qxF "$b" "$pending_file" 2>/dev/null || printf '%s\n' "$b" >>"$pending_file"
-				echo "board $b: switched to ${drv[$b]}; now: unlock it if needed, 'boards-recipients' with SLUIS_BOARDS_RECIPIENTS_SWITCHED=1, re-sign, deploy, then 'boards-key-check'"
-				;;
-			esac
-		else
-			echo "board $b: deploy FAILED" >&2
-			rc=1
-		fi
+		run_on "$b" deploy "$tmp/stage-${drv[$b]}" || { echo "board $b: deploy FAILED" >&2; rc=1; }
+		case " ${switching[*]:-} " in
+		*" $b "*) echo "board $b: switched to ${drv[$b]} (pending verification, whatever the deploy said); now: unlock it if needed, 'boards-recipients' with SLUIS_BOARDS_RECIPIENTS_SWITCHED=1, re-sign, deploy, then 'boards-key-check'" ;;
+		esac
 	done
 	exit "$rc"
 	;;
@@ -416,10 +455,14 @@ recipients | check)
 			fi
 			printf '%s\n' "$out"
 			if printf '%s\n' "$out" | grep -q '^wrapping key listed: true'; then
-				# Verified: a board that switched its key driver is no longer pending.
-				if [ -s "$pending_file" ] && grep -qxF "$b" "$pending_file"; then
-					grep -vxF "$b" "$pending_file" >"$tmp/pending.new" || true
-					cat "$tmp/pending.new" >"$pending_file"
+				# Verified: a board that switched its key driver is no longer pending, on the board and in the cache.
+				had=$(board_marker_get "$b" || true)
+				if [ -n "$had" ] || { [ -s "$pending_file" ] && grep -qxF "$b" "$pending_file"; }; then
+					board_marker_clear "$b" || { echo "board $b: cannot clear its mark" >&2; rc=1; continue; }
+					if [ -s "$pending_file" ]; then
+						grep -vxF "$b" "$pending_file" >"$tmp/pending.new" || true
+						cat "$tmp/pending.new" >"$pending_file"
+					fi
 					echo "board $b: verified; the next board may switch"
 				fi
 			else
