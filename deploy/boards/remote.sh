@@ -15,7 +15,7 @@ state_root=/var/lib/sluis-state
 # What deploy may add, and so what undeploy may remove. Anything else in the manifest is refused.
 allowed_path() {
 	case "$1" in
-	"$bin_dir"/actors/* | "$bin_dir"/drivers/* | "$bin_dir"/cli/* | "$bin_dir"/sluis-socket-open) return 0 ;;
+	"$bin_dir"/actors/* | "$bin_dir"/drivers/* | "$bin_dir"/cli/*) return 0 ;;
 	/etc/systemd/system/sluis-*@.service) return 0 ;;
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	esac
@@ -54,7 +54,7 @@ deploy)
 	done
 	[ -f "$manifest" ] || : >"$manifest"
 
-	# Binaries, and the one shim.
+	# Binaries.
 	while IFS= read -r f; do
 		rel=${f#"$stage/files/bin/"}
 		dest=$bin_dir/$rel

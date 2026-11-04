@@ -11,8 +11,7 @@ Group=sluis-drv-writer-fs-%i
 SupplementaryGroups=sluis-writer-drv-%i
 StateDirectory=sluis-state/%i/drv-writer-fs
 StateDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/writer/fs serve --boundary %i --socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs
-ExecStartPost=/opt/sluis/bin/sluis-socket-open /run/sluis/writer/%i/blob.sock
+ExecStart=/opt/sluis/bin/drivers/writer/fs serve --boundary %i --socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --socket-gid 61025
 Restart=on-failure
 RestartSec=2s
 

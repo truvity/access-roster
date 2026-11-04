@@ -177,7 +177,7 @@ jobs:
           restore-keys: |
             arm64-${{ runner.os }}-
       - run: devbox run -- just build-arm64
-      - run: devbox run -- shellcheck deploy/boards/*.sh deploy/boards/sluis-socket-open
+      - run: devbox run -- shellcheck deploy/boards/*.sh
       - name: Deploy, staged only
         env:
           SLUIS_BOARDS: board.example.test

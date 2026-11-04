@@ -135,6 +135,30 @@ fn start(
     default_deadline: Duration,
     onward: Option<sluis_kit::Client>,
 ) -> Running {
+    start_in_group(
+        socket,
+        actor,
+        allow,
+        caller,
+        own_block,
+        default_deadline,
+        onward,
+        None,
+    )
+}
+
+/// `start`, with the group of the socket.
+#[allow(clippy::too_many_arguments)]
+fn start_in_group(
+    socket: &Path,
+    actor: &'static str,
+    allow: Allow,
+    caller: Option<(&'static str, u32)>,
+    own_block: u32,
+    default_deadline: Duration,
+    onward: Option<sluis_kit::Client>,
+    socket_gid: Option<u32>,
+) -> Running {
     let calls = Arc::new(AtomicUsize::new(0));
     let seen = Arc::new(Mutex::new(Seen::default()));
     let router = Arc::new(Fake {
@@ -150,6 +174,7 @@ fn start(
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o660,
+        socket_gid,
         allow,
         default_deadline,
     };
@@ -554,6 +579,87 @@ async fn a_server_stream_of_50_arrives_in_order_and_a_refusal_keeps_its_detail()
     assert_eq!(e.code, ErrorCode::InvalidArgument);
     assert_eq!(refusal_reason(&e).as_deref(), Some("address"));
     r.stop().await;
+}
+
+/// A driver whose owner is another uid sets the socket's group (with mode 0o660): the socket then has that group.
+/// A group the process is not in is refused and leaves no socket; group 0 is refused.
+#[tokio::test]
+async fn the_socket_has_the_group_it_was_asked_for() {
+    use std::os::unix::fs::MetadataExt;
+    let primary = rustix::process::getgid().as_raw();
+    let groups: Vec<u32> = rustix::process::getgroups()
+        .unwrap()
+        .iter()
+        .map(|g| g.as_raw())
+        .collect();
+    // A group of this process that is not its primary group, so that the test shows the chown.
+    let gid = groups
+        .iter()
+        .copied()
+        .find(|g| *g != primary && *g != 0)
+        .unwrap_or(primary);
+    let dir = tempfile::tempdir().unwrap();
+    if gid == 0 {
+        println!("SKIP: the test runs with only group 0, and group 0 is refused");
+    } else {
+        let s = sock(&dir, "g.sock");
+        let r = start_in_group(
+            &s,
+            "store",
+            Allow::Exact("policy"),
+            Some(("policy", 0)),
+            0,
+            Duration::from_secs(5),
+            None,
+            Some(gid),
+        );
+        wait_for(&s).await;
+        let m = std::fs::metadata(&s).unwrap();
+        assert_eq!(m.mode() & 0o777, 0o660);
+        assert_eq!(m.gid(), gid);
+        r.stop().await;
+    }
+
+    // Group 0 means "none" in the Go kit; here it is an error, so that a zero is never a silent default.
+    let s = sock(&dir, "z.sock");
+    let r = start_in_group(
+        &s,
+        "store",
+        Allow::Exact("policy"),
+        Some(("policy", 0)),
+        0,
+        Duration::from_secs(5),
+        None,
+        Some(0),
+    );
+    let err = r.done.await.unwrap().unwrap_err();
+    assert!(format!("{err:#}").contains("group 0"), "{err:#}");
+
+    // A group the process is not in: refused, and no socket is left behind.
+    if rustix::process::geteuid().as_raw() == 0 || primary == 1 || groups.contains(&1) {
+        println!("SKIP: the refusal of a foreign group needs a group the process is not in");
+        return;
+    }
+    let s = sock(&dir, "f.sock");
+    let r = start_in_group(
+        &s,
+        "store",
+        Allow::Exact("policy"),
+        Some(("policy", 0)),
+        0,
+        Duration::from_secs(5),
+        None,
+        Some(1),
+    );
+    let err = r.done.await.unwrap().unwrap_err();
+    assert!(format!("{err:#}").contains("socket group"), "{err:#}");
+    assert!(!s.exists());
+    let left: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.file_name().to_string_lossy().contains("f.sock"))
+        .collect();
+    assert!(left.is_empty(), "a temporary socket was left behind");
 }
 
 #[tokio::test]

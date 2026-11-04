@@ -14,8 +14,6 @@ import (
 const (
 	// BinDir is the infrastructure convention on the boards (D-12); the packages use /usr/libexec/sluis.
 	BinDir = "/opt/sluis/bin"
-	// SocketHelper is the one shell shim the driver units run after start (see driverUnit).
-	SocketHelper = BinDir + "/sluis-socket-open"
 	// StateRoot holds the state of the units. It is not /var/lib/sluis, which is the rqlite user's.
 	StateRoot = "/var/lib/sluis-state"
 	// LoadRoot is where the deploy puts the files that LoadCredential= reads (systemd credentials).
@@ -377,7 +375,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("User=%s-%%i", stem)
 	b.line("Group=%s-%%i", stem)
 	// The directory of the boundary below the owner's directory is open to the owner and to the group of the owner's
-	// drivers alone: the driver creates its socket there. The socket's own group is the driver's (see SocketHelper).
+	// drivers alone: the driver creates its socket there. The socket's own group is the driver's (--socket-gid).
 	b.line("SupplementaryGroups=%s", driversGroup(owner, "%i"))
 	state := ""
 	if spec.State {
@@ -389,11 +387,11 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	for _, a := range spec.Args {
 		args = append(args, strings.ReplaceAll(a, "%STATE%", state))
 	}
+	// The driver's socket is 0600 for its own user by default; --socket-gid opens it (0660) to the driver's own group,
+	// whose number is its uid (sysusers.d makes the group of a user with the same number), and only the owner joins
+	// that group. The driver still answers the owner's uid alone (the OwnerOnly check of the kit).
+	args = append(args, "--socket-gid", strconv.FormatUint(uint64(u.UID), 10))
 	b.line("ExecStart=%s/%s serve --boundary %%i --socket %s %s", BinDir, u.Binary, socket, strings.Join(args, " "))
-	// kits/go/rpc and sluis-kit make a driver's socket 0600, owned by the driver's user, so the owner, a
-	// different uid, cannot connect. The helper opens it to the group, which only the owner joins; the driver
-	// still answers the owner's uid alone (the second lock, OwnerOnly).
-	b.line("ExecStartPost=%s %s", SocketHelper, socket)
 	b.line("Restart=on-failure")
 	b.line("RestartSec=2s")
 	if spec.Language == "Go" {

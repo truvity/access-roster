@@ -67,7 +67,6 @@ stage() { # dir
 		fi
 	done <"$units/index.tsv"
 	[ -s "$s/plan.tsv" ] || { echo "boards: no executable in $dist has a unit: run 'just build-arm64' first" >&2; return 1; }
-	install -m 0755 "$here/sluis-socket-open" "$s/files/bin/sluis-socket-open"
 	cp "$units/base.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
 	for stem in "${!want[@]}"; do
 		cp "$units/$stem.sysusers" "$s/files/sysusers/$stem-dev.conf"

@@ -46,6 +46,11 @@ pub struct ServerConfig {
     pub socket: PathBuf,
     /// The mode of the socket file: 0o660 for an actor, 0o600 for a driver.
     pub mode: u32,
+    /// The group of the socket file, or `None` to leave the one the kernel gave. A driver whose owner is
+    /// another uid sets it together with mode 0o660, so that the members of the group, and only they, can
+    /// connect. The process must be a member of the group. It changes who may connect and nothing else:
+    /// the guard still decides, from the peer's uid, who may call. A gid of 0 is refused.
+    pub socket_gid: Option<u32>,
     /// Who may call.
     pub allow: Allow,
     /// The deadline of a call that carries none (contracts.md "Every call").
@@ -96,7 +101,7 @@ async fn serve_inner(
     shutdown: impl Future<Output = ()> + Send,
     identities: Identities,
 ) -> anyhow::Result<()> {
-    let listener = listen(&cfg.socket, cfg.mode)?;
+    let listener = listen(&cfg.socket, cfg.mode, cfg.socket_gid)?;
     let guard = Guard {
         actor: cfg.actor,
         allow: cfg.allow.clone(),
@@ -160,8 +165,11 @@ fn accept(stream: UnixStream, service: &ConnectRpcService, graceful: &GracefulSh
 }
 
 /// Makes the listening socket: a stale file is replaced, a symlink or a non-socket refused, and
-/// the mode is set before the socket gets its final name.
-fn listen(path: &Path, mode: u32) -> anyhow::Result<UnixListener> {
+/// the group and the mode are set before the socket gets its final name.
+fn listen(path: &Path, mode: u32, gid: Option<u32>) -> anyhow::Result<UnixListener> {
+    if gid == Some(0) {
+        bail!("the socket group 0 is refused: use None for no group");
+    }
     match std::fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => {
             bail!("{}: a symlink is in the way of the socket", path.display())
@@ -196,8 +204,19 @@ fn listen(path: &Path, mode: u32) -> anyhow::Result<UnixListener> {
     let tmp = parent.join(tmp);
     let _ = std::fs::remove_file(&tmp);
     let listener = UnixListener::bind(&tmp).context("bind the socket")?;
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))
-        .context("set the socket mode")?;
+    // The group first, then the mode, both before the final name. A failure leaves no socket behind.
+    let placed = (|| -> anyhow::Result<()> {
+        if let Some(g) = gid {
+            rustix::fs::chown(&tmp, None, Some(rustix::fs::Gid::from_raw(g)))
+                .context("set the socket group")?;
+        }
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode))
+            .context("set the socket mode")
+    })();
+    if let Err(e) = placed {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
     std::fs::rename(&tmp, path).context("put the socket in place")?;
     Ok(listener)
 }
