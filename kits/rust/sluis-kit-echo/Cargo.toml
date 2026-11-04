@@ -1,6 +1,6 @@
 [package]
 name = "sluis-kit-echo"
-description = "Test only: the Rust code of the EchoService contract of the cross-language test of the kits (WP-04, WP-05). No product binary links it."
+description = "Test only: the Rust code of the EchoService contract of kits/conformance/kit/proto, for the cross-language test of the kits. No product binary links it."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

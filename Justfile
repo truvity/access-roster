@@ -259,9 +259,23 @@ rust-test:
     cargo test --workspace
 
 # Format check and Clippy over the Cargo workspace.
-rust-lint:
+rust-lint: rust-feature-guard
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
+
+# The test-only feature `test-identities` of sluis-kit (the name resolver seam) must never be on a
+# normal dependency edge: only a dev-dependency may turn it on, so no product binary has it.
+# `-e normal` leaves the dev edges out. An empty sweep is a failure: the tree must show sluis-kit.
+rust-feature-guard:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tree=$(cargo tree --workspace -e normal --prefix none -f '{p} [{f}]')
+    grep -q '^sluis-kit v' <<<"$tree" || { echo "::error::cargo tree -e normal does not list sluis-kit: the guard checked nothing" >&2; exit 1; }
+    if grep -n 'test-identities' <<<"$tree"; then
+        echo "::error::the feature test-identities is on a normal dependency edge" >&2
+        exit 1
+    fi
+    echo "rust-feature-guard: test-identities is on no normal edge"
 
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
 # the Cargo workspace must each hold a package. The proto and registry steps run once their

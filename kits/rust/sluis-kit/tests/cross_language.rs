@@ -2,10 +2,10 @@
 //! Rule R9 of ADR 0012: a Rust client calls the Go `EchoService` server, and the Go client calls a
 //! Rust server, over a Unix socket. One unary call, one server stream of 50 messages in order, and
 //! a refusal whose `Refusal` detail survives the hop. The Go side is
-//! `go run ./kits/conformance/kit/cmd/echo` (WP-04); the Rust side is `examples/echo.rs`.
+//! `kits/conformance/kit/cmd/echo` (WP-04), built with `go build -tags sluis_test`; the Rust side is `examples/echo.rs`.
 //!
-//! While WP-04 is not on `main` its sources are absent and each test prints `SKIP: ...` and is
-//! not run. Once they are present, a failure of the Go toolchain is a failure of the test.
+//! The Go side is in this repository, so a missing Go toolchain or source is a failure, never a
+//! skip.
 
 #[allow(dead_code)]
 #[path = "../examples/echo.rs"]
@@ -13,35 +13,50 @@ mod echo;
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
         .canonicalize()
-        .unwrap()
+        .unwrap();
+    assert!(
+        root.join("kits/conformance/kit/cmd/echo/main.go").exists(),
+        "kits/conformance/kit/cmd/echo is missing: it is the Go side of the cross-language test"
+    );
+    root
 }
 
-/// The Go echo command, if WP-04's sources are in this checkout.
-fn go_echo_present(test: &str) -> Option<PathBuf> {
-    let root = repo_root();
-    if root.join("kits/conformance/kit/cmd/echo/main.go").exists() {
-        Some(root)
-    } else {
-        println!(
-            "SKIP: {test}: kits/conformance/kit/cmd/echo is not in this checkout (WP-04, the Go kit, is not merged); not run"
+/// The Go echo command, built once with the tag `sluis_test` (the name resolver that makes the
+/// process's own uid the actor `harness`; `serve` needs it and `call` does not) into the target
+/// directory. It is built, not `go run`, so that killing the server kills the server itself and
+/// not only a `go run` parent.
+fn go_echo_binary() -> &'static Path {
+    static BIN: OnceLock<PathBuf> = OnceLock::new();
+    BIN.get_or_init(|| {
+        let root = repo_root();
+        let bin = Path::new(env!("CARGO_TARGET_TMPDIR")).join("go-echo");
+        let out = Command::new("go")
+            .current_dir(&root)
+            .args(["build", "-tags", "sluis_test", "-o"])
+            .arg(&bin)
+            .arg("./kits/conformance/kit/cmd/echo")
+            .output()
+            .expect("go build: is Go on the PATH (devbox)?");
+        assert!(
+            out.status.success(),
+            "go build of the echo command failed:\n{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
         );
-        None
-    }
+        bin
+    })
 }
 
-fn go_echo(root: &Path, args: &[&str], socket: &Path) -> Command {
-    let mut c = Command::new("go");
-    c.current_dir(root)
-        .args(["run", "./kits/conformance/kit/cmd/echo"])
-        .args(args)
-        .arg("--socket")
-        .arg(socket);
+fn go_echo(command: &str, socket: &Path) -> Command {
+    let mut c = Command::new(go_echo_binary());
+    c.arg(command).arg("--socket").arg(socket);
     c
 }
 
@@ -54,8 +69,7 @@ impl Drop for Kill {
 }
 
 async fn wait_for(path: &Path) {
-    // The first `go run` compiles the kit.
-    for _ in 0..3000 {
+    for _ in 0..300 {
         if path.exists() {
             return;
         }
@@ -66,14 +80,12 @@ async fn wait_for(path: &Path) {
 
 #[tokio::test]
 async fn a_rust_client_calls_the_go_server() {
-    let Some(root) = go_echo_present("a_rust_client_calls_the_go_server") else {
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("go.sock");
     let _server = Kill(
-        go_echo(&root, &["serve"], &socket)
+        go_echo("serve", &socket)
             .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .expect("go run: is Go on the PATH (devbox)?"),
     );
@@ -85,9 +97,6 @@ async fn a_rust_client_calls_the_go_server() {
 
 #[tokio::test]
 async fn a_go_client_calls_the_rust_server() {
-    let Some(root) = go_echo_present("a_go_client_calls_the_rust_server") else {
-        return;
-    };
     let dir = tempfile::tempdir().unwrap();
     let socket = dir.path().join("rust.sock");
     let (stop, rx) = tokio::sync::oneshot::channel::<()>();
@@ -99,7 +108,7 @@ async fn a_go_client_calls_the_rust_server() {
         .await
     });
     wait_for(&socket).await;
-    let out = tokio::task::spawn_blocking(move || go_echo(&root, &["call"], &socket).output())
+    let out = tokio::task::spawn_blocking(move || go_echo("call", &socket).output())
         .await
         .unwrap()
         .expect("go run: is Go on the PATH (devbox)?");

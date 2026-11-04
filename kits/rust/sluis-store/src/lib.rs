@@ -185,20 +185,15 @@ impl<K: Kind> Store<K> {
         })
     }
 
-    /// The wire tenant: empty for a kind with none. `-` is the text form of "none" and is accepted.
+    /// The wire tenant: empty for a kind with none, the tenant id otherwise. `-` is only the text
+    /// form of "no tenant" inside an address and is never a tenant id, so it is refused here.
     fn wire_tenant(&self, tenant: &str) -> Result<String, Error> {
-        let none = tenant.is_empty() || tenant == "-";
-        match (self.scope, none) {
+        match (self.scope, tenant.is_empty()) {
             (Scope::Boundary, true) => Ok(String::new()),
-            (Scope::Boundary, false) => Err(Error::Address("tenant".into())),
-            (Scope::BoundaryTenant, true) => Err(Error::Address("tenant".into())),
-            (Scope::BoundaryTenant, false) => {
-                if valid_part(tenant) {
-                    Ok(tenant.to_owned())
-                } else {
-                    Err(Error::Address("tenant".into()))
-                }
+            (Scope::BoundaryTenant, false) if tenant != "-" && valid_part(tenant) => {
+                Ok(tenant.to_owned())
             }
+            _ => Err(Error::Address("tenant".into())),
         }
     }
 

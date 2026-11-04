@@ -983,6 +983,7 @@ dependencies = [
  "buffa-types",
  "connectrpc",
  "rustix",
+ "serde_json",
  "sluis-kit",
  "sluis-proto",
  "sluis-registry",
