@@ -36,4 +36,5 @@ tracing = "0.1"
 
 [dev-dependencies]
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
+serde_json = "1"
 tempfile = "3"
