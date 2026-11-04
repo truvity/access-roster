@@ -9,6 +9,7 @@ import (
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
+	"log/slog"
 	"math/big"
 	"strconv"
 	"unicode/utf8"
@@ -54,11 +55,15 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	// A revoked key signs nothing more, whatever the purpose and whoever asks (REQ-KEYS-109). The check comes before the
-	// content is read, and an unreadable KeyRevocation refuses the Sign: fail closed.
-	if rev, err := s.revoked(ctx, purpose, pk.keyID); err != nil {
-		return nil, unavailable(reasonStore)
-	} else if rev {
-		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRevoked, "purpose")
+	// content is read. An unreadable KeyRevocation refuses the Sign and the refusal is audited: fail closed, so a store@
+	// outage stops token signing and audit checkpoints (principle 4: "not revoked" is verified, never assumed).
+	target, err := s.revoked(ctx, purpose, pk)
+	if err != nil {
+		slog.Warn("KeyRevocation cannot be read: no Sign", "purpose", purpose)
+		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeUnavailable, reasonRevocationUnreadable, "")
+	}
+	if target != "" {
+		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRevoked, target)
 	}
 	var cerr error
 	switch purpose {

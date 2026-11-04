@@ -10,7 +10,7 @@ import (
 // A revoked key signs nothing more (ADR 0041, "The tighten-only record"; REQ-KEYS-109). KeyRevocation is a durable,
 // create-only kind that store@ guarantees only grows (REQ-KEYS-091), so key@ reads it and never has to doubt that an
 // item it saw is still there. An item names one target; a Sign is refused when the key it would use is named by its
-// purpose or by its kid. The check reads the kind through store@ at every Sign: a revocation takes effect at the next
+// purpose (for the keys made before the declaration) or by its kid. The check reads the kind through store@ at every Sign: a revocation takes effect at the next
 // call, and an unreadable store@ refuses the Sign (fail closed), because "not revoked" is a claim that must be verified
 // (principle 4).
 
@@ -29,17 +29,27 @@ func revocationID(kind, target string) string {
 	return kind + "/" + target
 }
 
-// revoked reports whether KeyRevocation lists the key of a purpose, by the purpose or by the kid of the key.
-func (s *Server) revoked(ctx context.Context, purpose, keyID string) (bool, error) {
-	for _, id := range []string{revocationID(targetPurpose, purpose), revocationID(targetKid, keyID)} {
-		_, err := s.revocations.Get(ctx, "", id)
-		switch {
-		case err == nil:
-			return true, nil
-		case errors.Is(err, store.ErrNotFound):
-		default:
-			return false, err
-		}
+// revoked says which target of KeyRevocation stops the key of a purpose from signing: "" when none does.
+//
+// A revocation of the key's kid refuses it for ever. A revocation of the purpose refuses the keys made at or before
+// the time of the declaration, and not a replacement made after it ("a replacement signs at once", ADR 0041): a key
+// whose age the key store cannot say is refused, because a key of unknown age cannot be shown to be a replacement.
+func (s *Server) revoked(ctx context.Context, purpose string, pk purposeKey) (string, error) {
+	if _, err := s.revocations.Get(ctx, "", revocationID(targetKid, pk.keyID)); err == nil {
+		return targetKid, nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return "", err
 	}
-	return false, nil
+	it, err := s.revocations.Get(ctx, "", revocationID(targetPurpose, purpose))
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return "", nil
+	case err != nil:
+		return "", err
+	}
+	at := it.Value.GetRevokedAt()
+	if at == nil || pk.created.IsZero() || !pk.created.After(at.AsTime()) {
+		return targetPurpose, nil
+	}
+	return "", nil
 }

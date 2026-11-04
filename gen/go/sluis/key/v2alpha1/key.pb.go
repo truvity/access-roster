@@ -1025,7 +1025,7 @@ type KeyRevocation struct {
 	TargetKind    string                 `protobuf:"bytes,1,opt,name=target_kind,json=targetKind,proto3" json:"target_kind,omitempty"` // kid, purpose, generation or recipient
 	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`                           // the kid, the purpose, "<purpose>/<generation>" or the recipient
 	ReasonCode    string                 `protobuf:"bytes,3,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"` // compromise, suspicion, lost-board or drill
-	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`    // when key@ wrote it
+	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`    // the time of the declaration; a purpose revocation refuses the keys made at or before it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

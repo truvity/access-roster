@@ -145,5 +145,5 @@ message KeyRevocation {
   string target_kind = 1;                       // kid, purpose, generation or recipient
   string target = 2;                            // the kid, the purpose, "<purpose>/<generation>" or the recipient
   string reason_code = 3;                       // compromise, suspicion, lost-board or drill
-  google.protobuf.Timestamp revoked_at = 4;     // when key@ wrote it
+  google.protobuf.Timestamp revoked_at = 4;     // the time of the declaration; a purpose revocation refuses the keys made at or before it
 }

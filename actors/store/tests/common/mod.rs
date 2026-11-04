@@ -668,3 +668,19 @@ pub fn refusal_path(e: &ConnectError) -> String {
         })
         .unwrap_or_default()
 }
+
+/// A KeyRevocation message of a purpose or generation target, with a time: what key@ writes on a declaration.
+pub fn revocation(kind: &str, target: &str, reason: &str) -> Vec<u8> {
+    use buffa::Message as _;
+    sluis_proto::sluis::key::v2alpha1::KeyRevocation {
+        target_kind: kind.into(),
+        target: target.into(),
+        reason_code: reason.into(),
+        revoked_at: buffa::MessageField::some(buffa_types::google::protobuf::Timestamp {
+            seconds: 1_793_800_000,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+    .encode_to_vec()
+}

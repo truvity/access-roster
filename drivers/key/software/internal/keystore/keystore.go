@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // The algorithms of the key-store port (keystore.proto).
@@ -203,6 +204,20 @@ func (s *Store) Ensure(purpose, algorithm string) (spki []byte, created bool, er
 	s.keys[purpose] = k
 	spki, err = marshalPublic(k)
 	return spki, true, err
+}
+
+// CreatedAt is when the key of the purpose was made: the time of its file, which is written once and never replaced.
+func (s *Store) CreatedAt(purpose string) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.keys[purpose]; !ok {
+		return time.Time{}, ErrAbsent
+	}
+	fi, err := os.Stat(filepath.Join(s.dir, purpose+fileExt))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("keystore: stat %s: %w", purpose, err)
+	}
+	return fi.ModTime(), nil
 }
 
 // write puts the key in a temporary file made with O_EXCL, syncs it, links it to its name (which fails when the

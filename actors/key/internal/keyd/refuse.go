@@ -13,26 +13,27 @@ import (
 // The reasons key@ refuses with. The list is closed; a reason names the rule and never a value
 // (docs/reference/contracts.md, "Errors").
 const (
-	reasonRule      = "rule"      // permission_denied: no rule of the registry allows the caller this purpose and operation
-	reasonGrant     = "grant"     // permission_denied: the grant is missing, unreadable, for another holder, tenant or operation, or expired
-	reasonOpen      = "open"      // permission_denied: the envelope does not open (one reason for every cause)
-	reasonCaller    = "caller"    // permission_denied: the transport named no caller
-	reasonPurpose   = "purpose"   // invalid_argument: a purpose this call does not take, or one the plan does not enable
-	reasonAddress   = "address"   // invalid_argument
-	reasonTenant    = "tenant"    // invalid_argument: a tenant that does not fit the purpose
-	reasonItems     = "items"     // invalid_argument: no items, or more than 64
-	reasonAlgorithm = "algorithm" // invalid_argument
-	reasonContent   = "content"   // invalid_argument: the content is not what the purpose signs
-	reasonLabel     = "label"     // invalid_argument
-	reasonEpoch     = "epoch"     // invalid_argument
-	reasonSchema    = "schema"    // invalid_argument: a request field is missing or malformed
-	reasonExpired   = "expired"   // failed_precondition: the grant is past its expiry
-	reasonRate      = "rate"      // resource_exhausted
-	reasonStore     = "store"     // unavailable: store@ failed
-	reasonDriver    = "driver"    // unavailable: the key-store driver failed
-	reasonAudit     = "audit"     // unavailable: the audit fact of a signature could not be made durable
-	reasonRevoked   = "revoked"   // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
-	reasonWrap      = "wrap"      // unavailable: the data key exists but this node holds no wrap of it yet
+	reasonRule                 = "rule"                  // permission_denied: no rule of the registry allows the caller this purpose and operation
+	reasonGrant                = "grant"                 // permission_denied: the grant is missing, unreadable, for another holder, tenant or operation, or expired
+	reasonOpen                 = "open"                  // permission_denied: the envelope does not open (one reason for every cause)
+	reasonCaller               = "caller"                // permission_denied: the transport named no caller
+	reasonPurpose              = "purpose"               // invalid_argument: a purpose this call does not take, or one the plan does not enable
+	reasonAddress              = "address"               // invalid_argument
+	reasonTenant               = "tenant"                // invalid_argument: a tenant that does not fit the purpose
+	reasonItems                = "items"                 // invalid_argument: no items, or more than 64
+	reasonAlgorithm            = "algorithm"             // invalid_argument
+	reasonContent              = "content"               // invalid_argument: the content is not what the purpose signs
+	reasonLabel                = "label"                 // invalid_argument
+	reasonEpoch                = "epoch"                 // invalid_argument
+	reasonSchema               = "schema"                // invalid_argument: a request field is missing or malformed
+	reasonExpired              = "expired"               // failed_precondition: the grant is past its expiry
+	reasonRate                 = "rate"                  // resource_exhausted
+	reasonStore                = "store"                 // unavailable: store@ failed
+	reasonDriver               = "driver"                // unavailable: the key-store driver failed
+	reasonAudit                = "audit"                 // unavailable: the audit fact of a signature could not be made durable
+	reasonRevoked              = "revoked"               // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
+	reasonRevocationUnreadable = "revocation-unreadable" // unavailable: KeyRevocation could not be read, so a Sign cannot be shown allowed
+	reasonWrap                 = "wrap"                  // unavailable: the data key exists but this node holds no wrap of it yet
 )
 
 // refuse audits a refusal and returns it. The audit fact carries the caller, the operation, the purpose, the
