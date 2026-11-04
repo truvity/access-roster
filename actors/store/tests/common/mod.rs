@@ -32,9 +32,44 @@ use store::audit::{AuditEvent, AuditSink};
 use store::config::ConfigSnapshot;
 use store::engine::{EngineError, ItemEngine};
 use store::grant::KeyOpener;
+use store::secret::{Secret, SecretError, SecretSource};
 use store::service::{Deps, Service};
 
 pub const T0: u64 = 1_800_000_000;
+
+// ---- the secret source ----
+
+/// A secret source that keeps what it is given and counts the reads that reach it.
+#[derive(Default)]
+pub struct Secrets {
+    pub items: Mutex<HashMap<String, Vec<u8>>>,
+    pub down: AtomicBool,
+    pub reads: AtomicUsize,
+}
+
+impl SecretSource for Secrets {
+    fn read<'a>(
+        &'a self,
+        name: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Arc<Secret>, SecretError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            if self.down.load(Ordering::SeqCst) {
+                return Err(SecretError::Down);
+            }
+            let data = self.items.lock().unwrap().get(name).cloned();
+            data.map(|data| {
+                Arc::new(Secret {
+                    data,
+                    version: "v1".into(),
+                })
+            })
+            .ok_or(SecretError::Absent)
+        })
+    }
+}
 
 // ---- the engine ----
 
@@ -319,6 +354,7 @@ pub struct F {
     pub key: Arc<FakeKey>,
     pub sink: RecSink,
     pub docs: Arc<Docs>,
+    pub secrets: Arc<Secrets>,
     pub clock: Arc<AtomicU64>,
     client: StoreServiceClient<sluis_kit::Transport>,
     next_grant: AtomicUsize,
@@ -366,6 +402,7 @@ impl F {
         );
         let sink = RecSink::default();
         let docs = Arc::new(Docs::default());
+        let secrets = Arc::new(Secrets::default());
         let c = Arc::clone(&clock);
         let svc = Service::new(Deps {
             boundary: "dev".into(),
@@ -373,6 +410,7 @@ impl F {
             temp: temp.clone(),
             grants: KeyOpener::new(&dial(&key_sock)),
             config: Arc::clone(&docs) as Arc<dyn ConfigSnapshot>,
+            secrets: Arc::clone(&secrets) as Arc<dyn SecretSource>,
             audit: sink.clone(),
             clock: Arc::new(move || {
                 SystemTime::UNIX_EPOCH + Duration::from_secs(c.load(Ordering::SeqCst))
@@ -408,6 +446,7 @@ impl F {
             key,
             sink,
             docs,
+            secrets,
             clock,
             client: StoreServiceClient::new(cl.transport(), cl.config()),
             next_grant: AtomicUsize::new(0),

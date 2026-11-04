@@ -318,6 +318,7 @@ type InstallationClient struct {
 	Requires      []string               `protobuf:"bytes,4,rep,name=requires,proto3" json:"requires,omitempty"`           // what the client requires of a sign-in
 	TtlCap        *durationpb.Duration   `protobuf:"bytes,5,opt,name=ttl_cap,json=ttlCap,proto3" json:"ttl_cap,omitempty"` // the longest token lifetime the client may get
 	Profile       string                 `protobuf:"bytes,6,opt,name=profile,proto3" json:"profile,omitempty"`             // the client's profile
+	Secret        string                 `protobuf:"bytes,7,opt,name=secret,proto3" json:"secret,omitempty"`               // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -394,6 +395,68 @@ func (x *InstallationClient) GetProfile() string {
 	return ""
 }
 
+func (x *InstallationClient) GetSecret() string {
+	if x != nil {
+		return x.Secret
+	}
+	return ""
+}
+
+// InstallationClientSecret is the kind InstallationClientSecret; id is the client id. Its value is what store@ answers
+// to a get from a listed reader: the secret that IaC put in the secret source under the name that the client's
+// InstallationClient declares. It is never signed, stored, logged or audited.
+type InstallationClientSecret struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Client        string                 `protobuf:"bytes,1,opt,name=client,proto3" json:"client,omitempty"` // the client id
+	Secret        []byte                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"` // the secret, exactly as the secret source holds it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstallationClientSecret) Reset() {
+	*x = InstallationClientSecret{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstallationClientSecret) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstallationClientSecret) ProtoMessage() {}
+
+func (x *InstallationClientSecret) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstallationClientSecret.ProtoReflect.Descriptor instead.
+func (*InstallationClientSecret) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *InstallationClientSecret) GetClient() string {
+	if x != nil {
+		return x.Client
+	}
+	return ""
+}
+
+func (x *InstallationClientSecret) GetSecret() []byte {
+	if x != nil {
+		return x.Secret
+	}
+	return nil
+}
+
 // Upstream is the kind Upstream; id is the upstream's name. It names no tenant (kinds.yaml).
 type Upstream struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -410,7 +473,7 @@ type Upstream struct {
 
 func (x *Upstream) Reset() {
 	*x = Upstream{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[5]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -422,7 +485,7 @@ func (x *Upstream) String() string {
 func (*Upstream) ProtoMessage() {}
 
 func (x *Upstream) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[5]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -435,7 +498,7 @@ func (x *Upstream) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Upstream.ProtoReflect.Descriptor instead.
 func (*Upstream) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{5}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Upstream) GetName() string {
@@ -498,7 +561,7 @@ type UpstreamSecret struct {
 
 func (x *UpstreamSecret) Reset() {
 	*x = UpstreamSecret{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[6]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -510,7 +573,7 @@ func (x *UpstreamSecret) String() string {
 func (*UpstreamSecret) ProtoMessage() {}
 
 func (x *UpstreamSecret) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[6]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -523,7 +586,7 @@ func (x *UpstreamSecret) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpstreamSecret.ProtoReflect.Descriptor instead.
 func (*UpstreamSecret) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{6}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *UpstreamSecret) GetUpstream() string {
@@ -550,7 +613,7 @@ type GrantVocabulary struct {
 
 func (x *GrantVocabulary) Reset() {
 	*x = GrantVocabulary{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[7]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -562,7 +625,7 @@ func (x *GrantVocabulary) String() string {
 func (*GrantVocabulary) ProtoMessage() {}
 
 func (x *GrantVocabulary) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[7]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -575,7 +638,7 @@ func (x *GrantVocabulary) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GrantVocabulary.ProtoReflect.Descriptor instead.
 func (*GrantVocabulary) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{7}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GrantVocabulary) GetDocument() []byte {
@@ -596,7 +659,7 @@ type Policy struct {
 
 func (x *Policy) Reset() {
 	*x = Policy{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[8]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -608,7 +671,7 @@ func (x *Policy) String() string {
 func (*Policy) ProtoMessage() {}
 
 func (x *Policy) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[8]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -621,7 +684,7 @@ func (x *Policy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Policy.ProtoReflect.Descriptor instead.
 func (*Policy) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{8}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Policy) GetId() string {
@@ -648,7 +711,7 @@ type ExchangeTrust struct {
 
 func (x *ExchangeTrust) Reset() {
 	*x = ExchangeTrust{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[9]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -660,7 +723,7 @@ func (x *ExchangeTrust) String() string {
 func (*ExchangeTrust) ProtoMessage() {}
 
 func (x *ExchangeTrust) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[9]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -673,7 +736,7 @@ func (x *ExchangeTrust) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExchangeTrust.ProtoReflect.Descriptor instead.
 func (*ExchangeTrust) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{9}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ExchangeTrust) GetIssuers() []*TrustedIssuer {
@@ -696,7 +759,7 @@ type TrustedIssuer struct {
 
 func (x *TrustedIssuer) Reset() {
 	*x = TrustedIssuer{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[10]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -708,7 +771,7 @@ func (x *TrustedIssuer) String() string {
 func (*TrustedIssuer) ProtoMessage() {}
 
 func (x *TrustedIssuer) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[10]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -721,7 +784,7 @@ func (x *TrustedIssuer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrustedIssuer.ProtoReflect.Descriptor instead.
 func (*TrustedIssuer) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{10}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *TrustedIssuer) GetIssuer() string {
@@ -764,7 +827,7 @@ type AuditLog struct {
 
 func (x *AuditLog) Reset() {
 	*x = AuditLog{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[11]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -776,7 +839,7 @@ func (x *AuditLog) String() string {
 func (*AuditLog) ProtoMessage() {}
 
 func (x *AuditLog) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[11]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -789,7 +852,7 @@ func (x *AuditLog) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditLog.ProtoReflect.Descriptor instead.
 func (*AuditLog) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{11}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *AuditLog) GetProject() string {
@@ -825,7 +888,7 @@ type LogDecl struct {
 
 func (x *LogDecl) Reset() {
 	*x = LogDecl{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[12]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -837,7 +900,7 @@ func (x *LogDecl) String() string {
 func (*LogDecl) ProtoMessage() {}
 
 func (x *LogDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[12]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -850,7 +913,7 @@ func (x *LogDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogDecl.ProtoReflect.Descriptor instead.
 func (*LogDecl) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{12}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *LogDecl) GetKind() string {
@@ -885,7 +948,7 @@ type AuditCatalogue struct {
 
 func (x *AuditCatalogue) Reset() {
 	*x = AuditCatalogue{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[13]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -897,7 +960,7 @@ func (x *AuditCatalogue) String() string {
 func (*AuditCatalogue) ProtoMessage() {}
 
 func (x *AuditCatalogue) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[13]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -910,7 +973,7 @@ func (x *AuditCatalogue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditCatalogue.ProtoReflect.Descriptor instead.
 func (*AuditCatalogue) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{13}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *AuditCatalogue) GetRelease() string {
@@ -952,14 +1015,18 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\bid_token\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\aidToken\x12<\n" +
 	"\faccess_token\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\vaccessToken\x12O\n" +
 	"\x16human_session_absolute\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x14humanSessionAbsolute\x12<\n" +
-	"\frefresh_idle\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vrefreshIdle\"\xc0\x01\n" +
+	"\frefresh_idle\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\vrefreshIdle\"\xd8\x01\n" +
 	"\x12InstallationClient\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x1c\n" +
 	"\tredirects\x18\x03 \x03(\tR\tredirects\x12\x1a\n" +
 	"\brequires\x18\x04 \x03(\tR\brequires\x122\n" +
 	"\attl_cap\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x06ttlCap\x12\x18\n" +
-	"\aprofile\x18\x06 \x01(\tR\aprofile\"\xc1\x01\n" +
+	"\aprofile\x18\x06 \x01(\tR\aprofile\x12\x16\n" +
+	"\x06secret\x18\a \x01(\tR\x06secret\"J\n" +
+	"\x18InstallationClientSecret\x12\x16\n" +
+	"\x06client\x18\x01 \x01(\tR\x06client\x12\x16\n" +
+	"\x06secret\x18\x02 \x01(\fR\x06secret\"\xc1\x01\n" +
 	"\bUpstream\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x16\n" +
@@ -1011,34 +1078,35 @@ func file_sluis_config_v2alpha1_config_proto_rawDescGZIP() []byte {
 	return file_sluis_config_v2alpha1_config_proto_rawDescData
 }
 
-var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
-	(*Boundary)(nil),            // 0: sluis.config.v2alpha1.Boundary
-	(*KeyPlan)(nil),             // 1: sluis.config.v2alpha1.KeyPlan
-	(*KeyPurposePlan)(nil),      // 2: sluis.config.v2alpha1.KeyPurposePlan
-	(*TokenLifetime)(nil),       // 3: sluis.config.v2alpha1.TokenLifetime
-	(*InstallationClient)(nil),  // 4: sluis.config.v2alpha1.InstallationClient
-	(*Upstream)(nil),            // 5: sluis.config.v2alpha1.Upstream
-	(*UpstreamSecret)(nil),      // 6: sluis.config.v2alpha1.UpstreamSecret
-	(*GrantVocabulary)(nil),     // 7: sluis.config.v2alpha1.GrantVocabulary
-	(*Policy)(nil),              // 8: sluis.config.v2alpha1.Policy
-	(*ExchangeTrust)(nil),       // 9: sluis.config.v2alpha1.ExchangeTrust
-	(*TrustedIssuer)(nil),       // 10: sluis.config.v2alpha1.TrustedIssuer
-	(*AuditLog)(nil),            // 11: sluis.config.v2alpha1.AuditLog
-	(*LogDecl)(nil),             // 12: sluis.config.v2alpha1.LogDecl
-	(*AuditCatalogue)(nil),      // 13: sluis.config.v2alpha1.AuditCatalogue
-	(*durationpb.Duration)(nil), // 14: google.protobuf.Duration
+	(*Boundary)(nil),                 // 0: sluis.config.v2alpha1.Boundary
+	(*KeyPlan)(nil),                  // 1: sluis.config.v2alpha1.KeyPlan
+	(*KeyPurposePlan)(nil),           // 2: sluis.config.v2alpha1.KeyPurposePlan
+	(*TokenLifetime)(nil),            // 3: sluis.config.v2alpha1.TokenLifetime
+	(*InstallationClient)(nil),       // 4: sluis.config.v2alpha1.InstallationClient
+	(*InstallationClientSecret)(nil), // 5: sluis.config.v2alpha1.InstallationClientSecret
+	(*Upstream)(nil),                 // 6: sluis.config.v2alpha1.Upstream
+	(*UpstreamSecret)(nil),           // 7: sluis.config.v2alpha1.UpstreamSecret
+	(*GrantVocabulary)(nil),          // 8: sluis.config.v2alpha1.GrantVocabulary
+	(*Policy)(nil),                   // 9: sluis.config.v2alpha1.Policy
+	(*ExchangeTrust)(nil),            // 10: sluis.config.v2alpha1.ExchangeTrust
+	(*TrustedIssuer)(nil),            // 11: sluis.config.v2alpha1.TrustedIssuer
+	(*AuditLog)(nil),                 // 12: sluis.config.v2alpha1.AuditLog
+	(*LogDecl)(nil),                  // 13: sluis.config.v2alpha1.LogDecl
+	(*AuditCatalogue)(nil),           // 14: sluis.config.v2alpha1.AuditCatalogue
+	(*durationpb.Duration)(nil),      // 15: google.protobuf.Duration
 }
 var file_sluis_config_v2alpha1_config_proto_depIdxs = []int32{
 	2,  // 0: sluis.config.v2alpha1.KeyPlan.purposes:type_name -> sluis.config.v2alpha1.KeyPurposePlan
-	14, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
-	14, // 2: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
-	14, // 3: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
-	14, // 4: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
-	14, // 5: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
-	14, // 6: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
-	10, // 7: sluis.config.v2alpha1.ExchangeTrust.issuers:type_name -> sluis.config.v2alpha1.TrustedIssuer
-	12, // 8: sluis.config.v2alpha1.AuditLog.logs:type_name -> sluis.config.v2alpha1.LogDecl
+	15, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
+	15, // 2: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
+	15, // 3: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
+	15, // 4: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
+	15, // 5: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
+	15, // 6: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
+	11, // 7: sluis.config.v2alpha1.ExchangeTrust.issuers:type_name -> sluis.config.v2alpha1.TrustedIssuer
+	13, // 8: sluis.config.v2alpha1.AuditLog.logs:type_name -> sluis.config.v2alpha1.LogDecl
 	9,  // [9:9] is the sub-list for method output_type
 	9,  // [9:9] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
@@ -1057,7 +1125,7 @@ func file_sluis_config_v2alpha1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_config_v2alpha1_config_proto_rawDesc), len(file_sluis_config_v2alpha1_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

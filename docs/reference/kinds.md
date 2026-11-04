@@ -419,7 +419,7 @@ adapter-upstream-oidc exchanges the code at the upstream and returns the verifie
 
 ### `InstallationClientSecret`
 
-A client secret provided by IaC (the generated kind is ClientSecret).
+A client secret provided by IaC (the generated kind is ClientSecret). The id is the client id, and the value is the secret exactly as the secret source holds it. The InstallationClient of that id names the credential in its `secret` field, which is where the config names the secret. Only store@ reads the source; session and exchange get the value through store@ and compare it in constant time.
 
 - **Class:** secret; scope boundary; plain; profile Fixed; module core; serves the work family.
 - **Writer:** `IaC`.

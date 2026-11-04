@@ -209,11 +209,12 @@ requirements:
     rationale: "A secret source holds values in the clear for whoever may read it, so the store is the second check (ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: all
     actors: [store]
     standards: []
     issues: [1205]
+    tests: [actors/store/tests/store.rs]
     verification:
       - {kind: integration-test, ref: "an actor that is not a listed reader of a secret kind asks for it; refused"}
   - id: REQ-DATA-017

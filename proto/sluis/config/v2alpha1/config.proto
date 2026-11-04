@@ -47,6 +47,15 @@ message InstallationClient {
   repeated string requires = 4;               // what the client requires of a sign-in
   google.protobuf.Duration ttl_cap = 5;       // the longest token lifetime the client may get
   string profile = 6;                         // the client's profile
+  string secret = 7;                          // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
+}
+
+// InstallationClientSecret is the kind InstallationClientSecret; id is the client id. Its value is what store@ answers
+// to a get from a listed reader: the secret that IaC put in the secret source under the name that the client's
+// InstallationClient declares. It is never signed, stored, logged or audited.
+message InstallationClientSecret {
+  string client = 1;   // the client id
+  bytes secret = 2;    // the secret, exactly as the secret source holds it
 }
 
 // Upstream is the kind Upstream; id is the upstream's name. It names no tenant (kinds.yaml).

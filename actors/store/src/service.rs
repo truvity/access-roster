@@ -9,12 +9,14 @@ use std::time::{Duration, SystemTime};
 use aws_lc_rs::digest;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use buffa::Message as _;
 use buffa_types::google::protobuf::Duration as PbDuration;
 use connectrpc::error::ErrorCode;
 use connectrpc::{
     ConnectError, RequestContext, Response, ServiceRequest, ServiceResult, ServiceStream,
 };
 use sluis_kit::{Peer, refusal};
+use sluis_proto::sluis::config::v2alpha1 as pb;
 use sluis_proto::sluis::port::item::v2alpha1::{
     Condition, Delete, DriverItem, Put, QueryRequest, TransactRequest, condition::Expect,
 };
@@ -31,6 +33,7 @@ use crate::config::ConfigSnapshot;
 use crate::engine::{EngineError, ItemEngine};
 use crate::grant::{self, GrantCache, GrantOpener, OpenError, from_system_time, to_system_time};
 use crate::messages;
+use crate::secret::{SecretError, SecretSource};
 
 /// A write batch holds at most this many operations (store-api.md "Write").
 pub const BATCH_MAX: usize = 64;
@@ -54,6 +57,8 @@ pub struct Deps<E, G, A> {
     pub temp: E,
     pub grants: G,
     pub config: Arc<dyn ConfigSnapshot>,
+    /// The secret source (ADR 0005, "Secret sources"): read only for a secret kind.
+    pub secrets: Arc<dyn SecretSource>,
     pub audit: A,
     pub clock: Clock,
 }
@@ -65,6 +70,7 @@ pub struct Service<E, G, A> {
     temp: E,
     grants: GrantCache<G>,
     config: Arc<dyn ConfigSnapshot>,
+    secrets: Arc<dyn SecretSource>,
     audit: Auditor<A>,
     now: Clock,
 }
@@ -78,6 +84,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             temp: d.temp,
             grants: GrantCache::new(d.grants),
             config: d.config,
+            secrets: d.secrets,
             audit: Auditor::new(d.audit),
             now: d.clock,
         }
@@ -373,7 +380,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                     ..DriverItem::default()
                 }
             }
-            Class::Secret => return Err(blame(unimplemented_secret())),
+            Class::Secret => self.secret_item(t.kind, &t.id).await.map_err(blame)?,
             Class::Durable | Class::Temp => {
                 let key = address::key(&self.boundary, &t.tenant, t.kind.segment, &t.id);
                 let linearizable = req.consistency.as_known() != Some(Consistency::FOLLOWER);
@@ -397,6 +404,45 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         Ok(GetResponse {
             item: self.wire_item(addr, &item).into(),
             ..GetResponse::default()
+        })
+    }
+
+    /// The item of a secret kind (ADR 0005, "Secret sources"). The config names where the secret is: the
+    /// `InstallationClient` of the id gives the name of the credential, and the secret source gives its bytes. The
+    /// value is the kind's message and leaves in the answer only; it is not in an audit fact, a log line or a span.
+    async fn secret_item(&self, kind: &Kind, id: &str) -> Res<DriverItem> {
+        if kind.name != "InstallationClientSecret" {
+            // The other secret kinds are read by the actors that own them (adapters), which this build does not
+            // serve through store@.
+            return Err(unimplemented_secret());
+        }
+        let absent = || refuse(ErrorCode::NotFound, "absent", "address");
+        let client = sluis_registry::kind_by_name("InstallationClient")
+            .unwrap_or_else(|| unreachable!("the registry has InstallationClient"));
+        let bytes = self.config.get(client.segment, id).ok_or_else(absent)?;
+        let declared =
+            pb::InstallationClient::decode_from_slice(&bytes).map_err(|_| engine_down())?;
+        if declared.secret.is_empty() {
+            return Err(absent());
+        }
+        let secret = self
+            .secrets
+            .read(&declared.secret)
+            .await
+            .map_err(|e| match e {
+                SecretError::Absent => absent(),
+                SecretError::Down => engine_down(),
+            })?;
+        let value = pb::InstallationClientSecret {
+            client: id.to_owned(),
+            secret: secret.data.clone(),
+            ..pb::InstallationClientSecret::default()
+        };
+        Ok(DriverItem {
+            // A label of the file, not of the value: the SHA-384 of the source's version, first 8 bytes.
+            version: version_of(&secret.version),
+            value: value.encode_to_vec(),
+            ..DriverItem::default()
         })
     }
 
@@ -878,6 +924,15 @@ fn pb_duration(d: &PbDuration) -> Option<Duration> {
     let secs = u64::try_from(d.seconds).ok()?;
     let nanos = u32::try_from(d.nanos).ok().filter(|n| *n < 1_000_000_000)?;
     Some(Duration::new(secs, nanos))
+}
+
+/// A version number for the label that a source gives (never for the value): the first 8 bytes of its SHA-384.
+fn version_of(label: &str) -> u64 {
+    let d = digest::digest(&digest::SHA384, label.as_bytes());
+    let mut b = [0u8; 8];
+    b.copy_from_slice(&d.as_ref()[..8]);
+    // 0 is "no version" to `if_none_match`.
+    u64::from_be_bytes(b).max(1)
 }
 
 fn unimplemented_watch() -> Refuse {
