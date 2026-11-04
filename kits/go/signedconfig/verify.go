@@ -63,7 +63,16 @@ type Verified struct {
 	Seq     uint64
 	Payload []byte   // the reviewed file, byte for byte
 	Digest  [48]byte // the SHA-384 of the payload: what an audit fact names
+	KIDs    []string // the kids of the publisher keys that signed it, in the order of the signatures
 }
+
+// KeyRevocationDeclaration is the kind of the signed declaration with which an operator revokes keys (ADR 0041;
+// signed-config.md, "Declarations"). It is not a kind of the registry: a declaration is delivered to key@ and never
+// loaded as config, so store@, which takes config kinds only, refuses it, and a config document cannot be served as one.
+const KeyRevocationDeclaration = "KeyRevocationDeclaration"
+
+// declarations are the kinds of signed declaration that VerifyDeclaration takes.
+var declarations = []string{KeyRevocationDeclaration}
 
 type signature struct {
 	protected, signature string
@@ -87,6 +96,21 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 	if k, ok := registry.KindByName(kind); !ok || k.Class != "config" {
 		return nil, fmt.Errorf("signedconfig: %q is not the name of a config kind", kind)
 	}
+	return verify(doc, kind, publishers)
+}
+
+// VerifyDeclaration takes the same steps 1 to 4 for a signed declaration of the kind `kind` (signed-config.md,
+// "Declarations"): the format, the header, the pinned publisher keys and their co-signers are those of a config
+// document, and the header must name the declaration's kind. The sequence and the payload are the caller's. A kind that
+// is not a declaration's is an error of the caller.
+func VerifyDeclaration(doc []byte, kind string, publishers []Publisher) (*Verified, error) {
+	if !slices.Contains(declarations, kind) {
+		return nil, fmt.Errorf("signedconfig: %q is not the kind of a declaration", kind)
+	}
+	return verify(doc, kind, publishers)
+}
+
+func verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) {
 	if len(doc) > MaxDocument {
 		return nil, refuse(1, "the document is larger than the bound")
 	}
@@ -201,7 +225,11 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 	if err != nil {
 		return nil, refuse(4, "the payload is not base64url")
 	}
-	return &Verified{Seq: seq, Payload: body, Digest: sha512.Sum384(body)}, nil
+	kids := make([]string, len(signatures))
+	for i, s := range signatures {
+		kids[i] = s.kid
+	}
+	return &Verified{Seq: seq, Payload: body, Digest: sha512.Sum384(body), KIDs: kids}, nil
 }
 
 // object is a JSON object read with the one rule encoding/json does not have: a duplicate key is an error, at any

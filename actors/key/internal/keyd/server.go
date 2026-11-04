@@ -28,6 +28,7 @@ import (
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1/keystorev2alpha1connect"
+	signerv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
@@ -76,8 +77,7 @@ type Config struct {
 type purposeKey struct {
 	algorithm string // ES384 or ECDH-P384
 	spki      []byte
-	keyID     string    // RFC 7638 thumbprint
-	created   time.Time // when the key store made the key; zero when it cannot say
+	keyID     string // RFC 7638 thumbprint
 	pub       *ecdsa.PublicKey
 }
 
@@ -91,6 +91,12 @@ type Server struct {
 	certs  *store.Client[*keyv2alpha1.KeyCertificate]
 	// revocations is the create-only kind of revoked targets (revocation.go).
 	revocations *store.Client[*keyv2alpha1.KeyRevocation]
+	// ring is the token keys of every node, which a declaration may name (declaration.go).
+	ring *store.Client[*signerv2alpha1.SigningRing]
+	// declarations is the highest key revocation declaration taken (declaration.go).
+	declarations declarations
+	// adminAllow decides from the peer's uid who may use the admin socket (admin.go): root.
+	adminAllow func(uid uint32) bool
 
 	// The KeyPlan and the Boundary are verified here and never taken as decoded items from store@ (signed_kind.go).
 	publishers []signedconfig.Publisher // the publisher keys of the bootstrap file
@@ -167,10 +173,15 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
-	return &Server{cfg: cfg, now: now, st: st, revocations: rev, driver: driver, wraps: ws, certs: certs,
-		plan:     &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
-		boundary: &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
-		limits:   newLimiters(now)}, nil
+	ring, err := store.New(st, signingRingKind, func() *signerv2alpha1.SigningRing { return &signerv2alpha1.SigningRing{} })
+	if err != nil {
+		return nil, err
+	}
+	return &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs,
+		adminAllow: func(uid uint32) bool { return uid == 0 },
+		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
+		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
+		limits:     newLimiters(now)}, nil
 }
 
 // validNode reports whether node is a lower-case address part of reasonable length.

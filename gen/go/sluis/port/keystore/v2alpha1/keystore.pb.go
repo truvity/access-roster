@@ -181,8 +181,8 @@ type EnsureResponse struct {
 	SpkiDer []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
 	Created bool                   `protobuf:"varint,2,opt,name=created,proto3" json:"created,omitempty"`               // true when this call made the key
 	// When the key was made, whether or not this call made it: the store's own record (the key file's time for the
-	// software driver). Absent when the store cannot say; key@ then treats the key as older than any revocation
-	// (ADR 0041: a purpose revocation refuses the keys made at or before it, and a key of unknown age is refused).
+	// software driver). Absent when the store cannot say. A revocation names keys by their kid and never by their age
+	// (ADR 0041), so key@ does not decide anything on it.
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

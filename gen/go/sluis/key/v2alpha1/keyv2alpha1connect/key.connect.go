@@ -25,6 +25,8 @@ const _ = connect.IsAtLeastVersion1_13_0
 const (
 	// KeyServiceName is the fully-qualified name of the KeyService service.
 	KeyServiceName = "sluis.key.v2alpha1.KeyService"
+	// KeyAdminServiceName is the fully-qualified name of the KeyAdminService service.
+	KeyAdminServiceName = "sluis.key.v2alpha1.KeyAdminService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -49,6 +51,8 @@ const (
 	KeyServiceMacProcedure = "/sluis.key.v2alpha1.KeyService/Mac"
 	// KeyServicePublicKeyProcedure is the fully-qualified name of the KeyService's PublicKey RPC.
 	KeyServicePublicKeyProcedure = "/sluis.key.v2alpha1.KeyService/PublicKey"
+	// KeyAdminServiceRevokeProcedure is the fully-qualified name of the KeyAdminService's Revoke RPC.
+	KeyAdminServiceRevokeProcedure = "/sluis.key.v2alpha1.KeyAdminService/Revoke"
 )
 
 // KeyServiceClient is a client for the sluis.key.v2alpha1.KeyService service.
@@ -275,4 +279,74 @@ func (UnimplementedKeyServiceHandler) Mac(context.Context, *connect.Request[v2al
 
 func (UnimplementedKeyServiceHandler) PublicKey(context.Context, *connect.Request[v2alpha1.PublicKeyRequest]) (*connect.Response[v2alpha1.PublicKeyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.key.v2alpha1.KeyService.PublicKey is not implemented"))
+}
+
+// KeyAdminServiceClient is a client for the sluis.key.v2alpha1.KeyAdminService service.
+type KeyAdminServiceClient interface {
+	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha1.RevokeResponse], error)
+}
+
+// NewKeyAdminServiceClient constructs a client for the sluis.key.v2alpha1.KeyAdminService service.
+// By default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped
+// responses, and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
+// connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewKeyAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) KeyAdminServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	keyAdminServiceMethods := v2alpha1.File_sluis_key_v2alpha1_key_proto.Services().ByName("KeyAdminService").Methods()
+	return &keyAdminServiceClient{
+		revoke: connect.NewClient[v2alpha1.RevokeRequest, v2alpha1.RevokeResponse](
+			httpClient,
+			baseURL+KeyAdminServiceRevokeProcedure,
+			connect.WithSchema(keyAdminServiceMethods.ByName("Revoke")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// keyAdminServiceClient implements KeyAdminServiceClient.
+type keyAdminServiceClient struct {
+	revoke *connect.Client[v2alpha1.RevokeRequest, v2alpha1.RevokeResponse]
+}
+
+// Revoke calls sluis.key.v2alpha1.KeyAdminService.Revoke.
+func (c *keyAdminServiceClient) Revoke(ctx context.Context, req *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha1.RevokeResponse], error) {
+	return c.revoke.CallUnary(ctx, req)
+}
+
+// KeyAdminServiceHandler is an implementation of the sluis.key.v2alpha1.KeyAdminService service.
+type KeyAdminServiceHandler interface {
+	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha1.RevokeResponse], error)
+}
+
+// NewKeyAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewKeyAdminServiceHandler(svc KeyAdminServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	keyAdminServiceMethods := v2alpha1.File_sluis_key_v2alpha1_key_proto.Services().ByName("KeyAdminService").Methods()
+	keyAdminServiceRevokeHandler := connect.NewUnaryHandler(
+		KeyAdminServiceRevokeProcedure,
+		svc.Revoke,
+		connect.WithSchema(keyAdminServiceMethods.ByName("Revoke")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/sluis.key.v2alpha1.KeyAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case KeyAdminServiceRevokeProcedure:
+			keyAdminServiceRevokeHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedKeyAdminServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedKeyAdminServiceHandler struct{}
+
+func (UnimplementedKeyAdminServiceHandler) Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha1.RevokeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.key.v2alpha1.KeyAdminService.Revoke is not implemented"))
 }

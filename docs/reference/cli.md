@@ -45,6 +45,8 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
 | `sluis node unlock NODE [--socket PATH] [--secret-fd N]` | The PIN, from standard input or the descriptor; the card driver's status | The PIN into the locked card driver of the node it runs on | 0, 1, 2, 3 |
+| `sluis key revoke --kid KID --reason REASON [--out FILE]` | Nothing | A key revocation declaration, to `FILE` or standard output | 0, 2 |
+| `sluis key revoke --declaration FILE [--socket PATH]` | The signed declaration | The revocations, through key@ on the node it runs on | 0, 1, 2, 3 |
 
 ### `sluis config check` and `explain`
 
@@ -77,6 +79,16 @@ A board starts locked: the card driver has no PIN ([0006](/decisions/0006-keys-a
 - **A wrong PIN is tried once.** The driver never retries it, because the card blocks after three wrong attempts. The command exits 3 with the reason `pin` and prints how many attempts the card still allows. With one attempt left the PIN is not sent at all: the command exits 3 with the reason `pin_retries`, because one more wrong PIN would block the card and the PUK procedure is the owners'. A blocked card exits 3 with `pin_blocked`; the PUK is a ceremony of the owners and not a command.
 - **`--socket PATH`** names the admin socket; by default it is `/run/sluis-drv-key-yubikey-piv-BOUNDARY/admin.sock`, from `--boundary`.
 - **The driver keeps the PIN in locked memory** and nowhere else; a restart of the driver locks it again.
+
+### `sluis key revoke`
+
+An operator revokes keys in two steps, with the publisher's signature between them, because the publisher key lives where the config is signed and never on a node ([0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)). Neither step needs the token keys or sign-in.
+
+1. **`sluis key revoke --boundary B --kid KID --reason REASON [--out FILE]`** writes the declaration for the keys: `--kid` is an RFC 7638 thumbprint and is repeated for each key, and `REASON` is `compromise`, `suspicion`, `lost-board` or `drill`. It names keys, never a purpose. A key id that is not a thumbprint, a key named twice or another reason exits 2.
+2. **The publisher signs it** as a `KeyRevocationDeclaration`, with the key that signs the `KeyPlan` ([Declarations](/reference/signed-config/#declarations)). On the boards it is the harness: `go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration FILE -declaration-out FILE.jws`.
+3. **`sluis key revoke --boundary B --declaration FILE.jws`** runs on any node of the boundary, as root, and delivers the signed declaration to key@'s admin socket, `/run/sluis/key/BOUNDARY/admin.sock` (`--socket PATH` names another). It prints each key with `revoked` or `already revoked`. A refusal of key@ exits 3 with its reason and path: `declaration`, `seq`, `schema`, `other-boundary` or `unknown-kid`. A key@ that cannot be reached, or an audit fact that key@ could not make durable, exits 1; in the second case the keys are revoked.
+
+The command prints `not confirmed` on standard error: this build does not yet fetch the published key set to check that the keys left it ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088)).
 
 ### `sluis login` and `sluis token`
 

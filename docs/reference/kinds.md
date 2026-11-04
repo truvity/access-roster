@@ -508,7 +508,7 @@ Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has five data keys, 
 
 ### `KeyRevocation`
 
-Create only (ADR 0041): for every caller, key@ included, store@ refuses an update, a delete and an apply on an existing item. Lease's rule refuses delete and apply only, so it is not the model. Each item revokes one target, a token-signing kid, a data key generation, a purpose or a recipient. The target, the time and a reason code from a closed list are plain, because signer, entry, exporter@ and ca read them (and watch the kind, so a revocation reaches a published set at once and `ca` stops issuing) to filter published key sets and trust bundles and a sealed kind could not be read there; the operator and any free-text reason are in the audit fact, which is where they belong. key@ writes it only on an operator's declaration (fresh multi-factor authentication, through its admin path), which the operator command delivers and the signer of any node may relay; a signer never asks on its own. Merged by union on a restore, and re-applied by the roll-forward. A revocation of a boundary's key, purpose or recipient has no tenant (the address carries `-`), only a data key generation of a tenant has one, and key@ writes the kind with no grant, as it writes DataKeyWrap: its authority is the operator's declaration, not a tenant's grant. An apply is refused like an update, whether or not the item exists (the rule table gives key@ create, get and list only).
+Create only (ADR 0041): for every caller, key@ included, store@ refuses an update, a delete and an apply on an existing item. Lease's rule refuses delete and apply only, so it is not the model. Each item revokes one target, the kid of a signing key, a data key generation or a recipient; never a whole purpose. The target, the time and a reason code from a closed list are plain, because signer, entry, exporter@ and ca read them (and watch the kind, so a revocation reaches a published set at once and `ca` stops issuing) to filter published key sets and trust bundles and a sealed kind could not be read there; the operator and any free-text reason are in the audit fact, which is where they belong. key@ writes it only on an operator's declaration signed with a publisher key (ADR 0041, "The declaration"), which the operator command delivers to key@'s admin socket and the signer of any node may relay; a signer never asks on its own. Merged by union on a restore, and re-applied by the roll-forward. A revocation of a boundary's key, purpose or recipient has no tenant (the address carries `-`), only a data key generation of a tenant has one, and key@ writes the kind with no grant, as it writes DataKeyWrap: its authority is the operator's declaration, not a tenant's grant. An apply is refused like an update, whether or not the item exists (the rule table gives key@ create, get and list only).
 
 - **Class:** durable; scope boundary+tenant; plain; profile Operable; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key), create only (the kind only grows: no update, delete or apply).
@@ -619,11 +619,11 @@ An operator's or staff member's passkey on the shared sign-in domain: the person
 
 ### `SigningRing`
 
-The token keys the key set publishes, each with its x5c chain; exported as the static key set.
+The token keys the key set publishes, each with its x5c chain; exported as the static key set. key@ reads it to know the token keys of every node, so that a revocation declaration may name another node's key (ADR 0041).
 
 - **Class:** durable; scope boundary; plain; profile none; module core; serves the work family.
 - **Writer:** [`signer`](/reference/actors/#signer).
-- **Readers:** [`signer`](/reference/actors/#signer), [`entry`](/reference/actors/#entry), [`exporter@`](/reference/actors/#exporter); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
+- **Readers:** [`signer`](/reference/actors/#signer), [`entry`](/reference/actors/#entry), [`exporter@`](/reference/actors/#exporter), [`key@`](/reference/actors/#key); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** yes; **backed up:** yes.
 
 ### `OpenPgpBinding`
