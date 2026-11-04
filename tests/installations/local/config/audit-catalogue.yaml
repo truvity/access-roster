@@ -4,6 +4,11 @@ default:
   release: "0.0.0"
   actions:
     - key.sign
+    # key@'s other facts (actors/key/internal/keyd/audit.go); without them the writer quarantines them.
+    - key.start
+    - key.refuse
+    - key.data_key.make
+    - key.wrap.write
     - store.start
     - store.refused
     - store.reload

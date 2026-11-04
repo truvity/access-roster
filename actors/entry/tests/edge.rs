@@ -1205,7 +1205,8 @@ async fn the_audit_front_routes_search_to_the_reader_and_nothing_else() {
 #[tokio::test]
 async fn the_audit_front_refuses_what_the_contract_does_not_have() {
     let up = audit_front().await;
-    let cases: [(&str, &str, &[(&str, &str)], &[u8], u16); 8] = [
+    type Case<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)], &'a [u8], u16);
+    let cases: [Case; 8] = [
         ("GET", SEARCH, &[], b"", 405),
         ("POST", SEARCH, &[FORM], b"tenants=acme", 415),
         ("POST", SEARCH, &[JSON], br#"{"tenant":"acme"}"#, 400),
