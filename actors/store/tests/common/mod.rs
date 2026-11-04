@@ -40,6 +40,9 @@ pub const T0: u64 = 1_800_000_000;
 
 #[derive(Default)]
 pub struct MemState {
+    /// The test clock, in seconds; the engine uses it for the one rule it must keep: an item past
+    /// its expiry does not exist for a condition (the item contract, as the rqlite driver keeps it).
+    pub clock: Option<Arc<AtomicU64>>,
     pub items: Mutex<BTreeMap<Vec<u8>, DriverItem>>,
     pub down: AtomicBool,
     pub txs: Mutex<Vec<TransactRequest>>,
@@ -51,6 +54,21 @@ pub struct MemState {
 pub struct Mem(pub Arc<MemState>);
 
 impl Mem {
+    pub fn with_clock(clock: Arc<AtomicU64>) -> Self {
+        Mem(Arc::new(MemState {
+            clock: Some(clock),
+            ..MemState::default()
+        }))
+    }
+
+    /// Whether the item is past its expiry on the test clock.
+    fn dead(&self, item: &DriverItem) -> bool {
+        let (Some(clock), Some(e)) = (&self.0.clock, item.expires_at.as_option()) else {
+            return false;
+        };
+        e.seconds <= i64::try_from(clock.load(Ordering::SeqCst)).unwrap()
+    }
+
     pub fn keys(&self) -> Vec<String> {
         self.0
             .items
@@ -122,7 +140,10 @@ impl ItemEngine for Mem {
         self.0.txs.lock().unwrap().push(tx.clone());
         let mut items = self.0.items.lock().unwrap();
         for (i, c) in tx.conditions.iter().enumerate() {
-            let held = items.get(&c.key).map(|x| x.version);
+            let held = items
+                .get(&c.key)
+                .filter(|x| !self.dead(x))
+                .map(|x| x.version);
             let ok = match c.expect {
                 Some(Expect::Absent(_)) => held.is_none(),
                 Some(Expect::Version(v)) => held == Some(v),
@@ -134,7 +155,10 @@ impl ItemEngine for Mem {
         }
         let mut written = Vec::new();
         for p in &tx.puts {
-            let version = items.get(&p.key).map_or(1, |x| x.version + 1);
+            let version = items
+                .get(&p.key)
+                .filter(|x| !self.dead(x))
+                .map_or(1, |x| x.version + 1);
             let item = DriverItem {
                 key: p.key.clone(),
                 version,
@@ -334,10 +358,13 @@ impl F {
         ));
         wait_for(&key_sock).await;
 
-        let (durable, temp) = (Mem::default(), Mem::default());
+        let clock = Arc::new(AtomicU64::new(T0));
+        let (durable, temp) = (
+            Mem::with_clock(Arc::clone(&clock)),
+            Mem::with_clock(Arc::clone(&clock)),
+        );
         let sink = RecSink::default();
         let docs = Arc::new(Docs::default());
-        let clock = Arc::new(AtomicU64::new(T0));
         let c = Arc::clone(&clock);
         let svc = Service::new(Deps {
             boundary: "dev".into(),

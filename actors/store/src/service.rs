@@ -265,6 +265,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         if !sluis_registry::store_allows(caller, kind.segment, verb) {
             return Err(denied("rule"));
         }
+        // A lease's version is its fencing token and only grows (ADR 0005 "Leases"). Every actor
+        // has all six verbs on `Lease`, but a delete followed by a create would start the version
+        // over at 1, and an apply would take the lease without naming the version it read. So a
+        // lease is created once and then taken over by a conditional update, and nothing else.
+        if kind.name == "Lease" && matches!(verb, "delete" | "apply") {
+            return Err(denied("rule"));
+        }
         let write = matches!(verb, "create" | "update" | "delete" | "apply");
         if write && !sluis_registry::is_writer(caller, kind.segment) {
             return Err(denied("writer"));
@@ -748,9 +755,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             })?;
             let expires = ttl.and_then(|d| now.checked_add(d));
             // A lease is never swept: its expiry is kept in its value and the engine gets none
-            // (ADR 0005 "Leases"), so a taken-over lease keeps its item and its version grows.
-            // planned: the `Lease` message of sluis-proto carries the expiry; until it exists the
-            // holder writes it, and the time shown back to the writer is informational.
+            // (ADR 0005 "Leases"), so a taken-over lease keeps its item and its version, the
+            // fencing token, only grows. Only CREATE and a conditional UPDATE reach a lease (see
+            // `authorise`).
+            // planned: a typed `Lease` message in sluis-proto. The value is opaque today, so store@
+            // cannot bound the expiry the holder writes into it (30 s by default, 10 min at most,
+            // checked here only for the TTL asked for); the time shown back to the writer is
+            // informational.
             let engine_expiry = if t.kind.name == "Lease" {
                 None
             } else {
@@ -855,102 +866,99 @@ fn pb_duration(d: &PbDuration) -> Option<Duration> {
     Some(Duration::new(secs, nanos))
 }
 
-fn unimplemented_secret() -> Refuse {
-    // A secret kind is read from the secret source, which WP-11 wires. Not a refusal with a
-    // reason of the closed list: the method exists, the source does not.
-    refuse(ErrorCode::Unimplemented, "", "")
+fn unimplemented_watch() -> Refuse {
+    let mut r = refuse(ErrorCode::Unimplemented, "unimplemented", "");
+    r.verb = "watch";
+    r
 }
 
-// ---- the transaction, with its retry over an expired item ----
+fn unimplemented_secret() -> Refuse {
+    // A secret kind is read from the secret source, which WP-11 wires. The reason is for the
+    // audit fact only; the wire error carries none (see `fail`).
+    refuse(ErrorCode::Unimplemented, "unimplemented", "")
+}
+
+// ---- the transaction ----
 
 impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     /// Runs the transaction. A failed condition is `already_exists`/`taken` for a create and
-    /// `aborted`/`version` for the rest. A create over an item that is past its expiry is allowed
-    /// again (ADR 0005 "Time to live"): it is retried once against the version the engine holds.
+    /// `aborted`/`version` for the rest.
+    ///
+    /// There is no retry over an expired item. The item contract settles it in the driver: an
+    /// item past its expiry does not exist for a condition, so a `CREATE` over one holds and
+    /// starts again at version 1, and an `UPDATE` at its old version is `aborted` (store-api.md
+    /// "The item contract"; the rqlite driver of #1257 and the conformance suite). store@ only
+    /// hides expired items from its own reads.
     async fn transact(
         &self,
         class: Class,
-        mut tx: TransactRequest,
+        tx: TransactRequest,
         condition_ops: &[usize],
         verbs: &[&'static str],
     ) -> Res<sluis_proto::sluis::port::item::v2alpha1::TransactResponse> {
-        let engine = self.engine(class);
-        let mut retried = false;
-        loop {
-            match engine.transact(tx.clone()).await {
-                Ok(r) => return Ok(r),
-                Err(EngineError::Unavailable) => return Err(engine_down()),
-                Err(EngineError::Aborted(idx)) => {
-                    // Without the index, the first condition is the best answer the driver left.
-                    let c = idx.unwrap_or(0).min(tx.conditions.len().saturating_sub(1));
-                    let op = condition_ops.get(c).copied().unwrap_or(0);
-                    let create = matches!(
-                        tx.conditions.get(c).and_then(|c| c.expect.as_ref()),
-                        Some(Expect::Absent(_))
-                    );
-                    if create && !retried {
-                        retried = true;
-                        let key = tx.conditions[c].key.clone();
-                        if let Some(held) = engine.get(key, true).await?
-                            && self.expired(&held)
-                        {
-                            tx.conditions[c].expect = Some(Expect::Version(held.version));
-                            continue;
-                        }
-                    }
-                    let mut r = if verbs.get(op).copied() == Some("create") {
-                        refuse(
-                            ErrorCode::AlreadyExists,
-                            "taken",
-                            format!("operations[{op}].address"),
-                        )
-                    } else {
-                        refuse(
-                            ErrorCode::Aborted,
-                            "version",
-                            format!("operations[{op}].if_version"),
-                        )
-                    };
-                    r.op = Some(op);
-                    return Err(r);
-                }
+        match self.engine(class).transact(tx.clone()).await {
+            Ok(r) => Ok(r),
+            Err(EngineError::Unavailable) => Err(engine_down()),
+            Err(EngineError::Aborted(idx)) => {
+                // Without the index, the first condition is the best answer the driver left.
+                let c = idx.unwrap_or(0).min(tx.conditions.len().saturating_sub(1));
+                let op = condition_ops.get(c).copied().unwrap_or(0);
+                let mut r = if verbs.get(op).copied() == Some("create") {
+                    refuse(
+                        ErrorCode::AlreadyExists,
+                        "taken",
+                        format!("operations[{op}].address"),
+                    )
+                } else {
+                    refuse(
+                        ErrorCode::Aborted,
+                        "version",
+                        format!("operations[{op}].if_version"),
+                    )
+                };
+                r.op = Some(op);
+                Err(r)
             }
         }
     }
 
     // ---- answering ----
 
-    /// Turns a refusal into the Connect error with its `Refusal` detail, and tells the audit log
-    /// about the ones that are the rules speaking (not a missing item or a moved version).
+    /// Turns a refusal into the Connect error with its `Refusal` detail, and tells the audit log:
+    /// a refusal is an audit fact, whatever its code (ADR 0005 "Rules"; contracts.md "Errors").
     async fn fail(&self, caller: &str, r: Refuse) -> ConnectError {
+        let mut fields = vec![("caller", caller.to_owned())];
+        if let Some(k) = r.kind {
+            fields.push(("kind", k.to_owned()));
+        }
+        if !r.verb.is_empty() {
+            fields.push(("verb", r.verb.to_owned()));
+        }
+        fields.push(("code", r.code.as_str().to_owned()));
+        self.audit
+            .emit(AuditEvent {
+                action: "store.refused",
+                failure: true,
+                reason: r.reason.to_owned(),
+                fields,
+            })
+            .await;
         if r.code == ErrorCode::Unimplemented {
+            // The method exists and the feature does not: no reason of the closed list fits.
             return ConnectError::new(ErrorCode::Unimplemented, "not served yet");
         }
-        let audited = matches!(
-            r.code,
-            ErrorCode::InvalidArgument
-                | ErrorCode::PermissionDenied
-                | ErrorCode::FailedPrecondition
-                | ErrorCode::Unavailable
-        );
-        if audited {
-            let mut fields = vec![("caller", caller.to_owned())];
-            if let Some(k) = r.kind {
-                fields.push(("kind", k.to_owned()));
-            }
-            if !r.verb.is_empty() {
-                fields.push(("verb", r.verb.to_owned()));
-            }
-            self.audit
-                .emit(AuditEvent {
-                    action: "store.refused",
-                    failure: true,
-                    reason: r.reason.to_owned(),
-                    fields,
-                })
-                .await;
-        }
         refusal(r.code, r.reason, &r.path)
+    }
+
+    /// The caller, from the transport. The guard of the kit set it before the message was
+    /// decoded; a call without one never reaches here, and is refused (and audited) if it does.
+    async fn caller(&self, ctx: &RequestContext) -> Result<Peer, ConnectError> {
+        match sluis_kit::peer(ctx.extensions()) {
+            Some(p) => Ok(p.clone()),
+            None => Err(self
+                .fail("unknown", refuse(ErrorCode::PermissionDenied, "rule", ""))
+                .await),
+        }
     }
 
     async fn answer<T>(&self, caller: &Peer, r: Res<T>) -> ServiceResult<T>
@@ -964,14 +972,6 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     }
 }
 
-/// The caller, from the transport. The guard of the kit set it before the message was decoded; a
-/// call without one never reaches here, and is refused if it somehow does.
-fn caller(ctx: &RequestContext) -> Result<Peer, ConnectError> {
-    sluis_kit::peer(ctx.extensions())
-        .cloned()
-        .ok_or_else(|| refusal(ErrorCode::PermissionDenied, "rule", ""))
-}
-
 #[allow(refining_impl_trait)] // the generated trait returns `impl Encodable`; the concrete type is fine
 impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G, A> {
     async fn get(
@@ -979,7 +979,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
         ctx: RequestContext,
         request: ServiceRequest<'_, GetRequest>,
     ) -> ServiceResult<GetResponse> {
-        let who = caller(&ctx)?;
+        let who = self.caller(&ctx).await?;
         let r = self.get_inner(who.name, request.to_owned_message()).await;
         self.answer(&who, r).await
     }
@@ -989,7 +989,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
         ctx: RequestContext,
         request: ServiceRequest<'_, ListRequest>,
     ) -> ServiceResult<ListResponse> {
-        let who = caller(&ctx)?;
+        let who = self.caller(&ctx).await?;
         let r = self.list_inner(who.name, request.to_owned_message()).await;
         self.answer(&who, r).await
     }
@@ -999,7 +999,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
         ctx: RequestContext,
         request: ServiceRequest<'_, WriteRequest>,
     ) -> ServiceResult<WriteResponse> {
-        let who = caller(&ctx)?;
+        let who = self.caller(&ctx).await?;
         let r = self.write_inner(who.name, request.to_owned_message()).await;
         self.answer(&who, r).await
     }
@@ -1007,13 +1007,12 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
     async fn watch(
         &self,
         ctx: RequestContext,
-        _request: ServiceRequest<'_, WatchRequest>,
+        request: ServiceRequest<'_, WatchRequest>,
     ) -> ServiceResult<ServiceStream<WatchResponse>> {
         // The change log and the stream wait for the first watcher (D-18, #1204).
-        let _ = caller(&ctx)?;
-        Err(ConnectError::new(
-            ErrorCode::Unimplemented,
-            "watch is not served yet",
-        ))
+        let who = self.caller(&ctx).await?;
+        let mut r = unimplemented_watch();
+        r.kind = sluis_registry::kind_by_segment(&request.to_owned_message().kind).map(|k| k.name);
+        Err(self.fail(who.name, r).await)
     }
 }
