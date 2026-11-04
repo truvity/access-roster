@@ -259,3 +259,24 @@ func TestOnlyStoreAndKeyReadTheBootstrapFile(t *testing.T) {
 		t.Error("key@ is not told where the bootstrap file is")
 	}
 }
+
+// TestOnlyKeyMountsItsStateVolume: key@ keeps the highest KeyPlan seq in a volume of its own, read-write, that no other
+// service mounts, and that store@ in particular cannot reach (REQ-KEYS-110).
+func TestOnlyKeyMountsItsStateVolume(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	for name, body := range svcs {
+		if name == "init" {
+			continue // init makes every volume with its owner and mode, and exits
+		}
+		has := strings.Contains(body, "state-key:")
+		if has != (name == "key") {
+			t.Errorf("%s mounts state-key = %v", name, has)
+		}
+	}
+	if !strings.Contains(svcs["key"], "- state-key:/var/lib/sluis-state/dev/key\n") {
+		t.Errorf("key@ has no read-write state volume:\n%s", svcs["key"])
+	}
+	if !strings.Contains(svcs["key"], `"--state-dir", "/var/lib/sluis-state/dev/key"`) {
+		t.Error("key@ is not told where its state is")
+	}
+}

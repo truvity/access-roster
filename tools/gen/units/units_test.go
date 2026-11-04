@@ -216,7 +216,7 @@ func TestDriverUnits(t *testing.T) {
 func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 	files := generate(t)
 	svc := files["sluis-key@.service"]
-	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --run-dir /run/sluis/key/%i " +
+	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --state-dir /var/lib/sluis-state/%i/key --run-dir /run/sluis/key/%i " +
 		"--store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock " +
 		"--transport-socket /run/sluis/audit/%i/emit.sock --node %H\n"
 	if !strings.Contains(svc, want) {
@@ -224,6 +224,12 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 	}
 	if strings.Contains(svc, "--socket ") {
 		t.Error("key@ has no --socket: it serves one socket per caller")
+	}
+	// key@ keeps the highest KeyPlan seq in a state directory of its own, 0700, so that a restart does not forget it.
+	for _, line := range []string{"StateDirectory=sluis-state/%i/key", "StateDirectoryMode=0700"} {
+		if !strings.Contains(svc, line+"\n") {
+			t.Errorf("key@ has no %s:\n%s", line, svc)
+		}
 	}
 	tmp := files["sluis-key.tmpfiles"]
 	callers := registry.CallersOf("key")

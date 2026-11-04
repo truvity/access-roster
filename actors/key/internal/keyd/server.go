@@ -58,8 +58,12 @@ type Config struct {
 	// block and nothing else: the public keys that sign config. They are the trust anchor of the KeyPlan, which key@
 	// verifies itself instead of taking it from store@ (REQ-KEYS-075).
 	Bootstrap string
-	Node      string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
-	Auditor   Auditor
+	// StateDir is key@'s own durable local state, /var/lib/sluis-state/<boundary>/key: the board's state directory or the
+	// local volume, 0700 and key@'s alone. It holds the highest KeyPlan seq verified, so that a restart does not forget it
+	// (plan_state.go).
+	StateDir string
+	Node     string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
+	Auditor  Auditor
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// RewrapEvery is the period of the rewrap pass; 0 means DefaultRewrapEvery.
@@ -91,6 +95,7 @@ type Server struct {
 	planMu     sync.Mutex               // one fetch and verification at a time
 	planSeq    signedconfig.Sequencer   // the highest document seen in this process
 	planLast   *verifiedPlan            // the KeyPlan last verified
+	saveMark   bool                     // this process writes the mark (the serving process; the check command only reads)
 
 	// serverConfig, when set, adjusts the ServerConfig of each socket. Tests use it to name their caller; a
 	// normal build has no way to set it, and the name resolver it would set exists only under the sluis_test tag.
@@ -114,8 +119,8 @@ type Server struct {
 
 // New dials store@ and the driver and returns a key@ that has not started.
 func New(cfg Config) (*Server, error) {
-	if cfg.Boundary == "" || cfg.RunDir == "" || cfg.StoreSocket == "" || cfg.DriverSocket == "" || cfg.Node == "" || cfg.Bootstrap == "" {
-		return nil, errors.New("keyd: boundary, run-dir, store-socket, driver-socket, bootstrap and node are required")
+	if cfg.Boundary == "" || cfg.RunDir == "" || cfg.StoreSocket == "" || cfg.DriverSocket == "" || cfg.Node == "" || cfg.Bootstrap == "" || cfg.StateDir == "" {
+		return nil, errors.New("keyd: boundary, run-dir, store-socket, driver-socket, bootstrap, state-dir and node are required")
 	}
 	if cfg.Auditor == nil {
 		return nil, errors.New("keyd: no auditor")
