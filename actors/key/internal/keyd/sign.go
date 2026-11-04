@@ -36,7 +36,7 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 		return nil, err
 	}
 	purpose := m.GetPurpose()
-	if !registry.KeyAllows(caller, purpose, "sign") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, purpose, "sign") {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	pk, ok := s.planned(purpose)
@@ -118,7 +118,7 @@ func (s *Server) PublicKey(ctx context.Context, req *connect.Request[keyv2alpha1
 		return nil, err
 	}
 	purpose := req.Msg.GetPurpose()
-	if !registry.KeyAllows(caller, purpose, "public-key") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, purpose, "public-key") {
 		return nil, s.refuse(ctx, caller, "public-key", purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	pk, ok := s.planned(purpose)
@@ -163,7 +163,11 @@ func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRe
 	default:
 		return nil, s.refuse(ctx, caller, "mac", purpose, "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if !registry.KeyAllows(caller, purpose, "mac") {
+	scope := registry.ScopeTenant
+	if purpose == "mac" {
+		scope = registry.ScopeBoundary
+	}
+	if !registry.KeyAllows(caller, scope, purpose, "mac") {
 		return nil, s.refuse(ctx, caller, "mac", purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	if (purpose == "mac") != (tenant == "") || (tenant != "" && !validTenant(tenant)) {

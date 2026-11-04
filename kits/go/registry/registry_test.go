@@ -69,23 +69,63 @@ func TestStoreGolden(t *testing.T) {
 
 func TestKeyGolden(t *testing.T) {
 	cases := []struct {
-		actor, purpose, op string
-		want               bool
+		actor, scope, purpose, op string
+		want                      bool
 	}{
-		{"policy", "grant", "seal", true},
-		{"session", "grant", "seal", false},
-		{"store", "grant", "open", true},
-		{"writer", "audit-log", "sign", true},
-		{"writer", "evidence", "seal", true},
-		{"writer", "evidence", "open", false},
-		{"sluis-node", "workload-issuer", "sign", true},
-		{"product-emitter", "pseudonym", "mac", true},
-		{"policy", "grant", "no-such-op", false},
-		{"policy", "no-such-purpose", "seal", false},
+		{"policy", ScopeBoundary, "grant", "seal", true},
+		{"session", ScopeBoundary, "grant", "seal", false},
+		{"store", ScopeBoundary, "grant", "open", true},
+		{"writer", ScopeBoundary, "audit-log", "sign", true},
+		{"writer", ScopeTenant, "evidence", "seal", true},
+		{"writer", ScopeTenant, "evidence", "open", false},
+		{"sluis-node", ScopeBoundary, "workload-issuer", "sign", true},
+		{"product-emitter", ScopeTenant, "pseudonym", "mac", true},
+		{"policy", ScopeBoundary, "grant", "no-such-op", false},
+		{"policy", ScopeBoundary, "no-such-purpose", "seal", false},
+		// a purpose in the wrong scope is not the purpose: grant is the boundary's, evidence a tenant's
+		{"policy", ScopeTenant, "grant", "seal", false},
+		{"writer", ScopeBoundary, "evidence", "seal", false},
+		{"policy", "", "grant", "seal", false},
+		{"policy", "no-such-scope", "grant", "seal", false},
 	}
 	for _, c := range cases {
-		if got := KeyAllows(c.actor, c.purpose, c.op); got != c.want {
-			t.Errorf("KeyAllows(%q, %q, %q) = %t, want %t", c.actor, c.purpose, c.op, got, c.want)
+		if got := KeyAllows(c.actor, c.scope, c.purpose, c.op); got != c.want {
+			t.Errorf("KeyAllows(%q, %q, %q, %q) = %t, want %t", c.actor, c.scope, c.purpose, c.op, got, c.want)
+		}
+	}
+}
+
+// The purpose "data" is two keys: the tenant's, which eleven actors use, and the boundary's, which seals the
+// kinds that have no tenant (EnrolmentToken, PendingEnrolment) and which only exchange and console use
+// (docs/architecture/keys.yaml, record 0006). A rule for the tenant key is no right to the boundary key.
+func TestKeyDataScope(t *testing.T) {
+	tenantUsers := []string{"session", "console", "exchange", "policy", "signer", "ca", "ssh-ca",
+		"adapter-upstream-oidc", "adapter-github", "adapter-slack", "exporter"}
+	boundaryUsers := map[string][]string{"exchange": {"seal", "open"}, "console": {"open"}}
+	for _, actor := range tenantUsers {
+		if !KeyAllows(actor, ScopeTenant, "data", "open") {
+			t.Errorf("%s must open the tenant data key", actor)
+		}
+		if _, ok := boundaryUsers[actor]; ok {
+			continue
+		}
+		for _, op := range []string{"seal", "open", "mac", "sign", "wrap"} {
+			if KeyAllows(actor, ScopeBoundary, "data", op) {
+				t.Errorf("%s is refused the boundary data key (op %s), it is a tenant-data user only", actor, op)
+			}
+		}
+	}
+	for actor, ops := range boundaryUsers {
+		for _, op := range []string{"seal", "open"} {
+			if got, want := KeyAllows(actor, ScopeBoundary, "data", op), slices.Contains(ops, op); got != want {
+				t.Errorf("KeyAllows(%q, boundary, data, %q) = %t, want %t", actor, op, got, want)
+			}
+		}
+	}
+	// nobody outside the two holds a boundary data rule
+	for actor, m := range keyRules {
+		if _, ok := m[KeyUse{Scope: ScopeBoundary, Purpose: "data"}]; ok && boundaryUsers[actor] == nil {
+			t.Errorf("%s has a boundary data rule", actor)
 		}
 	}
 }
@@ -280,7 +320,7 @@ func TestTableSizes(t *testing.T) {
 			}
 		}
 	}
-	if entries != 480 || verbs != 1742 || selfMarks != 704 || keyEntries != 59 || keyOps != 84 {
+	if entries != 480 || verbs != 1742 || selfMarks != 704 || keyEntries != 61 || keyOps != 87 {
 		t.Errorf("store entries %d, verbs %d, self marks %d, key entries %d, key ops %d", entries, verbs, selfMarks, keyEntries, keyOps)
 	}
 }

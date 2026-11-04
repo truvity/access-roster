@@ -3,8 +3,8 @@
 
 use core::time::Duration;
 use sluis_registry::{
-    Class, actor_by_name, actors, callers_of, driver_owner, is_writer, key_allows, kind_by_name,
-    kind_by_segment, kinds, may_call, name_for_uid, store_allows, store_self_scoped,
+    Class, KeyScope, actor_by_name, actors, callers_of, driver_owner, is_writer, key_allows,
+    kind_by_name, kind_by_segment, kinds, may_call, name_for_uid, store_allows, store_self_scoped,
     store_self_scoped_for, uid,
 };
 
@@ -66,25 +66,68 @@ fn store_rules() {
 
 #[test]
 fn key_rules() {
+    use KeyScope::{Boundary, Tenant};
     let cases = [
-        ("policy", "grant", "seal", true),
-        ("session", "grant", "seal", false),
-        ("store", "grant", "open", true),
-        ("writer", "audit-log", "sign", true),
-        ("writer", "evidence", "seal", true),
-        ("writer", "evidence", "open", false),
-        ("sluis-node", "workload-issuer", "sign", true),
-        ("product-emitter", "pseudonym", "mac", true),
-        ("policy", "grant", "no-such-op", false),
-        ("policy", "no-such-purpose", "seal", false),
+        ("policy", Boundary, "grant", "seal", true),
+        ("session", Boundary, "grant", "seal", false),
+        ("store", Boundary, "grant", "open", true),
+        ("writer", Boundary, "audit-log", "sign", true),
+        ("writer", Tenant, "evidence", "seal", true),
+        ("writer", Tenant, "evidence", "open", false),
+        ("sluis-node", Boundary, "workload-issuer", "sign", true),
+        ("product-emitter", Tenant, "pseudonym", "mac", true),
+        ("policy", Boundary, "grant", "no-such-op", false),
+        ("policy", Boundary, "no-such-purpose", "seal", false),
+        // a purpose in the wrong scope is not the purpose
+        ("policy", Tenant, "grant", "seal", false),
+        ("writer", Boundary, "evidence", "seal", false),
     ];
-    for (actor, purpose, op, want) in cases {
+    for (actor, scope, purpose, op, want) in cases {
         assert_eq!(
-            key_allows(actor, purpose, op),
+            key_allows(actor, scope, purpose, op),
             want,
-            "{actor} {purpose} {op}"
+            "{actor} {scope:?} {purpose} {op}"
         );
     }
+}
+
+/// The purpose `data` is two keys: the tenant's, which eleven actors use, and the boundary's, which
+/// only exchange and console use (`keys.yaml`, record 0006). A rule for the tenant key is no right
+/// to the boundary key.
+#[test]
+fn key_data_scope() {
+    let tenant_users = [
+        "session",
+        "console",
+        "exchange",
+        "policy",
+        "signer",
+        "ca",
+        "ssh-ca",
+        "adapter-upstream-oidc",
+        "adapter-github",
+        "adapter-slack",
+        "exporter",
+    ];
+    for actor in tenant_users {
+        assert!(
+            key_allows(actor, KeyScope::Tenant, "data", "open"),
+            "{actor} opens the tenant data key"
+        );
+        if actor == "exchange" || actor == "console" {
+            continue;
+        }
+        for op in ["seal", "open"] {
+            assert!(
+                !key_allows(actor, KeyScope::Boundary, "data", op),
+                "{actor} is refused the boundary data key ({op})"
+            );
+        }
+    }
+    assert!(key_allows("exchange", KeyScope::Boundary, "data", "seal"));
+    assert!(key_allows("exchange", KeyScope::Boundary, "data", "open"));
+    assert!(key_allows("console", KeyScope::Boundary, "data", "open"));
+    assert!(!key_allows("console", KeyScope::Boundary, "data", "seal"));
 }
 
 #[test]

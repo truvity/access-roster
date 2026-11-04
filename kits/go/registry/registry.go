@@ -123,10 +123,22 @@ func IsWriter(actor, segment string) bool {
 	return ok && bits&(1<<2) != 0 // create
 }
 
+// The scope of a key purpose (docs/architecture/keys.yaml): the keys of the key store and the boundary data keys
+// are the boundary's, the tenant data keys a tenant's. The purpose name "data" is both, with different users, so
+// a rule is about the purpose in a scope.
+const (
+	ScopeBoundary = "boundary"
+	ScopeTenant   = "tenant"
+)
+
+// KeyUse names a key purpose in a scope: the second part of the key of a key rule.
+type KeyUse struct{ Scope, Purpose string }
+
 // KeyAllows says whether the actor may ask key for the op (seal, open, sign, mac, public-key, wrap or unwrap)
-// under the key purpose.
-func KeyAllows(actor, purpose, op string) bool {
-	ops, ok := keyRules[actor][purpose]
+// under the key purpose in the scope (ScopeBoundary or ScopeTenant). An actor allowed the tenant "data" key has
+// no right to the boundary "data" key unless keys.yaml lists it as a user there too.
+func KeyAllows(actor, scope, purpose, op string) bool {
+	ops, ok := keyRules[actor][KeyUse{Scope: scope, Purpose: purpose}]
 	if !ok {
 		return false
 	}

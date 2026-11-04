@@ -1110,108 +1110,111 @@ var storeRules = map[string]map[string]uint16{
 	},
 }
 
-// keyRules: actor, then key purpose, then the ops (bit i is opNames[i]).
-var keyRules = map[string]map[string]uint8{
+// keyRules: actor, then the scope and the purpose of the key, then the ops (bit i is opNames[i]). The scope is
+// "boundary" or "tenant": the purpose `data` is both, with different users.
+var keyRules = map[string]map[KeyUse]uint8{
 	"adapter-github": {
-		"data":      0x03, // seal open
-		"grant":     0x02, // open
-		"mac":       0x08, // mac
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "grant"}:   0x02, // open
+		{Scope: "boundary", Purpose: "mac"}:     0x08, // mac
+		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"adapter-slack": {
-		"data":      0x03, // seal open
-		"pseudonym": 0x08, // mac
+		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"adapter-upstream-oidc": {
-		"data":      0x03, // seal open
-		"pseudonym": 0x08, // mac
+		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"ca": {
-		"data":              0x03, // seal open
-		"grant":             0x02, // open
-		"mac":               0x08, // mac
-		"pseudonym":         0x08, // mac
-		"x509-intermediate": 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "grant"}:             0x02, // open
+		{Scope: "boundary", Purpose: "mac"}:               0x08, // mac
+		{Scope: "boundary", Purpose: "x509-intermediate"}: 0x14, // sign public-key
+		{Scope: "tenant", Purpose: "data"}:                0x03, // seal open
+		{Scope: "tenant", Purpose: "pseudonym"}:           0x08, // mac
 	},
 	"console": {
-		"data":      0x02, // open
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "data"}:    0x02, // open
+		{Scope: "tenant", Purpose: "data"}:      0x02, // open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"entry": {
-		"mac":       0x08, // mac
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "mac"}:     0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"exchange": {
-		"data":      0x03, // seal open
-		"enrolment": 0x12, // open public-key
-		"pairwise":  0x08, // mac
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "data"}:      0x03, // seal open
+		{Scope: "boundary", Purpose: "enrolment"}: 0x12, // open public-key
+		{Scope: "tenant", Purpose: "data"}:        0x03, // seal open
+		{Scope: "tenant", Purpose: "pairwise"}:    0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}:   0x08, // mac
 	},
 	"exporter": {
-		"backup-archive": 0x20, // wrap
-		"data":           0x02, // open
+		{Scope: "boundary", Purpose: "backup-archive"}: 0x20, // wrap
+		{Scope: "tenant", Purpose: "data"}:             0x02, // open
 	},
 	"indexer": {
-		"evidence": 0x02, // open
+		{Scope: "tenant", Purpose: "evidence"}: 0x02, // open
 	},
 	"key": {
-		"grant":       0x02, // open
-		"pin-release": 0x14, // sign public-key
-		"wrapping":    0x70, // public-key wrap unwrap
+		{Scope: "boundary", Purpose: "grant"}:       0x02, // open
+		{Scope: "boundary", Purpose: "pin-release"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "wrapping"}:    0x70, // public-key wrap unwrap
 	},
 	"policy": {
-		"data":      0x02, // open
-		"grant":     0x01, // seal
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "grant"}:   0x01, // seal
+		{Scope: "tenant", Purpose: "data"}:      0x02, // open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"product-emitter": {
-		"pseudonym": 0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"quota": {
-		"pseudonym": 0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"reader": {
-		"evidence":  0x02, // open
-		"pseudonym": 0x08, // mac
+		{Scope: "tenant", Purpose: "evidence"}:  0x02, // open
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"session": {
-		"cookie":    0x03, // seal open
-		"data":      0x03, // seal open
-		"mac":       0x08, // mac
-		"pairwise":  0x08, // mac
-		"pseudonym": 0x08, // mac
+		{Scope: "boundary", Purpose: "cookie"}:  0x03, // seal open
+		{Scope: "boundary", Purpose: "mac"}:     0x08, // mac
+		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
+		{Scope: "tenant", Purpose: "pairwise"}:  0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"signer": {
-		"data":                0x02, // open
-		"grant":               0x02, // open
-		"pseudonym":           0x08, // mac
-		"release-signing":     0x14, // sign public-key
-		"token-signing":       0x14, // sign public-key
-		"token-signing-eddsa": 0x14, // sign public-key
-		"token-signing-es256": 0x14, // sign public-key
-		"token-signing-ps256": 0x14, // sign public-key
-		"token-signing-rs256": 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "grant"}:               0x02, // open
+		{Scope: "boundary", Purpose: "release-signing"}:     0x14, // sign public-key
+		{Scope: "boundary", Purpose: "token-signing"}:       0x14, // sign public-key
+		{Scope: "boundary", Purpose: "token-signing-eddsa"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "token-signing-es256"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "token-signing-ps256"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "token-signing-rs256"}: 0x14, // sign public-key
+		{Scope: "tenant", Purpose: "data"}:                  0x02, // open
+		{Scope: "tenant", Purpose: "pseudonym"}:             0x08, // mac
 	},
 	"sluis-node": {
-		"workload-issuer": 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "workload-issuer"}: 0x14, // sign public-key
 	},
 	"ssh-ca": {
-		"data":      0x03, // seal open
-		"pseudonym": 0x08, // mac
-		"ssh-host":  0x14, // sign public-key
-		"ssh-user":  0x14, // sign public-key
+		{Scope: "boundary", Purpose: "ssh-host"}: 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "ssh-user"}: 0x14, // sign public-key
+		{Scope: "tenant", Purpose: "data"}:       0x03, // seal open
+		{Scope: "tenant", Purpose: "pseudonym"}:  0x08, // mac
 	},
 	"store": {
-		"backup-archive": 0x40, // unwrap
-		"grant":          0x02, // open
+		{Scope: "boundary", Purpose: "backup-archive"}: 0x40, // unwrap
+		{Scope: "boundary", Purpose: "grant"}:          0x02, // open
 	},
 	"witness": {
-		"witness": 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "witness"}: 0x14, // sign public-key
 	},
 	"writer": {
-		"audit-log":    0x14, // sign public-key
-		"evidence":     0x01, // seal
-		"issuance-log": 0x14, // sign public-key
+		{Scope: "boundary", Purpose: "audit-log"}:    0x14, // sign public-key
+		{Scope: "boundary", Purpose: "issuance-log"}: 0x14, // sign public-key
+		{Scope: "tenant", Purpose: "evidence"}:       0x01, // seal
 	},
 }
 

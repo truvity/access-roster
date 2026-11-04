@@ -131,7 +131,7 @@ func (s *Server) SealGrant(ctx context.Context, req *connect.Request[keyv2alpha1
 	if err != nil {
 		return nil, err
 	}
-	if !registry.KeyAllows(caller, "grant", "seal") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, "grant", "seal") {
 		return nil, s.refuse(ctx, caller, "seal", "grant", "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	bad := func(path string) error {
@@ -203,7 +203,7 @@ func (s *Server) OpenGrant(ctx context.Context, req *connect.Request[keyv2alpha1
 	if err != nil {
 		return nil, err
 	}
-	if !registry.KeyAllows(caller, "grant", "open") {
+	if !registry.KeyAllows(caller, registry.ScopeBoundary, "grant", "open") {
 		return nil, s.refuse(ctx, caller, "open", "grant", "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
 	g, err := s.openGrant(ctx, req.Msg.GetSealedGrant())
