@@ -288,12 +288,13 @@ requirements:
     rationale: "Dropping a scope hides a failure."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "3.3", depth: Partial}
     issues: [775]
+    tests: [actors/session/internal/sessiond/authorize_test.go]
     verification:
       - {kind: integration-test, ref: "negative test"}
   - id: REQ-CLIENT-012

@@ -166,6 +166,46 @@ func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 	}
 }
 
+// verifies: REQ-CLIENT-022
+func TestAuthorizeRefusesAnUnknownScopeInsteadOfDroppingIt(t *testing.T) {
+	for _, scope := range []string{"openid offline_access", "openid profile admin", "admin openid", "openid OPENID"} {
+		t.Run(scope, func(t *testing.T) {
+			e := newEnv(t, nil)
+			p := newAuthorize()
+			p.req.Scope = scope
+			r := e.authorize(p.req)
+			// The redirect_uri is the client's own, so the error goes there (RFC 6749 section 4.1.2.1).
+			u := location(t, r)
+			if got := u.Scheme + "://" + u.Host + u.Path; got != testRedirect {
+				t.Fatalf("redirected to %s", got)
+			}
+			q := u.Query()
+			if q.Get("error") != "invalid_scope" || q.Get("state") != p.req.GetState() || q.Get("iss") != testIssuer || q.Get("code") != "" {
+				t.Errorf("query = %v", q)
+			}
+			// The description names no scope: the client sent it, and the reason is the audit record's (REQ-UX-006).
+			for _, sc := range strings.Fields(scope) {
+				if sc != "openid" && strings.Contains(q.Get("error_description"), sc) {
+					t.Errorf("error_description %q shows the scope", q.Get("error_description"))
+				}
+			}
+			if len(e.upstream.begins) != 0 || len(headerOf(r, "Set-Cookie")) != 0 {
+				t.Error("a refused scope started a sign-in")
+			}
+			if recs := e.records(); len(recs) != 1 || recs[0]["status_code"] != "scope" {
+				t.Errorf("records = %v, want one with status_code scope", recs)
+			}
+		})
+	}
+	// What is served is still granted, each scope once.
+	e := newEnv(t, nil)
+	p := newAuthorize()
+	p.req.Scope = "openid profile email profile"
+	if got := location(t, e.authorize(p.req)); got.Host != "idp.example.test" {
+		t.Errorf("known scopes: redirected to %s", got)
+	}
+}
+
 // safe is the state the service reflects: a valid one, or none.
 func safe(s string) string {
 	for i := 0; i < len(s); i++ {

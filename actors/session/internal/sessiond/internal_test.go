@@ -3,6 +3,7 @@
 package sessiond
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -139,22 +140,23 @@ func TestGrantedScope(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
-		ok   bool
+		err  error
 	}{
-		{"openid", "openid", true},
-		{"openid profile email", "openid profile email", true},
-		{"profile  openid", "profile openid", true},
-		{"openid openid", "openid", true},
-		{"openid offline_access admin", "openid", true},
-		{"profile", "", false},
-		{"", "", false},
-		{"OPENID", "", false},
-		{strings.Repeat("openid ", 100), "", false},
+		{"openid", "openid", nil},
+		{"openid profile email", "openid profile email", nil},
+		{"profile  openid", "profile openid", nil},
+		{"openid openid", "openid", nil},
+		{"openid offline_access admin", "", errScopeUnknown},
+		{"openid OPENID", "", errScopeUnknown},
+		{"OPENID", "", errScopeUnknown},
+		{"profile", "", errScopeMalformed},
+		{"", "", errScopeMalformed},
+		{strings.Repeat("openid ", 100), "", errScopeMalformed},
 	}
 	for _, c := range cases {
-		got, ok := grantedScope(c.in)
-		if got != c.want || ok != c.ok {
-			t.Errorf("%q: %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		got, err := grantedScope(c.in)
+		if got != c.want || !errors.Is(err, c.err) || (c.err == nil) != (err == nil) {
+			t.Errorf("%q: %q, %v; want %q, %v", c.in, got, err, c.want, c.err)
 		}
 	}
 }
