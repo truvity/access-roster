@@ -148,6 +148,23 @@ func TestSignVerifyAndEnsureTwice(t *testing.T) {
 	}
 }
 
+// Ensure says when the key was made, the first call and the second alike: key@ compares it with the time of a purpose
+// revocation, so that a replacement made after it signs (ADR 0041).
+func TestEnsureSaysWhenTheKeyWasMade(t *testing.T) {
+	r := start(t, "development", "key")
+	before := time.Now().Add(-2 * time.Second)
+	first := ensure(t, r.client, "token-signing", "ES384")
+	after := time.Now().Add(2 * time.Second)
+	at := first.GetCreatedAt().AsTime()
+	if first.GetCreatedAt() == nil || at.Before(before) || at.After(after) {
+		t.Fatalf("created_at = %v, want a time between %v and %v", at, before, after)
+	}
+	second := ensure(t, r.client, "token-signing", "ES384")
+	if !second.GetCreatedAt().AsTime().Equal(at) {
+		t.Fatalf("the second Ensure says %v, the first %v", second.GetCreatedAt().AsTime(), at)
+	}
+}
+
 func TestSignRefusals(t *testing.T) {
 	r := start(t, "development", "key")
 	ctx := context.Background()

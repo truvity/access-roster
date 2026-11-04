@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"slices"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -202,7 +203,11 @@ func (s *Server) ensureKeys(ctx context.Context, plan *configv2alpha1.KeyPlan) e
 		if err != nil {
 			return fmt.Errorf("key-store driver ensure %s: %w", purpose, err)
 		}
-		s.keys[purpose] = purposeKey{algorithm: alg, spki: res.Msg.GetSpkiDer(), keyID: id, pub: pub}
+		var created time.Time
+		if res.Msg.GetCreatedAt() != nil {
+			created = res.Msg.GetCreatedAt().AsTime()
+		}
+		s.keys[purpose] = purposeKey{algorithm: alg, spki: res.Msg.GetSpkiDer(), keyID: id, pub: pub, created: created}
 		slog.Info("key ready", "purpose", purpose, "algorithm", alg, "created", res.Msg.GetCreated())
 	}
 	w, ok := s.keys[wrappingPurpose]

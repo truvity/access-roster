@@ -59,6 +59,7 @@ type kindDoc struct {
 	TTL        *ttlDoc  `yaml:"ttl"`
 	Indexes    []string `yaml:"indexes"`
 	SelfScoped bool     `yaml:"self_scoped"`
+	CreateOnly bool     `yaml:"create_only"`
 	Personal   bool     `yaml:"personal"`
 }
 

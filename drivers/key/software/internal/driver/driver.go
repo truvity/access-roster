@@ -8,6 +8,7 @@ package driver
 import (
 	"context"
 	"errors"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"log/slog"
 
 	"connectrpc.com/connect"
@@ -147,7 +148,11 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 	if created {
 		slog.Info("key made", "purpose", purpose, "algorithm", algorithm)
 	}
-	return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: spki, Created: created}), nil
+	res := &keystorev2alpha1.EnsureResponse{SpkiDer: spki, Created: created}
+	if at, err := s.store.CreatedAt(purpose); err == nil {
+		res.CreatedAt = timestamppb.New(at)
+	}
+	return connect.NewResponse(res), nil
 }
 
 // Sign signs a digest with the key of a purpose, in place.

@@ -11,6 +11,7 @@ package keystorev2alpha1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -176,9 +177,13 @@ func (x *EnsureRequest) GetAlgorithm() string {
 
 // EnsureResponse carries the public key.
 type EnsureResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
-	Created       bool                   `protobuf:"varint,2,opt,name=created,proto3" json:"created,omitempty"`               // true when this call made the key
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	SpkiDer []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
+	Created bool                   `protobuf:"varint,2,opt,name=created,proto3" json:"created,omitempty"`               // true when this call made the key
+	// When the key was made, whether or not this call made it: the store's own record (the key file's time for the
+	// software driver). Absent when the store cannot say; key@ then treats the key as older than any revocation
+	// (ADR 0041: a purpose revocation refuses the keys made at or before it, and a key of unknown age is refused).
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -225,6 +230,13 @@ func (x *EnsureResponse) GetCreated() bool {
 		return x.Created
 	}
 	return false
+}
+
+func (x *EnsureResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
 }
 
 // KeyStoreSignRequest signs a digest.
@@ -525,7 +537,7 @@ var File_sluis_port_keystore_v2alpha1_keystore_proto protoreflect.FileDescriptor
 
 const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
 	"\n" +
-	"+sluis/port/keystore/v2alpha1/keystore.proto\x12\x1csluis.port.keystore.v2alpha1\"\x15\n" +
+	"+sluis/port/keystore/v2alpha1/keystore.proto\x12\x1csluis.port.keystore.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x15\n" +
 	"\x13CapabilitiesRequest\"f\n" +
 	"\x14CapabilitiesResponse\x12\x14\n" +
 	"\x05store\x18\x01 \x01(\tR\x05store\x12\x18\n" +
@@ -535,10 +547,12 @@ const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
 	"algorithms\"G\n" +
 	"\rEnsureRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1c\n" +
-	"\talgorithm\x18\x02 \x01(\tR\talgorithm\"E\n" +
+	"\talgorithm\x18\x02 \x01(\tR\talgorithm\"\x80\x01\n" +
 	"\x0eEnsureResponse\x12\x19\n" +
 	"\bspki_der\x18\x01 \x01(\fR\aspkiDer\x12\x18\n" +
-	"\acreated\x18\x02 \x01(\bR\acreated\"e\n" +
+	"\acreated\x18\x02 \x01(\bR\acreated\x129\n" +
+	"\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"e\n" +
 	"\x13KeyStoreSignRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x16\n" +
 	"\x06digest\x18\x02 \x01(\fR\x06digest\x12\x1c\n" +
@@ -587,23 +601,25 @@ var file_sluis_port_keystore_v2alpha1_keystore_proto_goTypes = []any{
 	(*KeyStorePublicKeyResponse)(nil), // 7: sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
 	(*EcdhRequest)(nil),               // 8: sluis.port.keystore.v2alpha1.EcdhRequest
 	(*EcdhResponse)(nil),              // 9: sluis.port.keystore.v2alpha1.EcdhResponse
+	(*timestamppb.Timestamp)(nil),     // 10: google.protobuf.Timestamp
 }
 var file_sluis_port_keystore_v2alpha1_keystore_proto_depIdxs = []int32{
-	0, // 0: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:input_type -> sluis.port.keystore.v2alpha1.CapabilitiesRequest
-	2, // 1: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:input_type -> sluis.port.keystore.v2alpha1.EnsureRequest
-	4, // 2: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:input_type -> sluis.port.keystore.v2alpha1.KeyStoreSignRequest
-	6, // 3: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:input_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyRequest
-	8, // 4: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:input_type -> sluis.port.keystore.v2alpha1.EcdhRequest
-	1, // 5: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:output_type -> sluis.port.keystore.v2alpha1.CapabilitiesResponse
-	3, // 6: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:output_type -> sluis.port.keystore.v2alpha1.EnsureResponse
-	5, // 7: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:output_type -> sluis.port.keystore.v2alpha1.KeyStoreSignResponse
-	7, // 8: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:output_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
-	9, // 9: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:output_type -> sluis.port.keystore.v2alpha1.EcdhResponse
-	5, // [5:10] is the sub-list for method output_type
-	0, // [0:5] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	10, // 0: sluis.port.keystore.v2alpha1.EnsureResponse.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 1: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:input_type -> sluis.port.keystore.v2alpha1.CapabilitiesRequest
+	2,  // 2: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:input_type -> sluis.port.keystore.v2alpha1.EnsureRequest
+	4,  // 3: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:input_type -> sluis.port.keystore.v2alpha1.KeyStoreSignRequest
+	6,  // 4: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:input_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyRequest
+	8,  // 5: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:input_type -> sluis.port.keystore.v2alpha1.EcdhRequest
+	1,  // 6: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:output_type -> sluis.port.keystore.v2alpha1.CapabilitiesResponse
+	3,  // 7: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:output_type -> sluis.port.keystore.v2alpha1.EnsureResponse
+	5,  // 8: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:output_type -> sluis.port.keystore.v2alpha1.KeyStoreSignResponse
+	7,  // 9: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:output_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
+	9,  // 10: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:output_type -> sluis.port.keystore.v2alpha1.EcdhResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_sluis_port_keystore_v2alpha1_keystore_proto_init() }
