@@ -795,3 +795,72 @@ func TestStateDirectoryOpenToOthersIsRefused(t *testing.T) {
 		t.Fatal("the card was left open after the refusal")
 	}
 }
+
+// verifies: REQ-KEYS-109
+// A record that is a real one in all but one respect is not believed: a time that does not parse, a time of zero or less,
+// and a file open to others (mode 0644) each make every age unknown, and the driver goes on.
+func TestARecordThatIsNotTheDriversOwnGivesNoAge(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		write func(t *testing.T, path string, good []byte)
+	}{
+		{"a time that does not parse", func(t *testing.T, path string, good []byte) {
+			f := strings.Fields(string(good))
+			f[1] = "yesterday"
+			mustWrite(t, path, []byte(strings.Join(f[:3], " ")+"\n"), 0o600)
+		}},
+		{"a time of zero", func(t *testing.T, path string, good []byte) {
+			f := strings.Fields(string(good))
+			f[1] = "0"
+			mustWrite(t, path, []byte(strings.Join(f[:3], " ")+"\n"), 0o600)
+		}},
+		{"a file with mode 0644", func(t *testing.T, path string, good []byte) {
+			mustWrite(t, path, good, 0o644)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			state := shortDir(t)
+			c := cardtest.New()
+			r := startOpts(t, c, driver.Development, "key", self(), state, nil)
+			ensure(t, r.key, "token-signing", "ES384")
+			path := filepath.Join(state, "created-at.txt")
+			good, err := os.ReadFile(path) //nolint:gosec // a path in the test's own directory
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.write(t, path, good)
+			r2 := startOpts(t, c, driver.Development, "key", self(), state, nil)
+			res := ensure(t, r2.key, "token-signing", "ES384")
+			if res.GetCreated() || res.GetCreatedAt() != nil {
+				t.Fatalf("created %v at %v, want an existing key with no age", res.GetCreated(), res.GetCreatedAt())
+			}
+		})
+	}
+}
+
+func mustWrite(t *testing.T, path string, b []byte, mode os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, b, mode); err != nil { //nolint:gosec // a path in the test's own directory
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// verifies: REQ-KEYS-109
+// A state directory of another user is refused at start, with nothing opened for use: root's directory, which the
+// driver's user can read but does not own.
+func TestStateDirectoryOfAnotherUserIsRefused(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("SKIP: the test is for a driver that does not run as root")
+	}
+	c := cardtest.New()
+	_, err := driver.New(driver.Options{Environment: driver.Development, Node: "node-a", Serial: c.SerialNo, Open: c.Opener(), StateDir: "/usr"})
+	if err == nil || !strings.Contains(err.Error(), "not owned by the driver") {
+		t.Fatalf("New = %v, want a refusal of a state directory of another user", err)
+	}
+	if !c.Closed() {
+		t.Fatal("the card was left open after the refusal")
+	}
+}
