@@ -48,6 +48,12 @@ fn refuse(e: &Error, field: &str) -> ConnectError {
             tracing::error!("the spool is full; emits are refused");
             refusal(ErrorCode::Unavailable, "engine", "")
         }
+        // An earlier disk failure left the files uncertain: every call fails until a restart
+        // recovers the directory, and nothing is acknowledged on a basis the spool cannot vouch for.
+        Error::Poisoned => {
+            tracing::error!("the spool is poisoned by an earlier disk failure; restart to recover");
+            refusal(ErrorCode::Unavailable, "engine", "")
+        }
         Error::Corrupt => {
             tracing::error!("a stored frame no longer holds its sum");
             refusal(ErrorCode::Internal, "engine", "")
