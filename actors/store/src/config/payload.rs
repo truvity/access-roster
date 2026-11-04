@@ -477,6 +477,16 @@ fn upstream(mut o: Obj, id: &str) -> R<pb::Upstream> {
     })
 }
 
+/// A credential name as the credential driver accepts it (`sluis_credential::valid_name`, systemd's `LoadCredential=`
+/// rule): letters, digits, `-`, `_` and `.`, not starting with anything but a letter or a digit, at most 128 characters.
+/// The same rule here makes a bad name fail at `config check` and not when the first client asks.
+fn credential_name(name: &str) -> bool {
+    let mut b = name.bytes();
+    name.len() <= 128
+        && b.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && b.all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.'))
+}
+
 fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     let client_id = named(&mut o, "id", id)?;
     let kind = o.one_of("kind", &["public", "confidential", "exchange"])?;
@@ -490,7 +500,7 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     // Where the client's secret is in the secret source (ADR 0005, "Secret sources": config names it). The value is
     // never in the document, only the name of a credential.
     let secret = o.string("secret")?;
-    if !secret.is_empty() && !valid_part(&secret) {
+    if !secret.is_empty() && !credential_name(&secret) {
         return err(&o.at("secret"), "is not a credential name");
     }
     if !secret.is_empty() && kind == "public" {

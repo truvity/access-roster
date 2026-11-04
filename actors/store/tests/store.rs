@@ -1577,26 +1577,71 @@ async fn a_secret_source_that_does_not_answer_fails_closed() {
 }
 
 #[tokio::test]
+async fn a_config_outage_is_unavailable_and_not_an_unknown_client() {
+    // The snapshot has no InstallationClient document: the secret cannot be located, which is not "no such client".
+    let f = F::new().await;
+    f.as_("session");
+    refused(
+        f.get("installation-client-secret", "", "app").await,
+        ErrorCode::Unavailable,
+        "engine",
+    );
+    assert_eq!(f.secrets.reads.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn no_audit_fact_and_no_refusal_carries_the_secret() {
     let f = F::new().await;
     with_clients(&f);
+    // A listed reader whose read reaches the source, and succeeds.
     f.as_("session");
     f.get("installation-client-secret", "", "app")
         .await
         .unwrap();
+    // Listed readers whose reads reach the source and fail after it was touched: the source is down, and the named
+    // credential is missing. The secret of another client is in the source all the time.
+    let touched = f.secrets.reads.load(Ordering::SeqCst);
+    let mut errors = Vec::new();
     f.secrets.down.store(true, Ordering::SeqCst);
-    f.as_("quota");
-    let e = f
-        .get("installation-client-secret", "", "app")
-        .await
-        .unwrap_err();
-    assert!(!format!("{e:?}").contains("s3cret"));
-    f.as_("exchange");
-    for ev in f.audit() {
+    errors.push(
+        f.get("installation-client-secret", "", "app")
+            .await
+            .unwrap_err(),
+    );
+    f.secrets.down.store(false, Ordering::SeqCst);
+    errors.push(
+        f.get("installation-client-secret", "", "ghost")
+            .await
+            .unwrap_err(),
+    );
+    assert_eq!(f.secrets.reads.load(Ordering::SeqCst), touched + 2);
+    assert_eq!(
+        errors.iter().map(|e| e.code).collect::<Vec<_>>(),
+        [ErrorCode::Unavailable, ErrorCode::NotFound]
+    );
+    for e in &errors {
+        assert!(!format!("{e:?}").contains("s3cret"), "{e:?}");
+    }
+    // The facts of the refusals name the kind, the verb, the caller and the client id, and no value.
+    let facts = f.audit();
+    assert_eq!(facts.len(), 2);
+    for ev in &facts {
         let text = format!("{ev:?}");
         assert!(!text.contains("s3cret"), "{text}");
+        assert!(
+            ev.fields.iter().any(|(k, _)| *k == "id")
+                && ev
+                    .fields
+                    .iter()
+                    .any(|(k, v)| *k == "caller" && v == "session"),
+            "{text}"
+        );
     }
+    // A caller that is refused before any read leaves a fact with no id of a secret it never asked for.
+    f.as_("quota");
+    let _ = f.get("installation-client-secret", "", "app").await;
     // A list of a secret kind is not served: there is no consumer.
+    f.as_("session");
     refused(
         f.list(ListRequest {
             kind: "installation-client-secret".into(),
