@@ -92,6 +92,7 @@ func TestSignTokenVerifiesWithJose(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-029
 func TestSignRefusals(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
@@ -128,6 +129,7 @@ func TestSignRefusals(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-081
 func TestSignCheckpointIsNotAudited(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
@@ -215,6 +217,7 @@ func TestPublicKey(t *testing.T) {
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 }
 
+// verifies: REQ-KEYS-029, REQ-KEYS-042
 func TestMac(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

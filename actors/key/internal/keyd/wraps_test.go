@@ -139,6 +139,7 @@ func TestRestartOpensFromTheWrap(t *testing.T) {
 
 // Two nodes that need the same new key at once: one wins the CREATE, the other discards its key and uses the
 // winner's. Every value opens on both, and the store holds one wrap per node.
+// verifies: REQ-KEYS-054
 func TestConcurrentKeyMakingConverges(t *testing.T) {
 	for round := range 3 {
 		t.Run(fmt.Sprint(round), func(t *testing.T) {
@@ -185,6 +186,7 @@ func TestConcurrentKeyMakingConverges(t *testing.T) {
 }
 
 // A data key is cached for the KeyPlan's time to live and opened again after it.
+// verifies: REQ-KEYS-038
 func TestCacheTimeToLive(t *testing.T) {
 	e := newTestEnv(t, "development")
 	a := e.startedNode(nodeOpts{name: "node-1"})

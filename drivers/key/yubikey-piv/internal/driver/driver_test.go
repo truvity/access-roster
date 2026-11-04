@@ -255,6 +255,7 @@ func TestItStartsLocked(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-058
 func TestAWrongPINIsTriedOnceAndNeverRetried(t *testing.T) {
 	r := start(t, driver.Development)
 	ensure(t, r.key, "token-signing", "ES384")

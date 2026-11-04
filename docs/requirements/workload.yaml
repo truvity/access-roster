@@ -8,7 +8,9 @@ requirements:
     rationale: "The token is the only proof of the job."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-44, section: "1", depth: Full}
@@ -23,7 +25,9 @@ requirements:
     rationale: "The review API is a runtime dependency on the cluster."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-45, section: "1", depth: Full}
@@ -37,6 +41,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-46, section: "1", depth: Full}
@@ -50,7 +55,9 @@ requirements:
     rationale: "Cloud federation fetches both documents."
     level: SHOULD
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-29, section: "3", depth: Full}
@@ -68,6 +75,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1222]
@@ -80,6 +88,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1222]
