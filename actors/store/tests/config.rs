@@ -63,7 +63,7 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
         ),
         ("dev", "development", "acme")
     );
-    assert_eq!(b.declared_kinds.len(), 7);
+    assert_eq!(b.declared_kinds.len(), 8);
     let u = pb::Upstream::decode_from_slice(&one("Upstream")).unwrap();
     assert_eq!(u.name, "workforce");
     assert_eq!(u.issuer, "http://127.0.0.1:8180/realms/sluis-test");
@@ -166,7 +166,7 @@ fn a_singleton_has_one_item_default_and_a_keyed_kind_uses_its_name() {
 
 #[test]
 fn a_kind_this_build_cannot_read_is_refused_not_skipped() {
-    for name in ["Policy", "SignInMethods", "FrontHost"] {
+    for name in ["RegulatedPartyPolicy", "SignInMethods", "FrontHost"] {
         if let Some(k) = sluis_registry::kind_by_name(name) {
             assert!(payload::decode(k, b"default: {}\n").is_err(), "{name}");
         }
@@ -239,7 +239,7 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
 
     // The audit fact names each document's kind, seq and the SHA-384 of its payload.
     let summaries = loader.snapshot().summaries();
-    assert_eq!(summaries.len(), 8);
+    assert_eq!(summaries.len(), 9);
     let up = summaries.iter().find(|s| s.kind == "Upstream").unwrap();
     assert_eq!(up.seq, 7);
     assert_eq!(up.sha384.len(), 96);
@@ -311,11 +311,11 @@ async fn a_cold_start_refuses_on_any_failure_and_says_why() {
             Box::new(|e| {
                 e.sign(
                     "boundary",
-                    &source("boundary").replace("- KeyPlan", "- Policy"),
+                    &source("boundary").replace("- KeyPlan", "- RegulatedPartyPolicy"),
                     1,
                 )
             }),
-            "Boundary: declared_kinds: Policy has no reader",
+            "Boundary: declared_kinds: RegulatedPartyPolicy has no reader",
         ),
         (
             "production with a plain http issuer",
@@ -414,7 +414,7 @@ async fn a_bad_document_on_reload_keeps_the_snapshot_and_is_reported_once() {
     let Reloaded::Applied(applied) = loader.reload().await else {
         panic!("not applied")
     };
-    assert_eq!(applied.len(), 8);
+    assert_eq!(applied.len(), 9);
     assert_eq!(loader.version("token-lifetime"), Some(2));
     assert_eq!(loader.version("key-plan"), Some(4));
     let t = pb::TokenLifetime::decode_from_slice(&loader.get("token-lifetime", "default").unwrap())
@@ -575,7 +575,7 @@ async fn the_watcher_reloads_when_a_document_changes_and_hands_over_each_outcome
         &source("token-lifetime").replace("10m", "20m"),
         2,
     );
-    wait_for("applied 8").await;
+    wait_for("applied 9").await;
     assert_eq!(loader.version("token-lifetime"), Some(2));
 
     e.sign("key-plan", "default: {}\n", 9);
@@ -634,7 +634,7 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
 
     // The document arrives. No watched name changes, so only the retry can find it.
     e.sign("exchange-trust", "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n", 1);
-    wait_for("applied 9").await;
+    wait_for("applied 10").await;
     assert_eq!(loader.version("exchange-trust"), Some(1));
     assert_eq!(loader.version("boundary"), Some(2));
     task.abort();
@@ -711,4 +711,75 @@ fn a_jwks_uri_that_is_not_a_url_is_refused_by_place() {
         "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"ftp://idp.example.com/keys\" }\n",
     );
     assert!(msg.contains("jwks_uri"), "{msg}");
+}
+
+#[tokio::test]
+async fn the_policy_kind_is_served_to_its_reader_as_the_one_cedar_file() {
+    let e = env().await;
+    write_local(e.docs.path(), &e.pipeline, 3);
+    let loader = e.start().await.unwrap();
+    assert_eq!(loader.version("policy"), Some(3));
+
+    // One document is one Cedar file: the one item `default`, byte for byte the reviewed file.
+    let items = loader.list("policy");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].0, "default");
+    let p = pb::Policy::decode_from_slice(&loader.get("policy", "default").unwrap()).unwrap();
+    let cedar = include_str!("../../../tests/installations/local/policy/local.cedar");
+    assert_eq!(p.cedar, cedar);
+    assert_eq!(p.id, "default");
+
+    // The registry lets policy read it, through Get and List, and nobody else; it lets no one write.
+    for verb in ["get", "list"] {
+        assert!(
+            sluis_registry::store_allows("policy", "policy", verb),
+            "{verb}"
+        );
+        assert!(
+            !sluis_registry::store_allows("session", "policy", verb),
+            "{verb}"
+        );
+    }
+    assert!(!sluis_registry::store_allows("policy", "policy", "create"));
+}
+
+#[test]
+fn the_local_policy_documents_are_the_files_the_policy_actor_is_tested_with() {
+    // config/ holds the sources the harness signs; policy/ holds the files the policy tests run
+    // on. They are one text, so the document cannot drift from the vectors.
+    assert_eq!(
+        source("policy"),
+        include_str!("../../../tests/installations/local/policy/local.cedar")
+    );
+    assert_eq!(
+        source("grant-vocabulary"),
+        include_str!("../../../tests/installations/local/policy/vocabulary.yaml")
+    );
+}
+
+#[test]
+fn a_policy_payload_is_cedar_text_and_not_empty() {
+    assert!(payload::decode(kind("Policy"), b"permit (principal, action, resource);\n").is_ok());
+    assert_eq!(refused("Policy", " \n"), "has no policy");
+    let bad = payload::decode(kind("Policy"), &[0xff, 0xfe]).expect_err("must be refused");
+    assert_eq!(bad.0, "not UTF-8");
+}
+
+#[test]
+fn the_local_catalogue_names_the_actions_policy_emits() {
+    let a = pb::AuditCatalogue::decode_from_slice(
+        &payload::decode(kind("AuditCatalogue"), source("audit-catalogue").as_bytes())
+            .unwrap()
+            .remove(0)
+            .1,
+    )
+    .unwrap();
+    for action in [
+        "policy.decide",
+        "policy.start",
+        "policy.reload",
+        "policy.reload.refused",
+    ] {
+        assert!(a.actions.iter().any(|x| x == action), "{action}");
+    }
 }

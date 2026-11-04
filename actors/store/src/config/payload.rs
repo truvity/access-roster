@@ -4,7 +4,8 @@
 //! The shape of a document is one rule for every kind (decision D-17, and the one the records
 //! leave open): the payload is a mapping from item id to item, and a singleton kind has one item
 //! with the id `default`. `GrantVocabulary` is the exception, because its payload is the
-//! vocabulary file itself, which policy parses (like a Cedar kind, whose payload is Cedar text).
+//! vocabulary file itself, which policy parses. `Policy` is the other: its payload is Cedar text,
+//! one file, which is the one item `default` (the grammar and the schema are policy's to check).
 //!
 //! The message is the schema. No JSON Schema or protovalidate is generated for Rust yet, so this
 //! module checks the same things by hand: the closed key list (an unknown key is refused, by place),
@@ -61,11 +62,12 @@ pub fn readable(kind: &Kind) -> bool {
     kind.class == Class::Config && SKELETON.contains(&kind.name)
 }
 
-const SKELETON: [&str; 9] = [
+const SKELETON: [&str; 10] = [
     "Boundary",
     "KeyPlan",
     "TokenLifetime",
     "GrantVocabulary",
+    "Policy",
     "AuditLog",
     "AuditCatalogue",
     "ExchangeTrust",
@@ -90,6 +92,19 @@ pub fn decode(kind: &Kind, payload: &[u8]) -> R<Items> {
     let Ok(text) = std::str::from_utf8(payload) else {
         return err("", "not UTF-8");
     };
+    if kind.name == "Policy" {
+        // Cedar text, not YAML (signed-config.md "The payload"). One document is one file, so the
+        // kind has one item; policy parses the text and refuses what is not Cedar.
+        if text.trim().is_empty() {
+            return err("", "has no policy");
+        }
+        let item = pb::Policy {
+            id: SINGLETON_ID.into(),
+            cedar: text.to_owned(),
+            ..pb::Policy::default()
+        };
+        return Ok(vec![(SINGLETON_ID.into(), item.encode_to_vec())]);
+    }
     let doc = yaml::parse(text).map_err(|e| PayloadError(e.to_string()))?;
     if kind.name == "GrantVocabulary" {
         // The vocabulary is policy's to read; here it is checked only for the profile.
