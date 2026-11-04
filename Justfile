@@ -401,7 +401,8 @@ units-gen:
 boards-prepare:
     deploy/boards/prepare.sh
 
-# Copy the executables that exist in dist/arm64, with their units, to every board; verify; start in order.
+# Copy the executables that exist in dist/arm64, with their units, to every board; verify; start in order. It refuses
+# a seed that was signed before the header named the kind ("re-sign: just boards-prepare"); it does not sign by itself.
 # Idempotent. SLUIS_BOARDS_DRY_RUN=1 stages and prints the plan without touching a board.
 boards-deploy:
     deploy/boards/boards.sh deploy

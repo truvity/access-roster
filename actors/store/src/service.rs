@@ -437,9 +437,10 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             return Err(blame(bad()));
         }
         self.authorise(caller, kind, "get", None).map_err(blame)?;
-        // A whole document cannot be scoped to one caller: a self-scoped kind (`tunables`, `log-settings`,
-        // `integration`) holds the items of every actor, and an actor may read its own only. The signed document is
-        // all of them, so it is refused, whatever the actor's rule on the kind (ADR 0005 "Rules").
+        // A whole document cannot be scoped to one caller. Whether a kind is self-scoped is the rule of the caller
+        // and the kind (`store_self_scoped_for`): for `tunables`, `log-settings` and `integration` the registry gives
+        // the actors that read them a read under their own ids only, so the document, which holds every actor's
+        // items, is refused to them (ADR 0005 "Rules"). A reader whose rule on the kind is not self-scoped gets it.
         if sluis_registry::store_self_scoped_for(caller, kind.segment, "get") {
             return Err(blame(refuse(ErrorCode::PermissionDenied, "rule", "")));
         }
