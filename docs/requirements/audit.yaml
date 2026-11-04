@@ -115,8 +115,9 @@ requirements:
     rationale: "Proofs let anyone verify the log without trusting the operator."
     level: MUST
     source: v1-parity
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Full}
@@ -1325,8 +1326,9 @@ requirements:
     rationale: "One actor name serves every layer, and every principal has one home in the record."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "actor", depth: Partial}
@@ -1687,8 +1689,9 @@ requirements:
     rationale: "The release and `metadata.event_code` identify the action table entry in force, so a record needs no catalogue field."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1701,8 +1704,9 @@ requirements:
     rationale: "A record taken out of its log must still say which boundary it belongs to."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "metadata", depth: Partial}
@@ -1742,8 +1746,9 @@ requirements:
     rationale: "OCSF validators refuse profile attributes that the record does not declare."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     standards:
       - {id: ST-114, section: "profiles", depth: Partial}
@@ -2198,8 +2203,9 @@ requirements:
     rationale: "A writer that cannot decrypt what it wrote holds nothing to leak (ADR 0029)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: external-suite-not-run
     runtimes: all
     actors: [key]
     standards: []

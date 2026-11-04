@@ -126,6 +126,7 @@ type jcsFile struct {
 	} `json:"refused"`
 }
 
+// verifies: REQ-AUDIT-106
 func TestCanonicalVectors(t *testing.T) {
 	var f jcsFile
 	readVectors(t, "jcs-vectors.json", &f)
