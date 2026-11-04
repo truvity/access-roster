@@ -1640,8 +1640,8 @@ requirements:
       - {kind: integration-test, ref: "a Tenant write that names the issuer host of another tenant is refused"}
   - id: REQ-ISO-117
     area: ISO
-    statement: "The compiled policy MUST refuse to load a cross-tenant grant on a kind that no integration declares as shared on both sides."
-    rationale: "There is no general sharing of data between tenants; each share is a specific integration's contract, decided case by case (ADR 0008)."
+    statement: "The compiled policy MUST refuse to load a cross-tenant grant on a kind that the kind registry does not mark with shared_by."
+    rationale: "There is no general sharing of data between tenants; a kind is shared only by a named integration's contract, and the field with its load check arrives with that integration (ADR 0008, #1220)."
     level: MUST
     source: design-decision
     status: planned
@@ -1650,4 +1650,4 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "a bundle with a cross-tenant grant on DirectoryUser fails to load, and one on DesiredState for a declared pair loads"}
+      - {kind: integration-test, ref: "a bundle with a cross-tenant grant on DirectoryUser fails to load, one on DesiredState (shared_by: [reconciler]) loads, and an audit read over a set of tenants loads"}

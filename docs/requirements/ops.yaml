@@ -995,8 +995,8 @@ requirements:
       - {kind: integration-test, ref: "a pass for a target with a one-sided share reports the missing declaration and changes nothing"}
   - id: REQ-OPS-076
     area: OPS
-    statement: "A DesiredState part written across tenants MUST carry only the vendor identifiers of the declared people."
-    rationale: "Only the declared people and their vendor identifiers cross between companies (ADR 0026)."
+    statement: "A DesiredState part written across tenants MUST carry only the vendor account ids of the declared people and the source tenant's audit pseudonym of each."
+    rationale: "Only the declared people cross between companies, by the reference the container needs and the one the source's audit record needs (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -1004,7 +1004,7 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "a part written into another tenant holds the vendor identifiers of the declared people and no name or address"}
+      - {kind: integration-test, ref: "a part written into another tenant holds the vendor account ids and source pseudonyms of the declared people and no name, address or subject"}
   - id: REQ-OPS-077
     area: OPS
     statement: "A DesiredState write across tenants MUST be audited in the tenant that writes and in the tenant that owns the target."
@@ -1063,8 +1063,8 @@ requirements:
       - {kind: manual, ref: "drill record review: the date, the versions, the installation, the measured time and the verifiers that failed"}
   - id: REQ-OPS-081
     area: OPS
-    statement: "When a tenant is erasing, its directory adapter MUST replace every DesiredState part it wrote into another tenant with a withdrawal before the tenant's data wraps are deleted."
-    rationale: "The parts are sealed under the owner's key, so the source's crypto-shred does not reach them, and deleting them would hold the people in place (ADR 0026)."
+    statement: "When a tenant starts erasing, its directory adapter MUST replace every DesiredState part it wrote into another tenant with a withdrawal at once, whatever ErasureHold covers the tenant's records."
+    rationale: "The parts are sealed under the owner's key, so the source's crypto-shred does not reach them, deleting them would hold the people in place, and a hold keeps records but gives no access (ADR 0008, ADR 0026, ADR 0034)."
     level: MUST
     source: design-decision
     status: planned
@@ -1073,7 +1073,7 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "erasing tenant B leaves a withdrawal in tenant A for every target that B's connection fed, each written before B's data wrap is deleted"}
+      - {kind: integration-test, ref: "erasing tenant B, with and without an ErasureHold, at once leaves a withdrawal at the kind's maximum lifetime in tenant A for every target that B fed"}
   - id: REQ-OPS-082
     area: OPS
     statement: "A provisioner MUST remove from its container every person that a withdrawal names and no other current part of the target names, in strict and in extend mode."
@@ -1089,8 +1089,8 @@ requirements:
       - {kind: conformance-suite, ref: "provisioner suite: a withdrawal removes the people it names in both modes, and keeps a person that another part still names"}
   - id: REQ-OPS-083
     area: OPS
-    statement: "A tenant's exit MUST wait before its crypto-shred until its own audit log holds the outcome of every withdrawal it wrote, or until the ceiling of the full-pass interval has passed since the last one."
-    rationale: "The owners' reconcilers remove the people, and the source cannot read the owners' configuration, so the wait is bounded by the ceiling (ADR 0008, ADR 0026)."
+    statement: "A tenant's exit MUST wait before its crypto-shred until its own audit log holds the outcome of every withdrawal it wrote, or until 75 minutes have passed since the last one."
+    rationale: "The owners' reconcilers remove the people, and the source cannot read the owners' configuration, so the wait is the removal bound at its one-hour ceiling plus 15 minutes for the delivery of the audit records (ADR 0008, ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -1099,7 +1099,7 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "an exit with two withdrawals shreds after both outcomes are in its log, and an exit whose owner never passes shreds once the ceiling has passed"}
+      - {kind: integration-test, ref: "an exit with two withdrawals shreds after both outcomes are in its log, and an exit whose owner never passes shreds once 75 minutes have passed and not before"}
   - id: REQ-OPS-084
     area: OPS
     statement: "A tenant's exit MUST record each removal that the owners did not make within the wait as a residual that names the target and the count, never the people."
@@ -1115,8 +1115,8 @@ requirements:
       - {kind: integration-test, ref: "an exit whose withdrawal the owner's breaker holds ends with a residual for that target and count, and no vendor identifier in the exit record"}
   - id: REQ-OPS-085
     area: OPS
-    statement: "A provisioner MUST NOT keep any data about a person from another tenant's source beyond the vendor identifier that its container needs."
-    rationale: "The owner holds the minimal reference only, never the source's directory data (ADR 0026)."
+    statement: "A provisioner MUST NOT store any data about a person from another tenant's source beyond the vendor's account id that its container needs."
+    rationale: "The owner holds the minimal reference only, never the source's directory data, and an e-mail address that a Slack Connect invitation needs is used only in the call that sends it (ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -1125,7 +1125,7 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "after a pass, a held change and a withdrawal for a part from tenant B, every item of tenant A about B's people holds a vendor identifier and no name, address, group or subject"}
+      - {kind: integration-test, ref: "after a pass, a held change and a withdrawal for a part from tenant B, every item of tenant A about B's people holds a vendor account id and no name, e-mail address, group or subject"}
   - id: REQ-OPS-086
     area: OPS
     statement: "A provisioner SHOULD start a pass of a target when a watch of DesiredState in the owner's tenant delivers a change to one of the target's parts."

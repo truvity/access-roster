@@ -2362,8 +2362,8 @@ requirements:
       - {kind: integration-test, ref: "declare the pseudonym key in the middle of a month: the next record uses a new epoch and older records keep their pseudonyms"}
   - id: REQ-AUDIT-165
     area: AUDIT
-    statement: "An audit record of a change across tenants MUST name the person only by a pseudonym made under the pseudonym key of the tenant whose log holds the record."
-    rationale: "Neither tenant's log may carry the other tenant's personal data beyond the minimal reference (ADR 0026, ADR 0029)."
+    statement: "An audit record of a change across tenants MUST name the person by the source tenant's pseudonym of its own subject in the source's log, and by the owner's pseudonym of the vendor account in the owner's log."
+    rationale: "Each tenant's reversal role then works on its own log, and neither log carries the other tenant's personal data beyond the minimal reference (ADR 0026, ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
@@ -2372,4 +2372,4 @@ requirements:
     standards: []
     issues: [1220]
     verification:
-      - {kind: integration-test, ref: "the two records of one change across tenants carry different pseudonyms, each reversible by its own tenant's role only, and no vendor identifier, name or subject"}
+      - {kind: integration-test, ref: "one change across tenants: the source's role reverses its record to the subject, the owner's role reverses its record to the account id, and neither holds a name or address"}
