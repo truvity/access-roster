@@ -25,9 +25,9 @@ aarch64) goarch=arm64 ;;
 *) echo "native-build: unsupported machine $(uname -m)" >&2; exit 1 ;;
 esac
 
-# The Go release is the one of go.mod's `toolchain` line, so that a bump of the toolchain needs no change here. The tarball
-# comes from go.dev and is checked against the SHA-256 that Google publishes for it at dl.google.com, a host other than
-# the one that serves the tarball.
+# The Go release is the one of go.mod's `toolchain` line. The tarball comes from go.dev and is checked against the SHA-256 that
+# deploy/boards/go-toolchain.sha256 pins for that release and architecture (a pinned release binary, as for rqlite). A release
+# with no pinned hash fails the build: the bump of the toolchain adds its lines to that file in the same change.
 go_version=$(sed -n 's/^toolchain go//p' go.mod)
 [[ "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "native-build: go.mod has no toolchain line of the form go1.2.3" >&2; exit 1; }
 
@@ -37,9 +37,9 @@ apt-get install -y -qq --no-install-recommends ca-certificates curl gcc libc6-de
 
 if ! command -v go >/dev/null || [ "$(go env GOVERSION 2>/dev/null)" != "go$go_version" ]; then
 	tgz=$(mktemp)
+	want_sha=$(awk -v f="go${go_version}.linux-${goarch}.tar.gz" '$1 == f { print $2 }' deploy/boards/go-toolchain.sha256)
+	[[ "$want_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "native-build: deploy/boards/go-toolchain.sha256 pins no SHA-256 for go${go_version}.linux-${goarch}.tar.gz: add it with the toolchain bump" >&2; exit 1; }
 	curl -fsSL --retry 5 --retry-all-errors "https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz" -o "$tgz"
-	want_sha=$(curl -fsSL --retry 5 --retry-all-errors "https://dl.google.com/go/go${go_version}.linux-${goarch}.tar.gz.sha256")
-	[[ "$want_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "native-build: no SHA-256 published for Go ${go_version}" >&2; exit 1; }
 	echo "${want_sha}  $tgz" | sha256sum -c - >/dev/null
 	rm -rf /usr/local/go
 	tar -C /usr/local -xzf "$tgz"
