@@ -58,10 +58,11 @@ function fakeGitHub(state) {
     if (url === 'https://api.github.com/graphql') {
       return Response.json({ data: { organization: { projectV2: {
         id: 'PVT_test', field: { options: state.board.options.map((name) => ({ id: name, name })) },
+        statusField: { options: (state.statusOptions ?? ['Todo', 'In Progress', 'Done']).map((name) => ({ id: `opt-${name}`, name })) },
         items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: state.board.issues.map((i) => ({
           content: { __typename: 'Issue', number: i.number, title: i.title, state: i.open ? 'OPEN' : 'CLOSED', labels: { nodes: i.labels.map((name) => ({ name })) }, repository: { nameWithOwner: 'truvity/sluis' } },
           milestone: i.milestone ? { name: i.milestone } : null,
-          status: i.inProgress ? { name: 'In Progress' } : { name: i.open ? 'Todo' : 'Done' },
+          status: { optionId: i.inProgress ? 'opt-In Progress' : i.open ? 'opt-Todo' : 'opt-Done' },
         })) },
       } } } });
     }
@@ -328,6 +329,24 @@ await test('the Build bars show partial requirements and issues in progress, and
   // A board stored before the Status field was read has no `inProgress`: it counts as none.
   const old = { options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] };
   assert.equal(groupStatus(old, REPO)[0].issues.inProgress, 0);
+});
+
+await test('a board without the Status option "In Progress" is an error, not a count of zero', async () => {
+  const { state, env } = world();
+  await refresh(env, 'test');
+  const before = env.STATUS.data.get(BOARD_KEY);
+  // The option is renamed, so the id cannot be found: the refresh fails loudly and keeps the stored board.
+  state.statusOptions = ['Todo', 'Doing', 'Done'];
+  state.board.issues[0].open = false;
+  const line = await refresh(env, 'test');
+  assert.match(line, /failed: the project has no option "In Progress" in its single-select field "Status"/);
+  assert.equal(env.STATUS.data.get(BOARD_KEY), before, 'nothing is written');
+  // The build's reader (the same module) throws the same error.
+  const { readBoard } = await import('../src/lib/board.ts');
+  await assert.rejects(() => readBoard('t', 'test'), /no option "In Progress"/);
+  // The option is back: the next refresh reads it again.
+  state.statusOptions = undefined;
+  assert.match(await refresh(env, 'test'), /wrote/);
 });
 
 await test('the Worker reads the board Status: In Progress reaches the API and the live block', async () => {
