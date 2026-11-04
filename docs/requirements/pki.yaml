@@ -9,6 +9,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-62, section: "5280", depth: Full}
@@ -22,6 +23,7 @@ requirements:
     level: MUST
     source: standard
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.1.2.2", depth: Full}
@@ -37,6 +39,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4", depth: Full}
@@ -53,6 +56,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4", depth: Full}
@@ -215,6 +219,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "5", depth: Full}
@@ -230,6 +235,7 @@ requirements:
     level: MAY
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-62, section: "5", depth: Full}
@@ -243,7 +249,9 @@ requirements:
     rationale: "A responder adds an always-on dependency to relying parties."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-63, section: "1", depth: Full}
@@ -258,6 +266,7 @@ requirements:
     level: MAY
     source: standard
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-67, section: "9881", depth: Full}
@@ -381,7 +390,9 @@ requirements:
     rationale: "Roots are made and kept by the separate root-custody product, so no sluis process can sign as a root."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1066, 1071]
@@ -394,6 +405,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066, 1069]
@@ -406,6 +418,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
@@ -418,6 +431,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066, 1070]
@@ -430,6 +444,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1068]
@@ -442,6 +457,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
@@ -467,7 +483,9 @@ requirements:
     rationale: "A verifier that wants to can then check custody down to the root, and a standard client ignores the member."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-62, section: "4", depth: Partial}
@@ -480,7 +498,9 @@ requirements:
     rationale: "A key that signs tokens must not be able to issue certificates, and the CA key must not be used for every token."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [869, 914]
@@ -493,6 +513,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.9", depth: Partial}
@@ -505,7 +526,8 @@ requirements:
     rationale: "Two purposes in one slot would overwrite each other's key, or let one purpose's key serve another."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -518,7 +540,8 @@ requirements:
     rationale: "An enabled purpose with no slot would fall back to a slot chosen elsewhere, or fail only when a key is needed."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -532,6 +555,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [914, 1066]
@@ -544,6 +568,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [914, 1066]
@@ -555,7 +580,9 @@ requirements:
     rationale: "A signing call takes no encryption context and an alias points to the same key, so the store cannot separate two uses of one signing key."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [914]
@@ -567,7 +594,8 @@ requirements:
     rationale: "An installation that issues no SSH certificates has no SSH CA key to place."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -581,6 +609,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-109, section: "2", depth: Partial}
@@ -594,6 +623,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
@@ -607,6 +637,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
@@ -620,6 +651,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.2.1.10", depth: Partial}
@@ -633,6 +665,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-62, section: "4.1.2.5", depth: Partial}
@@ -646,6 +679,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "5", depth: Partial}
@@ -659,6 +693,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "5.1.2.5", depth: Partial}
@@ -672,6 +707,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066]
@@ -684,6 +720,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1066, 1067]
@@ -696,6 +733,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1368]
     runtimes: all
     standards: []
     features: ["design"]
@@ -708,6 +747,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1368]
     runtimes: all
     standards: []
     features: ["design"]

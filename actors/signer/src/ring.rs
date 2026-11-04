@@ -462,6 +462,7 @@ mod tests {
         assert_eq!(r.keys[0].node, A);
     }
 
+    /// verifies: REQ-KEYS-080
     #[test]
     fn the_boards_of_a_first_deploy_each_activate_their_first_key_at_once() {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);
@@ -493,6 +494,7 @@ mod tests {
         assert_eq!(r2, r);
     }
 
+    /// verifies: REQ-KEYS-076
     #[test]
     fn a_new_key_of_a_node_is_published_for_the_window_before_it_signs() {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);
@@ -515,6 +517,7 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-KEYS-007, REQ-KEYS-078
     #[test]
     fn a_retired_key_stays_for_a_token_lifetime_plus_the_skew_and_then_leaves() {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);
@@ -541,6 +544,7 @@ mod tests {
         assert_eq!(states(&r2), [("a", RETIRING), ("a2", ACTIVE)]);
     }
 
+    /// verifies: REQ-KEYS-077
     #[test]
     fn a_node_never_changes_the_key_of_another_node() {
         // Both boards have a key; B rotates. A's signer, running at every moment, changes nothing.
