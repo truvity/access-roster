@@ -16,7 +16,7 @@
 #   algorithms    the algorithms in use; the FIPS-approved set is the default, a named exception says why
 #   purposes      the keys that live in a key store: `kind` signing | key-agreement | wrapping
 #   slot_plan     the default card slot map, version 1, for the boards
-#   data_keys     the data keys, which key generates in software and wraps: four per tenant and five per boundary
+#   data_keys     the data keys, which key generates in software and wraps: five per tenant and four per boundary
 #   wrapping      how a data key is wrapped on AWS and on a board
 #
 # Fields of a purpose:
@@ -310,6 +310,11 @@ data_keys:
       users: [writer, indexer, reader]
       erased: "end of the evidence retention"
       notes: "Audit and usage records. Evidence never shares a key with personal data and outlives it."
+    chain:
+      ops: [seal, open]
+      users: [session, exchange]
+      erased: "tenant exit"
+      notes: "Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, because policy needs these facts to decide. A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
   boundary:
     grant:
       ops: [seal, open]
@@ -321,11 +326,6 @@ data_keys:
       users: [session]
       erased: never
       notes: "Seals and opens the session cookie and the sign-in cookie, per request, batched."
-    chain:
-      ops: [seal, open]
-      users: [session, exchange]
-      erased: never
-      notes: "Seals the facts of a session chain that exchange must read: session seals them, exchange opens them. A boundary key, not shredded with a tenant; a generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
     mac:
       ops: [mac]
       users: [entry, session, ca, adapter-github]

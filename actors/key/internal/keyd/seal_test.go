@@ -432,28 +432,28 @@ func TestGrantWindowIsBoundedByNow(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-082: the chain key is sealed by session alone and opened by exchange alone (decision D-28).
-func TestChainKeySealedBySessionOpenedByExchangeAlone(t *testing.T) {
+// REQ-KEYS-082: the chain key of a tenant is sealed by session alone and opened by session and exchange alone, by rule
+// and with no grant (ADR 0006, "Data keys").
+func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	facts := []byte("chain facts")
-	env, err := seal1(n.client("session"), "chain", "session-chain", "", vecID, facts, nil)
+	env, err := seal1(n.client("session"), "chain", "session-chain", "acme", vecID, facts, nil)
 	if err != nil {
 		t.Fatalf("session seals under chain: %v", err)
 	}
 	if h, err := envelope.ParseHeader(env); err != nil || h.Purpose != envelope.CodeChain {
 		t.Errorf("header = %+v, %v; want the chain code", h, err)
 	}
-	// exchange opens it, with no grant.
-	pt, err := open1(n.client("exchange"), "chain", "session-chain", "", vecID, env, nil)
-	if err != nil || !bytes.Equal(pt, facts) {
-		t.Fatalf("exchange opens the chain facts: %q, %v", pt, err)
+	// session opens it again, for a refresh, and exchange opens it for a token exchange; neither needs a grant.
+	for _, who := range []string{"session", "exchange"} {
+		pt, err := open1(n.client(who), "chain", "session-chain", "acme", vecID, env, nil)
+		if err != nil || !bytes.Equal(pt, facts) {
+			t.Fatalf("%s opens the chain facts: %q, %v", who, pt, err)
+		}
 	}
-	// session cannot open what it sealed.
-	_, err = open1(n.client("session"), "chain", "session-chain", "", vecID, env, nil)
-	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 	// exchange cannot seal.
-	_, err = seal1(n.client("exchange"), "chain", "session-chain", "", vecID, facts, nil)
+	_, err = seal1(n.client("exchange"), "chain", "session-chain", "acme", vecID, facts, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 	// No other actor seals or opens. Every actor of the registry is checked, not a list kept here: a grant added to any
 	// actor in actors.yaml fails this test. An actor that may call key@ reaches the rule and is refused by it; one that
@@ -462,29 +462,80 @@ func TestChainKeySealedBySessionOpenedByExchangeAlone(t *testing.T) {
 	for _, c := range registry.CallersOf("key") {
 		callers[c] = true
 	}
+	refused := 0 // the calls the sweep saw refused by the rule
 	for _, act := range registry.Actors() {
 		for _, op := range []string{"seal", "open"} {
-			allowed := (act.Name == "session" && op == "seal") || (act.Name == "exchange" && op == "open")
-			if got := registry.KeyAllows(act.Name, registry.ScopeBoundary, "chain", op); got != allowed {
+			allowed := act.Name == "session" || (act.Name == "exchange" && op == "open")
+			if got := registry.KeyAllows(act.Name, registry.ScopeTenant, "chain", op); got != allowed {
 				t.Errorf("registry: %s %s chain = %v, want %v", act.Name, op, got, allowed)
+			}
+			if registry.KeyAllows(act.Name, registry.ScopeBoundary, "chain", op) {
+				t.Errorf("registry: %s %s the boundary's chain key, which does not exist", act.Name, op)
 			}
 			if allowed || !callers[act.Name] {
 				continue
 			}
 			var err error
 			if op == "seal" {
-				_, err = seal1(n.client(act.Name), "chain", "session-chain", "", vecID, facts, nil)
+				_, err = seal1(n.client(act.Name), "chain", "session-chain", "acme", vecID, facts, nil)
 			} else {
-				_, err = open1(n.client(act.Name), "chain", "session-chain", "", vecID, env, nil)
+				_, err = open1(n.client(act.Name), "chain", "session-chain", "acme", vecID, env, nil)
 			}
 			if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "rule" {
 				t.Errorf("%s %ss under chain: %v, want permission_denied/rule", act.Name, op, err)
 			}
+			refused++
 		}
 	}
-	// The envelope does not open as another purpose or at another address, and the chain key has no tenant.
-	_, err = open1(n.client("exchange"), "chain", "session-chain", "", "other"+vecID[5:], env, nil)
+	// A sweep over an empty registry, or over actors that cannot call key@, would pass whatever the rule says.
+	if refused == 0 {
+		t.Fatal("the sweep refused no call: it checked nothing")
+	}
+	// The envelope does not open at another address, nor at another tenant's key. That key exists first (globex seals
+	// a chain of its own), so the refusal comes from the address binding and the other key, not from a missing key.
+	_, err = open1(n.client("exchange"), "chain", "session-chain", "acme", "other"+vecID[5:], env, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "open")
-	_, err = seal1(n.client("session"), "chain", "session-chain", "acme", vecID, facts, nil)
+	if _, err := seal1(n.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), nil); err != nil {
+		t.Fatalf("session seals under globex's chain key: %v", err)
+	}
+	_, err = open1(n.client("exchange"), "chain", "session-chain", "globex", vecID, env, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	// A chain has a tenant: the key of the boundary does not exist.
+	_, err = seal1(n.client("session"), "chain", "session-chain", "", vecID, facts, nil)
 	wantRefusal(t, err, connect.CodeInvalidArgument, "tenant")
+	_, err = open1(n.client("exchange"), "chain", "session-chain", "", vecID, env, nil)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "tenant")
+}
+
+// REQ-KEYS-082, REQ-KEYS-036: a tenant's exit deletes its chain wraps with the rest, so the facts of its chains no
+// longer open, not even on a node that starts again with an empty cache; another tenant's chain still opens.
+func TestTenantExitMakesChainFactsUnopenable(t *testing.T) {
+	e := newTestEnv(t, "development")
+	a := e.startedNode(nodeOpts{name: "node-1"})
+	acme, err := seal1(a.client("session"), "chain", "session-chain", "acme", vecID, []byte("acme facts"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	globex, err := seal1(a.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pt, err := open1(a.client("exchange"), "chain", "session-chain", "acme", vecID, acme, nil); err != nil || string(pt) != "acme facts" {
+		t.Fatalf("before the exit: %q, %v", pt, err)
+	}
+	// The exit: every wrap of the tenant is deleted, and the node starts again with an empty cache. This tests the
+	// erasure of the wraps plus a restart; key@ has no watch on DataKeyWrap yet (ADR 0006, "The cache"), so a warm node
+	// would still hold the key until its cache entry expires.
+	if got := e.store.eraseWraps("acme"); got == 0 {
+		t.Fatal("the tenant had no wraps to erase")
+	}
+	a.stop()
+	b := e.startedNode(nodeOpts{name: "node-1", driver: a.driver})
+	for _, who := range []string{"session", "exchange"} {
+		_, err = open1(b.client(who), "chain", "session-chain", "acme", vecID, acme, nil)
+		wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	}
+	if pt, err := open1(b.client("exchange"), "chain", "session-chain", "globex", vecID, globex, nil); err != nil || string(pt) != "globex facts" {
+		t.Fatalf("another tenant's chain after the exit: %q, %v", pt, err)
+	}
 }

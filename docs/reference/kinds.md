@@ -503,7 +503,7 @@ Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has five data keys, 
 - **Readers:** [`key@`](/reference/actors/#key); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Indexes:** `by_recipient`, `by_purpose`, besides listing by tenant.
-- **Data key purposes:** per tenant `data`, `pseudonym`, `pairwise`, `evidence`; boundary `grant`, `cookie`, `chain`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
+- **Data key purposes:** per tenant `data`, `pseudonym`, `pairwise`, `evidence`, `chain`; boundary `grant`, `cookie`, `mac`, `data`. See [the key registry](/reference/keys/#data-keys).
 
 ### `Tenant`
 

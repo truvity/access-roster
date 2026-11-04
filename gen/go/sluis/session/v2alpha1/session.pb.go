@@ -619,9 +619,10 @@ func (x *UpstreamLink) GetSubjectClaim() string {
 	return ""
 }
 
-// SignInFacts are the facts about a person that policy needs to decide again: they are sealed with the cookie key
-// into AuthCode and SessionChain, because the account value is personal and neither kind may hold it in the clear.
-// A SessionChain holds a second copy, sealed with the chain key, for exchange (0006, "Data keys").
+// SignInFacts are the facts about a person that policy needs to decide again: an AuthCode holds them sealed with the
+// cookie key, which is enough for a code that lives for minutes, and a SessionChain holds them sealed with the
+// tenant's chain key, which a tenant's exit deletes (0006, "Data keys"). Neither kind may hold the account value in
+// the clear, because it is personal.
 type SignInFacts struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Accounts      []string               `protobuf:"bytes,1,rep,name=accounts,proto3" json:"accounts,omitempty"` // "<upstream>/<subject claim value>" for each linked account
@@ -820,24 +821,23 @@ func (x *AuthCode) GetSessionId() string {
 // its last refresh. Its id is the session id (sid) that the refresh token names. It holds hashes of the refresh
 // tokens, never a token: a presented token is compared, not read back.
 type SessionChain struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Subject          string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                                              // the person's subject
-	ClientId         string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                            // the client the chain belongs to
-	Class            string                 `protobuf:"bytes,3,opt,name=class,proto3" json:"class,omitempty"`                                                  // "human"; fixed when the chain is made, never changed (0018 "The classes")
-	Scope            string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`                                                  // the scopes granted, which a refresh may narrow and never widen
-	RefreshHash      []byte                 `protobuf:"bytes,5,opt,name=refresh_hash,json=refreshHash,proto3" json:"refresh_hash,omitempty"`                   // SHA-384 of the current refresh token's secret
-	SpentHashes      [][]byte               `protobuf:"bytes,6,rep,name=spent_hashes,json=spentHashes,proto3" json:"spent_hashes,omitempty"`                   // SHA-384 of the secrets already rotated away (the spent markers)
-	StartedAt        *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`                         // the moment sluis accepted the sign-in; the absolute limit counts from here
-	EndsAt           *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=ends_at,json=endsAt,proto3" json:"ends_at,omitempty"`                                  // started_at plus the absolute limit, as it was when the chain began
-	RefreshedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=refreshed_at,json=refreshedAt,proto3" json:"refreshed_at,omitempty"`                   // the last refresh; the idle limit counts from here
-	AuthTime         *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=auth_time,json=authTime,proto3" json:"auth_time,omitempty"`                           // when the person authenticated at the upstream; a refresh never changes it
-	Acr              *string                `protobuf:"bytes,11,opt,name=acr,proto3,oneof" json:"acr,omitempty"`                                               // the upstream's acr, if it said one
-	Amr              []string               `protobuf:"bytes,12,rep,name=amr,proto3" json:"amr,omitempty"`                                                     // the upstream's amr
-	AmrPresent       bool                   `protobuf:"varint,13,opt,name=amr_present,json=amrPresent,proto3" json:"amr_present,omitempty"`                    // true when the upstream said anything about amr
-	SealedFacts      []byte                 `protobuf:"bytes,14,opt,name=sealed_facts,json=sealedFacts,proto3" json:"sealed_facts,omitempty"`                  // SignInFacts, sealed with the cookie key: session's own copy, for a refresh
-	SealedChainFacts []byte                 `protobuf:"bytes,15,opt,name=sealed_chain_facts,json=sealedChainFacts,proto3" json:"sealed_chain_facts,omitempty"` // SignInFacts, sealed with the chain key: session seals it, exchange alone opens it
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Subject       string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`                             // the person's subject
+	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`           // the client the chain belongs to
+	Class         string                 `protobuf:"bytes,3,opt,name=class,proto3" json:"class,omitempty"`                                 // "human"; fixed when the chain is made, never changed (0018 "The classes")
+	Scope         string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"`                                 // the scopes granted, which a refresh may narrow and never widen
+	RefreshHash   []byte                 `protobuf:"bytes,5,opt,name=refresh_hash,json=refreshHash,proto3" json:"refresh_hash,omitempty"`  // SHA-384 of the current refresh token's secret
+	SpentHashes   [][]byte               `protobuf:"bytes,6,rep,name=spent_hashes,json=spentHashes,proto3" json:"spent_hashes,omitempty"`  // SHA-384 of the secrets already rotated away (the spent markers)
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`        // the moment sluis accepted the sign-in; the absolute limit counts from here
+	EndsAt        *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=ends_at,json=endsAt,proto3" json:"ends_at,omitempty"`                 // started_at plus the absolute limit, as it was when the chain began
+	RefreshedAt   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=refreshed_at,json=refreshedAt,proto3" json:"refreshed_at,omitempty"`  // the last refresh; the idle limit counts from here
+	AuthTime      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=auth_time,json=authTime,proto3" json:"auth_time,omitempty"`          // when the person authenticated at the upstream; a refresh never changes it
+	Acr           *string                `protobuf:"bytes,11,opt,name=acr,proto3,oneof" json:"acr,omitempty"`                              // the upstream's acr, if it said one
+	Amr           []string               `protobuf:"bytes,12,rep,name=amr,proto3" json:"amr,omitempty"`                                    // the upstream's amr
+	AmrPresent    bool                   `protobuf:"varint,13,opt,name=amr_present,json=amrPresent,proto3" json:"amr_present,omitempty"`   // true when the upstream said anything about amr
+	SealedFacts   []byte                 `protobuf:"bytes,14,opt,name=sealed_facts,json=sealedFacts,proto3" json:"sealed_facts,omitempty"` // SignInFacts, sealed with the tenant's chain key: session opens it at a refresh, exchange opens it for a token exchange
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SessionChain) Reset() {
@@ -968,13 +968,6 @@ func (x *SessionChain) GetSealedFacts() []byte {
 	return nil
 }
 
-func (x *SessionChain) GetSealedChainFacts() []byte {
-	if x != nil {
-		return x.SealedChainFacts
-	}
-	return nil
-}
-
 var File_sluis_session_v2alpha1_session_proto protoreflect.FileDescriptor
 
 const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
@@ -1061,7 +1054,7 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\x05spent\x18\r \x01(\bR\x05spent\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\x0e \x01(\tR\tsessionIdB\x06\n" +
-	"\x04_acr\"\xc2\x04\n" +
+	"\x04_acr\"\xae\x04\n" +
 	"\fSessionChain\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x14\n" +
@@ -1079,9 +1072,8 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\x03amr\x18\f \x03(\tR\x03amr\x12\x1f\n" +
 	"\vamr_present\x18\r \x01(\bR\n" +
 	"amrPresent\x12!\n" +
-	"\fsealed_facts\x18\x0e \x01(\fR\vsealedFacts\x12,\n" +
-	"\x12sealed_chain_facts\x18\x0f \x01(\fR\x10sealedChainFactsB\x06\n" +
-	"\x04_acr2\x8b\x02\n" +
+	"\fsealed_facts\x18\x0e \x01(\fR\vsealedFactsB\x06\n" +
+	"\x04_acrJ\x04\b\x0f\x10\x10R\x12sealed_chain_facts2\x8b\x02\n" +
 	"\x0eSessionService\x12U\n" +
 	"\tAuthorize\x12(.sluis.session.v2alpha1.AuthorizeRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12S\n" +
 	"\bCallback\x12'.sluis.session.v2alpha1.CallbackRequest\x1a\x1e.sluis.type.v2alpha1.HttpReply\x12M\n" +
