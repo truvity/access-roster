@@ -1056,7 +1056,7 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     assert_eq!(doc["jwks_uri"], format!("{ISSUER}/jwks"));
     assert_eq!(
         doc["token_endpoint_auth_methods_supported"],
-        serde_json::json!(["none"])
+        serde_json::json!(["none", "client_secret_basic", "client_secret_post"])
     );
     let k = http(&up, "GET", "/jwks", &[], b"").await;
     assert_eq!(k.status, 200);
