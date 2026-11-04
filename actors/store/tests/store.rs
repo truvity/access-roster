@@ -1389,8 +1389,9 @@ async fn a_config_kind_is_read_from_the_snapshot_and_never_written() {
     assert!(f.durable.transactions().is_empty() && f.temp.transactions().is_empty());
 }
 
-// REQ-DATA-099: the signed document of a config kind is returned exactly as the source gave it, to the
-// readers of the kind and to nobody else; the answer is a read of the kind, so every refusal of a read applies.
+/// verifies: REQ-DATA-099
+/// the signed document of a config kind is returned exactly as the source gave it, to the
+/// readers of the kind and to nobody else; the answer is a read of the kind, so every refusal of a read applies.
 #[tokio::test]
 async fn req_data_099_the_signed_document_of_a_config_kind_goes_to_its_readers_only() {
     let f = F::new().await;
@@ -1433,8 +1434,9 @@ async fn req_data_099_the_signed_document_of_a_config_kind_goes_to_its_readers_o
     }
 }
 
-// REQ-DATA-099: a self-scoped kind has no signed document for any caller. The document holds every actor's items, and
-// an actor may read its own only, so the call is refused even to an actor that may read its own items.
+/// verifies: REQ-DATA-099
+/// a self-scoped kind has no signed document for any caller. The document holds every actor's items, and
+/// an actor may read its own only, so the call is refused even to an actor that may read its own items.
 #[tokio::test]
 async fn req_data_099_a_self_scoped_kind_has_no_signed_document_for_anyone() {
     let f = F::new().await;
