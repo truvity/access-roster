@@ -1,5 +1,5 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
-//! REQ-KEYS-110: the shared vectors of the signed config document: `tests/testdata/signed-config/vectors.json`, which
+//! The shared vectors of the signed config document: `tests/testdata/signed-config/vectors.json`, which
 //! `kits/go/signedconfig` runs too. Both implementations must give the same verdict, step for step, because key@
 //! verifies in Go the documents that store@ verifies in Rust (ADR 0005, "Signed config documents"; principle 6: a
 //! contract and vectors, not shared code).
@@ -36,6 +36,7 @@ fn publishers(v: &Value, set: &str) -> Vec<Publisher> {
         .collect()
 }
 
+/// verifies: REQ-KEYS-110
 #[test]
 fn every_case_of_the_shared_vectors_gets_the_same_verdict_as_in_go() {
     let v = vectors();
@@ -87,6 +88,7 @@ fn digest(h: &str) -> [u8; 48] {
     d
 }
 
+/// verifies: REQ-KEYS-110
 #[test]
 fn the_sequence_vectors_get_the_same_verdict_as_in_go() {
     let v = vectors();
@@ -119,6 +121,7 @@ fn the_sequence_vectors_get_the_same_verdict_as_in_go() {
 
 /// The KeyPlan payload vectors: key@ reads the same text in Go (actors/key/internal/keyd/plan_vectors_test.go) and must
 /// read the same plan, because key@ takes the KeyPlan from the bytes it verified and never from store@'s decoded item.
+/// verifies: REQ-KEYS-110
 #[test]
 fn the_keyplan_payload_vectors_are_read_as_key_reads_them_in_go() {
     use buffa::Message as _;

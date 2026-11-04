@@ -10,7 +10,8 @@ import (
 	"testing"
 )
 
-// REQ-KEYS-110/keyplan_payload_vectors. The KeyPlan payload vectors are shared with store@ (actors/store/tests/vectors.rs): key@ takes the KeyPlan from the
+// verifies: REQ-KEYS-110
+// The KeyPlan payload vectors are shared with store@ (actors/store/tests/vectors.rs): key@ takes the KeyPlan from the
 // bytes it verified, so it must read them as store@ does.
 func TestKeyPlanPayloadVectors(t *testing.T) {
 	raw, err := os.ReadFile("../../../../tests/testdata/signed-config/keyplan-payloads.json")
