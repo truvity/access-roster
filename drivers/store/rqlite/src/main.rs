@@ -49,6 +49,7 @@ impl Commands for Rqlite {
             boundary: f.boundary.clone(),
             socket: f.socket.clone(),
             mode: 0o600,
+            socket_gid: None,
             allow: Allow::OwnerOnly(owner),
             default_deadline: Duration::from_secs(30),
         };

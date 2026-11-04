@@ -1,7 +1,7 @@
 //! The `fs` blob driver of the writer.
 //!
 //! ```text
-//! driver-writer-fs serve       --socket PATH --root DIR
+//! driver-writer-fs serve       --socket PATH --root DIR [--socket-gid GID]
 //! driver-writer-fs check       --root DIR
 //! driver-writer-fs conformance          # the port suite over a temporary directory
 //! driver-writer-fs version
@@ -33,6 +33,19 @@ fn root(f: &Flags) -> anyhow::Result<PathBuf> {
     }
 }
 
+/// The group of the socket (`--socket-gid`), if given. The socket is then 0660 for that group, so that the
+/// owner, who joins it, can connect; without it the socket is 0600 for the driver's user alone. The peer
+/// check (`OwnerOnly`) still decides who may call.
+fn socket_gid(f: &Flags) -> anyhow::Result<Option<u32>> {
+    match f.matches.get_one::<String>("socket-gid") {
+        None => Ok(None),
+        Some(g) => match g.parse::<u32>() {
+            Ok(g) if g != 0 => Ok(Some(g)),
+            _ => bail!("--socket-gid must be a group number other than 0"),
+        },
+    }
+}
+
 impl Commands for Fsd {
     async fn serve(&self, f: Flags) -> anyhow::Result<()> {
         if f.socket.as_os_str().is_empty() {
@@ -40,6 +53,7 @@ impl Commands for Fsd {
         }
         // The root is checked before the socket exists: no socket, no service.
         let fs = Fs::open(&root(&f)?)?;
+        let gid = socket_gid(&f)?;
         // A crash can leave temporary files; serve is the one command that may remove them.
         let swept = fs.sweep()?;
         tracing::info!(swept, "temporary files of an earlier run removed");
@@ -47,7 +61,8 @@ impl Commands for Fsd {
             actor: NAME,
             boundary: f.boundary,
             socket: f.socket,
-            mode: 0o600,
+            mode: gid.map_or(0o600, |_| 0o660),
+            socket_gid: gid,
             allow: Allow::OwnerOnly(OWNER),
             default_deadline: Duration::from_secs(30),
         };
@@ -73,6 +88,13 @@ fn main() {
                 .value_name("DIR")
                 .global(true)
                 .help("The blob directory"),
+        )
+        .arg(
+            Arg::new("socket-gid")
+                .long("socket-gid")
+                .value_name("GID")
+                .global(true)
+                .help("Open the socket (mode 0660) to this group; the default is 0600"),
         )
     });
 }

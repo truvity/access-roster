@@ -200,6 +200,7 @@ async fn up(dir: &Path) -> Up {
         boundary: "dev".into(),
         socket: socket.clone(),
         mode: 0o660,
+        socket_gid: None,
         allow: Allow::Exact("session"),
         default_deadline: Duration::from_secs(5),
     };

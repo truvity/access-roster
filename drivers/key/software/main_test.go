@@ -98,3 +98,15 @@ func TestVersion(t *testing.T) {
 		t.Fatalf("exit %d; %q", code, stdout)
 	}
 }
+
+func TestSocketGIDMustBeANumber(t *testing.T) {
+	base := t.TempDir()
+	code, _, stderr := run(t, "serve", "--environment", "development", "--socket", filepath.Join(base, "s"),
+		"--state-dir", filepath.Join(base, "state"), "--socket-gid", "owner")
+	if code != cli.ExitUsage {
+		t.Fatalf("exit %d, want 2; stderr: %s", code, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(base, "state")); err == nil {
+		t.Fatal("the state directory was made")
+	}
+}

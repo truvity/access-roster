@@ -124,6 +124,7 @@ impl MemoryEngine {
             boundary: "dev".into(),
             socket: socket.to_path_buf(),
             mode: 0o600,
+            socket_gid: None,
             allow: Allow::OwnerOnly("store"),
             default_deadline: Duration::from_secs(30),
         };
