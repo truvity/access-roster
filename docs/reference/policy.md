@@ -414,6 +414,8 @@ things:
 
 The local installation's boundary `dev` has a `Policy` document, [`policy/local.cedar`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/local.cedar), and the vocabulary above. It also has one client, `example-app` in the boundary `dev`, which requires the grant name `dev:example-app:user`, and the command-line client `sluis-cli`, which requires that or the same role in the scope of the company `acme`, so that its tokens carry the groups of both scopes and a token for `example-app` carries those of `dev` alone. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
 
+A binding names an account by the value of the upstream's subject claim, `sub` in the local installation, never by a user name or an e-mail address ([REQ-SUBJ-044](/requirements/subj/#REQ-SUBJ-044)). The identity provider of the local installation makes the `sub` of its test user `alice` when it imports its realm, so the file names her `{{sub:alice}}` and the harness fills in the value it reads from the realm before it signs the document ([Sign-in](/runtimes/local/#sign-in)).
+
 The policy has the held-person rule, six bindings, the standard rule, the rule that a confidential client that exchanges a person's token gets a token for itself only, one step-up rule, the signing rule, two templates and two delegation policies.
 
 <!-- example: tests/installations/local/policy/local.cedar -->
@@ -447,11 +449,13 @@ when { principal in [Account::"workforce/u-1001", Account::"workforce/u-1002"] }
 permit (principal in Account::"workforce/u-2001", action == Action::"grant.hold", resource)
 when { resource.scope == "dev" && resource.role == "admin" };
 
-// The test user `alice` of the identity provider (decision D-21: the upstream's subject claim is the user name). She
+// The test user `alice` of the identity provider, named by her `sub`, never by her user name (REQ-SUBJ-044). She
 // administers the example app in the scope `dev` and uses it in the scope `acme`, so that a token for an audience that
-// asks for `dev` alone shows its `groups` narrowed.
+// asks for `dev` alone shows its `groups` narrowed. The identity provider makes her `sub` when it imports its realm, so
+// this file holds a placeholder for it, and the harness puts in the value it reads from the realm before it signs the
+// document (tools/harness/sign-config, `-subjects`); a placeholder left unfilled is refused there.
 @id("bind-alice-dev-admin")
-permit (principal in Account::"workforce/alice", action == Action::"grant.hold", resource)
+permit (principal in Account::"workforce/{{sub:alice}}", action == Action::"grant.hold", resource)
 when { resource.scope == "dev" && resource.role == "admin" };
 
 @id("bind-alice-acme-user")
@@ -460,7 +464,7 @@ permit (
   action == Action::"grant.hold",
   resource == Grant::"acme:example-app:user"
 )
-when { principal in [Account::"workforce/alice"] };
+when { principal in [Account::"workforce/{{sub:alice}}"] };
 
 // A sensitive scope is named in full.
 @id("bind-prod-admins")

@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -35,6 +36,11 @@ type Options struct {
 	// wrap"). The source key-plan.yaml holds the empty list on the line `  recipients: []`; with recipients, that
 	// line is replaced, and a source without it is an error.
 	Recipients []string
+	// Subjects are the values of the upstream's subject claim of the test users, by user name. A source names a test
+	// user's account by the placeholder {{sub:<user>}}, because the identity provider makes the value when it imports
+	// its realm (REQ-SUBJ-044: the binding is by `sub`, never by the user name). Each placeholder is replaced with the
+	// user's value; a placeholder with no value, and a value that no placeholder names, are errors.
+	Subjects map[string]string
 }
 
 // maxSeq is 2^53 - 1: a seq is "a positive integer, below 2^53" (signed-config.md, "The document").
@@ -70,6 +76,7 @@ func Run(o Options) ([]string, error) {
 		return nil, err
 	}
 	var names []string
+	used := map[string]bool{}
 	for _, e := range entries {
 		ext := filepath.Ext(e.Name())
 		if e.IsDir() || !slices.Contains(sources, ext) {
@@ -90,6 +97,9 @@ func Run(o Options) ([]string, error) {
 				return nil, fmt.Errorf("%s: %w", e.Name(), err)
 			}
 		}
+		if payload, err = WithSubjects(payload, o.Subjects, used); err != nil {
+			return nil, fmt.Errorf("%s: %w", e.Name(), err)
+		}
 		doc, err := Sign(key, o.KID, o.Seq, k.Name, payload)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
@@ -99,6 +109,11 @@ func Run(o Options) ([]string, error) {
 			return nil, err
 		}
 		names = append(names, kind+".jws")
+	}
+	for _, u := range slices.Sorted(maps.Keys(o.Subjects)) {
+		if !used[u] {
+			return nil, fmt.Errorf("a subject is given for %q, and no source names {{sub:%s}}", u, u)
+		}
 	}
 	if len(names) == 0 {
 		return nil, fmt.Errorf("%s holds no source (%s): nothing was signed", o.ConfigDir, strings.Join(sources, ", "))
@@ -150,6 +165,42 @@ func WithRecipients(source []byte, ids []string) ([]byte, error) {
 		repl = append(repl, "    - "+id)
 	}
 	return []byte(strings.Join(slices.Concat(lines[:at], repl, lines[at+1:]), "\n")), nil
+}
+
+// subjectPlaceholder is a test user's account in a source: {{sub:<user>}}, the user name as the identity provider has it.
+var subjectPlaceholder = regexp.MustCompile(`\{\{sub:([a-z][a-z0-9_-]{0,63})\}\}`)
+
+// subjectPattern is the value a placeholder may become: at most 255 characters (the bound of a subject value, ADR 0019)
+// from a set that needs no escaping in a Cedar string literal or a YAML scalar. Keycloak's `sub` is a UUID.
+var subjectPattern = regexp.MustCompile(`^[A-Za-z0-9._~:@-]{1,255}$`)
+
+// WithSubjects returns source with every {{sub:<user>}} replaced by subjects[user], and marks each user it replaced in
+// used. A placeholder whose user has no value, and a value outside subjectPattern, are errors: an unfilled binding must
+// not be signed, and a value must not be able to change the text around it.
+func WithSubjects(source []byte, subjects map[string]string, used map[string]bool) ([]byte, error) {
+	var bad error
+	out := subjectPlaceholder.ReplaceAllFunc(source, func(m []byte) []byte {
+		user := string(subjectPlaceholder.FindSubmatch(m)[1])
+		v, ok := subjects[user]
+		switch {
+		case bad != nil:
+		case !ok:
+			bad = fmt.Errorf("{{sub:%s}} has no subject; give the harness the user's sub (-subjects)", user)
+		case !subjectPattern.MatchString(v):
+			bad = fmt.Errorf("the subject of %q is not 1 to 255 characters of [A-Za-z0-9._~:@-]", user)
+		default:
+			used[user] = true
+			return []byte(v)
+		}
+		return m
+	})
+	if bad != nil {
+		return nil, bad
+	}
+	if strings.Contains(string(out), "{{sub:") {
+		return nil, errors.New("a {{sub:...}} placeholder is not of the form {{sub:<user>}}")
+	}
+	return out, nil
 }
 
 // Sign returns the signed config document of payload: a JWS in the general JSON serialisation (RFC 7515, section

@@ -20,6 +20,9 @@ import (
 const repoConfig = "../../../tests/installations/local/config"
 const repoBootstrap = "../../../tests/installations/local/bootstrap.yaml"
 
+// aliceSub stands in for the `sub` the identity provider gave the test user alice: a UUID, as Keycloak makes them.
+const aliceSub = "0b6f3c5e-8f1d-4c2a-9e7b-1a2b3c4d5e6f"
+
 func testKey(t *testing.T) *ecdsa.PrivateKey {
 	t.Helper()
 	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
@@ -98,6 +101,7 @@ func TestRunSignsEverySourceOfTheLocalInstallationAndPinsTheKey(t *testing.T) {
 	o := Options{
 		ConfigDir: repoConfig, BootstrapTemplate: repoBootstrap, KeyDir: filepath.Join(dir, "key"),
 		Out: filepath.Join(dir, "config"), BootstrapOut: filepath.Join(dir, "bootstrap.yaml"), KID: "publisher-1", Seq: 5,
+		Subjects: map[string]string{"alice": aliceSub},
 	}
 	names, err := Run(o)
 	if err != nil {
@@ -161,8 +165,12 @@ func TestRunSignsEverySourceOfTheLocalInstallationAndPinsTheKey(t *testing.T) {
 				src = b
 			}
 		}
-		if string(src) != string(payload) {
+		// The source, with the test users' subjects filled in.
+		if want := strings.ReplaceAll(string(src), "{{sub:alice}}", aliceSub); want != string(payload) {
 			t.Fatalf("%s: the payload is not the source", n)
+		}
+		if strings.Contains(string(payload), "{{sub:") {
+			t.Fatalf("%s: a placeholder was signed", n)
 		}
 	}
 	// A second run keeps the key, so that the pin does not move, and signs under the new seq.
@@ -236,7 +244,7 @@ func TestRunSignsTheRecipientsIntoTheKeyPlan(t *testing.T) {
 	o := Options{
 		ConfigDir: repoConfig, BootstrapTemplate: repoBootstrap, KeyDir: filepath.Join(dir, "key"),
 		Out: filepath.Join(dir, "config"), BootstrapOut: filepath.Join(dir, "bootstrap.yaml"), KID: "publisher-1", Seq: 5,
-		Recipients: []string{idB},
+		Recipients: []string{idB}, Subjects: map[string]string{"alice": aliceSub},
 	}
 	if _, err := Run(o); err != nil {
 		t.Fatal(err)
@@ -268,5 +276,73 @@ func TestReadRecipients(t *testing.T) {
 	got, err := readRecipients(f)
 	if err != nil || len(got) != 2 || got[0] != idA || got[1] != idB {
 		t.Fatalf("readRecipients = %v, %v", got, err)
+	}
+}
+
+// verifies: REQ-SUBJ-044
+func TestThePolicyBindsTheTestUserBySubAndAnUnfilledBindingIsNotSigned(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join(repoConfig, "policy.cedar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The source names alice by a placeholder for her sub, never by her user name.
+	if !strings.Contains(string(src), `Account::"workforce/{{sub:alice}}"`) || strings.Contains(string(src), `Account::"workforce/alice"`) {
+		t.Fatal(`policy.cedar must bind alice as Account::"workforce/{{sub:alice}}", by her sub`)
+	}
+	used := map[string]bool{}
+	out, err := WithSubjects(src, map[string]string{"alice": aliceSub}, used)
+	if err != nil || !used["alice"] {
+		t.Fatalf("WithSubjects: %v, used %v", err, used)
+	}
+	if !strings.Contains(string(out), `Account::"workforce/`+aliceSub+`"`) || strings.Contains(string(out), "{{sub:") {
+		t.Fatal("the rendered policy does not bind alice by her sub")
+	}
+	for name, subjects := range map[string]map[string]string{
+		"no subject for alice":     {},
+		"a value with a quote":     {"alice": `x" || true || "`},
+		"a value that is empty":    {"alice": ""},
+		"a value that is too long": {"alice": strings.Repeat("a", 256)},
+	} {
+		if _, err := WithSubjects(src, subjects, map[string]bool{}); err == nil {
+			t.Errorf("%s: the policy was rendered", name)
+		}
+	}
+	// A malformed placeholder is refused, not signed as text.
+	if _, err := WithSubjects([]byte(`Account::"workforce/{{sub:Alice}}"`), map[string]string{"Alice": aliceSub}, map[string]bool{}); err == nil {
+		t.Error("a placeholder that is not {{sub:<user>}} was signed")
+	}
+}
+
+func TestRunRefusesAnUnfilledSubjectAndASubjectNoSourceNames(t *testing.T) {
+	dir := t.TempDir()
+	o := Options{
+		ConfigDir: repoConfig, BootstrapTemplate: repoBootstrap, KeyDir: filepath.Join(dir, "key"),
+		Out: filepath.Join(dir, "config"), BootstrapOut: filepath.Join(dir, "bootstrap.yaml"), KID: "publisher-1", Seq: 5,
+	}
+	if _, err := Run(o); err == nil || !strings.Contains(err.Error(), "{{sub:alice}}") {
+		t.Fatalf("Run without alice's subject: %v", err)
+	}
+	o.Subjects = map[string]string{"alice": aliceSub, "mallory": aliceSub}
+	if _, err := Run(o); err == nil || !strings.Contains(err.Error(), "mallory") {
+		t.Fatalf("Run with a subject no source names: %v", err)
+	}
+}
+
+func TestReadSubjects(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "subjects")
+	if err := os.WriteFile(p, []byte("# the test users\nalice "+aliceSub+"\n\nbob  b-2 # a comment\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readSubjects(p)
+	if err != nil || len(got) != 2 || got["alice"] != aliceSub || got["bob"] != "b-2" {
+		t.Fatalf("readSubjects = %v, %v", got, err)
+	}
+	for _, bad := range []string{"alice\n", "alice a b\n", "alice a\nalice b\n"} {
+		if err := os.WriteFile(p, []byte(bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readSubjects(p); err == nil {
+			t.Errorf("%q was read", bad)
+		}
 	}
 }

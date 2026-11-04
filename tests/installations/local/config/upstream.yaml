@@ -1,11 +1,12 @@
 # Upstream: the keyed kind, one item for each upstream, named by its id. `workforce` is the Keycloak
-# realm of the test run on the loopback (decisions D-11 and D-21: the realm's usernames are the
-# subjects, so the policy binds Account::"workforce/alice").
+# realm of the test run on the loopback. A person is found by the realm's `sub`, the id Keycloak gave
+# the user, never by the user name, which changes (REQ-SUBJ-044). The id is made when the realm is
+# imported, so the harness reads it and renders the policy's bindings (policy.cedar) at `just local-up`.
 workforce:
   kind: oidc
   issuer: http://127.0.0.1:8180/realms/sluis-test
   client_id: sluis-local
-  subject_claim: preferred_username
+  subject_claim: sub
   scopes: [openid, profile, email]
   # Where sluis's client secret at the upstream is in the secret source: the credential `upstream-workforce`, which
   # `just local-up` makes; store@ serves it to adapter-upstream-oidc alone (UpstreamSecret). The document never holds

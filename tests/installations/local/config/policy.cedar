@@ -27,11 +27,13 @@ when { principal in [Account::"workforce/u-1001", Account::"workforce/u-1002"] }
 permit (principal in Account::"workforce/u-2001", action == Action::"grant.hold", resource)
 when { resource.scope == "dev" && resource.role == "admin" };
 
-// The test user `alice` of the identity provider (decision D-21: the upstream's subject claim is the user name). She
+// The test user `alice` of the identity provider, named by her `sub`, never by her user name (REQ-SUBJ-044). She
 // administers the example app in the scope `dev` and uses it in the scope `acme`, so that a token for an audience that
-// asks for `dev` alone shows its `groups` narrowed.
+// asks for `dev` alone shows its `groups` narrowed. The identity provider makes her `sub` when it imports its realm, so
+// this file holds a placeholder for it, and the harness puts in the value it reads from the realm before it signs the
+// document (tools/harness/sign-config, `-subjects`); a placeholder left unfilled is refused there.
 @id("bind-alice-dev-admin")
-permit (principal in Account::"workforce/alice", action == Action::"grant.hold", resource)
+permit (principal in Account::"workforce/{{sub:alice}}", action == Action::"grant.hold", resource)
 when { resource.scope == "dev" && resource.role == "admin" };
 
 @id("bind-alice-acme-user")
@@ -40,7 +42,7 @@ permit (
   action == Action::"grant.hold",
   resource == Grant::"acme:example-app:user"
 )
-when { principal in [Account::"workforce/alice"] };
+when { principal in [Account::"workforce/{{sub:alice}}"] };
 
 // A sensitive scope is named in full.
 @id("bind-prod-admins")

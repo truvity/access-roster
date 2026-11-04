@@ -531,12 +531,26 @@ fn named(o: &mut Obj, key: &str, id: &str) -> R<String> {
     }
 }
 
+/// The ID-token claims an upstream's `subject_claim` may not name: the e-mail address (OpenID Connect Core 1.0
+/// section 5.1 `email`), the user name (`preferred_username`, which section 5.1 says "MAY be any valid JSON string" and
+/// "MUST NOT rely upon ... being unique"), Microsoft's `upn` and the display `name`.
+const MUTABLE_CLAIMS: [&str; 4] = ["email", "preferred_username", "upn", "name"];
+
 fn upstream(mut o: Obj, id: &str) -> R<pb::Upstream> {
     let name = named(&mut o, "name", id)?;
     let kind = o.one_of("kind", &["oidc"])?;
     let issuer = url(&mut o, "issuer")?;
     let client_id = o.required("client_id")?;
     let subject_claim = o.required("subject_claim")?;
+    // A person is the pair of the issuer and this claim's value, with no fallback (ADR 0019, "Linking an upstream
+    // account"). A claim that changes for a person would make a renamed account a new person, so the claims that do
+    // are refused here, in every environment, and `sluis config check` refuses them the same way (REQ-SUBJ-044).
+    if MUTABLE_CLAIMS.contains(&subject_claim.as_str()) {
+        return err(
+            &o.at("subject_claim"),
+            "is a claim that changes for a person; name a stable one such as sub or oid",
+        );
+    }
     let org_claim = o.string("org_claim")?;
     let scopes = o.strings("scopes")?;
     // Where sluis's client secret at the upstream is in the secret source (ADR 0005, "Secret sources"; ADR 0025:
