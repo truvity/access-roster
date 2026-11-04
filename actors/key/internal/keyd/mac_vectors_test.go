@@ -5,6 +5,7 @@ package keyd
 import (
 	"bytes"
 	"context"
+	"crypto/sha512"
 	"encoding/json"
 	"os"
 	"testing"
@@ -52,8 +53,11 @@ func TestMacHMACIsRFC4231(t *testing.T) {
 // Known answers for the whole construction, through the Mac call, with the data key of each case put into the cache.
 // The answers were computed with Python 3's hmac and hashlib, not with this code:
 //
-//	key = hashlib.sha384(b"sluis mac vector key: " + name).digest()[:32]
+//	key = hashlib.sha384(b"sluis mac vector key: " + key_name).digest()[:32]
 //	mac = hmac.new(key, struct.pack(">H", len(label)) + label + input, hashlib.sha384).hexdigest()
+//
+// key_name is the case's own field (boundary-mac, acme-pseudonym-202611, acme-pseudonym-202612, acme-pairwise), not
+// its name; the test checks that each key is made from it, so the file can be rebuilt from this note.
 //
 // The epoch of a pseudonym is not in the input: it names the generation of the key, so a case whose key sits under
 // another generation would not give its answer.
@@ -65,6 +69,7 @@ func TestMacVectors(t *testing.T) {
 	var f struct {
 		Cases []struct {
 			Name       string `json:"name"`
+			KeyName    string `json:"key_name"`
 			Caller     string `json:"caller"`
 			Purpose    string `json:"purpose"`
 			Tenant     string `json:"tenant"`
@@ -90,6 +95,9 @@ func TestMacVectors(t *testing.T) {
 	seen := map[string]string{}
 	for _, c := range f.Cases {
 		want, input := unhex(t, c.Mac), unhex(t, c.Input)
+		if sum := sha512.Sum384([]byte("sluis mac vector key: " + c.KeyName)); c.KeyName == "" || !bytes.Equal(sum[:32], unhex(t, c.Key)) {
+			t.Errorf("%s: the key is not made from key_name %q as the note says", c.Name, c.KeyName)
+		}
 		if got := macTag(unhex(t, c.Key), c.Label, input); !bytes.Equal(got, want) {
 			t.Errorf("%s: macTag = %x, want %x", c.Name, got, want)
 		}

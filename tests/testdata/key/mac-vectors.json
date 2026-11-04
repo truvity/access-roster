@@ -1,8 +1,9 @@
 {
-  "note": "Known answers for key@'s Mac (REQ-KEYS-042): HMAC-SHA384 under the data key over u16be(len(label)) | label | input. The epoch of a pseudonym is not in the input; it names the key's generation. key, input and mac are hex; the keys are test values, sha384('sluis mac vector key: ' + name)[:32]. Generated with Python 3's hmac and hashlib, not with the Go code: for each case, hmac.new(key, struct.pack('>H', len(label)) + label + input, hashlib.sha384).hexdigest().",
+  "note": "Known answers for key@'s Mac (REQ-KEYS-042): HMAC-SHA384 under the data key over u16be(len(label)) | label | input. The epoch of a pseudonym is not in the input; it names the key's generation. key, input and mac are hex; the keys are test values: key = sha384('sluis mac vector key: ' + key_name)[:32], with the case's key_name field (boundary-mac, acme-pseudonym-202611, acme-pseudonym-202612 or acme-pairwise), not its name. Generated with Python 3's hmac and hashlib, not with the Go code: for each case, hmac.new(key, struct.pack('>H', len(label)) + label + input, hashlib.sha384).hexdigest().",
   "cases": [
     {
       "name": "mac: link-id",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -15,6 +16,7 @@
     },
     {
       "name": "mac: another label, same input",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -27,6 +29,7 @@
     },
     {
       "name": "mac: another input",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -39,6 +42,7 @@
     },
     {
       "name": "mac: label ab, input c",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -51,6 +55,7 @@
     },
     {
       "name": "mac: label a, input bc",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -63,6 +68,7 @@
     },
     {
       "name": "mac: empty input",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -75,6 +81,7 @@
     },
     {
       "name": "mac: a 300-byte label (the high byte of the length)",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -87,6 +94,7 @@
     },
     {
       "name": "mac: binary input",
+      "key_name": "boundary-mac",
       "caller": "session",
       "purpose": "mac",
       "tenant": "",
@@ -99,6 +107,7 @@
     },
     {
       "name": "pseudonym: epoch 202611 is generation 202611",
+      "key_name": "acme-pseudonym-202611",
       "caller": "reader",
       "purpose": "pseudonym",
       "tenant": "acme",
@@ -111,6 +120,7 @@
     },
     {
       "name": "pseudonym: epoch 202612 is another key",
+      "key_name": "acme-pseudonym-202612",
       "caller": "reader",
       "purpose": "pseudonym",
       "tenant": "acme",
@@ -123,6 +133,7 @@
     },
     {
       "name": "pairwise: generation 1",
+      "key_name": "acme-pairwise",
       "caller": "session",
       "purpose": "pairwise",
       "tenant": "acme",
