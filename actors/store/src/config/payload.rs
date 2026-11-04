@@ -24,6 +24,12 @@ use crate::yaml::{self, Value};
 pub const SINGLETON_ID: &str = "default";
 /// The built-in cap of an access token (kinds.yaml, group TokenLifetime): config sits inside it.
 pub const ACCESS_TOKEN_CAP: std::time::Duration = std::time::Duration::from_secs(3600);
+/// The built-in maximum of key@'s cache of opened data keys (ADR 0006, "The cache" and "Floors in code"): a KeyPlan
+/// may shorten it and never lengthen it. It is key@'s own floor (`maxCacheTTL` in actors/key), checked by store@ too
+/// so that a longer value is refused when the configuration loads and by `sluis config check` (REQ-KEYS-039). It is a
+/// rule of the set, not of the payload, because key@ reads the payload with the shared KeyPlan vectors and applies its
+/// maximum when it uses the value.
+pub const KEY_CACHE_TTL_MAX: std::time::Duration = std::time::Duration::from_secs(3600);
 
 /// A payload that is not valid for its kind: the path and the rule.
 #[derive(Debug, PartialEq, Eq)]
@@ -579,6 +585,11 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     }
     let requires = o.strings("requires")?;
     let ttl_cap = o.duration("ttl_cap")?;
+    // A client lowers its tokens with `ttl_cap` and never raises them past the built-in cap (ADR 0020;
+    // REQ-TOKEN-038).
+    if ttl_cap.is_some_and(|d| d > ACCESS_TOKEN_CAP) {
+        return err(&o.at("ttl_cap"), "above the built-in cap of one hour");
+    }
     let profile = o.string("profile")?;
     // Where the client's secret is in the secret source (ADR 0005, "Secret sources": config names it). The value is
     // never in the document, only the name of a credential.
