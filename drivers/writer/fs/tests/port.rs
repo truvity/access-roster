@@ -57,6 +57,7 @@ fn root() -> tempfile::TempDir {
     d
 }
 
+/// verifies: REQ-AUDIT-103
 #[test]
 fn the_port_suite_passes() {
     suite::run_temp().unwrap();

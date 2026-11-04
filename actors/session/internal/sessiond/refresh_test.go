@@ -73,6 +73,7 @@ func TestRefreshRotatesTheToken(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SESS-001
 func TestRefreshOfASpentTokenEndsTheChain(t *testing.T) {
 	e := newEnv(t, nil)
 	first, _ := e.redeemed()

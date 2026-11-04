@@ -166,6 +166,7 @@ func TestUpstreamOfAnotherKindIsUnsupported(t *testing.T) {
 	refused(t, err, "UNSUPPORTED", connect.CodeUnimplemented, "upstream.kind")
 }
 
+// verifies: REQ-FED-016
 func TestCompleteReturnsTheVerifiedAssertion(t *testing.T) {
 	f := newFixture(t, nil)
 	f.verifier, _ = pkcePair(t)
@@ -337,7 +338,8 @@ func TestDiscoveryThatNamesAnotherIssuerIsRefused(t *testing.T) {
 	refused(t, err, "UPSTREAM_REJECTED", connect.CodeFailedPrecondition, "discovery.issuer")
 }
 
-// REQ-ISO-110: an upstream that declares host A: a call to host B is refused before it leaves the adapter.
+// verifies: REQ-ISO-110
+// An upstream that declares host A: a call to host B is refused before it leaves the adapter.
 func TestAnEndpointAtAnotherHostIsNotCalled(t *testing.T) {
 	var hostB atomic.Int32
 	b := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hostB.Add(1) }))

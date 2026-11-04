@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { decisionFacts, listDecisions } from '../lib-decisions';
+import { evidenceMap } from './evidence';
 import { autoVerifiable, catalogue, coverage } from './requirements';
 
 export const REPO_SCHEMA = 1;
@@ -20,7 +21,13 @@ export async function repoFacts(builtAt: string) {
     builtAt,
     source: { decisions: 'docs/decisions/NNNN-*.md', requirements: 'docs/requirements/*.yaml' },
     decisions,
-    requirements: c.reqs.map((r) => ({ id: r.id, area: r.area, level: r.level, status: r.status, issues: r.issues ?? [], auto: autoVerifiable(r) })),
+    // `milestone`: the name of the board option the record names (index.yaml maps the slug), or null when it names none and the
+    // page infers it from the issues. `evidence`: how many tagged tests and attestations the record has.
+    requirements: c.reqs.map((r) => ({
+      id: r.id, area: r.area, level: r.level, status: r.status, issues: r.issues ?? [], auto: autoVerifiable(r),
+      milestone: r.milestone ? (c.milestones[r.milestone] ?? null) : null,
+      evidence: evidenceMap().get(r.id)?.length ?? 0,
+    })),
     coverage: coverage(),
   };
 }
