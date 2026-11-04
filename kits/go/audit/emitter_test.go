@@ -76,14 +76,14 @@ func newTestEmitter(t *testing.T, tr transportv2alpha1connect.TransportServiceCl
 	return e
 }
 
-var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99}, Status: StatusSuccess}
+var signEvent = Event{Action: Action{Name: "key.sign", ClassUID: 6003, ActivityID: 99, ActivityName: "Sign"}, Status: StatusSuccess}
 
 func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 	keys := &fakeKeys{mac: testMAC()}
 	e := newTestEmitter(t, &fakeTransport{}, keys)
 	ev := signEvent
 	ev.Tenant = "acme"
-	ev.Subject = &Subject{Tenant: "acme", Value: "person-123"}
+	ev.Subject = &Subject{Tenant: "acme", Kind: "person", Value: "person-123"}
 	rec, uid, err := e.Record(rpc.WithCorrelationID(context.Background(), "req-1"), ev)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,8 @@ func TestPseudonymComesFromTheTenantsPseudonymKey(t *testing.T) {
 		t.Fatalf("Mac calls = %d", len(keys.reqs))
 	}
 	m := keys.reqs[0]
-	if m.GetPurpose() != "pseudonym" || m.GetTenant() != "acme" || m.GetLabel() != "audit-subject" || string(m.GetInput()) != "person-123" || m.GetEpoch() != "202611" {
+	wantInput := pseudonymInput("dev", Subject{Tenant: "acme", Kind: "person", Value: "person-123"})
+	if m.GetPurpose() != "pseudonym" || m.GetTenant() != "acme" || m.GetLabel() != "sluis-pseudonym-v1" || !bytes.Equal(m.GetInput(), wantInput) || m.GetEpoch() != "202611" {
 		t.Errorf("Mac request = %v", m)
 	}
 	var got struct {
@@ -137,7 +138,7 @@ func TestPseudonymVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got, err := e.pseudonym(context.Background(), Subject{Tenant: "acme", Value: "x"}, e.now())
+		got, err := e.pseudonym(context.Background(), Subject{Tenant: "acme", Kind: "person", Value: "x"}, e.now())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +152,7 @@ func TestSubjectWithoutKeysIsAnErrorAndNothingIsSent(t *testing.T) {
 	tr := &fakeTransport{}
 	e := newTestEmitter(t, tr, nil)
 	ev := signEvent
-	ev.Subject = &Subject{Tenant: "acme", Value: "person-123"}
+	ev.Subject = &Subject{Tenant: "acme", Kind: "person", Value: "person-123"}
 	for name, call := range map[string]func() error{
 		"Record":       func() error { _, _, err := e.Record(context.Background(), ev); return err },
 		"Emit":         func() error { return e.Emit(context.Background(), ev) },
@@ -175,7 +176,7 @@ func TestKeyFailureStopsTheEmit(t *testing.T) {
 	tr := &fakeTransport{}
 	e := newTestEmitter(t, tr, keys)
 	ev := signEvent
-	ev.Subject = &Subject{Tenant: "acme", Value: "p"}
+	ev.Subject = &Subject{Tenant: "acme", Kind: "person", Value: "p"}
 	err := e.Emit(context.Background(), ev)
 	if connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Fatalf("err = %v", err)
@@ -259,7 +260,7 @@ func TestEventChecks(t *testing.T) {
 		"long status code":   func(e *Event) { e.StatusCode = string(make([]byte, StringMax+1)) },
 		"e-mail in tenant":   func(e *Event) { e.Tenant = "a@b.example" },
 		"e-mail in decision": func(e *Event) { e.Policy = &PolicyRef{DecisionID: "a@b.example"} },
-		"empty subject":      func(e *Event) { e.Subject = &Subject{Tenant: "acme"} },
+		"empty subject":      func(e *Event) { e.Subject = &Subject{Tenant: "acme", Kind: "person"} },
 		"unsupported int":    func(e *Event) { e.Sluis = map[string]any{"n": 3} },
 		"a float":            func(e *Event) { e.Sluis = map[string]any{"n": 1.5} },
 		"a list of any":      func(e *Event) { e.Sluis = map[string]any{"n": []any{"a"}} },
@@ -273,7 +274,7 @@ func TestEventChecks(t *testing.T) {
 	}
 	// An e-mail address is a fine subject: it is hashed, and the record never carries it.
 	ev := signEvent
-	ev.Subject = &Subject{Tenant: "acme", Value: "alice@example.com"}
+	ev.Subject = &Subject{Tenant: "acme", Kind: "person", Value: "alice@example.com"}
 	if err := validateEvent(ev); err != nil {
 		t.Errorf("an e-mail address as the subject value: %v", err)
 	}
@@ -299,5 +300,62 @@ func TestTheRecordIsTheSameWhateverTheMapOrder(t *testing.T) {
 		} else if string(first) != string(b) {
 			t.Fatalf("records differ:\n%s\n%s", first, b)
 		}
+	}
+}
+
+func TestSubjectNeedsAKindAndTheActivityNeedsAName(t *testing.T) {
+	ev := signEvent
+	ev.Subject = &Subject{Tenant: "acme", Value: "x"}
+	if err := validateEvent(ev); err == nil {
+		t.Error("a subject without a kind was accepted")
+	}
+	ev = signEvent
+	ev.Action.ActivityName = ""
+	if err := validateEvent(ev); err == nil {
+		t.Error("activity 99 without an activity name was accepted")
+	}
+}
+
+func TestThePolicyDeclaresItsProfileAndNeedsADecisionID(t *testing.T) {
+	e := newTestEmitter(t, &fakeTransport{}, nil)
+	ev := signEvent
+	ev.Policy = &PolicyRef{DecisionID: "d-1", Digest: "sha384:x", PolicyIDs: []string{"p-1"}, Decision: DecisionDenied}
+	rec, _, err := e.Record(context.Background(), ev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Metadata struct {
+			Profiles []string `json:"profiles"`
+		} `json:"metadata"`
+		ActionID       int `json:"action_id"`
+		Policy         struct{ UID, Version string }
+		Authorizations []struct {
+			Decision string
+			Policy   struct{ UID string }
+		}
+	}
+	if err := json.Unmarshal(rec, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Metadata.Profiles) != 1 || got.Metadata.Profiles[0] != "security_control" || got.ActionID != 2 ||
+		len(got.Authorizations) != 1 || got.Authorizations[0].Decision != "Denied" || got.Authorizations[0].Policy.UID != "p-1" {
+		t.Errorf("record = %s", rec)
+	}
+	// Without a policy the record declares no profile.
+	rec, _, err = e.Record(context.Background(), signEvent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(rec, []byte("profiles")) || bytes.Contains(rec, []byte("action_id")) {
+		t.Errorf("a record without a policy declares a profile: %s", rec)
+	}
+	ev.Policy = &PolicyRef{Digest: "sha384:x"}
+	if err := validateEvent(ev); err == nil {
+		t.Error("a digest without a decision id was accepted")
+	}
+	ev.Policy = &PolicyRef{DecisionID: "d", Decision: 7}
+	if err := validateEvent(ev); err == nil {
+		t.Error("an unknown decision was accepted")
 	}
 }

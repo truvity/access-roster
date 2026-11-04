@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -34,10 +35,10 @@ const (
 	// severityInformational is OCSF severity_id 1.
 	severityInformational = 1
 
-	// pseudonymPurpose, pseudonymLabel and pseudonymBits fix the pseudonym (0029 "Pseudonyms"): Mac under the
-	// tenant's pseudonym key, with this label, kept to the first 128 bits.
+	// pseudonymPurpose, pseudonymLabel and pseudonymBytes fix the pseudonym (0029 "Pseudonyms"): Mac under the
+	// tenant's pseudonym key, with this label (which key@ binds in), kept to the first 128 bits.
 	pseudonymPurpose = "pseudonym"
-	pseudonymLabel   = "audit-subject"
+	pseudonymLabel   = "sluis-pseudonym-v1"
 	pseudonymBytes   = 16
 )
 
@@ -55,19 +56,47 @@ type Action struct {
 	Name       string // metadata.event_code, e.g. "key.sign"
 	ClassUID   int    // OCSF class, e.g. 6003 API Activity
 	ActivityID int    // OCSF activity within the class, e.g. 99 Other
+	// ActivityName is activity_name. It is required when ActivityID is 99 (0030: "activity_name only for
+	// activity 99 or where the table names one"), e.g. "Sign" or "Open" for key use.
+	ActivityName string
 }
 
-// Subject is the person an event concerns.
+// Subject is the person or external actor an event concerns.
 type Subject struct {
 	Tenant string // the tenant whose pseudonym key is used
-	Value  string // the raw subject; the emitter turns it into a pseudonym and never sends it
+	// Kind is the kind of identity (0029 "Pseudonyms"), e.g. "person", "workload" or "client". It is part of the
+	// pseudonym's input, so the same identifier of two kinds gives two pseudonyms. Required.
+	Kind string
+	// Value is the stable identifier of that kind: the sluis subject of a person; the upstream's issuer and subject
+	// for an identity sluis has assigned no subject; the SPIFFE ID or client id of a workload or client; a product's
+	// own subject id for a person of a product. The emitter turns it into a pseudonym and never sends it.
+	Value string
+}
+
+// Decision is the outcome of a policy decision: OCSF's security_control action_id.
+type Decision int
+
+// The outcomes of a decision; the zero value says none is recorded.
+const (
+	DecisionAllowed Decision = 1
+	DecisionDenied  Decision = 2
+)
+
+func (d Decision) caption() string {
+	if d == DecisionDenied {
+		return "Denied"
+	}
+	return "Allowed"
 }
 
 // PolicyRef is the decision that gated an action (0030 "The class mapping": part of the record of the action).
+//
+// DecisionID is required: the OCSF policy object needs a uid, and a digest without an id is refused.
 type PolicyRef struct {
-	DecisionID string
-	Digest     string
-	PolicyIDs  []string
+	DecisionID string   // policy.uid
+	Digest     string   // policy.version
+	PolicyIDs  []string // authorizations[].policy.uid, one per policy that took part
+	Decision   Decision // action_id and authorizations[].decision; zero records none
 }
 
 // Event is one audit event.
@@ -176,7 +205,8 @@ func (e *Emitter) pseudonym(ctx context.Context, s Subject, t time.Time) (string
 	}
 	epoch := t.UTC().Format("200601")
 	resp, err := e.cfg.Keys.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{
-		Purpose: pseudonymPurpose, Tenant: s.Tenant, Label: pseudonymLabel, Input: []byte(s.Value), Epoch: epoch,
+		Purpose: pseudonymPurpose, Tenant: s.Tenant, Label: pseudonymLabel,
+		Input: pseudonymInput(e.cfg.Boundary, s), Epoch: epoch,
 	}))
 	if err != nil {
 		return "", fmt.Errorf("audit: pseudonym: %w", err)
@@ -186,6 +216,18 @@ func (e *Emitter) pseudonym(ctx context.Context, s Subject, t time.Time) (string
 		return "", refusal.New(connect.CodeInternal, "schema", "subject")
 	}
 	return "p1." + epoch + "." + base64.RawURLEncoding.EncodeToString(mac[:pseudonymBytes]), nil
+}
+
+// pseudonymInput is the Mac input of a pseudonym (0029 "Pseudonyms"): the boundary, the tenant, the kind of identity
+// and its identifier, each with a 4-byte big-endian length in front. The label sluis-pseudonym-v1 is the request's
+// label, which key@ binds in. The length prefixes make the parts unambiguous: ("ab","c") and ("a","bc") differ.
+func pseudonymInput(boundary string, s Subject) []byte {
+	var b []byte
+	for _, part := range []string{boundary, s.Tenant, s.Kind, s.Value} {
+		b = binary.BigEndian.AppendUint32(b, uint32(len(part))) //nolint:gosec // every part is at most StringMax bytes
+		b = append(b, part...)
+	}
+	return b
 }
 
 func bound(s, path string) error {
@@ -207,8 +249,12 @@ func validateEvent(ev Event) error {
 	if ev.Status != StatusSuccess && ev.Status != StatusFailure {
 		return refusal.New(connect.CodeInvalidArgument, "schema", "status")
 	}
+	if a.ActivityID == 99 && a.ActivityName == "" {
+		// 0030: activity 99 (Other) is described by activity_name.
+		return refusal.New(connect.CodeInvalidArgument, "schema", "action.activity_name")
+	}
 	for _, f := range []struct{ v, path string }{
-		{a.Name, "action.name"}, {ev.StatusCode, "status_code"}, {ev.Tenant, "tenant"},
+		{a.Name, "action.name"}, {a.ActivityName, "action.activity_name"}, {ev.StatusCode, "status_code"}, {ev.Tenant, "tenant"},
 	} {
 		if err := bound(f.v, f.path); err != nil {
 			return err
@@ -221,15 +267,27 @@ func validateEvent(ev Event) error {
 		if s.Value == "" {
 			return refusal.New(connect.CodeInvalidArgument, "schema", "subject.value")
 		}
-		// The subject is hashed and never sent, so an e-mail address is a fine subject; its size is still bounded.
-		if err := bound(s.Value, "subject.value"); err != nil {
-			return err
+		if s.Kind == "" {
+			return refusal.New(connect.CodeInvalidArgument, "schema", "subject.kind")
 		}
-		if err := bound(s.Tenant, "subject.tenant"); err != nil {
-			return err
+		// The subject is hashed and never sent, so an e-mail address is a fine subject; its size is still bounded.
+		for _, f := range []struct{ v, path string }{
+			{s.Value, "subject.value"}, {s.Tenant, "subject.tenant"}, {s.Kind, "subject.kind"},
+		} {
+			if err := bound(f.v, f.path); err != nil {
+				return err
+			}
 		}
 	}
 	if p := ev.Policy; p != nil {
+		// OCSF's Policy object needs one of name, type or uid, and the record gives it a uid: the decision id.
+		// A digest or a list of policies with no decision id has nothing to hang on.
+		if p.DecisionID == "" {
+			return refusal.New(connect.CodeInvalidArgument, "schema", "policy.decision_id")
+		}
+		if p.Decision != 0 && p.Decision != DecisionAllowed && p.Decision != DecisionDenied {
+			return refusal.New(connect.CodeInvalidArgument, "schema", "policy.decision")
+		}
 		strs := []struct{ v, path string }{{p.DecisionID, "policy.decision_id"}, {p.Digest, "policy.digest"}}
 		for i, id := range p.PolicyIDs {
 			strs = append(strs, struct{ v, path string }{id, "policy.policy_ids[" + strconv.Itoa(i) + "]"})
@@ -323,6 +381,10 @@ func buildRecord(in recordInput) ([]byte, error) {
 		"uid":        in.uid,
 		"version":    OCSFVersion,
 	}
+	if in.ev.Policy != nil {
+		// REQ-AUDIT-120: the record declares the profile whose attributes it uses.
+		md["profiles"] = []string{"security_control"}
+	}
 	if in.correlation != "" {
 		md["correlation_uid"] = in.correlation
 	}
@@ -340,6 +402,9 @@ func buildRecord(in recordInput) ([]byte, error) {
 		"time":         in.timeMS,
 		"type_uid":     int64(a.ClassUID)*100 + int64(a.ActivityID),
 	}
+	if a.ActivityName != "" {
+		rec["activity_name"] = a.ActivityName
+	}
 	if in.ev.StatusCode != "" {
 		rec["status_code"] = in.ev.StatusCode
 	}
@@ -350,22 +415,25 @@ func buildRecord(in recordInput) ([]byte, error) {
 		rec["unmapped"] = map[string]any{"sluis": in.ev.Sluis}
 	}
 	if p := in.ev.Policy; p != nil {
-		// security_control: the policy object names the decision (uid) and the policy bundle (version, the digest);
-		// each policy that took part is an authorization_result with its policy.uid.
-		pol := map[string]any{}
-		if p.DecisionID != "" {
-			pol["uid"] = p.DecisionID
-		}
+		// security_control profile: the policy object names the decision (uid) and the policy bundle (version,
+		// the digest); action_id is the outcome; each policy that took part is an authorization_result with its
+		// policy.uid and the same decision.
+		pol := map[string]any{"uid": p.DecisionID}
 		if p.Digest != "" {
 			pol["version"] = p.Digest
 		}
-		if len(pol) > 0 {
-			rec["policy"] = pol
+		rec["policy"] = pol
+		if p.Decision != 0 {
+			rec["action_id"] = int64(p.Decision)
 		}
 		if len(p.PolicyIDs) > 0 {
 			auths := make([]any, 0, len(p.PolicyIDs))
 			for _, id := range p.PolicyIDs {
-				auths = append(auths, map[string]any{"policy": map[string]any{"uid": id}})
+				au := map[string]any{"policy": map[string]any{"uid": id}}
+				if p.Decision != 0 {
+					au["decision"] = p.Decision.caption()
+				}
+				auths = append(auths, au)
 			}
 			rec["authorizations"] = auths
 		}
