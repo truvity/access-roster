@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -56,7 +57,24 @@ func (s *Server) Check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return s.checkFloor(ctx, b.GetEnvironment())
+	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {
+		return err
+	}
+	return s.checkTransport(ctx)
+}
+
+// checkTransport reaches the audit transport's emit socket: a facts-less connection, so the check writes no
+// audit record.
+func (s *Server) checkTransport(ctx context.Context) error {
+	if s.cfg.TransportSocket == "" {
+		return nil
+	}
+	var d net.Dialer
+	c, err := d.DialContext(ctx, "unix", s.cfg.TransportSocket)
+	if err != nil {
+		return errors.New("audit transport: cannot reach the emit socket")
+	}
+	return c.Close()
 }
 
 // Init makes key@ ready to serve, in the order of ADR 0006 and the brief: the config (a missing document means

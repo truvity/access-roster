@@ -49,8 +49,11 @@ type Config struct {
 	RunDir       string // /run/sluis/key/<boundary>: one directory per caller below it
 	StoreSocket  string // /run/sluis/store/<boundary>.sock
 	DriverSocket string // /run/sluis/key/<boundary>/driver/key-store.sock
-	Node         string // the recipient label base: node-1 locally, the board's short name on a board
-	Auditor      Auditor
+	// TransportSocket is the emit socket of the audit transport, /run/sluis/audit/<boundary>/emit.sock. The check
+	// command reaches it; the Auditor is what emits.
+	TransportSocket string
+	Node            string // the recipient label base: node-1 locally, the board's short name on a board
+	Auditor         Auditor
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// RewrapEvery is the period of the rewrap pass; 0 means DefaultRewrapEvery.

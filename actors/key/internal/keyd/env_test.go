@@ -371,7 +371,7 @@ type node struct {
 	e      *testEnv
 	srv    *Server
 	driver *fakeDriver
-	audit  *recorder
+	audit  *recorder // nil when the node has another Auditor
 	runDir string
 	who    *resolver
 	cancel context.CancelFunc
@@ -380,9 +380,10 @@ type node struct {
 
 // nodeOpts are the options of a node.
 type nodeOpts struct {
-	name   string // the recipient label base
-	driver *fakeDriver
-	audit  *recorder
+	name      string // the recipient label base
+	driver    *fakeDriver
+	audit     Auditor
+	transport string // the emit socket, for the check command
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -397,6 +398,7 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	if o.audit == nil {
 		o.audit = &recorder{}
 	}
+	rec, _ := o.audit.(*recorder)
 	runDir := shortDir(e.t)
 	for _, c := range registry.CallersOf("key") {
 		if err := os.Mkdir(filepath.Join(runDir, c), 0o750); err != nil {
@@ -409,12 +411,12 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour,
+		Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	n := &node{e: e, srv: srv, driver: o.driver, audit: o.audit, runDir: runDir, who: &resolver{}}
+	n := &node{e: e, srv: srv, driver: o.driver, audit: rec, runDir: runDir, who: &resolver{}}
 	n.who.set("policy")
 	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig { return rpc.WithNameResolver(c, n.who.resolve) }
 	return n

@@ -5,13 +5,16 @@ package keyd
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io/fs"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -253,5 +256,95 @@ func TestStartLogsTheRewrapLimit(t *testing.T) {
 	e.startedNode(nodeOpts{})
 	if !strings.Contains(log.String(), "rewrap visits only the default tenant and the tenants used since start") {
 		t.Fatalf("the rewrap limit was not logged:\n%s", log.String())
+	}
+}
+
+// A signature is an audit fact that is durable before the signature is returned: the fact is emitted blocking,
+// and when it cannot be made durable the signature is withheld. Seals, opens and macs never wait for audit; an
+// audit-log signature is not a fact at all.
+func TestSignatureWaitsForItsAuditFact(t *testing.T) {
+	e := newTestEnv(t, "development")
+	rec := &recorder{}
+	n := e.startedNode(nodeOpts{audit: rec})
+	_, kid := publicKey(t, n, "signer", "token-signing")
+	in := tokenInput(kid, "", "")
+	if _, err := n.client("signer").Sign(context.Background(), signReq("token-signing", in)); err != nil {
+		t.Fatal(err)
+	}
+	var signs []Event
+	for _, ev := range rec.all() {
+		if ev.Action == ActionSign {
+			signs = append(signs, ev)
+		}
+	}
+	if len(signs) != 1 || !signs[0].Blocking {
+		t.Fatalf("key.sign events = %+v, want one, blocking", signs)
+	}
+
+	rec.mu.Lock()
+	rec.failing = true
+	rec.mu.Unlock()
+	res, err := n.client("signer").Sign(context.Background(), signReq("token-signing", in))
+	wantRefusal(t, err, connect.CodeUnavailable, "audit")
+	if res != nil {
+		t.Fatal("a signature was returned without its audit fact")
+	}
+	// The checkpoint of the log is its own evidence: it signs with the transport down.
+	root := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	if _, err := n.client("writer").Sign(context.Background(), signReq("audit-log", []byte("example.com/log\n1\n"+root+"\n"))); err != nil {
+		t.Fatalf("audit-log signature with the transport down: %v", err)
+	}
+}
+
+// lockProbe is an Auditor that records whether loadMu was free while the fact was being emitted.
+type lockProbe struct {
+	srv  *Server
+	held atomic.Int64
+	seen atomic.Int64
+}
+
+func (p *lockProbe) Emit(context.Context, Event) error {
+	p.seen.Add(1)
+	if p.srv.loadMu.TryLock() {
+		p.srv.loadMu.Unlock()
+	} else {
+		p.held.Add(1)
+	}
+	return nil
+}
+
+// A new key emits 1+N facts, each with its own timeout; none of them holds the lock that every key load needs.
+func TestFactsOfANewKeyAreEmittedOutsideLoadMu(t *testing.T) {
+	e := newTestEnv(t, "development")
+	probe := &lockProbe{}
+	n := e.newNode(nodeOpts{audit: probe})
+	probe.srv = n.srv
+	n.start()
+	probe.seen.Store(0)
+	if _, err := seal1(n.client("session"), "cookie", "cookie", "", "s1", []byte("x"), nil); err != nil {
+		t.Fatal(err)
+	}
+	if probe.seen.Load() < 2 {
+		t.Fatalf("facts emitted = %d, want a key and a wrap at least", probe.seen.Load())
+	}
+	if probe.held.Load() != 0 {
+		t.Fatalf("%d facts were emitted while loadMu was held", probe.held.Load())
+	}
+}
+
+func TestCheckReachesTheTransport(t *testing.T) {
+	e := newTestEnv(t, "development")
+	sock := filepath.Join(shortDir(t), "emit.sock")
+	n := e.newNode(nodeOpts{transport: sock})
+	if err := n.srv.Check(context.Background()); err == nil {
+		t.Fatal("check passed with no transport listening")
+	}
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	if err := n.srv.Check(context.Background()); err != nil {
+		t.Fatalf("check with the transport listening: %v", err)
 	}
 }

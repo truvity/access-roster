@@ -56,27 +56,38 @@ func (s *Server) withKey(ctx context.Context, ref keyRef, create bool, fn func(k
 }
 
 // load opens the key of ref, making it when asked and when no wrap of it exists. One key is loaded at a time.
+// The audit facts of a new key (1 + N, each with its own timeout) are emitted after the lock is released, so a
+// slow transport holds up the caller that made the key and no other.
 func (s *Server) load(ctx context.Context, ref keyRef, create bool) (*entry, error) {
+	e, events, err := s.loadLocked(ctx, ref, create)
+	for _, ev := range events {
+		s.audit(ctx, ev)
+	}
+	return e, err
+}
+
+func (s *Server) loadLocked(ctx context.Context, ref keyRef, create bool) (*entry, []Event, error) {
 	s.loadMu.Lock()
 	defer s.loadMu.Unlock()
 	if e := s.cache.get(ref); e != nil {
-		return e, nil
+		return e, nil, nil
 	}
+	var events []Event
 	key, err := s.openOwn(ctx, ref)
 	switch {
 	case err == nil:
 	case errors.Is(err, errNoKey) && create:
-		if key, err = s.makeKey(ctx, ref); err != nil {
-			return nil, err
+		if key, events, err = s.makeKey(ctx, ref); err != nil {
+			return nil, nil, err
 		}
 	default:
-		return nil, err
+		return nil, nil, err
 	}
 	if ref.tenant != "" {
 		// The rewrap pass visits the tenants whose keys this node has used.
 		s.tenants.Store(ref.tenant, struct{}{})
 	}
-	return s.cache.put(ref, key), nil
+	return s.cache.put(ref, key), events, nil
 }
 
 // openOwn reads this node's wrap of ref and opens it. errNoKey when there is no wrap of the key at all,
@@ -190,22 +201,22 @@ func (s *Server) wrapFor(ref keyRef, r recipient, dataKey []byte) (wrapItem, err
 
 // makeKey makes a data key (32 random bytes from the operating system) and writes its wraps for every recipient
 // in one batch of CREATEs. A CREATE that loses means another key@ made the key first: ours is discarded, and
-// theirs is read and opened.
-func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, error) {
+// theirs is read and opened. It returns the audit facts of the new key for the caller to emit.
+func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, []Event, error) {
 	recips, err := s.recipients(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key := make([]byte, wrap.DataKeyLen)
 	if _, err := rand.Read(key); err != nil {
-		return nil, fmt.Errorf("keyd: random: %w", err)
+		return nil, nil, fmt.Errorf("keyd: random: %w", err)
 	}
 	items := make([]wrapItem, 0, len(recips))
 	for _, r := range recips {
 		it, err := s.wrapFor(ref, r, key)
 		if err != nil {
 			clear(key)
-			return nil, fmt.Errorf("keyd: wrap: %w", err)
+			return nil, nil, fmt.Errorf("keyd: wrap: %w", err)
 		}
 		items = append(items, it)
 	}
@@ -215,24 +226,29 @@ func (s *Server) makeKey(ctx context.Context, ref keyRef) ([]byte, error) {
 	case errors.Is(err, errTaken):
 		clear(key)
 		slog.Info("data key was made by another node first", "purpose", ref.purpose, "generation", ref.generation)
-		return s.openOwn(ctx, ref) // errNotWrapped if the winner left us out
+		key, err := s.openOwn(ctx, ref) // errNotWrapped if the winner left us out
+		return key, nil, err
 	default:
 		clear(key)
-		return nil, unavailable(reasonStore)
+		return nil, nil, unavailable(reasonStore)
 	}
-	s.audit(ctx, Event{Action: ActionDataKeyMake, Tenant: ref.tenant, Fields: map[string]any{
+	events := []Event{{Action: ActionDataKeyMake, Tenant: ref.tenant, Fields: map[string]any{
 		"purpose": ref.purpose, "generation": int64(ref.generation), "recipients": int64(len(items)),
-	}})
+	}}}
 	for _, it := range items {
-		s.auditWrap(ctx, ref, it.Wrap.GetRecipient())
+		events = append(events, wrapEvent(ref, it.Wrap.GetRecipient()))
 	}
-	return key, nil
+	return key, events, nil
+}
+
+func wrapEvent(ref keyRef, recipient string) Event {
+	return Event{Action: ActionWrapWrite, Tenant: ref.tenant, Fields: map[string]any{
+		"purpose": ref.purpose, "generation": int64(ref.generation), "recipient": recipient,
+	}}
 }
 
 func (s *Server) auditWrap(ctx context.Context, ref keyRef, recipient string) {
-	s.audit(ctx, Event{Action: ActionWrapWrite, Tenant: ref.tenant, Fields: map[string]any{
-		"purpose": ref.purpose, "generation": int64(ref.generation), "recipient": recipient,
-	}})
+	s.audit(ctx, wrapEvent(ref, recipient))
 }
 
 // Rewrap is one rewrap pass: for each data key this node can open, it writes a wrap for every recipient that
