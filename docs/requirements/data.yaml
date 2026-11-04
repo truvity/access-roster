@@ -1418,7 +1418,7 @@ requirements:
     standards: []
     issues: [864, 1157]
     verification:
-      - {kind: test-vectors, ref: "the validation vectors run through the check and through the store give the same verdict"}
+      - {kind: test-vectors, ref: "the_offline_check_and_the_loader_give_the_same_verdict_on_every_set (actors/store/tests/validate.rs), the read path of the file driver included"}
   - id: REQ-DATA-091
     area: DATA
     statement: "The Go and Rust loaders of signed config MUST give the same verdict on every signed-document vector."

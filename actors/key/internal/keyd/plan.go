@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -167,6 +168,11 @@ func decodeKeyPlan(payload []byte) (*configv2alpha1.KeyPlan, error) {
 	secs, ok := parseDuration(ttl)
 	if !ok {
 		return nil, fmt.Errorf("%s: not a duration string", o.at("cache_ttl"))
+	}
+	// The cache under its built-in maximum (ADR 0006, "The cache"): the reader refuses a longer plan, as store@'s does,
+	// and the shared vectors tie the two maxima (REQ-KEYS-039).
+	if secs > int64(maxCacheTTL/time.Second) {
+		return nil, fmt.Errorf("%s: above the built-in maximum of one hour", o.at("cache_ttl"))
 	}
 	plan.CacheTtl = durationpb.New(0)
 	plan.CacheTtl.Seconds = secs

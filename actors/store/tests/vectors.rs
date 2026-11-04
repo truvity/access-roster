@@ -253,3 +253,23 @@ fn the_boundary_payload_vectors_are_read_as_key_reads_them_in_go() {
         }
     }
 }
+
+/// store@'s maximum of key@'s cache is the one of the shared vectors, which key@ holds too
+/// (actors/key/internal/keyd/plan_vectors_test.go): a plan at the maximum is read, and one second over it is refused.
+/// verifies: REQ-KEYS-039
+#[test]
+fn the_cache_maximum_is_the_vectors_maximum() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/testdata/signed-config/keyplan-payloads.json"
+    );
+    let v: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(
+        v["cache_ttl_max_seconds"].as_u64(),
+        Some(store::config::payload::KEY_CACHE_TTL_MAX.as_secs())
+    );
+    let kind = sluis_registry::kind_by_name("KeyPlan").unwrap();
+    assert!(store::config::payload::decode(kind, b"default:\n  cache_ttl: 3600s\n").is_ok());
+    let e = store::config::payload::decode(kind, b"default:\n  cache_ttl: 3601s\n").unwrap_err();
+    assert!(e.0.starts_with("default.cache_ttl"), "{e}");
+}

@@ -42,6 +42,8 @@ type app struct {
 	selfPath func() (string, error)
 	// os is the operating system the command acts as on; empty is runtime.GOOS.
 	os string
+	// version is the release this executable belongs to; empty is kits/go/version.
+	version string
 }
 
 func main() {
