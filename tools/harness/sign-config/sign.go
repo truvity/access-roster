@@ -35,6 +35,10 @@ type Options struct {
 	// wrap"). The source key-plan.yaml holds the empty list on the line `  recipients: []`; with recipients, that
 	// line is replaced, and a source without it is an error.
 	Recipients []string
+	// SlotMap is the slot map of the KeyPlan (ADR 0006, "The slot plan"; D20b): one entry per node, each the JSON object
+	// that the node's key@ check prints after "slot map: ". The source holds the empty map on the line
+	// `  slot_map: []`; with entries, that line is replaced, and a source without it is an error.
+	SlotMap []string
 }
 
 // maxSeq is 2^53 - 1: a seq is "a positive integer, below 2^53" (signed-config.md, "The document").
@@ -87,6 +91,11 @@ func Run(o Options) ([]string, error) {
 		}
 		if kind == "key-plan" && len(o.Recipients) > 0 {
 			if payload, err = WithRecipients(payload, o.Recipients); err != nil {
+				return nil, fmt.Errorf("%s: %w", e.Name(), err)
+			}
+		}
+		if kind == "key-plan" && len(o.SlotMap) > 0 {
+			if payload, err = WithSlotMap(payload, o.SlotMap); err != nil {
 				return nil, fmt.Errorf("%s: %w", e.Name(), err)
 			}
 		}
@@ -148,6 +157,42 @@ func WithRecipients(source []byte, ids []string) ([]byte, error) {
 	repl := []string{"  recipients:"}
 	for _, id := range ids {
 		repl = append(repl, "    - "+id)
+	}
+	return []byte(strings.Join(slices.Concat(lines[:at], repl, lines[at+1:]), "\n")), nil
+}
+
+// slotMapLine is the line of the KeyPlan source that the slot map replaces.
+const slotMapLine = "  slot_map: []"
+
+// WithSlotMap returns the KeyPlan source with its empty slot map replaced by the entries, each one line of flow YAML
+// (JSON is YAML). An entry must be a JSON object with a node and a list of slots, and a node is listed once; what the
+// slots say is checked by store@ and key@ when they read the KeyPlan.
+func WithSlotMap(source []byte, entries []string) ([]byte, error) {
+	seen := map[string]bool{}
+	for i, e := range entries {
+		var v struct {
+			Node  string            `json:"node"`
+			Slots []json.RawMessage `json:"slots"`
+		}
+		if err := json.Unmarshal([]byte(e), &v); err != nil || v.Node == "" || v.Slots == nil {
+			return nil, fmt.Errorf("slot map entry %d is not an object with a node and its slots", i)
+		}
+		if seen[v.Node] {
+			return nil, fmt.Errorf("slot map entry %d: the node is listed twice", i)
+		}
+		seen[v.Node] = true
+		if strings.ContainsAny(e, "\n\r") {
+			return nil, fmt.Errorf("slot map entry %d is not one line", i)
+		}
+	}
+	lines := strings.Split(string(source), "\n")
+	at := slices.Index(lines, slotMapLine)
+	if at < 0 {
+		return nil, fmt.Errorf("the source has no %q line", slotMapLine)
+	}
+	repl := []string{"  slot_map:"}
+	for _, e := range entries {
+		repl = append(repl, "    - "+e)
 	}
 	return []byte(strings.Join(slices.Concat(lines[:at], repl, lines[at+1:]), "\n")), nil
 }

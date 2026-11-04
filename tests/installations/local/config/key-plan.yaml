@@ -7,6 +7,11 @@ default:
   # is empty and the harness fills it in when it signs: deploy/local/local.sh up, deploy/boards/prepare.sh. They
   # replace the line below, which must stay as it is.
   recipients: []
+  # The slot map (ADR 0006, "The slot plan"): which card slot of each node holds which key, with the attestation of each
+  # slot of a card. A peer releases a board's PIN only to a node the map lists (ADR 0006, "Touch and PIN"). The keys
+  # are made at the first start, so the harness fills it in when it signs, from key@'s check on each node
+  # (deploy/boards/prepare.sh). It replaces the line below, which must stay as it is.
+  slot_map: []
   purposes:
     - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }
     - { purpose: token-signing, algorithm: ES384, slot: 9a }
