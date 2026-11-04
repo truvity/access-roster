@@ -311,15 +311,64 @@ func TestDriversAreAccountedFor(t *testing.T) {
 			t.Errorf("%s must be in exactly one of drivers and pendingDrivers", d)
 		}
 	}
-	saved := pendingDrivers
-	t.Cleanup(func() { pendingDrivers = saved })
-	pendingDrivers = pendingDrivers[1:]
+	// A driver with neither a row nor a pending entry is refused, so that a new driver cannot be forgotten.
+	saved, row := pendingDrivers, drivers["driver-indexer-fs"]
+	t.Cleanup(func() { pendingDrivers, drivers["driver-indexer-fs"] = saved, row })
+	delete(drivers, "driver-indexer-fs")
 	if _, err := Generate(dev); err == nil || !strings.Contains(err.Error(), "neither") {
 		t.Errorf("a forgotten driver was not refused: %v", err)
 	}
+	drivers["driver-indexer-fs"] = row
 	pendingDrivers = append(slices.Clone(saved), "driver-nobody-x")
 	if _, err := Generate(dev); err == nil || !strings.Contains(err.Error(), "does not have") {
 		t.Errorf("an unknown pending driver was not refused: %v", err)
+	}
+}
+
+// The search path (WP-26): the indexer follows the log with a verifier key the deploy wrote; its drivers give the index and
+// the blob a socket each for the indexer and the reader; the reader reads the writer's directory through the group of the
+// writer's driver; and the audit front is a second instance of entry that calls the reader alone.
+func TestSearchPath(t *testing.T) {
+	files := generate(t)
+	reader, _ := registry.UID("reader", dev.UIDBlock)
+	for name, want := range map[string][]string{
+		"sluis-indexer@.service": {
+			"ExecStart=/opt/sluis/bin/actors/indexer serve --boundary %i --verifier-key-dir /etc/sluis/vkeys/%i\n",
+			"sluis-drv-indexer-fs-%i", "sluis-drv-indexer-sqlite-%i",
+		},
+		"sluis-drv-indexer-sqlite@.service": {
+			"ExecStart=/opt/sluis/bin/drivers/indexer/sqlite serve --boundary %i --socket /run/sluis/indexer/%i/index.sock --state-dir /var/lib/sluis-state/%i/drv-indexer-sqlite --ro-socket /run/sluis/indexer/%i/index-ro.sock --ro-socket-gid " + itoa(reader) + " --socket-gid ",
+			"SupplementaryGroups=sluis-indexer-drv-%i sluis-reader-%i\n", "StateDirectoryMode=0700\n",
+		},
+		"sluis-drv-indexer-fs@.service": {
+			"--root /var/lib/sluis-state/%i/drv-writer-fs --reader-socket /run/sluis/indexer/%i/blob-ro.sock --reader-socket-gid " + itoa(reader),
+			"SupplementaryGroups=sluis-indexer-drv-%i sluis-drv-writer-fs-%i sluis-reader-%i\n",
+		},
+		// The writer's directory is readable by its group, and by nobody else.
+		"sluis-drv-writer-fs@.service": {"StateDirectoryMode=0750\n"},
+		"sluis-entry-audit@.service": {
+			"User=sluis-entry-%i\n", "--front audit --socket /run/sluis/entry/%i-audit.sock --socket-gid ",
+			"SupplementaryGroups=sluis-drv-writer-spool-%i sluis-harness-forwarder-%i sluis-reader-%i\n",
+			"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n",
+		},
+	} {
+		got, ok := files[name]
+		if !ok {
+			t.Errorf("no %s", name)
+			continue
+		}
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s lacks %q:\n%s", name, w, got)
+			}
+		}
+	}
+	// The directory the reader passes through to the sockets is open to others for x only.
+	if !strings.Contains(files["sluis-indexer.tmpfiles"], "d /run/sluis/indexer/dev 1771 ") {
+		t.Errorf("the indexer's directory of sockets is not 1771:\n%s", files["sluis-indexer.tmpfiles"])
+	}
+	if !strings.Contains(files["index.tsv"], "sluis-entry-audit@dev.service") {
+		t.Error("the index has no row for the audit front")
 	}
 }
 

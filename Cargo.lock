@@ -1688,6 +1688,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "reader"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64 0.22.1",
+ "buffa",
+ "buffa-types",
+ "clap",
+ "connectrpc",
+ "indexer",
+ "rustix",
+ "serde_json",
+ "sluis-audit",
+ "sluis-driver-indexer-sqlite",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-store",
+ "sluis-version",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2053,6 +2078,23 @@ dependencies = [
  "sluis-proto",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "sluis-driver-indexer-fs"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "connectrpc",
+ "rustix",
+ "sluis-driver-writer-fs",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

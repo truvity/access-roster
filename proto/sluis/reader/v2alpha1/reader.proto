@@ -1,0 +1,51 @@
+// The reader: the audit API (0028 "The reader"). Unary calls only, like every public sluis API.
+syntax = "proto3";
+
+package sluis.reader.v2alpha1;
+
+// ReaderService answers audit queries from the search index. Only Search exists in the first working version;
+// Facets, Get, Export and the tail wait for a consumer.
+service ReaderService {
+  rpc Search(SearchRequest) returns (SearchResponse);  // records of the named tenants that match, newest first
+}
+
+// SearchRequest is a query. The reader asks policy for an audit.read grant for each tenant it names, and reads no
+// tenant that a grant does not cover. The filters are exact, the words are free text over the searchable fields.
+message SearchRequest {
+  repeated string tenants = 1;  // the tenants to read; at least one, at most 16; "*" for every tenant, alone
+  string project = 2;           // only this project, when set; the default is every project of the boundary's AuditLog
+  string q = 3;                 // words over the searchable fields; a trailing * makes a prefix
+  string action = 4;            // only this action (metadata.event_code), when set
+  string status_code = 5;       // only this status code, when set
+  int64 status_id = 6;          // only this status_id, when not 0
+  string actor_uid = 7;         // only this actor, when set
+  string trace_id = 8;          // only this correlation id, when set
+  string record_id = 9;         // only this record id, when set
+  int64 from_ms = 10;           // time at or after, in milliseconds, when not 0
+  int64 to_ms = 11;             // time before, in milliseconds, when not 0
+  int32 page_size = 12;         // records per page; 0 is 50, at most 200
+  bytes page_token = 13;        // from the previous page; opaque
+}
+
+// Hit is one record that matched, opened at key@ from the log under its tenant's evidence key.
+message Hit {
+  string tenant = 1;       // metadata.tenant_uid
+  string project = 2;      // the project of the log
+  string kind = 3;         // the log kind
+  string log = 4;          // the log's id
+  int64 seq = 5;           // the entry's position in the log
+  int64 time_ms = 6;       // time, in milliseconds
+  int64 recorded_ms = 7;   // the writer's stamp, in milliseconds
+  string action = 8;       // metadata.event_code
+  string status_code = 9;  // status_code
+  string actor_uid = 10;   // actor.user.uid
+  string trace_id = 11;    // metadata.correlation_uid
+  string record_id = 12;   // metadata.uid
+  string record = 13;      // the record, RFC 8785 canonical JSON, as the emitter made it
+}
+
+// SearchResponse is one page.
+message SearchResponse {
+  repeated Hit hits = 1;      // the records, newest first
+  bytes next_page_token = 2;  // empty on the last page
+}

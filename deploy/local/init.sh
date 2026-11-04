@@ -15,6 +15,7 @@ dir /v/bootstrap 0 0 0755
 dir /v/config 0 0 0755
 dir /v/creds-adapter 61009 61009 0700
 dir /v/creds-store 61022 61022 0700
+dir /v/drv-indexer 61017 61517 1771
 dir /v/drv-store 61012 61512 1770
 dir /v/drv-writer 61015 61515 1770
 dir /v/forwarder-tls 61027 61027 0500
@@ -64,12 +65,15 @@ dir /v/run-key/dev/store 61014 61014 0751
 dir /v/run-key/dev/witness 61014 61014 0751
 dir /v/run-key/dev/writer 61014 61014 0751
 dir /v/run-policy 61005 61005 0751
+dir /v/run-reader 61018 61018 0751
 dir /v/run-signer 61004 61004 0751
 dir /v/run-store 61012 61012 0751
 dir /v/run-store/dev 61012 61012 0751
-dir /v/state-blob 61025 61025 0700
+dir /v/state-blob 61025 61025 0750
+dir /v/state-index 61026 61026 0700
 dir /v/state-key-software 61023 61023 0700
 dir /v/state-spool 61024 61024 0700
+dir /v/vkeys 61017 61017 0750
 
 # The signed config and the bootstrap file belong to root and nobody else can write them (bootstrap-file.md, "Where it lives").
 rm -f /v/config/*.jws
@@ -94,3 +98,11 @@ seed_credentials /seed/credentials/adapter creds-adapter 61009
 # The forwarder's certificate chain and key.
 install -o 61027 -g 61027 -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem
 install -o 61027 -g 61027 -m 0400 /seed/ca/leaf.key /v/forwarder-tls/leaf.key
+
+# The verifier key of the audit log, once the writer has made the log key: `local.sh up` reads it from the writer's log and
+# runs this script again with it in the environment. It is a public key. Without the variable the file is left as it is.
+if [ -n "${SLUIS_AUDIT_VERIFIER_KEY:-}" ]; then
+	printf '%s\n' "$SLUIS_AUDIT_VERIFIER_KEY" >/v/vkeys/main.vkey
+	chown 61017:61017 /v/vkeys/main.vkey
+	chmod 0440 /v/vkeys/main.vkey
+fi
