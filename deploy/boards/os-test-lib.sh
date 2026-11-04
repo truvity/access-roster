@@ -75,13 +75,17 @@ os_check_deploy() {
 	x 'systemctl list-units "sluis-*" --no-legend --plain' | sed 's/^/     /'
 	if x "test \"\$(stat -c %a $cred)\" = 400 && ! grep -q plain- $cred && test -s $cred"; then ok "the credential is on the board encrypted, 0400"; else bad "the credential file is not an encrypted 0400 file"; fi
 	if x "systemd-creds decrypt --name=client-dev $cred -" | grep -qx 'plain-client-dev-value'; then ok "it decrypts under the board's host key to what the seed held"; else bad "the credential does not decrypt"; fi
-	# PID 1 loads the file the way systemd-creds decrypts it (above). Whether a unit receives it is tested only where the system
-	# sets up credentials at all: a probe with a plain LoadCredential= says which (some container hosts do not).
+	# PID 1 loads the file the way systemd-creds decrypts it (above); the unit must receive it. A probe with a plain LoadCredential=
+	# says whether this system sets up credentials at all. Where it does not, that is a failure, except where the caller has said
+	# so with OS_CREDENTIALS_MAY_BE_MISSING=1 and the reason (Rocky 10's systemd in a Docker container: the virtual machine
+	# test proves receipt on the real distribution).
 	x 'echo probe >/etc/sluis-probe-credential'
 	if x "systemd-run --wait --pipe --quiet -p LoadCredential=probe:/etc/sluis-probe-credential -- /bin/sh -c 'cat \"\$CREDENTIALS_DIRECTORY/probe\"'" 2>/dev/null | grep -qx probe; then
 		if x "journalctl -u sluis-drv-store-credential@dev.service -o cat --no-pager" | grep -qx 'credential client-dev=plain-client-dev-value'; then ok "the unit received the credential through LoadCredentialEncrypted="; else bad "the unit did not receive the credential"; fi
+	elif [ "${OS_CREDENTIALS_MAY_BE_MISSING:-0}" = 1 ]; then
+		echo "note this system does not set up credentials for any unit (a plain LoadCredential= fails too): $OS_CREDENTIALS_MISSING_REASON"
 	else
-		echo "note this system does not set up credentials for any unit (a plain LoadCredential= fails too), so what a unit receives is not tested here"
+		bad "this system does not set up credentials for any unit (a plain LoadCredential= fails too), so no unit receives its credentials"
 	fi
 	x 'rm -f /etc/sluis-probe-credential'
 	for u in sluis-drv-store-credential@dev sluis-drv-key-yubikey-piv@dev sluis-key@dev; do
@@ -131,6 +135,20 @@ PY
 	if r=$(reach sluis-stranger -); then bad "another user reached the card service: $r"; else ok "another user does not (the socket group)"; fi
 	sock=$(x 'stat -c "%a %U %G" /run/pcscd/pcscd.comm')
 	if [ "$sock" = "660 root sluis-pcsc-dev" ]; then ok "and it is still so after pcscd ran"; else bad "the socket became '$sock' while pcscd ran"; fi
+	# pcscd started again, and a boot (a /run that is empty again, the tmpfiles of the boot, the socket made, the first start): the
+	# socket keeps its group. systemd hands a runtime directory to the user of the service when it is not that user's already, so
+	# this is the case that a missing tmpfiles entry would break.
+	x 'systemctl restart pcscd.service'
+	reach root - >/dev/null || true
+	sock=$(x 'stat -c "%a %U %G" /run/pcscd/pcscd.comm')
+	if [ "$sock" = "660 root sluis-pcsc-dev" ]; then ok "the socket keeps its group after pcscd was restarted"; else bad "the socket is '$sock' after a restart of pcscd"; fi
+	x 'systemctl stop pcscd.service pcscd.socket; rm -rf /run/pcscd; systemd-tmpfiles --create; systemctl start pcscd.socket'
+	reach root - >/dev/null || true
+	sock=$(x 'stat -c "%a %U %G" /run/pcscd/pcscd.comm')
+	if [ "$sock" = "660 root sluis-pcsc-dev" ]; then ok "the socket keeps its group at the first start after a boot"; else bad "the socket is '$sock' at the first start after a boot"; fi
+	if r=$(reach sluis-drv-key-yubikey-piv-dev sluis-pcsc-dev); then ok "and the card driver's user reaches it: $r"; else bad "the card driver's user was refused after the boot: $r"; fi
+	# The card driver and key@ require pcscd.socket, so stopping it stopped them: start them again, as a boot would.
+	x 'systemctl start sluis-key@dev.service; sleep 2'
 	if [ "$has_policy" = 1 ]; then
 		if r=$(reach sluis-peer sluis-pcsc-dev); then bad "a member of the socket's group that is not the card driver reached it: $r"; else ok "a member of the socket's group that is not the card driver does not (the polkit rule): $r"; fi
 		x "mv $rules /etc/rule.off; sleep 3"

@@ -11,7 +11,7 @@
 # SELinux is not the container's to enforce, so the labels are not tested here (docs/runtimes/bare-metal.md, "SELinux and the
 # firewall"). Needs docker and jq. Run from the repository root: deploy/boards/os-container-test.sh ubuntu:26.04
 # shellcheck disable=SC2016 # the command lines run in the container
-# shellcheck disable=SC2329 # cleanup runs from the trap
+# shellcheck disable=SC2329,SC2034 # cleanup runs from the trap; the OS_CREDENTIALS_ variables are the library's
 set -euo pipefail
 
 image=${1:?usage: os-container-test.sh IMAGE (ubuntu:26.04 or rockylinux/rockylinux:10)}
@@ -69,6 +69,13 @@ echo "     $(x 'systemctl --version | head -1; . /etc/os-release; echo "$PRETTY_
 
 # The stand-in for sudo: the container is root.
 x 'printf "#!/bin/sh\nwhile [ \"\$1\" = -n ]; do shift; done\nexec \"\$@\"\n" >/usr/local/bin/sudo; chmod 0755 /usr/local/bin/sudo'
+# Rocky 10's systemd does not set up a credentials directory for any unit in a Docker container on the hosts tried (MEASURED
+# 2026-11-04: a plain LoadCredential= fails too, and the same image booted in a virtual machine receives them). The virtual
+# machine test proves receipt there, so here a missing credentials directory is a note, and only for the rpm family.
+if [ "$fam" = rpm ]; then
+	OS_CREDENTIALS_MAY_BE_MISSING=1
+	OS_CREDENTIALS_MISSING_REASON="the nightly virtual machine test (os-vm-test.sh) proves receipt on Rocky 10"
+fi
 os_prepare_repo
 os_check_refusal
 x "$(os_card_packages)"

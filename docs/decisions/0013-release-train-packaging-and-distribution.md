@@ -60,7 +60,7 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 - **Operating systems:** Ubuntu 26.04 LTS, Rocky Linux (the latest stable, 10.x) and Amazon Linux 2023, on amd64 and arm64.
 - **The systemd floor is 252,** the version in Amazon Linux 2023. Generated units may rely on what 252 provides, such as `LoadCredentialEncrypted=` and `ExecPaths=`.
 - **Serverless and Kubernetes have no host distribution.**
-- **A board image older than the floor is a declared exception,** not a supported platform: its units use plain `LoadCredential=` where `LoadCredentialEncrypted=` is missing, and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist.
+- **A board image older than the floor is a declared exception,** not a supported platform: the units read `LoadCredentialEncrypted=` (systemd 250 and later; the floor is 252), so the boards deploy refuses to write a credential there, and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist. Key material is never affected: it stays in the card.
 
 ### Distribution
 
