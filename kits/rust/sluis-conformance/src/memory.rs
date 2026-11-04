@@ -238,7 +238,8 @@ impl ItemService for MemoryEngine {
         }
         let mut written = Vec::with_capacity(req.puts.len());
         for p in &req.puts {
-            let version = st.live(&p.key, now).map_or(1, |r| r.version + 1);
+            // Over an item past its expiry the version continues: it never goes back (ABA).
+            let version = st.items.get(&p.key).map_or(1, |r| r.version + 1);
             let mut indexes: Vec<(String, Vec<u8>)> = p
                 .indexes
                 .iter()

@@ -211,6 +211,17 @@ impl Ns {
         )
     }
 
+    /// The floor of the log: the highest sequence that was trimmed. One row. A tail reads it
+    /// after the rows, in the same query: a floor above the tail's position means rows after that
+    /// position may be gone, whatever the rows read look like.
+    #[must_use]
+    pub fn log_floor(&self) -> Stmt {
+        Stmt::new(
+            format!("SELECT value FROM {} WHERE name = 'log_floor'", self.meta),
+            vec![],
+        )
+    }
+
     /// The rows after `seq`, in order.
     #[must_use]
     pub fn log_after(&self, seq: i64) -> Stmt {
@@ -297,19 +308,21 @@ impl Ns {
         )
     }
 
-    /// Writes an item and returns its version: 1 at creation (or over an item past its expiry),
-    /// plus 1 at each change. The statement is the whole conditional update: the condition is a
-    /// guard in front of it in the same transaction, and `RETURNING` hands back the version it
-    /// wrote, so no second read is needed and no race exists.
+    /// Writes an item and returns its version: 1 at creation, plus 1 at each change. A create over
+    /// an item that is past its expiry but not yet swept continues from that item's version, so a
+    /// version never goes back while the row is there (an ABA on a version condition); only a
+    /// delete, or the sweeper freeing the row, starts the key again at 1. The statement is the
+    /// whole conditional update: the condition is a guard in front of it in the same transaction,
+    /// and `RETURNING` hands back the version it wrote, so no second read is needed and no race
+    /// exists.
     #[must_use]
-    pub fn upsert(&self, key: &str, value: &[u8], expires_ms: Option<i64>, now: i64) -> Stmt {
+    pub fn upsert(&self, key: &str, value: &[u8], expires_ms: Option<i64>) -> Stmt {
         let items = &self.items;
         Stmt::new(
             format!(
                 "INSERT INTO {items}(key, version, value, expires_at) VALUES (?, 1, unhex(?), ?) \
                  ON CONFLICT(key) DO UPDATE SET \
-                 version = CASE WHEN {items}.expires_at IS NOT NULL AND {items}.expires_at <= ? \
-                                THEN 1 ELSE {items}.version + 1 END, \
+                 version = {items}.version + 1, \
                  value = excluded.value, expires_at = excluded.expires_at \
                  RETURNING version"
             ),
@@ -317,7 +330,6 @@ impl Ns {
                 Param::Text(key.to_owned()),
                 Param::Text(hex(value)),
                 expires_ms.map_or(Param::Null, Param::Int),
-                Param::Int(now),
             ],
         )
     }
@@ -441,7 +453,7 @@ mod tests {
             after,
             ns().query("", None, Some(("n", b"v")), 3, 1),
             ns().guard("k", Expected::Version(2), 1),
-            ns().upsert("k", b"v", Some(9), 1),
+            ns().upsert("k", b"v", Some(9)),
             ns().sweep_expired(1, 500)[0].clone(),
         ] {
             assert_eq!(s.sql.matches('?').count(), s.params.len(), "{}", s.sql);
@@ -450,7 +462,7 @@ mod tests {
 
     #[test]
     fn user_bytes_are_never_in_the_sql_text() {
-        let s = ns().upsert("k'; DROP TABLE x; --", b"v", None, 1);
+        let s = ns().upsert("k'; DROP TABLE x; --", b"v", None);
         assert!(!s.sql.contains("DROP"));
         let g = ns().guard("k'; DROP TABLE x; --", Expected::Absent, 1);
         assert!(!g.sql.contains("DROP"));

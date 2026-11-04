@@ -14,7 +14,8 @@
 //! - **A key** is printable ASCII without a space, at most 512 bytes ([`rules::check_key`]).
 //! - **A condition** expects `absent: true` or a version; `absent: false` and none are `invalid_argument/batch`.
 //!   A failed condition is `aborted/version` with the field path `conditions[i]`, `i` the first that failed.
-//! - **An item past its expiry** is absent to a read, a listing and a condition; a put over it starts at version 1.
+//! - **An item past its expiry** is absent to a read, a listing and a condition; a put over it
+//!   (not yet freed by a sweep) continues from its version, so a version never goes back.
 //! - **`Transact`** applies conditions, then deletes, then puts. A key may be written or deleted once per request.
 //! - **A delete's log row** holds the version the item had when it was removed; a delete of an absent key logs nothing.
 //! - **`TailLog` from 0** starts after the newest row at the time of the call. A sequence beyond the newest, or below

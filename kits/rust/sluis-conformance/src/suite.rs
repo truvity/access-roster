@@ -43,6 +43,7 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("transact_all_or_none", s.transact_all_or_none()).await,
         run_case("one_put_one_condition", s.one_put_one_condition()).await,
         run_case("expiry", s.expiry()).await,
+        run_case("version_never_decreases", s.version_never_decreases()).await,
         run_case("prefix_query_order_and_paging", s.prefix_paging()).await,
         run_case("index_query", s.index_query()).await,
         run_case("log_order_and_from_sequence", s.log_order()).await,
@@ -493,12 +494,46 @@ impl Suite {
             .transact(vec![absent(&gone)], vec![expiring(&gone, &future)], vec![])
             .await?;
         ensure!(
-            again.first().map(|i| i.version) == Some(1),
-            "a create over an expired item starts at version 1"
+            again.first().map(|i| i.version) == Some(2),
+            "a create over an expired item continues from its version"
         );
         ensure!(
-            self.get(&gone, true).await?.version == 1,
+            self.get(&gone, true).await?.version == 2,
             "the item created over an expired one is not readable"
+        );
+        Ok(())
+    }
+
+    /// A version never goes back while the engine still holds the item: not across an expiry and
+    /// a create over it, however often. (A delete, or a sweep that freed the row, starts the key
+    /// again; the suite cannot make an engine sweep.)
+    async fn version_never_decreases(&self) -> anyhow::Result<()> {
+        let k = self.key("aba", "a");
+        let past = ms_to_ts(now_ms() - 10_000);
+        let future = ms_to_ts((now_ms() / 1000 + 3600) * 1000);
+        let expiring = |t: &buffa_types::google::protobuf::Timestamp| Put {
+            expires_at: t.clone().into(),
+            ..put(&k, b"v")
+        };
+        let mut seen = Vec::new();
+        // Created already expired, created over, expired by an update, created over again.
+        let steps = [
+            (vec![absent(&k)], expiring(&past)),
+            (vec![absent(&k)], expiring(&future)),
+            (vec![], expiring(&past)),
+            (vec![absent(&k)], expiring(&future)),
+        ];
+        for (conditions, p) in steps {
+            let wrote = self.transact(conditions, vec![p], vec![]).await?;
+            seen.push(wrote.first().map_or(0, |i| i.version));
+        }
+        ensure!(
+            seen.windows(2).all(|w| w[0] < w[1]),
+            "the versions across expiry and create are {seen:?}, want them to grow"
+        );
+        ensure!(
+            self.get(&k, true).await?.version == seen[3],
+            "the item does not hold the version its last write returned"
         );
         Ok(())
     }

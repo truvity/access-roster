@@ -254,7 +254,7 @@ impl ItemService for Driver {
             let expires = p.expires_at.as_option().map(rules::ts_to_ms);
             stmts.push(ns.delete_index(&key));
             returning.push(stmts.len());
-            stmts.push(ns.upsert(&key, &p.value, expires, now));
+            stmts.push(ns.upsert(&key, &p.value, expires));
             let mut entries: Vec<_> = p.indexes.iter().map(|e| (&e.name, &e.value)).collect();
             entries.sort();
             entries.dedup();
@@ -347,12 +347,9 @@ impl ItemService for Driver {
                             last = i64::try_from(row.sequence).unwrap_or(last);
                             return Some((Ok(row), (last, queued, false)));
                         }
-                        match driver.read(Level::Weak, driver.ns.log_after(last)).await {
-                            Ok(found) if found.is_empty() => tokio::time::sleep(TAIL_POLL).await,
-                            Ok(found) => match log_rows(&found) {
-                                Ok(rows) => queued.extend(rows),
-                                Err(e) => return Some((Err(engine_down(e)), (last, queued, true))),
-                            },
+                        match driver.poll(last).await {
+                            Ok(None) => tokio::time::sleep(TAIL_POLL).await,
+                            Ok(Some(rows)) => queued.extend(rows),
                             Err(e) => return Some((Err(e), (last, queued, true))),
                         }
                     }
@@ -363,6 +360,37 @@ impl ItemService for Driver {
 }
 
 impl Driver {
+    /// The log rows after `last`, or `None` when there are none yet. The rows are read first and
+    /// the floor after, in one query: the floor only grows, so if it is not above `last` when it
+    /// is read, nothing after `last` was trimmed before the rows were read and the rows are
+    /// complete. If it is above `last` the tail has fallen behind the retention and the rows it
+    /// missed are gone: that is `sequence_expired`, never a silent skip.
+    ///
+    /// # Errors
+    ///
+    /// `sequence_expired` as above, or `unavailable` / `engine`.
+    pub async fn poll(&self, last: i64) -> Result<Option<Vec<TailLogResponse>>, ConnectError> {
+        let out = self
+            .rq
+            .query(Level::Weak, &[self.ns.log_after(last), self.ns.log_floor()])
+            .await
+            .map_err(engine_down)?;
+        let floor = rows(&out, 1)
+            .ok()
+            .and_then(|r| r.first())
+            .and_then(|r| r.first())
+            .and_then(Value::as_i64)
+            .ok_or_else(|| engine_down(anyhow::anyhow!("the log floor is not readable")))?;
+        if floor > last {
+            return Err(expired());
+        }
+        let found = rows(&out, 0).map_err(engine_down)?;
+        if found.is_empty() {
+            return Ok(None);
+        }
+        log_rows(found).map(Some).map_err(engine_down)
+    }
+
     /// The version `RETURNING` gave for the statement at `at`.
     fn returned_version(&self, out: &[Outcome], at: usize) -> anyhow::Result<u64> {
         let v = rows(out, at)?
