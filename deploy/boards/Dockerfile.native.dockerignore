@@ -1,0 +1,11 @@
+.git
+.devbox
+.venv
+.cache
+.claude
+dist
+target
+site
+docs
+node_modules
+**/node_modules
