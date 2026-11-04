@@ -24,7 +24,7 @@ import (
 //   - the verifier key is name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo);
 //   - the signature line is "— " name " " base64(key ID || ASN.1 DER ECDSA signature).
 //
-// A generic verifier checks it without sluis code (TestACheckpointVerifiesWithAnIndependentVerifier).
+// A generic verifier checks it without sluis code (TestCheckpointsVerifyWithAnIndependentStandardVerifier).
 const sigTypeECDSA = 0x02
 
 // checkpointDigest is the digest the log key signs for a checkpoint: the SHA-256 of the note body (C2SP

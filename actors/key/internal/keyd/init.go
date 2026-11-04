@@ -51,14 +51,37 @@ func planAlgorithm(a string) (string, bool) {
 	return "", false
 }
 
+// auditLogPurpose is the one purpose whose key is ES256 (ADR 0006, "Named exceptions"; REQ-KEYS-081).
+const auditLogPurpose = "audit-log"
+
+// checkPlan refuses a KeyPlan that pairs the audit-log purpose with another algorithm than ES256, or ES256 with
+// another purpose (REQ-KEYS-081). The other ES256 purposes of keys.yaml are named exceptions that this key@ does not
+// implement, so a plan that names one is refused rather than given a key it would not sign with. It reads the plan
+// only, so Check and Init apply it before any key is asked for.
+func checkPlan(plan *configv2alpha1.KeyPlan) error {
+	for _, p := range plan.GetPurposes() {
+		purpose, alg := p.GetPurpose(), p.GetAlgorithm()
+		switch {
+		case purpose == auditLogPurpose && alg != algES256:
+			return errors.New("keyplan/default: the audit-log purpose must be ES256 (P-256, SHA-256)")
+		case purpose != auditLogPurpose && alg == algES256:
+			return fmt.Errorf("keyplan/default: purpose %s cannot be ES256; only audit-log is", purpose)
+		}
+	}
+	return nil
+}
+
 // Check is the check command: it reaches the driver, store@ and the config key@ needs, and applies the floors.
 // It writes nothing and creates no key.
 func (s *Server) Check(ctx context.Context) error {
 	if err := s.checkRunDir(); err != nil {
 		return err
 	}
-	b, _, err := s.loadConfig(ctx)
+	b, plan, err := s.loadConfig(ctx)
 	if err != nil {
+		return err
+	}
+	if err := checkPlan(plan); err != nil {
 		return err
 	}
 	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {
@@ -89,6 +112,9 @@ func (s *Server) Init(ctx context.Context) error {
 	}
 	b, plan, err := s.loadConfig(ctx)
 	if err != nil {
+		return err
+	}
+	if err := checkPlan(plan); err != nil {
 		return err
 	}
 	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {

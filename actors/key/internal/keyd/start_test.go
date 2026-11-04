@@ -22,6 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/truvity/sluis/v2/actors/key/internal/envelope"
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
@@ -111,6 +112,38 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 		e.store.put("key-plan", "", "default", plan)
 		if err := e.newNode(nodeOpts{}).srv.Init(ctx); err == nil {
 			t.Fatal("started without a wrapping key")
+		}
+	})
+	// REQ-KEYS-081: the audit-log purpose is ES256 and no other purpose is, whatever the driver would do.
+	for name, set := range map[string]func(*configv2alpha1.KeyPlan){
+		"audit-log with ES384":            func(p *configv2alpha1.KeyPlan) { setAlgorithm(p, "audit-log", "ES384") },
+		"audit-log with a data algorithm": func(p *configv2alpha1.KeyPlan) { setAlgorithm(p, "audit-log", "AES-256-GCM") },
+		"token-signing with ES256":        func(p *configv2alpha1.KeyPlan) { setAlgorithm(p, "token-signing", "ES256") },
+		"wrapping with ES256":             func(p *configv2alpha1.KeyPlan) { setAlgorithm(p, "wrapping", "ES256") },
+	} {
+		t.Run("plan: "+name, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			plan := defaultPlan()
+			set(plan)
+			e.store.put("key-plan", "", "default", plan)
+			n := e.newNode(nodeOpts{})
+			if err := n.srv.Init(ctx); err == nil || !strings.Contains(err.Error(), "keyplan/default") {
+				t.Fatalf("Init = %v, want a refusal of the key plan", err)
+			}
+			if len(n.driver.keys) != 0 {
+				t.Fatal("the driver made keys for a refused KeyPlan")
+			}
+			if err := n.srv.Check(ctx); err == nil {
+				t.Fatal("the check command accepts the plan")
+			}
+		})
+	}
+	t.Run("a driver that answers a P-384 key for audit-log does not start", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		d := newFakeDriver("software")
+		d.wrongCurve = true
+		if err := e.newNode(nodeOpts{driver: d}).srv.Init(ctx); err == nil || !strings.Contains(err.Error(), "P-256") {
+			t.Fatalf("Init = %v, want a refusal for the curve", err)
 		}
 	})
 	for name, ttl := range map[string]time.Duration{"above the maximum": 2 * time.Hour, "negative": -time.Second} {
@@ -346,5 +379,14 @@ func TestCheckReachesTheTransport(t *testing.T) {
 	t.Cleanup(func() { _ = ln.Close() })
 	if err := n.srv.Check(context.Background()); err != nil {
 		t.Fatalf("check with the transport listening: %v", err)
+	}
+}
+
+// setAlgorithm changes the algorithm of one purpose of a KeyPlan.
+func setAlgorithm(plan *configv2alpha1.KeyPlan, purpose, algorithm string) {
+	for _, p := range plan.Purposes {
+		if p.Purpose == purpose {
+			p.Algorithm = algorithm
+		}
 	}
 }
