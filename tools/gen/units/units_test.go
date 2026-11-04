@@ -577,3 +577,19 @@ func TestDriverHardeningAndNetwork(t *testing.T) {
 		t.Fatalf("only %d driver units", n)
 	}
 }
+
+// policy takes no flag beyond the common ones: its sockets are the plan's, its group is its own and no egress is allowed.
+func TestPolicyUnit(t *testing.T) {
+	p := generate(t)["sluis-policy@.service"]
+	for _, w := range []string{
+		"ExecStart=/opt/sluis/bin/actors/policy serve --boundary %i --socket /run/sluis/policy/%i.sock\n",
+		"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n", "sluis-drv-writer-spool-%i", "sluis-key-%i", "sluis-store-%i",
+	} {
+		if !strings.Contains(p, w) {
+			t.Errorf("policy lacks %q:\n%s", w, p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "..", "actors", "policy")); err != nil {
+		t.Errorf("policy has a row but no binary directory: %v", err)
+	}
+}
