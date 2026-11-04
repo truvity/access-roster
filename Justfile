@@ -243,8 +243,14 @@ go-build:
 
 # Test every Go package with the race detector, uncached. The tag sluis_test adds the test seams (the name
 # resolver of kits/go/rpc) that a normal build does not contain.
+# The run is verbose so that a test that skips shows its `SKIP: <reason>` line in the log (a skip is not a pass).
+# The lines of passing tests (RUN, PAUSE, CONT, NAME, PASS) are dropped, which keeps the output about as long as
+# before; failures, skips, logs and the package lines stay. The exit status is that of go test.
 go-test:
-    go test -race -count=1 -tags sluis_test ./...
+    #!/usr/bin/env bash
+    set -euo pipefail
+    go test -race -count=1 -v -tags sluis_test ./... 2>&1 \
+      | awk '!/^=== (RUN|PAUSE|CONT|NAME)/ && !/^[[:space:]]*--- PASS/ && !/^PASS$/'
 
 # Lint the Go module.
 go-lint:
