@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Arg, ArgAction, ArgMatches, Command};
+use clap::{Arg, ArgMatches, Command};
 use tracing_subscriber::EnvFilter;
 
 /// Exit code: success.
@@ -27,7 +27,7 @@ pub struct Flags {
     pub socket: PathBuf,
     /// `--log-level`: a `tracing` filter such as `info`.
     pub log_level: String,
-    /// `--json`: one JSON object on standard output.
+    /// `--output json` (cli.md "JSON output"): one JSON object on standard output.
     pub json: bool,
     /// The positional arguments after the command.
     pub args: Vec<String>,
@@ -124,10 +124,12 @@ fn command(name: &str) -> Command {
                 .help("A tracing filter, e.g. info or sluis_kit=debug"),
         ))
         .arg(global(
-            Arg::new("json")
-                .long("json")
-                .action(ArgAction::SetTrue)
-                .help("Print one JSON object on standard output"),
+            Arg::new("output")
+                .long("output")
+                .value_name("FORMAT")
+                .value_parser(["text", "json"])
+                .default_value("text")
+                .help("text, or json for one JSON object on standard output (cli.md)"),
         ))
         .subcommand(sub("serve", "Run until SIGTERM"))
         .subcommand(sub("check", "Check without serving"))
@@ -193,7 +195,7 @@ fn run(
             .get_one::<String>("log-level")
             .cloned()
             .unwrap_or_default(),
-        json: sm.get_flag("json"),
+        json: sm.get_one::<String>("output").is_some_and(|o| o == "json"),
         args: sm
             .get_many::<String>("args")
             .map(|v| v.cloned().collect())
@@ -319,7 +321,12 @@ mod tests {
             "{out}"
         );
         assert!(out.contains("v2alpha1"));
-        let (code, out, _) = go(Plain, &["version", "--json"]);
+        assert!(
+            !go(Plain, &["version", "--output", "text"])
+                .1
+                .starts_with('{')
+        );
+        let (code, out, _) = go(Plain, &["version", "--output", "json"]);
         assert_eq!(code, EXIT_OK);
         assert!(
             out.starts_with('{') && out.trim_end().ends_with('}'),
@@ -333,6 +340,8 @@ mod tests {
         assert_eq!(go(Plain, &[]).0, EXIT_USAGE);
         assert_eq!(go(Plain, &["serve", "--nope"]).0, EXIT_USAGE);
         assert_eq!(go(Plain, &["serve", "--log-level", "[[["]).0, EXIT_USAGE);
+        assert_eq!(go(Plain, &["serve", "--output", "yaml"]).0, EXIT_USAGE);
+        assert_eq!(go(Plain, &["serve", "--json"]).0, EXIT_USAGE);
     }
 
     #[test]
@@ -384,7 +393,7 @@ mod tests {
                 "--boundary",
                 "dev",
                 "--socket=/x.sock",
-                "--json",
+                "--output=json",
                 "--extra",
                 "z",
                 "a",
