@@ -532,3 +532,17 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "revoke a key: an alert within the alert interval names the key, the reason and the operator"}
+  - id: REQ-SEC-037
+    area: SEC
+    statement: "A development boundary MUST refuse an http issuer, upstream issuer or key-set URL whose host is not the loopback IP literal 127.0.0.1 or [::1]."
+    rationale: "Plain HTTP is a development difference, and only the loopback literals keep it on the host (ADR 0011)."
+    level: MUST
+    source: security-review
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards:
+      - {id: ST-04, section: "8.3", depth: Partial}
+    tests: [actors/store/tests/config.rs, actors/adapter-upstream-oidc/internal/oidc/egress_test.go, actors/exchange/internal/exchanged/unit_test.go]
+    verification:
+      - {kind: integration-test, ref: "a development set with an http URL off loopback (a name, localhost, another address) is refused at load, and the adapter's and exchange's fetch checks refuse it"}

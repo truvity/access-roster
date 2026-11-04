@@ -441,65 +441,68 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
             "name: is not the boundary of the bootstrap file",
         ));
     }
-    // A development difference is configuration checked against a floor in code: plain HTTP is
-    // for a development boundary only. The one exception is the loopback redirect of a public
-    // client with the `native` profile (ADR 0011, "The local installation"; ADR 0021; RFC 8252
+    // A development difference is configuration checked against a floor in code (ADR 0011, "The
+    // local installation"). Plain HTTP is for a development boundary only, and there only on a
+    // loopback IP literal, `127.0.0.1` or `[::1]`, never a name such as `localhost` and never
+    // another address (REQ-SEC-037; RFC 8252 section 8.3). The one exception outside development
+    // is the loopback redirect of a public client with the `native` profile (ADR 0021; RFC 8252
     // section 7.3): an app on the person's own host. A browser, confidential or exchange client
     // has no such case. The payload rule has already refused every plain-http redirect that is
     // not on loopback (REQ-AUTHN-004).
-    if b.environment != "development" {
-        let plain = |u: &str| !u.starts_with("https://");
-        let native = |c: &pb::InstallationClient| c.kind == "public" && c.profile == "native";
-        let mut at: Option<(&'static str, String)> = plain(&b.issuer).then(|| {
-            (
-                "Boundary",
-                "issuer: must be https outside development".to_owned(),
-            )
-        });
-        for (_, bytes) in s.list(kind("Upstream").segment) {
-            if let Ok(u) = pb::Upstream::decode_from_slice(&bytes)
-                && plain(&u.issuer)
-            {
-                at = at.or(Some((
-                    "Upstream",
-                    "issuer: must be https outside development".to_owned(),
-                )));
-            }
+    let development = b.environment == "development";
+    let (why_url, why_redirect) = if development {
+        ("must be https, or http on a loopback IP literal", "")
+    } else {
+        (
+            "must be https outside development",
+            "redirects: must be https outside development",
+        )
+    };
+    // A URL sluis publishes or fetches: https, or in development http on a loopback IP literal.
+    let bad =
+        |u: &str| !u.starts_with("https://") && !(development && super::payload::loopback_http(u));
+    let native = |c: &pb::InstallationClient| c.kind == "public" && c.profile == "native";
+    let mut at: Option<(&'static str, String)> =
+        bad(&b.issuer).then(|| ("Boundary", format!("issuer: {why_url}")));
+    for (_, bytes) in s.list(kind("Upstream").segment) {
+        if let Ok(u) = pb::Upstream::decode_from_slice(&bytes)
+            && bad(&u.issuer)
+        {
+            at = at.or(Some(("Upstream", format!("issuer: {why_url}"))));
         }
-        for (_, bytes) in s.list(kind("ExchangeTrust").segment) {
-            if let Ok(t) = pb::ExchangeTrust::decode_from_slice(&bytes) {
-                for i in &t.issuers {
-                    if plain(&i.issuer) {
-                        at = at.or(Some((
-                            "ExchangeTrust",
-                            "issuers: issuer must be https outside development".to_owned(),
-                        )));
-                    }
-                    // An empty `jwks_uri` is allowed (the keys come by the issuer's metadata).
-                    if !i.jwks_uri.is_empty() && plain(&i.jwks_uri) {
-                        at = at.or(Some((
-                            "ExchangeTrust",
-                            "issuers: jwks_uri must be https outside development".to_owned(),
-                        )));
-                    }
+    }
+    for (_, bytes) in s.list(kind("ExchangeTrust").segment) {
+        if let Ok(t) = pb::ExchangeTrust::decode_from_slice(&bytes) {
+            for i in &t.issuers {
+                if bad(&i.issuer) {
+                    at = at.or(Some((
+                        "ExchangeTrust",
+                        format!("issuers: issuer {why_url}"),
+                    )));
+                }
+                // An empty `jwks_uri` is allowed (the keys come by the issuer's metadata).
+                if !i.jwks_uri.is_empty() && bad(&i.jwks_uri) {
+                    at = at.or(Some((
+                        "ExchangeTrust",
+                        format!("issuers: jwks_uri {why_url}"),
+                    )));
                 }
             }
         }
+    }
+    if !development {
         for (_, bytes) in s.list(kind("InstallationClient").segment) {
             if let Ok(c) = pb::InstallationClient::decode_from_slice(&bytes)
-                && c.redirects
-                    .iter()
-                    .any(|r| plain(r) && !(native(&c) && super::payload::loopback_http(r)))
+                && c.redirects.iter().any(|r| {
+                    !r.starts_with("https://") && !(native(&c) && super::payload::loopback_http(r))
+                })
             {
-                at = at.or(Some((
-                    "InstallationClient",
-                    "redirects: must be https outside development".to_owned(),
-                )));
+                at = at.or(Some(("InstallationClient", why_redirect.to_owned())));
             }
         }
-        if let Some((k, why)) = at {
-            return Err(failed(Some(k), why));
-        }
+    }
+    if let Some((k, why)) = at {
+        return Err(failed(Some(k), why));
     }
     debug_assert!(s.docs.values().all(|d| d.kind.class == Class::Config));
     Ok(())

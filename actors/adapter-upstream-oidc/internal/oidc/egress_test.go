@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// verifies: REQ-SEC-037
 func TestCheckURL(t *testing.T) {
 	cases := []struct {
 		raw  string
@@ -19,6 +20,11 @@ func TestCheckURL(t *testing.T) {
 		{"http://localhost:8180/realms/x", true, false},  // the name can be made to resolve elsewhere (RFC 8252 section 8.3)
 		{"http://idp.example.com/realms/x", true, false}, // http off loopback, even in development
 		{"http://192.0.2.7/realms/x", true, false},
+		// Only the two literals: not another address of 127.0.0.0/8, not the mapped form, not a decimal spelling.
+		{"http://127.0.0.2:8180/realms/x", true, false},
+		{"http://[::ffff:127.0.0.1]:8180/realms/x", true, false},
+		{"http://2130706433:8180/realms/x", true, false},
+		{"http://127.0.0.1.example.com/realms/x", true, false},
 		{"ftp://idp.example.com/", true, false},
 		{"https://user:pw@idp.example.com/", false, false},
 		{"https://idp.example.com/#frag", false, false},

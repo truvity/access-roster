@@ -31,7 +31,9 @@ func CheckURL(raw string, development bool) (*url.URL, error) {
 		if !development {
 			return nil, errors.New("an http URL is accepted only in a development boundary")
 		}
-		if ip, err := netip.ParseAddr(u.Hostname()); err != nil || !ip.IsLoopback() {
+		// The two literals of RFC 8252 section 7.3 and ADR 0011 (REQ-SEC-037), as store@'s floor takes them: not
+		// another address of 127.0.0.0/8 and not ::ffff:127.0.0.1, which a loopback test on the address would let by.
+		if h := u.Hostname(); h != "127.0.0.1" && h != "::1" {
 			return nil, errors.New("an http URL is accepted only on a loopback IP literal")
 		}
 	default:

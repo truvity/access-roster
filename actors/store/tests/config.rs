@@ -938,11 +938,27 @@ async fn a_kind_declared_later_with_no_document_yet_is_retried_until_it_arrives(
     task.abort();
 }
 
+/// verifies: REQ-SEC-037
 #[tokio::test]
-async fn the_https_floor_covers_the_exchange_trust_issuer_and_jwks_uri() {
-    // A production boundary whose other documents are all https, so that only ExchangeTrust is at
-    // fault; development takes the same document.
-    let set = |e: &Env, environment: &str, trust: &str| {
+async fn plain_http_is_for_development_and_only_on_a_loopback_ip_literal() {
+    // Each URL the set publishes or fetches, one at a time; every other URL is https. ADR 0011:
+    // a development boundary takes http on 127.0.0.1 or [::1] only, never a name and never another
+    // address; staging and production take no http URL at all.
+    #[derive(Clone, Copy)]
+    enum At {
+        Boundary,
+        Upstream,
+        TrustIssuer,
+        TrustJwks,
+    }
+    let set = |e: &Env, environment: &str, at: At, url: &str| {
+        let pick = |here: At, default: &str| {
+            if std::mem::discriminant(&here) == std::mem::discriminant(&at) {
+                url.to_owned()
+            } else {
+                default.to_owned()
+            }
+        };
         e.sign(
             "boundary",
             &source("boundary")
@@ -950,56 +966,104 @@ async fn the_https_floor_covers_the_exchange_trust_issuer_and_jwks_uri() {
                     "environment: development",
                     &format!("environment: {environment}"),
                 )
+                .replace(
+                    "issuer: https://sluis.dev.local.test",
+                    &format!(
+                        "issuer: {}",
+                        pick(At::Boundary, "https://sluis.dev.local.test")
+                    ),
+                )
                 .replace("    - Upstream\n", "    - Upstream\n    - ExchangeTrust\n"),
             1,
         );
         e.sign(
             "upstream",
-            &source("upstream").replace("http://", "https://"),
+            &source("upstream").replace(
+                "http://127.0.0.1:8180/realms/sluis-test",
+                &pick(At::Upstream, "https://idp.example.com/realms/sluis-test"),
+            ),
             1,
         );
         e.sign(
-            "installation-client",
-            &source("installation-client").replace("http://", "https://"),
+            "exchange-trust",
+            &format!(
+                "default:\n  issuers:\n    - {{ issuer: \"{}\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"{}\" }}\n",
+                pick(At::TrustIssuer, "https://token.example.com"),
+                pick(At::TrustJwks, "https://token.example.com/keys"),
+            ),
             1,
         );
-        e.sign("exchange-trust", trust, 1);
     };
-    let issuer_http = "default:\n  issuers:\n    - { issuer: \"http://idp.example.com\", audiences: [sluis], proof_kind: jwks }\n";
-    let jwks_http = "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"http://idp.example.com/keys\" }\n";
-    let all_https = "default:\n  issuers:\n    - { issuer: \"https://idp.example.com\", audiences: [sluis], proof_kind: jwks, jwks_uri: \"https://idp.example.com/keys\" }\n";
-
-    for (trust, want) in [
-        (
-            issuer_http,
-            "ExchangeTrust: issuers: issuer must be https outside development",
-        ),
-        (
-            jwks_http,
-            "ExchangeTrust: issuers: jwks_uri must be https outside development",
-        ),
-    ] {
-        for environment in ["production", "staging"] {
-            let e = env().await;
-            write_local(e.docs.path(), &e.pipeline, 1);
-            set(&e, environment, trust);
-            let err = e.start().await.err().unwrap_or_else(|| {
-                panic!("{environment}: a plain http ExchangeTrust started: {trust}")
-            });
-            assert!(err.to_string().contains(want), "{environment}: {err}");
+    let places = [
+        (At::Boundary, "Boundary: issuer"),
+        (At::Upstream, "Upstream: issuer"),
+        (At::TrustIssuer, "ExchangeTrust: issuers: issuer"),
+        (At::TrustJwks, "ExchangeTrust: issuers: jwks_uri"),
+    ];
+    let loopback = [
+        "http://127.0.0.1:8180/realms/x",
+        "http://[::1]:8180/realms/x",
+    ];
+    let off_loopback = [
+        "http://idp.example.com/realms/x",
+        // A name that may not resolve to loopback (RFC 8252 section 8.3).
+        "http://localhost:8180/realms/x",
+        "http://127.0.0.2:8180/realms/x",
+        "http://192.0.2.7/realms/x",
+        "http://127.0.0.1.example.com/realms/x",
+    ];
+    for (at, place) in places {
+        for environment in ["development", "staging", "production"] {
+            let development = environment == "development";
+            let start = |url: &'static str| {
+                let set = &set;
+                async move {
+                    let e = env().await;
+                    write_local(e.docs.path(), &e.pipeline, 1);
+                    set(&e, environment, at, url);
+                    e.start().await.err().map(|err| err.to_string())
+                }
+            };
+            assert_eq!(
+                start("https://idp.example.com/realms/x").await,
+                None,
+                "{environment}: {place}: https was refused"
+            );
+            for url in loopback {
+                match start(url).await {
+                    None => assert!(development, "{environment}: {place}: {url} started"),
+                    Some(err) => {
+                        assert!(
+                            !development,
+                            "development: {place}: {url} was refused: {err}"
+                        );
+                        assert!(
+                            err.contains(&format!("{place} must be https outside development"))
+                                || err.contains(&format!(
+                                    "{place}: must be https outside development"
+                                )),
+                            "{environment}: {place}: {err}"
+                        );
+                    }
+                }
+            }
+            for url in off_loopback {
+                let err = start(url)
+                    .await
+                    .unwrap_or_else(|| panic!("{environment}: {place}: {url} started"));
+                let want = if development {
+                    "must be https, or http on a loopback IP literal"
+                } else {
+                    "must be https outside development"
+                };
+                assert!(
+                    err.contains(place) && err.contains(want),
+                    "{environment}: {place}: {url}: {err}"
+                );
+                assert!(!err.contains(url), "an error never shows a value: {err}");
+            }
         }
-        // The same plain http is a development boundary's own.
-        let e = env().await;
-        write_local(e.docs.path(), &e.pipeline, 1);
-        set(&e, "development", trust);
-        assert!(e.start().await.is_ok(), "development takes plain http");
     }
-    // Over https, production starts.
-    let e = env().await;
-    write_local(e.docs.path(), &e.pipeline, 1);
-    set(&e, "production", all_https);
-    let loader = e.start().await.unwrap();
-    assert_eq!(loader.version("exchange-trust"), Some(1));
 }
 
 #[test]
