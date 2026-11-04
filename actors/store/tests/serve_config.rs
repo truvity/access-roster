@@ -17,6 +17,11 @@ const LOCAL: &str = include_str!("../../../tests/installations/local/bootstrap.y
 
 /// The example bootstrap file with this test's sockets and this test's publisher key.
 fn bootstrap(dir: &Path, p: &Pipeline) -> (String, Vec<UnixListener>) {
+    bootstrap_with(dir, p, true)
+}
+
+/// The same, with key@'s socket listening only when `with_key`.
+fn bootstrap_with(dir: &Path, p: &Pipeline, with_key: bool) -> (String, Vec<UnixListener>) {
     let mut text = LOCAL.replace("start_timeout: 30s", "start_timeout: 3s");
     let mut listeners = Vec::new();
     for name in ["config-source", "secret-source", "durable", "temp"] {
@@ -52,6 +57,9 @@ fn bootstrap(dir: &Path, p: &Pipeline) -> (String, Vec<UnixListener>) {
     std::fs::write(&file, text).unwrap();
     std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
     for name in ["key", "emit"] {
+        if name == "key" && !with_key {
+            continue;
+        }
         listeners.push(UnixListener::bind(dir.join(format!("{name}.sock"))).unwrap());
     }
     (file.to_str().unwrap().to_owned(), listeners)
@@ -148,5 +156,41 @@ async fn a_cold_start_with_a_good_set_gets_past_the_config() {
     assert!(err.contains("is not a uid of the registry"), "{err}");
     assert!(!err.contains("store serve: config:"), "{err}");
     // The start was announced (the audit transport here only listens, so the emit times out).
+    assert!(err.contains("store.start"), "{err}");
+}
+
+/// key@'s `Init` reads store@, so key@ is up only after store@ serves. A store@ that waited for
+/// key@'s socket would deadlock the two (WP-17). With no key@ at all, `serve` goes past the wait for
+/// the drivers and loads the config, as with one: it warns, it does not wait, and it does not fail.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cold_start_without_key_does_not_wait_for_it() {
+    let (run, docs) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let p = Pipeline::new("publisher-1");
+    write_local(docs.path(), &p, 1);
+    let (file, _listeners) = bootstrap_with(run.path(), &p, false);
+    assert!(!run.path().join("key.sock").exists());
+    let sock = run.path().join("config-source.sock");
+    let _stop = serve_driver(&sock, docs.path());
+    up(&sock).await;
+
+    let started = std::time::Instant::now();
+    let child = serve(run.path(), &file);
+    let out = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .unwrap()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    // start_timeout is 3s in this test: a wait for key@ would have ended with "not started within".
+    assert!(!err.contains("not started within"), "{err}");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(3),
+        "{err}"
+    );
+    assert!(
+        err.contains("key.sock"),
+        "the warning names key@'s socket: {err}"
+    );
+    assert!(err.contains("is not a uid of the registry"), "{err}");
+    assert!(!err.contains("store serve: config:"), "{err}");
     assert!(err.contains("store.start"), "{err}");
 }
