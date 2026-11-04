@@ -839,7 +839,7 @@ requirements:
       - {kind: integration-test, ref: "the server behind the discovery document and key set is stopped; the network still serves them within the window"}
   - id: REQ-BACKUP-064
     area: BACKUP
-    statement: "Roll-forward after a restore MUST re-apply every key revocation recorded after the archive was taken."
+    statement: "Roll-forward after a restore MUST re-apply every key revocation recorded after the archive was taken, also into an empty target."
     rationale: "A restore never loosens what was tightened, and a revoked key must not come back with an older archive (ADR 0041, principle 12)."
     level: MUST
     source: design-decision
@@ -848,4 +848,16 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "restore an archive older than a revocation: the key stays revoked and its set lacks it"}
+      - {kind: integration-test, ref: "restore an archive older than a revocation into an empty target: the KeyRevocation item exists and the key stays revoked"}
+  - id: REQ-BACKUP-065
+    area: BACKUP
+    statement: "A restore MUST merge the KeyRevocation items of the archive and of the target by union."
+    rationale: "A revocation made after the archive, or one in the target, must never be dropped by an older archive (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "restore over a target that holds a revocation the archive lacks: both are present afterwards"}

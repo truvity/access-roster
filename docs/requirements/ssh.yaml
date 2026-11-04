@@ -113,7 +113,7 @@ requirements:
       - {kind: test-vectors, ref: "T-23: a list of SSH CA keys signed by an unknown key, and one with a lower sequence; both refused"}
   - id: REQ-SSH-009
     area: SSH
-    statement: "sluis-host MUST refresh the signed list of SSH CA keys at an interval that the documentation states, and raise an alert when its copy is older than twice that interval."
+    statement: "sluis-host MUST refresh the signed list of SSH CA keys at an interval that the documentation states."
     rationale: "A key revocation list cannot name certificates nobody knows exist, so the replacement of the CA key is the only remedy and it must reach hosts in a known time (ADR 0041)."
     level: MUST
     source: design-decision
@@ -122,4 +122,16 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a moved clock: the list is fetched at the stated interval and the alert fires at twice that interval"}
+      - {kind: integration-test, ref: "a moved clock: the list is fetched at the stated interval"}
+  - id: REQ-SSH-010
+    area: SSH
+    statement: "sluis-host MUST raise an alert when its copy of the list of SSH CA keys is older than twice the refresh interval."
+    rationale: "A host that cannot reach the list does not learn of a replaced CA key (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal", "kubernetes"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a moved clock: the alert fires at twice the interval"}
