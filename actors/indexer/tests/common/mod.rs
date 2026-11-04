@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
 use aws_lc_rs::digest;
 use aws_lc_rs::rand::SystemRandom;
-use aws_lc_rs::signature::{ECDSA_P384_SHA384_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
+use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use buffa::Message as _;
@@ -58,10 +58,11 @@ pub const LOG: &str = "main";
 pub const ORIGIN: &str = "sluis.local.test/dev/sluis/audit/main";
 pub const PREFIX: &str = "audit/main/";
 
-/// The fixed prefix of a P-384 `SubjectPublicKeyInfo`.
-const SPKI_PREFIX: [u8; 23] = [
-    0x30, 0x76, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b,
-    0x81, 0x04, 0x00, 0x22, 0x03, 0x62, 0x00,
+/// The fixed prefix of a P-256 `SubjectPublicKeyInfo` (RFC 5480), written here from the standard and not read from
+/// the crate under test.
+const SPKI_PREFIX: [u8; 26] = [
+    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
 ];
 
 // ---------------------------------------------------------------- the log, as the writer makes it
@@ -85,7 +86,7 @@ fn rand_bytes<const N: usize>() -> [u8; N] {
 }
 
 pub fn new_key() -> EcdsaKeyPair {
-    EcdsaKeyPair::generate(&ECDSA_P384_SHA384_ASN1_SIGNING).unwrap()
+    EcdsaKeyPair::generate(&ECDSA_P256_SHA256_ASN1_SIGNING).unwrap()
 }
 
 impl TestLog {

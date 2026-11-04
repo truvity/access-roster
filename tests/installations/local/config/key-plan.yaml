@@ -5,5 +5,5 @@ default:
   purposes:
     - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }
     - { purpose: token-signing, algorithm: ES384, slot: 9a }
-    - { purpose: audit-log, algorithm: ES384, slot: "84" }
+    - { purpose: audit-log, algorithm: ES256, slot: "84" }
     - { purpose: data, algorithm: AES-256-GCM }

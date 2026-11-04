@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/asn1"
 	"encoding/binary"
@@ -39,11 +40,17 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	if !registry.KeyAllows(caller, registry.ScopeBoundary, purpose, "sign") {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodePermissionDenied, reasonRule, "purpose")
 	}
+	// The audit-log purpose is the one exception to P-384 (ADR 0006, "Named exceptions"; D-25): its key is P-256
+	// and signs SHA-256, the C2SP signed-note signature type 0x02. Every other signing purpose is ES384.
+	want := algES384
+	if purpose == "audit-log" {
+		want = algES256
+	}
 	pk, ok := s.planned(purpose)
-	if !ok || pk.algorithm != algES384 {
+	if !ok || pk.algorithm != want {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
-	if m.GetAlgorithm() != algES384 {
+	if m.GetAlgorithm() != want {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInvalidArgument, reasonAlgorithm, "algorithm")
 	}
 	var cerr error
@@ -66,19 +73,26 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	if !s.limits.allow(purpose) {
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeResourceExhausted, reasonRate, "")
 	}
-	digest := sha512.Sum384(m.GetContent())
+	var digest []byte
+	if want == algES256 {
+		d := sha256.Sum256(m.GetContent())
+		digest = d[:]
+	} else {
+		d := sha512.Sum384(m.GetContent())
+		digest = d[:]
+	}
 	res, err := s.driver.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{
-		Purpose: purpose, Digest: digest[:], Algorithm: algES384,
+		Purpose: purpose, Digest: digest, Algorithm: want,
 	}))
 	if err != nil {
 		return nil, unavailable(reasonDriver)
 	}
 	der := res.Msg.GetSignatureDer()
 	// Verify with the public key before the signature leaves: a driver that signs wrongly is caught here.
-	if !ecdsa.VerifyASN1(pk.pub, digest[:], der) {
+	if !ecdsa.VerifyASN1(pk.pub, digest, der) {
 		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
 	}
-	raw, err := rawSignature(der)
+	raw, err := rawSignature(der, pk.pub.Curve.Params().BitSize)
 	if err != nil {
 		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
 	}
@@ -94,19 +108,20 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 }
 
 // rawSignature converts an ASN.1 DER ECDSA signature to the fixed-width r||s form of JWS (RFC 7518, section
-// 3.4): 48 bytes each for P-384.
-func rawSignature(der []byte) ([]byte, error) {
+// 3.4): 48 bytes each for P-384, 32 for P-256.
+func rawSignature(der []byte, bits int) ([]byte, error) {
+	n := (bits + 7) / 8
 	var sig struct{ R, S *big.Int }
 	rest, err := asn1.Unmarshal(der, &sig)
 	if err != nil || len(rest) != 0 || sig.R == nil || sig.S == nil || sig.R.Sign() <= 0 || sig.S.Sign() <= 0 {
 		return nil, errors.New("keyd: bad signature encoding")
 	}
-	if sig.R.BitLen() > 384 || sig.S.BitLen() > 384 {
-		return nil, errors.New("keyd: signature is too large for P-384")
+	if sig.R.BitLen() > bits || sig.S.BitLen() > bits {
+		return nil, errors.New("keyd: signature is too large for the curve")
 	}
-	out := make([]byte, 96)
-	sig.R.FillBytes(out[:48])
-	sig.S.FillBytes(out[48:])
+	out := make([]byte, 2*n)
+	sig.R.FillBytes(out[:n])
+	sig.S.FillBytes(out[n:])
 	return out, nil
 }
 

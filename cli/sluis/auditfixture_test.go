@@ -5,7 +5,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/sha512"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -19,7 +18,7 @@ import (
 )
 
 // The fixture below is a small generator of a tiled log: the entry bundles and hash tiles of C2SP tlog-tiles, and
-// checkpoints as signed notes, signed with a P-384 key made for the test. It stands in for the writer (WP-13) and
+// checkpoints as signed notes, signed with a P-256 key made for the test. It stands in for the writer (WP-13) and
 // lives in the test files only.
 
 const fixtureOrigin = "example.com/dev/sluis/audit/main"
@@ -31,24 +30,25 @@ const fixtureOrigin = "example.com/dev/sluis/audit/main"
 //	vkey     = name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo)
 //	sig line = "\u2014 " name " " base64(key ID || ASN.1 DER ECDSA signature)
 //
-// The signature is over the SHA-384 of the note text (the sluis choice for KMS, see checkpointDigest).
+// The key is P-256 and the signature is over the SHA-256 of the note text (D-25), as the witness implementation
+// of transparency-dev does it.
 type fixtureKey struct {
 	priv *ecdsa.PrivateKey
 	name string
 	id   []byte
 	vkey string
-	// digest is what the key signs; the default is SHA-384, and a test sets another to make a note that must be refused.
+	// digest is what the key signs; the default is SHA-256, and a test sets another to make a note that must be refused.
 	digest func(msg []byte) []byte
 }
 
-func sha384Of(msg []byte) []byte {
-	d := sha512.Sum384(msg)
+func sha256Of(msg []byte) []byte {
+	d := sha256.Sum256(msg)
 	return d[:]
 }
 
 func newFixtureKey(t *testing.T) *fixtureKey {
 	t.Helper()
-	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func newFixtureKey(t *testing.T) *fixtureKey {
 		name:   fixtureOrigin,
 		id:     id,
 		vkey:   fixtureOrigin + "+" + hex.EncodeToString(id) + "+" + base64.StdEncoding.EncodeToString(append([]byte{0x02}, spki...)),
-		digest: sha384Of,
+		digest: sha256Of,
 	}
 }
 
