@@ -1,121 +1,22 @@
 package keyd
 
 import (
-	"context"
-	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"log/slog"
-	"path/filepath"
 	"strconv"
 
 	"go.yaml.in/yaml/v3"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/signedconfig"
-	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
-// key@ does not take the KeyPlan from store@ as a decoded item. A compromised store@ could serve a KeyPlan that lists
-// its own key and receive every new data key, because the recipients are the one thing a wrap must not take from an
-// unsigned source (ADR 0006, "Who may receive a wrap"; REQ-KEYS-075). So key@ asks store@ for the signed document
-// (GetSignedConfig), verifies the signature, the pinned publisher key, the kind and the sequence itself, and reads
-// the KeyPlan from the bytes it verified. What store@ says about the KeyPlan is never used.
-
-// keyPlanKind is the config kind key@ verifies.
+// keyPlanKind is the config kind of the KeyPlan, which key@ verifies (signed_kind.go).
 const keyPlanKind = "KeyPlan"
 
 // reasonKeyPlan is the reason of the audit fact of a signed KeyPlan that key@ refused.
 const reasonKeyPlan = "keyplan"
-
-// verifiedPlan is the KeyPlan key@ last verified, with the seq and digest of its document.
-type verifiedPlan struct {
-	plan   *configv2alpha1.KeyPlan
-	seq    uint64
-	sha384 string
-}
-
-// keyPlan fetches the signed KeyPlan, verifies it and returns the KeyPlan of the verified payload.
-//
-// A document that is refused (a forged one, one signed by another key, a lower seq than this process has seen, a
-// payload that is not a KeyPlan) never reaches the caller. If key@ already holds a verified KeyPlan it keeps using
-// that one, audits the refusal once, and logs it; if it holds none (a start), the refusal is the error, so key@ does
-// not start. A store@ that does not answer is "unavailable", as for every read: that is no verdict on the document.
-//
-// What this guards, and what it does not: the highest seq is held in memory and saved in key@'s state directory
-// (plan_state.go), so an older document never comes back, in a process or after a restart on a node that has its
-// state. A node with none takes the latest validly signed document the store gives it, as store@ does (ADR 0005,
-// "Freshness at a cold start"): a compromised store@ can serve it a validly signed older KeyPlan. It cannot sign a new one.
-func (s *Server) keyPlan(ctx context.Context) (*configv2alpha1.KeyPlan, error) {
-	s.planMu.Lock()
-	defer s.planMu.Unlock()
-	doc, err := store.GetSignedConfig(ctx, s.st, keyPlanKind)
-	if err != nil {
-		return nil, unavailable(reasonStore)
-	}
-	v, err := s.verify(doc)
-	if err != nil {
-		return s.refusedPlan(ctx, doc, err)
-	}
-	return proto.Clone(v.plan).(*configv2alpha1.KeyPlan), nil
-}
-
-// verify takes the steps of signed-config.md on the document and reads its payload, and remembers the result.
-func (s *Server) verify(doc []byte) (*verifiedPlan, error) {
-	v, err := signedconfig.Verify(doc, keyPlanKind, s.publishers)
-	if err != nil {
-		return nil, err
-	}
-	// Step 5, before the payload is read: an older or conflicting document is refused whatever it says.
-	if _, err := s.planSeq.Admit(v); err != nil {
-		return nil, err
-	}
-	if s.planLast != nil && s.planLast.seq == v.Seq {
-		return s.planLast, nil // the same document again
-	}
-	plan, err := decodeKeyPlan(v.Payload)
-	if err != nil {
-		return nil, fmt.Errorf("step 6: %w", err)
-	}
-	// The mark is saved before the plan is used: a plan whose mark cannot be saved would be forgotten by a restart.
-	if s.saveMark {
-		if err := s.writeMark(planMark{seq: v.Seq, sha384: v.Digest}); err != nil {
-			return nil, errors.New("the KeyPlan mark cannot be saved")
-		}
-	}
-	s.planLast = &verifiedPlan{plan: plan, seq: v.Seq, sha384: hex.EncodeToString(v.Digest[:])}
-	return s.planLast, nil
-}
-
-// refusedPlan reports a document that was refused: one audit fact and one log line for each distinct document and
-// reason, never the document. It returns the KeyPlan key@ already holds, or the refusal when it holds none.
-func (s *Server) refusedPlan(ctx context.Context, doc []byte, why error) (*configv2alpha1.KeyPlan, error) {
-	sum := sha512.Sum384(doc)
-	key := "keyplan:" + hex.EncodeToString(sum[:]) + ":" + why.Error()
-	held := s.planLast != nil
-	if _, dup := s.reported.LoadOrStore(key, struct{}{}); !dup {
-		slog.Warn("the signed KeyPlan from store@ is refused", "why", why.Error(), "keeps_the_verified_plan", held)
-		s.audit(ctx, Event{
-			Action: ActionRefuse, Failure: true, Reason: reasonKeyPlan,
-			Fields: map[string]any{"op": "keyplan", "why": why.Error(), "keeps_the_verified_plan": held, "document_sha384": hex.EncodeToString(sum[:])},
-		})
-	}
-	if held {
-		return proto.Clone(s.planLast.plan).(*configv2alpha1.KeyPlan), nil
-	}
-	if errors.Is(why, signedconfig.ErrOlder) || errors.Is(why, signedconfig.ErrConflict) {
-		if seq, ok := s.planSeq.Held(); ok {
-			// The mark is ahead of everything store@ shows (a restore of the store, a reset of the seq).
-			return nil, fmt.Errorf("keyplan/default: the signed KeyPlan is refused: %w; the mark %s holds seq %d: publish a KeyPlan with a higher seq (preferred), "+
-				"or remove the mark on purpose, knowing that key@ then has no rollback protection until the next plan is verified",
-				why, filepath.Join(s.cfg.StateDir, planMarkFile), seq)
-		}
-	}
-	return nil, fmt.Errorf("keyplan/default: the signed KeyPlan is refused: %w", why)
-}
 
 // KeyPlan payload: the strict profile of the bootstrap file read into the message, as store@ reads it (signed-config.md,
 // "The payload"; payload.rs `key_plan`). Two implementations of one reading, held together by the vectors in

@@ -89,8 +89,9 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 	ctx := context.Background()
 	t.Run("no Boundary", func(t *testing.T) {
 		e := newTestEnv(t, "development")
-		delete(e.store.items, "|boundary|default")
-		if err := e.newNode(nodeOpts{}).srv.Init(ctx); err == nil {
+		n := e.newNode(nodeOpts{})
+		delete(e.store.signed, "boundary")
+		if err := n.srv.Init(ctx); err == nil {
 			t.Fatal("started without Boundary")
 		}
 	})

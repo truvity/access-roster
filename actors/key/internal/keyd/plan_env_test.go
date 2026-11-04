@@ -84,3 +84,23 @@ func planPayload(t *testing.T, plan *configv2alpha1.KeyPlan) []byte {
 	}
 	return b
 }
+
+// boundaryPayload renders a Boundary as the reviewed file: the mapping from item id to item, as JSON, which is YAML.
+func boundaryPayload(t *testing.T, b *configv2alpha1.Boundary) []byte {
+	t.Helper()
+	item := map[string]any{
+		"name": b.GetName(), "kind": b.GetKind(), "level": b.GetLevel(), "environment": b.GetEnvironment(),
+		"issuer": b.GetIssuer(), "uid_block": b.GetUidBlock(),
+	}
+	if b.GetDefaultTenant() != "" {
+		item["default_tenant"] = b.GetDefaultTenant()
+	}
+	if len(b.GetDeclaredKinds()) > 0 {
+		item["declared_kinds"] = b.GetDeclaredKinds()
+	}
+	out, err := json.Marshal(map[string]any{"default": item})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
