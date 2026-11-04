@@ -167,7 +167,21 @@ fn listen(path: &Path, mode: u32) -> anyhow::Result<UnixListener> {
             bail!("{}: a symlink is in the way of the socket", path.display())
         }
         Ok(m) if m.file_type().is_socket() => {
-            std::fs::remove_file(path).context("remove the stale socket")?;
+            // A socket file that still has a listener is not stale: never take it over. Only a
+            // refused connection proves that nobody listens.
+            match std::os::unix::net::UnixStream::connect(path) {
+                Ok(_) => bail!(
+                    "{}: a live listener already serves this socket",
+                    path.display()
+                ),
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => {
+                    std::fs::remove_file(path).context("remove the stale socket")?;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    return Err(e).context("cannot tell whether the socket is stale; left alone");
+                }
+            }
         }
         Ok(_) => bail!("{}: exists and is not a socket", path.display()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

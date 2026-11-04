@@ -32,11 +32,24 @@ pub fn get(ext: &http::Extensions) -> Option<String> {
 #[derive(Clone, Debug)]
 pub(crate) struct CorrelationId(pub String);
 
-/// The id in the headers of a request, if the value is plain text.
+/// The longest correlation id the kit accepts.
+const ID_MAX: usize = 64;
+
+/// Whether an id is 1 to 64 characters of `[A-Za-z0-9_-]`, the rule of the Go kit. Anything else
+/// is dropped and never echoed or passed on.
+pub(crate) fn valid_id(id: &str) -> bool {
+    (1..=ID_MAX).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+/// The id in the headers of a request, if it is a valid one.
 pub(crate) fn from_headers(headers: &http::HeaderMap) -> Option<String> {
     headers
         .get(HEADER_CORRELATION)
         .and_then(|v| v.to_str().ok())
+        .filter(|s| valid_id(s))
         .map(str::to_owned)
 }
 
