@@ -564,8 +564,7 @@ requirements:
     rationale: "There is no fallback to another claim, so a missing claim cannot create a second identity."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: planned
     milestone: first-version
     runtimes: all
     standards: []

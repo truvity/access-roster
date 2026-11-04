@@ -94,6 +94,7 @@ func TestCheckURL(t *testing.T) {
 	}
 }
 
+// verifies: REQ-FED-008
 func TestAddressesThatAnIssuerKeyEndpointMustNeverReach(t *testing.T) {
 	for _, c := range []struct {
 		ip      string

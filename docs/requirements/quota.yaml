@@ -788,7 +788,6 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: quota
     runtimes: all
     standards:
       - {id: ST-07, section: "1", depth: Partial}

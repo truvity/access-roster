@@ -319,7 +319,6 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-25, section: "auth", depth: Full}

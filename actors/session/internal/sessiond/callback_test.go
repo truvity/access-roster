@@ -366,6 +366,7 @@ func TestCallbackAllowWithoutAGrantFailsClosed(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SUBJ-037
 func TestCallbackFindsTheSamePersonAgain(t *testing.T) {
 	e := newEnv(t, nil)
 	cb, _ := e.started()
