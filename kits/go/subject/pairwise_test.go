@@ -12,6 +12,7 @@ import (
 // The vector file is shared (kits/conformance/subject); no Rust unit computes the pairwise input today.
 const vectorFile = "../../conformance/subject/pairwise-vectors.json"
 
+// verifies: REQ-SUBJ-069
 func TestPairwiseInputMatchesTheVectors(t *testing.T) {
 	raw, err := os.ReadFile(vectorFile)
 	if err != nil {

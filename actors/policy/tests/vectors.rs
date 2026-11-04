@@ -92,6 +92,7 @@ fn run(engine: &Engine, file: &str) -> usize {
     vectors.len()
 }
 
+/// verifies: REQ-POLICY-002
 #[test]
 fn the_29_linked_vectors_pass() {
     assert_eq!(run(&engine(links()), "vectors.json"), 29);

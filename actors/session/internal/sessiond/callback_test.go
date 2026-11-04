@@ -167,7 +167,7 @@ func TestCallbackAsksPolicyWithTheFacts(t *testing.T) {
 	}
 }
 
-// verifies: REQ-SESS-049
+// verifies: REQ-SESS-049, REQ-FED-017
 func TestCallbackRefusesACallbackThatIsNotOurs(t *testing.T) {
 	cases := map[string]func(cb *sessionv2alpha1.CallbackRequest, e *env){
 		"no cookie":      func(cb *sessionv2alpha1.CallbackRequest, _ *env) { cb.Cookie = "" },
@@ -367,6 +367,7 @@ func TestCallbackAllowWithoutAGrantFailsClosed(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SUBJ-037
 func TestCallbackFindsTheSamePersonAgain(t *testing.T) {
 	e := newEnv(t, nil)
 	cb, _ := e.started()
@@ -392,6 +393,7 @@ func TestCallbackFindsTheSamePersonAgain(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SUBJ-037
 func TestCallbackLinksByTheSubjectClaimNotByEmail(t *testing.T) {
 	// Two accounts that differ in the subject claim value are two people, whatever else they share (0019: no linking
 	// by e-mail, no merging). A subject claim of another name is a different account too.
@@ -421,6 +423,7 @@ func TestCallbackLinksByTheSubjectClaimNotByEmail(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SUBJ-042
 func TestCallbackRaceOnFirstSignInMakesOnePerson(t *testing.T) {
 	// A second first sign-in of the same account wins the create between this one's read and write. This one's batch
 	// fails with already exists, reads the link and continues as the winner: one person.

@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// verifies: REQ-SUBJ-009
 func TestPairwiseSubIs256BitsOfBase64URLWithoutPadding(t *testing.T) {
 	sub := pairwiseSub(make([]byte, 48))
 	if len(sub) != 43 || strings.ContainsAny(sub, "=+/") {
@@ -93,6 +94,7 @@ func TestCheckURL(t *testing.T) {
 	}
 }
 
+// verifies: REQ-FED-008
 func TestAddressesThatAnIssuerKeyEndpointMustNeverReach(t *testing.T) {
 	for _, c := range []struct {
 		ip      string

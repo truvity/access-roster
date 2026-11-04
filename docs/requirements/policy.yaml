@@ -8,7 +8,9 @@ requirements:
     rationale: "A misread policy is an authorization bug."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -23,7 +25,9 @@ requirements:
     rationale: "A misread policy is an authorization bug."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -37,7 +41,8 @@ requirements:
     rationale: "Deny by default is the base of least privilege."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -52,7 +57,9 @@ requirements:
     rationale: "Deny by default is the base of least privilege."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -66,7 +73,9 @@ requirements:
     rationale: "A decision engine that fails open is a bypass."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -81,7 +90,8 @@ requirements:
     rationale: "A decision engine that fails open is a bypass."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -96,6 +106,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-49, section: "7", depth: Partial}
@@ -109,7 +120,8 @@ requirements:
     rationale: "A bad policy must never replace a good one."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [policy]
     standards:
@@ -123,7 +135,9 @@ requirements:
     rationale: "Links made on the console stay within reviewed bounds."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: v1-parity
     runtimes: all
     actors: [policy]
     standards:
@@ -137,7 +151,9 @@ requirements:
     rationale: "A typo then stops the load instead of granting nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
@@ -149,7 +165,8 @@ requirements:
     rationale: "A sensitive scope is named in full or not granted."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
@@ -162,7 +179,8 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: register-gap
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
@@ -175,7 +193,9 @@ requirements:
     rationale: "Without one a name nobody declared would load, and a typo would grant nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
@@ -189,7 +209,8 @@ requirements:
     rationale: "Only policy decides, so only its decisions may be sealed as grants (ADR 0007)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1212]
@@ -202,6 +223,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1212]
@@ -214,6 +236,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     actors: [policy]
     standards: []
@@ -227,6 +250,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1207]
@@ -239,6 +263,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [policy]
     standards: []

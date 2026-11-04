@@ -608,7 +608,7 @@ func TestTokenSpendAndChainAreOneWrite(t *testing.T) {
 // The ID token's sub and the sub exchange makes for the same person, tenant and sector must be equal (0034). Both
 // units build the Mac input with subject.PairwiseInput, so this test computes the expected sub from that function
 // alone, with the Mac of the fake key@.
-// verifies: REQ-TOKEN-032
+// verifies: REQ-TOKEN-032, REQ-SUBJ-068
 func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()
