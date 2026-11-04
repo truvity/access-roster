@@ -46,7 +46,7 @@ The data model adds two more. A kind that holds personal data is sealed ([0004](
 ### Assigning a subject
 
 - **At the first sign-in** through an upstream account with no link, `session` makes the subject and writes the `Person` and the `UpstreamLink` in one batch, with the `UpstreamPin` when it is the issuer's first ([0005](/decisions/0005-the-store/#the-store-api)). The link is a create: when two first sign-ins of one account race, one batch wins and the other fails with `already exists`, reads the link and continues as the winner. Two people never result.
-- **At a directory read,** which the parity milestone adds, `session` makes the person and the link when a pass first reports a directory person, using the upstream subject value that the facts carry, so the subject is known before the person signs in. The sign-in then finds the link.
+- **At a directory read,** which the parity milestone adds, `session` makes the person and the link when a pass first reports a directory person, using the upstream subject value that the facts carry, so the subject is known before the person signs in. The sign-in then finds the link. That path writes and checks the issuer's `UpstreamPin` as a sign-in does, and refuses a link whose stored claim is not the pinned one (decided 2026-11-04).
 - **Nothing is created for a refused sign-in.** A person exists only for an authentication that sluis accepted.
 
 ### States

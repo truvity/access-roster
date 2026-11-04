@@ -25,7 +25,7 @@ type keys struct {
 
 // The labels session gives to Mac (0006 "Sign and Mac": a label separates two uses of one purpose).
 const (
-	labelUpstreamLink = "sluis-upstream-link-v1"
+	labelUpstreamLink = "sluis-upstream-link-v2" // v2: the input is (issuer, value), without the claim name
 	labelUpstreamPin  = "sluis-upstream-pin-v1"
 	labelPairwise     = "pairwise"
 )
