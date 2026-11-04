@@ -396,7 +396,7 @@ func TestMalformedRecipientsStopTheStart(t *testing.T) {
 			n := e.newNode(nodeOpts{unlisted: true})
 			plan := defaultPlan()
 			plan.Recipients = c.list
-			e.store.put("key-plan", "", "default", plan)
+			e.putPlan(plan)
 			err := n.srv.Init(context.Background())
 			if err == nil || !strings.Contains(err.Error(), "keyplan/default: "+c.want) {
 				t.Fatalf("Init = %v, want a refusal that says %q", err, c.want)

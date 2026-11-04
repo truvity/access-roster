@@ -58,7 +58,7 @@ catalogue:
   gaps:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
-    keyplan-trust: "key@ reads the KeyPlan through store@ and does not verify its signature or seq itself, and removing a recipient deletes none of its wraps and makes no new generation; these wait for the key-compromise work."
+    keyplan-trust: "A recipient that leaves the KeyPlan keeps its wraps: removing one deletes none of them and makes no new generation. This waits for the key-compromise work. key@ already verifies the signature and the in-process sequence of the KeyPlan itself, but it cannot tell a validly signed older document from the newest at a cold start (ADR 0005, Freshness at a cold start)."
     proposed-design: "The design is proposed in research and not yet decided."
     partly-built: "The decision is made; the part the record names is not built yet."
     smoke-not-in-ci: "Covered only by a smoke program that does not run in CI; the record is done once a test that CI runs proves it."

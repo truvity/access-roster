@@ -239,3 +239,23 @@ func TestSearchPath(t *testing.T) {
 		t.Errorf("the indexer does not read the verifier keys read-only:\n%s", svcs["indexer"])
 	}
 }
+
+// TestOnlyStoreAndKeyReadTheBootstrapFile: the bootstrap file is read-only to the two actors that read it. store@ reads
+// all of it; key@ reads its publishers block, to verify the KeyPlan itself instead of trusting store@ (REQ-KEYS-075).
+// Nobody else has the volume, and nobody can write to it.
+func TestOnlyStoreAndKeyReadTheBootstrapFile(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	for name, body := range svcs {
+		has := strings.Contains(body, "bootstrap:/etc/sluis/bootstrap.d")
+		want := name == "store" || name == "key"
+		if has != want {
+			t.Errorf("%s mounts the bootstrap file = %v, want %v", name, has, want)
+		}
+		if has && !strings.Contains(body, "bootstrap:/etc/sluis/bootstrap.d:ro") {
+			t.Errorf("%s mounts the bootstrap file writable", name)
+		}
+	}
+	if !strings.Contains(svcs["key"], `"--bootstrap", "/etc/sluis/bootstrap.d/dev.yaml"`) {
+		t.Error("key@ is not told where the bootstrap file is")
+	}
+}
