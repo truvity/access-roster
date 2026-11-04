@@ -1,5 +1,9 @@
 ## Unreleased
 
+## v1.80.4
+
+A patch release: a rotated R2 credential is stored a minute after its token is created, once R2 accepts it, so the audit writer is no longer refused after the 5 s wait of v1.80.3. The presets are ticked at the same time. Upgrade notes: none.
+
 ### Fixed
 
 - **A rotated R2 credential is stored a minute after its token is created, once R2 accepts it.** The 5 s wait of v1.80.3 ran every time but was too short. Measured over a day of rotations, R2 refuses a token Cloudflare has just created, with 401, for a few seconds, and at times intermittently for up to about 34 s: it accepts some requests and refuses others. In 4 of 29 rotations the audit writer was refused again after its 5 s mark and took that as final. Batches went back to their queue, legal-hold refreshes and seal probes failed, and a writer starting in that window failed its start-up. No record was lost. The scheduled rotation of an R2 preset now holds the new credential back for a minute after creating its token. Only then does it write `external/cloudflare/<preset>` and record `roster.cloudflare.token.minted`. The credential it replaces stays valid until its own `expires_on`, so no consumer goes without one, and a consumer woken by the record reads a credential R2 accepts. The presets are ticked at the same time, each under its own lease, so a pass waits one minute however many R2 presets rotate. A rotation stopped during the wait stores nothing and deletes its token. `Rotate now` in the console, the replacement of a revoked token and on-demand mints are unchanged. The writer's 5 s wait stays as a safety net. **Upgrade:** none. A consumer has a minute less of overlap between the old credential and the new one, inside the 5m margin that `rotation` + tick + 5m < `lifetime` keeps.
