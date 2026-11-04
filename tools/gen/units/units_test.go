@@ -180,8 +180,7 @@ func TestDriverUnits(t *testing.T) {
 	for _, want := range []string{
 		"User=sluis-drv-key-software-%i",
 		"SupplementaryGroups=sluis-key-drv-%i",
-		"ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development",
-		"ExecStartPost=/opt/sluis/bin/sluis-socket-open /run/sluis/key/%i/key-store.sock",
+		"ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023",
 		"StateDirectoryMode=0700",
 		"\nPrivateNetwork=yes\n",
 		"ReadWritePaths=/run/sluis/key/%i",
@@ -191,7 +190,10 @@ func TestDriverUnits(t *testing.T) {
 		}
 	}
 	fs := files["sluis-drv-writer-fs@.service"]
-	if !strings.Contains(fs, "--socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs") || strings.Contains(fs, "GOMEMLIMIT") {
+	if strings.Contains(files["sluis-drv-key-software@.service"], "ExecStartPost") {
+		t.Error("a driver unit needs no helper after start: the kit opens the socket")
+	}
+	if !strings.Contains(fs, "--socket /run/sluis/writer/%i/blob.sock --root /var/lib/sluis-state/%i/drv-writer-fs --socket-gid 61025") || strings.Contains(fs, "GOMEMLIMIT") {
 		t.Errorf("the fs driver unit is wrong:\n%s", fs)
 	}
 	// The owner starts after its drivers and joins their groups; the directory of the boundary is open to the

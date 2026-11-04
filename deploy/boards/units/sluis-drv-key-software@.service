@@ -11,8 +11,7 @@ Group=sluis-drv-key-software-%i
 SupplementaryGroups=sluis-key-drv-%i
 StateDirectory=sluis-state/%i/drv-key-software
 StateDirectoryMode=0700
-ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development
-ExecStartPost=/opt/sluis/bin/sluis-socket-open /run/sluis/key/%i/key-store.sock
+ExecStart=/opt/sluis/bin/drivers/key/software serve --boundary %i --socket /run/sluis/key/%i/key-store.sock --state-dir /var/lib/sluis-state/%i/drv-key-software --environment development --socket-gid 61023
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB

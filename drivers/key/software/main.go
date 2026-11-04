@@ -1,7 +1,7 @@
 // Command software is the software key driver of key@: the key-store port over P-384 keys held in files. It is
 // for the local installation, for CI and for a smoke installation without cards, and it refuses production.
 //
-//	software serve --socket PATH --state-dir DIR --environment development|staging|production
+//	software serve --socket PATH --state-dir DIR --environment development|staging|production [--socket-gid GID]
 //	software check --state-dir DIR
 //	software conformance --socket PATH
 //	software version
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"strconv"
 
 	"github.com/truvity/sluis/v2/drivers/key/software/internal/driver"
 	"github.com/truvity/sluis/v2/kits/go/cli"
@@ -25,6 +26,7 @@ func main() {
 func flags(fs *flag.FlagSet) {
 	fs.String("state-dir", "", "the directory of the key files (mode 0700, owned by the driver's user)")
 	fs.String("environment", "", "development, staging or production (required; production is refused)")
+	fs.Uint("socket-gid", 0, "open the socket (mode 0660) to this group, which the owner joins; 0 keeps mode 0600 for the driver's user alone")
 }
 
 func value(f cli.Flags, name string) string {
@@ -56,6 +58,14 @@ func serve(ctx context.Context, f cli.Flags) error {
 		Socket:   f.Socket,
 		Mode:     0o600,
 		Allow:    rpc.OwnerOnly(driver.Owner()),
+	}
+	// The owner is another uid: a group that only the owner joins may connect. OwnerOnly still decides who may call.
+	if gid := value(f, "socket-gid"); gid != "0" && gid != "" {
+		n, err := strconv.ParseUint(gid, 10, 32)
+		if err != nil {
+			return cli.Usage(errors.New("--socket-gid is not a group number"))
+		}
+		cfg.Mode, cfg.GID = 0o660, uint32(n)
 	}
 	return driver.Run(ctx, driver.Options{Environment: env, StateDir: dir}, cfg)
 }

@@ -31,6 +31,11 @@ type ServerConfig struct {
 	Boundary string
 	Socket   string      // absolute path; see the socket layout in docs
 	Mode     os.FileMode // 0660 for actor sockets, 0600 for driver sockets; 0 means 0660
+	// GID, when not 0, is the group of the socket file. A driver whose owner is another uid sets it with Mode 0660, so
+	// that the members of the group, and only they, can connect to the socket. The process must be a member of the
+	// group. It changes who may connect and nothing else: the guard still decides, from the peer's uid, who may call.
+	// The default, 0, leaves the group the kernel gave and the mode as it is.
+	GID uint32
 	// DefaultDeadline is the deadline of a call that carries none. 0 means DefaultDeadlineValue.
 	DefaultDeadline time.Duration
 	// Allow decides whether a peer may call. The default (nil) is registry.MayCall(peer.Name, Actor).
@@ -90,7 +95,7 @@ func Serve(ctx context.Context, cfg ServerConfig, handlers ...Handler) error {
 	if _, ok := cfg.ownBlock(); !ok {
 		return errors.New("rpc: the uid of this process is not an actor or driver uid of the registry")
 	}
-	ln, err := listen(cfg.Socket, mode)
+	ln, err := listen(cfg.Socket, mode, cfg.GID)
 	if err != nil {
 		return err
 	}
@@ -133,8 +138,8 @@ func Serve(ctx context.Context, cfg ServerConfig, handlers ...Handler) error {
 
 // listen makes the socket of a server. A stale socket file is replaced; a symlink, another kind of file, or a
 // socket that a live server holds is refused. The socket is created under a temporary name, given its mode, and
-// renamed to its path, so that it is never reachable with the wrong mode.
-func listen(path string, mode os.FileMode) (net.Listener, error) {
+// renamed to its path, so that it is never reachable with the wrong mode or group.
+func listen(path string, mode os.FileMode, gid uint32) (net.Listener, error) {
 	if !filepath.IsAbs(path) {
 		return nil, fmt.Errorf("rpc: socket path %q is not absolute", path)
 	}
@@ -173,6 +178,15 @@ func listen(path string, mode os.FileMode) (net.Listener, error) {
 	}
 	ul := ln.(*net.UnixListener)
 	ul.SetUnlinkOnClose(false)
+	if gid != 0 {
+		// The group is set before the mode, and both before the final name, so that the socket is never reachable by a
+		// group that was not asked for.
+		if err := os.Chown(tmp, -1, int(gid)); err != nil {
+			_ = ul.Close()
+			_ = os.Remove(tmp)
+			return nil, fmt.Errorf("rpc: set the socket group: %w", err)
+		}
+	}
 	if err := os.Chmod(tmp, mode); err != nil {
 		_ = ul.Close()
 		_ = os.Remove(tmp)
