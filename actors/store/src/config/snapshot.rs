@@ -137,7 +137,7 @@ impl std::fmt::Display for LoadError {
 
 impl std::error::Error for LoadError {}
 
-fn failed(kind: Option<&'static str>, reason: impl Into<String>) -> LoadError {
+pub(super) fn failed(kind: Option<&'static str>, reason: impl Into<String>) -> LoadError {
     LoadError {
         kind,
         label: None,
@@ -280,19 +280,13 @@ impl Loader {
         held: Option<&Snapshot>,
         seen: &mut String,
     ) -> Result<Snapshot, LoadError> {
-        let boundary_kind = kind("Boundary");
-        let boundary = self.document(boundary_kind, held, seen).await?;
+        let boundary = self.document(kind("Boundary"), held, seen).await?;
         let declared = declared_kinds(&boundary)?;
-
-        let mut docs = BTreeMap::new();
-        docs.insert(boundary_kind.segment, boundary);
+        let mut docs = Vec::with_capacity(declared.len());
         for k in declared {
-            let d = self.document(k, held, seen).await?;
-            docs.insert(k.segment, d);
+            docs.push(self.document(k, held, seen).await?);
         }
-        let snapshot = Snapshot { docs };
-        validate_set(&snapshot, &self.boundary)?;
-        Ok(snapshot)
+        assemble(&self.boundary, boundary, docs)
     }
 
     /// Reads, verifies and decodes the document of `kind` (steps 1 to 6).
@@ -328,60 +322,96 @@ impl Loader {
         };
         seen.push_str(&got.version);
         seen.push(';');
-        let with_label = |mut e: LoadError| {
-            e.label = Some(got.version.clone());
-            e
-        };
         if got.unchanged {
             return in_force
                 .filter(|d| d.label == got.version)
                 .cloned()
-                .ok_or_else(|| {
-                    with_label(failed(
+                .ok_or_else(|| LoadError {
+                    label: Some(got.version.clone()),
+                    ..failed(
                         Some(kind.name),
                         "the source answered unchanged for a document it was not asked about",
-                    ))
+                    )
                 });
         }
+        accept(kind, &got.data, got.version, &self.publishers, in_force)
+    }
+}
 
-        let v = document::verify(&got.data, kind, &self.publishers)
-            .map_err(|r| with_label(failed(Some(kind.name), r.to_string())))?;
-        // Step 5: a running store takes only a growing sequence (signed-config.md).
-        match document::sequence(in_force.map(|d| (d.seq, &d.digest)), &v) {
-            Sequence::Newer => {}
-            // The same document under another label: nothing changed.
-            Sequence::Same => {
-                if let Some(d) = in_force {
-                    return Ok(Document {
-                        label: got.version,
-                        ..d.clone()
-                    });
-                }
-            }
-            Sequence::Conflict => {
-                return Err(with_label(failed(
-                    Some(kind.name),
-                    "step 5: the same seq with another payload",
-                )));
-            }
-            Sequence::Older => {
-                return Err(with_label(failed(
-                    Some(kind.name),
-                    "step 5: a lower seq than the one in force",
-                )));
+/// Steps 1 to 6 of signed-config.md for the bytes of one document of `kind`, as a source gave them under `label`:
+/// the signatures against the pinned `publishers`, the sequence against the document `in_force`, and the payload. The
+/// loader and the offline check (`sluis config check`, [`super::offline`]) both run this one function, so that a
+/// document the check passes is one store@ loads (REQ-DATA-090).
+///
+/// # Errors
+///
+/// [`LoadError`] naming the kind, the label and the step and rule that failed, never a value.
+pub(super) fn accept(
+    kind: &'static Kind,
+    data: &[u8],
+    label: String,
+    publishers: &[crate::bootstrap::Publisher],
+    in_force: Option<&Document>,
+) -> Result<Document, LoadError> {
+    let with_label = |mut e: LoadError| {
+        e.label = Some(label.clone());
+        e
+    };
+    let v = document::verify(data, kind, publishers)
+        .map_err(|r| with_label(failed(Some(kind.name), r.to_string())))?;
+    // Step 5: a running store takes only a growing sequence (signed-config.md).
+    match document::sequence(in_force.map(|d| (d.seq, &d.digest)), &v) {
+        Sequence::Newer => {}
+        // The same document under another label: nothing changed.
+        Sequence::Same => {
+            if let Some(d) = in_force {
+                return Ok(Document { label, ..d.clone() });
             }
         }
-        let items = payload::decode(kind, &v.payload)
-            .map_err(|e| with_label(failed(Some(kind.name), format!("step 6: {e}"))))?;
-        Ok(Document {
-            kind,
-            seq: v.seq,
-            digest: v.digest,
-            label: got.version.clone(),
-            signed: got.data.to_vec(),
-            items,
-        })
+        Sequence::Conflict => {
+            return Err(with_label(failed(
+                Some(kind.name),
+                "step 5: the same seq with another payload",
+            )));
+        }
+        Sequence::Older => {
+            return Err(with_label(failed(
+                Some(kind.name),
+                "step 5: a lower seq than the one in force",
+            )));
+        }
     }
+    let items = payload::decode(kind, &v.payload)
+        .map_err(|e| with_label(failed(Some(kind.name), format!("step 6: {e}"))))?;
+    Ok(Document {
+        kind,
+        seq: v.seq,
+        digest: v.digest,
+        label: label.clone(),
+        signed: data.to_vec(),
+        items,
+    })
+}
+
+/// The snapshot of a whole set: the Boundary document and the documents of the kinds it declares, checked as a set
+/// for the boundary `boundary` of the bootstrap file. Shared by the loader and the offline check.
+///
+/// # Errors
+///
+/// [`LoadError`] for the first rule of the set that fails.
+pub(super) fn assemble(
+    boundary: &str,
+    boundary_doc: Document,
+    docs: Vec<Document>,
+) -> Result<Snapshot, LoadError> {
+    let mut all = BTreeMap::new();
+    all.insert(boundary_doc.kind.segment, boundary_doc);
+    for d in docs {
+        all.insert(d.kind.segment, d);
+    }
+    let snapshot = Snapshot { docs: all };
+    validate_set(&snapshot, boundary)?;
+    Ok(snapshot)
 }
 
 fn unreachable_source() -> LoadError {
@@ -391,14 +421,14 @@ fn unreachable_source() -> LoadError {
     }
 }
 
-fn kind(name: &str) -> &'static Kind {
+pub(super) fn kind(name: &str) -> &'static Kind {
     // The names are the registry's own: a missing one is a build whose registry changed.
     sluis_registry::kind_by_name(name)
         .unwrap_or_else(|| unreachable!("the kind {name} is not in the registry"))
 }
 
 /// The kinds the Boundary document declares, each once, without Boundary itself.
-fn declared_kinds(boundary: &Document) -> Result<Vec<&'static Kind>, LoadError> {
+pub(super) fn declared_kinds(boundary: &Document) -> Result<Vec<&'static Kind>, LoadError> {
     let m = boundary_message(boundary)?;
     let mut out: Vec<&'static Kind> = Vec::new();
     for name in &m.declared_kinds {
@@ -441,6 +471,14 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
             "name: is not the boundary of the bootstrap file",
         ));
     }
+    // An installation declares its grant vocabulary, so that a name nobody declared cannot load (ADR 0020,
+    // REQ-POLICY-013).
+    if !s.docs.contains_key(kind("GrantVocabulary").segment) {
+        return Err(failed(
+            Some("Boundary"),
+            "declared_kinds: must declare GrantVocabulary",
+        ));
+    }
     // A development difference is configuration checked against a floor in code (ADR 0011, "The
     // local installation"). Plain HTTP is for a development boundary only, and there only on a
     // loopback IP literal, `127.0.0.1` or `[::1]`, never a name such as `localhost` and never
@@ -449,6 +487,18 @@ fn validate_set(s: &Snapshot, boundary: &str) -> Result<(), LoadError> {
     // section 7.3): an app on the person's own host. A browser, confidential or exchange client
     // has no such case. The payload rule has already refused every plain-http redirect that is
     // not on loopback (REQ-AUTHN-004).
+    // The cache of key@ under its built-in maximum (ADR 0006, "The cache"; REQ-KEYS-039).
+    if let Some(bytes) = s.get(kind("KeyPlan").segment, SINGLETON_ID)
+        && let Ok(plan) = pb::KeyPlan::decode_from_slice(&bytes)
+        && plan.cache_ttl.as_option().is_some_and(|d| {
+            u64::try_from(d.seconds).map_or(true, |s| s > payload::KEY_CACHE_TTL_MAX.as_secs())
+        })
+    {
+        return Err(failed(
+            Some("KeyPlan"),
+            "default.cache_ttl: above the built-in maximum of one hour",
+        ));
+    }
     let development = b.environment == "development";
     let (why_url, why_redirect) = if development {
         ("must be https, or http on a loopback IP literal", "")

@@ -1,5 +1,6 @@
 //! The command line of `store`: `serve`, `check`, `version` (ADR 0005, "Drivers"; cli.md).
 
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -42,6 +43,16 @@ pub fn extra(c: Command) -> Command {
             .global(true)
             .value_name("PATH")
             .help("key@'s socket for store@; default /run/sluis/key/<boundary>/store/key.sock"),
+    )
+    .arg(
+        Arg::new("validate")
+            .long("validate")
+            .global(true)
+            .value_name("DIR")
+            .help(
+                "check only: validate the bootstrap file and the signed config documents in DIR offline, \
+                 as store@ does at load, and probe no socket (what `sluis config check` runs)",
+            ),
     )
     .arg(
         Arg::new("transport-socket")
@@ -242,6 +253,13 @@ impl Commands for Store {
 
 impl Store {
     async fn check_inner(&self, f: &Flags) -> anyhow::Result<()> {
+        if let Some(dir) = f
+            .matches
+            .get_one::<String>("validate")
+            .filter(|s| !s.is_empty())
+        {
+            return validate(f, Path::new(dir));
+        }
         let b = load(f)?;
         let p = paths(f, &b.boundary);
         let missing = unreachable(&needed(&b, &p.transport)).await;
@@ -254,5 +272,79 @@ impl Store {
         } else {
             Err(Refused(missing.join("; ")).into())
         }
+    }
+}
+
+/// `store check --validate DIR`: the offline check of the bootstrap file and the config set in `DIR`, with the rules
+/// store@ applies at load and the same code (ADR 0012, "The configuration check runs store@'s own rules"). It prints
+/// one line per check, or with `--output json` one object `{"checks": [...]}` on standard output; a failed check is a
+/// refusal (exit 3). Nothing is printed but kinds, paths and rules: never a value of a document.
+fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
+    let checks = match load(f) {
+        Ok(b) => {
+            let mut c = vec![config::offline::Check {
+                name: "bootstrap",
+                result: "ok",
+                path: String::new(),
+                rule: String::new(),
+            }];
+            c.extend(config::offline::check_dir(dir, &b));
+            c
+        }
+        Err(e) => {
+            // A refused bootstrap file: its rule (it names a path, never a value); the documents cannot be verified
+            // without its publisher keys.
+            let rule = e
+                .downcast_ref::<Refused>()
+                .map_or_else(|| format!("{e:#}"), |r| r.0.clone());
+            vec![
+                config::offline::Check {
+                    name: "bootstrap",
+                    result: "fail",
+                    path: String::new(),
+                    rule,
+                },
+                config::offline::Check {
+                    name: "set",
+                    result: "not-run",
+                    path: String::new(),
+                    rule: String::new(),
+                },
+            ]
+        }
+    };
+    let mut out = std::io::stdout().lock();
+    if f.json {
+        writeln!(out, "{}", config::offline::to_json(&checks))?;
+    } else {
+        for c in &checks {
+            let at = if c.path.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", c.path)
+            };
+            let why = if c.rule.is_empty() {
+                String::new()
+            } else {
+                format!(": {}", c.rule)
+            };
+            writeln!(out, "{} {}{at}{why}", c.result, c.name)?;
+        }
+    }
+    let failed: Vec<_> = checks
+        .iter()
+        .filter(|c| c.result == "fail")
+        .map(|c| {
+            if c.path.is_empty() {
+                c.name.to_owned()
+            } else {
+                format!("{} {}", c.name, c.path)
+            }
+        })
+        .collect();
+    if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(Refused(failed.join("; ")).into())
     }
 }
