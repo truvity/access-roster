@@ -899,6 +899,7 @@ var storeRules = map[string]map[string]uint16{
 		"pin-release":         0x007f, // get list create update delete apply watch
 		"pin-release-request": 0x007f, // get list create update delete apply watch
 		"replay-guard":        0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
+		"signing-ring":        0x0003, // get list
 		"spent-grant":         0x1fbf, // get(self) list(self) create(self) update(self) delete(self) apply(self)
 		"switch":              0x0183, // get(self) list(self)
 		"tenant":              0x0003, // get list

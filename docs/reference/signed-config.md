@@ -87,6 +87,23 @@ store@ loads the documents of its boundary as one set ([0005](/decisions/0005-th
 
 AppConfig facts, READ 2026-11-02 from the AWS API reference of `GetLatestConfiguration`: each call returns a token for the next call, a token is valid for one call and for up to 24 hours, the configuration is empty when the caller already has the latest version, and the answer carries the interval to wait before the next poll. A request may set a required minimum poll interval. On Lambda the poll happens at an invocation once the interval has passed. A Lambda layer cannot change under a running function, so a new layer is a new function version ([Serverless](/runtimes/serverless/)).
 
+## Declarations
+
+A declaration is a signed document in the same format that is not config: an operator's act that one actor takes once, and not a state that store@ loads. There is one kind, `KeyRevocationDeclaration`, with which an operator revokes keys ([0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)).
+
+- **The format, the header and steps 1 to 4 are a config document's.** The header has `alg`, `kid`, `seq` and `kind`, the signature is a publisher key's of the bootstrap file, and the `co_signs` rules apply. The `kind` names the declaration, which is not a kind of the registry, so store@ refuses it as config and a config document is never taken as a declaration (`VerifyDeclaration` in `kits/go/signedconfig`).
+- **The sequence is strict.** key@ takes a declaration only with a `seq` above the highest it took, and keeps that `seq` in a mark of its own state directory, `keyrevocation.mark`. The same declaration twice is a replay and is refused, unlike a config document, which may be loaded again.
+- **The payload is YAML under the strict profile,** read into the message `sluis.key.v2alpha1.KeyRevocationDeclaration`: exactly the members `boundary`, `kids` and `reason`. `boundary` is the boundary the declaration is for; `kids` lists 1 to 64 RFC 7638 thumbprints, each once; `reason` is `compromise`, `suspicion`, `lost-board` or `drill`. `sluis key revoke` writes it:
+
+  ```yaml
+  boundary: dev
+  kids:
+    - NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs
+  reason: compromise
+  ```
+
+- **key@ refuses a declaration that does not verify (`declaration`), an old `seq` or a replay (`seq`), a payload that is not one (`schema`, with the path), another boundary (`other-boundary`) and a key it does not know (`unknown-kid`, with the path of the key).** It knows a signing key it holds and a token key that `SigningRing` lists for any node. A refused declaration writes nothing and does not move the mark.
+
 ## Test vectors
 
 The vectors use two test key pairs. Their private halves were discarded after signing, so the keys guard nothing. The bootstrap file that pins the first one is the [local example](/reference/bootstrap-file/#the-example-for-local).

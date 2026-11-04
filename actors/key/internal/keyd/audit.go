@@ -14,6 +14,7 @@ const (
 	ActionDataKeyMake = "key.data_key.make"
 	ActionWrapWrite   = "key.wrap.write" //nolint:gosec // G101: an action name, not a credential
 	ActionSign        = "key.sign"
+	ActionRevoke      = "key.revoke"
 )
 
 // Event is one audit fact of key@. Fields hold names, counts and ids, never a key, a plaintext, a grant or an

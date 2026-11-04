@@ -266,11 +266,9 @@ type fakeDriver struct {
 	wrongCurve bool
 	// badSignature makes Sign return a signature over the wrong digest.
 	badSignature bool
-	// now stamps the keys it makes; nil is time.Now. noCreatedAt makes Ensure say nothing about the age of a key, as a
-	// store that cannot.
-	now         func() time.Time
-	made        map[string]time.Time
-	noCreatedAt bool
+	// now stamps the keys it makes, as a store reports their age; nil is time.Now.
+	now  func() time.Time
+	made map[string]time.Time
 }
 
 func newFakeDriver(storeName string) *fakeDriver {
@@ -321,10 +319,7 @@ func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2al
 	if err != nil {
 		return nil, err
 	}
-	res := &keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok}
-	if !d.noCreatedAt {
-		res.CreatedAt = timestamppb.New(d.made[req.Msg.GetPurpose()])
-	}
+	res := &keystorev2alpha1.EnsureResponse{SpkiDer: der, Created: !ok, CreatedAt: timestamppb.New(d.made[req.Msg.GetPurpose()])}
 	return connect.NewResponse(res), nil
 }
 
@@ -434,6 +429,7 @@ type testEnv struct {
 	seq       uint64 // the seq of the last KeyPlan signed
 	plan      *configv2alpha1.KeyPlan
 	seqB      uint64 // the seq of the last Boundary signed
+	seqD      uint64 // the seq of the last key revocation declaration of nextSeq
 	boundary  *configv2alpha1.Boundary
 }
 
@@ -547,7 +543,7 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 		o.driver = newFakeDriver("software")
 	}
 	if o.driver.now == nil {
-		o.driver.now = e.clock.now // the keys are made at the time of the test's clock, which a revocation is compared with
+		o.driver.now = e.clock.now // the keys are made at the time of the test's clock
 	}
 	if o.audit == nil {
 		o.audit = &recorder{}
@@ -579,6 +575,8 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	n := &node{e: e, srv: srv, driver: o.driver, audit: rec, runDir: runDir, who: &resolver{}}
 	n.who.set("policy")
 	srv.serverConfig = func(c rpc.ServerConfig) rpc.ServerConfig { return rpc.WithNameResolver(c, n.who.resolve) }
+	// The admin socket serves root; the tests run as another user, which stands for root here.
+	srv.adminAllow = func(uid uint32) bool { return int(uid) == os.Getuid() }
 	return n
 }
 
@@ -596,6 +594,7 @@ func (n *node) start() {
 	for _, c := range registry.CallersOf("key") {
 		waitSocket(n.e.t, filepath.Join(n.runDir, c, socketName))
 	}
+	waitSocket(n.e.t, filepath.Join(n.runDir, adminSocketName))
 	n.e.t.Cleanup(n.stop)
 }
 
