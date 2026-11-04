@@ -28,6 +28,8 @@ pub struct Sockets {
     pub store: PathBuf,
     /// The audit transport's emit socket.
     pub audit: PathBuf,
+    /// `reader`, for the audit front.
+    pub reader: PathBuf,
 }
 
 impl Sockets {
@@ -39,6 +41,7 @@ impl Sockets {
             exchange: run_dir.join("exchange").join(format!("{boundary}.sock")),
             store: run_dir.join("store").join(format!("{boundary}.sock")),
             audit: run_dir.join("audit").join(boundary).join("emit.sock"),
+            reader: run_dir.join("reader").join(format!("{boundary}.sock")),
         }
     }
 }

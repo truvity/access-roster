@@ -21,6 +21,7 @@ services:
       - config:/v/config
       - creds-adapter:/v/creds-adapter
       - creds-store:/v/creds-store
+      - drv-indexer:/v/drv-indexer
       - drv-store:/v/drv-store
       - drv-writer:/v/drv-writer
       - forwarder-tls:/v/forwarder-tls
@@ -49,11 +50,14 @@ services:
       - run-entry:/v/run-entry
       - run-key:/v/run-key
       - run-policy:/v/run-policy
+      - run-reader:/v/run-reader
       - run-signer:/v/run-signer
       - run-store:/v/run-store
       - state-blob:/v/state-blob
+      - state-index:/v/state-index
       - state-key-software:/v/state-key-software
       - state-spool:/v/state-spool
+      - vkeys:/v/vkeys
 
   adapter-upstream-oidc:
     image: sluis-local/adapter-upstream-oidc:dev
@@ -94,6 +98,68 @@ services:
       store: { condition: service_healthy }
       key: { condition: service_healthy }
       idp-loopback: { condition: service_healthy }
+
+  drv-indexer-fs:
+    image: sluis-local/drv-indexer-fs:dev
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: drivers/indexer/fs
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/indexer/dev/blob.sock", "--root", "/var/lib/sluis-state/dev/drv-writer-fs", "--socket-gid", "61028", "--reader-socket", "/run/sluis/indexer/dev/blob-ro.sock", "--reader-socket-gid", "61018"]
+    user: "61028:61028"
+    group_add:
+      - "61517"
+      - "61018"
+      - "61025"
+    network_mode: none
+    volumes:
+      - drv-indexer:/run/sluis/indexer/dev
+      - state-blob:/var/lib/sluis-state/dev/drv-writer-fs:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/indexer/dev/blob.sock", "--root", "/var/lib/sluis-state/dev/drv-writer-fs", "--socket-gid", "61028", "--reader-socket", "/run/sluis/indexer/dev/blob-ro.sock", "--reader-socket-gid", "61018"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      drv-writer-fs: { condition: service_healthy }
+
+  drv-indexer-sqlite:
+    image: sluis-local/drv-indexer-sqlite:dev
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: drivers/indexer/sqlite
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/indexer/dev/index.sock", "--state-dir", "/var/lib/sluis-state/dev/drv-indexer-sqlite", "--socket-gid", "61026", "--ro-socket", "/run/sluis/indexer/dev/index-ro.sock", "--ro-socket-gid", "61018"]
+    user: "61026:61026"
+    group_add:
+      - "61517"
+      - "61018"
+    network_mode: none
+    volumes:
+      - drv-indexer:/run/sluis/indexer/dev
+      - state-index:/var/lib/sluis-state/dev/drv-indexer-sqlite
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/indexer/dev/index.sock", "--state-dir", "/var/lib/sluis-state/dev/drv-indexer-sqlite", "--socket-gid", "61026", "--ro-socket", "/run/sluis/indexer/dev/index-ro.sock", "--ro-socket-gid", "61018"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
 
   drv-key-software:
     image: sluis-local/drv-key-software:dev
@@ -327,6 +393,29 @@ services:
       signer: { condition: service_healthy }
       adapter-upstream-oidc: { condition: service_healthy }
 
+  entry-audit:
+    image: sluis-local/entry:dev
+    pull_policy: never
+    command: ["serve", "--boundary", "dev", "--front", "audit", "--socket", "/run/sluis/entry/dev-audit.sock", "--socket-gid", "61027"]
+    user: "61000:61000"
+    group_add:
+      - "61018"
+      - "61024"
+      - "61027"
+    network_mode: none
+    volumes:
+      - run-entry:/run/sluis/entry
+      - run-reader:/run/sluis/reader:ro
+      - audit:/run/sluis/audit/dev:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      reader: { condition: service_healthy }
+
   forwarder:
     image: caddy@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
     command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
@@ -357,6 +446,7 @@ services:
     depends_on:
       init: { condition: service_completed_successfully }
       entry: { condition: service_started }
+      entry-audit: { condition: service_started }
 
   idp-loopback:
     image: alpine/socat@sha256:466c8a0383e16463fabdb7df01008292fb78d07da60224a46cb5d3142ce122ed
@@ -375,6 +465,42 @@ services:
     restart: "on-failure"
     depends_on:
       init: { condition: service_completed_successfully }
+
+  indexer:
+    image: sluis-local/indexer:dev
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/indexer
+    command: ["serve", "--boundary", "dev", "--verifier-key-dir", "/etc/sluis/vkeys"]
+    user: "61017:61017"
+    group_add:
+      - "61005"
+      - "61012"
+      - "61024"
+      - "61026"
+      - "61028"
+    network_mode: none
+    volumes:
+      - drv-indexer:/run/sluis/indexer/dev
+      - vkeys:/etc/sluis/vkeys:ro
+      - run-store:/run/sluis/store:ro
+      - key-indexer:/run/sluis/key/dev/indexer:ro
+      - audit:/run/sluis/audit/dev:ro
+      - run-policy:/run/sluis/policy:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      key: { condition: service_healthy }
+      policy: { condition: service_healthy }
+      drv-indexer-sqlite: { condition: service_healthy }
+      drv-indexer-fs: { condition: service_healthy }
 
   key:
     image: sluis-local/key:dev
@@ -462,6 +588,46 @@ services:
     restart: "on-failure"
     depends_on:
       init: { condition: service_completed_successfully }
+
+  reader:
+    image: sluis-local/reader:dev
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/reader
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/reader/dev.sock"]
+    user: "61018:61018"
+    group_add:
+      - "61005"
+      - "61012"
+      - "61024"
+    network_mode: none
+    volumes:
+      - run-reader:/run/sluis/reader
+      - drv-indexer:/run/sluis/indexer/dev:ro
+      - run-store:/run/sluis/store:ro
+      - key-reader:/run/sluis/key/dev/reader:ro
+      - audit:/run/sluis/audit/dev:ro
+      - run-policy:/run/sluis/policy:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/reader/dev.sock"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      key: { condition: service_healthy }
+      policy: { condition: service_healthy }
+      drv-indexer-sqlite: { condition: service_healthy }
+      drv-indexer-fs: { condition: service_healthy }
 
   rqlite:
     image: sluis-local/rqlite:dev
@@ -605,6 +771,7 @@ volumes:
   config: {}
   creds-adapter: {}
   creds-store: {}
+  drv-indexer: {}
   drv-store: {}
   drv-writer: {}
   forwarder-tls: {}
@@ -633,8 +800,11 @@ volumes:
   run-entry: {}
   run-key: {}
   run-policy: {}
+  run-reader: {}
   run-signer: {}
   run-store: {}
   state-blob: {}
+  state-index: {}
   state-key-software: {}
   state-spool: {}
+  vkeys: {}

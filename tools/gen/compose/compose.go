@@ -47,6 +47,10 @@ const (
 	idpPort = "8180"
 	// forwarderPort is the container port of the forwarder; the host port is published on the loopback address only.
 	forwarderPort = "8443"
+	// vkeyDir is where the indexer finds <log id>.vkey, the verifier key of each audit log it follows.
+	vkeyDir = "/etc/sluis/vkeys"
+	// auditLogID is the id of the audit log of tests/installations/local/config/audit-log.yaml.
+	auditLogID = "main"
 )
 
 // actorSpec is what an actor's command line and container have beyond `serve --boundary B`.
@@ -59,6 +63,11 @@ type actorSpec struct {
 	Boot    bool     // mounts the bootstrap file's volume
 	Joins   []string // registry names whose group the actor joins although the call graph does not say so
 	Publish bool
+	// Vkeys mounts the volume of the log verifier keys, read-only, at /etc/sluis/vkeys (the indexer's --verifier-key-dir).
+	Vkeys bool
+	// ReadsDrivers mounts the socket directory of the drivers of another owner, read-only: the reader connects to
+	// the read sockets of the indexer's drivers (PLAN.md "Socket layout": index-ro, blob-ro).
+	ReadsDrivers string
 }
 
 // actorSpecs are the actors that are built and run locally. A new actor adds its row when it merges: nothing is guessed
@@ -80,6 +89,12 @@ var actorSpecs = map[string]actorSpec{
 	"entry":                 {Socket: true, Joins: []string{"harness-forwarder"}},
 	"adapter-upstream-oidc": {Socket: true, Check: true, Egress: true, Creds: "creds-adapter"}, //nolint:gosec // the name of a volume
 	"writer":                {Check: true, Args: []string{"--instance", node}},
+	// indexer serves no socket. It reads the log's verifier key from a file the deploy writes once the writer has made
+	// the log key (local.sh publishes it), so it has no check: it would fail until then, and `up --wait` would never end.
+	"indexer": {Args: []string{"--verifier-key-dir", vkeyDir}, Vkeys: true},
+	// reader: its socket is /run/sluis/reader/<boundary>.sock, and the sockets of the dependencies have the defaults of
+	// the plan (index-ro and blob-ro in the indexer's directory, which it reads).
+	"reader": {Socket: true, Check: true, ReadsDrivers: "indexer"},
 }
 
 // driverSpec is a driver's command line. Every driver runs as its own uid, in the group of its owner's drivers.
@@ -97,6 +112,13 @@ type driverProc struct {
 	Engine  bool   // shares the engine's network namespace (local.md, "Topology")
 	Health  bool   // `check` takes the same flags as `serve`
 	Gid     bool   // takes --socket-gid
+	// Mode of the state volume when it is not 0700: the blob directory of the writer's driver is 0750, because the
+	// read-only driver of the indexer and the reader reads it through the group.
+	StateMode string
+	// A second socket for another caller: its path, the flags that name it and its group, and the registry name of the
+	// caller, whose group (its uid) the socket is given to. The driver joins that group to be allowed to give it.
+	Socket2, Flag2, GidFlag2, Caller2 string
+	// Reads "blob" mounts the blob directory of the writer's driver, read-only, at the path of --root.
 }
 
 var driverSpecs = map[string]driverSpec{
@@ -107,7 +129,22 @@ var driverSpecs = map[string]driverSpec{
 	}}},
 	"driver-writer-fs": {Units: []driverProc{{
 		Service: "drv-writer-fs", Socket: "/run/sluis/writer/%B/blob.sock", Flag: "--socket",
-		Args: []string{"--root", "/var/lib/sluis-state/%B/drv-writer-fs"}, State: "state-blob", Health: true, Gid: true,
+		Args: []string{"--root", "/var/lib/sluis-state/%B/drv-writer-fs"}, State: "state-blob", StateMode: "0750", Health: true, Gid: true,
+	}}},
+	// The read-only blob driver: the same directory as driver-writer-fs, read through that driver's group. blob.sock is
+	// the indexer's, blob-ro.sock the reader's.
+	"driver-indexer-fs": {Units: []driverProc{{
+		Service: "drv-indexer-fs", Socket: "/run/sluis/indexer/%B/blob.sock", Flag: "--socket",
+		Args:    []string{"--root", "/var/lib/sluis-state/%B/drv-writer-fs"},
+		Socket2: "/run/sluis/indexer/%B/blob-ro.sock", Flag2: "--reader-socket", GidFlag2: "--reader-socket-gid", Caller2: "reader",
+		Reads: "blob", Health: true, Gid: true,
+	}}},
+	// The index: index.sock for the indexer, index-ro.sock for the reader.
+	"driver-indexer-sqlite": {Units: []driverProc{{
+		Service: "drv-indexer-sqlite", Socket: "/run/sluis/indexer/%B/index.sock", Flag: "--socket",
+		Args:    []string{"--state-dir", "/var/lib/sluis-state/%B/drv-indexer-sqlite"},
+		Socket2: "/run/sluis/indexer/%B/index-ro.sock", Flag2: "--ro-socket", GidFlag2: "--ro-socket-gid", Caller2: "reader",
+		State: "state-index", Health: true, Gid: true,
 	}}},
 	"driver-writer-spool": {Units: []driverProc{{
 		Service: "drv-writer-spool", Socket: "/run/sluis/audit/%B", Flag: "--socket-dir",
@@ -259,6 +296,27 @@ func Generate(o Options) ([]File, error) {
 	return []File{{"compose.yaml", compose, 0o644}, {"init.sh", p.initScript(), 0o755}}, nil
 }
 
+// auditFront is the second instance of entry: the audit front of ADR 0028, the same executable with `--front audit`. It
+// listens on <boundary>-audit.sock in entry's directory, for the forwarder, and calls the reader alone. It has no
+// network, no key and no state, like the identity front.
+func (p *plan) auditFront(b boundary, fwd uint32, _ func(string) (string, string), auditDir func() (string, string)) *service {
+	u := p.uid("entry")
+	reader := p.uid("reader")
+	s := &service{Name: "entry-audit", Image: "sluis-local/entry:dev", Binary: "actors/entry", NoBuild: true,
+		User: fmt.Sprintf("%d:%d", u, u), Hardened: true, Restart: "on-failure", Network: "none"}
+	run := p.volume(volume{Name: "run-entry", Owner: u, Group: u, Mode: "0751"})
+	s.Mounts = append(s.Mounts, mount{run, "/run/sluis/entry", false})
+	s.Command = []string{"serve", "--boundary", string(b), "--front", "audit",
+		"--socket", fmt.Sprintf("/run/sluis/entry/%s-audit.sock", b), "--socket-gid", strconv.FormatUint(uint64(fwd), 10)}
+	rv := p.volume(volume{Name: "run-reader", Owner: reader, Group: reader, Mode: "0751"})
+	s.Mounts = append(s.Mounts, mount{rv, "/run/sluis/reader", true})
+	av, apath := auditDir()
+	s.Mounts = append(s.Mounts, mount{av, apath, true})
+	s.GroupAdd = []uint32{p.uid("driver-writer-spool"), reader, fwd}
+	slices.Sort(s.GroupAdd)
+	return s
+}
+
 // drvGID is the group of an owner's drivers: the group of the directory in which they make their sockets. It is the
 // owner's uid plus 500, which no uid of a block uses (a block holds fewer than 128 ordinals).
 func (p *plan) drvGID(owner string) uint32 { return p.uid(owner) + 500 }
@@ -293,6 +351,10 @@ func (p *plan) build() error {
 			return p.volume(volume{Name: "drv-store", Owner: u, Group: g, Mode: "1770"}), b.path("/run/sluis/store/%B")
 		case "writer":
 			return p.volume(volume{Name: "drv-writer", Owner: u, Group: g, Mode: "1770"}), b.path("/run/sluis/writer/%B")
+		case "indexer":
+			// The reader passes through the directory to its sockets (x for others); the sockets' own groups decide who
+			// connects. The sticky bit keeps one driver from removing another's socket.
+			return p.volume(volume{Name: "drv-indexer", Owner: u, Group: g, Mode: "1771"}), b.path("/run/sluis/indexer/%B")
 		}
 		panic("an owner of drivers without a socket directory: " + owner)
 	}
@@ -366,6 +428,17 @@ func (p *plan) build() error {
 				p.addSubdir(keyRun, string(b)+"/"+c)
 			}
 		}
+		if spec.Vkeys {
+			// The verifier keys of the logs: the indexer's alone, read-only. local.sh writes them once the writer has made
+			// the log key (init.sh, SLUIS_AUDIT_VERIFIER_KEY).
+			p.volume(volume{Name: "vkeys", Owner: u, Group: u, Mode: "0750"})
+			s.Mounts = append(s.Mounts, mount{"vkeys", vkeyDir, true})
+		}
+		if spec.ReadsDrivers != "" {
+			// The read sockets of another owner's drivers; a driver's socket answers its group and its peer-uid check.
+			v, path := driverDir(spec.ReadsDrivers)
+			s.Mounts = append(s.Mounts, mount{v, path, true})
+		}
 		// What the actor reaches, from its ports and its calls.
 		for _, port := range a.Ports {
 			switch port {
@@ -381,8 +454,8 @@ func (p *plan) build() error {
 					s.Mounts = append(s.Mounts, mount{v, fmt.Sprintf("/run/sluis/key/%s/%s", b, a.Name), true})
 				}
 			case "audit-emit", "transport":
-				if a.Name != "writer" {
-					v, path := auditDir()
+				// The indexer has both ports, and they are the one directory.
+				if v, path := auditDir(); a.Name != "writer" && !slices.Contains(s.Mounts, mount{v, path, true}) {
 					s.Mounts = append(s.Mounts, mount{v, path, true})
 				}
 				join("driver-writer-spool")
@@ -428,6 +501,13 @@ func (p *plan) build() error {
 		p.svcs = append(p.svcs, s)
 	}
 
+	// The audit front (ADR 0028): the same executable as entry with the audit route set, its own listener beside entry's,
+	// and no other actor to call but the reader. The registry gives entry no edge to the reader (the console is the
+	// reader's caller there), so the mounts follow what the audit front does, not the call graph.
+	if p.built["entry"] && p.built["reader"] {
+		p.svcs = append(p.svcs, p.auditFront(b, fwd, driverDir, auditDir))
+	}
+
 	// Drivers.
 	for _, d := range drvNames {
 		owner := ownerOf(d)
@@ -451,6 +531,13 @@ func (p *plan) build() error {
 			if du.Gid {
 				cmd = append(cmd, "--socket-gid", strconv.FormatUint(uint64(u), 10))
 			}
+			if du.Socket2 != "" {
+				// The second socket belongs to the caller's group (its uid, which is its primary group), and the driver
+				// joins that group to give the socket to it. The peer-uid check still decides who is served.
+				caller := p.uid(du.Caller2)
+				cmd = append(cmd, du.Flag2, b.path(du.Socket2), du.GidFlag2, strconv.FormatUint(uint64(caller), 10))
+				s.GroupAdd = append(s.GroupAdd, caller)
+			}
 			s.Command = cmd
 			switch d {
 			case "driver-key-software":
@@ -464,7 +551,11 @@ func (p *plan) build() error {
 				s.Mounts = append(s.Mounts, mount{v, path, false})
 			}
 			if du.State != "" {
-				p.volume(volume{Name: du.State, Owner: u, Group: u, Mode: "0700"})
+				mode := "0700"
+				if du.StateMode != "" {
+					mode = du.StateMode
+				}
+				p.volume(volume{Name: du.State, Owner: u, Group: u, Mode: mode})
 				s.Mounts = append(s.Mounts, mount{du.State, b.path("/var/lib/sluis-state/%B/drv-" + strings.TrimPrefix(d, "driver-")), false})
 			}
 			switch du.Reads {
@@ -474,6 +565,12 @@ func (p *plan) build() error {
 			case "creds-store":
 				p.volume(volume{Name: "creds-store", Owner: u, Group: u, Mode: "0700"})
 				s.Mounts = append(s.Mounts, mount{"creds-store", "/run/credentials", true})
+			case "blob":
+				// The directory of driver-writer-fs, read-only, through that driver's group (files 0640, directories 0750).
+				w := p.uid("driver-writer-fs")
+				p.volume(volume{Name: "state-blob", Owner: w, Group: w, Mode: "0750"})
+				s.Mounts = append(s.Mounts, mount{"state-blob", b.path("/var/lib/sluis-state/%B/drv-writer-fs"), true})
+				s.GroupAdd = append(s.GroupAdd, w)
 			}
 			if du.Engine {
 				s.Network = "service:rqlite"
@@ -542,8 +639,12 @@ func (p *plan) deps() {
 		"store":                    {"drv-store-rqlite-durable", "drv-store-rqlite-temp", "drv-store-file", "drv-store-credential", "drv-writer-spool"},
 		"key":                      {"drv-key-software", "drv-writer-spool"},
 		"signer":                   {"store", "key"}, "writer": {"store", "key", "drv-writer-fs"}, "adapter-upstream-oidc": {"store", "key", "idp-loopback"},
-		"entry":     {"store", "key", "signer", "adapter-upstream-oidc"},
-		"forwarder": {"entry"},
+		"entry":          {"store", "key", "signer", "adapter-upstream-oidc"},
+		"drv-indexer-fs": {"drv-writer-fs"},
+		"indexer":        {"store", "key", "policy", "drv-indexer-sqlite", "drv-indexer-fs"},
+		"reader":         {"store", "key", "policy", "drv-indexer-sqlite", "drv-indexer-fs"},
+		"entry-audit":    {"reader"},
+		"forwarder":      {"entry", "entry-audit"},
 	}
 	for _, s := range p.svcs {
 		s.DependsOn = append(s.DependsOn, dep{"init", "service_completed_successfully"})
@@ -752,5 +853,17 @@ seed_credentials /seed/credentials/adapter creds-adapter %d
 install -o %d -g %d -m 0444 /seed/ca/leaf.pem /v/forwarder-tls/leaf.pem
 install -o %d -g %d -m 0400 /seed/ca/leaf.key /v/forwarder-tls/leaf.key
 `, p.o.Boundary, p.o.Boundary, p.o.Boundary, store, adapter, fwd, fwd, fwd, fwd)
+	if _, ok := p.vols["vkeys"]; ok {
+		indexer := p.uid("indexer")
+		fmt.Fprintf(&b, `
+# The verifier key of the audit log, once the writer has made the log key: `+"`local.sh up`"+` reads it from the writer's log and
+# runs this script again with it in the environment. It is a public key. Without the variable the file is left as it is.
+if [ -n "${SLUIS_AUDIT_VERIFIER_KEY:-}" ]; then
+	printf '%%s\n' "$SLUIS_AUDIT_VERIFIER_KEY" >/v/vkeys/%s.vkey
+	chown %d:%d /v/vkeys/%s.vkey
+	chmod 0440 /v/vkeys/%s.vkey
+fi
+`, auditLogID, indexer, indexer, auditLogID, auditLogID)
+	}
 	return b.String()
 }

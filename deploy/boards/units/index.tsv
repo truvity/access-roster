@@ -1,4 +1,6 @@
 # instance	template	kind	binary	user	uid	needs
+sluis-drv-indexer-fs@dev.service	sluis-drv-indexer-fs@.service	driver	drivers/indexer/fs	sluis-drv-indexer-fs-dev	61028	sluis-drv-writer-fs,sluis-indexer,sluis-reader
+sluis-drv-indexer-sqlite@dev.service	sluis-drv-indexer-sqlite@.service	driver	drivers/indexer/sqlite	sluis-drv-indexer-sqlite-dev	61026	sluis-indexer,sluis-reader
 sluis-drv-key-software@dev.service	sluis-drv-key-software@.service	driver	drivers/key/software	sluis-drv-key-software-dev	61023	sluis-key
 sluis-drv-store-credential@dev.service	sluis-drv-store-credential@.service	driver	drivers/store/credential	sluis-drv-store-credential-dev	61022	sluis-store
 sluis-drv-store-file@dev.service	sluis-drv-store-file@.service	driver	drivers/store/file	sluis-drv-store-file-dev	61021	sluis-store
@@ -9,7 +11,7 @@ sluis-drv-writer-spool@dev.service	sluis-drv-writer-spool@.service	driver	driver
 sluis-exporter@dev.service	sluis-exporter@.service	actor	actors/exporter	sluis-exporter-dev	61013	sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
 sluis-store@dev.service	sluis-store@.service	actor	actors/store	sluis-store-dev	61012	sluis-drv-store-credential,sluis-drv-store-file,sluis-drv-store-rqlite,sluis-drv-writer-spool,sluis-key
 sluis-key@dev.service	sluis-key@.service	actor	actors/key	sluis-key-dev	61014	sluis-adapter-github,sluis-adapter-slack,sluis-adapter-upstream-oidc,sluis-ca,sluis-console,sluis-drv-key-software,sluis-drv-writer-spool,sluis-entry,sluis-exchange,sluis-exporter,sluis-indexer,sluis-policy,sluis-quota,sluis-reader,sluis-session,sluis-signer,sluis-node,sluis-ssh-ca,sluis-store,sluis-witness,sluis-writer
-sluis-indexer@dev.service	sluis-indexer@.service	actor	actors/indexer	sluis-indexer-dev	61017	sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
+sluis-indexer@dev.service	sluis-indexer@.service	actor	actors/indexer	sluis-indexer-dev	61017	sluis-drv-indexer-fs,sluis-drv-indexer-sqlite,sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
 sluis-reader@dev.service	sluis-reader@.service	actor	actors/reader	sluis-reader-dev	61018	sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
 sluis-witness@dev.service	sluis-witness@.service	actor	actors/witness	sluis-witness-dev	61016	sluis-key,sluis-store
 sluis-writer@dev.service	sluis-writer@.service	actor	actors/writer	sluis-writer-dev	61015	sluis-drv-writer-fs,sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
@@ -18,6 +20,7 @@ sluis-adapter-slack@dev.service	sluis-adapter-slack@.service	actor	actors/adapte
 sluis-adapter-upstream-oidc@dev.service	sluis-adapter-upstream-oidc@.service	actor	actors/adapter-upstream-oidc	sluis-adapter-upstream-oidc-dev	61009	sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-store
 sluis-ca@dev.service	sluis-ca@.service	actor	actors/ca	sluis-ca-dev	61006	sluis-drv-writer-spool,sluis-key,sluis-store
 sluis-console@dev.service	sluis-console@.service	actor	actors/console	sluis-console-dev	61002	sluis-adapter-github,sluis-adapter-slack,sluis-adapter-upstream-oidc,sluis-drv-writer-spool,sluis-exchange,sluis-key,sluis-policy,sluis-quota,sluis-reader,sluis-session,sluis-store
+sluis-entry-audit@dev.service	sluis-entry-audit@.service	actor	actors/entry	sluis-entry-dev	61000	sluis-drv-writer-spool,sluis-harness-forwarder,sluis-reader
 sluis-entry@dev.service	sluis-entry@.service	actor	actors/entry	sluis-entry-dev	61000	sluis-adapter-github,sluis-adapter-slack,sluis-adapter-upstream-oidc,sluis-console,sluis-drv-writer-spool,sluis-exchange,sluis-harness-forwarder,sluis-key,sluis-quota,sluis-session,sluis-ssh-ca,sluis-store
 sluis-exchange@dev.service	sluis-exchange@.service	actor	actors/exchange	sluis-exchange-dev	61003	sluis-adapter-github,sluis-adapter-slack,sluis-adapter-upstream-oidc,sluis-ca,sluis-drv-writer-spool,sluis-key,sluis-policy,sluis-quota,sluis-signer,sluis-store
 sluis-policy@dev.service	sluis-policy@.service	actor	actors/policy	sluis-policy-dev	61005	sluis-drv-writer-spool,sluis-key,sluis-store

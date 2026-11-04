@@ -20,6 +20,7 @@ seed=$state/seed
 export SLUIS_LOCAL_SEED=$root/$seed
 compose=(docker compose -f deploy/local/compose.yaml)
 host=sluis.dev.local.test
+audit_host=sluis-audit.dev.local.test
 
 need_env() {
 	[ -n "${SLUIS_UPSTREAM_TARGET:-}" ] || { echo "local: SLUIS_UPSTREAM_TARGET (the upstream's host:port) is not set; source the run.env of the build" >&2; exit 1; }
@@ -32,7 +33,7 @@ need_env() {
 prepare() {
 	need_env
 	mkdir -p "$seed/config" "$seed/ca" "$seed/credentials/store" "$seed/credentials/adapter"
-	go run ./tools/harness/ca -dir "$state/ca" -host "$host"
+	go run ./tools/harness/ca -dir "$state/ca" -host "$host,$audit_host"
 	cp "$state/ca/ca.pem" "$state/ca/leaf.pem" "$state/ca/leaf.key" "$seed/ca/"
 	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml"
@@ -66,12 +67,27 @@ images() {
 	"${compose[@]}" build
 }
 
-# health lists the services of the project that have no health check, which is entry.
+# health lists the services of the project that have no health check, which are the two entries and the indexer.
 cmd_up() {
 	prepare
 	images
 	"${compose[@]}" up -d --wait --wait-timeout 180 || { echo "local: the project did not become healthy; see 'just local-status' and 'just local-logs'" >&2; cmd_status || true; exit 1; }
+	publish_vkey
 	cmd_status
+}
+
+# publish_vkey gives the indexer the verifier key of the audit log. The writer logs the public half of its log key when it
+# starts, and the indexer verifies every checkpoint with it (actors/indexer/src/config.rs); the key is public, so the
+# environment of one run of init carries it into the indexer's volume. The indexer reads the file at its next round.
+publish_vkey() {
+	local vk="" n
+	for n in $(seq 1 30); do
+		vk=$("${compose[@]}" logs --no-color writer 2>&1 | grep -o '"verifier_key":"[^"]*"' | tail -1 | cut -d'"' -f4 || true)
+		[ -z "$vk" ] || break
+		sleep 1
+	done
+	[ -n "$vk" ] || { echo "local: the writer's log has no verifier key; the indexer cannot follow the log" >&2; exit 1; }
+	"${compose[@]}" run --rm --no-deps -e SLUIS_AUDIT_VERIFIER_KEY="$vk" init >/dev/null
 }
 
 cmd_status() {
@@ -79,7 +95,8 @@ cmd_status() {
 	"${compose[@]}" ps --all --format '{{.Service}}\t{{.ID}}\t{{.State}}\t{{.Health}}' | sort | while IFS=$'\t' read -r svc id state health; do
 		uid=$(docker inspect --format '{{.Config.User}}' "$id" | cut -d: -f1)
 		# entry has no check command; the forwarder's probe goes through it.
-		[ -n "$health" ] || { [ "$svc" = entry ] && health="(no check; probed through the forwarder)"; }
+		[ -n "$health" ] || { { [ "$svc" = entry ] || [ "$svc" = entry-audit ]; } && health="(no check; probed through the forwarder)"; }
+		[ -n "$health" ] || { [ "$svc" = indexer ] && health="(no check; it waits for the log's verifier key)"; }
 		printf '%-28s uid %-6s %-9s %s\n' "$svc" "${uid:-root}" "$state" "${health:--}"
 	done
 }

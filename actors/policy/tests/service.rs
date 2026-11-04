@@ -478,7 +478,8 @@ async fn the_audit_pieces_get_the_built_in_grants_for_themselves_only() {
     ] {
         assert_eq!(rig.client.decide(req).await.unwrap_err().code, code);
     }
-    // The reader has no built-in permit: audit.read comes from the bindings of the configuration.
+    // The reader has no built-in permit: audit.read comes from the bindings of the configuration. The
+    // local policy binds the reader; a configuration without that binding denies it.
     let rig = Rig::new("reader").await;
     let r = rig
         .client
@@ -486,7 +487,36 @@ async fn the_audit_pieces_get_the_built_in_grants_for_themselves_only() {
         .await
         .unwrap()
         .into_owned();
+    assert!(allowed(r.decision.as_known().unwrap()));
+    assert_eq!(r.reasons[0].policy_id, "bind-reader-audit-read");
+    assert_eq!(r.reasons[0].layer, "config");
+    let g = open_sealed(&r.sealed_grant);
+    assert_eq!(
+        (
+            g.holder.as_str(),
+            g.tenants.as_slice(),
+            g.key_ops.as_slice()
+        ),
+        (
+            "reader",
+            ["acme".to_owned()].as_slice(),
+            ["open".to_owned()].as_slice()
+        )
+    );
+    assert!(g.store_verbs.is_empty());
+    let mut inputs = common::local_inputs();
+    let binding = "@id(\"bind-reader-audit-read\")\npermit (principal == Actor::\"reader\", action == Action::\"audit.read\", resource is Boundary);\n";
+    assert!(inputs.policies[0].cedar.contains(binding));
+    inputs.policies[0].cedar = inputs.policies[0].cedar.replace(binding, "");
+    let rig = Rig::with("reader", &inputs).await;
+    let r = rig
+        .client
+        .decide(audit("audit.read", "reader", "acme"))
+        .await
+        .unwrap()
+        .into_owned();
     assert!(!allowed(r.decision.as_known().unwrap()));
+    assert!(r.sealed_grant.is_empty());
 }
 
 #[tokio::test]

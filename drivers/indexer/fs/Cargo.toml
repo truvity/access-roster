@@ -1,0 +1,37 @@
+[package]
+name = "sluis-driver-indexer-fs"
+description = "The read-only fs blob driver of the indexer and the reader: Get and List of the audit log the writer's fs driver keeps (ADR 0028, Access)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "sluis_driver_indexer_fs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "driver-indexer-fs"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "string"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "server"] }
+rustix = { version = "1", features = ["process"] }
+sluis-driver-writer-fs = { path = "../../writer/fs" }
+sluis-kit = { path = "../../../kits/rust/sluis-kit" }
+sluis-proto = { path = "../../../kits/rust/sluis-proto" }
+sluis-registry = { path = "../../../kits/rust/sluis-registry" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+# Lets a test choose which uid is which actor; only a dev edge turns it on.
+sluis-kit = { path = "../../../kits/rust/sluis-kit", features = ["test-identities"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
