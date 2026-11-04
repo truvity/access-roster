@@ -1332,17 +1332,15 @@ async fn a_form_post_page_gets_the_relaxed_policy_and_nothing_else_does() {
     let r = http(&up, "GET", &q, &[], b"").await;
     let csp = r.h("content-security-policy").unwrap();
     assert!(
-        csp.contains("script-src 'sha256-")
-            && !csp.contains("unsafe-inline")
-            && !csp.contains("form-action"),
+        csp.contains("script-src 'sha256-") && !csp.contains("unsafe-inline"),
         "{csp}"
     );
     assert!(csp.contains("frame-ancestors 'none'"));
     let r = http(&up, "GET", "/callback?code=c", &[], b"").await;
     assert!(
-        !r.h("content-security-policy")
+        r.h("content-security-policy")
             .unwrap()
-            .contains("form-action")
+            .contains("script-src 'sha256-")
     );
     // JSON on the same route, an error page, and HTML on the token route keep the strict policy.
     *up.fake.reply.lock().unwrap() = Some(page("application/json"));

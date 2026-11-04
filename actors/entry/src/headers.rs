@@ -26,12 +26,15 @@ const FORM_POST_SCRIPT: &str = "document.forms[0].submit();";
 
 /// The policy of the one page that needs more: the form_post response of OpenID Connect Form Post
 /// Response Mode 1.0, an HTML form that posts the answer to the client's `redirect_uri` and submits
-/// itself. The form's target is the client's origin, so `form-action` is left out (as v1 does for
-/// its consent page), and the page's one inline script is allowed by its SHA-256 hash (CSP Level 3,
-/// `script-src` hash-source), never by `'unsafe-inline'`. The page needs no inline style, so none is
-/// allowed. Nothing else is relaxed.
-const CSP_FORM_POST: &str = "default-src 'self'; script-src 'sha256-8lDeP0UDwCO6/RhblgeH/ctdBzjVpJxrXizsnIk3cEQ='; \
-style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
+/// itself. Everything is denied (`default-src 'none'`: the page loads no style, image or font, and the
+/// form needs none) except the page's one inline script, which is allowed by its SHA-256 hash (CSP
+/// Level 3, `script-src` hash-source), never by `'unsafe-inline'`.
+///
+/// `form-action` is not set yet: it must be the web origin of the redirect URI of that response
+/// (REQ-AUTHN-079), which a fixed string cannot hold. The page that ships it sets it per response; until
+/// then no page exists to carry it.
+const CSP_FORM_POST: &str = "default-src 'none'; script-src 'sha256-8lDeP0UDwCO6/RhblgeH/ctdBzjVpJxrXizsnIk3cEQ='; \
+frame-ancestors 'none'; base-uri 'none'";
 
 /// Whether a response is a form_post page: an HTML 200 of `/authorize` or `/callback`, which are the
 /// routes that end in the client's `redirect_uri`.
@@ -97,7 +100,10 @@ mod tests {
     fn the_form_post_policy_allows_nothing_inline() {
         assert!(!CSP_FORM_POST.contains("unsafe-inline"), "{CSP_FORM_POST}");
         assert!(!CSP_FORM_POST.contains("unsafe-eval"), "{CSP_FORM_POST}");
-        assert!(!CSP_FORM_POST.contains("form-action"), "{CSP_FORM_POST}");
+        assert!(
+            CSP_FORM_POST.contains("default-src 'none'"),
+            "{CSP_FORM_POST}"
+        );
         // Only the policy of the other pages keeps inline style, and neither allows an inline script.
         let script = |p: &str| {
             p.split(';')

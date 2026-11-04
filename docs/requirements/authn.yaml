@@ -980,8 +980,8 @@ requirements:
       - {kind: conformance-suite, ref: "Form Post OP plan"}
   - id: REQ-AUTHN-059
     area: AUTHN
-    statement: "The form post response page MUST carry a Content-Security-Policy that lets only its own auto-submit script run, by a nonce fresh for each response."
-    rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it (ADR 0017)."
+    statement: "The form post response page MUST carry a Content-Security-Policy that lets only its own auto-submit script run, by the script's hash or by a nonce fresh for each response."
+    rationale: "The page runs a script on behalf of a client's response, so nothing else may run in it; for a fixed script a hash protects as well as a nonce (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -991,7 +991,7 @@ requirements:
       - {id: NC-05, section: "CSP", depth: Partial}
     issues: [979, 796]
     verification:
-      - {kind: integration-test, ref: "form post page CSP and nonce test"}
+      - {kind: integration-test, ref: "form post page CSP test: script-src hash or nonce, no unsafe-inline; a Go golden test hashes the served script and compares it with entry hash; a state with markup is escaped"}
   - id: REQ-AUTHN-060
     area: AUTHN
     statement: "The authorization endpoint MUST answer a response_mode other than query and form_post with invalid_request."
@@ -1125,3 +1125,17 @@ requirements:
     issues: [796]
     verification:
       - {kind: integration-test, ref: "a callback with an extra response parameter completes the sign-in; the same extra parameter on a request to authorize is refused"}
+  - id: REQ-AUTHN-079
+    area: AUTHN
+    statement: "The form post response page MUST carry a form-action directive set to the web origin of the redirect URI of that response."
+    rationale: "The page posts the code to the client, so the browser must refuse a post to any other origin (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards:
+      - {id: ST-34, depth: Partial}
+      - {id: NC-05, section: "CSP", depth: Partial}
+    issues: [979, 796]
+    verification:
+      - {kind: integration-test, ref: "form post page CSP test: form-action is the origin of that response redirect_uri"}

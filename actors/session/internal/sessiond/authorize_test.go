@@ -329,8 +329,13 @@ func TestAuthorizeStateWithScriptIsEncoded(t *testing.T) {
 	p = newAuthorize()
 	p.req.State = `<script>alert(1)</script>`
 	p.req.ResponseMode = "form_post"
-	if body := string(e.authorize(p.req).GetBody()); strings.Contains(body, "script") {
-		t.Errorf("a refused form_post reflects the state: %q", body)
+	r = e.authorize(p.req)
+	u = location(t, r)
+	if u.Query().Get("error") != "invalid_request" {
+		t.Errorf("a form_post request: error = %q, want invalid_request", u.Query().Get("error"))
+	}
+	if strings.ContainsAny(u.RawQuery, `<>`) || len(r.GetBody()) != 0 {
+		t.Errorf("a refused form_post reflects the state: %s %q", u.RawQuery, r.GetBody())
 	}
 }
 
