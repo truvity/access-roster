@@ -161,6 +161,7 @@ async fn serve(
         boundary: "dev".into(),
         socket: socket.clone(),
         mode: 0o660,
+        socket_gid: None,
         allow: Allow::Exact(caller),
         default_deadline: Duration::from_secs(5),
     };

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -306,6 +307,60 @@ func TestSocketMode(t *testing.T) {
 		if got := fi.Mode().Perm(); got != want {
 			t.Fatalf("socket mode = %o, want %o", got, want)
 		}
+	}
+}
+
+// A driver whose owner is another uid sets GID and a group mode: the socket then has that group and mode. The default
+// leaves both alone. A group the process is not in is refused, and no socket is left behind.
+func TestSocketGroup(t *testing.T) {
+	// A group of this process that is not its primary group, so that the test shows the chown, not the default.
+	gid := os.Getgid()
+	groups, _ := os.Getgroups()
+	for _, g := range groups {
+		if g != os.Getgid() && g != 0 {
+			gid = g
+			break
+		}
+	}
+	if gid == 0 {
+		t.Skip("SKIP: the test runs with only group 0, and GID 0 means none")
+	}
+	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Mode: 0o660, GID: uint32(gid)}, asSelf("exchange", 0)) //nolint:gosec // a gid is non-negative
+	socket, _ := start(t, cfg, newRecorder())
+	fi, err := os.Lstat(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o660 {
+		t.Fatalf("socket mode = %o, want 660", got)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Gid) != gid {
+		t.Fatalf("socket group = %v, want %d", fi.Sys(), gid)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Log("SKIP: the refusal of a foreign group is not run as root")
+		return
+	}
+	// Group 1 is not one of this process's groups on a normal host; skip when it is.
+	for _, g := range append(groups, os.Getgid()) {
+		if g == 1 {
+			t.Log("SKIP: the refusal of a foreign group needs a group the process is not in")
+			return
+		}
+	}
+	path := filepath.Join(shortDir(t), "g.sock")
+	bad := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Socket: path, Mode: 0o660, GID: 1}, asSelf("exchange", 0))
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := rpc.Serve(ctx, bad); err == nil || !strings.Contains(err.Error(), "group") {
+		t.Fatalf("err = %v, want a refusal of the group", err)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		t.Fatal("a socket was left behind")
+	}
+	if m, _ := filepath.Glob(path + ".tmp-*"); len(m) != 0 {
+		t.Fatalf("a temporary socket was left behind: %v", m)
 	}
 }
 

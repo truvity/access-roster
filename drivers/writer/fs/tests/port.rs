@@ -24,6 +24,7 @@ fn serve(socket: &Path, root: &Path, me_is: &'static str) -> tokio::sync::onesho
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o600,
+        socket_gid: None,
         allow: Allow::OwnerOnly("writer"),
         default_deadline: std::time::Duration::from_secs(10),
     };
