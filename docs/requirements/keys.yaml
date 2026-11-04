@@ -285,7 +285,7 @@ requirements:
       - {kind: manual, ref: "release matrix review"}
   - id: REQ-KEYS-011
     area: KEYS
-    statement: "An alarm MUST be raised when a value is opened with a retired data key generation outside a planned re-seal."
+    statement: "An alarm MUST be raised when a value is opened with a retired data key generation, which is a generation whose values have all been re-sealed, so that opens during a re-seal and opens of a compromised evidence generation raise none."
     rationale: "An old generation that still opens something is a sign of a missed re-seal or a stolen key."
     level: MUST
     source: security-review
@@ -295,7 +295,7 @@ requirements:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [800, 836]
     verification:
-      - {kind: integration-test, ref: "alert-rule test (retired data key generation), with a planned re-seal defined as the job of REQ-KEYS-096"}
+      - {kind: integration-test, ref: "alert-rule test: no alarm for opens during the re-seal job of REQ-KEYS-096 or of a compromised evidence generation; the first open after the job raises it"}
   - id: REQ-KEYS-019
     area: KEYS
     split_from: REQ-KEYS-011
@@ -1210,8 +1210,8 @@ requirements:
       - {kind: integration-test, ref: "revoke the only key: a new key signs at once after its set is published and purged; a verifier that fetches on an unfamiliar kid accepts the token, and one that does not is reported"}
   - id: REQ-KEYS-090
     area: KEYS
-    statement: "The signer of any node and the operator command MUST each be able to have key@ revoke the token-signing key of any node."
-    rationale: "A compromised or stopped owner must not decide whether its own key leaves (ADR 0041)."
+    statement: "The signer of any node and the operator command MUST each be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."
+    rationale: "A compromised or stopped owner must not decide whether its own key leaves, and the relay needs no initiative of its own (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1219,11 +1219,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "node B asks for the revocation of node A's key while A is down; the item exists and the key set lacks the key"}
+      - {kind: integration-test, ref: "node B relays a declaration for node A's key while A is down; the item exists and the key set lacks the key"}
   - id: REQ-KEYS-091
     area: KEYS
-    statement: "store@ MUST refuse every update or delete of a KeyRevocation item."
-    rationale: "A revocation is terminal, and the direction rule alone would still allow a delete, so a verb rule like the one for Lease is the control (ADR 0041, ADR 0004)."
+    statement: "store@ MUST refuse an update, a delete and an apply on an existing KeyRevocation item, for every caller."
+    rationale: "A revocation is terminal, and the direction rule alone would still allow a delete; Lease allows an update, so its rule is not the model (ADR 0041, ADR 0004)."
     level: MUST
     source: design-decision
     status: planned
@@ -1231,7 +1231,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "an update and a delete of a KeyRevocation item are refused for every actor; a create is accepted"}
+      - {kind: integration-test, ref: "an update, a delete and an apply on an existing KeyRevocation item are refused for every actor, key@ included; a create is accepted"}
   - id: REQ-KEYS-092
     area: KEYS
     statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a KeyRevocation item that works while the actor of the compromised node is down."
@@ -1282,8 +1282,8 @@ requirements:
       - {kind: integration-test, ref: "per purpose (grant, cookie, chain): declare, then an Open under the old generation is refused and the new generation opens"}
   - id: REQ-KEYS-096
     area: KEYS
-    statement: "key@ MUST re-seal the values of a compromised data key generation under the new one as a paginated, asynchronous and idempotent job."
-    rationale: "The three properties are one job: it runs over a store of any size in pages, in the background, and is run again after a failure without harm (ADR 0041)."
+    statement: "key@ MUST re-seal the values of a compromised generation of the data key under the new one as a paginated, asynchronous and idempotent job."
+    rationale: "The three properties are one job: it runs over a store of any size in pages, in the background, and is run again after a failure without harm; pseudonym seals nothing and evidence is append-only, so neither has a job (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1291,7 +1291,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "stop the job half way and run it again: every value opens under the new generation"}
+      - {kind: integration-test, ref: "stop the job half way and run it again: every value of a tenant's data key and of the boundary's data key opens under the new generation"}
   - id: REQ-KEYS-097
     area: KEYS
     statement: "The compromise of the cookie data key MUST end every browser session of the boundary at the next request."
@@ -1343,8 +1343,8 @@ requirements:
       - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
   - id: REQ-KEYS-101
     area: KEYS
-    statement: "On a declared compromise of a data key, key@ MUST make a new generation that every later Seal uses."
-    rationale: "New values must not be sealed under a key the thief holds (ADR 0041)."
+    statement: "On a declared compromise of the grant, cookie, chain, data, pseudonym or evidence data key, key@ MUST make a new generation that every later Seal uses."
+    rationale: "New values must not be sealed under a key the thief holds; mac and pairwise are accepted risks and have no such rule (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1352,11 +1352,11 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "per purpose: declare, then the next Seal uses the new generation"}
+      - {kind: integration-test, ref: "per purpose (grant, cookie, chain, data, pseudonym, evidence): declare, then the next Seal uses the new generation; for mac and pairwise the declaration is refused as not supported"}
   - id: REQ-KEYS-102
     area: KEYS
-    statement: "key@ MUST refuse every Seal under a compromised generation of a data key."
-    rationale: "A stale cache or a slow caller must not seal new values under it (ADR 0041)."
+    statement: "key@ MUST refuse every Seal under a compromised generation of the grant, cookie, chain, data, pseudonym or evidence data key."
+    rationale: "A stale cache or a slow caller must not seal new values under it; mac and pairwise are accepted risks (ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1364,10 +1364,10 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "a Seal that names the old generation is refused; on Lambda, after the time to live of the cache"}
+      - {kind: integration-test, ref: "a Seal that names the old generation is refused for each of the six purposes; on Lambda, after the time to live of the cache"}
   - id: REQ-KEYS-103
     area: KEYS
-    statement: "key@ MUST keep opening a compromised generation of the data key until the re-seal job has rewritten every value sealed under it."
+    statement: "key@ MUST keep opening a compromised generation of a tenant's data key and of the boundary's data key until the re-seal job has rewritten every value sealed under it."
     rationale: "The thief already holds the key, so refusing opens protects nothing and only takes the data offline (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1379,7 +1379,7 @@ requirements:
       - {kind: integration-test, ref: "declare the data key: a value sealed before the declaration opens until the job ends and under the new generation after"}
   - id: REQ-KEYS-104
     area: KEYS
-    statement: "key@ MUST delete the wraps of a compromised data key generation when the re-seal job ends."
+    statement: "key@ MUST delete the wraps of a compromised generation of the data key when the re-seal job ends."
     rationale: "The old generation must not outlive the values it sealed (ADR 0041)."
     level: MUST
     source: design-decision
@@ -1388,7 +1388,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "after the job the old wraps are gone and every value opens"}
+      - {kind: integration-test, ref: "after the job the old wraps of the tenant's and the boundary's data key are gone and every value opens"}
   - id: REQ-KEYS-105
     area: KEYS
     statement: "key@ MUST delete the existing wraps of a revoked recipient."
@@ -1425,3 +1425,15 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "revoke a key: the next published key set, static and live, lacks its kid, and a token it signed fails against the set"}
+  - id: REQ-KEYS-108
+    area: KEYS
+    statement: "key@ MUST write a KeyRevocation item only on a declaration that an operator made with fresh multi-factor authentication through its admin path."
+    rationale: "Only a person declares; a signal or a signer acting on its own would let an attacker use the alarm to stop sign-in (ADR 0041, principle 7)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a signer, an alert and a declaration without fresh authentication each ask key@ to revoke: all refused; a declaration with fresh authentication is accepted"}

@@ -508,11 +508,11 @@ Id &lt;purpose>/&lt;generation>/&lt;recipient>. Each tenant has five data keys, 
 
 ### `KeyRevocation`
 
-Create only: store@ refuses an update and a delete, as for Lease (ADR 0041). Each item revokes one target, a token-signing kid, a data key generation, a purpose or a recipient. The target, the time and a reason code from a closed list are plain, because signer, entry and exporter@ read them to filter published key sets and a sealed kind could not be read there; the operator and any free-text reason are in the audit fact, which is where they belong. key@ writes it for the operator command and for the signer of any node. Merged by union on a restore, and re-applied by the roll-forward.
+Create only (ADR 0041): for every caller, key@ included, store@ refuses an update, a delete and an apply on an existing item. Lease's rule refuses delete and apply only, so it is not the model. Each item revokes one target, a token-signing kid, a data key generation, a purpose or a recipient. The target, the time and a reason code from a closed list are plain, because signer, entry, exporter@ and ca read them (and watch the kind, so a revocation reaches a published set at once and `ca` stops issuing) to filter published key sets and trust bundles and a sealed kind could not be read there; the operator and any free-text reason are in the audit fact, which is where they belong. key@ writes it for the operator command and for the signer of any node. Merged by union on a restore, and re-applied by the roll-forward.
 
 - **Class:** durable; scope boundary+tenant; plain; profile Operable; module core; serves the keys family.
 - **Writer:** [`key@`](/reference/actors/#key).
-- **Readers:** [`key@`](/reference/actors/#key), [`signer`](/reference/actors/#signer), [`entry`](/reference/actors/#entry), [`exporter@`](/reference/actors/#exporter); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
+- **Readers:** [`key@`](/reference/actors/#key), [`signer`](/reference/actors/#signer), [`entry`](/reference/actors/#entry), [`exporter@`](/reference/actors/#exporter), [`ca`](/reference/actors/#ca); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
 - **Indexes:** `by_target`, besides listing by tenant.
 
