@@ -1167,8 +1167,10 @@ async fn a_health_probe_is_not_audited_and_a_real_call_is() {
     assert_eq!(r.status, 405);
     let r = http(&up, "GET", "/healthz?x=1", &[], b"").await;
     assert_eq!(r.status, 400);
+    let r = http(&up, "GET", "/healthz", &[], b"x=1").await;
+    assert_eq!(r.status, 400);
     let recs = up.fake.emitted.lock().unwrap().clone();
-    assert_eq!(recs.len(), 3, "{recs:?}");
+    assert_eq!(recs.len(), 4, "{recs:?}");
     assert!(
         recs[1..]
             .iter()

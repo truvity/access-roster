@@ -37,6 +37,8 @@ default:
     - entry.token
     - entry.discovery
     - entry.jwks
+    # A health request that is refused (a wrong method, a parameter, a body); an answered probe writes no record (S-3).
+    - entry.health
     - entry.unrouted
     # The audit front (--front audit) names its one route the same way.
     - entry.search

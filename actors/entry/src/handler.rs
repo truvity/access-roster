@@ -29,8 +29,8 @@ use crate::refuse::{self, Refuse};
 use crate::routes::{self, Front};
 use crate::search;
 
-/// The path of the liveness probe, and its route name (an answered probe is never audited, so the name is not
-/// in the audit vocabulary).
+/// The path of the liveness probe, and its route name. An answered probe writes no audit record (S-3); a refused
+/// one is audited as `entry.health`, which the audit catalogue of an installation lists.
 const HEALTH_PATH: &str = "/healthz";
 const HEALTH_ROUTE: &str = "health";
 
