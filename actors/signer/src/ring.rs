@@ -1,21 +1,33 @@
 //! The key set: the kind `SigningRing`, one item `default` per boundary (PLAN.md D-17), that
 //! `signer` writes and `entry` and exporter@ read (kinds.yaml).
 //!
+//! # Nodes and keys
+//!
+//! Every board has a token-signing key of its own in its card, and the boards share one ring, so the
+//! ring holds one `active` key per node (ADR 0006 "The token-signing key": the key set carries every
+//! active token key). Each key names its node, and a `signer` changes the keys of its own node
+//! only: it never promotes, retires or reactivates another node's key. A node that rotates its key
+//! therefore cannot make the other boards' keys stop, and two boards never undo each other.
+//!
 //! # The states of a key
 //!
 //! A key moves one way, `pre-published`, then `active`, then `retiring`, then it is dropped
-//! (ADR 0006 "Rotation": the new key first, the old one after; ADR 0017 "Issuers"):
+//! (ADR 0006 "Rotation": the new key first, the old one after; ADR 0017 "Issuers"). A retiring
+//! key never signs again:
 //!
 //! - **`pre-published`**: in the key set, not signing. A verifier that caches the key set learns the
-//!   key before the first token is signed with it, which is the lesson of v1 (SLU-290: Envoy's
-//!   `jwt_authn` caches a key set for 10 minutes and does not refetch on an unknown `kid`). A key
-//!   becomes `active` after [`Timing::prepublish`].
+//!   key before the first token is signed with it, which is the lesson of v1 (SLU-290: a verifier
+//!   may hold a key set for a long time and does not refetch on an unknown `kid`; v1.80.2 publishes a
+//!   key for 12 hours before it signs). A key becomes `active` after [`Timing::prepublish`].
 //! - **`active`**: the key that signs. `signer` signs only when the key key@ signs with is `active`.
 //! - **`retiring`**: stopped signing, still in the key set until every token it signed has expired:
-//!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Then it is dropped.
+//!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Any instance then drops it.
 //!
-//! The first key of a boundary is `active` at once: there is no earlier key set for a verifier to
-//! have cached, and nothing else could sign.
+//! A node's first key is `active` at once while the ring is young: when no key of the ring is older
+//! than [`Timing::bootstrap`]. The boards of a first deploy start within minutes of each other, no
+//! verifier has seen a token yet, and holding every board's first token back for the window would
+//! stop the installation from starting. A node that joins later, or a key that replaces another,
+//! is published for the full window first.
 //!
 //! # How it is written
 //!
@@ -63,19 +75,22 @@ impl Kind for RingKind {
 /// How long a key is published before it signs, and after it stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Timing {
-    /// A new key is published this long before it signs. v1 used 15 minutes, more than the 10 minutes
-    /// a verifier may cache a key set for.
+    /// A new key is published this long before it signs. v1.80.2 uses 12 hours (SLU-290).
     pub prepublish: Duration,
     /// A key that stopped signing stays published this long: the longest token lifetime of one hour
     /// (ADR 0020 "Lifetimes") plus five minutes of clock skew (REQ-KEYS-007).
     pub retain: Duration,
+    /// A node's first key signs at once while no key of the ring is older than this: the boards of
+    /// a first deploy.
+    pub bootstrap: Duration,
 }
 
 impl Timing {
     /// The values of v1, kept so that a relying party tuned to them keeps working.
     pub const DEFAULT: Self = Self {
-        prepublish: Duration::from_secs(15 * 60),
+        prepublish: Duration::from_secs(12 * 3600),
         retain: Duration::from_secs(HARD_CAP_SECS.unsigned_abs() + 5 * 60),
+        bootstrap: Duration::from_secs(15 * 60),
     };
 }
 
@@ -129,12 +144,16 @@ fn enter(k: &mut SigningKey, state: &str, now: SystemTime) {
     k.state_since = stamp(now).into();
 }
 
-/// Plans the next ring from the ring as it is, the key key@ signs with, and the clock. Nothing
-/// is written here. The ring is unchanged when the list of changes is empty.
+/// Plans the next ring from the ring as it is, the key key@ signs with, the node it belongs to, and
+/// the clock. Nothing is written here. The ring is unchanged when the list of changes is empty.
+///
+/// Only the keys of `node` are changed, apart from the drop of any key that has been retiring for
+/// the retention.
 #[must_use]
 pub fn plan(
     ring: &SigningRing,
     cur: &Current,
+    node: &str,
     now: SystemTime,
     t: &Timing,
 ) -> (SigningRing, Vec<Change>) {
@@ -147,7 +166,14 @@ pub fn plan(
 
     match keys.iter().position(|k| k.key_id == cur.key_id) {
         None => {
-            let state = if keys.is_empty() {
+            // A node's first key signs at once while the ring is young (the first deploy); every other
+            // key is published for the full window first.
+            let first_of_node = !keys.iter().any(|k| k.node == node);
+            // A key of unknown age counts as old: it never makes the ring young.
+            let young = keys
+                .iter()
+                .all(|k| instant(k.added_at.as_option()).is_some_and(|at| now < at + t.bootstrap));
+            let state = if first_of_node && young {
                 ACTIVE
             } else {
                 PRE_PUBLISHED
@@ -160,31 +186,33 @@ pub fn plan(
                 added_at: stamp(now).into(),
                 state: state.to_owned(),
                 state_since: stamp(now).into(),
+                node: node.to_owned(),
                 ..SigningKey::default()
             });
             changes.push(change(&cur.key_id, ChangeKind::Added(state)));
         }
         Some(i) => {
             let k = &mut keys[i];
-            // Published long enough, or published all along and called back (a key that was
-            // retiring has been in the key set for longer than the window).
-            let due = k.state == PRE_PUBLISHED && now >= since(k, now) + t.prepublish;
-            if due || k.state == RETIRING {
+            // Only the node's own key, and only a key that was published for the whole window. A
+            // retiring key does not come back, and another node's key is not ours to promote.
+            if k.node == node && k.state == PRE_PUBLISHED && now >= since(k, now) + t.prepublish {
                 enter(k, ACTIVE, now);
                 changes.push(change(&cur.key_id, ChangeKind::Activated));
             }
         }
     }
 
-    // The key key@ signs with is the only one that signs: once it is active the others stop.
+    // Once the key key@ signs with is active, the node's earlier keys stop. The keys of other nodes
+    // are theirs: their signers retire them.
     if keys
         .iter()
-        .any(|k| k.key_id == cur.key_id && k.state == ACTIVE)
+        .any(|k| k.key_id == cur.key_id && k.node == node && k.state == ACTIVE)
     {
-        for k in keys
-            .iter_mut()
-            .filter(|k| k.key_id != cur.key_id && (k.state == ACTIVE || k.state == PRE_PUBLISHED))
-        {
+        for k in keys.iter_mut().filter(|k| {
+            k.node == node
+                && k.key_id != cur.key_id
+                && (k.state == ACTIVE || k.state == PRE_PUBLISHED)
+        }) {
             enter(k, RETIRING, now);
             changes.push(change(&k.key_id.clone(), ChangeKind::Retired));
         }
@@ -235,6 +263,7 @@ pub struct RingKeeper {
     audit: Arc<Auditor>,
     clock: Clock,
     timing: Timing,
+    node: String,
     snapshot: Mutex<Option<Snapshot>>,
 }
 
@@ -250,6 +279,7 @@ impl RingKeeper {
         audit: Arc<Auditor>,
         clock: Clock,
         timing: Timing,
+        node: String,
     ) -> Result<Self, StoreError> {
         Ok(Self {
             store: Store::new(store.clone())?,
@@ -257,6 +287,7 @@ impl RingKeeper {
             audit,
             clock,
             timing,
+            node,
             snapshot: Mutex::new(None),
         })
     }
@@ -323,7 +354,7 @@ impl RingKeeper {
                 _ => return Err(RingError::Store),
             };
             let now = (self.clock)();
-            let (next, changes) = plan(&ring, &cur, now, &self.timing);
+            let (next, changes) = plan(&ring, &cur, &self.node, now, &self.timing);
             if changes.is_empty() {
                 return Ok(snapshot(&ring, cur, now));
             }
@@ -371,6 +402,11 @@ mod tests {
     use super::*;
 
     const MIN: u64 = 60;
+    const HOUR: u64 = 3600;
+    const WINDOW: u64 = 12 * HOUR;
+    const A: &str = "node-a";
+    const B: &str = "node-b";
+
     fn at(secs: u64) -> SystemTime {
         UNIX_EPOCH + Duration::from_secs(secs)
     }
@@ -387,109 +423,204 @@ mod tests {
             .map(|k| (k.key_id.as_str(), k.state.as_str()))
             .collect()
     }
+    fn added(id: &str, kind: ChangeKind) -> Change {
+        Change {
+            key_id: id.into(),
+            kind,
+        }
+    }
     const T: Timing = Timing::DEFAULT;
 
+    /// Runs `signer` of `node`, whose key@ signs with `id`, at `secs`, and returns the ring.
+    fn step(ring: &SigningRing, node: &str, id: &str, secs: u64) -> (SigningRing, Vec<Change>) {
+        plan(ring, &cur(id), node, at(secs), &T)
+    }
+
     #[test]
-    fn the_first_key_of_a_boundary_is_active_at_once() {
-        let (r, ch) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
+    fn the_window_is_the_twelve_hours_of_v1() {
+        assert_eq!(T.prepublish, Duration::from_secs(12 * HOUR));
+        assert_eq!(T.retain, Duration::from_secs(65 * MIN));
+    }
+
+    #[test]
+    fn the_first_key_of_a_boundary_is_active_at_once_and_names_its_node() {
+        let (r, ch) = step(&SigningRing::default(), A, "a", 1000);
         assert_eq!(states(&r), [("a", ACTIVE)]);
-        assert_eq!(
-            ch,
-            [Change {
-                key_id: "a".into(),
-                kind: ChangeKind::Added(ACTIVE)
-            }]
-        );
+        assert_eq!(ch, [added("a", ChangeKind::Added(ACTIVE))]);
         assert_eq!(r.keys[0].algorithm, "ES384");
         assert_eq!(r.keys[0].spki_der, [1, 2, 3]);
+        assert_eq!(r.keys[0].node, A);
+    }
+
+    #[test]
+    fn the_boards_of_a_first_deploy_each_activate_their_first_key_at_once() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, B, "b", 1000 + 5 * MIN);
+        let (r, _) = step(&r, "node-c", "c", 1000 + 14 * MIN);
+        assert_eq!(states(&r), [("a", ACTIVE), ("b", ACTIVE), ("c", ACTIVE)]);
+    }
+
+    #[test]
+    fn a_board_that_joins_after_the_first_deploy_is_published_for_the_full_window() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, ch) = step(&r, B, "b", 1000 + 15 * MIN);
+        assert_eq!(states(&r), [("a", ACTIVE), ("b", PRE_PUBLISHED)]);
+        assert_eq!(ch, [added("b", ChangeKind::Added(PRE_PUBLISHED))]);
+        let joined = 1000 + 15 * MIN;
+        let (r2, ch) = step(&r, B, "b", joined + WINDOW - 1);
+        assert!(ch.is_empty());
+        assert_eq!(r2, r);
+        let (r3, ch) = step(&r, B, "b", joined + WINDOW);
+        assert_eq!(states(&r3), [("a", ACTIVE), ("b", ACTIVE)]);
+        assert_eq!(ch, [added("b", ChangeKind::Activated)]);
     }
 
     #[test]
     fn nothing_changes_when_nothing_is_due() {
-        let (r, _) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
-        let (r2, ch) = plan(&r, &cur("a"), at(1000 + 3 * 3600), &T);
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r2, ch) = step(&r, A, "a", 1000 + 30 * HOUR);
         assert!(ch.is_empty());
         assert_eq!(r2, r);
     }
 
     #[test]
-    fn a_new_key_is_published_for_the_window_before_it_signs() {
-        let (r, _) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
-        let (r, ch) = plan(&r, &cur("b"), at(2000), &T);
-        assert_eq!(states(&r), [("a", ACTIVE), ("b", PRE_PUBLISHED)]);
+    fn a_new_key_of_a_node_is_published_for_the_window_before_it_signs() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        // Even in the first minutes: a replacement key is never a first key.
+        let (r, ch) = step(&r, A, "a2", 2000);
+        assert_eq!(states(&r), [("a", ACTIVE), ("a2", PRE_PUBLISHED)]);
         assert_eq!(ch.len(), 1);
-        // One second short of the window: still not signing.
-        let almost = 2000 + 15 * MIN - 1;
-        let (r2, ch) = plan(&r, &cur("b"), at(almost), &T);
+        let (r2, ch) = step(&r, A, "a2", 2000 + WINDOW - 1);
         assert!(ch.is_empty());
         assert_eq!(r2, r);
-        // At the window: it signs, and the old key stops.
-        let (r3, ch) = plan(&r, &cur("b"), at(2000 + 15 * MIN), &T);
-        assert_eq!(states(&r3), [("a", RETIRING), ("b", ACTIVE)]);
+        // At the window: it signs, and the node's old key stops.
+        let (r3, ch) = step(&r, A, "a2", 2000 + WINDOW);
+        assert_eq!(states(&r3), [("a", RETIRING), ("a2", ACTIVE)]);
         assert_eq!(
             ch,
             [
-                Change {
-                    key_id: "b".into(),
-                    kind: ChangeKind::Activated
-                },
-                Change {
-                    key_id: "a".into(),
-                    kind: ChangeKind::Retired
-                },
+                added("a2", ChangeKind::Activated),
+                added("a", ChangeKind::Retired)
             ]
         );
     }
 
     #[test]
     fn a_retired_key_stays_for_a_token_lifetime_plus_the_skew_and_then_leaves() {
-        let (r, _) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
-        let (r, _) = plan(&r, &cur("b"), at(2000), &T);
-        let retired_at = 2000 + 15 * MIN;
-        let (r, _) = plan(&r, &cur("b"), at(retired_at), &T);
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let retired_at = 2000 + WINDOW;
+        let (r, _) = step(&r, A, "a2", retired_at);
         let keep = 65 * MIN;
-        let (r2, ch) = plan(&r, &cur("b"), at(retired_at + keep - 1), &T);
+        let (r2, ch) = step(&r, A, "a2", retired_at + keep - 1);
         assert!(ch.is_empty(), "a token it signed may still be valid");
-        assert_eq!(states(&r2), [("a", RETIRING), ("b", ACTIVE)]);
-        let (r3, ch) = plan(&r, &cur("b"), at(retired_at + keep), &T);
-        assert_eq!(states(&r3), [("b", ACTIVE)]);
+        assert_eq!(states(&r2), [("a", RETIRING), ("a2", ACTIVE)]);
+        let (r3, ch) = step(&r, A, "a2", retired_at + keep);
+        assert_eq!(states(&r3), [("a2", ACTIVE)]);
+        assert_eq!(ch, [added("a", ChangeKind::Dropped)]);
+    }
+
+    #[test]
+    fn a_retiring_key_never_signs_again() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let (r, _) = step(&r, A, "a2", 2000 + WINDOW);
+        // key@ goes back to a, which is retiring: it stays retiring, and nothing else changes.
+        let (r2, ch) = step(&r, A, "a", 2000 + WINDOW + MIN);
+        assert!(ch.is_empty());
+        assert_eq!(states(&r2), [("a", RETIRING), ("a2", ACTIVE)]);
+    }
+
+    #[test]
+    fn a_node_never_changes_the_key_of_another_node() {
+        // Both boards have a key; B rotates. A's signer, running at every moment, changes nothing.
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, B, "b", 1000);
+        let (r, _) = step(&r, B, "b2", 2 * HOUR);
         assert_eq!(
-            ch,
-            [Change {
-                key_id: "a".into(),
-                kind: ChangeKind::Dropped
-            }]
+            states(&r),
+            [("a", ACTIVE), ("b", ACTIVE), ("b2", PRE_PUBLISHED)]
+        );
+        for t in [2 * HOUR + 1, 2 * HOUR + WINDOW / 2, 2 * HOUR + WINDOW - 1] {
+            let (r2, ch) = step(&r, A, "a", t);
+            assert!(ch.is_empty(), "A changed something at {t}: {ch:?}");
+            assert_eq!(r2, r);
+        }
+        // A's signer does not promote B's key even when it is due, and B's does not retire A's.
+        let due = 2 * HOUR + WINDOW;
+        let (r2, ch) = step(&r, A, "a", due);
+        assert!(ch.is_empty());
+        assert_eq!(r2, r);
+        let (r3, _) = step(&r, B, "b2", due);
+        assert_eq!(
+            states(&r3),
+            [("a", ACTIVE), ("b", RETIRING), ("b2", ACTIVE)]
         );
     }
 
     #[test]
-    fn a_key_called_back_is_active_again_and_the_other_stops() {
-        let (r, _) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
-        let (r, _) = plan(&r, &cur("b"), at(2000), &T);
-        let (r, _) = plan(&r, &cur("b"), at(2000 + 15 * MIN), &T);
-        // key@ goes back to a, which is retiring: it has been published all along.
-        let (r, ch) = plan(&r, &cur("a"), at(2000 + 16 * MIN), &T);
-        assert_eq!(states(&r), [("a", ACTIVE), ("b", RETIRING)]);
-        assert_eq!(ch.len(), 2);
+    fn two_boards_with_one_ring_do_not_flap() {
+        // 90 hours of both signers looking every 30 seconds, as the loop does, with B rotating once
+        // in the middle: every change is one that its own node makes, and no key goes back.
+        let (mut r, _) = step(&SigningRing::default(), A, "a", 0);
+        (r, _) = step(&r, B, "b", 0);
+        let mut b_key = "b";
+        let mut seen: Vec<(String, String)> = Vec::new();
+        let mut t = 0;
+        while t < 90 * HOUR {
+            if t == 30 * HOUR {
+                b_key = "b2";
+            }
+            for (node, key) in [(A, "a"), (B, b_key)] {
+                let (next, ch) = step(&r, node, key, t);
+                for c in &ch {
+                    seen.push((c.key_id.clone(), format!("{:?}", c.kind)));
+                    let owner = next
+                        .keys
+                        .iter()
+                        .find(|k| k.key_id == c.key_id)
+                        .map(|k| k.node.clone());
+                    // A change is made by the node that owns the key, except the drop of a retiring key.
+                    if c.kind != ChangeKind::Dropped {
+                        assert_eq!(owner.as_deref(), Some(node), "{node} changed {}", c.key_id);
+                    }
+                }
+                r = next;
+            }
+            t += 30 * 60; // a coarser step than the loop's 30 seconds; the plan has no state of its own
+        }
+        let log: Vec<_> = seen.iter().map(|(k, c)| format!("{k}:{c}")).collect();
+        assert_eq!(
+            log,
+            [
+                "b2:Added(\"pre-published\")",
+                "b2:Activated",
+                "b:Retired",
+                "b:Dropped"
+            ]
+        );
+        assert_eq!(states(&r), [("a", ACTIVE), ("b2", ACTIVE)]);
     }
 
     #[test]
     fn a_pre_published_key_that_key_never_signs_with_retires_and_leaves() {
-        let (r, _) = plan(&SigningRing::default(), &cur("a"), at(1000), &T);
-        let (r, _) = plan(&r, &cur("b"), at(2000), &T);
-        // key@ went back to a before b was due: b never signed, and a is still active.
-        let (r, ch) = plan(&r, &cur("a"), at(2000 + 5 * MIN), &T);
-        assert_eq!(states(&r), [("a", ACTIVE), ("b", RETIRING)]);
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        // a2 was replaced by a3 before its window: a3 is published, a2 never signs.
+        let (r, _) = step(&r, A, "a3", 3000);
         assert_eq!(
-            ch,
-            [Change {
-                key_id: "b".into(),
-                kind: ChangeKind::Retired
-            }]
+            states(&r),
+            [("a", ACTIVE), ("a2", PRE_PUBLISHED), ("a3", PRE_PUBLISHED)]
         );
-        let (r, ch) = plan(&r, &cur("a"), at(2000 + 5 * MIN + 65 * MIN), &T);
-        assert_eq!(states(&r), [("a", ACTIVE)]);
-        assert_eq!(ch.len(), 1);
+        let (r, ch) = step(&r, A, "a3", 3000 + WINDOW);
+        assert_eq!(
+            states(&r),
+            [("a", RETIRING), ("a2", RETIRING), ("a3", ACTIVE)]
+        );
+        assert_eq!(ch.len(), 3);
+        let (r, ch) = step(&r, A, "a3", 3000 + WINDOW + 65 * MIN);
+        assert_eq!(states(&r), [("a3", ACTIVE)]);
+        assert_eq!(ch.len(), 2);
     }
 
     #[test]
@@ -509,12 +640,13 @@ mod tests {
             ],
             ..SigningRing::default()
         };
-        let (r, ch) = plan(&ring, &cur("a"), at(10_000_000), &T);
-        // a joins pre-published (the ring was not empty); "old" counts from now and stays; "odd" is untouched.
-        assert_eq!(
-            states(&r),
-            [("old", RETIRING), ("odd", "revoked"), ("a", PRE_PUBLISHED)]
-        );
+        let (r, ch) = step(&ring, A, "a", 10_000_000);
+        // a joins pre-published (the ring was not young: no key has a stamp, so none counts as old,
+        // and the node has no key yet); "old" counts from now and stays; "odd" is untouched.
+        assert_eq!(r.keys.len(), 3);
+        assert_eq!(r.keys[2].state, PRE_PUBLISHED);
+        assert_eq!(r.keys[0].state, RETIRING);
+        assert_eq!(r.keys[1].state, "revoked");
         assert_eq!(ch.len(), 1);
     }
 }

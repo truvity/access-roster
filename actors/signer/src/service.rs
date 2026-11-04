@@ -81,6 +81,9 @@ pub struct Config {
     pub sockets: Sockets,
     /// The release, for the audit record (`sluis_version`).
     pub release: String,
+    /// The node this instance runs on: the board, or the container. It names the keys of the ring
+    /// that this instance may change (`SigningKey.node`).
+    pub node: String,
     /// How long a key is published before it signs, and after it stopped.
     pub timing: Timing,
     /// How long `serve` waits for key@ and store@ before it gives up.
@@ -139,6 +142,13 @@ impl From<KeyError> for Refuse {
     }
 }
 
+/// A node name is a short host-like word; it is written to the ring and to the audit log.
+fn node_ok(n: &str) -> bool {
+    (1..=64).contains(&n.len())
+        && n.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
 fn b64(bytes: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
@@ -159,6 +169,9 @@ impl Signer {
     ///
     /// When the audit emitter's configuration is refused, or a kind is not in the registry.
     pub fn new(cfg: &Config) -> anyhow::Result<Self> {
+        if !node_ok(&cfg.node) {
+            bail!("the node is 1 to 64 characters of letters, digits, '.', '-' and '_'");
+        }
         let clock: Clock = cfg.now.clone().unwrap_or_else(|| Arc::new(SystemTime::now));
         let audit = Arc::new(Auditor::new(sluis_audit::Config {
             actor: "signer".into(),
@@ -177,6 +190,7 @@ impl Signer {
             Arc::clone(&audit),
             Arc::clone(&clock),
             cfg.timing,
+            cfg.node.clone(),
         )
         .map_err(|e| anyhow::anyhow!("SigningRing: {e}"))?;
         let config = config::Config::new(&store, Arc::clone(&clock))

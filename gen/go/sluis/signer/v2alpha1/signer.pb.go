@@ -267,6 +267,7 @@ type SigningKey struct {
 	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"`          // when the key joined the ring
 	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`                             // "pre-published", "active" or "retiring" (0006 "Rotation")
 	StateSince    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=state_since,json=stateSince,proto3" json:"state_since,omitempty"` // when the key entered its present state; the clocks of the prepublish and the retention
+	Node          string                 `protobuf:"bytes,8,opt,name=node,proto3" json:"node,omitempty"`                               // the node whose key@ holds the key; only that node's signer retires it (0006: one token-signing key per board)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -350,6 +351,13 @@ func (x *SigningKey) GetStateSince() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *SigningKey) GetNode() string {
+	if x != nil {
+		return x.Node
+	}
+	return ""
+}
+
 var File_sluis_signer_v2alpha1_signer_proto protoreflect.FileDescriptor
 
 const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
@@ -366,7 +374,7 @@ const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
 	"\x0eKeySetResponse\x12\x1b\n" +
 	"\tjwks_json\x18\x01 \x01(\fR\bjwksJson\"D\n" +
 	"\vSigningRing\x125\n" +
-	"\x04keys\x18\x01 \x03(\v2!.sluis.signer.v2alpha1.SigningKeyR\x04keys\"\xf8\x01\n" +
+	"\x04keys\x18\x01 \x03(\v2!.sluis.signer.v2alpha1.SigningKeyR\x04keys\"\x8c\x02\n" +
 	"\n" +
 	"SigningKey\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
@@ -376,7 +384,8 @@ const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
 	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\x12\x14\n" +
 	"\x05state\x18\x06 \x01(\tR\x05state\x12;\n" +
 	"\vstate_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"stateSince2\xc6\x01\n" +
+	"stateSince\x12\x12\n" +
+	"\x04node\x18\b \x01(\tR\x04node2\xc6\x01\n" +
 	"\rSignerService\x12^\n" +
 	"\tSignToken\x12'.sluis.signer.v2alpha1.SignTokenRequest\x1a(.sluis.signer.v2alpha1.SignTokenResponse\x12U\n" +
 	"\x06KeySet\x12$.sluis.signer.v2alpha1.KeySetRequest\x1a%.sluis.signer.v2alpha1.KeySetResponseB\xe7\x01\n" +

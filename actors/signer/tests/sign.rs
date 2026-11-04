@@ -443,6 +443,16 @@ fn fake_server(socket: &Path, actor: &'static str, router: Router) -> oneshot::S
     tx
 }
 
+fn new_fake_key() -> Arc<FakeKey> {
+    Arc::new(FakeKey {
+        current: Mutex::new(material()),
+        signed: Mutex::default(),
+        calls: AtomicUsize::new(0),
+        down: AtomicBool::new(false),
+        corrupt: AtomicBool::new(false),
+    })
+}
+
 fn minutes(m: i64) -> Option<PbDuration> {
     Some(PbDuration {
         seconds: m * 60,
@@ -494,13 +504,7 @@ impl World {
                 .encode_to_vec(),
             );
         }
-        let key = Arc::new(FakeKey {
-            current: Mutex::new(material()),
-            signed: Mutex::default(),
-            calls: AtomicUsize::new(0),
-            down: AtomicBool::new(false),
-            corrupt: AtomicBool::new(false),
-        });
+        let key = new_fake_key();
         let spool = Arc::new(FakeSpool::default());
         let stops = vec![
             fake_server(
@@ -534,6 +538,7 @@ impl World {
             socket_gid: None,
             sockets,
             release: "0.0.0-test".into(),
+            node: "node-a".into(),
             timing: Timing::DEFAULT,
             start_timeout: Duration::from_secs(5),
             now: Some(Arc::new(move || {
@@ -559,9 +564,24 @@ impl World {
         caller: &'static str,
         block: u32,
     ) -> SignerServiceClient<sluis_kit::Transport> {
+        self.signer_on(name, caller, block, "node-a", &self.cfg.sockets.key.clone())
+            .await
+    }
+
+    /// As [`signer_as`](Self::signer_as), on the node `node`, whose key@ is on `key_socket`.
+    async fn signer_on(
+        &self,
+        name: &str,
+        caller: &'static str,
+        block: u32,
+        node: &str,
+        key_socket: &Path,
+    ) -> SignerServiceClient<sluis_kit::Transport> {
         let socket = self.dir.path().join(format!("{name}.sock"));
         let mut cfg = self.cfg.clone();
         cfg.socket = socket.clone();
+        cfg.node = node.into();
+        cfg.sockets.key = key_socket.to_path_buf();
         let (tx, rx) = oneshot::channel::<()>();
         self.stops.lock().unwrap().push(tx);
         tokio::spawn(signer::serve_with(
@@ -574,6 +594,20 @@ impl World {
         wait_for(&socket).await;
         let c = sluis_kit::dial(&socket);
         SignerServiceClient::new(c.transport(), c.config())
+    }
+
+    /// The key@ of another board: its own stand-in, with a key of its own, on a socket of its own.
+    async fn another_key(&self, name: &str) -> (Arc<FakeKey>, PathBuf) {
+        let socket = self.dir.path().join(format!("{name}.sock"));
+        let key = new_fake_key();
+        let stop = fake_server(
+            &socket,
+            "key",
+            Arc::new(KeySvc(key.clone())).register(Router::new()),
+        );
+        self.stops.lock().unwrap().push(stop);
+        wait_for(&socket).await;
+        (key, socket)
     }
 
     async fn signer(&self) -> SignerServiceClient<sluis_kit::Transport> {
@@ -1005,10 +1039,10 @@ async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_t
         "key@ signed nothing with the unpublished key"
     );
 
-    // Just short of 15 minutes after it was published it still does not sign; a little after, it does.
+    // Just short of 12 hours after it was published it still does not sign; a little after, it does.
     // (The ring is looked at again when the last look is ten seconds old, so a key signs at most ten
     // seconds after its window; the exact second is the test of `ring::plan`.)
-    w.clock.advance(15 * 60 - 20);
+    w.clock.advance(12 * 3600 - 20);
     let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
         .await
         .unwrap_err();
@@ -1071,6 +1105,140 @@ async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_t
     assert_eq!(w.spool.records("signer.ring.add").len(), 2);
     assert_eq!(w.spool.records("signer.ring.change").len(), 2);
     assert_eq!(w.spool.records("signer.ring.drop").len(), 1);
+}
+
+/// The rows of a ring in an order that does not depend on the made-up key ids.
+fn sorted<const N: usize>(rows: [(String, String, String); N]) -> Vec<(String, String, String)> {
+    let mut v = rows.to_vec();
+    v.sort();
+    v
+}
+
+#[tokio::test]
+async fn two_boards_share_one_ring_without_flapping_and_every_new_key_waits_for_the_window() {
+    let w = World::new().await;
+    let (key_b, socket_b) = w.another_key("key-b").await;
+    let a = w
+        .signer_on("one", "exchange", 0, "node-a", &w.cfg.sockets.key.clone())
+        .await;
+    let b = w.signer_on("two", "exchange", 0, "node-b", &socket_b).await;
+    let kid_a = w.key.current.lock().unwrap().kid.clone();
+    let kid_b = key_b.current.lock().unwrap().kid.clone();
+    let writes_at_start = w.store.writes.lock().unwrap().len();
+    let ring = || w.store.ring().unwrap().1;
+    let states = |r: &sluis_proto::sluis::signer::v2alpha1::SigningRing| {
+        r.keys
+            .iter()
+            .map(|k| (k.node.clone(), k.key_id.clone(), k.state.clone()))
+            .collect::<Vec<_>>()
+    };
+    // The first deploy: both boards' first keys are active at once, each named for its node.
+    let mut start = states(&ring());
+    start.sort();
+    assert_eq!(
+        start,
+        sorted([
+            ("node-a".into(), kid_a.clone(), "active".into()),
+            ("node-b".into(), kid_b.clone(), "active".into())
+        ])
+    );
+    let first = sign(&a, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let second = sign(&b, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(
+        (first.key_id.as_str(), second.key_id.as_str()),
+        (kid_a.as_str(), kid_b.as_str())
+    );
+    let jwks = key_set(&a).await;
+    verify(&w, &jwks, &first.token, "example-app", "at+jwt").unwrap();
+    verify(&w, &jwks, &second.token, "example-app", "at+jwt").unwrap();
+
+    // Two hours of both signers asking every eleven seconds: the ring is not written again, and
+    // every token verifies against the key set.
+    for _ in 0..650 {
+        w.clock.advance(11);
+        for (c, kid) in [(&a, &kid_a), (&b, &kid_b)] {
+            let t = sign(c, "JWT", w.claims("JWT", "sluis-cli", 600))
+                .await
+                .unwrap();
+            assert_eq!(&t.key_id, kid);
+        }
+    }
+    assert_eq!(
+        w.store.writes.lock().unwrap().len(),
+        writes_at_start,
+        "no change, no write"
+    );
+
+    // Board B rotates its key. Its new key is published, and board A's key is not touched.
+    let new_b = material();
+    let kid_b2 = new_b.kid.clone();
+    *key_b.current.lock().unwrap() = new_b;
+    let rotated_at = w.clock.secs();
+    let calls_b = key_b.calls.load(Ordering::SeqCst);
+    // The first look adds the key (eleven seconds on); the last is thirty seconds short of its window.
+    for advance in [11u64, 3600, 5 * 3600, 12 * 3600 - 30 - 6 * 3600] {
+        w.clock.advance(advance);
+        // B refuses: its new key has not been published for the window. A signs throughout.
+        let e = sign(&b, "JWT", w.claims("JWT", "sluis-cli", 600))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (e.code, reason(&e).as_str()),
+            (ErrorCode::Unavailable, "key_set")
+        );
+        let t = sign(&a, "JWT", w.claims("JWT", "sluis-cli", 600))
+            .await
+            .unwrap();
+        assert_eq!(t.key_id, kid_a);
+        let mut now = states(&ring());
+        now.sort();
+        assert_eq!(
+            now,
+            sorted([
+                ("node-a".into(), kid_a.clone(), "active".into()),
+                ("node-b".into(), kid_b.clone(), "active".into()),
+                ("node-b".into(), kid_b2.clone(), "pre-published".into()),
+            ]),
+            "after {} s",
+            w.clock.secs() - rotated_at
+        );
+    }
+    assert_eq!(
+        key_b.calls.load(Ordering::SeqCst),
+        calls_b,
+        "key@ of B signed nothing with the unpublished key"
+    );
+    // The unpublished key is in the key set the whole time.
+    let v: Value = serde_json::from_slice(&key_set(&a).await).unwrap();
+    assert_eq!(v["keys"].as_array().unwrap().len(), 3);
+
+    // After the window it signs; B's old key retires; A's key is still active.
+    w.clock.advance(60);
+    let t = sign(&b, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    assert_eq!(t.key_id, kid_b2);
+    let mut now = states(&ring());
+    now.sort();
+    assert_eq!(
+        now,
+        sorted([
+            ("node-a".into(), kid_a.clone(), "active".into()),
+            ("node-b".into(), kid_b.clone(), "retiring".into()),
+            ("node-b".into(), kid_b2.clone(), "active".into()),
+        ])
+    );
+    let jwks = key_set(&a).await;
+    verify(&w, &jwks, &t.token, "sluis-cli", "JWT").unwrap();
+    // A keeps signing, and its signer never wrote a change of another node's key.
+    let t = sign(&a, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    assert_eq!(t.key_id, kid_a);
 }
 
 #[tokio::test]
