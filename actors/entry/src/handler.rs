@@ -481,6 +481,13 @@ fn is_form(h: &HeaderMap) -> bool {
     parts.next() == Some("application/x-www-form-urlencoded") && parts.all(|p| p == "charset=utf-8")
 }
 
+/// The client authentication methods of the token endpoint (RFC 8414 section 2): `none` for a public client,
+/// `client_secret_basic` from [`authorization`] and `client_secret_post` from the `client_secret` field, which every
+/// grant of `/token` passes on. Discovery advertises exactly these, so a method added to the parsing below is added
+/// here, and `private_key_jwt` joins when it is accepted (REQ-EXCH-021).
+pub(crate) const TOKEN_ENDPOINT_AUTH_METHODS: [&str; 3] =
+    ["none", "client_secret_basic", "client_secret_post"];
+
 /// The `Authorization` header, which RFC 6749 section 2.3.1 uses for `client_secret_basic`.
 fn authorization(h: &HeaderMap) -> Result<String, Refuse> {
     let mut it = h.get_all(AUTHORIZATION).iter();

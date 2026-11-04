@@ -18,6 +18,7 @@ use sluis_proto::sluis::signer::v2alpha1::SigningRing;
 use sluis_store::{Kind, Store};
 use tokio::sync::Mutex;
 
+use crate::handler::TOKEN_ENDPOINT_AUTH_METHODS;
 use crate::refuse::Refuse;
 
 /// The singleton id of both kinds (PLAN.md D-17).
@@ -125,9 +126,8 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["ES384"],
         "code_challenge_methods_supported": ["S256"],
-        // Only what every grant of /token accepts: no grant authenticates a client by a secret
-        // yet, so a secret method is not offered.
-        "token_endpoint_auth_methods_supported": ["none"],
+        // What /token accepts for a client, from the handler that parses it.
+        "token_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
     });
     serde_json::to_vec(&doc).ok()
 }
