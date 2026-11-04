@@ -193,8 +193,7 @@ requirements:
     rationale: "Without one a name nobody declared would load, and a typo would grant nothing or the wrong thing (ADR 0020)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []

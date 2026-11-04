@@ -596,8 +596,7 @@ requirements:
     rationale: "The maximum is fixed in code, and a longer token needs a new decision record."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
