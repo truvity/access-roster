@@ -677,3 +677,57 @@ func TestTheKeySetOfTheBoundaryComesFromSignerAndIsKeptForAMinute(t *testing.T) 
 		t.Errorf("key set fetches = %d after forged tokens, want 2", e.signer.keysets)
 	}
 }
+
+// Until a confidential client is authenticated, a request that carries client credentials is refused, so nothing
+// authenticates by accident (ADR 0022, "Proofs and the exchange"). The refusal comes before the subject token is
+// read: it shows nothing of the subject or the audience.
+func TestARequestWithClientCredentialsIsInvalidClientBeforeAnythingElse(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	subject := e.mint(subjectClaims(nil))
+	for _, c := range []struct {
+		name      string
+		mutate    func(*exchangev2alpha1.TokenExchangeRequest)
+		challenge bool
+	}{
+		{"Basic", func(r *exchangev2alpha1.TokenExchangeRequest) { r.Authorization = "Basic dXNlcjpwdw==" }, true},
+		{"client_secret", func(r *exchangev2alpha1.TokenExchangeRequest) { r.ClientSecret = "s3cret-value" }, false},
+		{"both", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.Authorization, r.ClientSecret = "Basic dXNlcjpwdw==", "s3cret-value"
+		}, true},
+		{"with a bad subject token", func(r *exchangev2alpha1.TokenExchangeRequest) {
+			r.ClientSecret, r.SubjectToken, r.Audience = "s3cret-value", "not-a-jwt", ""
+		}, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := request(subject)
+			c.mutate(r)
+			rep := e.exchange(r)
+			if rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
+				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
+			}
+			var www string
+			for _, h := range rep.GetHeaders() {
+				if h.GetName() == "WWW-Authenticate" {
+					www = h.GetValue()
+				}
+			}
+			if (www != "") != c.challenge || (c.challenge && !strings.HasPrefix(www, "Basic ")) {
+				t.Errorf("WWW-Authenticate = %q, want a Basic challenge: %v", www, c.challenge)
+			}
+			rec := e.lastRecord()
+			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != "client_authentication" {
+				t.Errorf("record = %v", rec)
+			}
+		})
+	}
+	if n := len(e.policy.requests()) + len(e.signer.requests()) + len(e.key.pairwise()); n != 0 {
+		t.Errorf("a refused request reached policy, signer or key@ %d times", n)
+	}
+	// No record and no reply holds the credential.
+	for _, rec := range e.transport.records(t) {
+		raw, _ := json.Marshal(rec)
+		if strings.Contains(string(raw), "s3cret-value") || strings.Contains(string(raw), "dXNlcjpwdw") {
+			t.Fatalf("a record carries the credential: %s", raw)
+		}
+	}
+}

@@ -911,7 +911,7 @@ async fn token_checks_the_media_type_and_the_size() {
 }
 
 #[tokio::test]
-async fn client_authentication_by_header_reaches_session_and_never_exchange() {
+async fn client_authentication_by_header_or_form_reaches_session_and_exchange() {
     let up = up().await;
     let r = http(
         &up,
@@ -926,6 +926,7 @@ async fn client_authentication_by_header_reaches_session_and_never_exchange() {
         up.fake.calls.lock().unwrap().token[0].authorization,
         "Basic Zm9vOmJhcg=="
     );
+    // Exchange takes the header (client_secret_basic) ...
     let ex = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t";
     let r = http(
         &up,
@@ -935,9 +936,42 @@ async fn client_authentication_by_header_reaches_session_and_never_exchange() {
         ex.as_bytes(),
     )
     .await;
-    assert_eq!(r.status, 401);
-    assert_eq!(r.h("www-authenticate"), Some("Basic realm=\"sluis\""));
-    assert!(r.text().contains("invalid_client"));
+    assert_eq!(r.status, 200);
+    // ... or the form field (client_secret_post).
+    let post = format!("{ex}&client_id=app&client_secret=s3cret%2B%3D");
+    assert_eq!(post_token(&up, &post).await.status, 200);
+    let c = up.fake.calls.lock().unwrap();
+    assert_eq!(c.exchange.len(), 2);
+    assert_eq!(c.exchange[0].authorization, "Basic Zm9vOmJhcg==");
+    assert_eq!(c.exchange[0].client_secret, "");
+    assert_eq!(c.exchange[1].authorization, "");
+    assert_eq!(
+        (
+            c.exchange[1].client_id.as_str(),
+            c.exchange[1].client_secret.as_str()
+        ),
+        ("app", "s3cret+=")
+    );
+}
+
+#[tokio::test]
+async fn two_client_authentication_methods_in_one_exchange_are_refused_at_the_edge() {
+    // RFC 6749 section 2.3: a client uses one method per request. Even an empty secret is a second method.
+    let up = up().await;
+    let ex = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t";
+    for form in [format!("{ex}&client_secret=s"), format!("{ex}&client_secret=")] {
+        let r = http(
+            &up,
+            "POST",
+            "/token",
+            &[FORM, ("Authorization", "Basic Zm9vOmJhcg==")],
+            form.as_bytes(),
+        )
+        .await;
+        assert_eq!(r.status, 400);
+        assert!(r.text().contains("invalid_request"));
+        assert!(!r.text().contains("Zm9v") && !r.text().contains("=s"));
+    }
     assert!(up.fake.calls.lock().unwrap().exchange.is_empty());
 }
 

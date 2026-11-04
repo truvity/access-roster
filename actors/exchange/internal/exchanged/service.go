@@ -104,7 +104,7 @@ func (s *Service) Token(ctx context.Context, req *connect.Request[exchangev2alph
 	case err == nil:
 		return connect.NewResponse(out), nil
 	case errors.As(err, &r):
-		return connect.NewResponse(errorReply(r.code)), nil
+		return connect.NewResponse(errorReply(r)), nil
 	case errors.As(err, &o):
 		slog.Error("exchange: a dependency did not answer", "dependency", o.reason)
 		return nil, refusal.New(connect.CodeUnavailable, o.reason, "")
@@ -127,6 +127,13 @@ func (s *Service) audit(ctx context.Context, a *attempt, err error) error {
 // run carries out one exchange. It returns the reply, or an error that is a *refused (an answer), an *outage (a
 // dependency) or anything else (a bug).
 func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequest, a *attempt) (*typev2alpha1.HttpReply, error) {
+	// Client authentication comes before anything else, so that a failure shows nothing of the subject or the
+	// audience. exchange checks no client credential yet, so a request that carries one is refused rather than run
+	// as if it were unauthenticated (ADR 0022, "Proofs and the exchange").
+	// planned: authenticate a confidential client (REQ-EXCH-018)
+	if r.GetAuthorization() != "" || r.GetClientSecret() != "" {
+		return nil, invalidClient(r.GetAuthorization() != "")
+	}
 	if err := checkRequest(r); err != nil {
 		return nil, err
 	}
@@ -155,9 +162,8 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 		// planned: workload exchange, with the first workload consumer (#961)
 		return nil, invalidRequest(reasonProofKind)
 	}
-	// The client of the request is the client the subject token was issued to. The contract has no field for client
-	// authentication yet, so the token is the only thing that ties the request to a client (decision for the
-	// maintainer, REQ-EXCH-007 and REQ-EXCH-011).
+	// The client of the request is the client the subject token was issued to. exchange authenticates no client yet,
+	// so the token is the only thing that ties the request to a client (REQ-EXCH-007 and REQ-EXCH-011).
 	if r.GetClientId() != "" && r.GetClientId() != subject.ClientID {
 		return nil, invalidRequest(reasonClient)
 	}
@@ -240,7 +246,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 func checkRequest(r *exchangev2alpha1.TokenExchangeRequest) error {
 	switch {
 	case r.GetGrantType() != grantTokenExchange:
-		return &refused{codeUnsupportedGrant, reasonGrantType}
+		return &refused{code: codeUnsupportedGrant, reason: reasonGrantType}
 	case r.GetActorToken() != "" || r.GetActorTokenType() != "":
 		// REQ-EXCH-002: ignoring the parameter would imply delegation, which sluis does not provide (no `act`).
 		return invalidRequest(reasonActorToken)
@@ -253,7 +259,7 @@ func checkRequest(r *exchangev2alpha1.TokenExchangeRequest) error {
 		return invalidRequest(reasonSubjectType)
 	case r.GetScope() != "":
 		// The claims of a token have no scope (ADR 0020), so a narrower scope has nothing to narrow.
-		return &refused{codeInvalidScope, reasonScope}
+		return &refused{code: codeInvalidScope, reason: reasonScope}
 	case r.GetResource() != "":
 		// A resource indicator selects a registered client (ADR 0017), and a client declares no resource yet.
 		// planned: resource indicators, with the first client that declares one

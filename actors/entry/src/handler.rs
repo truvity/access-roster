@@ -162,13 +162,6 @@ fn refused(r: Refuse) -> Reply {
     if let Some(a) = r.allow {
         h.insert(ALLOW, HeaderValue::from_static(a));
     }
-    if r.kind == refuse::Kind::ClientAuth {
-        // RFC 6749 section 5.2: a 401 for a client that used the Authorization header names a scheme.
-        h.insert(
-            WWW_AUTHENTICATE,
-            HeaderValue::from_static("Basic realm=\"sluis\""),
-        );
-    }
     if status == 429 {
         h.insert(http::header::RETRY_AFTER, HeaderValue::from_static("5"));
     }
@@ -553,10 +546,11 @@ async fn token(
         routes::GRANT_EXCHANGE => {
             trace.grant = "token_exchange";
             let p = p.only(routes::TOKEN_EXCHANGE).map_err(bad)?;
-            // TokenExchangeRequest has no field for client authentication (a contract gap), so a
-            // request that authenticates with a header is `invalid_client`, not run unauthenticated.
-            if headers.contains_key(AUTHORIZATION) {
-                return Err(Refuse::client_auth("authorization"));
+            // A client uses one authentication method in a request (RFC 6749 section 2.3). The
+            // credentials go to exchange, which checks them; entry reads no secret and logs none.
+            let authorization = authorization(headers)?;
+            if !authorization.is_empty() && p.has("client_secret") {
+                return Err(Refuse::new(400, "client_authentication"));
             }
             let r = TokenExchangeRequest {
                 grant_type: p.get("grant_type"),
@@ -569,6 +563,8 @@ async fn token(
                 client_id: p.get("client_id"),
                 actor_token: p.get("actor_token"),
                 actor_token_type: p.get("actor_token_type"),
+                authorization,
+                client_secret: p.get("client_secret"),
                 ..TokenExchangeRequest::default()
             };
             let reply = state

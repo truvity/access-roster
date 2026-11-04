@@ -5,6 +5,7 @@ import "fmt"
 // The error codes of the token endpoint that exchange answers with (RFC 6749 section 5.2; RFC 8693 section 2.2.2).
 const (
 	codeInvalidRequest   = "invalid_request"
+	codeInvalidClient    = "invalid_client"
 	codeInvalidTarget    = "invalid_target"
 	codeInvalidScope     = "invalid_scope"
 	codeUnsupportedGrant = "unsupported_grant_type"
@@ -22,6 +23,7 @@ const (
 	reasonScope         = "scope"
 	reasonAudience      = "audience"
 	reasonClient        = "client"
+	reasonClientAuth    = "client_authentication"
 	reasonClientKind    = "client_kind"
 	reasonIssuer        = "issuer"
 	reasonSignature     = "signature"
@@ -40,12 +42,20 @@ const (
 type refused struct {
 	code   string
 	reason string
+	// basic is set on an invalid_client for a request that used HTTP Basic: the answer then names the scheme
+	// (RFC 6749 section 5.2, contracts.md "Uniform refusals at the edge").
+	basic bool
 }
 
 func (r *refused) Error() string { return fmt.Sprintf("refused: %s (%s)", r.code, r.reason) }
 
-func invalidRequest(reason string) error { return &refused{codeInvalidRequest, reason} }
-func invalidTarget(reason string) error  { return &refused{codeInvalidTarget, reason} }
+func invalidRequest(reason string) error { return &refused{code: codeInvalidRequest, reason: reason} }
+func invalidTarget(reason string) error  { return &refused{code: codeInvalidTarget, reason: reason} }
+
+// invalidClient is the answer to a client whose authentication is not accepted (RFC 6749 section 5.2).
+func invalidClient(basic bool) error {
+	return &refused{code: codeInvalidClient, reason: reasonClientAuth, basic: basic}
+}
 
 // outage is a dependency that did not answer. exchange fails closed: the call ends in a Connect error, never in an
 // answer on a weaker basis (ADR 0017, "Directory outages").

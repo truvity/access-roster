@@ -38,6 +38,8 @@ type TokenExchangeRequest struct {
 	ClientId           string                 `protobuf:"bytes,8,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`                                 // the client
 	ActorToken         string                 `protobuf:"bytes,9,opt,name=actor_token,json=actorToken,proto3" json:"actor_token,omitempty"`                           // the token of the actor, if any
 	ActorTokenType     string                 `protobuf:"bytes,10,opt,name=actor_token_type,json=actorTokenType,proto3" json:"actor_token_type,omitempty"`            // the type of the actor token
+	Authorization      string                 `protobuf:"bytes,11,opt,name=authorization,proto3" json:"authorization,omitempty"`                                      // the HTTP Authorization header, for client_secret_basic (RFC 6749 section 2.3.1)
+	ClientSecret       string                 `protobuf:"bytes,12,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"`                    // client_secret_post (RFC 6749 section 2.3.1)
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -138,6 +140,20 @@ func (x *TokenExchangeRequest) GetActorToken() string {
 func (x *TokenExchangeRequest) GetActorTokenType() string {
 	if x != nil {
 		return x.ActorTokenType
+	}
+	return ""
+}
+
+func (x *TokenExchangeRequest) GetAuthorization() string {
+	if x != nil {
+		return x.Authorization
+	}
+	return ""
+}
+
+func (x *TokenExchangeRequest) GetClientSecret() string {
+	if x != nil {
+		return x.ClientSecret
 	}
 	return ""
 }
@@ -256,7 +272,7 @@ var File_sluis_exchange_v2alpha1_exchange_proto protoreflect.FileDescriptor
 
 const file_sluis_exchange_v2alpha1_exchange_proto_rawDesc = "" +
 	"\n" +
-	"&sluis/exchange/v2alpha1/exchange.proto\x12\x17sluis.exchange.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\xf0\x02\n" +
+	"&sluis/exchange/v2alpha1/exchange.proto\x12\x17sluis.exchange.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\xbb\x03\n" +
 	"\x14TokenExchangeRequest\x12\x1d\n" +
 	"\n" +
 	"grant_type\x18\x01 \x01(\tR\tgrantType\x12#\n" +
@@ -270,7 +286,9 @@ const file_sluis_exchange_v2alpha1_exchange_proto_rawDesc = "" +
 	"\vactor_token\x18\t \x01(\tR\n" +
 	"actorToken\x12(\n" +
 	"\x10actor_token_type\x18\n" +
-	" \x01(\tR\x0eactorTokenType\"\x82\x01\n" +
+	" \x01(\tR\x0eactorTokenType\x12$\n" +
+	"\rauthorization\x18\v \x01(\tR\rauthorization\x12#\n" +
+	"\rclient_secret\x18\f \x01(\tR\fclientSecret\"\x82\x01\n" +
 	"\x10VerifierKeyCache\x12\x16\n" +
 	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12\x1b\n" +
 	"\tjwks_json\x18\x02 \x01(\fR\bjwksJson\x129\n" +
