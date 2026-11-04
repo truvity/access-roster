@@ -98,7 +98,7 @@ func (c *Client[T]) decode(it *storev2alpha1.Item) (Item[T], error) {
 		return Item[T]{}, describe("decode", refusal.New(connect.CodeInternal, "schema", "value"))
 	}
 	out := Item[T]{
-		Tenant:  fromWireTenant(it.GetAddress().GetTenant()),
+		Tenant:  it.GetAddress().GetTenant(),
 		ID:      it.GetAddress().GetId(),
 		Version: it.GetVersion(),
 		Value:   v,

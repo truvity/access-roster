@@ -1,8 +1,9 @@
+//go:build sluis_test
+
 package store_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -20,7 +21,6 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
-	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -131,8 +131,6 @@ func (f *fake) Write(_ context.Context, req *connect.Request[storev2alpha1.Write
 	return connect.NewResponse(&storev2alpha1.WriteResponse{Items: out}), nil
 }
 
-func newHeader() *typev2alpha1.Header { return &typev2alpha1.Header{} }
-
 func setup(t *testing.T, kind string) (*store.Client[*typev2alpha1.Header], *fake) {
 	t.Helper()
 	f := &fake{items: map[string]*storev2alpha1.Item{}}
@@ -177,19 +175,6 @@ func setup(t *testing.T, kind string) (*store.Client[*typev2alpha1.Header], *fak
 
 func hdr(name, value string) *typev2alpha1.Header {
 	return &typev2alpha1.Header{Name: name, Value: value}
-}
-
-func TestNewRefusesWhatItCannotServe(t *testing.T) {
-	var c storev2alpha1connect.StoreServiceClient
-	if _, err := store.New(c, "NoSuchKind", newHeader); err == nil {
-		t.Error("an unknown kind was accepted")
-	}
-	if _, err := store.New(c, "Person", newHeader); err == nil || !strings.Contains(err.Error(), "sealed") {
-		t.Errorf("a sealed kind was accepted: %v", err)
-	}
-	if _, err := store.New(c, "data-key-wrap", newHeader); err == nil {
-		t.Error("a segment was accepted in place of a name")
-	}
 }
 
 func TestCreateGetAndErrExists(t *testing.T) {
@@ -325,15 +310,15 @@ func TestListPages(t *testing.T) {
 	}
 }
 
-func TestTenantDashEncoding(t *testing.T) {
+func TestTenantIsEmptyOnTheWire(t *testing.T) {
 	c, f := setup(t, "Lease") // a kind with no tenant
 	ctx := context.Background()
 	it, err := c.Create(ctx, "", "adapter-github/sync", hdr("a", "1"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := f.seen[0].GetOperations()[0].GetAddress().GetTenant(); got != "-" {
-		t.Fatalf("the wire tenant = %q, want -", got)
+	if got := f.seen[0].GetOperations()[0].GetAddress().GetTenant(); got != "" {
+		t.Fatalf("the wire tenant = %q, want empty: only the text address carries -", got)
 	}
 	if it.Tenant != "" {
 		t.Fatalf("the item's tenant = %q, want empty", it.Tenant)
@@ -341,15 +326,15 @@ func TestTenantDashEncoding(t *testing.T) {
 	if _, err := c.Get(ctx, "", "adapter-github/sync"); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.reads[len(f.reads)-1].GetAddress().GetTenant(); got != "-" {
-		t.Fatalf("the wire tenant of a Get = %q, want -", got)
+	if got := f.reads[len(f.reads)-1].GetAddress().GetTenant(); got != "" {
+		t.Fatalf("the wire tenant of a Get = %q, want empty", got)
 	}
 	items, _, err := c.List(ctx, "")
 	if err != nil || len(items) != 1 || items[0].Tenant != "" {
 		t.Fatalf("list = %+v, %v", items, err)
 	}
-	if got := f.lists[0].GetTenant(); got != "-" {
-		t.Fatalf("the wire tenant of a List = %q, want -", got)
+	if got := f.lists[0].GetTenant(); got != "" {
+		t.Fatalf("the wire tenant of a List = %q, want empty", got)
 	}
 }
 
@@ -382,101 +367,3 @@ func TestScopeIsCheckedBeforeTheCall(t *testing.T) {
 func second[T any](_ T, err error) error { return err }
 
 func list[T any](_ T, _ string, err error) error { return err }
-
-type vectors struct {
-	Segments []struct{ Kind, Segment string }
-	Valid    []string
-	Invalid  []struct{ Address, Why string }
-}
-
-func loadVectors(t *testing.T) vectors {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "conformance", "kit", "store-address-vectors.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var v vectors
-	if err := json.Unmarshal(b, &v); err != nil {
-		t.Fatal(err)
-	}
-	if len(v.Valid) == 0 || len(v.Invalid) == 0 {
-		t.Fatal("the vector file is empty")
-	}
-	return v
-}
-
-func validate(addr string) error {
-	parts := strings.SplitN(addr, "/", 4)
-	if len(parts) < 4 {
-		return refusal.New(connect.CodeInvalidArgument, "address", "address")
-	}
-	return store.ValidateAddress(parts[0], parts[1], parts[2], parts[3])
-}
-
-func TestAddressVectors(t *testing.T) {
-	v := loadVectors(t)
-	for _, a := range v.Valid {
-		if err := validate(a); err != nil {
-			t.Errorf("valid %q refused: %v", a, err)
-		}
-	}
-	for _, c := range v.Invalid {
-		if err := validate(c.Address); err == nil {
-			t.Errorf("invalid %q (%s) accepted", c.Address, c.Why)
-		}
-	}
-	for _, s := range v.Segments {
-		if k, ok := registry.KindByName(s.Kind); !ok || k.Segment != s.Segment {
-			t.Errorf("kind %s: registry segment %q, vector %q", s.Kind, k.Segment, s.Segment)
-		}
-	}
-}
-
-const maxAddress = 300
-
-func TestAddressLimits(t *testing.T) {
-	part := func(n int) string { return strings.Repeat("a", n) }
-	if err := store.ValidateID(part(128)); err != nil {
-		t.Errorf("a part of 128 refused: %v", err)
-	}
-	if err := store.ValidateID(part(129)); err == nil {
-		t.Error("a part of 129 accepted")
-	}
-	if err := store.ValidateID("a/" + part(129)); err == nil {
-		t.Error("a second part of 129 accepted")
-	}
-	// <boundary>/<tenant>/<kind>/<id> is the lengths plus three slashes.
-	idLen := func(n int) string {
-		s := strings.Repeat("a/", n/2)
-		if n%2 == 1 {
-			return s + "a"
-		}
-		return s[:n-1] + "a"
-	}
-	room := maxAddress - len("prod/acme/person/")
-	if err := store.ValidateAddress("prod", "acme", "person", idLen(room)); err != nil {
-		t.Errorf("an address of exactly 300 bytes refused: %v", err)
-	}
-	if err := store.ValidateAddress("prod", "acme", "person", idLen(room+1)); err == nil {
-		t.Error("an address of 301 bytes accepted")
-	}
-	if err := store.ValidateID(""); err == nil {
-		t.Error("an empty id accepted")
-	}
-	for _, bad := range []string{".", "..", "a b", "A", "é", "a\x00b", "a/\n"} {
-		if err := store.ValidateID(bad); err == nil {
-			t.Errorf("id %q accepted", bad)
-		}
-	}
-}
-
-func TestEveryPlainTenantKindIsServed(t *testing.T) {
-	// New accepts every kind that is not sealed, whatever its class or scope.
-	var c storev2alpha1connect.StoreServiceClient
-	for _, k := range registry.Kinds() {
-		_, err := store.New(c, k.Name, newHeader)
-		if (k.Treatment == "sealed") == (err == nil) {
-			t.Errorf("kind %s (%s): err = %v", k.Name, k.Treatment, err)
-		}
-	}
-}

@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // shutdownGrace bounds the graceful shutdown of a server (the brief of the kit: 5 s).
@@ -29,9 +31,6 @@ type ServerConfig struct {
 	Boundary string
 	Socket   string      // absolute path; see the socket layout in docs
 	Mode     os.FileMode // 0660 for actor sockets, 0600 for driver sockets; 0 means 0660
-	// UIDBlock is the uid block of this server's boundary. A caller whose uid belongs to another block is refused
-	// with the reason "caller" (REQ-ISO-072: uid = 61000 + ordinal + 1000 x block).
-	UIDBlock uint32
 	// DefaultDeadline is the deadline of a call that carries none. 0 means DefaultDeadlineValue.
 	DefaultDeadline time.Duration
 	// Allow decides whether a peer may call. The default (nil) is registry.MayCall(peer.Name, Actor).
@@ -47,13 +46,16 @@ type Handler struct {
 	H    http.Handler
 }
 
-// WithNameResolver returns cfg with another uid-to-name resolver.
-//
-// It is a seam for tests, which run under their own uid, and for nothing else. It is a Go function argument
-// only: no flag, environment variable or file reaches it, and a product binary does not call it.
-func WithNameResolver(cfg ServerConfig, resolve NameResolver) ServerConfig {
-	cfg.resolve = resolve
-	return cfg
+// ownBlock returns the uid block of this process: the block of the boundary this server serves, taken from the
+// process's own uid as the registry maps it (REQ-ISO-072: uid = 61000 + ordinal + 1000 x block). A caller from
+// another block is refused. It is false when the process's uid is not an actor or driver uid.
+func (c ServerConfig) ownBlock() (uint32, bool) {
+	resolve := c.resolve
+	if resolve == nil {
+		resolve = registry.NameForUID
+	}
+	name, block, ok := resolve(uint32(os.Getuid())) //nolint:gosec // a uid is non-negative
+	return block, ok && name != ""
 }
 
 func (c ServerConfig) deadline() DeadlineDefault {
@@ -84,6 +86,9 @@ func Serve(ctx context.Context, cfg ServerConfig, handlers ...Handler) error {
 	mode := cfg.Mode
 	if mode == 0 {
 		mode = 0o660
+	}
+	if _, ok := cfg.ownBlock(); !ok {
+		return errors.New("rpc: the uid of this process is not an actor or driver uid of the registry")
 	}
 	ln, err := listen(cfg.Socket, mode)
 	if err != nil {
