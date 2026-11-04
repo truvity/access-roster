@@ -26,8 +26,7 @@ generates its pages from them and test tools read the same data.
 `just site-lint` checks the files (`site/scripts/check-requirements.mjs`): the schema, one keyword per statement and a level that matches
 it, unique ids, a verification for every MUST, known standards and open decisions, and a scan for ticket keys and private names.
 It also computes the coverage figure that the [conformance page](../standards/conformance.md) shows: the requirements, and the MUSTs,
-whose verification includes a conformance suite or test vectors. The figure is a generated block on that page; the lint fails when it is
-stale, and `just site-coverage` rewrites it.
+whose verification includes a conformance suite or test vectors. The page holds no number: the site build draws the table from the catalogue (`site/src/remark-coverage.mjs`), and the lint prints the same figures in its summary.
 
 ## Ids
 
