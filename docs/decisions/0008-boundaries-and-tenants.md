@@ -33,7 +33,7 @@ Each boundary declares a level. A level includes the ones below it. A tenant is 
 
 | Level | Adds |
 |---|---|
-| L0 tenant | Separation by the store's rules, a grant sealed for the tenant and the tenant's own four data keys |
+| L0 tenant | Separation by the store's rules, a grant sealed for the tenant and the tenant's own five data keys |
 | L1 keys | Its own key@ and wrapping key (a KMS key, or a card of its own, such as a second card per board), so its own authority keys, intermediates and issuer. It uses the parent's store@, units and engine |
 | L2 process | Its own store@ and its own units, with their own uid or role, on the parent's engine under its own address prefix |
 | L3 engine | Its own engine (an rqlite cluster or a DynamoDB table), bucket and queue |
@@ -46,7 +46,7 @@ Each boundary declares a level. A level includes the ones below it. A tenant is 
 
 ### Tenants
 
-- **A tenant is a scope inside a boundary** with its own settings, clients, allowance and four data keys: `data`, `pseudonym`, `pairwise` and `evidence` ([0006](/decisions/0006-keys-and-sealing/#data-keys)). It is the second address dimension and only durable and temp kinds use it ([the address](/decisions/0004-the-data-model/#the-address)). The `Tenant` kind, written by exchange, holds its name and its state: active, suspended or erasing; it also records the upstream organisation id that binds people to it and the status client of the product that owns them ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to)). Config names no tenant.
+- **A tenant is a scope inside a boundary** with its own settings, clients, allowance and five data keys: `data`, `pseudonym`, `pairwise`, `evidence` and `chain` ([0006](/decisions/0006-keys-and-sealing/#data-keys)). It is the second address dimension and only durable and temp kinds use it ([the address](/decisions/0004-the-data-model/#the-address)). The `Tenant` kind, written by exchange, holds its name and its state: active, suspended or erasing; it also records the upstream organisation id that binds people to it and the status client of the product that owns them ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to)). Config names no tenant.
 - **A tenant has no authority key and no wrapping key by default.** Its data keys are wrapped under its boundary's wrapping key with the tenant and the purpose in the context. A tenant declared to keep its keys in a customer account has its wrapping keys and its issuer signing key there instead ([0006](/decisions/0006-keys-and-sealing/#where-a-tenants-keys-live)). A party that needs a failure domain of its own is a boundary.
 - **The tenant is the controller.** It has its own issuer host, its own domain if it wants one, its own `pairwise` key and its own sector. Its clients inherit the sector, so all apps of one controller see the same `sub` for a person and different controllers see different ones ([0034](/decisions/0034-end-users-and-upstream-signals/#subjects-and-sectors)). The boundary is invisible to apps: moving a tenant to another boundary or installation changes nothing an app sees ([0032](/decisions/0032-customer-identity-installations/#moving)).
 - **A tenant is regulated when its `Tenant` item says so.** The declaration is the operator's, made for a tenant whose customer works under a supervisor's rules on outsourcing, data or secrecy (the texts in [Example installations](/decisions/0008-boundaries-and-tenants/#example-installations)), and nothing is computed from it. A client is a **regulated audience** when its tenant is regulated. This record defines the word; the rules that use it live where their subject lives: the subject a regulated audience gets is [0034](/decisions/0034-end-users-and-upstream-signals/#subjects-and-sectors) and the claims it gets are [0020](/decisions/0020-grant-vocabulary-and-token-claims/#the-claims-of-a-token).
@@ -97,12 +97,12 @@ Each boundary declares a level. A level includes the ones below it. A tenant is 
 
 ### Tenant lifecycle
 
-- **Create.** A product, or a seed apply, asks exchange to write the `Tenant`; key@ makes its four data keys. A tenant that exists in another boundary is created again there, with its own keys.
+- **Create.** A product, or a seed apply, asks exchange to write the `Tenant`; key@ makes its five data keys. A tenant that exists in another boundary is created again there, with its own keys.
 - **Suspend.** Setting the state `suspended` is a tightening: it takes effect at once, keeps all data and keys, and is lifted by an operator ([principle 12](/principles/#12-a-loosening-is-temporary-a-tightening-is-durable)).
 - **Erase.** Erasure sets the state `erasing` and runs in this order:
   1. Records that an `ErasureHold` covers are kept, and so is the tenant's `data` wrap that seals them, until the hold's retention period ends; the steps below then run ([0034](/decisions/0034-end-users-and-upstream-signals/#erasure)).
   2. The tenant's slice of the audit trail is read out through audit's reader, if its contract asks for it.
-  3. key@ deletes the tenant's `data`, `pseudonym` and `pairwise` wraps. This is the **crypto-shred**: every value sealed for the tenant, its directory and connections among them, and every pseudonym made for it, stops opening ([0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant)).
+  3. key@ deletes the tenant's `data`, `pseudonym`, `pairwise` and `chain` wraps. This is the **crypto-shred**: every value sealed for the tenant, its directory and connections among them, and every pseudonym made for it, stops opening ([0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant)).
   4. The plain items of the tenant are deleted by their writers. What remains of the tenant is audit facts and its evidence.
   5. The `evidence` wrap is deleted when the evidence retention ends ([0029](/decisions/0029-the-audit-log/#retention)). Evidence never shares a key with personal data and outlives it, so a bill or a dispute can be answered after the exit and the exit still destroys everything personal.
 - **Archives are reached by replay and by expiry.** An archive taken before the shred still holds the tenant's wraps until it expires. A restore re-applies the shred from the audit log before it lifts maintenance ([0010](/decisions/0010-backup-and-recovery/#roll-forward)).
@@ -131,7 +131,7 @@ These texts bind or guide the regulated customer, not sluis: DORA is law, the EB
 ## Consequences
 
 - A fault, a leaked key or a bad policy change in one environment cannot reach another, because they share no key or store, and people still sign in once, in one place.
-- Each boundary picks its level, so cost follows need: a tenant costs items and four data keys, an L1 boundary costs a key@ and a certification, an L3 boundary adds an engine, and an L4 boundary adds a runtime and an installation to upgrade.
+- Each boundary picks its level, so cost follows need: a tenant costs items and five data keys, an L1 boundary costs a key@ and a certification, an L3 boundary adds an engine, and an L4 boundary adds a runtime and an installation to upgrade.
 - Tenants in one boundary share its fate. The cost of that is accepted at L0 and ends at promotion.
 - The front is the one place everyone trusts for sign-in. A compromised front can ask any boundary for a token as a signed-in person, which is why each target re-decides and a sensitive boundary checks the passkey itself. A call between boundaries costs a mutual-TLS hop and a second decision.
 - Installation-wide settings cost one write per boundary, and boundaries differ by one version while it lands.

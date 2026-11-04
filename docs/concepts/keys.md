@@ -55,6 +55,7 @@ A data key is a software AES-256 key. key@ makes it, keeps it only wrapped, and 
 | `pseudonym` | One per tenant, rolled by epoch | Keyed hashes of the tenant: audit pseudonyms |
 | `pairwise` | One per tenant, never rotated | Pairwise subjects of the tenant |
 | `evidence` | One per tenant | Audit and usage evidence of the tenant |
+| `chain` | One per tenant | Facts of a session chain that `session` seals and opens and `exchange` opens |
 | `grant` | One per boundary | Sealed grants |
 | `cookie` | One per boundary | Session cookies |
 | `mac` | One per boundary | Keyed hashes of link ids, upstream sessions and the hashed index entries of sealed kinds |
@@ -78,7 +79,7 @@ key@ caches opened data keys in memory, each entry with its own time to live, se
 
 ### Erasing a tenant
 
-A tenant's exit deletes its `data`, `pseudonym` and `pairwise` wraps at once, every generation and every recipient. Every value sealed for the tenant stops opening: this is the **crypto-shred**. Its `evidence` wrap is deleted when the evidence retention ends, because evidence outlives personal data ([ADR 0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant), [Audit](/concepts/audit/#tenants-encryption-and-erasure)).
+A tenant's exit deletes its `data`, `pseudonym`, `pairwise` and `chain` wraps at once, every generation and every recipient. Every value sealed for the tenant stops opening: this is the **crypto-shred**. Its `evidence` wrap is deleted when the evidence retention ends, because evidence outlives personal data ([ADR 0006](/decisions/0006-keys-and-sealing/#erasing-a-tenant), [Audit](/concepts/audit/#tenants-encryption-and-erasure)).
 
 ## Sealed grants
 

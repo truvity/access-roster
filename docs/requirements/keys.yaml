@@ -453,7 +453,7 @@ requirements:
       - {kind: integration-test, ref: "the emitter's platform identity: Mac under pseudonym accepted; Mac under another purpose, Seal and Open refused"}
   - id: REQ-KEYS-030
     area: KEYS
-    statement: "key@ MUST refuse a Seal or an Open whose grant does not name the tenant of the address or the operation, or has expired."
+    statement: "key@ MUST refuse a Seal or an Open of a tenant's data or evidence key whose grant does not name the tenant of the address or the operation, or has expired."
     rationale: "The grant check is the second of two independent checks between an actor and a tenant's sealed value (ADR 0006)."
     level: MUST
     source: design-decision
@@ -521,7 +521,7 @@ requirements:
       - {kind: integration-test, ref: "the seal API takes no nonce; two seals of one value under one key differ"}
   - id: REQ-KEYS-035
     area: KEYS
-    statement: "Each tenant MUST have exactly four data keys, data, pseudonym, pairwise and evidence."
+    statement: "Each tenant MUST have exactly five data keys, data, pseudonym, pairwise, evidence and chain."
     rationale: "Purposes never share a key, so a tenant's exit can delete personal data and keep evidence (ADR 0006)."
     level: MUST
     source: design-decision
@@ -531,10 +531,10 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a new tenant gets exactly four DataKeyWrap purposes; a new boundary gets the five of its own: grant, cookie, chain, mac and data"}
+      - {kind: integration-test, ref: "a new tenant gets exactly five DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
   - id: REQ-KEYS-036
     area: KEYS
-    statement: "A tenant's exit MUST delete its data, pseudonym and pairwise wraps at once, every generation and every recipient."
+    statement: "A tenant's exit MUST delete its data, pseudonym, pairwise and chain wraps at once, every generation and every recipient."
     rationale: "The wrap is the only route to the key, so every value sealed for the tenant stops opening (ADR 0006)."
     level: MUST
     source: design-decision
@@ -544,7 +544,7 @@ requirements:
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "after the exit every value sealed for the tenant fails to open and key@ has dropped its cached entries"}
+      - {kind: integration-test, ref: "after the exit every value sealed for the tenant fails to open, the facts of its session chains among them, and key@ has dropped its cached entries"}
   - id: REQ-KEYS-037
     area: KEYS
     statement: "key@ MUST delete the evidence wrap of an exited tenant when its evidence retention ends and not before."
@@ -973,7 +973,7 @@ requirements:
       - {kind: integration-test, ref: "registry check: no secret source or kind holds a credential for a customer account; key@ reaches the account by its role"}
   - id: REQ-KEYS-070
     area: KEYS
-    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise and evidence keys under the customer's KMS key during the move ceremony."
+    statement: "Moving a tenant into a customer account MUST re-wrap its data, pseudonym, pairwise, evidence and chain keys under the customer's KMS key during the move ceremony."
     rationale: "The move changes where the wraps are made and nothing an app sees (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1120,21 +1120,20 @@ requirements:
       - {kind: integration-test, ref: "the key plan check refuses an audit-log purpose that is not ES256"}
   - id: REQ-KEYS-082
     area: KEYS
-    statement: "The chain data key of a boundary MUST be sealable by session alone and openable by exchange alone."
-    rationale: "Session-chain facts are read by exchange, which must not hold the cookie key or a tenant's data key (ADR 0006)."
+    statement: "The chain data key of a tenant MUST be sealable by session alone and openable by session and exchange alone."
+    rationale: "Session-chain facts are read by exchange, which must not hold the cookie key or a tenant's data key, and they are a tenant's personal data, so they are sealed under the tenant's key and erased with it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: planned
     runtimes: all
     actors: [key]
     standards: []
     issues: [1208]
-    tests: [actors/key/internal/keyd/seal_test.go, actors/session/internal/sessiond/token_test.go, actors/exchange/internal/exchanged/directory_store_test.go]
     verification:
-      - {kind: integration-test, ref: "exchange opens a chain-sealed value; session's open, exchange's seal and every other actor's seal or open are refused"}
+      - {kind: integration-test, ref: "session seals and opens and exchange opens, by rule with no grant; exchange's seal and every other actor's seal or open are refused with the reason rule; another tenant's chain does not open"}
   - id: REQ-KEYS-083
     area: KEYS
-    statement: "key@ MUST delete a generation of the chain data key only after the longest time to live of a session chain has passed since it last sealed."
+    statement: "key@ MUST delete a generation of the chain data key of a tenant only after the longest time to live of a session chain has passed since that tenant's key last sealed under it."
     rationale: "A chain must stay readable for its whole life, and nothing sealed under an older generation may outlive it (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1144,7 +1143,7 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a generation is kept for 90 days after its last seal and deleted after that, with a moved clock"}
+      - {kind: integration-test, ref: "a generation of a tenant's chain key is kept for 90 days after its last seal and deleted after that, with a moved clock; the generations of another tenant are not affected"}
   - id: REQ-KEYS-085
     area: KEYS
     statement: "signer MUST make a token-signing key active only after the lead time has passed since the key was seen in every published key set."
