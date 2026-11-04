@@ -302,6 +302,24 @@ impl Engine {
     ///
     /// [`LoadError`] with one line for every fault found.
     pub fn build(inputs: &Inputs) -> Result<Self, LoadError> {
+        Self::build_here(inputs)
+    }
+
+    /// [`Engine::build`] on a thread with a stack of its own ([`crate::stack`]): what `serve`, `check`
+    /// and a reload call. Cedar recurses, and on the main thread of a static musl binary the stack is
+    /// too small for it.
+    ///
+    /// # Errors
+    ///
+    /// [`LoadError`] as for [`Engine::build`], and when the thread cannot hand back a result.
+    pub async fn build_on_stack(inputs: &Inputs) -> Result<Self, LoadError> {
+        let inputs = inputs.clone();
+        crate::stack::run(move || Self::build_here(&inputs))
+            .await
+            .map_err(|e| LoadError(vec![e.to_string()]))?
+    }
+
+    fn build_here(inputs: &Inputs) -> Result<Self, LoadError> {
         let schema = schema::schema().map_err(|e| LoadError(vec![e]))?;
         let vocab = Vocabulary::parse(&inputs.vocabulary)
             .map_err(|e| LoadError(vec![format!("GrantVocabulary: {e}")]))?;
