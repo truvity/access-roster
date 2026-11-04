@@ -53,6 +53,15 @@ The hosts and the account are never in the repository: `SLUIS_BOARDS` and the SS
 3. `boards-smoke` runs the M1 spine on each board in turn, over SSH, under the uid of each actor, and prints the memory of the board. From the second board on it requires the first boards' `SigningRing` key and `DataKeyWrap` item, which shows the one shared store ([roadmap](/roadmap/#what-runs-today)).
 4. `boards-undeploy` removes what `boards-deploy` added, as the board's manifest lists it, and keeps the engine, the data and the state of the units unless asked.
 
+### The card driver
+
+A board runs the card driver (`drivers/key/yubikey-piv`) in place of the software key driver when `boards-deploy` and `boards-smoke` run with `SLUIS_BOARDS_KEY_DRIVER=yubikey-piv`. The two serve the same socket, so a board runs one of them, and a deploy with `software` switches back.
+
+- **The unit** `sluis-drv-key-yubikey-piv@.service` requires `pcscd.socket`, runs as its own uid under the hardening of every driver unit, and has a `RuntimeDirectory` of its own for the admin socket that takes the PIN. The key@ unit of this variant requires the card driver in place of the software one and joins its group; it is a whole unit and not a drop-in, because systemd 249 keeps a `Requires=` that a drop-in resets.
+- **The card service is closed to everyone else.** A drop-in for `pcscd.socket` makes its socket mode `0660` for the group of the card driver, so only that uid (and root) reaches the card ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)). The pcscd of Ubuntu 22.04 is built without polkit, and its stock socket is `0666`: there the socket group is the control. Where pcscd ships its polkit policy, the deploy also installs a polkit rule that admits the card driver's user alone.
+- **`pcscd` and `libccid`** are installed if they are missing. `boards-undeploy` takes the unit, the drop-in and the rule away and leaves the packages.
+- **The board starts locked.** The driver has no PIN until `sluis node unlock NODE` delivers it on the admin socket, as root on the board ([the command](/reference/cli/#sluis-node-unlock)). A new card is a new wrapping key and a new token key: the other nodes' key@ wrap the data keys for it, and the signer pre-publishes the token key for its lead time before it signs.
+
 ### `openat2` under `RestrictSUIDSGID`
 
 systemd's `RestrictSUIDSGID=yes` installs a seccomp filter that answers the `openat2` system call with `ENOSYS`. It does so on every systemd version tried (MEASURED 2026-11-04 on the boards' systemd 249, and again on systemd 259 with `systemd-run --user -p RestrictSUIDSGID=yes`). The drivers that open files below a root (`file`, `credential` and the `fs` blob) use `openat2` with `RESOLVE_BENEATH` and `RESOLVE_NO_SYMLINKS`, so on a unit with that line they fail.

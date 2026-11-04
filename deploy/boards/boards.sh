@@ -15,6 +15,14 @@
 #                               config, the bootstrap file and the credentials. deploy installs them under
 #                               /etc/sluis, and writes /etc/sluis/rqlite-dev.env with the board's own rqlite address.
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
+#   SLUIS_BOARDS_KEY_DRIVER     the key driver of key@: software (the default) or yubikey-piv. The card driver replaces the
+#                               software one on every board of the run: its unit, a key@ unit that requires the card
+#                               driver instead (installed in place of the default template), a drop-in that closes the
+#                               card service (pcscd.socket) to everyone but the card driver and root, and, where pcscd
+#                               is built with polkit, a polkit rule. pcscd
+#                               is installed if it is missing. It needs drivers/key/yubikey-piv in dist/arm64, which
+#                               `just build-arm64-native` makes and `just build-arm64` copies. Switching back is a deploy
+#                               with software: the card driver is stopped and its drop-ins removed.
 #   SLUIS_BOARDS_DRY_RUN=1      stage and print the plan; no ssh, no board touched
 #   SLUIS_PURGE_STATE=1         undeploy also removes the state of the units (their keys)
 #
@@ -41,6 +49,11 @@ dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
 only=${SLUIS_BOARDS_ONLY:-}
+keydrv=${SLUIS_BOARDS_KEY_DRIVER:-software}
+case "$keydrv" in
+software | yubikey-piv) ;;
+*) echo "boards: SLUIS_BOARDS_KEY_DRIVER must be software or yubikey-piv, not '$keydrv'" >&2; exit 2 ;;
+esac
 
 # shellcheck disable=SC2206 # the boards are a space-separated list
 boards=($SLUIS_BOARDS)
@@ -65,6 +78,11 @@ stage() { # dir
 	[ -f "$units/index.tsv" ] || { echo "boards: no $units/index.tsv: run 'just units-gen'" >&2; return 1; }
 	while IFS=$'\t' read -r instance template _kind binary user _uid needs; do
 		[[ "$instance" != '#'* ]] || continue
+		# The two key drivers serve one socket: a board runs the one that was asked for.
+		case "$binary" in
+		drivers/key/software) [ "$keydrv" = software ] || continue ;;
+		drivers/key/yubikey-piv) [ "$keydrv" = yubikey-piv ] || continue ;;
+		esac
 		[ -f "$dist/$binary" ] || continue
 		if [ -n "$only" ]; then
 			case " $only " in *" $binary "*) ;; *) continue ;; esac
@@ -80,6 +98,14 @@ stage() { # dir
 		fi
 	done <"$units/index.tsv"
 	[ -s "$s/plan.tsv" ] || { echo "boards: no executable in $dist has a unit: run 'just build-arm64' first" >&2; return 1; }
+	if [ "$keydrv" = yubikey-piv ]; then
+		[ -f "$s/files/systemd/sluis-key@.service" ] || { echo "boards: the card driver needs key@ in the plan (SLUIS_BOARDS_ONLY leaves out actors/key)" >&2; return 1; }
+		[ -f "$dist/drivers/key/yubikey-piv" ] || { echo "boards: no $dist/drivers/key/yubikey-piv: run 'just build-arm64-native' and 'just build-arm64' first" >&2; return 1; }
+		grep -q '^sluis-drv-key-yubikey-piv@' "$s/plan.tsv" || { echo "boards: SLUIS_BOARDS_ONLY leaves out drivers/key/yubikey-piv" >&2; return 1; }
+		mkdir -p "$s/files/card"
+		cp "$units/pcscd-socket.dropin" "$units/pcsc-polkit.rules" "$s/files/card/"
+		cp "$units/sluis-key@.service.card" "$s/files/systemd/sluis-key@.service" # key@ after the card driver, in place of the default
+	fi
 	cp "$units/base.tmpfiles" "$s/files/tmpfiles/sluis-base-dev.conf"
 	for stem in "${!want[@]}"; do
 		cp "$units/$stem.sysusers" "$s/files/sysusers/$stem-dev.conf"
