@@ -47,7 +47,8 @@ func reply(status int32, body any, extra ...*typev2alpha1.Header) *typev2alpha1.
 }
 
 // errorReply is the answer to a request that is refused (RFC 6749 section 5.2, RFC 8693 section 2.2.2). An
-// invalid_client is a 401, and one for a client that used HTTP Basic names the scheme (RFC 6749 section 5.2).
+// invalid_client is a 401, and every 401 carries WWW-Authenticate (RFC 9110 section 15.5.2; contracts.md "OAuth and
+// OpenID Connect endpoints"), as session's does.
 func errorReply(r *refused) *typev2alpha1.HttpReply {
 	body := struct {
 		Error       string `json:"error"`
@@ -56,10 +57,7 @@ func errorReply(r *refused) *typev2alpha1.HttpReply {
 	if r.code != codeInvalidClient {
 		return reply(400, body)
 	}
-	if r.basic {
-		return reply(401, body, &typev2alpha1.Header{Name: "WWW-Authenticate", Value: `Basic realm="sluis", charset="UTF-8"`})
-	}
-	return reply(401, body)
+	return reply(401, body, &typev2alpha1.Header{Name: "WWW-Authenticate", Value: `Basic realm="sluis", charset="UTF-8"`})
 }
 
 // successReply is the answer to an exchange (RFC 8693 section 2.2.1). It carries no refresh token (REQ-EXCH-010) and
