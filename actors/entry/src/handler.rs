@@ -299,9 +299,10 @@ async fn route(
             trace.route = "callback";
             method_ok(&parts.method, &[Method::GET], "GET")?;
             no_body(&body)?;
-            let p = Params::parse(query, QUERY_MAX)
-                .and_then(|p| p.only(routes::CALLBACK))
-                .map_err(bad)?;
+            // The upstream answers sluis as a client: unknown response parameters are dropped,
+            // unread and unlogged (RFC 6749 section 4.1.2). Only the fields below are passed on.
+            let p =
+                Params::parse_ignoring_unknown(query, QUERY_MAX, routes::CALLBACK).map_err(bad)?;
             let r = CallbackRequest {
                 code: p.get("code"),
                 state: p.get("state"),
