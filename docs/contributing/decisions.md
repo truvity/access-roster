@@ -69,7 +69,7 @@ Add `issues:` with the numbers of the issues that deliver the requirement, for e
 
 ### Marking a requirement done
 
-`done` means the behaviour exists and its tests pass. Nobody sets it for a plan or an intention, and a new record is never `done`.
+`done` means the behaviour exists and its tests pass. Nobody sets it for a plan or an intention, and a new record is `done` only when its verifying test, tagged with `verifies:`, lands in the same pull request.
 
 - **Who.** The author of the pull request that adds the passing test sets it, by hand, in that pull request. The reviewer confirms that the named test proves the clause. There is no automatic promotion.
 - **How.** Change `status` to `done` and tag the passing test with the record's id: `// verifies: REQ-AUTHN-002` in the comment directly above the test function (Rust: `/// verifies: REQ-AUTHN-002` above `#[test]`), or a Go sub-test named `REQ-AUTHN-002/case` (see "How a test names a requirement" in the README). A manual verification takes an entry in `docs/requirements/attestations.yaml` instead. `tests:` with the repository paths of the test files is optional. Drop `features` and `decisions` that no longer apply; `issues` stays, as the work that delivered the record, and the record's `milestone` stays too.
