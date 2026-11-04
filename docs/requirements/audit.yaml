@@ -357,7 +357,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
