@@ -271,6 +271,16 @@ type fakeDriver struct {
 	now         func() time.Time
 	made        map[string]time.Time
 	noCreatedAt bool
+	// The PIN of a card driver (pinrelease_test.go): locked is a driver that holds no PIN, cardPIN is the PIN its card
+	// takes, held the PIN it holds once unlocked. A locked driver signs with the pin-release key only.
+	locked      bool
+	cardPIN     string
+	held        []byte
+	oneTime     *ecdh.PrivateKey
+	finishCalls atomic.Int64
+	pinTries    atomic.Int64
+	// attestLie makes the attestation of the pin-release key state PIN once.
+	attestLie bool
 }
 
 func newFakeDriver(storeName string) *fakeDriver {
@@ -291,7 +301,7 @@ func (d *fakeDriver) wrappingID() string {
 }
 
 func (d *fakeDriver) Capabilities(context.Context, *connect.Request[keystorev2alpha1.CapabilitiesRequest]) (*connect.Response[keystorev2alpha1.CapabilitiesResponse], error) {
-	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Algorithms: []string{"ES384", "ES256", "ECDH-P384"}}), nil
+	return connect.NewResponse(&keystorev2alpha1.CapabilitiesResponse{Store: d.store, Attests: d.store == "yubikey-piv", Algorithms: []string{"ES384", "ES256", "ECDH-P384"}}), nil
 }
 
 func (d *fakeDriver) Ensure(_ context.Context, req *connect.Request[keystorev2alpha1.EnsureRequest]) (*connect.Response[keystorev2alpha1.EnsureResponse], error) {
@@ -351,6 +361,9 @@ func (d *fakeDriver) key(purpose string) (*ecdsa.PrivateKey, error) {
 }
 
 func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alpha1.KeyStoreSignRequest]) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
+	if d.isLocked() && req.Msg.GetPurpose() != "pin-release" {
+		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
+	}
 	k, err := d.key(req.Msg.GetPurpose())
 	if err != nil {
 		return nil, err
@@ -368,6 +381,9 @@ func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alph
 }
 
 func (d *fakeDriver) Ecdh(_ context.Context, req *connect.Request[keystorev2alpha1.EcdhRequest]) (*connect.Response[keystorev2alpha1.EcdhResponse], error) {
+	if d.isLocked() {
+		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
+	}
 	k, err := d.key(req.Msg.GetPurpose())
 	if err != nil {
 		return nil, err

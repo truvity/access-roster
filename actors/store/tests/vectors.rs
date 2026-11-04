@@ -175,6 +175,38 @@ fn the_keyplan_payload_vectors_are_read_as_key_reads_them_in_go() {
                     "{name}"
                 );
             }
+            let enc = |b: &[u8]| {
+                use base64::Engine as _;
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b)
+            };
+            let want = read["slot_map"]
+                .as_array()
+                .map_or(&[][..], |a| a.as_slice());
+            assert_eq!(plan.slot_map.len(), want.len(), "{name}: slot_map");
+            for (n, w) in plan.slot_map.iter().zip(want) {
+                assert_eq!(n.node, w["node"].as_str().unwrap(), "{name}");
+                let ws = w["slots"].as_array().unwrap();
+                assert_eq!(n.slots.len(), ws.len(), "{name}: slots");
+                for (k, w) in n.slots.iter().zip(ws) {
+                    assert_eq!(
+                        (
+                            k.slot.as_str(),
+                            k.purpose.as_str(),
+                            enc(&k.public_key),
+                            enc(&k.attestation),
+                            enc(&k.attestation_signer)
+                        ),
+                        (
+                            w["slot"].as_str().unwrap(),
+                            w["purpose"].as_str().unwrap(),
+                            w["public_key"].as_str().unwrap().to_owned(),
+                            w["attestation"].as_str().unwrap().to_owned(),
+                            w["attestation_signer"].as_str().unwrap().to_owned()
+                        ),
+                        "{name}"
+                    );
+                }
+            }
         } else {
             let e = got.expect_err(name).to_string();
             let path = c["refused_path"].as_str().unwrap();
