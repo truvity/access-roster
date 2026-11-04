@@ -134,7 +134,9 @@ func probeHTTP(ctx context.Context, t spec.Target) spec.Result {
 		return spec.Result{ID: t.ID, Outcome: spec.Socket, Detail: "EACCES"}
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
 		return spec.Result{ID: t.ID, Outcome: spec.Broken, Detail: "no listener: " + err.Error()}
-	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET):
+	// entry closes a connection it refuses before it reads the request, so the client sees the close as an EOF, a reset,
+	// or, when the close wins the race with the request's write, a broken pipe. Each is the same refusal.
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE):
 		return spec.Result{ID: t.ID, Outcome: spec.Guard, Detail: "dropped"}
 	}
 	return spec.Result{ID: t.ID, Outcome: spec.Broken, Detail: err.Error()}

@@ -99,4 +99,7 @@ docker build -q -f deploy/local/Dockerfile --build-arg BINARY=probe -t "$image" 
 
 # The matrix is the Go test TestDenyMatrix (REQ-DATA-066, REQ-KEYS-044, REQ-ISO-090), so that the run that CI makes is
 # a test that names what it verifies; `go run ./tests/deny` runs the same matrix by hand.
-SLUIS_DENY_RUN_PROJECT=$project SLUIS_DENY_RUN_IMAGE=$image go test -count=1 -timeout 20m -v -run '^TestDenyMatrix$' ./tests/deny
+# A `-run` that matched nothing would pass with no test run, so the output must show the test itself passing.
+out=$state/go-test.out
+SLUIS_DENY_RUN_PROJECT=$project SLUIS_DENY_RUN_IMAGE=$image go test -count=1 -timeout 20m -v -run '^TestDenyMatrix$' ./tests/deny | tee "$out"
+grep -q -- '^--- PASS: TestDenyMatrix ' "$out" || { echo "deny: TestDenyMatrix did not run and pass" >&2; exit 1; }
