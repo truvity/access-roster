@@ -349,6 +349,28 @@ mod tests {
 
     // The vectors of bootstrap-file.md "Format".
     #[test]
+    fn only_lower_case_null_true_and_false_are_null_and_booleans() {
+        // The Go reader of key@ is held to this by the shared payload vectors; a YAML 1.1 reader reads the other
+        // spellings as null and booleans.
+        let doc =
+            parse("a: Null\nb: NULL\nc: True\nd: TRUE\ne: False\nf: FALSE\ng: null\nh: true\n")
+                .unwrap();
+        assert_eq!(
+            doc,
+            map(vec![
+                ("a", s("Null")),
+                ("b", s("NULL")),
+                ("c", s("True")),
+                ("d", s("TRUE")),
+                ("e", s("False")),
+                ("f", s("FALSE")),
+                ("g", Value::Null),
+                ("h", Value::Bool(true)),
+            ])
+        );
+    }
+
+    #[test]
     fn the_profile_vectors_are_read() {
         assert_eq!(
             parse("a: 1\nb: [x, y]\nc: {d: true}\n").unwrap(),

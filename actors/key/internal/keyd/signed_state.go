@@ -31,31 +31,35 @@ const (
 
 // seqMark is the seq and the SHA-384 of the payload of the highest document of a kind that key@ verified.
 type seqMark struct {
+	kind   string // the registry name of the kind, so that a mark of one kind cannot stand for another's
 	seq    uint64
 	sha384 [48]byte
 }
 
 func (m seqMark) text() string {
-	return fmt.Sprintf("seq %d\nsha384 %s\n", m.seq, hex.EncodeToString(m.sha384[:]))
+	return fmt.Sprintf("kind %s\nseq %d\nsha384 %s\n", m.kind, m.seq, hex.EncodeToString(m.sha384[:]))
 }
 
 // parseMark reads the file strictly. A mark that does not parse is an error: key@ does not start on a damaged file and
 // does not guess, because a guessed mark is a mark the thief could have chosen; the operator removes it knowing why.
-func parseMark(b []byte) (seqMark, error) {
+func parseMark(b []byte, kind string) (seqMark, error) {
 	var m seqMark
 	lines := strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
-	if len(lines) != 2 || !strings.HasPrefix(lines[0], "seq ") || !strings.HasPrefix(lines[1], "sha384 ") {
+	if len(lines) != 3 || !strings.HasPrefix(lines[0], "kind ") || !strings.HasPrefix(lines[1], "seq ") || !strings.HasPrefix(lines[2], "sha384 ") {
 		return m, errors.New("not a mark")
 	}
-	seq, err := strconv.ParseUint(strings.TrimPrefix(lines[0], "seq "), 10, 64)
+	if strings.TrimPrefix(lines[0], "kind ") != kind {
+		return m, errors.New("a mark of another kind")
+	}
+	seq, err := strconv.ParseUint(strings.TrimPrefix(lines[1], "seq "), 10, 64)
 	if err != nil || seq < 1 || seq >= 1<<53 {
 		return m, errors.New("not a mark")
 	}
-	d, err := hex.DecodeString(strings.TrimPrefix(lines[1], "sha384 "))
+	d, err := hex.DecodeString(strings.TrimPrefix(lines[2], "sha384 "))
 	if err != nil || len(d) != len(m.sha384) {
 		return m, errors.New("not a mark")
 	}
-	m.seq = seq
+	m.kind, m.seq = kind, seq
 	copy(m.sha384[:], d)
 	return m, nil
 }
@@ -117,7 +121,7 @@ func restoreMark[T proto.Message](s *Server, k *signedKind[T]) error {
 	if err != nil {
 		return fmt.Errorf("the %s mark cannot be read: %w", k.label, err)
 	}
-	m, err := parseMark(b)
+	m, err := parseMark(b, k.kind)
 	if err != nil {
 		return fmt.Errorf("the %s mark in %s is damaged (%w): remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", k.label, path, err, k.label)
 	}

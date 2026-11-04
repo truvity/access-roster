@@ -231,6 +231,171 @@
    "name": "a tab",
    "payload": "default:\n\tcache_ttl: 15m\n",
    "refused_path": ""
+  },
+  {
+   "name": "slot Null is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: Null }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "Null"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot NULL is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: NULL }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "NULL"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot True is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: True }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "True"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot TRUE is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: TRUE }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "TRUE"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot False is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: False }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "False"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot FALSE is a string in the profile",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: FALSE }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "FALSE"
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot null is null, an empty slot",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: null }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot ~ is null, an empty slot",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: ~ }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "slot true is a boolean",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: true }\n",
+   "refused_path": "slot"
+  },
+  {
+   "name": "slot false is a boolean",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: false }\n",
+   "refused_path": "slot"
+  },
+  {
+   "name": "slot quoted true is a string",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: \"true\" }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "true"
+     }
+    ]
+   }
+  },
+  {
+   "name": "recipients Null is a string, not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: Null\n",
+   "refused_path": "default.recipients"
+  },
+  {
+   "name": "recipients NULL is a string, not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: NULL\n",
+   "refused_path": "default.recipients"
+  },
+  {
+   "name": "purposes Null is a string, not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes: Null\n",
+   "refused_path": "default.purposes"
+  },
+  {
+   "name": "cache_ttl True is a string that is no duration",
+   "payload": "default:\n  cache_ttl: True\n",
+   "refused_path": "default.cache_ttl"
   }
  ]
 }

@@ -91,7 +91,7 @@ func verifyKind[T proto.Message](s *Server, k *signedKind[T], doc []byte) (*veri
 	}
 	// The mark is saved before the value is used: a value whose mark cannot be saved would be forgotten by a restart.
 	if s.saveMark {
-		if err := s.writeMark(k.markFile, seqMark{seq: v.Seq, sha384: v.Digest}); err != nil {
+		if err := s.writeMark(k.markFile, seqMark{kind: k.kind, seq: v.Seq, sha384: v.Digest}); err != nil {
 			return nil, fmt.Errorf("the %s mark cannot be saved", k.label)
 		}
 	}

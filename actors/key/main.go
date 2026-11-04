@@ -23,8 +23,8 @@ func (f *flags) add(fs *flag.FlagSet) {
 	fs.StringVar(&f.storeSocket, "store-socket", "", "the socket of store@, /run/sluis/store/<boundary>.sock")
 	fs.StringVar(&f.driverSocket, "driver-socket", "", "the socket of the key-store driver, <run-dir>/driver/key-store.sock")
 	fs.StringVar(&f.transportSocket, "transport-socket", "", "the emit socket of the audit transport, /run/sluis/audit/<boundary>/emit.sock")
-	fs.StringVar(&f.bootstrap, "bootstrap", "", "the bootstrap file, /etc/sluis/bootstrap.d/<boundary>.yaml: key@ reads its publishers block, the keys that sign the KeyPlan it verifies")
-	fs.StringVar(&f.stateDir, "state-dir", "", "key@'s own durable state, /var/lib/sluis-state/<boundary>/key: the highest KeyPlan seq verified, kept across restarts")
+	fs.StringVar(&f.bootstrap, "bootstrap", "", "the bootstrap file, /etc/sluis/bootstrap.d/<boundary>.yaml: key@ reads its publishers block, the keys that sign the KeyPlan and the Boundary it verifies")
+	fs.StringVar(&f.stateDir, "state-dir", "", "key@'s own durable state, /var/lib/sluis-state/<boundary>/key: the highest seq verified of the KeyPlan and of the Boundary, kept across restarts")
 	fs.StringVar(&f.node, "node", "", "the recipient label base of this node: node-1 locally, the board's short name on a board")
 }
 

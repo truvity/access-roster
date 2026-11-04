@@ -245,7 +245,7 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := parseMark(raw)
+	m, err := parseMark(raw, keyPlanKind)
 	if err != nil || m.seq != newerSeq {
 		t.Fatalf("mark = %+v, %v; want seq %d", m, err, newerSeq)
 	}
@@ -306,7 +306,7 @@ func TestRestartKeepsTheHighestSeq(t *testing.T) {
 		t.Fatalf("Init with a newer document: %v", err)
 	}
 	raw2, _ := os.ReadFile(filepath.Join(state, planMarkFile)) //nolint:gosec // a path in the test's temporary directory
-	if m2, err := parseMark(raw2); err != nil || m2.seq != e.seq {
+	if m2, err := parseMark(raw2, keyPlanKind); err != nil || m2.seq != e.seq {
 		t.Fatalf("mark after the newer document = %+v, %v; want seq %d", m2, err, e.seq)
 	}
 }
@@ -351,11 +351,23 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 			}
 		})
 	}
+	t.Run("the mark of another kind", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		// A Boundary mark in the file of the KeyPlan: the kind in its content does not match the file's.
+		if err := os.WriteFile(filepath.Join(state, planMarkFile), []byte(seqMark{kind: boundaryKind, seq: 1}.text()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := n.srv.Init(context.Background()); err == nil || !strings.Contains(err.Error(), "a mark of another kind") {
+			t.Fatalf("Init = %v, want a refusal of a mark of another kind", err)
+		}
+	})
 	t.Run("a mark file with wider bits than 0600", func(t *testing.T) {
 		e := newTestEnv(t, "development")
 		state := shortDir(t)
 		n := e.newNode(nodeOpts{stateDir: state})
-		good := seqMark{seq: 1}.text()
+		good := seqMark{kind: keyPlanKind, seq: 1}.text()
 		path := filepath.Join(state, planMarkFile)
 		if err := os.WriteFile(path, []byte(good), 0o644); err != nil { //nolint:gosec // the point of the test: a mark that is too open
 			t.Fatal(err)
@@ -369,7 +381,7 @@ func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
 		state := shortDir(t)
 		n := e.newNode(nodeOpts{stateDir: state})
 		target := filepath.Join(shortDir(t), "elsewhere")
-		if err := os.WriteFile(target, []byte(seqMark{seq: 1}.text()), 0o600); err != nil {
+		if err := os.WriteFile(target, []byte(seqMark{kind: keyPlanKind, seq: 1}.text()), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(target, filepath.Join(state, planMarkFile)); err != nil {
