@@ -63,7 +63,7 @@ function kindSection(k) {
   if (k.notes) out.push(md(k.notes), '');
   const moduleName = k.layer_module ?? 'core';
   out.push(`- **Class:** ${k.class}; scope ${k.scope}; ${k.treatment}; profile ${profile(k)}; module ${moduleName}; serves the ${k.serves} family.${k.personal ? ' Holds personal data.' : ''}${k.status ? ` Status: ${k.status}.` : ''}`);
-  out.push(`- **Writer:** ${k.self_scoped ? 'every actor, under ids that start with its own name (self-scoped)' : who(k.writer)}.`);
+  out.push(`- **Writer:** ${k.self_scoped ? 'every actor, under ids that start with its own name (self-scoped)' : who(k.writer)}${k.create_only ? ', create only (the kind only grows: no update, delete or apply)' : ''}.`);
   out.push(`- **Readers:** ${list(k.readers.map(who))}${k.backed_up === 'yes' ? '; plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext' : ''}.`);
   out.push(`- **Exportable:** ${yn(k.exportable)}; **backed up:** ${yn(k.backed_up)}.`);
   const ttl = ttlText(k);
