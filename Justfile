@@ -330,3 +330,31 @@ proto-gen:
 proto-check: proto-gen
     git diff --exit-code -- gen/go proto
     @test -z "$(git ls-files --others --exclude-standard -- gen/go proto)" || { echo "proto-check: untracked generated files" >&2; exit 1; }
+
+# The boards: cross-compile for arm64, generate the systemd units, and put them on the boards over SSH.
+# The hosts are never in the repository: SLUIS_BOARDS and SLUIS_BOARD_SSH_USER (and SLUIS_BOARD_SSH_AUTH_SOCK)
+# come from the environment, the run.env of the build. See deploy/boards/boards.sh.
+
+# Every executable of actors/, drivers/ and cli/ for the boards (Go with CGO off, Rust through zig, static musl)
+# into dist/arm64/, each checked to be a statically linked ARM aarch64 ELF.
+build-arm64:
+    deploy/boards/build-arm64.sh
+
+# The systemd units, users and directories of the boards, from the registries, into deploy/boards/units/.
+# `go test ./tools/gen/units` (part of go-test) fails while the committed files differ from what this makes.
+units-gen:
+    go run ./tools/gen/units
+
+# Copy the executables that exist in dist/arm64, with their units, to every board; verify; start in order.
+# Idempotent. SLUIS_BOARDS_DRY_RUN=1 stages and prints the plan without touching a board.
+boards-deploy:
+    deploy/boards/boards.sh deploy
+
+# Remove what boards-deploy added, as the board's manifest lists it. Never sluis-rqlite, the user sluis,
+# /opt/sluis/bin/rqlited or /var/lib/sluis. The state of the units stays unless SLUIS_PURGE_STATE=1.
+boards-undeploy:
+    deploy/boards/boards.sh undeploy
+
+# Read only: the units of boards-deploy on every board, and whether they are active.
+boards-status:
+    deploy/boards/boards.sh status
