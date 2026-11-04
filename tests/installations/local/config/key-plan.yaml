@@ -2,6 +2,11 @@
 # slots; a board's card follows them.
 default:
   cache_ttl: 15m
+  # The wrap recipients: the RFC 7638 thumbprint of each node's wrapping key, and no one else receives a wrap of a
+  # data key (ADR 0006, "Who may receive a wrap"). A software key is made at the first start, so the committed list
+  # is empty and the harness fills it in when it signs: deploy/local/local.sh up, deploy/boards/prepare.sh. They
+  # replace the line below, which must stay as it is.
+  recipients: []
   purposes:
     - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }
     - { purpose: token-signing, algorithm: ES384, slot: 9a }

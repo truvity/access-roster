@@ -38,6 +38,26 @@ the signed config documents and the bootstrap file that pins the key (`tools/har
 None of it is in the repository, and `local-down` deletes it. The upstream's address and its client secret come from the
 environment (`SLUIS_UPSTREAM_TARGET`, `SLUIS_KEYCLOAK_SECRETS`); the Compose file names neither.
 
+## The first start has two phases
+
+The `KeyPlan` lists the wrapping keys that may receive a wrap of a data key, by the RFC 7638 thumbprint of each, and `key@`
+wraps to those and to no one else, whatever `KeyCertificate` items sit in the store ([ADR 0006](../../docs/decisions/0006-keys-and-sealing.md#who-may-receive-a-wrap)).
+The software key is made at the first start, so its thumbprint cannot be in the committed source
+(`tests/installations/local/config/key-plan.yaml` holds `recipients: []`). `local-up` therefore does this:
+
+1. Signs the config with the empty list and starts `key@` with what it needs. `key@` makes the wrapping key and says so,
+   and makes no data key for a key that is not listed, so no actor can start yet.
+2. Runs `key@`'s `check` in its container, which prints `wrapping key id: <thumbprint>`; keeps the id in
+   `.cache/local/recipients`; signs the config again with it (`sign-config -recipients`); puts the documents in the
+   config volume; and waits until `check` prints `wrapping key listed: true`.
+3. Starts everything else.
+
+A second `local-up` of the same run signs the list at once. `local-down` deletes the file with the rest of the state.
+`check` fails with "the wrap set is incomplete" while the list names a key that no `KeyCertificate` supplies, and `key@`
+audits the same finding (`key.refuse`, reason `recipient`), as it audits a certificate whose key the list does not name.
+Two installations on one machine take different `COMPOSE_PROJECT_NAME` and `SLUIS_LOCAL_PORT` values, and `local-smoke`
+follows the project name.
+
 Reach the issuer from the workstation with the harness CA and a name mapping:
 
 ```bash
