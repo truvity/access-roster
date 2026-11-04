@@ -51,12 +51,25 @@ type Client[T proto.Message] struct {
 	kind         registry.Kind
 	newT         func() T
 	tenantScoped bool // the kind is tenant-scoped
+	// optionalTenant lets a tenant-scoped kind be addressed with no tenant: the boundary's own items.
+	optionalTenant bool
 }
+
+// Option modifies a client.
+type Option func(*clientOpts)
+
+type clientOpts struct{ optionalTenant bool }
+
+// OptionalTenant lets a client of a tenant-scoped kind also address the boundary's own items, with the tenant "".
+// It is for DataKeyWrap, whose boundary purposes (grant, cookie, mac and the boundary's data key) have no tenant
+// and live at tenant "-" in the text form of the address (kinds.yaml, DataKeyWrap; store-api.md, "Address
+// encoding"). On the wire the tenant is empty, as it is for a kind with none.
+func OptionalTenant() Option { return func(o *clientOpts) { o.optionalTenant = true } }
 
 // New binds a client to one kind by its registry name ("DataKeyWrap"); the address segment comes from the
 // registry. newT returns an empty message to decode into. A kind that does not exist, or that is sealed, is an
 // error.
-func New[T proto.Message](c storev2alpha1connect.StoreServiceClient, kind string, newT func() T) (*Client[T], error) {
+func New[T proto.Message](c storev2alpha1connect.StoreServiceClient, kind string, newT func() T, opts ...Option) (*Client[T], error) {
 	k, ok := registry.KindByName(kind)
 	if !ok {
 		return nil, fmt.Errorf("store: unknown kind %q", kind)
@@ -67,7 +80,11 @@ func New[T proto.Message](c storev2alpha1connect.StoreServiceClient, kind string
 	if newT == nil {
 		return nil, errors.New("store: newT is nil")
 	}
-	return &Client[T]{c: c, kind: k, newT: newT, tenantScoped: k.Scope == "boundary+tenant"}, nil
+	var o clientOpts
+	for _, f := range opts {
+		f(&o)
+	}
+	return &Client[T]{c: c, kind: k, newT: newT, tenantScoped: k.Scope == "boundary+tenant", optionalTenant: o.optionalTenant}, nil
 }
 
 // address validates the call's address and builds it. The tenant must fit the kind's scope.
@@ -86,6 +103,9 @@ func (c *Client[T]) address(tenant, id string) (*typev2alpha1.Address, error) {
 }
 
 func (c *Client[T]) checkTenant(tenant string) error {
+	if c.tenantScoped && tenant == "" && c.optionalTenant {
+		return nil
+	}
 	if c.tenantScoped != (tenant != "") {
 		return badAddress("tenant")
 	}
@@ -247,28 +267,42 @@ func WithIndex(name string, value []byte) WriteOption {
 	}
 }
 
-func (c *Client[T]) write(ctx context.Context, op string, verb storev2alpha1.Verb, tenant, id string, v T, hasValue bool, ifVersion uint64, opts []WriteOption) (Item[T], error) {
+// operation builds one operation of a write.
+func (c *Client[T]) operation(op string, verb storev2alpha1.Verb, tenant, id string, v T, hasValue bool, ifVersion uint64, o *writeOpts, indexes []*typev2alpha1.IndexEntry) (*storev2alpha1.Operation, error) {
 	addr, err := c.address(tenant, id)
 	if err != nil {
-		return Item[T]{}, describe(op, err)
+		return nil, describe(op, err)
 	}
-	var o writeOpts
-	for _, f := range opts {
-		f(&o)
-	}
-	operation := &storev2alpha1.Operation{Verb: verb, Address: addr, IfVersion: ifVersion, Indexes: o.indexes}
+	operation := &storev2alpha1.Operation{Verb: verb, Address: addr, IfVersion: ifVersion, Indexes: indexes}
 	if hasValue {
 		b, err := proto.MarshalOptions{Deterministic: true}.Marshal(v)
 		if err != nil {
-			return Item[T]{}, describe(op, refusal.New(connect.CodeInvalidArgument, "schema", "value"))
+			return nil, describe(op, refusal.New(connect.CodeInvalidArgument, "schema", "value"))
 		}
 		operation.Value = b
 	}
 	if o.ttl != 0 {
 		if o.ttl < 0 {
-			return Item[T]{}, describe(op, refusal.New(connect.CodeInvalidArgument, "ttl", "ttl"))
+			return nil, describe(op, refusal.New(connect.CodeInvalidArgument, "ttl", "ttl"))
 		}
 		operation.Ttl = durationpb.New(o.ttl)
+	}
+	return operation, nil
+}
+
+func applyWriteOptions(opts []WriteOption) *writeOpts {
+	var o writeOpts
+	for _, f := range opts {
+		f(&o)
+	}
+	return &o
+}
+
+func (c *Client[T]) write(ctx context.Context, op string, verb storev2alpha1.Verb, tenant, id string, v T, hasValue bool, ifVersion uint64, opts []WriteOption) (Item[T], error) {
+	o := applyWriteOptions(opts)
+	operation, err := c.operation(op, verb, tenant, id, v, hasValue, ifVersion, o, o.indexes)
+	if err != nil {
+		return Item[T]{}, err
 	}
 	res, err := c.c.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{
 		Operations: []*storev2alpha1.Operation{operation},
@@ -284,6 +318,61 @@ func (c *Client[T]) write(ctx context.Context, op string, verb storev2alpha1.Ver
 		return Item[T]{}, describe(op, refusal.New(connect.CodeInternal, "schema", "items"))
 	}
 	return c.decode(res.Msg.GetItems()[0])
+}
+
+// MaxBatch is the most operations a write carries (store-api.md, "Write").
+const MaxBatch = 64
+
+// NewItem is one item of CreateAll.
+type NewItem[T proto.Message] struct {
+	Tenant, ID string
+	Value      T
+	// Indexes are the entries of the declared indexes of this item; the writer computes their values.
+	Indexes []Index
+}
+
+// Index is an entry of a declared index.
+type Index struct {
+	Name  string
+	Value []byte
+}
+
+// CreateAll creates the items in one write: all or none. If any address is taken, nothing is written and the
+// error is ErrExists. The options (WithGrant, WithTTL) apply to every item; WithIndex is for Create, an item of
+// CreateAll names its own Indexes. It returns the items as written, in order.
+func (c *Client[T]) CreateAll(ctx context.Context, items []NewItem[T], opts ...WriteOption) ([]Item[T], error) {
+	if len(items) == 0 || len(items) > MaxBatch {
+		return nil, describe("create", refusal.New(connect.CodeInvalidArgument, "batch", "operations"))
+	}
+	o := applyWriteOptions(opts)
+	ops := make([]*storev2alpha1.Operation, 0, len(items))
+	for _, it := range items {
+		idx := make([]*typev2alpha1.IndexEntry, 0, len(it.Indexes))
+		for _, e := range it.Indexes {
+			idx = append(idx, &typev2alpha1.IndexEntry{Name: e.Name, Value: e.Value})
+		}
+		op, err := c.operation("create", storev2alpha1.Verb_CREATE, it.Tenant, it.ID, it.Value, true, 0, o, idx)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, op)
+	}
+	res, err := c.c.Write(ctx, connect.NewRequest(&storev2alpha1.WriteRequest{Operations: ops, Grant: o.grant}))
+	if err != nil {
+		return nil, mapErr("create", err)
+	}
+	if len(res.Msg.GetItems()) != len(items) {
+		return nil, describe("create", refusal.New(connect.CodeInternal, "schema", "items"))
+	}
+	out := make([]Item[T], 0, len(items))
+	for _, it := range res.Msg.GetItems() {
+		d, err := c.decode(it)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }
 
 // Create writes a new item, only if the address is free; a taken address is ErrExists.
