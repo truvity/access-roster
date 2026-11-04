@@ -15,6 +15,7 @@ state_root=/var/lib/sluis-state
 # The files of a board that runs the card driver (boards.sh, SLUIS_BOARDS_KEY_DRIVER=yubikey-piv), besides its unit and
 # the key@ unit that requires it: the first closes the card service to everyone but the card driver's group and root, the
 # second does the same through polkit on a board whose pcscd is built with it.
+card_serial_env=/etc/sluis/yubikey-piv-$boundary.env
 card_pcscd_dropin=/etc/systemd/system/pcscd.socket.d/10-sluis.conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
@@ -27,7 +28,7 @@ allowed_path() {
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
 	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
 	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
-	"$card_pcscd_dropin" | "$card_polkit_rules") return 0 ;;
+	"$card_pcscd_dropin" | "$card_polkit_rules" | "$card_serial_env") return 0 ;;
 	esac
 	return 1
 }
@@ -150,13 +151,14 @@ deploy)
 			install -m 0644 -o root -g root "$1" "$2"
 		}
 		install_card "$stage/files/card/pcscd-socket.dropin" "$card_pcscd_dropin"
+		install_card "$stage/files/card/yubikey-piv.env" "$card_serial_env" # the card the driver is bound to
 		# pcsc-lite as Debian and Ubuntu 22.04 build it has no polkit: the socket group above is the control there.
 		if [ -e "$card_polkit_policy" ]; then
 			install_card "$stage/files/card/pcsc-polkit.rules" "$card_polkit_rules"
 		fi
 		card_changed=1
 	else
-		for f in "$card_pcscd_dropin" "$card_polkit_rules"; do
+		for f in "$card_pcscd_dropin" "$card_polkit_rules" "$card_serial_env"; do
 			if [ -e "$f" ]; then
 				rm -f -- "$f"
 				echo "removed $f"

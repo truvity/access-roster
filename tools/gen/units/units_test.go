@@ -708,7 +708,7 @@ func TestCardDriver(t *testing.T) {
 	}
 
 	// The card service is closed to everyone but the card driver's group and root, and so is polkit's card access.
-	if sock := files[PcscdSocketFile]; !strings.Contains(sock, "SocketMode=0660") || !strings.Contains(sock, "SocketGroup=sluis-drv-key-yubikey-piv-dev") {
+	if sock := files[PcscdSocketFile]; !strings.Contains(sock, "SocketMode=0660") || !strings.Contains(sock, "SocketGroup=sluis-pcsc-dev") {
 		t.Errorf("the pcscd socket drop-in:\n%s", sock)
 	}
 	rules := files[PolkitRulesFile]
@@ -752,4 +752,75 @@ func sortedGroups(unit string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// The card service is opened to one group, and only the card driver is in it. The key-store socket has the driver's own
+// group, which key@ joins; if the card service had that group too, key@ could talk to the card while the driver restarts
+// (the card keeps its login) and sign with a PIN-once key, or burn PIN attempts. No other uid gets the card service's group.
+func TestOnlyTheCardDriverGetsThePcscGroup(t *testing.T) {
+	files := generate(t)
+	group := ""
+	for _, l := range strings.Split(files[PcscdSocketFile], "\n") {
+		if v, ok := strings.CutPrefix(l, "SocketGroup="); ok {
+			group = v
+		}
+	}
+	if group == "" {
+		t.Fatal("the pcscd socket drop-in names no group")
+	}
+	driverUser := "sluis-drv-key-yubikey-piv-dev"
+	if group == driverUser {
+		t.Fatalf("the card service's group is the card driver's own group %s, which key@ joins for the key-store socket", group)
+	}
+	boundaryGroup := strings.Replace(group, "-dev", "-%i", 1)
+	holders := 0
+	n := 0
+	for name, body := range files {
+		for _, l := range strings.Split(body, "\n") {
+			if v, ok := strings.CutPrefix(l, "SupplementaryGroups="); ok && slices.Contains(strings.Fields(v), boundaryGroup) {
+				holders++
+				if name != "sluis-drv-key-yubikey-piv@.service" {
+					t.Errorf("%s joins the card service's group %s", name, boundaryGroup)
+				}
+			}
+			// Membership by sysusers (m user group), and a user whose primary group it is.
+			if strings.HasPrefix(l, "m ") && strings.Contains(l, group) {
+				t.Errorf("%s makes a member of %s: %q", name, group, l)
+			}
+			if strings.HasPrefix(l, "u ") && strings.Contains(l, group) {
+				t.Errorf("%s makes a user with the group %s: %q", name, group, l)
+			}
+			if strings.HasPrefix(l, "g "+group) {
+				n++
+			}
+		}
+	}
+	if holders != 1 {
+		t.Errorf("%d units join %s, want the card driver's alone", holders, boundaryGroup)
+	}
+	if n != 1 {
+		t.Errorf("%d sysusers lines make the group %s, want one", n, group)
+	}
+	// The key@ units, the default and the card variant, hold the driver's group and not the card service's.
+	for _, f := range []string{"sluis-key@.service", CardKeyUnitFile} {
+		if strings.Contains(files[f], boundaryGroup) {
+			t.Errorf("%s holds the card service's group", f)
+		}
+	}
+	if !strings.Contains(files[CardKeyUnitFile], "sluis-drv-key-yubikey-piv-%i") {
+		t.Error("the card key@ unit does not hold the driver's group, so it cannot reach the key-store socket")
+	}
+}
+
+// The driver is bound to the board's card: the serial comes from a file the deploy writes, not from the repository.
+func TestCardDriverIsBoundToTheBoardsCard(t *testing.T) {
+	unit := generate(t)["sluis-drv-key-yubikey-piv@.service"]
+	for _, want := range []string{"--serial ${SLUIS_CARD_SERIAL}", "EnvironmentFile=/etc/sluis/yubikey-piv-%i.env"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("the card driver unit lacks %q", want)
+		}
+	}
+	if strings.Contains(unit, "EnvironmentFile=-") {
+		t.Error("the serial file is optional: a driver without it would adopt any card")
+	}
 }
