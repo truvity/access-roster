@@ -9,7 +9,7 @@
 // and the page shows that the project data was not available at build time.
 import { readBoard, type Board } from './board';
 
-export { FIELD, ORG, PROJECT_NUMBER, REPO, type BoardIssue } from './board';
+export { FIELD, IN_PROGRESS, ORG, PROJECT_NUMBER, REPO, STATUS_FIELD, type BoardIssue } from './board';
 
 export type Project = ({ available: true } & Board) | { available: false; reason: string };
 

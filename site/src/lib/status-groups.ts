@@ -27,7 +27,9 @@ export const LABEL_DECISION = 'type:decision';
 export const LABEL_BLOCKED = 'status:blocked';
 export const LABEL_NEEDS_DECISION = 'status:needs-decision';
 
-export interface BoardIssue { number: number; title: string; open: boolean; labels: string[]; milestone: string | null }
+// `inProgress`: the issue's board `Status` is "In Progress". A board stored before the field
+// was read lacks it, which counts as not in progress.
+export interface BoardIssue { number: number; title: string; open: boolean; labels: string[]; milestone: string | null; inProgress?: boolean }
 export interface BoardLike { options: string[]; issues: BoardIssue[] }
 
 // The facts of /data/repo.json that the groups need (src/lib/repo.ts writes them).
@@ -45,7 +47,7 @@ export interface Group {
   reqs: ReqCounts;
   areas: AreaRow[];
   adrs: { accepted: number; proposed: number; other: number; toWrite: number | null; records: DecisionFact[] };
-  issues: { open: number; closed: number; blocked: number; needsDecision: number } | null;
+  issues: { open: number; closed: number; inProgress: number; blocked: number; needsDecision: number } | null;
   openDecisionIssues: BoardIssue[];
   otherOpenIssues: BoardIssue[];
 }
@@ -118,6 +120,8 @@ export function groupStatus(board: BoardLike | null, repo: RepoLike): Group[] {
         ? {
             open: open.length,
             closed: is.length - open.length,
+            // Open issues whose board Status is "In Progress"; a closed issue is closed, not in progress.
+            inProgress: open.filter((i) => i.inProgress).length,
             blocked: open.filter((i) => i.labels.includes(LABEL_BLOCKED)).length,
             needsDecision: open.filter((i) => i.labels.includes(LABEL_NEEDS_DECISION)).length,
           }
