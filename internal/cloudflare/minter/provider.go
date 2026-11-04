@@ -129,12 +129,5 @@ func (m *Minter) settle(ctx context.Context) error {
 	if d < 0 {
 		return nil
 	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return m.sleep(ctx, d)
 }

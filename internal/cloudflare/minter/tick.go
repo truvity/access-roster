@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/truvity/sluis/storage/logattr"
@@ -74,19 +75,25 @@ func (r TickResult) Err() error {
 
 // Tick runs the schedule over every preset, one failure never stopping the
 // others. It is what the scheduled job calls: the EventBridge schedule on
-// Lambda, the loop in a cluster.
+// Lambda, the loop in a cluster. The presets are ticked at the same time, each
+// under its own lease, so the holds of the R2 presets that rotate
+// ([Config.PublishAfter]) overlap rather than add up; the result lists them in
+// name order.
 func (m *Minter) Tick(ctx context.Context) TickResult {
-	var out TickResult
-	for _, name := range m.sortedPresets() {
-		out.Presets = append(out.Presets, m.TickPreset(ctx, name))
+	names := m.sortedPresets()
+	out := TickResult{Presets: make([]PresetResult, len(names))}
+	var wg sync.WaitGroup
+	for i, name := range names {
+		wg.Go(func() { out.Presets[i] = m.TickPreset(ctx, name) })
 	}
+	wg.Wait()
 	return out
 }
 
 // TickPreset is one preset's tick under its lease: if the stored credential is
 // older than the preset's rotation, mint a new one, store it at
-// external/cloudflare/<preset>, and delete this preset's own tokens that have
-// expired. A stored credential that is not yet due costs no call to Cloudflare,
+// external/cloudflare/<preset> (an R2 one once it is [Config.PublishAfter]
+// old), and delete this preset's own tokens that have expired. A stored credential that is not yet due costs no call to Cloudflare,
 // except that once every [ReconcileEvery] the tick of a preset the policy
 // grants holds its record against the tokens Cloudflare lists (see reconcile),
 // which the on-demand caps are counted from. A preset with `store: none` is
@@ -173,7 +180,7 @@ func (m *Minter) tick(ctx context.Context, preset string, p config.CloudflarePre
 	if !due {
 		return res
 	}
-	minted, err := m.rotate(ctx, preset, p, rev, now, audit.System())
+	minted, err := m.rotate(ctx, preset, p, rev, now, audit.System(), m.publishAfter(p))
 	if err != nil {
 		res.Outcome, res.Err = OutcomeFailed, err
 		return res
@@ -190,13 +197,25 @@ func (m *Minter) tick(ctx context.Context, preset string, p config.CloudflarePre
 	return res
 }
 
-// rotate mints the stored token and writes it. A token that was minted and
-// could not be stored is deleted at once: nobody could ever read it.
-func (m *Minter) rotate(ctx context.Context, preset string, p config.CloudflarePreset, rev state.Rev, now time.Time, actor audit.Actor) (*Minted, error) {
+// rotate mints the stored token and writes it, after holding it back for hold:
+// the document goes on naming the credential it replaces, which stays valid,
+// until the new one is hold old, and token.minted is recorded once it is
+// written. A token that was minted and could not be stored is deleted at once:
+// nobody could ever read it.
+func (m *Minter) rotate(ctx context.Context, preset string, p config.CloudflarePreset, rev state.Rev, now time.Time, actor audit.Actor,
+	hold time.Duration) (*Minted, error) {
 	minted, err := m.mint(ctx, preset, p, cloudflare.StoredName(m.cfg.Instance, preset, now), now, p.Lifetime.D())
 	if err != nil {
 		m.fail(ctx, actor, preset, audit.CloudflareStored, err)
 		return nil, err
+	}
+	if hold > 0 {
+		if err = m.sleep(ctx, hold); err != nil {
+			err = &storeError{err: fmt.Errorf("write external/cloudflare/%s: stopped while the new credential was held back: %w", preset, err)}
+			m.dropUnstored(ctx, preset, p, minted)
+			m.fail(ctx, actor, preset, audit.CloudflareStored, err)
+			return nil, err
+		}
 	}
 	if _, err = m.stored(preset).Put(ctx, minted.Document(), rev); err != nil {
 		err = &storeError{err: fmt.Errorf("write external/cloudflare/%s: %w", preset, err)}
@@ -398,8 +417,10 @@ func (m *Minter) Revoke(ctx context.Context, preset, tokenID string, actor audit
 	if perr != nil || !expires.Equal(tok.ExpiresOn.UTC().Truncate(time.Second)) {
 		return res, nil
 	}
+	// Stored at once: the revoked token is accepted no longer, so holding its
+	// replacement back would only leave the consumers without one for longer.
 	now := m.now()
-	minted, err := m.rotate(ctx, preset, p, rev, now, actor)
+	minted, err := m.rotate(ctx, preset, p, rev, now, actor, 0)
 	if err != nil {
 		return res, fmt.Errorf("the token was revoked; minting its replacement failed (the next tick retries): %w", err)
 	}
@@ -454,4 +475,30 @@ func (r TickResult) Summary() string {
 		parts = append(parts, p.Preset+"="+p.Outcome)
 	}
 	return strings.Join(parts, " ")
+}
+
+// publishAfter is how long a scheduled rotation of the preset holds a new
+// credential back before storing it: [Config.PublishAfter] for an R2 preset,
+// nothing for one that hands out API tokens.
+func (m *Minter) publishAfter(p config.CloudflarePreset) time.Duration {
+	d := m.cfg.PublishAfter
+	if d == 0 {
+		d = DefaultPublishAfter
+	}
+	if d < 0 || !p.R2() {
+		return 0
+	}
+	return d
+}
+
+// sleep waits d, or until ctx is done.
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

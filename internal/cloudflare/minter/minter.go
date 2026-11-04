@@ -54,9 +54,28 @@ var (
 // permissionGroupsTTL is how long an account's permission groups are reused.
 const permissionGroupsTTL = 10 * time.Minute
 
-// DefaultPropagation is measured against a live account (2026-10-08): derived
-// R2 credentials work about five seconds after the token is created.
+// DefaultPropagation is how long an on-demand R2 credential is held before it
+// is handed out. Measured against a live account (2026-10-08), derived R2
+// credentials work about five seconds after the token is created; measured
+// again over a day of rotations (2026-11-04), R2 still refuses one now and then
+// for up to about 34 s, at times after it has already accepted it. An
+// on-demand caller has no older credential to fall back on, so it is handed
+// the new one after this short wait and retries a refusal; the scheduled
+// rotation, whose consumers still hold a valid credential, waits
+// [DefaultPublishAfter] instead.
 const DefaultPropagation = 5 * time.Second
+
+// DefaultPublishAfter is how long the scheduled rotation of an R2 preset holds
+// a new credential back, from its mint, before it stores it at
+// external/cloudflare/<preset> and records token.minted. R2 refuses a token
+// Cloudflare has just created, with 401, for a few seconds and at times
+// intermittently for about half a minute (up to about 34 s measured over 59
+// rotations, 2026-11-04), while the credential being replaced stays valid until
+// its own expires_on. Holding the new one back therefore costs a consumer
+// nothing, and one that reads the document at once, woken by the token.minted
+// record, reads a credential R2 accepts. A minute is about twice the longest
+// refusal measured.
+const DefaultPublishAfter = time.Minute
 
 // LeaseKind is the kind of the lease a preset's tick runs under (internal/rails).
 const LeaseKind = "cloudflare-tick"
@@ -110,6 +129,12 @@ type Config struct {
 	// five seconds after the token is created and refuses it (403) before.
 	// Zero is [DefaultPropagation]; negative waits for nothing.
 	Propagation time.Duration
+	// PublishAfter is how long the scheduled rotation of an R2 preset holds a
+	// new credential back, from its mint, before it stores it (see
+	// [DefaultPublishAfter]). A rotation an operator asks for, and the
+	// replacement of a revoked token, store at once. Zero is
+	// [DefaultPublishAfter]; negative stores at once.
+	PublishAfter time.Duration
 	// Now is the clock; nil is time.Now.
 	Now func() time.Time
 }
@@ -119,6 +144,8 @@ type Minter struct {
 	cfg Config
 	log *slog.Logger
 	now func() time.Time
+	// sleep waits d, or until ctx is done; a test replaces it.
+	sleep func(ctx context.Context, d time.Duration) error
 
 	mu     sync.Mutex
 	groups map[string]cachedGroups
@@ -156,7 +183,7 @@ func New(cfg Config) (*Minter, error) {
 	if err := cfg.Cloudflare.Validate(); err != nil {
 		return nil, err
 	}
-	m := &Minter{cfg: cfg, log: cfg.Log, now: cfg.Now, groups: map[string]cachedGroups{}, minting: map[string][]time.Time{}, reserved: map[string][]*reservation{}}
+	m := &Minter{cfg: cfg, log: cfg.Log, now: cfg.Now, sleep: sleep, groups: map[string]cachedGroups{}, minting: map[string][]time.Time{}, reserved: map[string][]*reservation{}}
 	if m.log == nil {
 		m.log = slog.Default()
 	}

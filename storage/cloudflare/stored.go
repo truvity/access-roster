@@ -82,8 +82,11 @@ const (
 	// being handed out without reading the document again.
 	DefaultMargin = 30 * time.Second
 	// DefaultSettle is how long after a credential is first read a refusal of
-	// it is waited out: R2 refuses a token Cloudflare has just created, with
-	// 401, for a second or two (up to about 2.3 s measured).
+	// it is waited out. R2 refuses a token Cloudflare has just created, with
+	// 401, for a few seconds and at times intermittently for about half a
+	// minute (up to about 34 s measured). sluis stores a rotated R2 credential
+	// only once it is a minute old, so this is a safety net for one stored
+	// sooner, not the wait that covers the refusal.
 	DefaultSettle = 5 * time.Second
 	// storedRetry is how soon a document that could not be read is read again
 	// while the credential held from it is still good.

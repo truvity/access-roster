@@ -72,7 +72,7 @@ cloudflare:
 
 | Limit or rule | Value |
 |---|---|
-| Pass | every 15 minutes per preset by default (`CloudflareRotation.Interval`); a credential rotates up to one tick after its `rotation` age, so `rotation` + tick + 5m must be under `lifetime`; a due rotation reads the prototype, creates a token and deletes the expired ones |
+| Pass | every 15 minutes per preset by default (`CloudflareRotation.Interval`); a credential rotates up to one tick after its `rotation` age, so `rotation` + tick + 5m must be under `lifetime`; a due rotation reads the prototype, creates a token, stores it and deletes the expired ones; an R2 token is stored a minute after it is created, because R2 refuses a new token for up to about half a minute, and the credential it replaces stays valid meanwhile. All presets are ticked at once, so the waits overlap |
 | `store` | `external` (default) rotates the token into `external/cloudflare/<preset>`. `none` is on-demand only: leave `rotation` out; the pass mints and stores nothing and only deletes its expired tokens; the Pulumi library checks no margin for it and still declares the schedule; the console shows `Store: none` and refuses `Rotate now` |
 | Rotation timing | the first tick after `rotation` replaces the credential, so make `rotation` a multiple of the tick to rotate when intended (20m on a 15m tick rotates every 30m); the console calls it *due* until then and *overdue* past `rotation` + tick + 1m, taking the tick from `cloudflare.tick`, which the Pulumi library fills from `CloudflareRotation` (a minute when unset) |
 | Cloudflare API | 1,200 requests per 5 minutes per user; past it Cloudflare blocks the API for 5 minutes |
