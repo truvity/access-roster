@@ -485,8 +485,10 @@ recipients | check)
 	: >"$tmp/ids"
 	: >"$tmp/pairs"
 	rc=0
+	: >"$tmp/slots"
 	for b in "${boards[@]}"; do
-		id=$(key_check "$b" | sed -n 's/^wrapping key id: //p' | head -1 || true)
+		out=$(key_check "$b" || true)
+		id=$(printf '%s\n' "$out" | sed -n 's/^wrapping key id: //p' | head -1)
 		if ! [[ "$id" =~ ^[A-Za-z0-9_-]{43}$ ]]; then
 			echo "board $b: key@'s check gave no wrapping key id; is sluis-key@dev running?" >&2
 			rc=1
@@ -495,8 +497,30 @@ recipients | check)
 		echo "board $b: wrapping key id $id"
 		printf '%s\n' "$id" >>"$tmp/ids"
 		printf '%s=%s\n' "$b" "$id" >>"$tmp/pairs"
+		# The board's slot map entry (ADR 0006, "The slot plan"): its keys and the attestation of each card slot, one line
+		# of JSON that names the node first. Its peers release its PIN only while the signed KeyPlan carries it.
+		entry=$(printf '%s\n' "$out" | sed -n 's/^slot map: //p' | head -1)
+		if [[ "$entry" != '{"node":"'* ]]; then
+			echo "board $b: key@'s check gave no slot map entry" >&2
+			rc=1
+			continue
+		fi
+		printf '%s\n' "$entry" >>"$tmp/slots"
 	done
 	[ "$rc" = 0 ] || exit "$rc"
+	# The slot map: the entries of this run replace those of the same nodes; the other nodes' entries stay.
+	node_of() { sed -n 's/^{"node":"\([^"]*\)".*/\1/p'; }
+	{
+		echo "# the slot map entries of the boards (boards.sh recipients), one JSON object per line"
+		if [ -s "$state/slot-map" ]; then
+			while IFS= read -r l; do
+				n=$(printf '%s\n' "$l" | node_of)
+				[ -n "$n" ] || continue
+				grep -q "^{\"node\":\"$n\"" "$tmp/slots" || printf '%s\n' "$l"
+			done < <(grep '^{' "$state/slot-map")
+		fi
+		cat "$tmp/slots"
+	} >"$tmp/slot-map.new"
 	sort -u "$tmp/ids" >"$tmp/ids.sorted"
 	boards_file=$state/recipients.boards # board=id, the id each board gave last time
 	if [ -s "$state/recipients" ]; then
@@ -537,7 +561,8 @@ recipients | check)
 		cat "$tmp/pairs"
 	} >"$tmp/boards.new"
 	{ echo "# the id each board gave last time (boards.sh recipients)"; sort "$tmp/boards.new"; } >"$boards_file"
-	echo "recipients: $(wc -l <"$tmp/ids.new") ids in $state/recipients; run 'just boards-prepare' and 'just boards-deploy' to list them"
+	cp "$tmp/slot-map.new" "$state/slot-map"
+	echo "recipients: $(wc -l <"$tmp/ids.new") ids in $state/recipients and $(grep -c '^{' "$state/slot-map") slot map entries in $state/slot-map; run 'just boards-prepare' and 'just boards-deploy' to list them"
 	;;
 undeploy | status)
 	: >"$tmp/plan.tsv"

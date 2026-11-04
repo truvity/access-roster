@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha512"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -77,6 +78,23 @@ func planPayload(t *testing.T, plan *configv2alpha1.KeyPlan) []byte {
 	}
 	if purposes != nil {
 		item["purposes"] = purposes
+	}
+	if len(plan.GetSlotMap()) > 0 {
+		enc := base64.RawURLEncoding
+		var nodes []map[string]any
+		for _, n := range plan.GetSlotMap() {
+			var slots []map[string]string
+			for _, k := range n.GetSlots() {
+				m := map[string]string{"slot": k.GetSlot(), "purpose": k.GetPurpose(), "public_key": enc.EncodeToString(k.GetPublicKey())}
+				if len(k.GetAttestation()) > 0 {
+					m["attestation"] = enc.EncodeToString(k.GetAttestation())
+					m["attestation_signer"] = enc.EncodeToString(k.GetAttestationSigner())
+				}
+				slots = append(slots, m)
+			}
+			nodes = append(nodes, map[string]any{"node": n.GetNode(), "slots": slots})
+		}
+		item["slot_map"] = nodes
 	}
 	b, err := json.Marshal(map[string]any{"default": item})
 	if err != nil {

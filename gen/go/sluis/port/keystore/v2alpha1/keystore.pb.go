@@ -533,6 +533,515 @@ func (x *EcdhResponse) GetSharedSecret() []byte {
 	return nil
 }
 
+// AttestRequest asks for the attestation of the key of a purpose.
+type AttestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"` // the purpose
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AttestRequest) Reset() {
+	*x = AttestRequest{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AttestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AttestRequest) ProtoMessage() {}
+
+func (x *AttestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AttestRequest.ProtoReflect.Descriptor instead.
+func (*AttestRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *AttestRequest) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+// AttestResponse carries the attestation, as the card makes it.
+type AttestResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Attestation       []byte                 `protobuf:"bytes,1,opt,name=attestation,proto3" json:"attestation,omitempty"`                                      // the certificate the card made for the slot's key, DER
+	AttestationSigner []byte                 `protobuf:"bytes,2,opt,name=attestation_signer,json=attestationSigner,proto3" json:"attestation_signer,omitempty"` // the card's own attestation certificate that signed it, DER
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *AttestResponse) Reset() {
+	*x = AttestResponse{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AttestResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AttestResponse) ProtoMessage() {}
+
+func (x *AttestResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AttestResponse.ProtoReflect.Descriptor instead.
+func (*AttestResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *AttestResponse) GetAttestation() []byte {
+	if x != nil {
+		return x.Attestation
+	}
+	return nil
+}
+
+func (x *AttestResponse) GetAttestationSigner() []byte {
+	if x != nil {
+		return x.AttestationSigner
+	}
+	return nil
+}
+
+// VerifyAttestationRequest carries the attestation of a key of another card, from the slot map.
+type VerifyAttestationRequest struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Attestation       []byte                 `protobuf:"bytes,1,opt,name=attestation,proto3" json:"attestation,omitempty"`                                      // the slot certificate, DER
+	AttestationSigner []byte                 `protobuf:"bytes,2,opt,name=attestation_signer,json=attestationSigner,proto3" json:"attestation_signer,omitempty"` // the card's attestation certificate, DER
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *VerifyAttestationRequest) Reset() {
+	*x = VerifyAttestationRequest{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyAttestationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyAttestationRequest) ProtoMessage() {}
+
+func (x *VerifyAttestationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyAttestationRequest.ProtoReflect.Descriptor instead.
+func (*VerifyAttestationRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *VerifyAttestationRequest) GetAttestation() []byte {
+	if x != nil {
+		return x.Attestation
+	}
+	return nil
+}
+
+func (x *VerifyAttestationRequest) GetAttestationSigner() []byte {
+	if x != nil {
+		return x.AttestationSigner
+	}
+	return nil
+}
+
+// VerifyAttestationResponse is what a verified attestation says. A chain that does not reach the store's anchors, or a
+// firmware below the floor, is refused and has no response.
+type VerifyAttestationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"`             // the attested public key, SubjectPublicKeyInfo in DER
+	Slot          string                 `protobuf:"bytes,2,opt,name=slot,proto3" json:"slot,omitempty"`                                  // the slot, two lower-case hex digits
+	PinPolicy     string                 `protobuf:"bytes,3,opt,name=pin_policy,json=pinPolicy,proto3" json:"pin_policy,omitempty"`       // "never", "once" or "always"
+	TouchPolicy   string                 `protobuf:"bytes,4,opt,name=touch_policy,json=touchPolicy,proto3" json:"touch_policy,omitempty"` // "never", "always" or "cached"
+	Serial        uint32                 `protobuf:"varint,5,opt,name=serial,proto3" json:"serial,omitempty"`                             // the serial of the card that made the key
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyAttestationResponse) Reset() {
+	*x = VerifyAttestationResponse{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyAttestationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyAttestationResponse) ProtoMessage() {}
+
+func (x *VerifyAttestationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyAttestationResponse.ProtoReflect.Descriptor instead.
+func (*VerifyAttestationResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *VerifyAttestationResponse) GetSpkiDer() []byte {
+	if x != nil {
+		return x.SpkiDer
+	}
+	return nil
+}
+
+func (x *VerifyAttestationResponse) GetSlot() string {
+	if x != nil {
+		return x.Slot
+	}
+	return ""
+}
+
+func (x *VerifyAttestationResponse) GetPinPolicy() string {
+	if x != nil {
+		return x.PinPolicy
+	}
+	return ""
+}
+
+func (x *VerifyAttestationResponse) GetTouchPolicy() string {
+	if x != nil {
+		return x.TouchPolicy
+	}
+	return ""
+}
+
+func (x *VerifyAttestationResponse) GetSerial() uint32 {
+	if x != nil {
+		return x.Serial
+	}
+	return 0
+}
+
+// BeginPinReleaseRequest asks a locked driver for a one-time key.
+type BeginPinReleaseRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginPinReleaseRequest) Reset() {
+	*x = BeginPinReleaseRequest{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginPinReleaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginPinReleaseRequest) ProtoMessage() {}
+
+func (x *BeginPinReleaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginPinReleaseRequest.ProtoReflect.Descriptor instead.
+func (*BeginPinReleaseRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{14}
+}
+
+// BeginPinReleaseResponse carries the public half of the one-time key. Its private half stays in the driver until
+// FinishPinRelease, or the next BeginPinRelease, wipes it.
+type BeginPinReleaseResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	EphemeralPublic []byte                 `protobuf:"bytes,1,opt,name=ephemeral_public,json=ephemeralPublic,proto3" json:"ephemeral_public,omitempty"` // SEC1 uncompressed P-384
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *BeginPinReleaseResponse) Reset() {
+	*x = BeginPinReleaseResponse{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginPinReleaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginPinReleaseResponse) ProtoMessage() {}
+
+func (x *BeginPinReleaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginPinReleaseResponse.ProtoReflect.Descriptor instead.
+func (*BeginPinReleaseResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *BeginPinReleaseResponse) GetEphemeralPublic() []byte {
+	if x != nil {
+		return x.EphemeralPublic
+	}
+	return nil
+}
+
+// SealPinRequest asks an unlocked driver to seal its PIN to a request that key@ has verified.
+type SealPinRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestText   []byte                 `protobuf:"bytes,1,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"` // the signed text of the PinReleaseRequest; the driver reads the ephemeral key from it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SealPinRequest) Reset() {
+	*x = SealPinRequest{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SealPinRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SealPinRequest) ProtoMessage() {}
+
+func (x *SealPinRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SealPinRequest.ProtoReflect.Descriptor instead.
+func (*SealPinRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SealPinRequest) GetRequestText() []byte {
+	if x != nil {
+		return x.RequestText
+	}
+	return nil
+}
+
+// SealPinResponse carries the sealed PIN: ECDH P-384 with the request's key, HKDF-SHA384 with the request text as info,
+// AES-256-GCM with the request text as additional data.
+type SealPinResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ReleaserPublic []byte                 `protobuf:"bytes,1,opt,name=releaser_public,json=releaserPublic,proto3" json:"releaser_public,omitempty"` // the releaser's ephemeral public key, SEC1 uncompressed P-384
+	Sealed         []byte                 `protobuf:"bytes,2,opt,name=sealed,proto3" json:"sealed,omitempty"`                                       // the nonce, then the ciphertext and tag
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *SealPinResponse) Reset() {
+	*x = SealPinResponse{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SealPinResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SealPinResponse) ProtoMessage() {}
+
+func (x *SealPinResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SealPinResponse.ProtoReflect.Descriptor instead.
+func (*SealPinResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *SealPinResponse) GetReleaserPublic() []byte {
+	if x != nil {
+		return x.ReleaserPublic
+	}
+	return nil
+}
+
+func (x *SealPinResponse) GetSealed() []byte {
+	if x != nil {
+		return x.Sealed
+	}
+	return nil
+}
+
+// FinishPinReleaseRequest gives a locked driver a release that key@ has verified.
+type FinishPinReleaseRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	RequestText    []byte                 `protobuf:"bytes,1,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`          // the text of this driver's own request; its ephemeral key must be the driver's one-time key
+	ReleaserPublic []byte                 `protobuf:"bytes,2,opt,name=releaser_public,json=releaserPublic,proto3" json:"releaser_public,omitempty"` // from the answer
+	Sealed         []byte                 `protobuf:"bytes,3,opt,name=sealed,proto3" json:"sealed,omitempty"`                                       // from the answer
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FinishPinReleaseRequest) Reset() {
+	*x = FinishPinReleaseRequest{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinishPinReleaseRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinishPinReleaseRequest) ProtoMessage() {}
+
+func (x *FinishPinReleaseRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinishPinReleaseRequest.ProtoReflect.Descriptor instead.
+func (*FinishPinReleaseRequest) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *FinishPinReleaseRequest) GetRequestText() []byte {
+	if x != nil {
+		return x.RequestText
+	}
+	return nil
+}
+
+func (x *FinishPinReleaseRequest) GetReleaserPublic() []byte {
+	if x != nil {
+		return x.ReleaserPublic
+	}
+	return nil
+}
+
+func (x *FinishPinReleaseRequest) GetSealed() []byte {
+	if x != nil {
+		return x.Sealed
+	}
+	return nil
+}
+
+// FinishPinReleaseResponse says that the card took the PIN.
+type FinishPinReleaseResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FinishPinReleaseResponse) Reset() {
+	*x = FinishPinReleaseResponse{}
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FinishPinReleaseResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FinishPinReleaseResponse) ProtoMessage() {}
+
+func (x *FinishPinReleaseResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FinishPinReleaseResponse.ProtoReflect.Descriptor instead.
+func (*FinishPinReleaseResponse) Descriptor() ([]byte, []int) {
+	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{19}
+}
+
 var File_sluis_port_keystore_v2alpha1_keystore_proto protoreflect.FileDescriptor
 
 const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
@@ -568,13 +1077,46 @@ const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
 	"\vpeer_public\x18\x02 \x01(\fR\n" +
 	"peerPublic\"3\n" +
 	"\fEcdhResponse\x12#\n" +
-	"\rshared_secret\x18\x01 \x01(\fR\fsharedSecret2\xb9\x04\n" +
+	"\rshared_secret\x18\x01 \x01(\fR\fsharedSecret\")\n" +
+	"\rAttestRequest\x12\x18\n" +
+	"\apurpose\x18\x01 \x01(\tR\apurpose\"a\n" +
+	"\x0eAttestResponse\x12 \n" +
+	"\vattestation\x18\x01 \x01(\fR\vattestation\x12-\n" +
+	"\x12attestation_signer\x18\x02 \x01(\fR\x11attestationSigner\"k\n" +
+	"\x18VerifyAttestationRequest\x12 \n" +
+	"\vattestation\x18\x01 \x01(\fR\vattestation\x12-\n" +
+	"\x12attestation_signer\x18\x02 \x01(\fR\x11attestationSigner\"\xa4\x01\n" +
+	"\x19VerifyAttestationResponse\x12\x19\n" +
+	"\bspki_der\x18\x01 \x01(\fR\aspkiDer\x12\x12\n" +
+	"\x04slot\x18\x02 \x01(\tR\x04slot\x12\x1d\n" +
+	"\n" +
+	"pin_policy\x18\x03 \x01(\tR\tpinPolicy\x12!\n" +
+	"\ftouch_policy\x18\x04 \x01(\tR\vtouchPolicy\x12\x16\n" +
+	"\x06serial\x18\x05 \x01(\rR\x06serial\"\x18\n" +
+	"\x16BeginPinReleaseRequest\"D\n" +
+	"\x17BeginPinReleaseResponse\x12)\n" +
+	"\x10ephemeral_public\x18\x01 \x01(\fR\x0fephemeralPublic\"3\n" +
+	"\x0eSealPinRequest\x12!\n" +
+	"\frequest_text\x18\x01 \x01(\fR\vrequestText\"R\n" +
+	"\x0fSealPinResponse\x12'\n" +
+	"\x0freleaser_public\x18\x01 \x01(\fR\x0ereleaserPublic\x12\x16\n" +
+	"\x06sealed\x18\x02 \x01(\fR\x06sealed\"}\n" +
+	"\x17FinishPinReleaseRequest\x12!\n" +
+	"\frequest_text\x18\x01 \x01(\fR\vrequestText\x12'\n" +
+	"\x0freleaser_public\x18\x02 \x01(\fR\x0ereleaserPublic\x12\x16\n" +
+	"\x06sealed\x18\x03 \x01(\fR\x06sealed\"\x1a\n" +
+	"\x18FinishPinReleaseResponse2\x91\t\n" +
 	"\x0fKeyStoreService\x12u\n" +
 	"\fCapabilities\x121.sluis.port.keystore.v2alpha1.CapabilitiesRequest\x1a2.sluis.port.keystore.v2alpha1.CapabilitiesResponse\x12c\n" +
 	"\x06Ensure\x12+.sluis.port.keystore.v2alpha1.EnsureRequest\x1a,.sluis.port.keystore.v2alpha1.EnsureResponse\x12m\n" +
 	"\x04Sign\x121.sluis.port.keystore.v2alpha1.KeyStoreSignRequest\x1a2.sluis.port.keystore.v2alpha1.KeyStoreSignResponse\x12|\n" +
 	"\tPublicKey\x126.sluis.port.keystore.v2alpha1.KeyStorePublicKeyRequest\x1a7.sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse\x12]\n" +
-	"\x04Ecdh\x12).sluis.port.keystore.v2alpha1.EcdhRequest\x1a*.sluis.port.keystore.v2alpha1.EcdhResponseB\x96\x02\n" +
+	"\x04Ecdh\x12).sluis.port.keystore.v2alpha1.EcdhRequest\x1a*.sluis.port.keystore.v2alpha1.EcdhResponse\x12c\n" +
+	"\x06Attest\x12+.sluis.port.keystore.v2alpha1.AttestRequest\x1a,.sluis.port.keystore.v2alpha1.AttestResponse\x12\x84\x01\n" +
+	"\x11VerifyAttestation\x126.sluis.port.keystore.v2alpha1.VerifyAttestationRequest\x1a7.sluis.port.keystore.v2alpha1.VerifyAttestationResponse\x12~\n" +
+	"\x0fBeginPinRelease\x124.sluis.port.keystore.v2alpha1.BeginPinReleaseRequest\x1a5.sluis.port.keystore.v2alpha1.BeginPinReleaseResponse\x12f\n" +
+	"\aSealPin\x12,.sluis.port.keystore.v2alpha1.SealPinRequest\x1a-.sluis.port.keystore.v2alpha1.SealPinResponse\x12\x81\x01\n" +
+	"\x10FinishPinRelease\x125.sluis.port.keystore.v2alpha1.FinishPinReleaseRequest\x1a6.sluis.port.keystore.v2alpha1.FinishPinReleaseResponseB\x96\x02\n" +
 	" com.sluis.port.keystore.v2alpha1B\rKeystoreProtoP\x01ZPgithub.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1;keystorev2alpha1\xa2\x02\x03SPK\xaa\x02\x1cSluis.Port.Keystore.V2alpha1\xca\x02\x1cSluis\\Port\\Keystore\\V2alpha1\xe2\x02(Sluis\\Port\\Keystore\\V2alpha1\\GPBMetadata\xea\x02\x1fSluis::Port::Keystore::V2alpha1b\x06proto3"
 
 var (
@@ -589,7 +1131,7 @@ func file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP() []byte {
 	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescData
 }
 
-var file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_sluis_port_keystore_v2alpha1_keystore_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_sluis_port_keystore_v2alpha1_keystore_proto_goTypes = []any{
 	(*CapabilitiesRequest)(nil),       // 0: sluis.port.keystore.v2alpha1.CapabilitiesRequest
 	(*CapabilitiesResponse)(nil),      // 1: sluis.port.keystore.v2alpha1.CapabilitiesResponse
@@ -601,22 +1143,42 @@ var file_sluis_port_keystore_v2alpha1_keystore_proto_goTypes = []any{
 	(*KeyStorePublicKeyResponse)(nil), // 7: sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
 	(*EcdhRequest)(nil),               // 8: sluis.port.keystore.v2alpha1.EcdhRequest
 	(*EcdhResponse)(nil),              // 9: sluis.port.keystore.v2alpha1.EcdhResponse
-	(*timestamppb.Timestamp)(nil),     // 10: google.protobuf.Timestamp
+	(*AttestRequest)(nil),             // 10: sluis.port.keystore.v2alpha1.AttestRequest
+	(*AttestResponse)(nil),            // 11: sluis.port.keystore.v2alpha1.AttestResponse
+	(*VerifyAttestationRequest)(nil),  // 12: sluis.port.keystore.v2alpha1.VerifyAttestationRequest
+	(*VerifyAttestationResponse)(nil), // 13: sluis.port.keystore.v2alpha1.VerifyAttestationResponse
+	(*BeginPinReleaseRequest)(nil),    // 14: sluis.port.keystore.v2alpha1.BeginPinReleaseRequest
+	(*BeginPinReleaseResponse)(nil),   // 15: sluis.port.keystore.v2alpha1.BeginPinReleaseResponse
+	(*SealPinRequest)(nil),            // 16: sluis.port.keystore.v2alpha1.SealPinRequest
+	(*SealPinResponse)(nil),           // 17: sluis.port.keystore.v2alpha1.SealPinResponse
+	(*FinishPinReleaseRequest)(nil),   // 18: sluis.port.keystore.v2alpha1.FinishPinReleaseRequest
+	(*FinishPinReleaseResponse)(nil),  // 19: sluis.port.keystore.v2alpha1.FinishPinReleaseResponse
+	(*timestamppb.Timestamp)(nil),     // 20: google.protobuf.Timestamp
 }
 var file_sluis_port_keystore_v2alpha1_keystore_proto_depIdxs = []int32{
-	10, // 0: sluis.port.keystore.v2alpha1.EnsureResponse.created_at:type_name -> google.protobuf.Timestamp
+	20, // 0: sluis.port.keystore.v2alpha1.EnsureResponse.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:input_type -> sluis.port.keystore.v2alpha1.CapabilitiesRequest
 	2,  // 2: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:input_type -> sluis.port.keystore.v2alpha1.EnsureRequest
 	4,  // 3: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:input_type -> sluis.port.keystore.v2alpha1.KeyStoreSignRequest
 	6,  // 4: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:input_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyRequest
 	8,  // 5: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:input_type -> sluis.port.keystore.v2alpha1.EcdhRequest
-	1,  // 6: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:output_type -> sluis.port.keystore.v2alpha1.CapabilitiesResponse
-	3,  // 7: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:output_type -> sluis.port.keystore.v2alpha1.EnsureResponse
-	5,  // 8: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:output_type -> sluis.port.keystore.v2alpha1.KeyStoreSignResponse
-	7,  // 9: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:output_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
-	9,  // 10: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:output_type -> sluis.port.keystore.v2alpha1.EcdhResponse
-	6,  // [6:11] is the sub-list for method output_type
-	1,  // [1:6] is the sub-list for method input_type
+	10, // 6: sluis.port.keystore.v2alpha1.KeyStoreService.Attest:input_type -> sluis.port.keystore.v2alpha1.AttestRequest
+	12, // 7: sluis.port.keystore.v2alpha1.KeyStoreService.VerifyAttestation:input_type -> sluis.port.keystore.v2alpha1.VerifyAttestationRequest
+	14, // 8: sluis.port.keystore.v2alpha1.KeyStoreService.BeginPinRelease:input_type -> sluis.port.keystore.v2alpha1.BeginPinReleaseRequest
+	16, // 9: sluis.port.keystore.v2alpha1.KeyStoreService.SealPin:input_type -> sluis.port.keystore.v2alpha1.SealPinRequest
+	18, // 10: sluis.port.keystore.v2alpha1.KeyStoreService.FinishPinRelease:input_type -> sluis.port.keystore.v2alpha1.FinishPinReleaseRequest
+	1,  // 11: sluis.port.keystore.v2alpha1.KeyStoreService.Capabilities:output_type -> sluis.port.keystore.v2alpha1.CapabilitiesResponse
+	3,  // 12: sluis.port.keystore.v2alpha1.KeyStoreService.Ensure:output_type -> sluis.port.keystore.v2alpha1.EnsureResponse
+	5,  // 13: sluis.port.keystore.v2alpha1.KeyStoreService.Sign:output_type -> sluis.port.keystore.v2alpha1.KeyStoreSignResponse
+	7,  // 14: sluis.port.keystore.v2alpha1.KeyStoreService.PublicKey:output_type -> sluis.port.keystore.v2alpha1.KeyStorePublicKeyResponse
+	9,  // 15: sluis.port.keystore.v2alpha1.KeyStoreService.Ecdh:output_type -> sluis.port.keystore.v2alpha1.EcdhResponse
+	11, // 16: sluis.port.keystore.v2alpha1.KeyStoreService.Attest:output_type -> sluis.port.keystore.v2alpha1.AttestResponse
+	13, // 17: sluis.port.keystore.v2alpha1.KeyStoreService.VerifyAttestation:output_type -> sluis.port.keystore.v2alpha1.VerifyAttestationResponse
+	15, // 18: sluis.port.keystore.v2alpha1.KeyStoreService.BeginPinRelease:output_type -> sluis.port.keystore.v2alpha1.BeginPinReleaseResponse
+	17, // 19: sluis.port.keystore.v2alpha1.KeyStoreService.SealPin:output_type -> sluis.port.keystore.v2alpha1.SealPinResponse
+	19, // 20: sluis.port.keystore.v2alpha1.KeyStoreService.FinishPinRelease:output_type -> sluis.port.keystore.v2alpha1.FinishPinReleaseResponse
+	11, // [11:21] is the sub-list for method output_type
+	1,  // [1:11] is the sub-list for method input_type
 	1,  // [1:1] is the sub-list for extension type_name
 	1,  // [1:1] is the sub-list for extension extendee
 	0,  // [0:1] is the sub-list for field type_name
@@ -633,7 +1195,7 @@ func file_sluis_port_keystore_v2alpha1_keystore_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc), len(file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

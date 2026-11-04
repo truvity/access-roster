@@ -26,6 +26,27 @@ message KeyPlan {
   // wrapping public key, base64url without padding, the recovery recipient's included. key@ wraps a data key to
   // these and to no one else.
   repeated string recipients = 3;
+  // The slot map (0006 "The slot plan", decided 2026-11-04 as D20b): which card slot of each node holds which key, under
+  // the publisher's signature with the rest of the KeyPlan. A peer's key@ verifies a PinReleaseRequest and a PinRelease
+  // with the public key of the pin-release slot of the node that signed it, and only after its own card driver has
+  // verified that slot's attestation (0006 "Touch and PIN").
+  repeated NodeSlotMap slot_map = 4;
+}
+
+// NodeSlotMap is the slots of one node's card.
+message NodeSlotMap {
+  string node = 1;               // the node, as its key@ names itself (--node); an address part, listed once
+  repeated SlotKey slots = 2;    // one entry per slot, none twice
+}
+
+// SlotKey is the key of one card slot. In the YAML payload the byte fields are base64url without padding (RFC 4648,
+// section 5).
+message SlotKey {
+  string slot = 1;                  // the PIV slot, two lower-case hex digits: 9a, 9c, 9d, 82 to 95
+  string purpose = 2;               // the purpose of keys.yaml the slot serves
+  bytes public_key = 3;             // the slot's public key, SubjectPublicKeyInfo in DER
+  bytes attestation = 4;            // the slot's attestation certificate, DER, made by the card; empty for a store that does not attest
+  bytes attestation_signer = 5;     // the card's attestation certificate that signed it, DER; present exactly when attestation is
 }
 
 // KeyPurposePlan is the plan of one purpose.

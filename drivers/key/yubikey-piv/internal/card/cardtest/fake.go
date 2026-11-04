@@ -67,10 +67,14 @@ type Card struct {
 	Signs int
 	// Loggedin is the PIN state of the powered card.
 	Loggedin bool
+	// PKI makes this card a sibling of another fake: its attestation certificate is signed by that card's TEST ONLY
+	// intermediate, so each card verifies the other's attestations, as two YubiKeys both chain to Yubico's root.
+	PKI *Card
 
 	mu       sync.Mutex
 	root     *x509.Certificate
 	inter    *x509.Certificate
+	interKey *ecdsa.PrivateKey
 	attKey   *ecdsa.PrivateKey
 	attCert  *x509.Certificate
 	slots    map[card.Slot]*slotKey
@@ -92,6 +96,17 @@ func (c *Card) init() error {
 		return nil
 	}
 	c.slots = map[card.Slot]*slotKey{}
+	if c.PKI != nil {
+		c.PKI.mu.Lock()
+		err := c.PKI.init()
+		root, inter, interKey, hash := c.PKI.root, c.PKI.inter, c.PKI.interKey, c.PKI.rootHash
+		c.PKI.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		c.root, c.inter, c.interKey, c.rootHash = root, inter, interKey, hash
+		return c.makeAttestationKey(interKey, inter)
+	}
 	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return err
@@ -124,6 +139,7 @@ func (c *Card) init() error {
 	if c.inter, err = x509.ParseCertificate(der); err != nil {
 		return err
 	}
+	c.interKey = interKey
 	sum := sha256.Sum256(c.root.Raw)
 	c.rootHash = hex.EncodeToString(sum[:])
 	signerKey, signerCert := interKey, c.inter
@@ -146,6 +162,12 @@ func (c *Card) init() error {
 		}
 		signerKey = rogue
 	}
+	return c.makeAttestationKey(signerKey, signerCert)
+}
+
+// makeAttestationKey makes the card's attestation key and its certificate, signed by the key and certificate given.
+func (c *Card) makeAttestationKey(signerKey *ecdsa.PrivateKey, signerCert *x509.Certificate) error {
+	var err error
 	if c.attKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
 		return err
 	}
@@ -154,7 +176,7 @@ func (c *Card) init() error {
 		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(24 * time.Hour),
 		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign,
 	}
-	der, err = x509.CreateCertificate(rand.Reader, attTmpl, signerCert, &c.attKey.PublicKey, signerKey)
+	der, err := x509.CreateCertificate(rand.Reader, attTmpl, signerCert, &c.attKey.PublicKey, signerKey)
 	if err != nil {
 		return err
 	}

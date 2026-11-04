@@ -39,6 +39,7 @@ func main() {
 	kid := flag.String("kid", "publisher-1", "the kid of the publisher key")
 	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
 	subjectsFile := flag.String("subjects", "", "a file with the subjects of the test users, a user and its sub on each line (# starts a comment); each fills the placeholder {{sub:<user>}} of a source")
+	slotMap := flag.String("slot-map", "", "a file with the slot map entries of the nodes, one JSON object per line as key@'s check prints it after \"slot map: \" (# starts a comment); they replace the empty slot map of the KeyPlan source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
 	declaration := flag.String("declaration", "", "sign this key revocation declaration (`sluis key revoke --out`) instead of the config sources")
 	declarationOut := flag.String("declaration-out", "", "the path of the signed declaration, with -declaration")
@@ -71,9 +72,17 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	var entries []string
+	if *slotMap != "" {
+		var err error
+		if entries, err = readLines(*slotMap); err != nil {
+			fmt.Fprintf(os.Stderr, "sign-config: slot map: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	docs, err := Run(Options{
 		ConfigDir: *configDir, BootstrapTemplate: *template, KeyDir: *keyDir, Out: *out, BootstrapOut: *bootstrapOut,
-		KID: *kid, Seq: n, Recipients: ids, Subjects: subjects,
+		KID: *kid, Seq: n, Recipients: ids, Subjects: subjects, SlotMap: entries,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
@@ -138,4 +147,19 @@ func signDeclaration(keyDir, kid string, seq uint64, in, out string) {
 		os.Exit(1)
 	}
 	fmt.Printf("sign-config: the declaration is signed as %s with seq %d (%s)\n", kid, seq, out)
+}
+
+// readLines reads the non-empty lines of a file that do not start with #.
+func readLines(path string) ([]string, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // the harness's own state file
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for l := range strings.SplitSeq(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "#") {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
