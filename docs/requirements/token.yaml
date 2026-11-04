@@ -136,7 +136,7 @@ requirements:
     level: MUST
     source: security-review
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -181,7 +181,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -550,7 +550,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards: []
@@ -564,7 +564,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards: []

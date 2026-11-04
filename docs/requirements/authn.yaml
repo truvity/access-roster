@@ -28,7 +28,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -160,7 +160,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -198,7 +198,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -366,7 +366,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -525,7 +525,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -541,7 +541,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -557,7 +557,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -573,7 +573,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -704,7 +704,7 @@ requirements:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "negative test (UV=0)"}
@@ -722,7 +722,7 @@ requirements:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "negative test (wrong web origin)"}
@@ -739,7 +739,7 @@ requirements:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "challenge binding test"}
@@ -757,7 +757,7 @@ requirements:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "replay negative test"}
@@ -775,7 +775,7 @@ requirements:
       - {id: ST-59, section: "7-8", depth: Full}
       - {id: ST-105, section: "test plan", depth: Full}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "counter regression negative test"}
@@ -791,7 +791,7 @@ requirements:
     standards:
       - {id: ST-59, section: "5", depth: Partial}
     issues: [885]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: integration-test, ref: "identical-response test for known and unknown identifiers"}
   - id: REQ-AUTHN-021
@@ -818,7 +818,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards:
@@ -834,7 +834,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -850,7 +850,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -866,7 +866,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: ciam-upstream
     runtimes: all
     standards:
@@ -1025,7 +1025,7 @@ requirements:
     level: MUST
     source: security-review
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -1041,7 +1041,7 @@ requirements:
     level: MUST
     source: security-review
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -1102,7 +1102,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
@@ -1118,7 +1118,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: test-gap
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:
