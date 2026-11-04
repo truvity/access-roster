@@ -251,7 +251,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-63, section: "1", depth: Full}
@@ -392,7 +392,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1066, 1071]

@@ -77,7 +77,7 @@ requirements:
     standards:
       - {id: ST-87, section: "1", depth: Full}
     issues: [848]
-    gap: register-gap
+    gap: partly-built
     verification:
       - {kind: integration-test, ref: "SBOM validator"}
   - id: REQ-SUPPLY-004
