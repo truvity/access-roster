@@ -53,6 +53,14 @@ func (s *Sequencer) Admit(v *Verified) (Sequence, error) {
 	return r, nil
 }
 
+// Peek is what Admit would say of v, without admitting it: a caller that must save a mark before it takes a
+// document asks first and admits after.
+func (s *Sequencer) Peek(v *Verified) Sequence {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return compare(s.held, s.seq, s.digest, v)
+}
+
 // Restore sets the document held, before any is admitted: the highest one a previous process saw, which the caller kept
 // in durable state of its own. A process that restores one refuses an older document after a restart, which a process
 // that restores none cannot (ADR 0005, "Freshness at a cold start"). It does nothing once a document is held.

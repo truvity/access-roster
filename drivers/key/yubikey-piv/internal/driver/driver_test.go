@@ -59,12 +59,6 @@ type running struct {
 // test process has for the driver's peers.
 func startWith(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool) running {
 	t.Helper()
-	return startOpts(t, c, environment, caller, allowAdmin, "", nil)
-}
-
-// startOpts is startWith with the state directory of the driver and its clock.
-func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool, stateDir string, now func() time.Time) running {
-	t.Helper()
 	base := shortDir(t)
 	r := running{socket: filepath.Join(base, "d.sock"), adm: filepath.Join(base, "a.sock"), card: c}
 	cfg := rpc.ServerConfig{
@@ -76,7 +70,7 @@ func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- driver.Run(ctx, driver.Options{Environment: environment, Node: "node-a", Serial: c.SerialNo, Open: c.Opener(), StateDir: stateDir, Now: now}, cfg, admin)
+		done <- driver.Run(ctx, driver.Options{Environment: environment, Node: "node-a", Serial: c.SerialNo, Open: c.Opener()}, cfg, admin)
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -684,183 +678,5 @@ func TestABadUnlockCannotBlockTheCard(t *testing.T) {
 	wantRefused(t, err, connect.CodeFailedPrecondition, "pin_retries")
 	if c.Retries != 1 || c.LoginAttempts != 2 {
 		t.Fatalf("%d retries left after %d attempts, want 1 and 2", c.Retries, c.LoginAttempts)
-	}
-}
-
-// verifies: REQ-KEYS-109
-// A PIV card does not store when a key was made, so the driver records it, with the key it belongs to, and Ensure says
-// it: the first call and the next alike, and after a restart of the driver. The record is the driver's, 0600.
-func TestEnsureSaysWhenTheDriverMadeTheKey(t *testing.T) {
-	c := cardtest.New()
-	state := shortDir(t)
-	at := time.Date(2026, 11, 4, 12, 0, 7, 0, time.UTC)
-	r := startOpts(t, c, driver.Development, "key", self(), state, func() time.Time { return at })
-	first := ensure(t, r.key, "token-signing", "ES384")
-	if !first.GetCreated() || !first.GetCreatedAt().AsTime().Equal(at) {
-		t.Fatalf("first Ensure: created %v at %v, want true at %v", first.GetCreated(), first.GetCreatedAt().AsTime(), at)
-	}
-	if again := ensure(t, r.key, "token-signing", "ES384"); again.GetCreated() || !again.GetCreatedAt().AsTime().Equal(at) {
-		t.Fatalf("second Ensure: created %v at %v", again.GetCreated(), again.GetCreatedAt().AsTime())
-	}
-	fi, err := os.Stat(filepath.Join(state, "created-at.txt"))
-	if err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("the record: %v, %v; want a file with mode 0600", fi, err)
-	}
-	// A driver that starts again on the same card and the same state still knows the age.
-	later := at.Add(48 * time.Hour)
-	r2 := startOpts(t, c, driver.Development, "key", self(), state, func() time.Time { return later })
-	if res := ensure(t, r2.key, "token-signing", "ES384"); res.GetCreated() || !res.GetCreatedAt().AsTime().Equal(at) {
-		t.Fatalf("after a restart: created %v at %v, want false at %v", res.GetCreated(), res.GetCreatedAt().AsTime(), at)
-	}
-	// The next key is made at its own time.
-	if res := ensure(t, r2.key, "audit-log", "ES256"); !res.GetCreatedAt().AsTime().Equal(later) {
-		t.Fatalf("audit-log made at %v, want %v", res.GetCreatedAt().AsTime(), later)
-	}
-}
-
-// verifies: REQ-KEYS-109
-// The age is unknown, and Ensure says nothing, for a key the driver did not generate (provisioned in a ceremony), for a
-// record that is of another key, with no state directory, and with a damaged record: key@ then treats the key as older
-// than any revocation, which fails closed.
-func TestEnsureSaysNothingWhenTheAgeIsNotKnown(t *testing.T) {
-	spec := card.KeySpec{Algorithm: card.EC384, PIN: card.PINOnce, Touch: card.TouchNever}
-	t.Run("a key the driver did not generate", func(t *testing.T) {
-		c := cardtest.New()
-		if _, err := c.PutKey(0x9a, spec); err != nil {
-			t.Fatal(err)
-		}
-		r := startOpts(t, c, driver.Development, "key", self(), shortDir(t), nil)
-		res := ensure(t, r.key, "token-signing", "ES384")
-		if res.GetCreated() || res.GetCreatedAt() != nil {
-			t.Fatalf("a provisioned key: created %v at %v, want no age", res.GetCreated(), res.GetCreatedAt())
-		}
-	})
-	t.Run("a record of another key", func(t *testing.T) {
-		state := shortDir(t)
-		r := startOpts(t, cardtest.New(), driver.Development, "key", self(), state, nil)
-		ensure(t, r.key, "token-signing", "ES384")
-		rec, err := os.ReadFile(filepath.Join(state, "created-at.txt")) //nolint:gosec // a path in the test's own directory
-		if err != nil {
-			t.Fatal(err)
-		}
-		// The same record against a card whose slot holds another key (the card was replaced, or the key was).
-		c2 := cardtest.New()
-		if _, err := c2.PutKey(0x9a, spec); err != nil {
-			t.Fatal(err)
-		}
-		state2 := shortDir(t)
-		//nolint:gosec // a path in the test's own directory
-		if err := os.WriteFile(filepath.Join(state2, "created-at.txt"), rec, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		r2 := startOpts(t, c2, driver.Development, "key", self(), state2, nil)
-		if res := ensure(t, r2.key, "token-signing", "ES384"); res.GetCreatedAt() != nil {
-			t.Fatalf("a record of another key gave the age %v", res.GetCreatedAt().AsTime())
-		}
-	})
-	t.Run("no state directory", func(t *testing.T) {
-		r := startOpts(t, cardtest.New(), driver.Development, "key", self(), "", nil)
-		if res := ensure(t, r.key, "token-signing", "ES384"); !res.GetCreated() || res.GetCreatedAt() != nil {
-			t.Fatalf("without a state directory: created %v at %v, want a key and no age", res.GetCreated(), res.GetCreatedAt())
-		}
-	})
-	t.Run("a damaged record", func(t *testing.T) {
-		state := shortDir(t)
-		c := cardtest.New()
-		r := startOpts(t, c, driver.Development, "key", self(), state, nil)
-		ensure(t, r.key, "token-signing", "ES384")
-		if err := os.WriteFile(filepath.Join(state, "created-at.txt"), []byte("token-signing banana\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		r2 := startOpts(t, c, driver.Development, "key", self(), state, nil)
-		if res := ensure(t, r2.key, "token-signing", "ES384"); res.GetCreatedAt() != nil {
-			t.Fatalf("a damaged record gave the age %v", res.GetCreatedAt().AsTime())
-		}
-	})
-}
-
-// verifies: REQ-KEYS-109
-// The state directory must be the driver's own: another mode is refused at start, with nothing opened for use.
-func TestStateDirectoryOpenToOthersIsRefused(t *testing.T) {
-	c := cardtest.New()
-	state := shortDir(t)
-	if err := os.Chmod(state, 0o770); err != nil { //nolint:gosec // the point of the test: a directory open to the group
-		t.Fatal(err)
-	}
-	_, err := driver.New(driver.Options{Environment: driver.Development, Node: "node-a", Serial: c.SerialNo, Open: c.Opener(), StateDir: state})
-	if err == nil || !strings.Contains(err.Error(), "open to group or world") {
-		t.Fatalf("New = %v, want a refusal of a state directory open to others", err)
-	}
-	if !c.Closed() {
-		t.Fatal("the card was left open after the refusal")
-	}
-}
-
-// verifies: REQ-KEYS-109
-// A record that is a real one in all but one respect is not believed: a time that does not parse, a time of zero or less,
-// and a file open to others (mode 0644) each make every age unknown, and the driver goes on.
-func TestARecordThatIsNotTheDriversOwnGivesNoAge(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		write func(t *testing.T, path string, good []byte)
-	}{
-		{"a time that does not parse", func(t *testing.T, path string, good []byte) {
-			f := strings.Fields(string(good))
-			f[1] = "yesterday"
-			mustWrite(t, path, []byte(strings.Join(f[:3], " ")+"\n"), 0o600)
-		}},
-		{"a time of zero", func(t *testing.T, path string, good []byte) {
-			f := strings.Fields(string(good))
-			f[1] = "0"
-			mustWrite(t, path, []byte(strings.Join(f[:3], " ")+"\n"), 0o600)
-		}},
-		{"a file with mode 0644", func(t *testing.T, path string, good []byte) {
-			mustWrite(t, path, good, 0o644)
-		}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			state := shortDir(t)
-			c := cardtest.New()
-			r := startOpts(t, c, driver.Development, "key", self(), state, nil)
-			ensure(t, r.key, "token-signing", "ES384")
-			path := filepath.Join(state, "created-at.txt")
-			good, err := os.ReadFile(path) //nolint:gosec // a path in the test's own directory
-			if err != nil {
-				t.Fatal(err)
-			}
-			tc.write(t, path, good)
-			r2 := startOpts(t, c, driver.Development, "key", self(), state, nil)
-			res := ensure(t, r2.key, "token-signing", "ES384")
-			if res.GetCreated() || res.GetCreatedAt() != nil {
-				t.Fatalf("created %v at %v, want an existing key with no age", res.GetCreated(), res.GetCreatedAt())
-			}
-		})
-	}
-}
-
-func mustWrite(t *testing.T, path string, b []byte, mode os.FileMode) {
-	t.Helper()
-	if err := os.WriteFile(path, b, mode); err != nil { //nolint:gosec // a path in the test's own directory
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, mode); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// verifies: REQ-KEYS-109
-// A state directory of another user is refused at start, with nothing opened for use: root's directory, which the
-// driver's user can read but does not own.
-func TestStateDirectoryOfAnotherUserIsRefused(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("SKIP: the test is for a driver that does not run as root")
-	}
-	c := cardtest.New()
-	_, err := driver.New(driver.Options{Environment: driver.Development, Node: "node-a", Serial: c.SerialNo, Open: c.Opener(), StateDir: "/usr"})
-	if err == nil || !strings.Contains(err.Error(), "not owned by the driver") {
-		t.Fatalf("New = %v, want a refusal of a state directory of another user", err)
-	}
-	if !c.Closed() {
-		t.Fatal("the card was left open after the refusal")
 	}
 }

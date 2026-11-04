@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/truvity/sluis/v2/drivers/key/yubikey-piv/internal/card"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
@@ -76,11 +75,6 @@ type Options struct {
 	Open card.Opener
 	// ManagementKey is what Ensure generates keys with in development; the factory default when nil.
 	ManagementKey []byte
-	// StateDir is the driver's own key-store directory (0700, the driver's user): it records when the driver generated
-	// each key, which a card does not store (age.go). Empty records nothing, and every age is then unknown.
-	StateDir string
-	// Now is the clock; time.Now when nil.
-	Now func() time.Time
 }
 
 // slotKey is the key of one purpose after its attestation was verified.
@@ -106,9 +100,6 @@ type Service struct {
 
 	pin pinMemory
 
-	ages *ages
-	now  func() time.Time
-
 	dead     chan struct{} // closed when the card is gone: the driver must exit
 	deadOnce sync.Once
 }
@@ -130,15 +121,7 @@ func New(opts Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	ag, err := openAges(opts.StateDir)
-	if err != nil {
-		_ = c.Close()
-		return nil, cli.Usage(err)
-	}
-	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{}), ages: ag, now: opts.Now}
-	if s.now == nil {
-		s.now = time.Now
-	}
+	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{})}
 	if s.mgmtKey == nil {
 		s.mgmtKey = card.DefaultManagementKey
 	}
@@ -312,7 +295,7 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if k, ok := s.keys[purpose]; ok {
-		return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: k.spki, CreatedAt: s.createdAt(purpose, k)}), nil
+		return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: k.spki}), nil
 	}
 	if s.env != Development {
 		return nil, refuse(ctx, "Ensure", connect.CodeNotFound, reasonAbsent, "purpose")
@@ -323,23 +306,8 @@ func (s *Service) Ensure(ctx context.Context, req *connect.Request[keystorev2alp
 		return nil, refuse(ctx, "Ensure", connect.CodeFailedPrecondition, reasonCard, "purpose")
 	}
 	s.keys[purpose] = k
-	// A card does not store when the key was made: record it, with the key it belongs to. A record that cannot be
-	// written leaves the age unknown, which key@ fails closed on, and does not undo the key.
-	if err := s.ages.record(purpose, k.spki, s.now()); err != nil {
-		slog.Warn("the age of the new key cannot be recorded; it will be reported as unknown", "purpose", purpose, "error", err.Error())
-	}
 	slog.Info("key made on the card", "purpose", purpose, "slot", e.slot.String(), "algorithm", e.algorithm)
-	return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: k.spki, Created: true, CreatedAt: s.createdAt(purpose, k)}), nil
-}
-
-// createdAt is when the key of the slot was generated, from the driver's record, if the record is of this very key. A
-// key the driver did not generate, or whose record is gone or is of another key, has no known age (nil).
-func (s *Service) createdAt(purpose string, k *slotKey) *timestamppb.Timestamp {
-	at, ok := s.ages.of(purpose, k.spki)
-	if !ok {
-		return nil
-	}
-	return timestamppb.New(at)
+	return connect.NewResponse(&keystorev2alpha1.EnsureResponse{SpkiDer: k.spki, Created: true}), nil
 }
 
 // generate makes the key of a slot on the card and verifies its attestation before it is used. The caller holds mu.

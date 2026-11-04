@@ -27,7 +27,6 @@ func TestServeNeedsEveryFlag(t *testing.T) {
 		"--socket":       filepath.Join(base, "s"),
 		"--admin-socket": filepath.Join(base, "a"),
 		"--node":         "node-a",
-		"--state-dir":    filepath.Join(base, "state"),
 	}
 	for missing := range full {
 		var args []string
@@ -45,7 +44,7 @@ func TestServeNeedsEveryFlag(t *testing.T) {
 func TestTheEnvironmentIsCheckedBeforeAnythingIsOpened(t *testing.T) {
 	base := t.TempDir()
 	socket, admin := filepath.Join(base, "s"), filepath.Join(base, "a")
-	code, _, _ := run(t, "serve", "--environment", "prod", "--socket", socket, "--admin-socket", admin, "--node", "n", "--state-dir", filepath.Join(base, "state"))
+	code, _, _ := run(t, "serve", "--environment", "prod", "--socket", socket, "--admin-socket", admin, "--node", "n")
 	if code != cli.ExitUsage {
 		t.Fatalf("exit %d, want 2", code)
 	}
@@ -59,7 +58,7 @@ func TestTheEnvironmentIsCheckedBeforeAnythingIsOpened(t *testing.T) {
 func TestSerialAndGIDMustBeNumbers(t *testing.T) {
 	base := t.TempDir()
 	args := []string{"serve", "--environment", "development", "--socket", filepath.Join(base, "s"),
-		"--admin-socket", filepath.Join(base, "a"), "--node", "n", "--state-dir", filepath.Join(base, "state")}
+		"--admin-socket", filepath.Join(base, "a"), "--node", "n"}
 	if code, _, _ := run(t, append(args, "--socket-gid", "owner")...); code != cli.ExitUsage {
 		t.Errorf("a gid that is not a number: exit %d, want 2", code)
 	}
@@ -74,7 +73,7 @@ func TestABuildWithoutCardSupportSaysSoAndMakesNothing(t *testing.T) {
 	}
 	base := t.TempDir()
 	socket, admin := filepath.Join(base, "s"), filepath.Join(base, "a")
-	code, _, stderr := run(t, "serve", "--environment", "development", "--socket", socket, "--admin-socket", admin, "--node", "n", "--state-dir", filepath.Join(base, "state"))
+	code, _, stderr := run(t, "serve", "--environment", "development", "--socket", socket, "--admin-socket", admin, "--node", "n")
 	if code != cli.ExitFailed || !strings.Contains(stderr, "sluis_card") {
 		t.Fatalf("exit %d; stderr: %s", code, stderr)
 	}
@@ -103,7 +102,7 @@ func TestConformanceNeedsASocket(t *testing.T) {
 
 func TestOutsideDevelopmentTheSerialIsRequired(t *testing.T) {
 	base := t.TempDir()
-	args := []string{"--socket", filepath.Join(base, "s"), "--admin-socket", filepath.Join(base, "a"), "--node", "n", "--state-dir", filepath.Join(base, "state")}
+	args := []string{"--socket", filepath.Join(base, "s"), "--admin-socket", filepath.Join(base, "a"), "--node", "n"}
 	for _, env := range []string{"staging", "production"} {
 		if code, _, stderr := run(t, append([]string{"serve", "--environment", env}, args...)...); code != cli.ExitUsage || !strings.Contains(stderr, "--serial") {
 			t.Errorf("serve in %s without a serial: exit %d; %s", env, code, stderr)

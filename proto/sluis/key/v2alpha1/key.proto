@@ -32,7 +32,9 @@ message RevokeRequest {
   bytes declaration = 1;
 }
 
-// RevokeResponse says what key@ did with each key the declaration names.
+// RevokeResponse says what key@ did with each key the declaration names. A declaration that a store@ failure stopped
+// half way is refused with the reason "partial", and the refusal carries this message as a detail, with the keys that
+// are not written yet marked pending; delivering the same declaration again completes it.
 message RevokeResponse {
   uint64 seq = 1;                    // the seq of the declaration, now the highest key@ has taken
   repeated RevokedKey keys = 2;      // one per key of the declaration, in its order
@@ -43,6 +45,8 @@ message RevokeResponse {
 message RevokedKey {
   string kid = 1;                    // the RFC 7638 thumbprint, base64url
   bool already = 2;                  // the key was revoked before this declaration; nothing new was written
+  bool unknown = 3;                  // no source of key@ knows the key; written because the declaration allows it
+  bool pending = 4;                  // not written yet: a store@ failure stopped the declaration before it
 }
 
 // KeyRevocationDeclaration is the payload of a key revocation declaration (ADR 0041; signed-config.md,
@@ -51,6 +55,9 @@ message KeyRevocationDeclaration {
   string boundary = 1;               // the boundary the declaration is for; key@ of another boundary refuses it
   repeated string kids = 2;          // the RFC 7638 thumbprints, base64url, of the keys to revoke; 1 to 64, each once
   string reason = 3;                 // compromise, suspicion, lost-board or drill
+  // Revoke keys that no source of key@ knows (a lost board's own keys, a signer that left the ring). Without it a
+  // key key@ does not know refuses the whole declaration, so that a mistyped id is not written as a revocation.
+  bool allow_unknown = 4;
 }
 
 // SealRequest seals a value under the data key of a purpose.
