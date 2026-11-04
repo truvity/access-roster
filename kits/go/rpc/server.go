@@ -22,7 +22,8 @@ import (
 // shutdownGrace bounds the graceful shutdown of a server (the brief of the kit: 5 s).
 const shutdownGrace = 5 * time.Second
 
-// readMaxBytes bounds a request message; it is far above any message of the contracts.
+// readMaxBytes bounds a message a server reads and a message a client reads; it is far above any message of the
+// contracts. The peer may be the adversary (key@ reads a signed document from store@), so no reader buffers more.
 const readMaxBytes = 4 << 20
 
 // ServerConfig is the configuration of one server: one actor or driver, on one socket.

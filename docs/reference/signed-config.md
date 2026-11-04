@@ -24,6 +24,7 @@ The protected header of every signature is a JSON object with exactly these memb
 | `alg` | `ES384`, and nothing else |
 | `kid` | The `kid` of a publisher key in the [bootstrap file](/reference/bootstrap-file/#publishers) |
 | `seq` | A positive integer, below 2^53, that the publishing pipeline increases with every document of the kind. Every signature of one document carries the same value |
+| `kind` | The registry name of the config kind, such as `KeyPlan` ([Kinds](/reference/kinds/)). The verifier requires it to equal the kind it asked for, so a document signed for one kind cannot be served as another's |
 
 - **The signature input** is `ASCII(protected) "." payload`, as in RFC 7515. The signature is ECDSA with P-384 and SHA-384, 96 bytes, `r` then `s`, 48 bytes each (RFC 7518, section 3.4).
 - **One document holds one config kind,** for one boundary, with all the items of the kind. The driver is asked for it by the kind's kebab-case name (`front-host`): the `file` driver reads `front-host.jws` from its directory, which on a host and in the local installation is `/etc/sluis/config/<boundary>/`, and the `appconfig` driver reads the hosted configuration of the profile with that name.
@@ -38,14 +39,14 @@ The protected header of every signature is a JSON object with exactly these memb
 - **The payload of a YAML or JSON kind is a mapping from item id to item** (decided 2026-11-04). The key is the item's id and the value is the item, read into the kind's message. A **singleton kind** has one item, with the id `default`: `Boundary`, `KeyPlan`, `TokenLifetime`, `AuditLog`, `AuditCatalogue`, `ExchangeTrust` and `Policy`. A **keyed kind** uses the name of each item as its id, for example `workforce` for an `Upstream` and `sluis-cli` for an `InstallationClient`.
 - **Two kinds are not mappings.** `GrantVocabulary` is the exception: its payload is the vocabulary file itself, which `policy` parses, so it is one document and not a map. `Policy` is Cedar text, one file, and that file is its one item `default`; its grammar and schema are checked by `policy`.
 - **The message is the schema** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). store@ validates the payload against the generated JSON Schema, decodes it, and validates the message with protovalidate. An unknown key is an error that names its path, a retired field in a signed document is refused, and an error never shows a value.
-- **A document that is large is still one document.** The payload is a third larger in base64url than the file. A config service has a size limit of its own; the figure for AWS AppConfig hosted configurations (2 MiB) is UNVERIFIED and is confirmed with the driver ([#1157](https://github.com/truvity/sluis/issues/1157)).
+- **A document that is large is still one document.** The payload is a third larger in base64url than the file. **A signed document is at most 3 MiB** (2 MiB of file, a third more in base64url, and the signatures): store@ refuses a larger one at step 1, and the Go verifier, with the message bound of the clients, refuses to buffer more, because the reader that verifies for itself reads from a store@ that it does not trust. A config service has a size limit of its own; the figure for AWS AppConfig hosted configurations (2 MiB) is UNVERIFIED and is confirmed with the driver ([#1157](https://github.com/truvity/sluis/issues/1157)).
 
 ## Verifying a document
 
 store@ takes these steps in this order and stops at the first failure. Nothing before step 5 reads the payload.
 
 1. **Structure.** The document is a JSON object in the general serialisation, with a `payload` and at least one signature, and no other member.
-2. **Headers.** Each protected header is a JSON object with `alg` `ES384`, a `kid` and a `seq`, and no other member. A `crit`, `jku`, `x5u`, `x5c` or `jwk` header is refused, and so is any other algorithm, `none` included. All signatures carry one `seq`.
+2. **Headers.** Each protected header is a JSON object with `alg` `ES384`, a `kid`, a `seq` and a `kind`, and no other member. The `kind` must be the kind the verifier asked for. A `crit`, `jku`, `x5u`, `x5c` or `jwk` header is refused, and so is any other algorithm, `none` included. All signatures carry one `seq`. Every part that is base64url (the protected header, the payload, the signature) holds the characters `A-Z a-z 0-9 - _` and nothing else: a line feed, a space or a padding `=` is refused, and so is a last character that carries bits the bytes do not.
 3. **Keys.** Each `kid` names a key in the bootstrap file, and no `kid` is used twice.
 4. **Signatures.** Every signature verifies over the bytes as they were received. The document needs a signature of at least one publisher key (one without `co_signs`), and of every key whose `co_signs` names the document's kind. A signature that does not verify, or a key that is not in the list, refuses the document.
 5. **The sequence number** ([below](#the-sequence-number)).
@@ -92,22 +93,22 @@ The vectors use two test key pairs. Their private halves were discarded after si
 
 | Key | `kid` | `spki_sha384` | `co_signs` |
 |---|---|---|---|
-| Publisher | `publisher-1` | `db0b54d40d09fffd2c296f8cadfa8454b7d4f2615a893a9b2f877621132c09e00fd8f33f199abc12b2bc1248246ece58` | none |
-| Regulated party | `party-1` | `da6015f4eec985d21e4a7ea4176dd22e165608a8e4c2ae793434c9dd378a774fc6dd793c6b23a0cea43a02b40b997f29` | the kind of the vectors |
+| Publisher | `publisher-1` | `d4c36e17a4d13238c8131db63e69bc2a70bd8797357fd39fea5b0d7e9e5d1919163152a3292201de5362906ad9afcbb4` | none |
+| Regulated party | `party-1` | `788ce45e1127152dd8ca7bb5d2f2a1bcd9fc208d1bcffd629672c57224827d626b7d863891238bfd67c969e079a6469f` | the kind of the vectors |
 
 ```text
 -----BEGIN PUBLIC KEY-----
-MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdptVIkeiLoSFwBZWL2/LzRofOQCC7BA2
-BYGuTFE2wadFKaURYGvjspVnyguB6GsAACzu7DrWqKQHCCIbBKyxDEBjjhO8P2aV
-MqgSE/MMGEjXQqtRIMj/MKggB9rQK8MI
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEUKd6CE58PyZQlFf8Lr7OWUalh4lNPvr
+rA7mNmdNt8fOYSPky3w9E9KZmFNWOE+0TJJXt1i3+P5C4nYax8bkHrnS8/lGRv18
+eizHflv/jwhvtlX6XUZQsM7aMGQp7ZCQ
 -----END PUBLIC KEY-----
 ```
 
 ```text
 -----BEGIN PUBLIC KEY-----
-MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAExkRYxl6/8Is/5qok2qf/MLahNJT8LOi6
-CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY0
-9Np96Vat4tP454C9gPE/eLebMQLshttM
+MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAENcY8rxK8EKeYUMn0cewM5s+NePDm4Ud/
+sHupp7zMuXn59VOyZLHsa/gkMqTwfoXh1TuHkYKdDLGSmWGf5YhED3sVqqfD7cqU
+gRKwViO6TrYXCCq+TZVFl0XZTamJNr0E
 -----END PUBLIC KEY-----
 ```
 
@@ -118,8 +119,8 @@ CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY0
   "payload": "dmVjdG9yOiAxCg",
   "signatures": [
     {
-      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoxfQ",
-      "signature": "zKiPOs9_bUguvx-pEdmt7tct6fDu0uLJxfxaOmHWwNJydkZ18J8OJ4XjNEcJ8SlHeG8IFbfRd_jDPo3LhbUckbADNdt-dbrkQa0l9_NVox2eblSjQRMFiyemLXjrPsxK"
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoxLCJraW5kIjoiQm91bmRhcnkifQ",
+      "signature": "XZnPZpoRaLG7Ngq0DsY62EkyOh6gKstlbxkZjpHw90MqDNzXYMxxmhAjk5mhCuAskOqDWa6hCZQApDAo34HOSL98hFkKsOCT_r2Hm6qRiOKJ2Ilu5bkQhed16aPDF5oO"
     }
   ]
 }
@@ -132,12 +133,12 @@ CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY0
   "payload": "dmVjdG9yOiAyCg",
   "signatures": [
     {
-      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoyfQ",
-      "signature": "rS79BXecFNgvtbwdii5y_wX8BbslTxvelJ1zgVVtglOJcNkpH_whyaojPrce1JqnQ9tS1twx2fVKxiRLF5hjLxVE5FxDcEy8g8GJvWSuuaQiCze5u6oSiO7ogaSS-F_Q"
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoyLCJraW5kIjoiQm91bmRhcnkifQ",
+      "signature": "pyn38__B7njhEtDvE1CMAXlKnr0-oeuhkaIxPbZjmksasy823KZftzegAljIRfDWcIJ6W_g4sjDLqlnt8DbVvrfluvPEfniyagd9Pu9gFBT8yHdv3tTHq_r8yJ9DoUsG"
     },
     {
-      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InBhcnR5LTEiLCJzZXEiOjJ9",
-      "signature": "kZY-ULrPDd8Tk65F9iZAb7-Hdal3A84CbpxHLHWsDud3Kx8Ld3ItFR3Y2_z7wiMD0nAu9SRWVeG8XVqrhpwZGdQHjwGVUmf9MO1ky-IoszOuRifC4cCRJ00dq1ITDA1A"
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InBhcnR5LTEiLCJzZXEiOjIsImtpbmQiOiJCb3VuZGFyeSJ9",
+      "signature": "cVFQNr-RN24LgIQM75z46PlvpXuq5d4c4NZ8HVK4WynFqz5hS6-FWvBEdaiNda-8pe8Y_oB6IQAa7XLaZya93FMbyIzcQDT8kwsE9NeLgZXyaTlKlkc-9i3Ke8zDq6PA"
     }
   ]
 }
@@ -145,7 +146,7 @@ CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY0
 
 The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step.
 
-The payload of a vector is a stand-in: the signature layer does not look into it. Both vectors verify (checked 2026-11-03 with a P-384 verifier outside sluis). The verdicts every implementation, Go and Rust, must give, with the bootstrap file listing both keys and the kind of the vectors under the party's `co_signs`:
+The payload of a vector is a stand-in: the signature layer does not look into it. Both vectors name the kind `Boundary`, and the page's keys were made on 2026-11-04 for the header that names a kind. Both vectors verify (checked 2026-11-04 with the Go verifier and the Rust verifier of sluis, which are the two implementations this page binds). The verdicts every implementation, Go and Rust, must give, with the bootstrap file listing both keys and the kind of the vectors under the party's `co_signs`:
 
 | Case | Verdict |
 |---|---|
@@ -159,6 +160,12 @@ The payload of a vector is a stand-in: the signature layer does not look into it
 | `alg` `ES256`, `ES512`, `HS384`, `PS384` or `none` | Refused at step 2 |
 | A protected header with `crit`, `jku`, `x5u`, `x5c` or `jwk` | Refused at step 2 |
 | A protected header with an extra member | Refused at step 2 |
+| `kind` missing from the protected header, or not a string | Refused at step 2 |
+| A valid signature over a header that names another kind | Refused at step 2: the document is not the kind asked for |
+| A line feed or carriage return inside the protected header, the payload or the signature | Refused (step 2 for the header, step 4 for the others) |
+| A last base64url character that carries bits the bytes do not | Refused |
+| A `kid` with a lone surrogate escape, or protected-header bytes that are not UTF-8 | Refused at step 2 |
+| A document that is not UTF-8 | Refused at step 1 |
 | The two signatures of vector 2 with different `seq` | Refused at step 2 |
 | A signature with an unprotected `header` member | Refused at step 1 |
 | The same document in the compact or the flattened serialisation | Refused at step 1 |

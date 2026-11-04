@@ -115,7 +115,7 @@ async fn a_cold_start_with_a_wrongly_signed_document_exits_nonzero_before_it_is_
     config_support::put(
         docs.path(),
         "token-lifetime",
-        &Pipeline::new("publisher-1").sign(b"default: {}\n", 1),
+        &Pipeline::new("publisher-1").sign("token-lifetime", b"default: {}\n", 1),
     );
     let (file, _listeners) = bootstrap(run.path(), &p);
     let sock = run.path().join("config-source.sock");

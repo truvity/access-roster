@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // Options say what to sign and where to put it.
@@ -78,12 +80,17 @@ func Run(o Options) ([]string, error) {
 			return nil, err
 		}
 		kind := strings.TrimSuffix(e.Name(), ext)
+		// The header names the kind (signed-config.md, "The document"): the file's name is the kind's segment.
+		k, ok := registry.KindBySegment(kind)
+		if !ok || k.Class != "config" {
+			return nil, fmt.Errorf("%s: %q is not the segment of a config kind", e.Name(), kind)
+		}
 		if kind == "key-plan" && len(o.Recipients) > 0 {
 			if payload, err = WithRecipients(payload, o.Recipients); err != nil {
 				return nil, fmt.Errorf("%s: %w", e.Name(), err)
 			}
 		}
-		doc, err := Sign(key, o.KID, o.Seq, payload)
+		doc, err := Sign(key, o.KID, o.Seq, k.Name, payload)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
@@ -147,17 +154,18 @@ func WithRecipients(source []byte, ids []string) ([]byte, error) {
 
 // Sign returns the signed config document of payload: a JWS in the general JSON serialisation (RFC 7515, section
 // 7.2) with one signature, ES384 (RFC 7518, section 3.4: r then s, 48 bytes each). The protected header has exactly
-// alg, kid and seq (signed-config.md, "The document"), and the signature covers ASCII(protected) "." payload
-// (RFC 7515, section 5.1).
-func Sign(key *ecdsa.PrivateKey, kid string, seq uint64, payload []byte) ([]byte, error) {
+// alg, kid, seq and kind, the registry name of the kind (signed-config.md, "The document"), and the signature covers
+// ASCII(protected) "." payload (RFC 7515, section 5.1).
+func Sign(key *ecdsa.PrivateKey, kid string, seq uint64, kind string, payload []byte) ([]byte, error) {
 	if key.Curve != elliptic.P384() {
 		return nil, errors.New("the publisher key is not on P-384")
 	}
 	header, err := json.Marshal(struct {
-		Alg string `json:"alg"`
-		KID string `json:"kid"`
-		Seq uint64 `json:"seq"`
-	}{"ES384", kid, seq})
+		Alg  string `json:"alg"`
+		KID  string `json:"kid"`
+		Seq  uint64 `json:"seq"`
+		Kind string `json:"kind"`
+	}{"ES384", kid, seq, kind})
 	if err != nil {
 		return nil, err
 	}
@@ -181,9 +189,9 @@ func Sign(key *ecdsa.PrivateKey, kid string, seq uint64, payload []byte) ([]byte
 	}{p, []signature{{protected, base64.RawURLEncoding.EncodeToString(sig)}}}, "", "  ")
 }
 
-// Verify checks a document made by Sign against a public key and returns its payload and seq. It is the test's
-// reading of signed-config.md, steps 1 to 4; store@ is the real verifier.
-func Verify(doc []byte, pub *ecdsa.PublicKey) (payload []byte, seq uint64, err error) {
+// Verify checks a document made by Sign against a public key and the kind it must name, and returns its payload and
+// seq. It is the test's reading of signed-config.md, steps 1 to 4; store@ is the real verifier.
+func Verify(doc []byte, pub *ecdsa.PublicKey, kind string) (payload []byte, seq uint64, err error) {
 	var d struct {
 		Payload    string `json:"payload"`
 		Signatures []struct {
@@ -211,8 +219,11 @@ func Verify(doc []byte, pub *ecdsa.PublicKey) (payload []byte, seq uint64, err e
 	if err := json.Unmarshal(hb, &h); err != nil {
 		return nil, 0, err
 	}
-	if len(h) != 3 || h["alg"] != "ES384" {
-		return nil, 0, errors.New("the protected header is not exactly alg, kid and seq")
+	if len(h) != 4 || h["alg"] != "ES384" {
+		return nil, 0, errors.New("the protected header is not exactly alg, kid, seq and kind")
+	}
+	if h["kind"] != kind {
+		return nil, 0, errors.New("the document names another kind")
 	}
 	n, ok := h["seq"].(float64)
 	if !ok || n < 1 {

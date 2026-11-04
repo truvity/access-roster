@@ -39,6 +39,7 @@ func Dial(socket string) (connect.HTTPClient, string) {
 func ClientOptions() []connect.ClientOption {
 	return []connect.ClientOption{
 		connect.WithInterceptors(clientInterceptor{}, DefaultDeadline(DefaultDeadlineValue)),
+		connect.WithReadMaxBytes(readMaxBytes),
 	}
 }
 

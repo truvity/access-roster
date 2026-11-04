@@ -1,7 +1,8 @@
 //! A signed config document: its structure and its signatures (signed-config.md "The document"
 //! and "Verifying a document", steps 1 to 4).
 //!
-//! Nothing here reads the payload. A refusal names the step and the rule, never a value.
+//! Every part that is base64url is decoded strictly: the alphabet of RFC 7515 section 2 and nothing else, no padding, no
+//! white space, no stray bit. Nothing here reads the payload. A refusal names the step and the rule, never a value.
 
 use std::collections::HashSet;
 use std::fmt;
@@ -19,6 +20,11 @@ use crate::bootstrap::Publisher;
 const SPKI_P384_PREFIX_LEN: usize = 23;
 /// `seq` is below 2^53, so that a JSON number holds it exactly in every reader.
 const SEQ_LIMIT: u64 = 1 << 53;
+/// The largest signed document store@ loads: 3 MiB, which is the 2 MiB of the largest config service limit known
+/// a third larger in base64url, with room for the signatures (signed-config.md "The payload"). The Go verifier of a
+/// reader that does not trust store@ (kits/go/signedconfig) holds the same bound, so a document that store@ loaded is
+/// one such a reader can take, and one it did not load is never offered.
+pub const DOCUMENT_MAX: usize = 3 << 20;
 /// An ECDSA P-384 signature, `r` then `s`, 48 bytes each (RFC 7518, section 3.4).
 const SIGNATURE_LEN: usize = 96;
 
@@ -143,6 +149,9 @@ struct Signature<'a> {
 ///
 /// [`Refused`] with the step at which the document failed.
 pub fn verify(doc: &[u8], kind: &Kind, publishers: &[Publisher]) -> Result<Verified, Refused> {
+    if doc.len() > DOCUMENT_MAX {
+        return refuse(1, "the document is larger than the bound");
+    }
     // Step 1: structure. The general JSON serialisation; the compact and the flattened ones, an
     // unprotected `header` and any other member are all refused here.
     let Some(json) = parse(doc) else {
@@ -175,16 +184,27 @@ pub fn verify(doc: &[u8], kind: &Kind, publishers: &[Publisher]) -> Result<Verif
         let Some(header) = b64(protected).and_then(|b| parse(&b)) else {
             return refuse(2, "the protected header is not base64url JSON");
         };
-        let Some([Json::Str(alg), Json::Str(kid), Json::Num(seq)]) =
-            exactly(&header, &["alg", "kid", "seq"]).as_deref()
+        let Some(
+            [
+                Json::Str(alg),
+                Json::Str(kid),
+                Json::Num(seq),
+                Json::Str(named),
+            ],
+        ) = exactly(&header, &["alg", "kid", "seq", "kind"]).as_deref()
         else {
             return refuse(
                 2,
-                "the protected header needs alg, kid and seq, and no other member",
+                "the protected header needs alg, kid, seq and kind, and no other member",
             );
         };
         if alg != "ES384" {
             return refuse(2, "alg must be ES384");
+        }
+        // The signed header names the kind, so a document of one kind cannot be served as another's
+        // (ADR 0005, "Signed config documents").
+        if named != kind.name {
+            return refuse(2, "kind is not the kind of the document asked for");
         }
         let Some(seq) = seq.as_u64().filter(|s| (1..SEQ_LIMIT).contains(s)) else {
             return refuse(2, "seq must be a positive integer below 2^53");

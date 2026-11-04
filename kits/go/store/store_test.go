@@ -22,6 +22,7 @@ import (
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -62,6 +63,10 @@ func (f *fake) GetSignedConfig(_ context.Context, req *connect.Request[storev2al
 		return connect.NewResponse(&storev2alpha1.GetSignedConfigResponse{Document: []byte(`{"payload":"AAAA","signatures":[]}`)}), nil
 	case "boundary":
 		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	case "exchange-trust": // one byte over the bound of the document
+		return connect.NewResponse(&storev2alpha1.GetSignedConfigResponse{Document: make([]byte, signedconfig.MaxDocument+1)}), nil
+	case "upstream": // over the read limit of the client, which no message of the contracts reaches
+		return connect.NewResponse(&storev2alpha1.GetSignedConfigResponse{Document: make([]byte, 5<<20)}), nil
 	}
 	return nil, refusal.New(connect.CodePermissionDenied, "rule", "")
 }
@@ -499,6 +504,12 @@ func TestGetSignedConfig(t *testing.T) {
 	}
 	if _, err := store.GetSignedConfig(context.Background(), c, "Boundary"); connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Errorf("an outage: %v", err)
+	}
+	// store@ is the adversary for a reader that verifies for itself: the document has a bound, and so has the message.
+	for _, kind := range []string{"ExchangeTrust", "Upstream"} {
+		if doc, err := store.GetSignedConfig(context.Background(), c, kind); err == nil {
+			t.Errorf("%s: a document of %d bytes was returned", kind, len(doc))
+		}
 	}
 	if _, err := store.GetSignedConfig(context.Background(), c, "TokenLifetime"); connect.CodeOf(err) != connect.CodePermissionDenied {
 		t.Errorf("a refusal: %v", err)

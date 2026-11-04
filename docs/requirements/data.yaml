@@ -1272,7 +1272,7 @@ requirements:
       - {kind: conformance-suite, ref: "version conformance on every engine: create, delete, create again gives 1"}
   - id: REQ-DATA-099
     area: DATA
-    statement: "store@ MUST return, on request, the signed document in force of a config kind exactly as its config source gave it, to the readers of that kind in the registry and to no other caller."
+    statement: "store@ MUST return, on request, the signed document in force of a config kind exactly as its config source gave it, to the readers of that kind in the registry and to no other caller, and for no self-scoped kind."
     rationale: "A reader that must not rely on store@ for what a document says, such as key@ for the KeyPlan, verifies the signature and the sequence itself (ADR 0005, ADR 0006)."
     level: MUST
     source: design-decision
@@ -1281,6 +1281,6 @@ requirements:
     actors: [store]
     standards: []
     issues: [1157, 1208]
-    tests: [actors/store/tests/store.rs, actors/store/tests/config.rs, kits/go/store/store_test.go]
+    tests: [actors/store/tests/store.rs, actors/store/tests/config.rs, actors/store/tests/signed_config.rs, kits/go/store/store_test.go]
     verification:
-      - {kind: integration-test, ref: "a reader gets the source's bytes, also after a refused reload; an actor with no read rule, and a kind that is not config, are refused"}
+      - {kind: integration-test, ref: "a reader gets the source's bytes; a non-reader, a non-config kind and a self-scoped kind are refused; the size is bounded"}

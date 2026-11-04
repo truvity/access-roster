@@ -70,7 +70,7 @@ func TestParsePublishersLocalExampleVerifiesVector1(t *testing.T) {
 			doc = c.Document
 		}
 	}
-	got, err := Verify([]byte(doc), "KeyPlan", pubs)
+	got, err := Verify([]byte(doc), "Boundary", pubs)
 	if err != nil || got.Seq != 1 {
 		t.Fatalf("vector 1 under the local bootstrap: %v, %+v", err, got)
 	}
@@ -99,6 +99,7 @@ func TestParsePublishersRefusals(t *testing.T) {
 		{"a duplicate key", good + "boundary: other\n", "duplicate key"},
 		{"a second document", good + "---\nboundary: other\n", "more than one document"},
 		{"not YAML", "publishers: [", "not YAML"},
+		{"text before the PEM block", strings.Replace(good, "public_key: |\n", "public_key: |\n      note\n", 1), "must be one PEM PUBLIC KEY block"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

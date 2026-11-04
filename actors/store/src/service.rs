@@ -416,7 +416,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
 
     /// The signed document in force for a config kind, as the source gave it (store-api.md
     /// "GetSignedConfig"). It is a read of the kind, so the readers of the kind in the registry may
-    /// call it and nobody else. store@ has verified the document, but the caller must not rely on
+    /// call it and nobody else; a self-scoped kind is refused to everyone, because the document is not the caller's. store@ has verified the document, but the caller must not rely on
     /// that: it verifies the bytes itself, which is why they are returned and not the decoded items.
     fn get_signed_config_inner(
         &self,
@@ -437,6 +437,12 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             return Err(blame(bad()));
         }
         self.authorise(caller, kind, "get", None).map_err(blame)?;
+        // A whole document cannot be scoped to one caller: a self-scoped kind (`tunables`, `log-settings`,
+        // `integration`) holds the items of every actor, and an actor may read its own only. The signed document is
+        // all of them, so it is refused, whatever the actor's rule on the kind (ADR 0005 "Rules").
+        if sluis_registry::store_self_scoped_for(caller, kind.segment, "get") {
+            return Err(blame(refuse(ErrorCode::PermissionDenied, "rule", "")));
+        }
         // A kind with no loaded document is unavailable, not empty.
         let document = self
             .config

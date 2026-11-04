@@ -48,7 +48,7 @@ publishers:
     public_key: |
       -----BEGIN PUBLIC KEY-----
       ...
-    spki_sha384: "db0b54d4…6ece58"
+    spki_sha384: "d4c36e17…afcbb4"
 ```
 
 - **One rqlite node serves both engine ports,** the engine of the boards with a cluster of one ([0005](/decisions/0005-the-store/#engines)).

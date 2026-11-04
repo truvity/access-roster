@@ -93,10 +93,13 @@ impl Pipeline {
         }
     }
 
-    /// The signature object of `payload` at `seq`.
-    pub fn signature(&self, payload: &[u8], seq: u64) -> serde_json::Value {
+    /// The signature object of `payload` at `seq`, for the document of the kind with the segment `segment`: the
+    /// protected header names the kind (signed-config.md "The document").
+    pub fn signature(&self, segment: &str, payload: &[u8], seq: u64) -> serde_json::Value {
+        let kind = sluis_registry::kind_by_segment(segment).unwrap().name;
         let protected = URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&json!({"alg": "ES384", "kid": self.kid, "seq": seq})).unwrap(),
+            serde_json::to_vec(&json!({"alg": "ES384", "kid": self.kid, "seq": seq, "kind": kind}))
+                .unwrap(),
         );
         let input = format!("{protected}.{}", URL_SAFE_NO_PAD.encode(payload));
         let sig = self
@@ -107,8 +110,8 @@ impl Pipeline {
     }
 
     /// A document of `payload` at `seq`, signed by this key alone.
-    pub fn sign(&self, payload: &[u8], seq: u64) -> Vec<u8> {
-        document(payload, &[self.signature(payload, seq)])
+    pub fn sign(&self, segment: &str, payload: &[u8], seq: u64) -> Vec<u8> {
+        document(payload, &[self.signature(segment, payload, seq)])
     }
 }
 
@@ -131,7 +134,7 @@ pub fn put(dir: &Path, segment: &str, doc: &[u8]) {
 /// Signs every local source at `seq` into `dir`.
 pub fn write_local(dir: &Path, p: &Pipeline, seq: u64) {
     for (segment, text) in LOCAL {
-        put(dir, segment, &p.sign(text.as_bytes(), seq));
+        put(dir, segment, &p.sign(segment, text.as_bytes(), seq));
     }
 }
 

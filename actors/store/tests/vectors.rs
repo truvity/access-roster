@@ -42,13 +42,18 @@ fn every_case_of_the_shared_vectors_gets_the_same_verdict_as_in_go() {
     let kind = sluis_registry::kind_by_name(v["kind"].as_str().unwrap()).unwrap();
     let cases = v["cases"].as_array().unwrap();
     assert!(
-        cases.len() > 40,
+        cases.len() >= 60,
         "the vector file holds too few cases: a sweep over nothing proves nothing"
     );
     for c in cases {
         let name = c["name"].as_str().unwrap();
         let keys = publishers(&v, c["publishers"].as_str().unwrap());
-        let got = verify(c["document"].as_str().unwrap().as_bytes(), kind, &keys);
+        // A document is text, or bytes in `document_base64` where they are not UTF-8.
+        let doc: Vec<u8> = match c.get("document_base64") {
+            Some(b) => STANDARD.decode(b.as_str().unwrap()).unwrap(),
+            None => c["document"].as_str().unwrap().as_bytes().to_vec(),
+        };
+        let got = verify(&doc, kind, &keys);
         if let Some(read) = c.get("read") {
             let ok = got.unwrap_or_else(|e| panic!("{name}: want it read, got {e}"));
             assert_eq!(ok.seq, read["seq"].as_u64().unwrap(), "{name}: seq");

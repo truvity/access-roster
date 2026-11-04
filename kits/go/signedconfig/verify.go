@@ -14,6 +14,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // seqLimit: seq is below 2^53, so that a JSON number holds it exactly in every reader.
@@ -25,6 +27,18 @@ const signatureLen = 96
 // b64 is base64url without padding (RFC 7515, section 2). Strict refuses a final character whose unused bits are
 // not zero, as the Rust reader does.
 var b64 = base64.RawURLEncoding.Strict()
+
+// decode64 decodes base64url strictly. encoding/base64 skips a carriage return and a line feed anywhere in its input,
+// which the Rust reader refuses, so a byte outside the alphabet is refused here before the decoder sees it.
+func decode64(s string) ([]byte, error) {
+	for i := range len(s) {
+		c := s[i]
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return nil, errors.New("not base64url")
+		}
+	}
+	return b64.DecodeString(s)
+}
 
 // Publisher is a publisher key of the bootstrap file: the trust anchor of config.
 type Publisher struct {
@@ -57,12 +71,25 @@ type signature struct {
 	seq                  uint64
 }
 
-// Verify takes steps 1 to 4 of signed-config.md for the document doc of the config kind `kind` (its name, such as
-// "KeyPlan") under the pinned publishers. Nothing before the signatures reads the payload. The sequence number
+// MaxDocument is the largest signed document the kit reads: 3 MiB, the 2 MiB of the largest config service limit known
+// (signed-config.md, "The payload") a third larger in base64url, with room for the signatures. store@ refuses to hold a
+// larger one and the typed call (kits/go/store) reads no more, so a store@ that is the adversary cannot make a reader
+// buffer without bound.
+const MaxDocument = 3 << 20
+
+// Verify takes steps 1 to 4 of signed-config.md for the document doc of the config kind `kind` (its registry name, such
+// as "KeyPlan") under the pinned publishers. Nothing before the signatures reads the payload. The sequence number
 // (step 5) is Sequencer's, and the payload (step 6) is the caller's.
 //
-// The error is a *Refused.
+// The error is a *Refused for a document that fails a step. A `kind` that is not the name of a config kind of the
+// registry is an error of the caller and not a refusal: it must never skip the check of the co-signers.
 func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) {
+	if k, ok := registry.KindByName(kind); !ok || k.Class != "config" {
+		return nil, fmt.Errorf("signedconfig: %q is not the name of a config kind", kind)
+	}
+	if len(doc) > MaxDocument {
+		return nil, refuse(1, "the document is larger than the bound")
+	}
 	// Step 1: structure. The general JSON serialisation; the compact and the flattened ones, an unprotected
 	// `header` and any other member are all refused here.
 	top, ok := parseObject(doc)
@@ -95,7 +122,7 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 	// Step 2: headers.
 	signatures := make([]signature, 0, len(parsed))
 	for _, p := range parsed {
-		raw, err := b64.DecodeString(p.protected)
+		raw, err := decode64(p.protected)
 		if err != nil {
 			return nil, refuse(2, "the protected header is not base64url JSON")
 		}
@@ -106,11 +133,16 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 		alg, okA := h.str("alg")
 		kid, okK := h.str("kid")
 		seqNum, okN := h.num("seq")
-		if !h.exactly("alg", "kid", "seq") || !okA || !okK || !okN {
-			return nil, refuse(2, "the protected header needs alg, kid and seq, and no other member")
+		named, okD := h.str("kind")
+		if !h.exactly("alg", "kid", "seq", "kind") || !okA || !okK || !okN || !okD {
+			return nil, refuse(2, "the protected header needs alg, kid, seq and kind, and no other member")
 		}
 		if alg != "ES384" {
 			return nil, refuse(2, "alg must be ES384")
+		}
+		// The signed header names the kind, so a document of one kind cannot be served as another's.
+		if named != kind {
+			return nil, refuse(2, "kind is not the kind of the document asked for")
 		}
 		seq, err := strconv.ParseUint(seqNum, 10, 64)
 		if err != nil || seq < 1 || seq >= seqLimit {
@@ -143,7 +175,7 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 	// Step 4: signatures, over the bytes as they were received (RFC 7515, section 5.2: the signing input is
 	// ASCII(protected) "." payload, which is the compact form go-jose reads).
 	for i, s := range signatures {
-		if raw, err := b64.DecodeString(s.signature); err != nil || len(raw) != signatureLen {
+		if raw, err := decode64(s.signature); err != nil || len(raw) != signatureLen {
 			return nil, refuse(4, "a signature is not 96 bytes of r then s")
 		}
 		if keys[i].Key == nil {
@@ -165,7 +197,7 @@ func Verify(doc []byte, kind string, publishers []Publisher) (*Verified, error) 
 	if slices.ContainsFunc(publishers, func(p Publisher) bool { return slices.Contains(p.CoSigns, kind) && !used[p.KID] }) {
 		return nil, refuse(4, "a co-signer's signature is missing")
 	}
-	body, err := b64.DecodeString(payload)
+	body, err := decode64(payload)
 	if err != nil {
 		return nil, refuse(4, "the payload is not base64url")
 	}
@@ -223,7 +255,7 @@ func (o *object) num(k string) (string, bool) {
 // parseObject reads bytes as one JSON object, and nothing after it. Bytes that are not UTF-8 are refused, as the
 // Rust reader does; encoding/json would replace them.
 func parseObject(b []byte) (*object, bool) {
-	if !utf8.Valid(b) {
+	if !utf8.Valid(b) || loneSurrogate(b) {
 		return nil, false
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
@@ -237,6 +269,53 @@ func parseObject(b []byte) (*object, bool) {
 	}
 	o, ok := v.(*object)
 	return o, ok
+}
+
+// loneSurrogate reports whether the JSON text has a \u escape of a surrogate that is not half of a pair. The Rust reader
+// refuses it; encoding/json would read it as U+FFFD, and the two would then disagree about a document.
+func loneSurrogate(b []byte) bool {
+	hex4 := func(i int) (rune, bool) {
+		if i+6 > len(b) || b[i] != '\\' || b[i+1] != 'u' {
+			return 0, false
+		}
+		var r rune
+		for _, c := range b[i+2 : i+6] {
+			switch {
+			case c >= '0' && c <= '9':
+				r = r<<4 | rune(c-'0')
+			case c >= 'a' && c <= 'f':
+				r = r<<4 | rune(c-'a'+10)
+			case c >= 'A' && c <= 'F':
+				r = r<<4 | rune(c-'A'+10)
+			default:
+				return 0, false
+			}
+		}
+		return r, true
+	}
+	for i := 0; i < len(b); i++ {
+		if b[i] != '\\' {
+			continue
+		}
+		if i+1 < len(b) && b[i+1] == 'u' {
+			r, ok := hex4(i)
+			switch {
+			case ok && r >= 0xD800 && r <= 0xDBFF:
+				low, ok2 := hex4(i + 6)
+				if !ok2 || low < 0xDC00 || low > 0xDFFF {
+					return true
+				}
+				i += 11
+			case ok && r >= 0xDC00 && r <= 0xDFFF:
+				return true
+			default:
+				i += 5
+			}
+			continue
+		}
+		i++ // the escaped character: \\ and \" are skipped as a pair
+	}
+	return false
 }
 
 // maxDepth bounds the nesting that the reader follows. A signed document is flat; the bound only keeps the stack.

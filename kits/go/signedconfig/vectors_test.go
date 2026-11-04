@@ -24,6 +24,7 @@ type vectorFileT struct {
 	Cases []struct {
 		Name        string `json:"name"`
 		Document    string `json:"document"`
+		DocumentB64 string `json:"document_base64"`
 		Publishers  string `json:"publishers"`
 		RefusedStep int    `json:"refused_step"`
 		Read        *struct {
@@ -81,12 +82,20 @@ func (v vectorFileT) publishers(t *testing.T, set string) []Publisher {
 // REQ-KEYS-075/signature_vectors: every verdict of the shared vectors, step for step.
 func TestVectors(t *testing.T) {
 	v := loadVectors(t)
-	if len(v.Cases) == 0 {
-		t.Fatal("the vector file holds no case: a sweep over nothing proves nothing")
+	// The same floor as the Rust test: a sweep over a file that lost its cases proves nothing.
+	if len(v.Cases) < 60 {
+		t.Fatalf("the vector file holds %d cases, want at least 60", len(v.Cases))
 	}
 	for _, c := range v.Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			got, err := Verify([]byte(c.Document), v.Kind, v.publishers(t, c.Publishers))
+			doc := []byte(c.Document)
+			if c.DocumentB64 != "" {
+				var err error
+				if doc, err = base64.StdEncoding.DecodeString(c.DocumentB64); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := Verify(doc, v.Kind, v.publishers(t, c.Publishers))
 			if c.Read == nil {
 				var r *Refused
 				if !errors.As(err, &r) {
@@ -166,5 +175,28 @@ func TestSequencerKeepsTheHighest(t *testing.T) {
 	}
 	if _, err := s.Admit(&Verified{Seq: 6}); err != nil {
 		t.Fatalf("a higher seq: %v", err)
+	}
+}
+
+// REQ-DATA-099: the kind is the registry's name of a config kind. A segment, a kind that is not config and a name that
+// is not known are a caller's error, never a refusal of the document and never a way past the co-signer check.
+func TestVerifyNeedsAConfigKindOfTheRegistry(t *testing.T) {
+	v := loadVectors(t)
+	for _, kind := range []string{"", "key-plan", "boundary", "NoSuchKind", "DataKeyWrap"} {
+		_, err := Verify([]byte("{}"), kind, v.publishers(t, "plain"))
+		var r *Refused
+		if err == nil || errors.As(err, &r) {
+			t.Errorf("%q: got %v, want an error that is not a refusal of the document", kind, err)
+		}
+	}
+}
+
+// REQ-DATA-099: a document larger than the bound is refused before it is read.
+func TestVerifyRefusesADocumentOverTheBound(t *testing.T) {
+	v := loadVectors(t)
+	_, err := Verify(make([]byte, MaxDocument+1), "KeyPlan", v.publishers(t, "plain"))
+	var r *Refused
+	if !errors.As(err, &r) || r.Step != 1 {
+		t.Fatalf("got %v, want a refusal at step 1", err)
 	}
 }
