@@ -17,10 +17,10 @@
 //     backup job as ciphertext (a read rule implied by the field, not listed in `readers`), so exporter@
 //     must be a data-family actor with the data port; layered groups and the kinds in their layers agree;
 //     linked kinds exist; DataKeyWrap lists the data key purposes of keys.yaml;
-//   - keys: closed fields; every algorithm declared; the AWS baseline of one symmetric key and five P-384
-//     keys; a signing or key-agreement key has exactly one using actor; the card slot plan has no
+//   - keys: closed fields; every algorithm declared; the AWS baseline of one symmetric key, four P-384
+//     keys and the audit log's one P-256 key; a signing or key-agreement key has exactly one using actor; the card slot plan has no
 //     collision and covers every purpose that has a slot; the data key purposes are four per tenant
-//     (data, pseudonym, pairwise, evidence) and four per boundary (grant, cookie, mac, data); a sealed kind
+//     (data, pseudonym, pairwise, evidence) and five per boundary (grant, cookie, chain, mac, data); a sealed kind
 //     with no tenant is sealed under the boundary's `data` key, so its writer and readers use it;
 //   - across the three: every user of a key purpose is an actor and lists that purpose in its
 //     `key_purposes` with ops the purpose allows, and the reverse; every actor that writes a sealed
@@ -90,7 +90,7 @@ const PURPOSE_FIELDS = ['name', 'kind', 'algorithm', 'enabled', 'ops', 'aws', 'b
 const ALGO_FIELDS = ['family', 'curve', 'status', 'note'];
 const PIV_SLOTS = new Set(['9a', '9c', '9d', '9e', ...Array.from({ length: 20 }, (_, i) => (0x82 + i).toString(16))]);
 const TENANT_PURPOSES = ['data', 'pseudonym', 'pairwise', 'evidence'];
-const BOUNDARY_PURPOSES = ['grant', 'cookie', 'mac', 'data'];
+const BOUNDARY_PURPOSES = ['grant', 'cookie', 'chain', 'mac', 'data'];
 const ERASED = { tenant: ['tenant exit', 'end of the evidence retention'], boundary: ['never'] };
 
 const load = (rel) => {
@@ -173,12 +173,13 @@ for (const [i, p] of (Array.isArray(keys.purposes) ? keys.purposes : []).entries
     }
   }
 }
-// AWS baseline: one symmetric key and five P-384 keys.
+// AWS baseline: one symmetric key, four P-384 keys and the audit log's P-256 key (ADR 0006, named exceptions).
 {
   const base = [...purposes.values()].filter((p) => p.enabled === 'baseline');
   const sym = base.filter((p) => p.aws?.key_spec === 'SYMMETRIC_DEFAULT').length;
   const p384 = base.filter((p) => p.aws?.key_spec === 'ECC_NIST_P384').length;
-  if (sym !== 1 || p384 !== 5 || base.length !== 6) error(`${KEYS}: the AWS baseline is 1 symmetric key and 5 P-384 keys, found ${sym} symmetric and ${p384} P-384 among ${base.length} baseline purposes`);
+  const p256 = base.filter((p) => p.aws?.key_spec === 'ECC_NIST_P256').map((p) => p.name);
+  if (sym !== 1 || p384 !== 4 || p256.join() !== 'audit-log' || base.length !== 6) error(`${KEYS}: the AWS baseline is 1 symmetric key, 4 P-384 keys and the P-256 key of audit-log, found ${sym} symmetric, ${p384} P-384 and ${p256.length} P-256 (${p256.join(', ')}) among ${base.length} baseline purposes`);
 }
 // The slot plan.
 const plan = keys.slot_plan;
