@@ -299,7 +299,6 @@ func TestEveryKidOfADeclarationMustBeKnown(t *testing.T) {
 	token := n.srv.keys["token-signing"].keyID
 	for name, kids := range map[string][]string{
 		"a typo":          {token, "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
-		"a wrapping key":  {token, n.srv.wrappingID},
 		"another's token": {token, "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"},
 	} {
 		_, err := n.revoke(e.declare(e.nextSeq(), "compromise", kids...))
@@ -397,7 +396,7 @@ func TestAllowUnknownRevokesKeysNoSourceKnows(t *testing.T) {
 		t.Fatalf("a certified key: %v", err)
 	}
 	_, err := n.revoke(e.declare(e.nextSeq(), "compromise", wrapping.kid))
-	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonUnknownKid, "kids[0]")
+	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonWrappingKey, "kids[0]")
 
 	lost := "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	token := n.srv.keys["token-signing"].keyID
@@ -499,4 +498,66 @@ func newSPKIKid(t *testing.T) spkiKid {
 		t.Fatal(err)
 	}
 	return spkiKid{spki: der, kid: id}
+}
+
+// verifies: REQ-KEYS-113
+// A wrapping key is never revoked by a declaration of signing keys, with or without allow_unknown: this node's own,
+// another recipient of the KeyPlan and one that a wrapping KeyCertificate certifies are refused with their own reason,
+// and nothing is written.
+func TestAWrappingKeyIsRefusedEvenWithAllowUnknown(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{name: "node-1"})
+	o := e.startedNode(nodeOpts{name: "node-2"}) // lists its wrapping key as a recipient of the KeyPlan
+	certified := newSPKIKid(t)
+	e.store.put("key-certificate", "", "wrapping/"+strings.ToLower(certified.kid[:8]), &keyv2alpha1.KeyCertificate{Purpose: "wrapping", SpkiDer: certified.spki})
+	token := n.srv.keys["token-signing"].keyID
+	for name, kid := range map[string]string{
+		"this node's":   n.srv.wrappingID,
+		"a recipient's": o.srv.wrappingID,
+		"a certified":   certified.kid,
+	} {
+		for _, allow := range []bool{false, true} {
+			payload := string(declarationPayload(testBoundary, "lost-board", token, kid))
+			if allow {
+				payload += "allow_unknown: true\n"
+			}
+			_, err := n.revoke(e.signKind("publisher-1", e.pub, e.nextSeq(), declarationKind, []byte(payload)))
+			t.Run(fmt.Sprintf("%s, allow_unknown %t", name, allow), func(t *testing.T) {
+				n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonWrappingKey, "kids[1]")
+			})
+		}
+	}
+}
+
+// verifies: REQ-KEYS-112
+// A retry does not ask again whether a key it already revoked is known: a token key that left the ring after the first
+// delivery wrote it does not turn the retry into unknown-kid, and the retry completes the rest. A new declaration for
+// that key is refused as unknown, as it was never retried.
+func TestARetryKeepsTheKeysItAlreadyRevoked(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{name: "node-1"})
+	o := e.startedNode(nodeOpts{name: "node-2"})
+	other, logKey := o.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	e.store.put("signing-ring", "", "default", &signerv2alpha1.SigningRing{Keys: []*signerv2alpha1.SigningKey{{KeyId: other, Node: "node-2"}}})
+	decl := e.declare(e.nextSeq(), "compromise", other, logKey)
+	e.store.mu.Lock()
+	e.store.writesLeft = 1 // the ring key is written, then store@ is down
+	e.store.mu.Unlock()
+	_, err := n.revoke(decl)
+	wantRefusal(t, err, connect.CodeUnavailable, reasonPartial)
+
+	// The ring key leaves the ring, and store@ is back.
+	e.store.mu.Lock()
+	e.store.failWrites = false
+	e.store.mu.Unlock()
+	e.store.put("signing-ring", "", "default", &signerv2alpha1.SigningRing{})
+	res, err := n.revoke(decl)
+	if err != nil {
+		t.Fatalf("the retry after the key left the ring: %v", err)
+	}
+	if !res.GetKeys()[0].GetAlready() || res.GetKeys()[0].GetUnknown() || res.GetKeys()[1].GetAlready() || len(e.revocationItems()) != 2 {
+		t.Fatalf("the retry = %v", res)
+	}
+	_, err = n.revoke(e.declare(e.nextSeq(), "compromise", other))
+	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonUnknownKid, "kids[0]")
 }

@@ -114,53 +114,65 @@ func decodeDeclaration(payload []byte) (*keyv2alpha1.KeyRevocationDeclaration, e
 // node's key (kinds.yaml: SigningRing; one item, default).
 const signingRingKind = "SigningRing"
 
-// unknownKids returns the indexes of the kids that key@ does not know. A kid is known when it is a signing key that
-// this key@ holds (any signing purpose of the KeyPlan), a token key that the ring lists for any node, or a key that a
-// KeyCertificate of a signing purpose certifies. A wrapping key is not a signing key: its revocation is a recipient's,
-// which this declaration does not carry, so a wrapping certificate does not make a kid known. The store is read only
-// when a kid is not this node's own; a store@ that does not answer is "unavailable", never "unknown".
+// kidCheck is what key@ knows of the kids of a declaration.
+type kidCheck struct {
+	unknown  []int // the indexes of the kids that no source knows
+	wrapping int   // the index of the first kid that is a wrapping key, or -1
+}
+
+// checkKids sorts the kids of a declaration. A kid is known when it is a signing key that this key@ holds (any
+// signing purpose of the KeyPlan), a token key that the ring lists for any node, or a key that a KeyCertificate of a
+// signing purpose certifies. On a retry, a kid that KeyRevocation already lists is known too, so a key that has left
+// the ring since the first delivery does not stop the retry. A wrapping key (this node's, a recipient of the KeyPlan,
+// or one a wrapping KeyCertificate certifies) is not a signing key: its revocation is a recipient's, which a
+// declaration of this version does not carry, so it is refused whatever allow_unknown says (ADR 0041, "The
+// declaration"). The store is read only when a kid is not this node's own signing key; a store@ that does not answer
+// is "unavailable", never "unknown".
 //
 // What "known" guards: a mistyped kid, or one of another boundary, is refused instead of being written as a revocation
 // that stops nothing while the operator believes the key revoked. The ring is written by every node's signer, and a
 // signer can drop its own key from it; a key no source knows (a lost board's own keys, that left) is revoked with
 // allow_unknown, which the publisher signs. A store@ that lies can add a kid (whose revocation stops nothing) or hide one
 // (the declaration is refused, and says so); it cannot make key@ skip a revocation silently.
-func (s *Server) unknownKids(ctx context.Context, kids []string) ([]int, error) {
-	known := map[string]bool{}
+func (s *Server) checkKids(ctx context.Context, kids []string, retry bool) (kidCheck, error) {
+	out := kidCheck{wrapping: -1}
+	known, wrapping := map[string]bool{}, map[string]bool{}
 	for _, pk := range s.keys {
-		if pk.algorithm != algECDH {
+		if pk.algorithm == algECDH {
+			wrapping[pk.keyID] = true
+		} else {
 			known[pk.keyID] = true
 		}
 	}
-	var unknown []int
+	var rest []int
 	for i, kid := range kids {
 		if !known[kid] {
-			unknown = append(unknown, i)
+			rest = append(rest, i)
 		}
 	}
-	if len(unknown) == 0 {
-		return nil, nil
+	if len(rest) == 0 {
+		return out, nil
 	}
-	it, err := s.ring.Get(ctx, "", "default")
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-	case err != nil:
-		return nil, err
-	default:
-		for _, k := range it.Value.GetKeys() {
-			known[k.GetKeyId()] = true
-		}
+	plan, err := fetchVerified(ctx, s, s.plan)
+	if err != nil {
+		return out, err
+	}
+	for _, id := range plan.GetRecipients() {
+		wrapping[id] = true
 	}
 	for token := ""; ; {
 		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
 		if err != nil {
-			return nil, err
+			return out, err
 		}
 		for _, c := range items {
-			if c.Value.GetPurpose() == wrappingPurpose {
+			id, err := spkiThumbprint(c.Value.GetSpkiDer())
+			if err != nil {
 				continue
 			}
-			if id, err := spkiThumbprint(c.Value.GetSpkiDer()); err == nil {
+			if c.Value.GetPurpose() == wrappingPurpose {
+				wrapping[id] = true
+			} else {
 				known[id] = true
 			}
 		}
@@ -169,7 +181,38 @@ func (s *Server) unknownKids(ctx context.Context, kids []string) ([]int, error) 
 		}
 		token = next
 	}
-	return slices.DeleteFunc(unknown, func(i int) bool { return known[kids[i]] }), nil
+	for _, i := range rest {
+		if wrapping[kids[i]] {
+			out.wrapping = i
+			return out, nil
+		}
+	}
+	it, err := s.ring.Get(ctx, "", "default")
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+	case err != nil:
+		return out, err
+	default:
+		for _, k := range it.Value.GetKeys() {
+			known[k.GetKeyId()] = true
+		}
+	}
+	for _, i := range rest {
+		if known[kids[i]] {
+			continue
+		}
+		if retry {
+			_, err := s.revocations.Get(ctx, "", revocationID(targetKid, kids[i]))
+			if err == nil {
+				continue
+			}
+			if !errors.Is(err, store.ErrNotFound) {
+				return out, err
+			}
+		}
+		out.unknown = append(out.unknown, i)
+	}
+	return out, nil
 }
 
 // writeTimeout bounds the writes and the audit fact of a declaration, which do not stop when the caller goes away.
@@ -217,11 +260,15 @@ func (s *Server) Revoke(ctx context.Context, req *connect.Request[keyv2alpha1.Re
 	if d.GetBoundary() != s.cfg.Boundary {
 		return nil, refuse(connect.CodePermissionDenied, reasonOtherBoundary, "boundary")
 	}
-	unknownAt, err := s.unknownKids(ctx, d.GetKids())
+	kc, err := s.checkKids(ctx, d.GetKids(), retry)
 	if err != nil {
-		slog.Warn("SigningRing or KeyCertificate cannot be read: the declaration is not taken")
+		slog.Warn("the KeyPlan, KeyCertificate, SigningRing or KeyRevocation cannot be read: the declaration is not taken")
 		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
+	if kc.wrapping >= 0 {
+		return nil, refuse(connect.CodeFailedPrecondition, reasonWrappingKey, fmt.Sprintf("kids[%d]", kc.wrapping))
+	}
+	unknownAt := kc.unknown
 	if len(unknownAt) > 0 && !d.GetAllowUnknown() {
 		return nil, refuse(connect.CodeFailedPrecondition, reasonUnknownKid, fmt.Sprintf("kids[%d]", unknownAt[0]))
 	}
