@@ -8,13 +8,17 @@
 # The config is the local installation's (tests/installations/local/config) with the names of the boards' installation
 # in place of the local ones. A replacement that matches nothing fails, so the two cannot drift apart unseen.
 #
+# The KeyPlan lists the wrapping keys that may receive a wrap (ADR 0006, "Who may receive a wrap"). A board's key is made at
+# its first start, so the list comes from the file $state/recipients that `just boards-recipients` writes after the first
+# deploy (see deploy/boards/boards.sh). Without the file the KeyPlan lists nobody.
+#
 # Input, from the environment and never from the repository:
 #   SLUIS_UPSTREAM_CLIENT_BOARDS   the OpenID Connect client of the boards' upstream (the run.env of the build;
 #                                  default sluis-boards)
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
-state=.cache/boards
+state=${SLUIS_BOARDS_STATE:-.cache/boards}
 seed=$state/seed
 src=tests/installations/local/config
 host=sluis.dev.boards.test
@@ -39,8 +43,10 @@ replace boundary.yaml "https://sluis.dev.local.test" "https://$host"
 replace audit-log.yaml "sluis.local.test/" "sluis.boards.test/"
 replace upstream.yaml "client_id: sluis-local" "client_id: $client"
 
+recipients=()
+[ ! -s "$state/recipients" ] || recipients=(-recipients "$state/recipients")
 go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
-	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml"
+	-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" "${recipients[@]}"
 
 # The credentials the config documents name (the store's credential driver serves them). The two client secrets are
 # random and kept across runs. The upstream's client secret is a random placeholder: M1 needs no upstream, and the
@@ -53,4 +59,5 @@ go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/inst
 		cp "$state/$c" "$seed/credentials/sluis-drv-store-credential/$c"
 	done
 )
+echo "prepare: the KeyPlan lists $(awk '/^[^#[:space:]]/ { n++ } END { print n + 0 }' "$state/recipients" 2>/dev/null || echo 0) wrap recipients"
 echo "prepare: seed in $seed ($(find "$seed/config" -name '*.jws' | wc -l) signed documents, the bootstrap file, $(find "$seed/credentials" -type f | wc -l) credentials)"

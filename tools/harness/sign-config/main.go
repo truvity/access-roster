@@ -27,6 +27,7 @@ func main() {
 	out := flag.String("out", "", "the directory that receives the signed documents <kind>.jws")
 	bootstrapOut := flag.String("bootstrap-out", "", "the path of the bootstrap file to write")
 	kid := flag.String("kid", "publisher-1", "the kid of the publisher key")
+	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
 	flag.Parse()
 	if flag.NArg() != 0 || *keyDir == "" || *out == "" || *bootstrapOut == "" {
@@ -37,13 +38,37 @@ func main() {
 	if n == 0 {
 		n = uint64(max(time.Now().Unix(), 1))
 	}
+	var ids []string
+	if *recipients != "" {
+		var err error
+		if ids, err = readRecipients(*recipients); err != nil {
+			fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
+			os.Exit(1)
+		}
+	}
 	docs, err := Run(Options{
 		ConfigDir: *configDir, BootstrapTemplate: *template, KeyDir: *keyDir, Out: *out, BootstrapOut: *bootstrapOut,
-		KID: *kid, Seq: n,
+		KID: *kid, Seq: n, Recipients: ids,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("sign-config: %d documents signed as %s with seq %d (%s)\n", len(docs), *kid, n, strings.Join(docs, " "))
+}
+
+// readRecipients reads the thumbprints of a file: one per line, blank lines and # comments left out. A file that
+// holds none lists none.
+func readRecipients(path string) ([]string, error) {
+	b, err := os.ReadFile(path) //nolint:gosec // the harness's own state file
+	if err != nil {
+		return nil, fmt.Errorf("recipients: %w", err)
+	}
+	var ids []string
+	for l := range strings.SplitSeq(string(b), "\n") {
+		if l, _, _ = strings.Cut(l, "#"); strings.TrimSpace(l) != "" {
+			ids = append(ids, strings.TrimSpace(l))
+		}
+	}
+	return ids, nil
 }

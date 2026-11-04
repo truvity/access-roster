@@ -50,4 +50,5 @@ catalogue:
   gaps:
     stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
+    keyplan-trust: "key@ reads the KeyPlan through store@ and does not verify its signature or seq itself, and removing a recipient deletes none of its wraps and makes no new generation; these wait for the key-compromise work."
     proposed-design: "The design is proposed in research and not yet decided."

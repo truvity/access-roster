@@ -55,7 +55,7 @@ func captureLog(t *testing.T) *syncBuffer {
 
 func TestFloorSoftwareDriverInProduction(t *testing.T) {
 	e := newTestEnv(t, "production")
-	n := e.newNode(nodeOpts{})
+	n := e.newNode(nodeOpts{unlisted: true})
 	err := n.srv.Init(context.Background())
 	if err == nil || err.Error() != "software key driver refused in production" {
 		t.Fatalf("Init = %v, want the refusal of the floor", err)
@@ -126,7 +126,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			plan := defaultPlan()
 			set(plan)
 			e.store.put("key-plan", "", "default", plan)
-			n := e.newNode(nodeOpts{})
+			n := e.newNode(nodeOpts{unlisted: true})
 			if err := n.srv.Init(ctx); err == nil || !strings.Contains(err.Error(), "keyplan/default") {
 				t.Fatalf("Init = %v, want a refusal of the key plan", err)
 			}
@@ -152,7 +152,7 @@ func TestConfigAndRunDirMustBeThere(t *testing.T) {
 			plan := defaultPlan()
 			plan.CacheTtl = durationpb.New(ttl)
 			e.store.put("key-plan", "", "default", plan)
-			n := e.newNode(nodeOpts{})
+			n := e.newNode(nodeOpts{unlisted: true})
 			if err := n.srv.Init(ctx); err == nil {
 				t.Fatal("started with a cache_ttl outside the range")
 			}
@@ -191,10 +191,10 @@ func TestInitPublishesTheWrappingCertificate(t *testing.T) {
 	e := newTestEnv(t, "development")
 	rec := &recorder{}
 	n := e.startedNode(nodeOpts{name: "node-1", audit: rec})
-	if !regexp.MustCompile(`^node-1-[a-z2-7]{16}$`).MatchString(n.srv.recipient) {
+	if !regexp.MustCompile(`^[a-z2-7]{52}$`).MatchString(n.srv.recipient) {
 		t.Fatalf("recipient = %q", n.srv.recipient)
 	}
-	if want := recipientLabel("node-1", n.srv.keys[wrappingPurpose].spki); n.srv.recipient != want {
+	if want := recipientLabel(n.srv.wrappingID); n.srv.recipient != want {
 		t.Fatalf("recipient = %q, want %q", n.srv.recipient, want)
 	}
 	it := e.store.items["|key-certificate|wrapping/"+n.srv.recipient]

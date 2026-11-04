@@ -942,7 +942,7 @@ func (x *DataKeyWrap) GetWrappedKey() []byte {
 type KeyCertificate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`                // the key purpose
-	Recipient     string                 `protobuf:"bytes,2,opt,name=recipient,proto3" json:"recipient,omitempty"`            // the recipient label of a wrapping key: <node>-<16 characters>
+	Recipient     string                 `protobuf:"bytes,2,opt,name=recipient,proto3" json:"recipient,omitempty"`            // the recipient label of a wrapping key: its RFC 7638 thumbprint in lower-case base32
 	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
 	Chain         [][]byte               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                    // the certificate chain, DER, leaf first; empty when there is none
 	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"` // when key@ published it
