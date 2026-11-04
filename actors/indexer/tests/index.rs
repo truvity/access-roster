@@ -90,6 +90,10 @@ async fn it_indexes_the_log_the_writer_made_and_a_reader_finds_the_records() {
     );
     assert_eq!((one.time_ms, one.recorded_ms), (want.time, want.time + 5));
     assert_eq!(one.hash.len(), 48);
+    assert_eq!(
+        (one.project.as_str(), one.kind.as_str(), one.log.as_str()),
+        (PROJECT, "audit", LOG)
+    );
     assert_eq!(value(one)["metadata"]["uid"], want.uid);
 
     // Word search over the action reaches the right rows.

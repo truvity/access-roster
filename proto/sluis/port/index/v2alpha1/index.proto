@@ -59,6 +59,9 @@ message Row {
   string record_id = 15;     // metadata.uid
   string product = 16;       // metadata.product.name
   bytes record = 17;         // the record, RFC 8785 canonical bytes
+  string project = 18;       // the project of the log the row came from; set by the index on a read, ignored on a write
+  string kind = 19;          // the log kind; set by the index on a read, ignored on a write
+  string log = 20;           // the log's id; set by the index on a read, ignored on a write
 }
 
 // ApplyRequest registers a batch of one log: its rows and the cursor after them.

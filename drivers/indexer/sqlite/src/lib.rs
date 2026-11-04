@@ -454,6 +454,9 @@ fn row_of(r: &rusqlite::Row<'_>) -> rusqlite::Result<Row> {
         record_id: r.get(15)?,
         product: r.get(16)?,
         record: r.get(17)?,
+        project: r.get(18)?,
+        kind: r.get(19)?,
+        log: r.get(20)?,
         ..Row::default()
     })
 }
@@ -522,9 +525,12 @@ impl<'a> Query<'a> {
         {
             return Err(Error::Argument("partitions"));
         }
+        // "*" means every tenant and stands alone: mixed with named tenants the grant is ambiguous.
+        let star = req.tenants.iter().any(|t| t == "*");
         if req.tenants.is_empty()
             || req.tenants.len() > MAX_TENANTS
             || req.tenants.iter().any(|t| !name_ok(t))
+            || (star && req.tenants.len() > 1)
         {
             return Err(Error::Argument("tenants"));
         }
@@ -569,7 +575,7 @@ impl<'a> Query<'a> {
         };
         let mut sql = String::from(
             "SELECT id, tenant, hash, seq, time_ms, recorded_ms, boundary, action, class_uid, activity_id, status_id, \
-             status_code, actor_uid, actor_type_id, trace_id, record_id, product, body FROM record WHERE (",
+             status_code, actor_uid, actor_type_id, trace_id, record_id, product, body, project, kind, log FROM record WHERE (",
         );
         for (i, part) in r.partitions.iter().enumerate() {
             if i > 0 {

@@ -257,6 +257,9 @@ type Row struct {
 	RecordId      string                 `protobuf:"bytes,15,opt,name=record_id,json=recordId,proto3" json:"record_id,omitempty"`             // metadata.uid
 	Product       string                 `protobuf:"bytes,16,opt,name=product,proto3" json:"product,omitempty"`                               // metadata.product.name
 	Record        []byte                 `protobuf:"bytes,17,opt,name=record,proto3" json:"record,omitempty"`                                 // the record, RFC 8785 canonical bytes
+	Project       string                 `protobuf:"bytes,18,opt,name=project,proto3" json:"project,omitempty"`                               // the project of the log the row came from; set by the index on a read, ignored on a write
+	Kind          string                 `protobuf:"bytes,19,opt,name=kind,proto3" json:"kind,omitempty"`                                     // the log kind; set by the index on a read, ignored on a write
+	Log           string                 `protobuf:"bytes,20,opt,name=log,proto3" json:"log,omitempty"`                                       // the log's id; set by the index on a read, ignored on a write
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -408,6 +411,27 @@ func (x *Row) GetRecord() []byte {
 		return x.Record
 	}
 	return nil
+}
+
+func (x *Row) GetProject() string {
+	if x != nil {
+		return x.Project
+	}
+	return ""
+}
+
+func (x *Row) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Row) GetLog() string {
+	if x != nil {
+		return x.Log
+	}
+	return ""
 }
 
 // ApplyRequest registers a batch of one log: its rows and the cursor after them.
@@ -795,7 +819,7 @@ const file_sluis_port_index_v2alpha1_index_proto_rawDesc = "" +
 	"\x10GetCursorRequest\x123\n" +
 	"\x03log\x18\x01 \x01(\v2!.sluis.port.index.v2alpha1.LogRefR\x03log\"N\n" +
 	"\x11GetCursorResponse\x129\n" +
-	"\x06cursor\x18\x01 \x01(\v2!.sluis.port.index.v2alpha1.CursorR\x06cursor\"\xd8\x03\n" +
+	"\x06cursor\x18\x01 \x01(\v2!.sluis.port.index.v2alpha1.CursorR\x06cursor\"\x98\x04\n" +
 	"\x03Row\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x12\n" +
 	"\x04hash\x18\x02 \x01(\fR\x04hash\x12\x10\n" +
@@ -817,7 +841,10 @@ const file_sluis_port_index_v2alpha1_index_proto_rawDesc = "" +
 	"\btrace_id\x18\x0e \x01(\tR\atraceId\x12\x1b\n" +
 	"\trecord_id\x18\x0f \x01(\tR\brecordId\x12\x18\n" +
 	"\aproduct\x18\x10 \x01(\tR\aproduct\x12\x16\n" +
-	"\x06record\x18\x11 \x01(\fR\x06record\"\xcf\x01\n" +
+	"\x06record\x18\x11 \x01(\fR\x06record\x12\x18\n" +
+	"\aproject\x18\x12 \x01(\tR\aproject\x12\x12\n" +
+	"\x04kind\x18\x13 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03log\x18\x14 \x01(\tR\x03log\"\xcf\x01\n" +
 	"\fApplyRequest\x123\n" +
 	"\x03log\x18\x01 \x01(\v2!.sluis.port.index.v2alpha1.LogRefR\x03log\x12\x1f\n" +
 	"\vexpect_size\x18\x02 \x01(\x03R\n" +
