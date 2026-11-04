@@ -676,6 +676,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "entry"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "buffa",
+ "bytes",
+ "clap",
+ "connectrpc",
+ "entry",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rustix",
+ "serde_json",
+ "sluis-audit",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "sluis-store",
+ "sluis-version",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "enum-ordinalize"
 version = "4.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1955,6 +1983,27 @@ dependencies = [
  "rustix",
  "sluis-kit",
  "sluis-proto",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "sluis-driver-writer-spool"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "buffa",
+ "clap",
+ "connectrpc",
+ "futures",
+ "rustix",
+ "serde_json",
+ "sluis-audit",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
  "tempfile",
  "tokio",
  "tracing",
