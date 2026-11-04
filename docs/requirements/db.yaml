@@ -38,7 +38,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: v1-parity
-    gap: no-proving-test
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
