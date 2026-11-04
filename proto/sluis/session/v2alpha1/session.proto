@@ -89,6 +89,7 @@ message UpstreamLink {
 
 // SignInFacts are the facts about a person that policy needs to decide again: they are sealed with the cookie key
 // into AuthCode and SessionChain, because the account value is personal and neither kind may hold it in the clear.
+// A SessionChain holds a second copy, sealed with the chain key, for exchange (0006, "Data keys").
 message SignInFacts {
   repeated string accounts = 1;  // "<upstream>/<subject claim value>" for each linked account
 }
@@ -129,5 +130,6 @@ message SessionChain {
   optional string acr = 11;                        // the upstream's acr, if it said one
   repeated string amr = 12;                        // the upstream's amr
   bool amr_present = 13;                           // true when the upstream said anything about amr
-  bytes sealed_facts = 14;                         // SignInFacts, sealed with the cookie key
+  bytes sealed_facts = 14;                         // SignInFacts, sealed with the cookie key: session's own copy, for a refresh
+  bytes sealed_chain_facts = 15;                   // SignInFacts, sealed with the chain key: session seals it, exchange alone opens it
 }

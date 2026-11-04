@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -617,5 +618,57 @@ func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 	want := base64.RawURLEncoding.EncodeToString(h.Sum(nil)[:32])
 	if id["sub"] != want {
 		t.Errorf("sub = %v, want %s", id["sub"], want)
+	}
+}
+
+// The chain carries the sign-in facts twice (0006, "Data keys"): under the cookie key for session's own refresh, and
+// under the chain key for exchange. Session seals the second and never opens it, through a redemption and a refresh.
+func TestChainFactsAreSealedUnderTheChainKeyAndSessionNeverOpensThem(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	rt := b["refresh_token"].(string)
+	sid, _, _ := strings.Cut(rt, ".")
+
+	e.store.mu.Lock()
+	it := e.store.items[key("session-chain", testTenant, sid)]
+	e.store.mu.Unlock()
+	if it == nil {
+		t.Fatal("no chain")
+	}
+	var chain sessionv2alpha1.SessionChain
+	if err := proto.Unmarshal(it.value, &chain); err != nil {
+		t.Fatal(err)
+	}
+	if len(chain.GetSealedChainFacts()) == 0 {
+		t.Fatal("the chain holds no facts sealed for exchange")
+	}
+	if string(chain.GetSealedChainFacts()) == string(chain.GetSealedFacts()) {
+		t.Error("the two copies are one envelope")
+	}
+	// What exchange would open: the chain purpose at the address of the chain with no tenant.
+	pt, err := e.key.openForTest("chain", &typev2alpha1.Address{Kind: "session-chain", Id: sid}, chain.GetSealedChainFacts())
+	if err != nil {
+		t.Fatalf("the chain facts do not open under the chain key: %v", err)
+	}
+	var facts sessionv2alpha1.SignInFacts
+	if err := proto.Unmarshal(pt, &facts); err != nil || len(facts.GetAccounts()) == 0 {
+		t.Fatalf("facts = %v, %v", &facts, err)
+	}
+	// The cookie key does not open the chain copy, nor the chain key the cookie copy.
+	if _, err := e.key.openForTest("cookie", &typev2alpha1.Address{Kind: "session-chain", Id: sid}, chain.GetSealedChainFacts()); err == nil {
+		t.Error("the cookie key opened the chain copy")
+	}
+
+	e.clk.advance(time.Hour)
+	if r := e.token(refreshRequest(rt)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("refresh: %s", r.GetBody())
+	}
+	for _, c := range e.key.called() {
+		if c == "open chain" {
+			t.Error("session opened the chain key")
+		}
+	}
+	if !slices.Contains(e.key.called(), "seal chain") {
+		t.Errorf("session never sealed under the chain key: %v", e.key.called())
 	}
 }

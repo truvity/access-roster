@@ -53,7 +53,8 @@ func (f *flags) service(c cli.Flags) (*exchanged.Service, error) {
 	signerSocket := orDefault(f.signerSocket, filepath.Join("/run/sluis/signer", c.Boundary+".sock"))
 
 	sh, surl := rpc.Dial(storeSocket)
-	cfg, err := exchanged.NewConfig(storev2alpha1connect.NewStoreServiceClient(sh, surl, rpc.ClientOptions()...))
+	st := storev2alpha1connect.NewStoreServiceClient(sh, surl, rpc.ClientOptions()...)
+	cfg, err := exchanged.NewConfig(st)
 	if err != nil {
 		return nil, err
 	}
@@ -68,13 +69,16 @@ func (f *flags) service(c cli.Flags) (*exchanged.Service, error) {
 	if err != nil {
 		return nil, cli.Usage(err)
 	}
+	// The person behind a token is read from the kinds of session through store@ and key@ (exchanged.StoreDirectory).
+	dir, err := exchanged.NewStoreDirectory(cfg, st, keys, nil)
+	if err != nil {
+		return nil, err
+	}
 	ph, purl := rpc.Dial(policySocket)
 	gh, gurl := rpc.Dial(signerSocket)
 	return exchanged.New(exchanged.Options{
 		Boundary: c.Boundary, Config: cfg,
-		// planned: the reader of the kinds of session, with session (#1221). Until then the directory is unbound:
-		// every exchange is unavailable and `check` refuses.
-		Directory: exchanged.Unbound{},
+		Directory: dir,
 		Policy:    policyv2alpha1connect.NewPolicyServiceClient(ph, purl, rpc.ClientOptions()...),
 		Signer:    signerv2alpha1connect.NewSignerServiceClient(gh, gurl, rpc.ClientOptions()...),
 		Keys:      keys,

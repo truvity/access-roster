@@ -32,11 +32,11 @@ func sealable(purpose string) (byte, bool) {
 	return envelope.Code(purpose)
 }
 
-// tenantFits says whether the address's tenant ("" for none) fits the purpose: cookies are the boundary's, and
-// evidence is a tenant's. Data is either (ADR 0006, "Data keys").
+// tenantFits says whether the address's tenant ("" for none) fits the purpose: cookies, chains and grants are the
+// boundary's, and evidence is a tenant's. Data is either (ADR 0006, "Data keys").
 func tenantFits(purpose, tenant string) bool {
 	switch purpose {
-	case "cookie", "grant":
+	case "cookie", "chain", "grant":
 		return tenant == ""
 	case "evidence":
 		return tenant != ""
@@ -44,14 +44,14 @@ func tenantFits(purpose, tenant string) bool {
 	return true
 }
 
-// scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies and grants are the
+// scopeOf is the scope of the key a Seal or Open names, for the rule check: cookies, chains and grants are the
 // boundary's, evidence is a tenant's, and data is the tenant's when the address has a tenant and the boundary's
 // when it has none (ADR 0006, "Data keys"). The rule is about the key in its scope: a right to the tenant `data`
 // key is no right to the boundary `data` key. A purpose in a scope that does not fit it is refused by tenantFits
 // after the rule, as before.
 func scopeOf(purpose string, address *typev2alpha1.Address) string {
 	switch purpose {
-	case "cookie", "grant":
+	case "cookie", "chain", "grant":
 		return registry.ScopeBoundary
 	case "evidence":
 		return registry.ScopeTenant

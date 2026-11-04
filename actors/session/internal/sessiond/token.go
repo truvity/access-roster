@@ -160,6 +160,11 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 	if err != nil {
 		return nil, unavailable("key", err)
 	}
+	// The same facts under the chain key, for exchange to open; session cannot open them (REQ-KEYS-082).
+	exchangeFacts, err := s.keys.sealChain(ctx, sid, &facts)
+	if err != nil {
+		return nil, unavailable("key", err)
+	}
 
 	// Spend the code and begin the chain in one write: the conditional update of the code makes it single use (of two
 	// redemptions, one wins), and the chain is created with it, so a loser that finds the code spent also finds the
@@ -170,7 +175,7 @@ func (s *Service) codeGrant(ctx context.Context, r *sessionv2alpha1.TokenRequest
 		Subject: ac.GetSubject(), ClientId: tc.client.GetId(), Class: chainClassHuman, Scope: ac.GetScope(),
 		RefreshHash: secretHash(secret), StartedAt: ac.GetAuthenticatedAt(), EndsAt: timestamppb.New(ends),
 		RefreshedAt: timestamppb.New(tc.now), AuthTime: ac.GetAuthTime(), Acr: ac.Acr, Amr: ac.GetAmr(),
-		AmrPresent: ac.GetAmrPresent(), SealedFacts: chainFacts,
+		AmrPresent: ac.GetAmrPresent(), SealedFacts: chainFacts, SealedChainFacts: exchangeFacts,
 	}
 	if err := s.spendAndBegin(ctx, tc.tenant, id, ac, it.Version, sid, chain, ends.Sub(tc.now), v.grant); err != nil {
 		if errors.Is(err, store.ErrVersion) || errors.Is(err, store.ErrNotFound) {
