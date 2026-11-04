@@ -55,6 +55,7 @@ func TestIdentityIsThePeerUID(t *testing.T) {
 	}
 }
 
+// verifies: REQ-DEPLOY-003
 func TestDefaultDenyBeforeTheHandler(t *testing.T) {
 	// signer calls nothing, so the call graph does not allow it to call policy.
 	if registry.MayCall("signer", "policy") {

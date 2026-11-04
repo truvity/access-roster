@@ -323,7 +323,8 @@ requirements:
     rationale: "Create-if-absent means a compromised writer cannot rewrite what was already written."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards: []
