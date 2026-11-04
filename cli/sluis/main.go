@@ -1,5 +1,5 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify and version; the rest of the tree belongs to later milestones.
+// audit verify, node unlock and version; the rest of the tree belongs to later milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
 // the global flags --boundary, --output and --log-level. The kit's Run knows only serve, check, version and
@@ -30,6 +30,8 @@ type app struct {
 	hc             *http.Client
 	openBrowser    func(url string) error
 	now            func() time.Time
+	// stdin is where a PIN is read from when no descriptor is named.
+	stdin io.Reader
 	// secretFd opens the descriptor named by --secret-fd (cli.md, "Conventions").
 	secretFd func(fd int) io.Reader
 	// boundary is the --boundary flag of the running command.
@@ -46,6 +48,7 @@ func main() {
 		openBrowser: openBrowser,
 		now:         time.Now,
 		secretFd:    func(fd int) io.Reader { return os.NewFile(uintptr(fd), "secret") },
+		stdin:       os.Stdin,
 	}
 	code := a.run(ctx, os.Args[1:])
 	stop()
@@ -65,6 +68,7 @@ commands:
   login                    sign in at an OpenID Connect issuer
   token --audience ID      print an access token for an audience
   audit verify DIR         check a tiled audit log offline
+  node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   version                  print the version
 
 flags:
@@ -94,6 +98,12 @@ func (a *app) run(ctx context.Context, args []string) int {
 			return a.exec(ctx, a.auditVerifyCommand(), args[2:])
 		}
 		_, _ = fmt.Fprintf(a.stderr, "sluis: audit: expected the command verify\n\n%s", usageText)
+		return cli.ExitUsage
+	case "node":
+		if len(args) > 1 && args[1] == "unlock" {
+			return a.exec(ctx, a.unlockCommand(), args[2:])
+		}
+		_, _ = fmt.Fprintf(a.stderr, "sluis: node: expected the command unlock\n\n%s", usageText)
 		return cli.ExitUsage
 	default:
 		_, _ = fmt.Fprintf(a.stderr, "sluis: unknown command %q\n\n%s", args[0], usageText)

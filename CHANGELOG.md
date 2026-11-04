@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The YubiKey PIV key driver (`drivers/key/yubikey-piv`): key@'s key-store port over the keys of a board's card, with the keys of the slot plan generated on the card, their attestation verified against Yubico's root, a firmware floor of 5.7 and exclusive card access. It starts locked and takes the PIN once, on a local admin socket, with the new `sluis node unlock NODE`; a wrong PIN is never retried. The executable that talks to a card is built natively with the tag `sluis_card`.
 - The status page shows build progress: requirements that are partial next to those done, issues in progress on the board next to those closed, and a Design caption that says "not built" only while nothing is done, partial or in progress.
 - The audit log's checkpoints are standard C2SP signed notes (signature type 0x02): the `audit-log` key is a P-256 key that signs SHA-256, so a generic witness or checkpoint verifier checks them, and `sluis audit verify` reads only that form. The software key driver refuses a state directory that holds an older P-384 `audit-log` key: remove its `audit-log.p8` (and the log it signed) on a development installation, or run `just local-down` and `just local-up` again.
 - The `sluis` command-line tool: `sluis login`, `sluis token` and `sluis audit verify`, which checks a tiled audit log offline.

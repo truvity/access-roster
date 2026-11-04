@@ -1,0 +1,147 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"connectrpc.com/connect"
+
+	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
+	"github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1/keystorev2alpha1connect"
+	"github.com/truvity/sluis/v2/kits/go/cli"
+	krefusal "github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/rpc"
+)
+
+// nodeOut is the `node` member of the JSON object of `sluis node unlock`. It holds no PIN.
+type nodeOut struct {
+	Node   string `json:"node"`
+	Locked bool   `json:"locked"`
+}
+
+// adminSocketPrefix is where the card driver of a board opens its admin socket: <prefix>-<boundary>/admin.sock, the
+// RuntimeDirectory of its unit. Only root reaches it.
+const adminSocketPrefix = "/run/sluis-drv-key-yubikey-piv"
+
+// pinMax bounds what is read for a PIN; a PIV PIN has 6 to 8 octets and the driver checks the length.
+const pinMax = 64
+
+// unlockCommand is `sluis node unlock <node>` (ADR 0006, "Touch and PIN"): it delivers the PIN of the card to the
+// locked card driver of the node it runs on, over the driver's local admin socket. The node is reached by a shell on
+// it (SSH, then sudo), which is the authenticated channel of this milestone; the PIN reaches the driver only through
+// the socket and is never a flag, an environment variable or a file.
+func (a *app) unlockCommand() command {
+	var socket string
+	var secretFd int
+	return command{
+		name: "node unlock",
+		flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&socket, "socket", "", "the admin socket of the card driver; by default "+adminSocketPrefix+"-<boundary>/admin.sock")
+			fs.IntVar(&secretFd, "secret-fd", -1, "read the PIN from this descriptor; by default from standard input")
+		},
+		run: func(ctx context.Context, positional []string, res *result) error {
+			if len(positional) != 1 {
+				return cli.Usage(errors.New("node unlock takes one argument, the node"))
+			}
+			return a.unlock(ctx, positional[0], socket, secretFd, res)
+		},
+	}
+}
+
+func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res *result) error {
+	if socket == "" {
+		if a.boundary == "" || strings.ContainsAny(a.boundary, "/.") {
+			return cli.Usage(errors.New("name the admin socket with --socket, or the boundary with --boundary"))
+		}
+		socket = filepath.Join(adminSocketPrefix+"-"+a.boundary, "admin.sock")
+	}
+	pin, err := a.readPIN(secretFd)
+	if err != nil {
+		return err
+	}
+	defer clear(pin)
+
+	hc, url := rpc.Dial(socket)
+	c := keystorev2alpha1connect.NewUnlockServiceClient(hc, url, rpc.ClientOptions()...)
+	st, err := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{}))
+	if err != nil {
+		return dialError("status", err)
+	}
+	// The socket is the node's own; a name that is not this node's means the command was sent to the wrong place.
+	if st.Msg.GetNode() != node {
+		return refused("node")
+	}
+	if !st.Msg.GetLocked() {
+		res.Node = &nodeOut{Node: node}
+		res.Text = fmt.Sprintf("node %s is already unlocked", node)
+		return nil
+	}
+	if _, err := c.Unlock(ctx, connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: pin})); err != nil {
+		// The driver tried the PIN once. Say how many attempts the card has left, so that nobody guesses.
+		if reason, _ := krefusal.Reason(err); reason == "pin" {
+			if st2, serr := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{})); serr == nil {
+				_, _ = fmt.Fprintf(a.stderr, "the card did not accept the PIN; it allows %d more attempts\n", st2.Msg.GetPinRetries())
+			}
+		}
+		return dialError("unlock", err)
+	}
+	res.Node = &nodeOut{Node: node}
+	res.Text = fmt.Sprintf("node %s is unlocked", node)
+	return nil
+}
+
+// dialError maps an error of the admin socket to the end of the command. A refusal of the driver is a refused
+// result with its reason; anything else (no socket, no permission) is a failure. No message holds the PIN.
+func dialError(step string, err error) error {
+	if reason, ok := krefusal.Reason(err); ok {
+		return refused(reason)
+	}
+	switch connect.CodeOf(err) {
+	case connect.CodePermissionDenied:
+		return refused("caller")
+	case connect.CodeUnavailable:
+		return fmt.Errorf("node unlock: %s: the admin socket cannot be reached (is the driver running, and are you root?)", step)
+	}
+	return fmt.Errorf("node unlock: %s: %s", step, connect.CodeOf(err))
+}
+
+// readPIN reads one line from the descriptor, or from standard input. A terminal is refused: this build cannot
+// turn the echo off, and a PIN that shows on a screen is not delivered.
+func (a *app) readPIN(fd int) ([]byte, error) {
+	var r io.Reader
+	switch {
+	case fd >= 0:
+		r = a.secretFd(fd)
+		if r == nil {
+			return nil, cli.Usage(errors.New("--secret-fd: not an open descriptor"))
+		}
+	default:
+		r = a.stdin
+	}
+	if f, ok := r.(*os.File); ok {
+		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
+			return nil, cli.Usage(errors.New("the PIN is read from a pipe or --secret-fd, not from a terminal that would show it"))
+		}
+	}
+	line, err := bufio.NewReaderSize(io.LimitReader(r, pinMax+2), pinMax+2).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("reading the PIN: %w", err)
+	}
+	pin := []byte(strings.TrimRight(string(line), "\r\n"))
+	clear(line)
+	if len(pin) == 0 {
+		return nil, cli.Usage(errors.New("no PIN on standard input (or --secret-fd)"))
+	}
+	if len(pin) > pinMax {
+		clear(pin)
+		return nil, cli.Usage(errors.New("the PIN is longer than a PIV PIN can be"))
+	}
+	return pin, nil
+}

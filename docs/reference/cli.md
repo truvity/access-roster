@@ -44,6 +44,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis login [--issuer URL]` | The group issuer; the boundaries' token endpoints | Tokens in the user's cache | 0, 1, 2, 3 |
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
+| `sluis node unlock NODE [--socket PATH] [--secret-fd N]` | The PIN, from standard input or the descriptor; the card driver's status | The PIN into the locked card driver of the node it runs on | 0, 1, 2, 3 |
 
 ### `sluis config check` and `explain`
 
@@ -66,6 +67,16 @@ The hand-off is ritueel's [hand-off contract, version 1](https://ritueel.id/refe
 - **`sluis key status`** lists each enabled key: its purpose, its slot on a card, its store, its fingerprint, its expiry and its warning level. It exits with the highest finding: a notice 60 days before an expiry (10), an alert 30 days before (11) and a critical alert 14 days before (12) ([0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning)).
 
 The root list is part of `TrustAnchors`, the config kind that holds the root list, the CA bundle and the SSH CA key list ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)); `sluis trust sync` fetches it at parity.
+
+### `sluis node unlock`
+
+A board starts locked: the card driver has no PIN ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)). `sluis node unlock NODE` gives it the PIN, and runs on the node itself, as root, because the driver's admin socket is mode `0600` and refuses any other user. An operator reaches it through a shell on the node (SSH, then `sudo`) and pipes the PIN, so the PIN crosses the network only inside that session.
+
+- **The PIN is read from standard input** (one line), or from the descriptor named by `--secret-fd`. It is never a flag or an environment variable, and a terminal is refused because this tool cannot turn the echo off.
+- **`NODE` must be the node the driver serves.** The command asks the driver first, and a different name exits 3 with the reason `node` before any PIN is sent.
+- **A wrong PIN is tried once.** The driver never retries it, because the card blocks after three wrong attempts. The command exits 3 with the reason `pin` and prints how many attempts the card still allows. A blocked card exits 3 with `pin_blocked`; the PUK is a ceremony of the owners and not a command.
+- **`--socket PATH`** names the admin socket; by default it is `/run/sluis-drv-key-yubikey-piv-BOUNDARY/admin.sock`, from `--boundary`.
+- **The driver keeps the PIN in locked memory** and nowhere else; a restart of the driver locks it again.
 
 ### `sluis login` and `sluis token`
 
@@ -120,9 +131,10 @@ And these where they apply:
 | `token` | `token` | `{ "access_token", "expires_at", "audience", "issuer" }`. |
 | `login` | `login` | `{ "issuer", "client_id", "subject", "expires_at" }`; no token. |
 | `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
+| `node` | `node unlock` | `{ "node", "locked" }`; no PIN. |
 
 Members are lower-case words with underscores; times are RFC 3339 in UTC; the object is not in canonical form. A new member is not a new version, so a reader ignores a member it does not know; a member renamed, removed or changed in meaning is version 2.
 
 ## Later commands
 
-These come with the parity milestone and follow the conventions above ([#1097](https://github.com/truvity/sluis/issues/1097)): `sluis trust sync` and `trust enroll` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)), `sluis node unlock` ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)), `sluis restore`, a command of store@ with a plan by default, `--apply` to write and `--overwrite` to replace ([0010](/decisions/0010-backup-and-recovery/#restore)), the rest of `sluis audit` ([0028](/decisions/0028-audit-pieces/#the-audit-front)), `sluis pki` and `sluis ssh`, the commands for integrations, clients and credentials, and the replacements for v1's `sluisctl` sign-in helpers (kubeconfig, cloud profiles, database and vendor wrappers). The backup is a job of exporter@, not a command ([0009](/decisions/0009-export/)). Until then, commands that the integration pages show and this page does not list show the shape, not decided names ([Examples are illustrative](/integrations/#examples-are-illustrative)).
+These come with the parity milestone and follow the conventions above ([#1097](https://github.com/truvity/sluis/issues/1097)): `sluis trust sync` and `trust enroll` ([0022](/decisions/0022-workload-identity-and-host-enrolment/#the-trust-bundle)), `sluis restore`, a command of store@ with a plan by default, `--apply` to write and `--overwrite` to replace ([0010](/decisions/0010-backup-and-recovery/#restore)), the rest of `sluis audit` ([0028](/decisions/0028-audit-pieces/#the-audit-front)), `sluis pki` and `sluis ssh`, the commands for integrations, clients and credentials, and the replacements for v1's `sluisctl` sign-in helpers (kubeconfig, cloud profiles, database and vendor wrappers). The backup is a job of exporter@, not a command ([0009](/decisions/0009-export/)). Until then, commands that the integration pages show and this page does not list show the shape, not decided names ([Examples are illustrative](/integrations/#examples-are-illustrative)).

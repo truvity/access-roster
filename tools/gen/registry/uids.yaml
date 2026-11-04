@@ -48,3 +48,5 @@ names:
   - driver-indexer-fs
   # the edge connector of production: the tunnel client that is the only caller of entry's listener, as the forwarder is in the harness
   - edge-connector
+  # the card key driver (YubiKey PIV): the key driver of a board, owned by key
+  - driver-key-yubikey-piv
