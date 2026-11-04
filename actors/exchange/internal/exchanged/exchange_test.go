@@ -18,6 +18,7 @@ import (
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/subject"
 )
 
 func TestExchangeForExampleAppReturnsAnAccessTokenNarrowedToThatAudience(t *testing.T) {
@@ -99,8 +100,7 @@ func TestSubIsThePairwiseSubjectOfTheTargetTenantNotTheOneOfTheSubjectToken(t *t
 
 	// ADR 0034: Mac(the tenant's pairwise key, length-prefixed sector, the person's id), truncated to 256 bits and
 	// written as base64url without padding. The sector is the tenant's until Tenant items exist (D-4).
-	input := append([]byte{0, 0, 0, byte(len(testTenant))}, []byte(testTenant)...)
-	input = append(input, []byte(testPerson.ID)...)
+	input := subject.PairwiseInput(testTenant, testPerson.ID)
 	want := base64.RawURLEncoding.EncodeToString(macOf("pairwise", testTenant, "pairwise", input)[:32])
 	if claims["sub"] != want {
 		t.Errorf("sub = %v, want %s", claims["sub"], want)

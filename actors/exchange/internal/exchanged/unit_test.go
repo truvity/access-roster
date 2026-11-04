@@ -7,18 +7,6 @@ import (
 	"time"
 )
 
-func TestPairwiseInputIsTheLengthPrefixedSectorThenThePersonID(t *testing.T) {
-	got := pairwiseInput("acme", "p-1")
-	want := []byte{0, 0, 0, 4, 'a', 'c', 'm', 'e', 'p', '-', '1'}
-	if string(got) != string(want) {
-		t.Errorf("input = %v, want %v", got, want)
-	}
-	// The prefix keeps the parts apart: ("ab", "c") and ("a", "bc") differ.
-	if string(pairwiseInput("ab", "c")) == string(pairwiseInput("a", "bc")) {
-		t.Error("the sector and the id run together")
-	}
-}
-
 func TestPairwiseSubIs256BitsOfBase64URLWithoutPadding(t *testing.T) {
 	sub := pairwiseSub(make([]byte, 48))
 	if len(sub) != 43 || strings.ContainsAny(sub, "=+/") {

@@ -4,7 +4,10 @@ package sessiond_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha512"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -22,6 +25,7 @@ import (
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 	storev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/subject"
 )
 
 // codeRequest is the token request of the CLI for a code.
@@ -594,5 +598,24 @@ func TestTokenSpendAndChainAreOneWrite(t *testing.T) {
 	}
 	if writes[0][0].GetAddress().GetKind() != "auth-code" || writes[0][1].GetAddress().GetKind() != "session-chain" {
 		t.Errorf("batch = %v", writes[0])
+	}
+}
+
+// The ID token's sub and the sub exchange makes for the same person, tenant and sector must be equal (0034). Both
+// units build the Mac input with subject.PairwiseInput, so this test computes the expected sub from that function
+// alone, with the Mac of the fake key@.
+func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	_, id := tokenClaims(t, b["id_token"].(string))
+	person := e.store.ids("person", testTenant)[0]
+
+	h := hmac.New(sha512.New384, []byte("test mac key|pairwise|"+testTenant))
+	h.Write(binary.BigEndian.AppendUint16(nil, uint16(len("pairwise"))))
+	h.Write([]byte("pairwise"))
+	h.Write(subject.PairwiseInput(testTenant, person)) // the sector of a tenant is its own name (decision D-4)
+	want := base64.RawURLEncoding.EncodeToString(h.Sum(nil)[:32])
+	if id["sub"] != want {
+		t.Errorf("sub = %v, want %s", id["sub"], want)
 	}
 }

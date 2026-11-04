@@ -23,6 +23,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/store"
+	"github.com/truvity/sluis/v2/kits/go/subject"
 )
 
 // Actor is the registry name of this actor.
@@ -297,7 +298,7 @@ func (s *Service) decide(ctx context.Context, t Tenant, audience string, require
 // (#1216), since until then every sector is pairwise (decision D-4).
 func (s *Service) subjectOf(ctx context.Context, t Tenant, personID string, sealedGrant []byte) (string, error) {
 	res, err := s.opts.Keys.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{
-		Purpose: "pairwise", Tenant: t.ID, Label: pairwiseLabel, Input: pairwiseInput(t.Sector, personID), Grant: sealedGrant,
+		Purpose: "pairwise", Tenant: t.ID, Label: pairwiseLabel, Input: subject.PairwiseInput(t.Sector, personID), Grant: sealedGrant,
 	}))
 	if err != nil {
 		slog.Error("exchange: key@ did not make the subject", "code", connect.CodeOf(err).String())

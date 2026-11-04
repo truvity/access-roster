@@ -1,0 +1,11 @@
+{
+  "comment": "Input of the Mac that makes a pairwise sub (ADR 0034), read by kits/go/subject. Each part has a 4-byte big-endian length in front: sector, then person id. input_hex is the expected Mac input.",
+  "vectors": [
+    {"name": "plain", "sector": "acme", "person_id": "p-1", "input_hex": "0000000461636d6500000003702d31"},
+    {"name": "split ab|c", "sector": "ab", "person_id": "c", "input_hex": "0000000261620000000163"},
+    {"name": "split a|bc differs from ab|c", "sector": "a", "person_id": "bc", "input_hex": "0000000161000000026263"},
+    {"name": "uuid person id", "sector": "globex", "person_id": "0190a5f0-7b3c-7d2e-8f41-5a6b7c8d9e0f", "input_hex": "00000006676c6f6265780000002430313930613566302d376233632d376432652d386634312d356136623763386439653066"},
+    {"name": "empty sector", "sector": "", "person_id": "p-1", "input_hex": "0000000000000003702d31"},
+    {"name": "empty person id", "sector": "acme", "person_id": "", "input_hex": "0000000461636d6500000000"}
+  ]
+}
