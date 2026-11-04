@@ -1920,6 +1920,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "signer"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "aws-lc-rs",
+ "base64",
+ "buffa",
+ "buffa-types",
+ "clap",
+ "connectrpc",
+ "rustix",
+ "serde_json",
+ "signer",
+ "sluis-audit",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "sluis-store",
+ "sluis-version",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
