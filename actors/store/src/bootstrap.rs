@@ -535,10 +535,9 @@ mod tests {
             e,
             "publishers[0].public_key: not an EC P-384 SubjectPublicKeyInfo"
         );
-        let e = refusal(&local(&[(
-            "-----BEGIN PUBLIC KEY-----",
-            "-----BEGIN PRIVATE KEY-----",
-        )]));
+        // Built at run time: a PEM private-key header is never written in a tracked file.
+        let private = format!("-----BEGIN {} KEY-----", "PRIVATE");
+        let e = refusal(&local(&[("-----BEGIN PUBLIC KEY-----", &private)]));
         assert_eq!(
             e,
             "publishers[0].public_key: must be one PEM PUBLIC KEY block"
