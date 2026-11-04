@@ -29,6 +29,11 @@ use crate::refuse::{self, Refuse};
 use crate::routes::{self, Front};
 use crate::search;
 
+/// The path of the liveness probe, and its route name (an answered probe is never audited, so the name is not
+/// in the audit vocabulary).
+const HEALTH_PATH: &str = "/healthz";
+const HEALTH_ROUTE: &str = "health";
+
 /// The whole request, from the first byte read to the last written.
 const REQUEST: Duration = Duration::from_secs(30);
 /// The deadline of a call to session or exchange: a little less, so the actor answers first.
@@ -132,17 +137,22 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
         } else {
             trace.route
         };
-        state
-            .audit
-            .request(Request {
-                route,
-                method: &method,
-                status,
-                reason,
-                grant: trace.grant,
-                correlation: &id,
-            })
-            .await;
+        // S-3 (ADR 0030): an answered health probe is not an audit fact, or an idle installation would write
+        // a record every few seconds. A health request that is refused (a wrong method, a query, a body) is
+        // not a probe, and a refused connection never reaches here; both stay audited.
+        if !(route == HEALTH_ROUTE && status == 200) {
+            state
+                .audit
+                .request(Request {
+                    route,
+                    method: &method,
+                    status,
+                    reason,
+                    grant: trace.grant,
+                    correlation: &id,
+                })
+                .await;
+        }
         crate::headers::secure(reply, &id, trace.route)
     })
     .await
@@ -322,6 +332,10 @@ async fn route(
             method_ok(&parts.method, &[Method::POST], "POST")?;
             token(state, &parts.headers, query, body, trace).await
         }
+        (_, HEALTH_PATH) => {
+            trace.route = HEALTH_ROUTE;
+            health(&parts.method, query, &body)
+        }
         (Front::Identity, "/.well-known/openid-configuration") => {
             trace.route = "discovery";
             public_document(state, &parts.method, query, &body, false).await
@@ -337,6 +351,21 @@ async fn route(
         }
         _ => Err(Refuse::new(404, "route")),
     }
+}
+
+/// The liveness probe of the process, which the forwarder's health check asks for. It answers that `entry` is
+/// serving and reads nothing, so it calls no other actor and a probe cannot make one audit a refusal. The
+/// readiness of the actors behind `entry` (REQ-OBS-009) is not part of it.
+fn health(method: &Method, query: &str, body: &Incoming) -> Result<Done, Refuse> {
+    method_ok(method, &[Method::GET, Method::HEAD], "GET, HEAD")?;
+    no_body(body)?;
+    Params::parse(query, QUERY_MAX)
+        .and_then(|p| p.only(&[]))
+        .map_err(bad)?;
+    Ok(Done::Json {
+        body: Bytes::from_static(b"{\"status\":\"ok\"}"),
+        public: false,
+    })
 }
 
 /// The reader's `Search` as the Connect protocol's unary call with the JSON codec: the body is the closed

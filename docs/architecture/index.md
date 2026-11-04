@@ -129,6 +129,7 @@ Served at the root of the public host, for example `https://sluis.example.com`.
 | -------- | --------------- | ------ |
 | Discovery | `GET /.well-known/openid-configuration`, `GET /.well-known/oauth-authorization-server` | Anyone. Public, CORS-open, no credentials |
 | Key set | `GET /jwks`, found by a relying party through the `jwks_uri` of discovery | Anyone. Public |
+| Liveness | `GET /healthz` (`HEAD` too), no parameter | The platform's or the forwarder's probe. `entry` answers it alone and writes no audit record for it ([0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format)) |
 | Authorization | `GET /authorize` (PKCE `S256` only, `response_mode=query` or `form_post` ([0017](/decisions/0017-identity-and-sign-in/)), `resource`, `prompt`) | A browser |
 | Sign-in | `GET /login`, `GET /login/<provider>/start`, `GET /callback` | A browser, bound to the request by the `__Host-sluis_signin` cookie ([0025](/decisions/0025-integrations/#the-upstream-contract)) |
 | Token | `POST /token` with `authorization_code` or `refresh_token` | A client, public with PKCE or confidential with a secret. Refresh tokens are single use |

@@ -487,7 +487,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     tmpfs: ["/tmp"]
     healthcheck:
-      test: ["CMD", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://sluis.dev.local.test:8443/.well-known/openid-configuration"]
+      test: ["CMD", "wget", "-q", "--no-check-certificate", "-O", "/dev/null", "https://sluis.dev.local.test:8443/healthz"]
       interval: 5s
       timeout: 5s
       retries: 12
