@@ -307,6 +307,33 @@ func TestAuthorizeReflectsNothingInItsPages(t *testing.T) {
 	}
 }
 
+// A state that holds a script goes to the client only percent-encoded in the redirect's query. Session builds no page
+// that carries it (no form_post page: the response mode is refused), so there is no HTML to escape; the redirect has
+// no body, and the one page session builds holds nothing of the request.
+func TestAuthorizeStateWithScriptIsEncoded(t *testing.T) {
+	e := newEnv(t, nil)
+	p := newAuthorize()
+	p.req.State = `<script>alert(1)</script>`
+	p.req.CodeChallenge = ""
+	r := e.authorize(p.req)
+	if len(r.GetBody()) != 0 {
+		t.Errorf("the redirect has a body: %q", r.GetBody())
+	}
+	u := location(t, r)
+	if got := u.Query().Get("state"); got != p.req.State {
+		t.Errorf("state = %q", got)
+	}
+	if strings.ContainsAny(u.RawQuery, `<>`) || strings.Contains(u.RawQuery, "script>") {
+		t.Errorf("the query is not encoded: %s", u.RawQuery)
+	}
+	p = newAuthorize()
+	p.req.State = `<script>alert(1)</script>`
+	p.req.ResponseMode = "form_post"
+	if body := string(e.authorize(p.req).GetBody()); strings.Contains(body, "script") {
+		t.Errorf("a refused form_post reflects the state: %q", body)
+	}
+}
+
 func TestAuthorizeUpstreamTrouble(t *testing.T) {
 	// The adapter says the request is bad: the person is told by the client's redirect, as server_error.
 	e := newEnv(t, nil)

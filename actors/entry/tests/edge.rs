@@ -1259,7 +1259,9 @@ async fn a_form_post_page_gets_the_relaxed_policy_and_nothing_else_does() {
     let r = http(&up, "GET", &q, &[], b"").await;
     let csp = r.h("content-security-policy").unwrap();
     assert!(
-        csp.contains("script-src 'unsafe-inline'") && !csp.contains("form-action"),
+        csp.contains("script-src 'sha256-")
+            && !csp.contains("unsafe-inline")
+            && !csp.contains("form-action"),
         "{csp}"
     );
     assert!(csp.contains("frame-ancestors 'none'"));
