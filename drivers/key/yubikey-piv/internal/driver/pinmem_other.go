@@ -11,7 +11,7 @@ type pinMemory struct{}
 
 func (*pinMemory) set([]byte) error    { return errMemory }
 func (*pinMemory) held() bool          { return false }
-func (*pinMemory) get() (string, bool) { return "", false }
+func (*pinMemory) get() ([]byte, bool) { return nil, false }
 func (*pinMemory) wipe()               {}
 func (*pinMemory) release()            {}
 
