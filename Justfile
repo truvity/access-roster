@@ -277,10 +277,47 @@ rust-feature-guard:
     fi
     echo "rust-feature-guard: test-identities is on no normal edge"
 
+# The pinned rqlite release (v10.6.6) for the tests of the rqlite driver: the linux-amd64 and
+# linux-arm64 archives from the GitHub release, verified against the SHA-256 written here, unpacked
+# to .cache/rqlite/linux-<arch>/ (rqlited and rqlite). Idempotent: an archive that is there and
+# verifies is not downloaded again. rqlite runs as a plain process, never in a container.
+#
+# The digests are the ones GitHub publishes for the release assets (MEASURED 2026-11-04, `gh release
+# view v10.6.6 -R rqlite/rqlite --json assets`). The release has no checksum file of its own.
+rqlite-fetch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=v10.6.6
+    declare -A sums=(
+        [amd64]=b0fdc2d526b03c0d933e27bf84f53d447791d1a6e331e74fa2013750bf621aba
+        [arm64]=8da274ea338e156522c00ec63650c1a3cdd1db1c3dd127b43fe955f221009c21
+    )
+    dir=.cache/rqlite
+    mkdir -p "$dir"
+    for arch in amd64 arm64; do
+        name="rqlite-$version-linux-$arch"
+        archive="$dir/$name.tar.gz"
+        if [ -x "$dir/linux-$arch/rqlited" ] && [ -f "$archive" ] \
+            && echo "${sums[$arch]}  $archive" | sha256sum --check --status; then
+            echo "rqlite-fetch: $arch is there"
+            continue
+        fi
+        curl --fail --silent --show-error --location --retry 3 --output "$archive.part" \
+            "https://github.com/rqlite/rqlite/releases/download/$version/$name.tar.gz"
+        echo "${sums[$arch]}  $archive.part" | sha256sum --check --status \
+            || { echo "::error::$name.tar.gz does not match its SHA-256" >&2; rm -f "$archive.part"; exit 1; }
+        mv "$archive.part" "$archive"
+        rm -rf "$dir/linux-$arch" "$dir/$name"
+        tar -xzf "$archive" -C "$dir"
+        mv "$dir/$name" "$dir/linux-$arch"
+        [ -x "$dir/linux-$arch/rqlited" ] || { echo "::error::$name.tar.gz holds no rqlited" >&2; exit 1; }
+        echo "rqlite-fetch: $arch fetched"
+    done
+
 # Every code check, in the order CI runs them. An empty sweep is a failure: the Go module and
 # the Cargo workspace must each hold a package. The proto and registry steps run once their
 # recipes exist.
-check-code:
+check-code: rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
     go_packages=$(go list ./... | wc -l)
@@ -295,7 +332,8 @@ check-code:
             echo "SKIP: $step not yet defined"
         fi
     done
-    just go-lint go-test rust-lint rust-test
+    # CI must run the rqlite driver's tests, never skip them for want of the binary (rqlite-fetch).
+    SLUIS_REQUIRE_RQLITED=1 just go-lint go-test rust-lint rust-test
 
 # Registry codegen: the enforcement tables of the three registries (docs/architecture/actors.yaml,
 # kinds.yaml and keys.yaml) as kits/go/registry/zz_registry.go and

@@ -131,7 +131,7 @@ func (f *fake) Write(_ context.Context, req *connect.Request[storev2alpha1.Write
 	return connect.NewResponse(&storev2alpha1.WriteResponse{Items: out}), nil
 }
 
-func setup(t *testing.T, kind string) (*store.Client[*typev2alpha1.Header], *fake) {
+func setup(t *testing.T, kind string, opts ...store.Option) (*store.Client[*typev2alpha1.Header], *fake) {
 	t.Helper()
 	f := &fake{items: map[string]*storev2alpha1.Item{}}
 	dir, err := os.MkdirTemp("", "s")
@@ -166,7 +166,7 @@ func setup(t *testing.T, kind string) (*store.Client[*typev2alpha1.Header], *fak
 	f.mu.Lock()
 	f.reads = nil
 	f.mu.Unlock()
-	cl, err := store.New(c, kind, newHeader)
+	cl, err := store.New(c, kind, newHeader, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,3 +367,92 @@ func TestScopeIsCheckedBeforeTheCall(t *testing.T) {
 func second[T any](_ T, err error) error { return err }
 
 func list[T any](_ T, _ string, err error) error { return err }
+
+// DataKeyWrap is tenant-scoped, but its boundary purposes have no tenant: with OptionalTenant the client addresses
+// them with the tenant "", which is empty on the wire. Tenant "-" is still refused, and without the option so is "".
+func TestOptionalTenantAddressesTheBoundary(t *testing.T) {
+	c, f := setup(t, "DataKeyWrap", store.OptionalTenant())
+	ctx := context.Background()
+	if _, err := c.Create(ctx, "", "cookie/1/node-a", hdr("a", "1")); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.seen[0].GetOperations()[0].GetAddress().GetTenant(); got != "" {
+		t.Fatalf("the wire tenant = %q, want empty", got)
+	}
+	it, err := c.Get(ctx, "", "cookie/1/node-a")
+	if err != nil || it.Tenant != "" {
+		t.Fatalf("get = %+v, %v", it, err)
+	}
+	if _, _, err := c.List(ctx, "", store.ByIndex("by_purpose", []byte("cookie"))); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.lists[0].GetTenant(); got != "" {
+		t.Fatalf("the wire tenant of a List = %q, want empty", got)
+	}
+	// A tenant still works, and "-" is still never a tenant.
+	if _, err := c.Create(ctx, "acme", "data/1/node-a", hdr("b", "2")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Get(ctx, "-", "x"); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("tenant -: %v, want invalid_argument", err)
+	}
+}
+
+func TestCreateAllIsOneWriteWithItsOwnIndexes(t *testing.T) {
+	c, f := setup(t, "DataKeyWrap", store.OptionalTenant())
+	ctx := context.Background()
+	items := []store.NewItem[*typev2alpha1.Header]{
+		{Tenant: "", ID: "grant/1/node-a", Value: hdr("a", "1"), Indexes: []store.Index{{Name: "by_purpose", Value: []byte("grant")}, {Name: "by_recipient", Value: []byte("node-a")}}},
+		{Tenant: "", ID: "grant/1/node-b", Value: hdr("b", "1"), Indexes: []store.Index{{Name: "by_purpose", Value: []byte("grant")}}},
+	}
+	got, err := c.CreateAll(ctx, items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != "grant/1/node-a" || got[1].Version != 1 || got[1].Value.GetName() != "b" {
+		t.Fatalf("created = %+v", got)
+	}
+	if len(f.seen) != 1 || len(f.seen[0].GetOperations()) != 2 || len(f.seen[0].GetGrant()) != 0 {
+		t.Fatalf("writes = %d, want one with two operations and no grant", len(f.seen))
+	}
+	ops := f.seen[0].GetOperations()
+	if ops[0].GetVerb().String() != "CREATE" || len(ops[0].GetIndexes()) != 2 || len(ops[1].GetIndexes()) != 1 {
+		t.Fatalf("operations = %v", ops)
+	}
+	// A taken address is ErrExists.
+	if _, err := c.CreateAll(ctx, items[:1]); !errors.Is(err, store.ErrExists) {
+		t.Fatalf("second CreateAll: %v, want ErrExists", err)
+	}
+}
+
+func TestCreateAllChecksBeforeTheCall(t *testing.T) {
+	c, f := setup(t, "DataKeyWrap")
+	ctx := context.Background()
+	mk := func(n int) []store.NewItem[*typev2alpha1.Header] {
+		out := make([]store.NewItem[*typev2alpha1.Header], n)
+		for i := range out {
+			out[i] = store.NewItem[*typev2alpha1.Header]{Tenant: "acme", ID: "data/1/n" + string(rune('a'+i%26)) + string(rune('a'+i/26)), Value: hdr("a", "1")}
+		}
+		return out
+	}
+	_, err := c.CreateAll(ctx, nil)
+	if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodeInvalidArgument || r != "batch" {
+		t.Fatalf("empty batch: %v", err)
+	}
+	_, err = c.CreateAll(ctx, mk(store.MaxBatch+1))
+	if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodeInvalidArgument || r != "batch" {
+		t.Fatalf("65 items: %v", err)
+	}
+	bad := mk(2)
+	bad[1].ID = "A"
+	_, err = c.CreateAll(ctx, bad)
+	if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodeInvalidArgument || r != "address" {
+		t.Fatalf("bad id in the second item: %v", err)
+	}
+	if len(f.seen) != 0 {
+		t.Fatal("a refused batch reached the store")
+	}
+	if got, err := c.CreateAll(ctx, mk(store.MaxBatch)); err != nil || len(got) != store.MaxBatch {
+		t.Fatalf("64 items: %d, %v", len(got), err)
+	}
+}
