@@ -87,8 +87,9 @@ requirements:
     rationale: "A temp item with no expiry would grow without bound and be neither temporary nor lost (ADR 0004)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
@@ -158,8 +159,9 @@ requirements:
     rationale: "Only two scope dimensions exist, and the flat address is what makes a prefix rule and a sealed value bound to its address possible (ADR 0004)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
@@ -1282,6 +1284,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
