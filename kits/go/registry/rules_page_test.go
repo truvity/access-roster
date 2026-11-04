@@ -27,6 +27,10 @@ func TestMatchesRulesPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	contracts := adapterContracts(t)
+	createOnly := createOnlyKinds(t)
+	if !createOnly["KeyRevocation"] {
+		t.Fatal("the kind registry no longer marks KeyRevocation create_only")
+	}
 	want := parseRulesPage(t, string(page), contracts)
 	if len(want.names) != 19 {
 		t.Fatalf("the page names %d actors, want 19", len(want.names))
@@ -44,7 +48,8 @@ func TestMatchesRulesPage(t *testing.T) {
 				verb string
 				page bool
 			}{
-				{"create", p.write}, {"update", p.write}, {"delete", p.write}, {"apply", p.write},
+				{"create", p.write}, {"update", p.write && !createOnly[k.Name]}, {"delete", p.write && !createOnly[k.Name]},
+				{"apply", p.write && !createOnly[k.Name]},
 				{"get", p.read || p.write}, {"list", p.read || p.write},
 				{"watch", p.watch},
 			} {
@@ -154,6 +159,32 @@ var (
 	actorRowRe = regexp.MustCompile("^\\| \\[`([a-z-]+)`\\]\\(#[a-z-]+\\) \\| (\\w+) \\| (\\d+) / (\\d+) \\| (\\d+) / (\\d+) \\| (\\d+) / (\\d+) \\| (\\d+) / (\\d+) \\| \\d+ \\|$")
 	sectionRe  = regexp.MustCompile("^### `([a-z-]+)`$")
 )
+
+// createOnlyKinds are the kinds of the kind registry marked create_only: their writer may create and read, and no actor
+// may update, delete or apply (ADR 0041), which the page, a matrix of "writes", does not show.
+func createOnlyKinds(t *testing.T) map[string]bool {
+	t.Helper()
+	b, err := os.ReadFile("../../../docs/architecture/kinds.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Kinds []struct {
+			Name       string `yaml:"name"`
+			CreateOnly bool   `yaml:"create_only"`
+		} `yaml:"kinds"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]bool{}
+	for _, k := range doc.Kinds {
+		if k.CreateOnly {
+			out[k.Name] = true
+		}
+	}
+	return out
+}
 
 func adapterContracts(t *testing.T) map[string][]string {
 	t.Helper()
