@@ -79,12 +79,19 @@ message Person {
   google.protobuf.Timestamp created_at = 2;   // when sluis first saw the person
 }
 
-// UpstreamLink is the kind UpstreamLink (0019 "The records"): the id is a keyed hash of the issuer, the claim name
-// and the claim value.
+// UpstreamLink is the kind UpstreamLink (0019 "The records"): the id is a keyed hash of the issuer and the claim
+// value. The claim name is not in the id: a changed claim is refused by the UpstreamPin, never linked again.
 message UpstreamLink {
   string subject = 1;        // the subject of the person
   string issuer = 2;         // the upstream's issuer
   string subject_claim = 3;  // the name of the claim that held the subject
+}
+
+// UpstreamPin is the kind UpstreamPin (0019 "Linking an upstream account"): the subject claim first used for an
+// issuer. The id is a keyed hash of the issuer. A sign-in whose configured claim differs is refused.
+message UpstreamPin {
+  string issuer = 1;         // the upstream's issuer
+  string subject_claim = 2;  // the name of the claim pinned by the issuer's first link
 }
 
 // SignInFacts are the facts about a person that policy needs to decide again: an AuthCode holds them sealed with the

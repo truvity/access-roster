@@ -4,12 +4,14 @@ package sessiond_test
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
@@ -396,12 +398,12 @@ func TestCallbackFindsTheSamePersonAgain(t *testing.T) {
 // verifies: REQ-SUBJ-037
 func TestCallbackLinksByTheSubjectClaimNotByEmail(t *testing.T) {
 	// Two accounts that differ in the subject claim value are two people, whatever else they share (0019: no linking
-	// by e-mail, no merging). A subject claim of another name is a different account too.
+	// by e-mail, no merging). Another issuer is another account too. (Another claim name for one issuer is refused by
+	// the pin: TestCallbackRefusesASubjectClaimThatContradictsThePin.)
 	subjects := map[string]*integrationv2alpha1.Assertion{}
 	for name, a := range map[string]*integrationv2alpha1.Assertion{
 		"alice":        {Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice"},
 		"alice2":       {Issuer: "https://idp.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice2"},
-		"other claim":  {Issuer: "https://idp.example.test/realms/test", SubjectClaim: "sub", Subject: "alice"},
 		"other issuer": {Issuer: "https://idp2.example.test/realms/test", SubjectClaim: "preferred_username", Subject: "alice"},
 	} {
 		subjects[name] = a
@@ -420,6 +422,107 @@ func TestCallbackLinksByTheSubjectClaimNotByEmail(t *testing.T) {
 	}
 	if n := e.store.count("upstream-link", testTenant); n != len(subjects) {
 		t.Fatalf("%d links", n)
+	}
+}
+
+// verifies: REQ-SUBJ-041
+func TestCallbackRefusesASubjectClaimThatContradictsThePin(t *testing.T) {
+	// 0019: the first link of an issuer pins its subject claim; a later sign-in through the issuer with another claim
+	// is refused, never linked again as a new person. The test links by sub, changes the claim to oid, and signs in.
+	const issuer = "https://idp.example.test/realms/test"
+	e := newEnv(t, nil)
+	signIn := func(a *integrationv2alpha1.Assertion) url.Values {
+		t.Helper()
+		e.upstream.completeFn = func(*integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) { return a, nil }
+		cb, _ := e.started()
+		return location(t, e.callback(cb)).Query()
+	}
+	first := &integrationv2alpha1.Assertion{Issuer: issuer, SubjectClaim: "sub", Subject: "11111111-2222-3333-4444-555555555555"}
+	if q := signIn(first); q.Get("code") == "" {
+		t.Fatalf("first sign-in: %v", q)
+	}
+	pins := e.store.ids("upstream-pin", testTenant)
+	if len(pins) != 1 {
+		t.Fatalf("%d pins after the issuer's first link", len(pins))
+	}
+	raw, _, _ := e.store.raw("upstream-pin", testTenant, pins[0])
+	if p := protoOf(t, raw, &sessionv2alpha1.UpstreamPin{}); p.GetIssuer() != issuer || p.GetSubjectClaim() != "sub" {
+		t.Fatalf("pin = %v", p)
+	}
+	for name, a := range map[string]*integrationv2alpha1.Assertion{
+		"the claim changed to oid":          {Issuer: issuer, SubjectClaim: "oid", Subject: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+		"another claim with the same value": {Issuer: issuer, SubjectClaim: "oid", Subject: first.GetSubject()},
+	} {
+		before := len(e.records())
+		q := signIn(a)
+		if q.Get("error") != "access_denied" || q.Get("code") != "" {
+			t.Errorf("%s: %v", name, q)
+		}
+		if n := e.store.count("person", testTenant); n != 1 {
+			t.Errorf("%s: %d people; a contradicted pin made a person", name, n)
+		}
+		if n := e.store.count("upstream-link", testTenant); n != 1 {
+			t.Errorf("%s: %d links", name, n)
+		}
+		recs := e.records()[before:]
+		if len(recs) == 0 || recs[len(recs)-1]["status_code"] != "subject_claim" {
+			t.Errorf("%s: records = %v", name, recs)
+		}
+	}
+	// The pinned claim still signs the same person in; another issuer pins its own claim.
+	if q := signIn(first); q.Get("code") == "" {
+		t.Fatalf("the pinned claim: %v", q)
+	}
+	if q := signIn(&integrationv2alpha1.Assertion{Issuer: "https://idp2.example.test/realms/test", SubjectClaim: "oid", Subject: "x-1"}); q.Get("code") == "" {
+		t.Fatalf("another issuer: %v", q)
+	}
+	if n, p := e.store.count("person", testTenant), e.store.count("upstream-pin", testTenant); n != 2 || p != 2 {
+		t.Errorf("%d people and %d pins, want 2 and 2", n, p)
+	}
+}
+
+// verifies: REQ-SUBJ-041
+func TestCallbackRaceOnAnIssuersFirstPin(t *testing.T) {
+	// Two people sign in through a new issuer at once. The other one's batch writes the pin between this one's read and
+	// write: this batch fails with already exists, reads the pin again and makes its person without it. When the pin
+	// the winner wrote names another claim, this sign-in is refused.
+	const issuer = "https://idp.example.test/realms/test"
+	for name, c := range map[string]struct {
+		winnerClaim string
+		ok          bool
+	}{"the same claim": {"preferred_username", true}, "another claim": {"sub", false}} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, nil)
+			e.upstream.completeFn = func(*integrationv2alpha1.CompleteRequest) (*integrationv2alpha1.Assertion, error) {
+				return &integrationv2alpha1.Assertion{Issuer: issuer, SubjectClaim: "preferred_username", Subject: "alice"}, nil
+			}
+			cb, _ := e.started()
+			var once sync.Once
+			e.store.beforeWrite = func(s *fakeStore, ops []*storev2alpha1.Operation) {
+				for _, op := range ops {
+					if a := op.GetAddress(); a.GetKind() == "upstream-pin" {
+						once.Do(func() {
+							b, err := proto.Marshal(&sessionv2alpha1.UpstreamPin{Issuer: issuer, SubjectClaim: c.winnerClaim})
+							if err != nil {
+								panic(err)
+							}
+							s.items[key(a.GetKind(), a.GetTenant(), a.GetId())] = &storedItem{value: b, version: 1}
+						})
+					}
+				}
+			}
+			q := location(t, e.callback(cb)).Query()
+			people := e.store.count("person", testTenant)
+			if c.ok && (q.Get("code") == "" || people != 1) {
+				t.Errorf("code %q, %d people; want a code and one person", q.Get("code"), people)
+			}
+			if !c.ok && (q.Get("error") != "access_denied" || people != 0) {
+				t.Errorf("error %q, %d people; want access_denied and none", q.Get("error"), people)
+			}
+			if n := e.store.count("upstream-pin", testTenant); n != 1 {
+				t.Errorf("%d pins", n)
+			}
+		})
 	}
 }
 

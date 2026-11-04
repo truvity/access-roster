@@ -578,11 +578,12 @@ requirements:
     rationale: "A changed claim would make every known person look new, so a contradicted pin is refused (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
+    tests: [actors/session/internal/sessiond/callback_test.go]
     verification:
       - {kind: integration-test, ref: "link a person by sub, change the configuration to oid, and sign in: refused"}
   - id: REQ-SUBJ-042
