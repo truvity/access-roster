@@ -76,8 +76,18 @@ impl Driver {
     ///
     /// When rqlite cannot be reached, the schema is missing, or its version differs.
     pub async fn verify_schema(&self, level: Level) -> anyhow::Result<()> {
-        let out = self.rq.query(level, &[self.ns.schema_version()]).await?;
-        let version = rows(&out, 0)?
+        // `SELECT 1` proves the read path at this level; the second statement is the schema.
+        let probe = crate::client::Stmt::new("SELECT 1", vec![]);
+        let out = self
+            .rq
+            .query(level, &[probe, self.ns.schema_version()])
+            .await?;
+        let one = rows(&out, 0)?
+            .first()
+            .and_then(|r| r.first())
+            .and_then(Value::as_i64);
+        anyhow::ensure!(one == Some(1), "SELECT 1 did not answer 1");
+        let version = rows(&out, 1)?
             .first()
             .and_then(|r| r.first())
             .and_then(Value::as_i64)
