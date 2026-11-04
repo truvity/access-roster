@@ -1,0 +1,37 @@
+[package]
+name = "file"
+description = "The file driver of store@: the config source contract (sluis.port.source.v2alpha1) over a directory of signed config documents."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "sluis_file"
+path = "src/lib.rs"
+
+[[bin]]
+name = "file"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+aws-lc-rs = "1"
+clap = { version = "4", features = ["derive", "string"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "server"] }
+futures = "0.3"
+rustix = { version = "1", features = ["fs", "process"] }
+sluis-kit = { path = "../../../kits/rust/sluis-kit" }
+sluis-proto = { path = "../../../kits/rust/sluis-proto" }
+sluis-registry = { path = "../../../kits/rust/sluis-registry" }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time", "macros", "sync"] }
+tracing = "0.1"
+
+[dev-dependencies]
+# Lets a test choose which uid is which actor; only a dev edge turns it on.
+sluis-kit = { path = "../../../kits/rust/sluis-kit", features = ["test-identities"] }
