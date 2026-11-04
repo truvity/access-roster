@@ -1117,6 +1117,7 @@ async fn callback_passes_the_signin_cookie_and_only_that_cookie() {
     );
 }
 
+/// verifies: REQ-KEYS-016
 #[tokio::test]
 async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     let up = up().await;

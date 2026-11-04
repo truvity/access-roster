@@ -33,6 +33,7 @@ func TestVectorAAD(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-033
 func TestVectorOpens(t *testing.T) {
 	key, env := mustHex(t, vecKey), mustHex(t, vecEnv)
 	pt, err := envelope.Open(key, env, vecAddr)
@@ -45,6 +46,7 @@ func TestVectorOpens(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-033
 func TestVectorFailsElsewhere(t *testing.T) {
 	key, env := mustHex(t, vecKey), mustHex(t, vecEnv)
 	for name, a := range map[string]envelope.Address{
@@ -79,6 +81,7 @@ func TestHeaderBytesAreAuthenticated(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-034
 func TestSealRoundTripAndFreshNonce(t *testing.T) {
 	key := mustHex(t, vecKey)
 	a, err := envelope.Seal(key, envelope.CodeCookie, 7, vecAddr, []byte("hello"))

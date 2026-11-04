@@ -53,6 +53,7 @@ func captureLog(t *testing.T) *syncBuffer {
 	return buf
 }
 
+// verifies: REQ-KEYS-008
 func TestFloorSoftwareDriverInProduction(t *testing.T) {
 	e := newTestEnv(t, "production")
 	n := e.newNode(nodeOpts{unlisted: true})
@@ -71,6 +72,7 @@ func TestFloorSoftwareDriverInProduction(t *testing.T) {
 	}
 }
 
+// verifies: REQ-KEYS-008
 func TestFloorStagingWarnsAndProductionAllowsACard(t *testing.T) {
 	log := captureLog(t)
 	e := newTestEnv(t, "staging")
@@ -212,6 +214,7 @@ func TestInitPublishesTheWrappingCertificate(t *testing.T) {
 }
 
 // One socket per caller, in the caller's own directory, each served to that caller only.
+// verifies: REQ-KEYS-045
 func TestSocketsAreOnePerCaller(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
