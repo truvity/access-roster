@@ -1,0 +1,307 @@
+{
+ "comment": "Record vectors for the audit emitter, read by kits/go/audit and kits/rust/sluis-audit. Each case builds a record from resolved inputs; expected is the RFC 8785 text.",
+ "cases": [
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a minimal success",
+   "event": {
+    "action": {
+     "name": "key.sign",
+     "class_uid": 6003,
+     "activity_id": 99
+    },
+    "status": 1
+   },
+   "expected": "{\"activity_id\":99,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a failure with tenant, correlation id and a person",
+   "correlation": "req-7f3a_01",
+   "pseudonym": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+   "event": {
+    "action": {
+     "name": "key.open",
+     "class_uid": 6003,
+     "activity_id": 99
+    },
+    "status": 2,
+    "status_code": "grant",
+    "tenant": "acme",
+    "sluis": {
+     "key": {
+      "kind_id": 2,
+      "algorithm": "ES384",
+      "store": {
+       "type_id": 1
+      }
+     },
+     "approver": "policy@dev",
+     "actor_chain": [
+      "exchange@dev",
+      "session@dev"
+     ],
+     "ok": true,
+     "n": 9007199254740991
+    }
+   },
+   "expected": "{\"activity_id\":99,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+  },
+  {
+   "actor": "session",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a sign-in is category 3",
+   "event": {
+    "action": {
+     "name": "session.logon",
+     "class_uid": 3002,
+     "activity_id": 1
+    },
+    "status": 1,
+    "tenant": "globex"
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201}"
+  },
+  {
+   "actor": "store",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a policy decision",
+   "event": {
+    "action": {
+     "name": "store.write",
+     "class_uid": 6003,
+     "activity_id": 3
+    },
+    "status": 1,
+    "tenant": "acme",
+    "policy": {
+     "decision_id": "01950000-0000-7000-8000-0000000000aa",
+     "digest": "sha384:abc",
+     "policy_ids": [
+      "p-2",
+      "p-1"
+     ]
+    }
+   },
+   "expected": "{\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"policy\":{\"uid\":\"p-2\"}},{\"policy\":{\"uid\":\"p-1\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000aa\",\"version\":\"sha384:abc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600303}"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "a digest without an id",
+   "event": {
+    "action": {
+     "name": "store.read",
+     "class_uid": 6003,
+     "activity_id": 2
+    },
+    "status": 1,
+    "policy": {
+     "digest": "sha384:abc"
+    }
+   },
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"version\":\"sha384:abc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302}"
+  },
+  {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "1.2.3",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "member names sort in the record and in unmapped.sluis",
+   "event": {
+    "action": {
+     "name": "x.y",
+     "class_uid": 6002,
+     "activity_id": 99
+    },
+    "status": 1,
+    "sluis": {
+     "z": "last",
+     "\u00e9": "e acute",
+     "a": {
+      "b": [],
+      "a": ""
+     },
+     "text": "tab\there \"quoted\" \u2603"
+    }
+   },
+   "expected": "{\"activity_id\":99,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}"
+  }
+ ],
+ "pseudonyms": [
+  {
+   "time_ms": 1793750400000,
+   "mac_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+   "epoch": "202611",
+   "expected": "p1.202611.AAECAwQFBgcICQoLDA0ODw"
+  },
+  {
+   "time_ms": 1798761600000,
+   "mac_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+   "epoch": "202701",
+   "expected": "p1.202701.AAECAwQFBgcICQoLDA0ODw"
+  },
+  {
+   "time_ms": 1767225599999,
+   "mac_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+   "epoch": "202512",
+   "expected": "p1.202512.AAECAwQFBgcICQoLDA0ODw"
+  },
+  {
+   "time_ms": 1767225600000,
+   "mac_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+   "epoch": "202601",
+   "expected": "p1.202601.AAECAwQFBgcICQoLDA0ODw"
+  }
+ ],
+ "uuids": [
+  {
+   "ms": 1793750400000,
+   "counter": 0,
+   "rand_b_hex": "0011223344556677",
+   "expected": "01a1a3da-fc00-7000-8011-223344556677"
+  },
+  {
+   "ms": 1793750400001,
+   "counter": 4095,
+   "rand_b_hex": "ffffffffffffffff",
+   "expected": "01a1a3da-fc01-7fff-bfff-ffffffffffff"
+  },
+  {
+   "ms": 0,
+   "counter": 0,
+   "rand_b_hex": "0000000000000000",
+   "expected": "00000000-0000-7000-8000-000000000000"
+  }
+ ],
+ "refusals": [
+  {
+   "name": "a float",
+   "sluis": {
+    "x": 1.5
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.x"
+  },
+  {
+   "name": "an integer above 2^53-1",
+   "sluis": {
+    "deep": {
+     "n": 9007199254740992
+    }
+   },
+   "reason": "bound",
+   "path": "unmapped.sluis.deep.n"
+  },
+  {
+   "name": "an integer below -(2^53-1)",
+   "sluis": {
+    "n": -9007199254740992
+   },
+   "reason": "bound",
+   "path": "unmapped.sluis.n"
+  },
+  {
+   "name": "an e-mail shape",
+   "sluis": {
+    "who": "alice@example.com"
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.who"
+  },
+  {
+   "name": "an e-mail shape in a list",
+   "sluis": {
+    "l": [
+     "ok",
+     "bob@example.org"
+    ]
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.l[1]"
+  },
+  {
+   "name": "a string of 1025 bytes",
+   "sluis": {
+    "s": {
+     "$repeat": "a",
+     "times": 1025
+    }
+   },
+   "reason": "bound",
+   "path": "unmapped.sluis.s"
+  },
+  {
+   "name": "a list of numbers",
+   "sluis": {
+    "l": [
+     1,
+     2
+    ]
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.l"
+  },
+  {
+   "name": "a null",
+   "sluis": {
+    "n": null
+   },
+   "reason": "schema",
+   "path": "unmapped.sluis.n"
+  }
+ ],
+ "accepted": [
+  {
+   "name": "a string of exactly 1024 bytes",
+   "sluis": {
+    "s": {
+     "$repeat": "a",
+     "times": 1024
+    }
+   }
+  }
+ ],
+ "email": {
+  "match": [
+   "a@b.co",
+   "x a@b.c y",
+   "first.last@sub.example.com",
+   "a b@c.d",
+   "\u00e9@\u00e9.\u00e9",
+   "@@a@b.c"
+  ],
+  "no_match": [
+   "a@b",
+   "@b.c",
+   "a@.c",
+   "a@b.",
+   "key@dev",
+   "a@@b.c",
+   "a @b.c",
+   "a@ b.c",
+   "no at sign.here",
+   "a@b .c",
+   ""
+  ]
+ },
+ "record_max_bytes": 16384
+}
