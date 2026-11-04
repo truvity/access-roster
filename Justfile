@@ -432,3 +432,11 @@ local-logs *services:
 # The smoke step of store@'s verification: with one signed document changed, store@ refuses to start. Needs `local-up`.
 local-smoke-tamper:
     deploy/local/local.sh tamper
+
+# The M1 proof against the running local installation (`just local-up` first): a client under the uid of exchange asks
+# policy for a token.exchange decision and signer for a token; the token is checked against /jwks through the forwarder
+# (trusting only the harness CA), the records of the run are found in the audit log, `sluis audit verify` checks the log,
+# and SigningRing and DataKeyWrap are read through store@. Exits non-zero on any failure. Needs Docker; CI does not run it.
+local-smoke:
+    CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
+    SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
