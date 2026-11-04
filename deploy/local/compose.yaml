@@ -74,6 +74,7 @@ services:
       - "61005"
       - "61012"
       - "61024"
+      - "61709"
     network_mode: service:idp-loopback
     volumes:
       - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc
@@ -375,6 +376,7 @@ services:
       - "61012"
       - "61024"
       - "61027"
+      - "61700"
     network_mode: none
     volumes:
       - run-entry:/run/sluis/entry
@@ -436,6 +438,7 @@ services:
       - "61009"
       - "61012"
       - "61024"
+      - "61703"
     network_mode: none
     volumes:
       - run-exchange:/run/sluis/exchange
@@ -528,6 +531,7 @@ services:
       - "61024"
       - "61026"
       - "61028"
+      - "61717"
     network_mode: none
     volumes:
       - drv-indexer:/run/sluis/indexer/dev
@@ -618,6 +622,7 @@ services:
     group_add:
       - "61012"
       - "61024"
+      - "61705"
     network_mode: none
     volumes:
       - run-policy:/run/sluis/policy
@@ -651,6 +656,7 @@ services:
       - "61005"
       - "61012"
       - "61024"
+      - "61718"
     network_mode: none
     volumes:
       - run-reader:/run/sluis/reader
@@ -718,6 +724,7 @@ services:
       - "61009"
       - "61012"
       - "61024"
+      - "61701"
     network_mode: none
     volumes:
       - run-session:/run/sluis/session
@@ -759,6 +766,7 @@ services:
     group_add:
       - "61012"
       - "61024"
+      - "61704"
     network_mode: none
     volumes:
       - run-signer:/run/sluis/signer
@@ -795,6 +803,7 @@ services:
       - "61021"
       - "61022"
       - "61024"
+      - "61712"
     network_mode: none
     volumes:
       - run-store:/run/sluis/store
@@ -835,6 +844,7 @@ services:
       - "61012"
       - "61024"
       - "61025"
+      - "61715"
     network_mode: none
     volumes:
       - drv-writer:/run/sluis/writer/dev

@@ -336,7 +336,8 @@ func Generate(o Options) ([]File, error) {
 			}
 		}
 	}
-	// The node agent has no unit yet, but key@ has a directory for it as one of its callers: its user must exist. The
+	// The node agent has no unit yet, but key@ has a directory for it as one of its callers: its user and the group of that
+	// directory must exist (no unit joins the group yet, so the directory opens to nobody but key@). The
 	// forwarder is the harness's: entry's socket belongs to its group.
 	for _, name := range []string{"sluis-node", forwarder} {
 		uid, ok := registry.UID(name, o.UIDBlock)
@@ -349,7 +350,11 @@ func Generate(o Options) ([]File, error) {
 			}
 		}
 		piece := Unit{Registry: name, User: userOf(name, o.Boundary), UID: uid}
-		files = append(files, File{unitStem(name) + ".sysusers", sysusersFor(o, piece)})
+		sys, err := sysusersFor(o, piece)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, File{unitStem(name) + ".sysusers", sys})
 	}
 	files = append(files, File{"base.tmpfiles", baseTmpfiles(o)}, File{"index.tsv", index(units)})
 	card, err := cardFiles(o, units)
@@ -573,8 +578,8 @@ func groupsOf(regName, kind string) []string {
 	return slices.Compact(out)
 }
 
-// extraNeeds are the registry names whose users must exist for the unit's directories, without the unit joining their
-// groups: key@'s per-caller directories belong to the callers' groups.
+// extraNeeds are the registry names whose sysusers files must be installed for the unit's directories, without the unit
+// joining their groups: each of key@'s per-caller directories belongs to a group that the caller's sysusers file makes.
 func extraNeeds(regName, kind string) []string {
 	if kind == "actor" && regName == "key" {
 		return registry.CallersOf("key")
@@ -636,6 +641,10 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	for _, n := range u.Joins {
 		groups = append(groups, unitStem(n)+"-%i")
 	}
+	if u.Front != "audit" && isKeyCaller(a.Name) {
+		// The group of the actor's own directory of key@, which no other unit joins. The audit front has no key.
+		groups = append(groups, keyCallerGroup(a.Name, "%i"))
+	}
 	if len(groups) > 0 {
 		b.line("SupplementaryGroups=%s", strings.Join(groups, " "))
 	}
@@ -681,7 +690,10 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	// through the directory (x for others), and only the socket's bits decide who connects. A holder with drivers also
 	// has the directory of the boundary, open to the group of its drivers alone (the sticky bit keeps one driver from
 	// removing another's socket).
-	sysusers = sysusersFor(o, u)
+	sysusers, err = sysusersFor(o, u)
+	if err != nil {
+		return "", "", "", err
+	}
 	tmp := header + fmt.Sprintf("d /run/sluis/%s 0751 %s %s -\n", a.Name, u.User, u.User)
 	if dirs := driverDirs(a.Name, o.Boundary); len(dirs) > 0 {
 		g := driversGroup(a.Name, o.Boundary)
@@ -702,10 +714,11 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		}
 	}
 	if a.Name == "key" {
-		// One directory per caller of key@ (ADR 0006, "Exclusive card access"): the caller's group, not writable by
-		// group or world, setgid so that the caller's socket gets the caller's group and only the caller connects.
+		// One directory per caller of key@ (ADR 0006, "Exclusive card access"): a group of the caller's own, which only
+		// the caller's unit joins, not writable by group or world, setgid so that the caller's socket gets that group and
+		// only the caller connects. The caller's own group would open the directory to the callers of that caller.
 		for _, c := range registry.CallersOf("key") {
-			tmp += fmt.Sprintf("d /run/sluis/key/%s/%s 2750 %s %s -\n", o.Boundary, c, u.User, userOf(c, o.Boundary))
+			tmp += fmt.Sprintf("d /run/sluis/key/%s/%s 2750 %s %s -\n", o.Boundary, c, u.User, keyCallerGroup(c, o.Boundary))
 		}
 	}
 	return header + b.String(), sysusers, tmp, nil
@@ -864,7 +877,11 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("[Install]")
 	b.line("WantedBy=multi-user.target")
 	// The driver's directory is made by its owner's tmpfiles entry.
-	return header + b.String(), sysusersFor(o, u), "", nil
+	sys, err := sysusersFor(o, u)
+	if err != nil {
+		return "", "", "", err
+	}
+	return header + b.String(), sys, "", nil
 }
 
 // harden is the hardening of PLAN.md section 6 and ADR 0003. Without egress a unit has no network at all.
@@ -902,9 +919,34 @@ func (b *unitText) harden(noNetwork bool) {
 	}
 }
 
-func sysusersFor(o Options, u Unit) string {
+func sysusersFor(o Options, u Unit) (string, error) {
 	// "u name uid" also makes the group of the same name and number. The user has no home and no shell.
-	return header + fmt.Sprintf("u %s %s \"sluis %s (%s)\" - /usr/sbin/nologin\n", u.User, strconv.FormatUint(uint64(u.UID), 10), strings.TrimPrefix(u.Registry, "driver-"), o.Boundary)
+	out := header + fmt.Sprintf("u %s %s \"sluis %s (%s)\" - /usr/sbin/nologin\n", u.User, strconv.FormatUint(uint64(u.UID), 10), strings.TrimPrefix(u.Registry, "driver-"), o.Boundary)
+	if isKeyCaller(u.Registry) {
+		// The group of the caller's own directory of key@, with the number of the uid plan (registry.KeyCallerGID), the
+		// same as in Compose. Only the caller's unit joins it (SupplementaryGroups=); sysusers makes no member.
+		g := keyCallerGroup(u.Registry, o.Boundary)
+		if len(g) > maxName {
+			return "", fmt.Errorf("the group %s has %d characters, at most %d", g, len(g), maxName)
+		}
+		gid, ok := registry.KeyCallerGID(u.Registry, o.UIDBlock)
+		if !ok {
+			return "", fmt.Errorf("%s has no group for its directory of key@ in block %d", u.Registry, o.UIDBlock)
+		}
+		out += fmt.Sprintf("g %s %d\n", g, gid)
+	}
+	return out, nil
+}
+
+// isKeyCaller says whether the registry name is a caller of key@, which has a directory of its own below key@'s.
+func isKeyCaller(regName string) bool { return slices.Contains(registry.CallersOf("key"), regName) }
+
+// keyCallerGroup is the group of a caller's directory of key@: sluis-keyc-<ordinal>-<boundary>, with the caller's
+// ordinal in tools/gen/registry/uids.yaml. The caller's name does not fit: sluis-adapter-upstream-oidc-dev is already
+// the 31 characters of a name, so the ordinal stands for it, as it does in the group's number (uid plus 700).
+func keyCallerGroup(caller, boundary string) string {
+	uid, _ := registry.UID(caller, 0)
+	return fmt.Sprintf("sluis-keyc-%03d-%s", uid-61000, boundary)
 }
 
 func baseTmpfiles(o Options) string {

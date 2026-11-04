@@ -65,8 +65,9 @@ type Target struct {
 	Who       string // the callee name for CallGraph, the only caller for Only
 	Note      string
 	// SocketOnly says that a denied caller must be refused at the socket itself, by the modes and groups of the socket
-	// and its directories (REQ-DATA-066: a driver's socket only its owner can open); a refusal by the guard is not
-	// enough. Server, the process that serves the socket, opens its own socket, so its guard refusal stands.
+	// and its directories (REQ-DATA-066: a driver's socket only its owner can open; REQ-KEYS-044: a key@ socket in a
+	// directory only its caller can open); a refusal by the guard is not enough. Server, the process that serves the
+	// socket, opens its own socket, so its guard refusal stands.
 	SocketOnly bool
 	Server     string
 }
@@ -113,7 +114,7 @@ func Targets(boundary string) []Target {
 	for _, c := range registry.CallersOf("key") {
 		ts = append(ts, Target{ID: "key/" + c, Service: "key", Socket: fmt.Sprintf("/run/sluis/key/%s/%s/key.sock", b, c), Kind: Connect,
 			Procedure: keyv2alpha1connect.KeyServicePublicKeyProcedure, Rule: Only, Who: c,
-			Note: "a caller reaches only its own key@ directory"})
+			Note: "a caller opens only its own key@ directory", SocketOnly: true, Server: "key"})
 	}
 	drv := func(id, service, socket, procedure, driver string) Target {
 		return Target{ID: id, Service: service, Socket: socket, Kind: Connect, Procedure: procedure, Rule: Only, Who: owner(driver),
@@ -187,7 +188,7 @@ func Judge(caller string, t Target, r Result) Verdict {
 	case !v.Allowed && r.Outcome == Reached:
 		v.Violated, v.Why = true, fmt.Sprintf("denied by the registry but reached the callee (%s)", r.Detail)
 	case !v.Allowed && r.Outcome == Guard && t.SocketOnly && caller != t.Server:
-		v.Violated, v.Why = true, "denied, but the socket opened: only its owner may open it, and the guard alone refused"
+		v.Violated, v.Why = true, "denied, but the socket opened: only its one caller may open it, and the guard alone refused"
 	case !v.Allowed && r.Outcome == Guard && r.Detail != "call_graph" && r.Detail != "dropped":
 		v.Violated, v.Why = true, "refused at the guard for the wrong reason: "+r.Detail
 	}

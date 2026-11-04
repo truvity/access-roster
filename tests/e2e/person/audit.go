@@ -156,8 +156,13 @@ func (c *config) events(logDir string, from int64) (*eventsOut, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The indexer's own directory of key@ has a group of its own, which only the indexer joins (REQ-KEYS-044).
+	kg, ok := registry.KeyCallerGID("indexer", 0)
+	if !ok {
+		return nil, errors.New("the indexer has no group for its directory of key@")
+	}
 	a := []string{"run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
-		"--user", u + ":" + u, "--group-add", pg,
+		"--user", u + ":" + u, "--group-add", pg, "--group-add", strconv.FormatUint(uint64(kg), 10),
 		"-v", c.project + "_run-policy:/run/sluis/policy:ro", "-v", c.project + "_key-indexer:/run/sluis/key/" + boundary + ":ro",
 		"-v", logDir + ":/log:ro", "-v", self + ":/person:ro", "--entrypoint", "/person", c.image(),
 		"step", "audit-events", "--blob", "/log", "--from", strconv.FormatInt(from, 10)}

@@ -209,6 +209,44 @@ func TestUIDs(t *testing.T) {
 	}
 }
 
+// TestKeyCallerGID: the group of each caller's directory of key@ is its own, distinct from every uid and every group of
+// a driver owner (uid + 500) of the block, and nothing that is not a caller of key@ gets one.
+func TestKeyCallerGID(t *testing.T) {
+	for _, block := range []uint32{0, 3} {
+		taken := map[uint32]string{}
+		for _, n := range uidNames {
+			u, _ := UID(n, block)
+			taken[u] = "uid of " + n
+			taken[u+500] = "drivers' group of " + n
+		}
+		for _, c := range CallersOf("key") {
+			g, ok := KeyCallerGID(c, block)
+			if !ok {
+				t.Fatalf("KeyCallerGID(%s, %d) is not known", c, block)
+			}
+			u, _ := UID(c, block)
+			if g != u+700 {
+				t.Errorf("KeyCallerGID(%s, %d) = %d, want %d", c, block, g, u+700)
+			}
+			if what, dup := taken[g]; dup {
+				t.Errorf("KeyCallerGID(%s, %d) = %d is also the %s", c, block, g, what)
+			}
+			taken[g] = "key@ caller group of " + c
+			if _, _, ok := NameForUID(g); ok {
+				t.Errorf("KeyCallerGID(%s, %d) = %d maps back to a uid", c, block, g)
+			}
+		}
+	}
+	for _, n := range []string{"key", "driver-store-rqlite", "harness-forwarder", "nobody"} {
+		if _, ok := KeyCallerGID(n, 0); ok {
+			t.Errorf("KeyCallerGID(%s) is known, but %s is not a caller of key@", n, n)
+		}
+	}
+	if _, ok := KeyCallerGID("store", 1<<31); ok {
+		t.Error("KeyCallerGID of a block that overflows")
+	}
+}
+
 func TestDriverOwner(t *testing.T) {
 	cases := map[string]string{
 		"driver-store-rqlite":   "store",

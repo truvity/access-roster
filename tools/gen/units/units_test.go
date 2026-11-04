@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -239,13 +240,32 @@ func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 		t.Fatalf("only %d callers of key", len(callers))
 	}
 	for _, c := range callers {
-		line := "d /run/sluis/key/dev/" + c + " 2750 sluis-key-dev " + unitStem(c) + "-dev -\n"
+		// The directory has a group of the caller's own (REQ-KEYS-044), not the caller's group, which the callers of the
+		// caller join to reach its socket.
+		group := keyCallerGroup(c, "dev")
+		line := "d /run/sluis/key/dev/" + c + " 2750 sluis-key-dev " + group + " -\n"
 		if !strings.Contains(tmp, line) {
 			t.Errorf("no directory for the caller %s: want %q", c, line)
 		}
-		// The caller's group must be made: by its own unit's sysusers, or the node agent's.
-		if _, ok := files[unitStem(c)+".sysusers"]; !ok {
-			t.Errorf("no sysusers file for the group of %s", c)
+		// The group is made by the caller's own sysusers file (its unit's, or the node agent's), with the number of the
+		// uid plan, the same as in Compose.
+		gid, ok := registry.KeyCallerGID(c, 0)
+		if !ok {
+			t.Fatalf("%s has no group for its directory of key@", c)
+		}
+		if sys := files[unitStem(c)+".sysusers"]; !strings.Contains(sys, fmt.Sprintf("g %s %d\n", group, gid)) {
+			t.Errorf("the sysusers file of %s does not make the group %s %d:\n%s", c, group, gid, sys)
+		}
+		// Only the caller's own unit joins it; the audit front of entry has no key and does not.
+		for name, body := range files {
+			if !strings.HasSuffix(name, ".service") && !strings.HasSuffix(name, ".service.card") {
+				continue
+			}
+			joins := strings.Contains(body, " "+strings.TrimSuffix(group, "dev")+"%i") ||
+				strings.Contains(body, "="+strings.TrimSuffix(group, "dev")+"%i")
+			if own := name == unitStem(c)+"@.service"; joins != own {
+				t.Errorf("%s joins the group of key@'s directory of %s: %t, want %t", name, c, joins, own)
+			}
 		}
 	}
 	if !strings.Contains(tmp, "d /run/sluis/key/dev 0751 sluis-key-dev sluis-key-dev -") {
