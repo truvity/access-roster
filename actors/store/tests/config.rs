@@ -85,6 +85,11 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
         ("sluis-cli", "public", "native")
     );
     assert!(!cli.requires.is_empty() && !c.requires.is_empty());
+    // The config names where a confidential client's secret is, and a public client names none (ADR 0005).
+    assert_eq!(
+        (c.secret.as_str(), cli.secret.as_str()),
+        ("client-example-app", "")
+    );
     let t = pb::TokenLifetime::decode_from_slice(&one("TokenLifetime")).unwrap();
     assert_eq!(t.access_token.seconds, 600);
     assert_eq!(t.human_session_absolute.seconds, 12 * 3600);
@@ -104,6 +109,35 @@ fn refused(kind_name: &str, text: &str) -> String {
     payload::decode(kind(kind_name), text.as_bytes())
         .expect_err("must be refused")
         .0
+}
+
+#[test]
+fn the_credential_a_client_names_is_a_name_and_only_a_confidential_client_has_one() {
+    let client = |kind: &str, secret: &str| {
+        format!(
+            "app:\n  kind: {kind}\n  redirects: [\"https://app.example.com/cb\"]\n  requires: [\"dev:app:user\"]\n  secret: {secret}\n"
+        )
+    };
+    assert!(
+        payload::decode(
+            kind("InstallationClient"),
+            client("confidential", "client-app").as_bytes()
+        )
+        .is_ok()
+    );
+    let e = refused("InstallationClient", &client("public", "client-app"));
+    assert!(
+        e.contains("app.secret: a public client has no secret"),
+        "{e}"
+    );
+    // A name is one part: no separator, no dot-dot, no capital, no value that looks like a path.
+    for bad in ["../x", "a/b", "Upper", "\"has space\""] {
+        let e = refused("InstallationClient", &client("confidential", bad));
+        assert!(
+            e.contains("app.secret: is not a credential name"),
+            "{bad}: {e}"
+        );
+    }
 }
 
 #[test]

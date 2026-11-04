@@ -12,5 +12,6 @@ pub mod engine;
 pub mod grant;
 pub mod messages;
 pub mod run;
+pub mod secret;
 pub mod service;
 pub mod yaml;

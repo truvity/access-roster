@@ -14,4 +14,7 @@ example-app:
   kind: confidential
   redirects: ["https://app.local.test/callback"]
   profile: web
+  # Where the client's secret is in the secret source: the credential `client-example-app`, which `just local-up`
+  # makes (ADR 0005, "Secret sources"). The document never holds the secret.
+  secret: client-example-app
   requires: ["dev:example-app:user"]

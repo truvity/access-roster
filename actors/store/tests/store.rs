@@ -9,7 +9,9 @@ use std::sync::atomic::Ordering;
 
 use common::*;
 use connectrpc::error::ErrorCode;
-use sluis_proto::sluis::store::v2alpha1::{Consistency, GetRequest, ListRequest, Verb};
+use sluis_proto::sluis::store::v2alpha1::{
+    Consistency, GetRequest, GetResponse, ListRequest, Verb,
+};
 
 const WRITES: [&str; 4] = ["create", "update", "delete", "apply"];
 
@@ -1427,6 +1429,182 @@ async fn a_secret_kind_is_not_served_tonight() {
         f.get("upstream-secret", "", "workforce").await,
         ErrorCode::PermissionDenied,
         "rule",
+    );
+}
+
+// ---- the secret kind InstallationClientSecret (REQ-DATA-016, REQ-DATA-017) ----
+
+/// A secret that no audit fact, log line or refusal may repeat.
+const CLIENT_SECRET: &[u8] = b"s3cret-with-%20-and-+-and-spaces ok";
+
+/// A fixture with the client `app` declared (secret credential `client-app`), `plain` declared without a secret.
+fn with_clients(f: &F) {
+    use buffa::Message as _;
+    f.docs
+        .versions
+        .lock()
+        .unwrap()
+        .insert("installation-client".into(), 3);
+    for (id, secret, kind) in [
+        ("app", "client-app", "confidential"),
+        ("plain", "", "confidential"),
+        ("ghost", "client-ghost", "confidential"),
+    ] {
+        let c = sluis_proto::sluis::config::v2alpha1::InstallationClient {
+            id: id.into(),
+            kind: kind.into(),
+            secret: secret.into(),
+            ..Default::default()
+        };
+        f.docs
+            .items
+            .lock()
+            .unwrap()
+            .insert(("installation-client".into(), id.into()), c.encode_to_vec());
+    }
+    f.secrets
+        .items
+        .lock()
+        .unwrap()
+        .insert("client-app".into(), CLIENT_SECRET.to_vec());
+}
+
+fn decode_secret(
+    r: &GetResponse,
+) -> sluis_proto::sluis::config::v2alpha1::InstallationClientSecret {
+    use buffa::Message as _;
+    let item = r.item.as_option().expect("an item");
+    sluis_proto::sluis::config::v2alpha1::InstallationClientSecret::decode_from_slice(&item.value)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_listed_reader_gets_the_secret_of_the_client_the_config_names() {
+    let f = F::new().await;
+    with_clients(&f);
+    for reader in ["session", "exchange"] {
+        f.as_(reader);
+        let r = f
+            .get("installation-client-secret", "", "app")
+            .await
+            .unwrap();
+        let s = decode_secret(&r);
+        assert_eq!(
+            (s.client.as_str(), s.secret.as_slice()),
+            ("app", CLIENT_SECRET),
+            "{reader}"
+        );
+        assert!(r.item.as_option().unwrap().version > 0);
+    }
+}
+
+// REQ-DATA-016: store@ serves a secret kind only to the readers that the kind lists.
+#[tokio::test]
+async fn a_caller_that_is_not_a_listed_reader_gets_no_secret_and_the_source_is_not_asked() {
+    let f = F::new().await;
+    with_clients(&f);
+    for caller in ["quota", "policy", "signer", "adapter-upstream-oidc"] {
+        f.as_(caller);
+        refused(
+            f.get("installation-client-secret", "", "app").await,
+            ErrorCode::PermissionDenied,
+            "rule",
+        );
+    }
+    assert_eq!(f.secrets.reads.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn the_secret_is_fetched_on_first_use_and_an_unchanged_get_carries_no_value() {
+    let f = F::new().await;
+    with_clients(&f);
+    f.as_("session");
+    assert_eq!(
+        f.secrets.reads.load(Ordering::SeqCst),
+        0,
+        "nothing is fetched before the first use"
+    );
+    f.get("installation-client-secret", "", "app")
+        .await
+        .unwrap();
+    assert_eq!(f.secrets.reads.load(Ordering::SeqCst), 1);
+    // The version label is the source's, so an unchanged get answers unchanged and carries no value.
+    let v = f
+        .get("installation-client-secret", "", "app")
+        .await
+        .unwrap()
+        .item
+        .as_option()
+        .unwrap()
+        .version;
+    let r = f
+        .get_req(GetRequest {
+            address: addr("installation-client-secret", "", "app").into(),
+            if_none_match: v,
+            ..GetRequest::default()
+        })
+        .await
+        .unwrap();
+    assert!(r.unchanged && r.item.as_option().is_none());
+}
+
+#[tokio::test]
+async fn a_client_the_config_does_not_declare_or_declares_without_a_secret_has_none() {
+    let f = F::new().await;
+    with_clients(&f);
+    f.as_("session");
+    // No such client, a client with no secret named, and a named secret the source does not hold: one answer.
+    for id in ["nobody", "plain", "ghost"] {
+        refused(
+            f.get("installation-client-secret", "", id).await,
+            ErrorCode::NotFound,
+            "absent",
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_secret_source_that_does_not_answer_fails_closed() {
+    let f = F::new().await;
+    with_clients(&f);
+    f.secrets.down.store(true, Ordering::SeqCst);
+    f.as_("exchange");
+    refused(
+        f.get("installation-client-secret", "", "app").await,
+        ErrorCode::Unavailable,
+        "engine",
+    );
+}
+
+#[tokio::test]
+async fn no_audit_fact_and_no_refusal_carries_the_secret() {
+    let f = F::new().await;
+    with_clients(&f);
+    f.as_("session");
+    f.get("installation-client-secret", "", "app")
+        .await
+        .unwrap();
+    f.secrets.down.store(true, Ordering::SeqCst);
+    f.as_("quota");
+    let e = f
+        .get("installation-client-secret", "", "app")
+        .await
+        .unwrap_err();
+    assert!(!format!("{e:?}").contains("s3cret"));
+    f.as_("exchange");
+    for ev in f.audit() {
+        let text = format!("{ev:?}");
+        assert!(!text.contains("s3cret"), "{text}");
+    }
+    // A list of a secret kind is not served: there is no consumer.
+    refused(
+        f.list(ListRequest {
+            kind: "installation-client-secret".into(),
+            ..ListRequest::default()
+        })
+        .await,
+        ErrorCode::Unimplemented,
+        "-",
     );
 }
 

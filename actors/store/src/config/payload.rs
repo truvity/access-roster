@@ -487,9 +487,19 @@ fn installation_client(mut o: Obj, id: &str) -> R<pb::InstallationClient> {
     let requires = o.strings("requires")?;
     let ttl_cap = o.duration("ttl_cap")?;
     let profile = o.string("profile")?;
+    // Where the client's secret is in the secret source (ADR 0005, "Secret sources": config names it). The value is
+    // never in the document, only the name of a credential.
+    let secret = o.string("secret")?;
+    if !secret.is_empty() && !valid_part(&secret) {
+        return err(&o.at("secret"), "is not a credential name");
+    }
+    if !secret.is_empty() && kind == "public" {
+        return err(&o.at("secret"), "a public client has no secret");
+    }
     o.done()?;
     Ok(pb::InstallationClient {
         id: client_id,
+        secret,
         kind,
         redirects,
         requires,

@@ -625,7 +625,7 @@ kinds:
     readers: [session, exchange]
     exportable: no
     backed_up: no
-    notes: "A client secret provided by IaC (the generated kind is ClientSecret)."
+    notes: "A client secret provided by IaC (the generated kind is ClientSecret). The id is the client id, and the value is the secret exactly as the secret source holds it. The InstallationClient of that id names the credential in its `secret` field, which is where the config names the secret. Only store@ reads the source; session and exchange get the value through store@ and compare it in constant time."
 
   - name: SlackAppSecret
     serves: work

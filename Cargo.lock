@@ -2285,6 +2285,7 @@ dependencies = [
  "buffa-types",
  "clap",
  "connectrpc",
+ "credential",
  "file",
  "rustix",
  "saphyr-parser",

@@ -16,6 +16,7 @@ use crate::bootstrap::Bootstrap;
 use crate::config::{self, ConfigSnapshot, Loader};
 use crate::engine::DriverEngine;
 use crate::grant::KeyOpener;
+use crate::secret::SourceSecrets;
 use crate::service::{Deps, Service};
 
 /// The deadline of a call that carries none (contracts.md "Every call").
@@ -183,6 +184,7 @@ impl Commands for Store {
             temp: DriverEngine::new(&dial(&b.temp.socket), "temp"),
             grants: KeyOpener::new(&dial(&p.key)),
             config: Arc::clone(&loader) as Arc<dyn ConfigSnapshot>,
+            secrets: Arc::new(SourceSecrets::new(&dial(&b.secret_source.socket))),
             audit: EmitterSink(sluis_audit::Emitter::new(sluis_audit::Config {
                 actor: "store".into(),
                 boundary: b.boundary.clone(),
