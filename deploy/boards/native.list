@@ -1,0 +1,6 @@
+# The executables that link a C library, and so are built natively for each architecture inside the userland of the
+# oldest supported distribution, Ubuntu 22.04 (ADR 0013, "Build and release"): they run on every newer glibc.
+# `just build-arm64` leaves them to this build (it cross-compiles with CGO off), and picks up their output.
+#
+# Columns, separated by a tab: the package below the repository root, and the Go build tags.
+drivers/key/yubikey-piv	sluis_card

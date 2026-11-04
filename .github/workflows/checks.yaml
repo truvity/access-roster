@@ -187,18 +187,39 @@ jobs:
           SLUIS_BOARDS_DRY_RUN: '1'
         run: devbox run -- just boards-deploy
 
+  # The executables that link a C library (deploy/boards/native.list: the card driver) are built natively, on a hosted
+  # arm64 runner, inside the userland of the oldest supported distribution, Ubuntu 22.04 (ADR 0013), so they run on
+  # every newer glibc. The job vets and tests the package with cgo and the card build in (a fake card; the hardware is
+  # exercised on a board), builds it, and checks what it links. Its output is uploaded for the boards deploy.
+  native-arm64:
+    name: 'native-arm64 (card driver in Ubuntu 22.04, cgo)'
+    runs-on: ubuntu-24.04-arm
+    container: ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: deploy/boards/native-build.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-arm64
+          path: dist/native/arm64
+          if-no-files-found: error
+          retention-days: 14
+
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done
