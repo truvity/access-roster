@@ -425,13 +425,21 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
             "cookie/1/node-1-aaaa",
             b"wrap-4",
         ),
+        op(
+            Verb::CREATE,
+            "data-key-wrap",
+            "",
+            "chain/1/node-1-aaaa",
+            b"wrap-5",
+        ),
     ];
     let done = f.write(ops, &[]).await.unwrap();
-    assert_eq!(done.items.len(), 4);
+    assert_eq!(done.items.len(), 5);
     assert_eq!(done.items[2].address.tenant, "");
     assert_eq!(
         f.durable.keys(),
         [
+            "dev/-/data-key-wrap/chain/1/node-1-aaaa",
             "dev/-/data-key-wrap/cookie/1/node-1-aaaa",
             "dev/-/data-key-wrap/grant/1/node-1-aaaa",
             "dev/acme/data-key-wrap/data/1/node-1-aaaa",
@@ -485,6 +493,22 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
         ErrorCode::InvalidArgument,
         "address",
     );
+    // The chain purpose is the boundary's: a tenant has none.
+    refused(
+        f.write(
+            vec![op(
+                Verb::CREATE,
+                "data-key-wrap",
+                "acme",
+                "chain/1/node-1-aaaa",
+                b"w",
+            )],
+            &[],
+        )
+        .await,
+        ErrorCode::InvalidArgument,
+        "address",
+    );
     // A batch with one taken wrap is refused whole.
     let ops = vec![
         op(
@@ -503,7 +527,7 @@ async fn key_writes_its_wraps_without_a_grant_at_a_tenant_and_at_the_boundary() 
         ),
     ];
     refused(f.write(ops, &[]).await, ErrorCode::AlreadyExists, "taken");
-    assert_eq!(f.durable.keys().len(), 4);
+    assert_eq!(f.durable.keys().len(), 5);
 
     // The exporter may read the wraps and nothing else.
     f.as_("exporter");

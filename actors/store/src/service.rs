@@ -41,8 +41,8 @@ const PAGE_MAX: i32 = 500;
 const PAGE_TOKEN_TTL: Duration = Duration::from_secs(300);
 const PAGE_TOKEN_VERSION: u8 = 1;
 /// The purposes of a `DataKeyWrap` id, by whether the wrap has a tenant (kinds.yaml: `purposes`).
-const WRAP_PURPOSES_TENANT: [&str; 4] = ["data", "pseudonym", "pairwise", "evidence"];
-const WRAP_PURPOSES_BOUNDARY: [&str; 4] = ["grant", "cookie", "mac", "data"];
+const WRAP_PURPOSES_TENANT: &[&str] = &["data", "pseudonym", "pairwise", "evidence"];
+const WRAP_PURPOSES_BOUNDARY: &[&str] = &["grant", "cookie", "chain", "mac", "data"];
 
 /// The clock of the store. Production passes `SystemTime::now`.
 pub type Clock = Arc<dyn Fn() -> SystemTime + Send + Sync>;
@@ -246,9 +246,9 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         if kind.name == "DataKeyWrap" {
             let purpose = a.id.split('/').next().unwrap_or("");
             let set = if a.tenant.is_empty() {
-                &WRAP_PURPOSES_BOUNDARY
+                WRAP_PURPOSES_BOUNDARY
             } else {
-                &WRAP_PURPOSES_TENANT
+                WRAP_PURPOSES_TENANT
             };
             if !set.contains(&purpose) {
                 return Err(at(format!("{field}.id[0]")));

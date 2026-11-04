@@ -434,6 +434,14 @@ func (f *fakeKey) check(purpose string, a *typev2alpha1.Address, op string, gran
 		if a.GetTenant() != "" {
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
 		}
+	case "chain":
+		// session may seal and never open (actors.yaml; REQ-KEYS-082).
+		if op != "seal" {
+			return refusal.New(connect.CodePermissionDenied, "rule", "purpose")
+		}
+		if a.GetTenant() != "" {
+			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
+		}
 	case "data":
 		if a.GetTenant() == "" {
 			return refusal.New(connect.CodeInvalidArgument, "tenant", "address.tenant")
@@ -649,4 +657,18 @@ func (f *fakeKey) sealForTest(purpose string, a *typev2alpha1.Address, m proto.M
 	}
 	env := append([]byte{1}, nonce...)
 	return g.Seal(env, nonce, pt, aad(purpose, a)), nil
+}
+
+// openForTest opens an envelope as another actor that holds the purpose would (exchange, for the chain key). It does
+// not count as a call of session and is not subject to the rule of session.
+func (f *fakeKey) openForTest(purpose string, a *typev2alpha1.Address, e []byte) ([]byte, error) {
+	g := f.aead(purpose, a.GetTenant())
+	if len(e) < 1+g.NonceSize()+g.Overhead() || e[0] != 1 {
+		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
+	}
+	pt, err := g.Open(nil, e[1:1+g.NonceSize()], e[1+g.NonceSize():], aad(purpose, a))
+	if err != nil {
+		return nil, refusal.New(connect.CodePermissionDenied, "open", "")
+	}
+	return pt, nil
 }

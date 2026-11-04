@@ -430,3 +430,42 @@ func TestGrantWindowIsBoundedByNow(t *testing.T) {
 		t.Errorf("a grant inside the window: %v", err)
 	}
 }
+
+// The chain key is sealed by session alone and opened by exchange alone (REQ-KEYS-082, decision D-28).
+func TestChainKeySealedBySessionOpenedByExchangeAlone(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	facts := []byte("chain facts")
+	env, err := seal1(n.client("session"), "chain", "session-chain", "", vecID, facts, nil)
+	if err != nil {
+		t.Fatalf("session seals under chain: %v", err)
+	}
+	if h, err := envelope.ParseHeader(env); err != nil || h.Purpose != envelope.CodeChain {
+		t.Errorf("header = %+v, %v; want the chain code", h, err)
+	}
+	// exchange opens it, with no grant.
+	pt, err := open1(n.client("exchange"), "chain", "session-chain", "", vecID, env, nil)
+	if err != nil || !bytes.Equal(pt, facts) {
+		t.Fatalf("exchange opens the chain facts: %q, %v", pt, err)
+	}
+	// session cannot open what it sealed.
+	_, err = open1(n.client("session"), "chain", "session-chain", "", vecID, env, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	// exchange cannot seal.
+	_, err = seal1(n.client("exchange"), "chain", "session-chain", "", vecID, facts, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+	// No other actor seals or opens: the rule is the registry's, not a list in this test.
+	for _, who := range []string{"policy", "signer", "writer", "reader", "ca", "console", "store"} {
+		if _, err := seal1(n.client(who), "chain", "session-chain", "", vecID, facts, nil); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("%s seals under chain: %v", who, err)
+		}
+		if _, err := open1(n.client(who), "chain", "session-chain", "", vecID, env, nil); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Errorf("%s opens under chain: %v", who, err)
+		}
+	}
+	// The envelope does not open as another purpose or at another address, and the chain key has no tenant.
+	_, err = open1(n.client("exchange"), "chain", "session-chain", "", "other"+vecID[5:], env, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	_, err = seal1(n.client("session"), "chain", "session-chain", "acme", vecID, facts, nil)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "tenant")
+}
