@@ -5,11 +5,9 @@ package keyd
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -64,103 +62,29 @@ func (n *node) refusal(t *testing.T, err error, code connect.Code, reason, path 
 }
 
 // verifies: REQ-KEYS-109
-// key@ refuses a Sign with a key that KeyRevocation lists, by its kid or by its purpose, for each signing purpose it
-// serves, names the target in the refusal and audits it. A revocation of another target leaves the key alone.
+// key@ refuses a Sign with a key that KeyRevocation lists by its kid, for each signing purpose it serves, names the
+// target in the refusal and audits it. A revocation of another key leaves the key alone.
 func TestSignWithARevokedKeyIsRefused(t *testing.T) {
 	for _, purpose := range []string{"token-signing", "audit-log"} {
-		for _, by := range []string{targetPurpose, targetKid} {
-			t.Run(purpose+" by "+by, func(t *testing.T) {
-				e := newTestEnv(t, "development")
-				n := e.startedNode(nodeOpts{})
-				in := signContent(t, n, purpose)
-				if err := n.signFor(purpose, in); err != nil {
-					t.Fatalf("a key that is not revoked signs: %v", err)
-				}
-				// Another target does not touch it.
-				e.revoke(targetPurpose, "mac")
-				e.revoke(targetKid, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-				if err := n.signFor(purpose, in); err != nil {
-					t.Fatalf("a revocation of another target stopped the key: %v", err)
-				}
-				signed := n.driver.signs.Load()
-				target := purpose
-				if by == targetKid {
-					target = n.srv.keys[purpose].keyID
-				}
-				e.revoke(by, target)
-				n.refusal(t, n.signFor(purpose, in), connect.CodePermissionDenied, reasonRevoked, by)
-				if got := n.driver.signs.Load(); got != signed {
-					t.Fatalf("the driver signed after the revocation (%d, was %d): a revoked key must not reach it", got, signed)
-				}
-			})
-		}
-	}
-}
-
-// verifies: REQ-KEYS-109
-// An age later than this node's clock (plus the skew allowed) is not believed: a key store whose clock runs ahead could
-// stamp a key as newer than the revocation, so the key is treated as of unknown age and refused while its purpose is
-// revoked. A small difference between the clocks is allowed.
-func TestAKeyStampedInTheFutureIsOfUnknownAge(t *testing.T) {
-	e := newTestEnv(t, "development")
-	e.revoke(targetPurpose, "token-signing")
-	for i, tc := range []struct {
-		name  string
-		ahead time.Duration
-		signs bool
-	}{
-		{"a minute", time.Minute, true},
-		{"just inside the skew", clockSkew, true},
-		{"just outside the skew", clockSkew + time.Second, false},
-		{"an hour", time.Hour, false},
-	} {
-		d := newFakeDriver("software")
-		d.now = func() time.Time { return e.clock.now().Add(tc.ahead) }
-		n := e.startedNode(nodeOpts{name: fmt.Sprintf("node-%d", i), driver: d})
-		err := n.signFor("token-signing", signContent(t, n, "token-signing"))
-		if tc.signs && err != nil {
-			t.Errorf("a key stamped %s ahead is refused: %v", tc.name, err)
-		}
-		if !tc.signs {
-			n.refusal(t, err, connect.CodePermissionDenied, reasonRevoked, targetPurpose)
-		}
-	}
-}
-
-// verifies: REQ-KEYS-109
-// A revocation of a purpose refuses the keys made at or before the declaration and not a replacement made after it
-// ("a replacement signs at once", ADR 0041): the old key is refused, a key the key store made later signs, and a key of
-// an age the store cannot say is refused, because it cannot be shown to be a replacement.
-func TestPurposeRevocationRefusesOldKeysAndNotTheReplacement(t *testing.T) {
-	e := newTestEnv(t, "development")
-	old := e.startedNode(nodeOpts{name: "node-1"})
-	in := signContent(t, old, "token-signing")
-	e.revoke(targetPurpose, "token-signing") // at the time the old key was made: not after it
-	old.refusal(t, old.signFor("token-signing", in), connect.CodePermissionDenied, reasonRevoked, targetPurpose)
-
-	// An hour later the key store has made a replacement: a node that starts with it signs, with the same revocation in force.
-	e.clock.advance(time.Hour)
-	repl := e.startedNode(nodeOpts{name: "node-2"})
-	if err := repl.signFor("token-signing", signContent(t, repl, "token-signing")); err != nil {
-		t.Fatalf("a replacement made after the revocation does not sign: %v", err)
-	}
-	// The old key still does not, however long after.
-	e.clock.advance(24 * time.Hour)
-	if err := old.signFor("token-signing", in); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("the old key signs after a day: %v", err)
-	}
-	// A key whose age the store cannot say is refused.
-	unknown := newFakeDriver("software")
-	unknown.noCreatedAt = true
-	u := e.startedNode(nodeOpts{name: "node-3", driver: unknown})
-	u.refusal(t, u.signFor("token-signing", signContent(t, u, "token-signing")), connect.CodePermissionDenied, reasonRevoked, targetPurpose)
-	// ... but signs while nothing revokes its purpose.
-	e2 := newTestEnv(t, "development")
-	d2 := newFakeDriver("software")
-	d2.noCreatedAt = true
-	u2 := e2.startedNode(nodeOpts{driver: d2})
-	if err := u2.signFor("token-signing", signContent(t, u2, "token-signing")); err != nil {
-		t.Fatalf("a key of unknown age is refused although nothing is revoked: %v", err)
+		t.Run(purpose, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			n := e.startedNode(nodeOpts{})
+			in := signContent(t, n, purpose)
+			if err := n.signFor(purpose, in); err != nil {
+				t.Fatalf("a key that is not revoked signs: %v", err)
+			}
+			// Another key does not touch it.
+			e.revoke(targetKid, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+			if err := n.signFor(purpose, in); err != nil {
+				t.Fatalf("a revocation of another key stopped the key: %v", err)
+			}
+			signed := n.driver.signs.Load()
+			e.revoke(targetKid, n.srv.keys[purpose].keyID)
+			n.refusal(t, n.signFor(purpose, in), connect.CodePermissionDenied, reasonRevoked, targetKid)
+			if got := n.driver.signs.Load(); got != signed {
+				t.Fatalf("the driver signed after the revocation (%d, was %d): a revoked key must not reach it", got, signed)
+			}
+		})
 	}
 }
 

@@ -10,6 +10,11 @@
 // by the next, so that a second run signs the same payloads with the same key under a higher `seq`. A source file
 // `<kind>.yaml`, `<kind>.json` or `<kind>.cedar` becomes `<kind>.jws` (signed-config.md, "The document": the file
 // driver reads `<kebab-case kind name>.jws`).
+//
+// With -declaration it signs one key revocation declaration with the same publisher key instead (ADR 0041), the file
+// that `sluis key revoke --out` wrote, into -declaration-out, for `sluis key revoke --declaration` on a node:
+//
+//	go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration revoke.yaml -declaration-out revoke.jws
 package main
 
 import (
@@ -29,7 +34,13 @@ func main() {
 	kid := flag.String("kid", "publisher-1", "the kid of the publisher key")
 	recipients := flag.String("recipients", "", "a file with the thumbprints of the wrap recipients, one per line (# starts a comment); they replace the empty list of the KeyPlan source")
 	seq := flag.Uint64("seq", 0, "the sequence number of every document; 0 is the current time in seconds, which grows with every run")
+	declaration := flag.String("declaration", "", "sign this key revocation declaration (`sluis key revoke --out`) instead of the config sources")
+	declarationOut := flag.String("declaration-out", "", "the path of the signed declaration, with -declaration")
 	flag.Parse()
+	if *declaration != "" {
+		signDeclaration(*keyDir, *kid, *seq, *declaration, *declarationOut)
+		return
+	}
 	if flag.NArg() != 0 || *keyDir == "" || *out == "" || *bootstrapOut == "" {
 		fmt.Fprintln(os.Stderr, "sign-config: -key-dir, -out and -bootstrap-out are required, and there are no arguments")
 		os.Exit(2)
@@ -71,4 +82,21 @@ func readRecipients(path string) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// signDeclaration signs a key revocation declaration with the publisher key of keyDir, which must exist: a declaration
+// is signed by the key the boards already pin, never by a new one.
+func signDeclaration(keyDir, kid string, seq uint64, in, out string) {
+	if keyDir == "" || out == "" || flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "sign-config: -declaration needs -key-dir and -declaration-out, and there are no arguments")
+		os.Exit(2)
+	}
+	if seq == 0 {
+		seq = uint64(max(time.Now().Unix(), 1))
+	}
+	if err := SignDeclarationFile(keyDir, kid, seq, in, out); err != nil {
+		fmt.Fprintf(os.Stderr, "sign-config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("sign-config: the declaration is signed as %s with seq %d (%s)\n", kid, seq, out)
 }

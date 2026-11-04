@@ -1,5 +1,5 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify, node unlock and version; the rest of the tree belongs to later milestones.
+// audit verify, node unlock, key revoke and version; the rest of the tree belongs to later milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
 // the global flags --boundary, --output and --log-level. The kit's Run knows only serve, check, version and
@@ -69,6 +69,8 @@ commands:
   token --audience ID      print an access token for an audience
   audit verify DIR         check a tiled audit log offline
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
+  key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
+                           on this node (--declaration FILE)
   version                  print the version
 
 flags:
@@ -104,6 +106,12 @@ func (a *app) run(ctx context.Context, args []string) int {
 			return a.exec(ctx, a.unlockCommand(), args[2:])
 		}
 		_, _ = fmt.Fprintf(a.stderr, "sluis: node: expected the command unlock\n\n%s", usageText)
+		return cli.ExitUsage
+	case "key":
+		if len(args) > 1 && args[1] == "revoke" {
+			return a.exec(ctx, a.revokeCommand(), args[2:])
+		}
+		_, _ = fmt.Fprintf(a.stderr, "sluis: key: expected the command revoke\n\n%s", usageText)
 		return cli.ExitUsage
 	default:
 		_, _ = fmt.Fprintf(a.stderr, "sluis: unknown command %q\n\n%s", args[0], usageText)

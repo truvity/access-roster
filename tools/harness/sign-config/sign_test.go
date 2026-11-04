@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/truvity/sluis/v2/kits/go/registry"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // repoConfig is the real config source of the local installation, two levels above tools/harness/sign-config.
@@ -268,5 +269,39 @@ func TestReadRecipients(t *testing.T) {
 	got, err := readRecipients(f)
 	if err != nil || len(got) != 2 || got[0] != idA || got[1] != idB {
 		t.Fatalf("readRecipients = %v, %v", got, err)
+	}
+}
+
+// A declaration is signed with the publisher key that already exists, as a KeyRevocationDeclaration that the kit
+// verifies under that key; with no key it is refused, and no key is made.
+func TestSignDeclarationFileUsesTheExistingPublisherKey(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join(dir, "revoke.yaml")
+	payload := []byte("boundary: dev\nkids:\n  - AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\nreason: drill\n")
+	if err := os.WriteFile(in, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keyDir := filepath.Join(dir, "publisher")
+	out := filepath.Join(dir, "revoke.jws")
+	if err := SignDeclarationFile(keyDir, "publisher-1", 7, in, out); err == nil {
+		t.Fatal("a declaration was signed with no publisher key")
+	}
+	if _, err := os.Stat(keyDir); !os.IsNotExist(err) {
+		t.Fatal("a publisher key was made for a declaration")
+	}
+	key, err := loadOrMakeKey(keyDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SignDeclarationFile(keyDir, "publisher-1", 7, in, out); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := os.ReadFile(out) //nolint:gosec // the test's own temporary file
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := signedconfig.VerifyDeclaration(doc, signedconfig.KeyRevocationDeclaration, []signedconfig.Publisher{{KID: "publisher-1", Key: &key.PublicKey}})
+	if err != nil || v.Seq != 7 || string(v.Payload) != string(payload) {
+		t.Fatalf("VerifyDeclaration = %v, %v", v, err)
 	}
 }

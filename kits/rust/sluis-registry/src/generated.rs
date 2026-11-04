@@ -2333,6 +2333,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("key", "pin-release", 0x007f), // get list create update delete apply watch
     ("key", "pin-release-request", 0x007f), // get list create update delete apply watch
     ("key", "replay-guard", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
+    ("key", "signing-ring", 0x0003), // get list
     ("key", "spent-grant", 0x1fbf), // get(self) list(self) create(self) update(self) delete(self) apply(self)
     ("key", "switch", 0x0183), // get(self) list(self)
     ("key", "tenant", 0x0003), // get list

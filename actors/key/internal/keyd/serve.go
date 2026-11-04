@@ -29,7 +29,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Serve serves KeyService at <run-dir>/<caller>/key.sock for every caller of key@ in the registry, each socket
 // with its own exact-caller check (ADR 0006, "Exclusive card access": the caller is also checked by peer uid, per
-// socket) and mode 0660. It runs the rewrap pass at start and every period, and wipes expired data keys. It
+// socket) and mode 0660, and KeyAdminService at <run-dir>/admin.sock for root (admin.go). It runs the rewrap pass at start and every period, and wipes expired data keys. It
 // returns when ctx ends or a socket fails.
 func (s *Server) Serve(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
@@ -40,7 +40,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	callers := registry.CallersOf("key")
-	errc := make(chan error, len(callers))
+	errc := make(chan error, len(callers)+1)
 	var wg sync.WaitGroup
 	for _, caller := range callers {
 		cfg := rpc.ServerConfig{
@@ -61,6 +61,13 @@ func (s *Server) Serve(ctx context.Context) error {
 			}
 		}()
 	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := s.serveAdmin(ctx); err != nil {
+			errc <- err
+		}
+	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
