@@ -959,7 +959,10 @@ async fn two_client_authentication_methods_in_one_exchange_are_refused_at_the_ed
     // RFC 6749 section 2.3: a client uses one method per request. Even an empty secret is a second method.
     let up = up().await;
     let ex = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t";
-    for form in [format!("{ex}&client_secret=s"), format!("{ex}&client_secret=")] {
+    for form in [
+        format!("{ex}&client_secret=s"),
+        format!("{ex}&client_secret="),
+    ] {
         let r = http(
             &up,
             "POST",
