@@ -257,9 +257,15 @@ func grantedScope(requested string) (string, bool) {
 // comparison (RFC 6749 section 3.1.2.3, and the Security BCP: no pattern), with the one exception of RFC 8252 section
 // 7.3: a registered redirect on the loopback IP literal without a port matches any port, because a native app takes
 // a free one at run time. A URI with a fragment or userinfo never matches (RFC 6749 section 3.1.2).
+//
+// A plain-http URI never matches unless its host is a loopback IP literal, even when the client registered it
+// (REQ-AUTHN-004): store@ refuses such a registration at load, and this is the same rule where the redirect is used.
 func redirectRegistered(registered []string, got string) bool {
 	u, err := url.Parse(got)
 	if err != nil || got == "" || u.Fragment != "" || u.User != nil || u.Opaque != "" || strings.Contains(got, "#") {
+		return false
+	}
+	if u.Scheme != "https" && (u.Scheme != "http" || !loopbackIP(u.Hostname())) {
 		return false
 	}
 	for _, reg := range registered {
@@ -278,8 +284,7 @@ func loopbackMatch(reg string, got *url.URL) bool {
 	if err != nil || r.Scheme != "http" || r.Port() != "" || got.Scheme != "http" {
 		return false
 	}
-	// Only the IP literals: "localhost" is a name that may not resolve to loopback (RFC 8252 section 8.3).
-	if h := r.Hostname(); h != "127.0.0.1" && h != "::1" {
+	if !loopbackIP(r.Hostname()) {
 		return false
 	}
 	if got.Hostname() != r.Hostname() || got.EscapedPath() != r.EscapedPath() || got.RawQuery != r.RawQuery {
@@ -291,6 +296,10 @@ func loopbackMatch(reg string, got *url.URL) bool {
 	}
 	return true
 }
+
+// loopbackIP reports whether host is a loopback IP literal of RFC 8252 section 7.3. Only the IP literals: "localhost"
+// is a name that may not resolve to loopback (RFC 8252 section 8.3).
+func loopbackIP(host string) bool { return host == "127.0.0.1" || host == "::1" }
 
 func base64URLChar(ch byte) bool {
 	return ch >= 'A' && ch <= 'Z' || ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_'

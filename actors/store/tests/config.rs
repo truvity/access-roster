@@ -159,6 +159,117 @@ fn the_credential_a_client_names_is_a_name_and_only_a_confidential_client_has_on
     }
 }
 
+/// verifies: REQ-AUTHN-004
+#[test]
+fn a_plain_http_redirect_off_loopback_is_refused_for_every_client_kind() {
+    let client = |client_kind: &str, redirect: &str| {
+        let secret = if client_kind == "public" {
+            String::new()
+        } else {
+            "  secret: client-app\n".to_owned()
+        };
+        format!(
+            "app:\n  kind: {client_kind}\n  redirects: [\"https://app.example.com/cb\", \"{redirect}\"]\n  requires: [\"dev:app:user\"]\n{secret}"
+        )
+    };
+    for ck in ["public", "confidential", "exchange"] {
+        // RFC 8252 section 7.3: http on a loopback IP literal, with any port or none.
+        for ok in [
+            "https://app.example.com/other",
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:1/callback",
+            "http://127.0.0.1:65535/callback",
+            "http://[::1]/callback",
+            "http://[::1]:8080/callback",
+            "http://127.0.0.1",
+        ] {
+            assert!(
+                payload::decode(kind("InstallationClient"), client(ck, ok).as_bytes()).is_ok(),
+                "{ck}: {ok} was refused"
+            );
+        }
+        for bad in [
+            "http://app.example.com/callback",
+            // A name that may not resolve to loopback (RFC 8252 section 8.3).
+            "http://localhost/callback",
+            "http://localhost:8080/callback",
+            "http://127.0.0.2/callback",
+            "http://[::2]/callback",
+            "http://192.0.2.1/callback",
+            "http://127.0.0.1.example.com/callback",
+            "http://127.0.0.1:8080@app.example.com/callback",
+            "http://user@127.0.0.1/callback",
+            "http://127.0.0.1:0/callback",
+            "http://127.0.0.1:65536/callback",
+            "http://127.0.0.1:/callback",
+            "http://127.0.0.1:+80/callback",
+            "http://[::1]x/callback",
+            "ftp://127.0.0.1/callback",
+        ] {
+            let e = refused("InstallationClient", &client(ck, bad));
+            assert!(
+                e.contains("app.redirects[1]: must be https, or http on a loopback IP literal")
+                    || e.contains("app.redirects[1]: must be an http or https URL"),
+                "{ck}: {bad}: {e}"
+            );
+            assert!(!e.contains(bad), "an error never shows a value: {e}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_loopback_redirect_passes_the_https_floor_and_no_other_http_redirect_does() {
+    // ADR 0011: the loopback redirects of a native client stay allowed everywhere. Every other
+    // URL of the set is https, so only the redirects are at stake.
+    let set = |e: &Env, environment: &str, redirect: &str| {
+        e.sign(
+            "boundary",
+            &source("boundary")
+                .replace(
+                    "environment: development",
+                    &format!("environment: {environment}"),
+                )
+                .replace("http://", "https://"),
+            1,
+        );
+        e.sign(
+            "upstream",
+            &source("upstream").replace("http://", "https://"),
+            1,
+        );
+        e.sign(
+            "installation-client",
+            &source("installation-client").replace("http://127.0.0.1/callback", redirect),
+            1,
+        );
+    };
+    for environment in ["production", "staging", "development"] {
+        for ok in ["http://127.0.0.1/callback", "http://[::1]:8080/callback"] {
+            let e = env().await;
+            write_local(e.docs.path(), &e.pipeline, 1);
+            set(&e, environment, ok);
+            assert!(
+                e.start().await.is_ok(),
+                "{environment}: a loopback redirect did not start: {ok}"
+            );
+        }
+        // Refused at step 6, the payload, whatever the environment.
+        let e = env().await;
+        write_local(e.docs.path(), &e.pipeline, 1);
+        set(&e, environment, "http://app.example.com/callback");
+        let err = e
+            .start()
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{environment}: a plain http redirect started"));
+        assert!(
+            err.to_string()
+                .contains("must be https, or http on a loopback IP literal"),
+            "{environment}: {err}"
+        );
+    }
+}
+
 /// verifies: REQ-OPS-010
 #[test]
 fn a_payload_is_refused_by_place_and_an_error_shows_no_value() {
