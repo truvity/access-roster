@@ -45,4 +45,5 @@ message SigningKey {
   google.protobuf.Timestamp added_at = 5;    // when the key joined the ring
   string state = 6;                          // "pre-published", "active" or "retiring" (0006 "Rotation")
   google.protobuf.Timestamp state_since = 7; // when the key entered its present state; the clocks of the prepublish and the retention
+  string node = 8;                           // the node whose key@ holds the key; only that node's signer retires it (0006: one token-signing key per board)
 }

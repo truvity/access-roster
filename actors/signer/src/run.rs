@@ -27,6 +27,13 @@ pub fn extra(c: Command) -> Command {
             .help("The directory of the sockets of the actors"),
     )
     .arg(
+        Arg::new("node")
+            .long("node")
+            .value_name("NAME")
+            .global(true)
+            .help("The node (board) this instance runs on; default the host name"),
+    )
+    .arg(
         Arg::new("socket-gid")
             .long("socket-gid")
             .value_name("GID")
@@ -79,8 +86,17 @@ impl Commands for Signer {
             .map(|g| g.parse::<u32>())
             .transpose()
             .map_err(|_| anyhow::anyhow!("--socket-gid: a numeric group id"))?;
+        let node = match f.matches.get_one::<String>("node") {
+            Some(n) => n.clone(),
+            None => std::fs::read_to_string("/proc/sys/kernel/hostname")
+                .map(|h| h.trim().to_owned())
+                .map_err(|e| {
+                    anyhow::anyhow!("--node is needed: the host name is unreadable ({e})")
+                })?,
+        };
         serve(
             Config {
+                node,
                 sockets: sockets(&f),
                 boundary,
                 socket,
