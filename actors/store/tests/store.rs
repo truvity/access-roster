@@ -21,6 +21,49 @@ fn g(f: &F) -> Vec<u8> {
 
 // ---- address and scope ----
 
+/// verifies: REQ-DATA-001
+/// A kind that the registry does not declare is refused by every call that names one: a read, a listing, a write and
+/// a watch, with the reason `address` and the path of the kind.
+#[tokio::test]
+async fn a_kind_the_registry_does_not_declare_is_refused_by_every_call() {
+    let f = F::new().await;
+    f.as_("session");
+    let e = f.get("no-such-kind", "acme", "x").await.unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::InvalidArgument, "address".into())
+    );
+    assert_eq!(common::refusal_path(&e), "address.kind");
+    let e = f
+        .list(ListRequest {
+            kind: "no-such-kind".into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::InvalidArgument, "address".into())
+    );
+    let e = f
+        .write(
+            vec![op(Verb::CREATE, "no-such-kind", "acme", "x", b"v")],
+            &g(&f),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::InvalidArgument, "address".into())
+    );
+    f.as_("key");
+    let e = f.watch("no-such-kind", "", 0).await.err().unwrap();
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::InvalidArgument, "address".into())
+    );
+}
+
 #[tokio::test]
 async fn the_address_vectors_are_refused_with_the_path_of_the_part() {
     let f = F::new().await;
@@ -206,13 +249,6 @@ async fn a_self_scoped_kind_takes_only_ids_under_the_callers_name() {
         ErrorCode::PermissionDenied,
         "writer",
     );
-}
-
-#[tokio::test]
-async fn watch_is_unimplemented() {
-    let f = F::new().await;
-    f.as_("key");
-    assert_eq!(f.watch().await.code, ErrorCode::Unimplemented);
 }
 
 // ---- the grant ----
@@ -1882,8 +1918,6 @@ async fn every_refusal_is_an_audit_fact_whatever_its_code() {
         f.get("slack-app-secret", "", "w").await.unwrap_err().code,
         ErrorCode::Unimplemented
     );
-    f.as_("key");
-    assert_eq!(f.watch().await.code, ErrorCode::Unimplemented);
 
     let seen: Vec<(String, String)> = f
         .audit()
@@ -1907,7 +1941,6 @@ async fn every_refusal_is_an_audit_fact_whatever_its_code() {
         ("permission_denied", "grant"),
         ("invalid_argument", "address"),
         ("unavailable", "engine"),
-        ("unimplemented", "unimplemented"),
         ("unimplemented", "unimplemented"),
     ];
     assert_eq!(seen, want.map(|(c, r)| (c.to_owned(), r.to_owned())));

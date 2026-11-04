@@ -35,6 +35,7 @@ use crate::engine::{EngineError, ItemEngine};
 use crate::grant::{self, GrantCache, GrantOpener, OpenError, from_system_time, to_system_time};
 use crate::messages;
 use crate::secret::{SecretError, SecretSource};
+use crate::watch::{self, ConfigWatch, LogWatch, Slots};
 
 /// A write batch holds at most this many operations (store-api.md "Write").
 pub const BATCH_MAX: usize = 64;
@@ -72,8 +73,13 @@ pub struct Service<E, G, A> {
     grants: GrantCache<G>,
     config: Arc<dyn ConfigSnapshot>,
     secrets: Arc<dyn SecretSource>,
-    audit: Auditor<A>,
+    audit: Arc<Auditor<A>>,
     now: Clock,
+    /// The watches that are open, by caller (at most 16 each).
+    watches: Slots,
+    /// How long a watch may be silent before it says its resume point, and how often a config watch looks.
+    bookmark_every: Duration,
+    config_poll: Duration,
 }
 
 impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
@@ -86,9 +92,21 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             grants: GrantCache::new(d.grants),
             config: d.config,
             secrets: d.secrets,
-            audit: Auditor::new(d.audit),
+            audit: Arc::new(Auditor::new(d.audit)),
             now: d.clock,
+            watches: Slots::default(),
+            bookmark_every: watch::BOOKMARK_EVERY,
+            config_poll: watch::CONFIG_POLL,
         }
+    }
+
+    /// Sets the timing of `Watch`: the silence after which a stream says its resume point, and how often a watch of
+    /// a config kind looks at the snapshot. The defaults are 30 seconds and 250 milliseconds.
+    #[must_use]
+    pub fn with_watch_timing(mut self, bookmark_every: Duration, config_poll: Duration) -> Self {
+        self.bookmark_every = bookmark_every;
+        self.config_poll = config_poll;
+        self
     }
 
     /// The facts the audit log could not take since start.
@@ -684,12 +702,25 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             Class::Secret => Err(blame(unimplemented_secret())),
             Class::Durable | Class::Temp => {
                 let prefix = address::prefix(&self.boundary, &req.tenant, kind.segment, &id_prefix);
+                // The first page's position is the one of the listing: it travels in the token, so that every page
+                // names the same resume point and a watch from it misses nothing the listing shows.
+                let (head, driver_token) = if inner.is_empty() {
+                    (None, Vec::new())
+                } else {
+                    let (h, rest) = inner.split_at_checked(8).ok_or_else(|| {
+                        blame(refuse(ErrorCode::InvalidArgument, "schema", "page_token"))
+                    })?;
+                    let h = u64::from_be_bytes(h.try_into().map_err(|_| {
+                        blame(refuse(ErrorCode::InvalidArgument, "schema", "page_token"))
+                    })?);
+                    (Some(h), rest.to_vec())
+                };
                 let q = QueryRequest {
                     prefix: prefix.clone(),
                     index: req.index.clone(),
                     index_value: req.index_value.clone(),
                     page_size,
-                    page_token: inner,
+                    page_token: driver_token,
                     ..QueryRequest::default()
                 };
                 let resp = self
@@ -704,14 +735,23 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                         items.push(self.wire_item(a, it));
                     }
                 }
+                // A kind that nobody watches has no change log, and so no resume point.
+                let head = if kind.watched || kind.exportable {
+                    head.unwrap_or(resp.log_head)
+                } else {
+                    0
+                };
                 let next = if resp.next_page_token.is_empty() {
                     String::new()
                 } else {
-                    self.seal_token(binding, &resp.next_page_token)
+                    let mut inner = head.to_be_bytes().to_vec();
+                    inner.extend_from_slice(&resp.next_page_token);
+                    self.seal_token(binding, &inner)
                 };
                 Ok(ListResponse {
                     items,
                     next_page_token: next,
+                    resume_point: head,
                     ..ListResponse::default()
                 })
             }
@@ -1028,16 +1068,39 @@ fn version_of(label: &str) -> u64 {
     u64::from_be_bytes(b).max(1)
 }
 
-fn unimplemented_watch() -> Refuse {
-    let mut r = refuse(ErrorCode::Unimplemented, "unimplemented", "");
-    r.verb = "watch";
-    r
-}
-
 fn unimplemented_secret() -> Refuse {
     // A secret kind is read from the secret source, which WP-11 wires. The reason is for the
     // audit fact only; the wire error carries none (see `fail`).
     refuse(ErrorCode::Unimplemented, "unimplemented", "")
+}
+
+/// Audits a refusal and turns it into the error of the wire. Every refusal of store@ is a fact, on every method.
+async fn refuse_event<A: AuditSink>(audit: &Auditor<A>, caller: &str, r: Refuse) -> ConnectError {
+    let mut fields = vec![("caller", caller.to_owned())];
+    if let Some(k) = r.kind {
+        fields.push(("kind", k.to_owned()));
+    }
+    if !r.verb.is_empty() {
+        fields.push(("verb", r.verb.to_owned()));
+    }
+    if let Some(id) = &r.id {
+        fields.push(("id", id.clone()));
+    }
+    fields.push(("code", r.code.as_str().to_owned()));
+    audit
+        .emit(AuditEvent {
+            action: "store.refused",
+            failure: true,
+            reason: r.reason.to_owned(),
+            fields,
+            correlation_id: sluis_kit::correlation::current(),
+        })
+        .await;
+    if r.code == ErrorCode::Unimplemented {
+        // The method exists and the feature does not: no reason of the closed list fits.
+        return ConnectError::new(ErrorCode::Unimplemented, "not served yet");
+    }
+    refusal(r.code, r.reason, &r.path)
 }
 
 // ---- the transaction ----
@@ -1060,7 +1123,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     ) -> Res<sluis_proto::sluis::port::item::v2alpha1::TransactResponse> {
         match self.engine(class).transact(tx.clone()).await {
             Ok(r) => Ok(r),
-            Err(EngineError::Unavailable) => Err(engine_down()),
+            Err(EngineError::Unavailable | EngineError::SequenceExpired) => Err(engine_down()),
             Err(EngineError::Aborted(idx)) => {
                 // Without the index, the first condition is the best answer the driver left.
                 let c = idx.unwrap_or(0).min(tx.conditions.len().saturating_sub(1));
@@ -1089,31 +1152,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
     /// Turns a refusal into the Connect error with its `Refusal` detail, and tells the audit log:
     /// a refusal is an audit fact, whatever its code (ADR 0005 "Rules"; contracts.md "Errors").
     async fn fail(&self, caller: &str, r: Refuse) -> ConnectError {
-        let mut fields = vec![("caller", caller.to_owned())];
-        if let Some(k) = r.kind {
-            fields.push(("kind", k.to_owned()));
-        }
-        if !r.verb.is_empty() {
-            fields.push(("verb", r.verb.to_owned()));
-        }
-        if let Some(id) = &r.id {
-            fields.push(("id", id.clone()));
-        }
-        fields.push(("code", r.code.as_str().to_owned()));
-        self.audit
-            .emit(AuditEvent {
-                action: "store.refused",
-                failure: true,
-                reason: r.reason.to_owned(),
-                fields,
-                correlation_id: sluis_kit::correlation::current(),
-            })
-            .await;
-        if r.code == ErrorCode::Unimplemented {
-            // The method exists and the feature does not: no reason of the closed list fits.
-            return ConnectError::new(ErrorCode::Unimplemented, "not served yet");
-        }
-        refusal(r.code, r.reason, &r.path)
+        refuse_event(&self.audit, caller, r).await
     }
 
     /// The caller, from the transport. The guard of the kit set it before the message was
@@ -1135,6 +1174,138 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             Ok(v) => Response::ok(v),
             Err(e) => Err(self.fail(caller.name, e).await),
         }
+    }
+}
+
+// ---- Watch ----
+
+/// The refusal for an engine that cannot give a tail: a resume point it does not hold sends the watcher to list again.
+fn tail_refusal(e: &EngineError) -> Refuse {
+    match e {
+        EngineError::SequenceExpired => refuse(
+            ErrorCode::FailedPrecondition,
+            "resume_point_expired",
+            "resume_point",
+        ),
+        EngineError::Aborted(_) | EngineError::Unavailable => engine_down(),
+    }
+}
+
+/// The refusal a stream ends with.
+fn blame_end(kind: &'static Kind, _caller: &str, end: watch::Ended) -> Refuse {
+    let mut r = match end {
+        watch::Ended::Expired => tail_refusal(&EngineError::SequenceExpired),
+        watch::Ended::Engine => engine_down(),
+    };
+    r.kind = Some(kind.name);
+    r.verb = "watch";
+    r
+}
+
+impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
+    /// Opens a watch: the checks of a read, then the stream (watch.rs).
+    async fn watch_open(
+        &self,
+        caller: &'static str,
+        req: WatchRequest,
+    ) -> Res<ServiceStream<WatchResponse>> {
+        let kind = self.kind_and_tenant("kind", &req.kind, &req.tenant)?;
+        let blame = |mut r: Refuse| {
+            r.kind = Some(kind.name);
+            r.verb = "watch";
+            r
+        };
+        self.authorise(caller, kind, "watch", None).map_err(blame)?;
+        // A rule bound to the caller's own ids watches only those, as a listing does.
+        let id_prefix = if sluis_registry::store_self_scoped_for(caller, kind.segment, "watch") {
+            format!("{caller}/")
+        } else {
+            String::new()
+        };
+        match kind.class {
+            Class::Config => {
+                // A config kind has no change log: there is no point to resume from, and a watcher that reconnects
+                // reads the kind again.
+                if req.resume_point != 0 {
+                    return Err(blame(refuse(
+                        ErrorCode::FailedPrecondition,
+                        "resume_point_expired",
+                        "resume_point",
+                    )));
+                }
+                self.config
+                    .version(kind.segment)
+                    .ok_or_else(|| blame(engine_down()))?;
+                let slot = self.watch_slot(caller).map_err(blame)?;
+                let w = ConfigWatch::new(
+                    Arc::clone(&self.config),
+                    kind.segment,
+                    id_prefix,
+                    self.config_poll,
+                    self.bookmark_every,
+                    slot,
+                );
+                Ok(Box::pin(futures::stream::unfold(w, |mut w| async move {
+                    let m = w.next().await;
+                    Some((Ok(m), w))
+                })))
+            }
+            Class::Secret => Err(blame(unimplemented_secret())),
+            Class::Durable | Class::Temp => {
+                let slot = self.watch_slot(caller).map_err(blame)?;
+                let engine = self.engine(kind.class).clone();
+                let prefix = address::prefix(&self.boundary, &req.tenant, kind.segment, &id_prefix);
+                // From 0 is from now: the position is read here, so that the stream and its first bookmark name it.
+                let start = if req.resume_point == 0 {
+                    let q = QueryRequest {
+                        prefix: prefix.clone(),
+                        page_size: 1,
+                        ..QueryRequest::default()
+                    };
+                    engine.query(q).await.map_err(|e| blame(e.into()))?.log_head
+                } else {
+                    req.resume_point
+                };
+                // A resume point the log does not hold is refused: at once when the engine says it on the call, and
+                // otherwise as the first thing the driver's stream says, which ends this stream with the refusal
+                // (audited like any other).
+                let rows = engine
+                    .tail_log(start)
+                    .await
+                    .map_err(|e| blame(tail_refusal(&e)))?;
+                let w = LogWatch::new(
+                    engine,
+                    self.boundary.clone(),
+                    prefix,
+                    Arc::clone(&self.now),
+                    self.bookmark_every,
+                    rows,
+                    start,
+                    slot,
+                );
+                let audit = Arc::clone(&self.audit);
+                Ok(Box::pin(futures::stream::unfold(Some(w), move |state| {
+                    let audit = Arc::clone(&audit);
+                    async move {
+                        let mut w = state?;
+                        match w.next().await {
+                            Ok(m) => Some((Ok(m), Some(w))),
+                            Err(end) => {
+                                // A stream that ends in an error is a refusal like any other: audited, once.
+                                let r = blame_end(kind, caller, end);
+                                Some((Err(refuse_event(&audit, caller, r).await), None))
+                            }
+                        }
+                    }
+                })))
+            }
+        }
+    }
+
+    fn watch_slot(&self, caller: &str) -> Res<watch::Slot> {
+        self.watches
+            .take(caller)
+            .ok_or_else(|| refuse(ErrorCode::ResourceExhausted, "watch_limit", ""))
     }
 }
 
@@ -1185,10 +1356,10 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
         ctx: RequestContext,
         request: ServiceRequest<'_, WatchRequest>,
     ) -> ServiceResult<ServiceStream<WatchResponse>> {
-        // The change log and the stream wait for the first watcher (D-18, #1204).
         let who = self.caller(&ctx).await?;
-        let mut r = unimplemented_watch();
-        r.kind = sluis_registry::kind_by_segment(&request.to_owned_message().kind).map(|k| k.name);
-        Err(self.fail(who.name, r).await)
+        match self.watch_open(who.name, request.to_owned_message()).await {
+            Ok(stream) => Response::stream_ok(stream),
+            Err(e) => Err(self.fail(who.name, e).await),
+        }
     }
 }

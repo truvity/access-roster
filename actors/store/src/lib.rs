@@ -14,4 +14,5 @@ pub mod messages;
 pub mod run;
 pub mod secret;
 pub mod service;
+pub mod watch;
 pub mod yaml;

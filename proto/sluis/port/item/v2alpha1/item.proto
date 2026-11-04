@@ -47,6 +47,7 @@ message QueryRequest {
 message QueryResponse {
   repeated DriverItem items = 1;  // the items of the page
   bytes next_page_token = 2;      // empty on the last page
+  uint64 log_head = 3;            // the newest change-log sequence, read before the page: a Watch from it misses nothing the page shows
 }
 
 // TransactRequest is a set of conditions, puts and deletes, applied all or none.

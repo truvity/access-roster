@@ -14,15 +14,14 @@ requirements:
     rationale: "A kind outside the registry has no schema, class, writer or rule, so nothing could be checked about it (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1203]
     verification:
-      - {kind: integration-test, ref: "a get, a write and a watch of an undeclared kind name are refused with a code that names the registry"}
+      - {kind: integration-test, ref: "a get, a listing, a write and a watch of an undeclared kind name are refused with the reason address and the path of the kind"}
   - id: REQ-DATA-002
     area: DATA
     statement: "The kind registry MUST give every kind exactly one storage class, one treatment and one profile or none for protocol state."
@@ -831,7 +830,7 @@ requirements:
     rationale: "A silent gap in the stream is a missed change (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [store]
@@ -845,7 +844,7 @@ requirements:
     rationale: "Config has no change log, and policy and exporter@ must act on a change (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [store]
@@ -853,6 +852,110 @@ requirements:
     issues: [1204]
     verification:
       - {kind: integration-test, ref: "a snapshot swap that changes one config kind notifies its watchers and no others"}
+      - {kind: integration-test, ref: "a config watch sends the snapshot in force as puts, then a bookmark"}
+      - {kind: integration-test, ref: "an item removed between the listing and the watch is dropped at the first bookmark"}
+  - id: REQ-DATA-100
+    area: DATA
+    statement: "store@ MUST deliver a change of a watched kind with its log sequence and the item as read at delivery, skip a put row only for a later row of the same address, and deliver an item that is gone as a delete with no value."
+    rationale: "The change log holds no value, so a watcher applies the state and not the edits; a version restarts at 1 after a re-create, so the sequence is the identity of a change (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "an item changed three times since the resume point is delivered once at its current version; an item made and removed is a delete with no value"}
+      - {kind: integration-test, ref: "an item removed and made again is delivered as the delete and then the new put, on both engines; a consumer that dedupes by the sequence ends with the new value"}
+  - id: REQ-DATA-101
+    area: DATA
+    statement: "A driver MUST write a delete row of the change log whenever an item that was written with a log row is removed, expiry and a delete of an expired item included, which store@ delivers to a watcher as a delete."
+    rationale: "A watcher that holds an item must learn that it expired, and an expired item is gone for every read (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "an item with a short time to live is swept and its watcher gets a delete, then the item made again arrives as a new put, on both engines"}
+      - {kind: integration-test, ref: "an expired item that was not swept and is deleted leaves its delete row; an item written without a log row leaves none"}
+  - id: REQ-DATA-102
+    area: DATA
+    statement: "A listing of a watched kind MUST name a resume point, the same on every page, that a watch can start from without missing a change after the listing."
+    rationale: "Without it a watcher that lists and then watches from now loses the changes between the two calls (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "list in two pages with a write between them: both name one position, and a watch from it gives the write; an empty log still names a position"}
+      - {kind: integration-test, ref: "the item suite of both engines: a query names the head of the log, never 0, and a tail from it misses nothing written after"}
+  - id: REQ-DATA-103
+    area: DATA
+    statement: "An idle watch MUST send the latest resume point as a bookmark every 30 seconds."
+    rationale: "A watcher that restarts after a long silence must not fall behind the retention of the change log (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "an idle watch sends the resume point it started from, then the point of the last change it was told, with a short interval"}
+      - {kind: integration-test, ref: "an idle config watch sends a bookmark with resume point 0"}
+  - id: REQ-DATA-104
+    area: DATA
+    statement: "store@ MUST refuse a caller's watch beyond 16 open at once."
+    rationale: "A stream is read for as long as it is open, and no buffer in store@ bounds its cost, so the number of streams is the bound (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "16 watches open, the 17th is refused with watch_limit and audited; another caller has its own; a watch that ends gives its place back"}
+  - id: REQ-DATA-105
+    area: DATA
+    statement: "A driver MUST keep the change log for a bounded window, one hour by default and at most seven days, and trim it in its sweeper."
+    rationale: "A log that is kept for ever is storage nobody asked for, and a watcher that falls behind the window lists again (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "the sweeper trims rows older than a short retention and a tail behind the floor is refused; a retention above seven days is refused at start"}
+  - id: REQ-DATA-106
+    area: DATA
+    statement: "store@ MUST judge a watch as it judges a read: the actor's watch rule on the kind, the kind's scope for the tenant, and the actor's own ids for a self-scoped rule."
+    rationale: "A change feed shows what a read shows, so it needs no weaker check (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1204]
+    verification:
+      - {kind: integration-test, ref: "an actor with no watch rule, a tenant that does not fit the kind and an engine that is down each get their refusal, audited"}
   - id: REQ-DATA-059
     area: DATA
     statement: "On serverless the store MUST answer a re-read with an unchanged reply when the ETag matches."

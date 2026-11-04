@@ -94,7 +94,9 @@ impl Driver {
             .context("the schema is not there: run serve once")?;
         anyhow::ensure!(
             version == SCHEMA_VERSION,
-            "the schema is version {version}, this driver speaks {SCHEMA_VERSION}"
+            "the schema is version {version}, this driver speaks {SCHEMA_VERSION}: a development or board installation \
+             recreates its data (local: just local-down, then just local-up; boards: SLUIS_PURGE_STATE=1 just \
+             boards-undeploy, then just boards-deploy)"
         );
         Ok(())
     }
@@ -209,7 +211,20 @@ impl ItemService for Driver {
             size + 1,
             now_ms(),
         );
-        let mut found = items(&self.read(Level::Weak, stmt).await?).map_err(engine_down)?;
+        // The log head first, in the same request as the page: the page shows at least everything up to it, so a watch
+        // from it misses nothing (it may repeat a change the page already shows).
+        let out = self
+            .rq
+            .query(Level::Weak, &[self.ns.log_head(), stmt])
+            .await
+            .map_err(engine_down)?;
+        let log_head = rows(&out, 0)
+            .ok()
+            .and_then(|r| r.first())
+            .and_then(|r| Some(r.first()?.as_i64()?.max(r.get(1)?.as_i64()?)))
+            .and_then(|h| u64::try_from(h).ok())
+            .ok_or_else(|| engine_down(anyhow::anyhow!("the log head is not readable")))?;
+        let mut found = items(rows(&out, 1).map_err(engine_down)?).map_err(engine_down)?;
         let next_page_token = if found.len() > size {
             found.truncate(size);
             found.last().map(|i| i.key.clone()).unwrap_or_default()
@@ -219,6 +234,7 @@ impl ItemService for Driver {
         Response::ok(QueryResponse {
             items: found,
             next_page_token,
+            log_head,
             ..QueryResponse::default()
         })
     }
@@ -241,9 +257,8 @@ impl ItemService for Driver {
         let guards = stmts.len();
         for d in &req.deletes {
             let key = text(&d.key);
-            if d.log {
-                stmts.push(ns.log_delete(&key, now));
-            }
+            // Always asked: an item that was written with a log row is logged when it is removed, whatever the request.
+            stmts.push(ns.log_delete(&key, now, d.log));
             stmts.push(ns.delete_index(&key));
             stmts.push(ns.delete_item(&key));
         }
@@ -254,7 +269,7 @@ impl ItemService for Driver {
             let expires = p.expires_at.as_option().map(rules::ts_to_ms);
             stmts.push(ns.delete_index(&key));
             returning.push(stmts.len());
-            stmts.push(ns.upsert(&key, &p.value, expires));
+            stmts.push(ns.upsert(&key, &p.value, expires, p.log));
             let mut entries: Vec<_> = p.indexes.iter().map(|e| (&e.name, &e.value)).collect();
             entries.sort();
             entries.dedup();

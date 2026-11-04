@@ -13,7 +13,7 @@ use sluis_conformance::rules::{Expected, prefix_successor};
 use crate::client::{Param, Stmt, hex};
 
 /// The version of the schema this build speaks, kept in `<ns>_meta`.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// The most log rows one poll of a tail takes.
 pub const TAIL_BATCH: i64 = 500;
@@ -75,7 +75,7 @@ impl Ns {
             Stmt::new(
                 format!(
                     "CREATE TABLE IF NOT EXISTS {items}(key TEXT PRIMARY KEY, version INTEGER NOT NULL, \
-                     value BLOB NOT NULL, expires_at INTEGER)"
+                     value BLOB NOT NULL, expires_at INTEGER, logged INTEGER NOT NULL DEFAULT 0)"
                 ),
                 none(),
             ),
@@ -101,6 +101,16 @@ impl Ns {
                 format!(
                     "CREATE TABLE IF NOT EXISTS {log}(seq INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, \
                      version INTEGER NOT NULL, deleted INTEGER NOT NULL, logged_at INTEGER NOT NULL)"
+                ),
+                none(),
+            ),
+            // The log starts with a marker row, sequence 1, so that its head is never 0: a resume point
+            // of 0 means "from now" and a snapshot taken from an empty log must still have a position to
+            // watch from. Only a log that never had a row gets it (a trimmed log keeps its counter).
+            Stmt::new(
+                format!(
+                    "INSERT INTO {log}(seq, key, version, deleted, logged_at) SELECT 1, '', 0, 0, 0 \
+                     WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = '{log}')"
                 ),
                 none(),
             ),
@@ -270,22 +280,23 @@ impl Ns {
         }
     }
 
-    /// The change-log row of a delete: the item as it is now, if it is live. It runs before the
-    /// delete, so the row holds the version the item had.
+    /// The change-log row of a delete: the item as it is now, if it is there at all, expired or not, and it was
+    /// written with a log row or the delete asks for one. It runs before the delete, so the row holds the version
+    /// the item had. An item that had a log row is never removed without one, whatever the path: an expired item
+    /// that is not swept yet and is deleted would otherwise leave nothing for the sweeper to log.
     #[must_use]
-    pub fn log_delete(&self, key: &str, now: i64) -> Stmt {
+    pub fn log_delete(&self, key: &str, now: i64, asked: bool) -> Stmt {
         Stmt::new(
             format!(
                 "INSERT INTO {log}(key, version, deleted, logged_at) \
-                 SELECT key, version, 1, ? FROM {items} \
-                 WHERE key = ? AND (expires_at IS NULL OR expires_at > ?)",
+                 SELECT key, version, 1, ? FROM {items} WHERE key = ? AND (logged = 1 OR ?)",
                 log = self.log,
                 items = self.items
             ),
             vec![
                 Param::Int(now),
                 Param::Text(key.to_owned()),
-                Param::Int(now),
+                Param::Int(i64::from(asked)),
             ],
         )
     }
@@ -316,20 +327,21 @@ impl Ns {
     /// and `RETURNING` hands back the version it wrote, so no second read is needed and no race
     /// exists.
     #[must_use]
-    pub fn upsert(&self, key: &str, value: &[u8], expires_ms: Option<i64>) -> Stmt {
+    pub fn upsert(&self, key: &str, value: &[u8], expires_ms: Option<i64>, logged: bool) -> Stmt {
         let items = &self.items;
         Stmt::new(
             format!(
-                "INSERT INTO {items}(key, version, value, expires_at) VALUES (?, 1, unhex(?), ?) \
+                "INSERT INTO {items}(key, version, value, expires_at, logged) VALUES (?, 1, unhex(?), ?, ?) \
                  ON CONFLICT(key) DO UPDATE SET \
                  version = {items}.version + 1, \
-                 value = excluded.value, expires_at = excluded.expires_at \
+                 value = excluded.value, expires_at = excluded.expires_at, logged = excluded.logged \
                  RETURNING version"
             ),
             vec![
                 Param::Text(key.to_owned()),
                 Param::Text(hex(value)),
                 expires_ms.map_or(Param::Null, Param::Int),
+                Param::Int(i64::from(logged)),
             ],
         )
     }
@@ -366,10 +378,12 @@ impl Ns {
 
     // ---- the sweeper ------------------------------------------------------------------------
 
-    /// The two statements that free one batch of expired items and their index entries. The
-    /// second one's `rows_affected` is the batch size. Expiry is not a change, so no log row.
+    /// The three statements that free one batch of expired items and their index entries, and log
+    /// the removal of each one that was written with a log row (expiry is delivered to a watcher as
+    /// a delete, 0005 "Watch and the resume point"). The third one's `rows_affected` is the batch
+    /// size. All three pick the same keys: they run in one transaction.
     #[must_use]
-    pub fn sweep_expired(&self, now: i64, batch: i64) -> [Stmt; 2] {
+    pub fn sweep_expired(&self, now: i64, batch: i64) -> [Stmt; 3] {
         let pick = format!(
             "SELECT key FROM {} WHERE expires_at IS NOT NULL AND expires_at <= ? \
              ORDER BY expires_at, key LIMIT ?",
@@ -377,6 +391,15 @@ impl Ns {
         );
         let params = vec![Param::Int(now), Param::Int(batch)];
         [
+            Stmt::new(
+                format!(
+                    "INSERT INTO {log}(key, version, deleted, logged_at) \
+                     SELECT key, version, 1, ? FROM {items} WHERE logged = 1 AND key IN ({pick}) ORDER BY key",
+                    log = self.log,
+                    items = self.items
+                ),
+                [vec![Param::Int(now)], params.clone()].concat(),
+            ),
             Stmt::new(
                 format!("DELETE FROM {} WHERE key IN ({pick})", self.index),
                 params.clone(),
@@ -453,7 +476,7 @@ mod tests {
             after,
             ns().query("", None, Some(("n", b"v")), 3, 1),
             ns().guard("k", Expected::Version(2), 1),
-            ns().upsert("k", b"v", Some(9)),
+            ns().upsert("k", b"v", Some(9), true),
             ns().sweep_expired(1, 500)[0].clone(),
         ] {
             assert_eq!(s.sql.matches('?').count(), s.params.len(), "{}", s.sql);
@@ -462,7 +485,7 @@ mod tests {
 
     #[test]
     fn user_bytes_are_never_in_the_sql_text() {
-        let s = ns().upsert("k'; DROP TABLE x; --", b"v", None);
+        let s = ns().upsert("k'; DROP TABLE x; --", b"v", None, false);
         assert!(!s.sql.contains("DROP"));
         let g = ns().guard("k'; DROP TABLE x; --", Expected::Absent, 1);
         assert!(!g.sql.contains("DROP"));

@@ -1,5 +1,5 @@
-//! The item engine: the three calls of the item contract that store@ makes
-//! (`sluis.port.item.v2alpha1.ItemService`; `TailLog` waits for `Watch`, D-18).
+//! The item engine: the four calls of the item contract that store@ makes
+//! (`sluis.port.item.v2alpha1.ItemService`).
 //!
 //! The trait is the seam of the unit tests, which run an in-process engine. The Connect client
 //! below is the only code that talks to a driver, through `sluis_kit::dial`.
@@ -9,8 +9,8 @@ use std::future::Future;
 use connectrpc::error::ErrorCode;
 use sluis_kit::{Client, Transport, refusal_reason};
 use sluis_proto::sluis::port::item::v2alpha1::{
-    DriverItem, ItemGetRequest, ItemServiceClient, QueryRequest, QueryResponse, TransactRequest,
-    TransactResponse,
+    DriverItem, ItemGetRequest, ItemServiceClient, QueryRequest, QueryResponse, TailLogRequest,
+    TailLogResponse, TransactRequest, TransactResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::Refusal;
 
@@ -22,10 +22,20 @@ pub enum EngineError {
     Aborted(Option<usize>),
     /// The driver is down, slow or answered something outside its contract: store@ fails closed.
     Unavailable,
+    /// The change log no longer holds the sequence asked for, or has not reached it: a change could be missed.
+    SequenceExpired,
 }
 
-/// The durable or the temp engine, as store@ sees it.
-pub trait ItemEngine: Send + Sync + 'static {
+/// The rows of the change log as a task reads them from the driver: bounded, so a slow consumer stops the read and
+/// the driver's stream waits (flow control is the only buffer). The channel closing without an error is a driver that
+/// ended its stream.
+pub type LogRows = tokio::sync::mpsc::Receiver<Result<TailLogResponse, EngineError>>;
+
+/// Rows a tail task may hold before it waits for the consumer.
+const LOG_BUFFER: usize = 64;
+
+/// The durable or the temp engine, as store@ sees it. A clone shares the engine: a watch stream outlives the call.
+pub trait ItemEngine: Clone + Send + Sync + 'static {
     /// The item at a key, or None when it is absent or expired (the driver hides an expired item).
     fn get(
         &self,
@@ -44,9 +54,17 @@ pub trait ItemEngine: Send + Sync + 'static {
         &self,
         request: TransactRequest,
     ) -> impl Future<Output = Result<TransactResponse, EngineError>> + Send;
+
+    /// The change log after `from_sequence` (0: from now). The stream ends with an error when the driver fails;
+    /// a sequence the log does not hold is [`EngineError::SequenceExpired`], as the first thing it says.
+    fn tail_log(
+        &self,
+        from_sequence: u64,
+    ) -> impl Future<Output = Result<LogRows, EngineError>> + Send;
 }
 
 /// The driver on its socket.
+#[derive(Clone)]
 pub struct DriverEngine {
     client: ItemServiceClient<Transport>,
     port: &'static str,
@@ -139,5 +157,51 @@ impl ItemEngine for DriverEngine {
             }
             Err(e) => Err(self.down(&e)),
         }
+    }
+
+    async fn tail_log(&self, from_sequence: u64) -> Result<LogRows, EngineError> {
+        self.tail(from_sequence).await
+    }
+}
+
+impl DriverEngine {
+    /// The reason of a refusal that says the sequence is gone.
+    fn tail_error(&self, e: &connectrpc::ConnectError) -> EngineError {
+        if e.code == ErrorCode::FailedPrecondition
+            && refusal_reason(e).as_deref() == Some("sequence_expired")
+        {
+            return EngineError::SequenceExpired;
+        }
+        self.down(e)
+    }
+}
+
+impl DriverEngine {
+    async fn tail(&self, from_sequence: u64) -> Result<LogRows, EngineError> {
+        let mut stream = self
+            .client
+            .tail_log(TailLogRequest {
+                from_sequence,
+                ..TailLogRequest::default()
+            })
+            .await
+            .map_err(|e| self.tail_error(&e))?;
+        let (tx, rx) = tokio::sync::mpsc::channel(LOG_BUFFER);
+        let this = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let next = match stream.message().await {
+                    Ok(Some(m)) => Ok(m.to_owned_message()),
+                    Ok(None) => return,
+                    Err(e) => Err(this.tail_error(&e)),
+                };
+                let failed = next.is_err();
+                // The consumer is gone (the watch ended): stop reading, and the driver's stream is dropped.
+                if tx.send(next).await.is_err() || failed {
+                    return;
+                }
+            }
+        });
+        Ok(rx)
     }
 }

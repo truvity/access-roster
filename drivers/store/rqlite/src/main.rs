@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! rqlite serve --socket P --rqlite-url URL --namespace durable|temp [--sweep-interval 30s]
-//!              [--changelog-retention 24h] [--basic-auth-file F] [--socket-gid GID]
+//!              [--changelog-retention 1h] [--basic-auth-file F] [--socket-gid GID]
 //! rqlite check --rqlite-url URL --namespace durable|temp [--basic-auth-file F]
 //! rqlite conformance --socket P
 //! rqlite version
