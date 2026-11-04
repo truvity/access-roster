@@ -275,6 +275,12 @@ func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *i
 		if err := s.keys.openData(ctx, "upstream-link", tenant, id, env, l, grant); err != nil {
 			return "", err
 		}
+		// The id leaves the claim name out, so a link made under another claim with the same value has the same id.
+		// It is not this account: refused like a contradicted pin. This also closes the race in which another first
+		// sign-in writes the pin and the link between this one's read of the pin and its read of the link.
+		if l.GetIssuer() != a.GetIssuer() || l.GetSubjectClaim() != a.GetSubjectClaim() {
+			return "", errPinContradicted
+		}
 		return l.GetSubject(), nil
 	}
 	// Two rounds at most: the second follows a lost race, after which the pin exists.
@@ -287,6 +293,8 @@ func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *i
 		switch {
 		case err == nil:
 			return s.checkSubject(sub)
+		case errors.Is(err, errPinContradicted):
+			return "", false, err
 		case !errors.Is(err, store.ErrNotFound):
 			return "", false, unavailable("store", err)
 		}

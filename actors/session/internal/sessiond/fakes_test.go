@@ -75,9 +75,12 @@ type fakeStore struct {
 	items  map[string]*storedItem
 	// beforeWrite, when set, runs before a write is applied, with the lock held: a test makes a racing writer.
 	beforeWrite func(s *fakeStore, ops []*storev2alpha1.Operation)
-	writes      [][]*storev2alpha1.Operation // every accepted write
-	ttls        map[string]time.Duration     // the ttl each key was last written with
-	failWrites  error
+	// beforeGet, when set, runs before a get is answered, with the lock held: a test makes a writer that commits
+	// between two reads.
+	beforeGet  func(s *fakeStore, a *typev2alpha1.Address)
+	writes     [][]*storev2alpha1.Operation // every accepted write
+	ttls       map[string]time.Duration     // the ttl each key was last written with
+	failWrites error
 }
 
 // tenantKinds are the kinds whose address has a tenant.
@@ -158,6 +161,9 @@ func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.Ge
 	a := req.Msg.GetAddress()
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.beforeGet != nil {
+		f.beforeGet(f, a)
+	}
 	it, ok := f.live(key(a.GetKind(), a.GetTenant(), a.GetId()))
 	if !ok {
 		return nil, refusal.New(connect.CodeNotFound, "absent", "address")
