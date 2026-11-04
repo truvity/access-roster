@@ -837,3 +837,15 @@ requirements:
     issues: [1142]
     verification:
       - {kind: integration-test, ref: "the server behind the discovery document and key set is stopped; the network still serves them within the window"}
+  - id: REQ-BACKUP-064
+    area: BACKUP
+    statement: "Roll-forward after a restore MUST re-apply every key revocation recorded after the archive was taken."
+    rationale: "A restore never loosens what was tightened, and a revoked key must not come back with an older archive (ADR 0041, principle 12)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "restore an archive older than a revocation: the key stays revoked and its set lacks it"}

@@ -210,9 +210,9 @@ requirements:
       - {kind: integration-test, ref: "record chain and secret scan test"}
   - id: REQ-PKI-007
     area: PKI
-    statement: "sluis MAY publish a static certificate revocation list."
+    statement: "sluis MUST publish a static certificate revocation list for each intermediate."
     rationale: "Static revocation fits short-lived certificates."
-    level: MAY
+    level: MUST
     source: design-decision
     status: planned
     runtimes: all
@@ -689,3 +689,15 @@ requirements:
     issues: [1066, 1067]
     verification:
       - {kind: test-vectors, ref: "hand-off fixtures: a request with a back-signature for each of two active primaries verifies, and one missing a primary is refused"}
+  - id: REQ-PKI-052
+    area: PKI
+    statement: "On a declared compromise of an intermediate key, ca MUST stop issuing under it and remove its certificate from the trust bundle that it renders, without waiting for the root's revocation list."
+    rationale: "The trust bundle is the control that relying parties apply, and the root's list follows later (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare an intermediate: ca refuses a new request under it and the next trust bundle lacks its certificate"}

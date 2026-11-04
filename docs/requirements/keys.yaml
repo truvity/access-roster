@@ -169,8 +169,8 @@ requirements:
       - {kind: integration-test, ref: "the edge configuration of a test installation is read: the time to live of the key set is at most 300 seconds, and a key removed at the server is gone from the edge within it"}
   - id: REQ-KEYS-007
     area: KEYS
-    statement: "Key rotation MUST overlap for at least the token lifetime plus allowed clock skew."
-    rationale: "A new key must be verifiable before it signs."
+    statement: "Key rotation MUST overlap for at least the token lifetime plus allowed clock skew, except a revocation for compromise under REQ-KEYS-087."
+    rationale: "A new key must be verifiable before it signs, and a compromised key must not wait for an overlap that exists for a healthy one (ADR 0041)."
     level: MUST
     source: v1-parity
     status: planned
@@ -295,7 +295,7 @@ requirements:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [800, 836]
     verification:
-      - {kind: integration-test, ref: "alert-rule test (retired data key generation)"}
+      - {kind: integration-test, ref: "alert-rule test (retired data key generation), with a planned re-seal defined as the job of REQ-KEYS-096"}
   - id: REQ-KEYS-019
     area: KEYS
     split_from: REQ-KEYS-011
@@ -854,7 +854,7 @@ requirements:
     standards: []
     issues: [1211]
     verification:
-      - {kind: integration-test, ref: "the rotation job skips the audit-log and issuance-log purposes; a compromise procedure replaces one"}
+      - {kind: integration-test, ref: "the rotation job skips the audit-log and issuance-log purposes; a compromise replaces one by a key-change record that REQ-AUDIT-163 verifies"}
   - id: REQ-KEYS-061
     area: KEYS
     statement: "An authority key MUST be used to sign only inside its key store."
@@ -1041,7 +1041,7 @@ requirements:
       - {kind: integration-test, ref: "a KeyCertificate whose thumbprint differs from the listed id is not used"}
   - id: REQ-KEYS-076
     area: KEYS
-    statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin."
+    statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
     rationale: "Every cache between sluis and a relying party must hold the key before the first token carries it, and the lead time follows from the cache budget that sluis publishes (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1054,8 +1054,8 @@ requirements:
       - {kind: integration-test, ref: "a key joins the key set as pre-published, signs nothing for 30 minutes, and then becomes active"}
   - id: REQ-KEYS-077
     area: KEYS
-    statement: "A node MUST rotate only the token-signing key that its own key@ holds."
-    rationale: "One node's rotation must not retire the key that another node is signing with (ADR 0006)."
+    statement: "A node MUST move only the token-signing key that its own key@ holds through the states pre-published, active and retiring."
+    rationale: "One node's rotation must not retire the key that another node is signing with; revoking another node's key is a tightening that REQ-KEYS-090 allows (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1080,8 +1080,8 @@ requirements:
       - {kind: integration-test, ref: "a retiring key is in the key set at 64 minutes and absent after 65 minutes with a moved clock"}
   - id: REQ-KEYS-079
     area: KEYS
-    statement: "A retiring token-signing key MUST NOT become active again."
-    rationale: "A key that has begun to leave the key set must not return to signing (ADR 0006)."
+    statement: "A retiring or revoked token-signing key MUST NOT become active again or return to the published key set."
+    rationale: "A key that has begun to leave the key set, or has been revoked, must not return to signing or to the set (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
     status: planned
@@ -1157,3 +1157,172 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "the published key set lags the store by an hour; the new key stays pre-published until 30 minutes after it is read back from the public URL, and the live key set counts from the write"}
+  - id: REQ-KEYS-087
+    area: KEYS
+    statement: "When an operator declares a token-signing key compromised or suspected, signer MUST move it to revoked and omit it from the published key set at once, with neither the pre-publication period nor the retention period."
+    rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare a key: the next key set lacks its kid and a token it signed fails against it, with no wait of 65 minutes"}
+  - id: REQ-KEYS-088
+    area: KEYS
+    statement: "sluis key revoke MUST report a revocation as not confirmed until it has fetched the published key set and found the kid absent."
+    rationale: "A check that cannot run is reported as not run, and a stale edge copy must not look like a finished revocation (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the edge serves a stale key set after a revocation: the command prints not confirmed, and confirmed once the set lacks the kid"}
+  - id: REQ-KEYS-089
+    area: KEYS
+    statement: "A replacement for a revoked token-signing key MUST sign at once when no other key of the issuer is active, with its key set published and purged at the edge before its first token."
+    rationale: "Waiting for the lead time would stop every sign-in of a single-key installation, and a verifier that does not fetch the key set again on an unfamiliar kid is broken against the standard (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke the only key: a new key signs at once after its set is published and purged; a verifier that fetches on an unfamiliar kid accepts the token, and one that does not is reported"}
+  - id: REQ-KEYS-090
+    area: KEYS
+    statement: "The signer of any node and the operator command MUST each be able to revoke the token-signing key of any node."
+    rationale: "A compromised or stopped owner must not decide whether its own key leaves (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "node B revokes node A's key while A is down; the key set lacks it"}
+  - id: REQ-KEYS-091
+    area: KEYS
+    statement: "The store MUST refuse every write that moves a token-signing key out of the revoked state."
+    rationale: "A revocation is terminal, whatever the owner node, a restore or a roll-forward writes (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the owner node rewrites a revoked key as active, and a restore replays an older ring: both are refused or ignored"}
+  - id: REQ-KEYS-092
+    area: KEYS
+    statement: "sluis MUST provide a command that revokes a key or a key purpose with a reason, as a tighten-only run-time record that works while the actor of the compromised node is down."
+    rationale: "One revocation path for every kind lets an operator act without a deploy (ADR 0041, principle 12)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a data key generation, a recipient and a purpose through the command with one actor stopped; each takes effect and none can be undone through the record"}
+  - id: REQ-KEYS-093
+    area: KEYS
+    statement: "A peer MUST refuse a PinReleaseRequest from a board that the recipient list of the KeyPlan does not name."
+    rationale: "A stolen board that reconnects must not be given its PIN (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a board removed from the list asks for its PIN: refused and an audit fact; a listed board is answered"}
+  - id: REQ-KEYS-094
+    area: KEYS
+    statement: "key@ MUST remove a revoked recipient from the wraps of every new data key at once and delete its existing wraps."
+    rationale: "A lost or stolen board must not receive or keep access to any data key (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "revoke a board: a new data key has no wrap for it, its existing wraps are deleted and the other boards still open"}
+  - id: REQ-KEYS-095
+    area: KEYS
+    statement: "On a declared compromise of a data key other than mac, pairwise and evidence, key@ MUST make a new generation and stop opening the compromised one at once."
+    rationale: "A generation that still opens is a generation the thief can open (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "per purpose (grant, cookie, chain, data, pseudonym): declare, then the old generation refuses to open and the new one seals"}
+  - id: REQ-KEYS-096
+    area: KEYS
+    statement: "key@ MUST re-seal the values of a compromised data key generation under the new one as a paginated, asynchronous and idempotent job, and delete the old wraps when the job ends."
+    rationale: "Values sealed under a compromised generation must move without a stop of the service, and a job that is run twice must do no harm (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "stop the job half way and run it again: every value opens under the new generation and the old wraps are gone"}
+  - id: REQ-KEYS-097
+    area: KEYS
+    statement: "The compromise of the cookie data key MUST end every browser session of the boundary at the next request."
+    rationale: "A forged session cookie must stop working, and people sign in again (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "declare the cookie key: the next request with an old cookie is refused and a refresh-token chain still works"}
+  - id: REQ-KEYS-098
+    area: KEYS
+    statement: "sluis MUST provide a command that changes a card PIN and delivers the new PIN to the key@ of the board over the unlock channel."
+    rationale: "A suspected PIN has no remedy short of replacing the board without it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: ["bare-metal"]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "change the PIN on a virtual card, then the board unlocks with the new one and not the old"}
+      - {kind: manual, ref: "rehearsal on a real card"}
+  - id: REQ-KEYS-099
+    area: KEYS
+    statement: "key@ MUST disable a compromised AWS wrapping key only after every wrap has been rewrapped under its replacement."
+    rationale: "Disabling first would lose the data, and automatic key rotation keeps the old key material (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "replace the wrapping key of a test boundary: the old key is disabled after the last rewrap and not before, and every value opens"}
+  - id: REQ-KEYS-100
+    area: KEYS
+    statement: "On AWS key@ MUST also wrap every data key for the offline recovery recipient."
+    rationale: "A disabled wrapping key must not make every old archive unreadable (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: [serverless, kubernetes]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a data key made on AWS has a wrap for the recovery recipient that the ceremony tooling opens"}
