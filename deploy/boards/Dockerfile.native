@@ -1,0 +1,16 @@
+# The native build of the executables that link a C library (deploy/boards/native.list), in an Ubuntu 22.04 userland of
+# the platform it is built for. `just build-arm64-native` runs it with `docker buildx build --platform linux/arm64`;
+# on a host of another architecture the platform runs under QEMU. CI does not use this file: its job runs
+# native-build.sh in an ubuntu:22.04 container on a hosted arm64 runner.
+#
+# The base is pinned by the digest of the multi-architecture index (ubuntu:22.04, checked 2026-11-04).
+FROM ubuntu:22.04@sha256:076e7bf82319619f28dd0aa9c02ab34b055ad37100395b4f49a2ffba04fb5e11 AS build
+# The race detector (ThreadSanitizer) does not run under QEMU; the CI job runs the tests with it on a real arm64 host.
+ENV SLUIS_NATIVE_RACE=0
+WORKDIR /src
+COPY . /src
+RUN deploy/boards/native-build.sh
+
+# The artifact stage holds the output and nothing else: --output type=local copies it out.
+FROM scratch AS artifact
+COPY --from=build /src/dist/native /
