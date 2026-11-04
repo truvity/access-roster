@@ -15,10 +15,14 @@
 //! (ADR 0006 "Rotation": the new key first, the old one after; ADR 0017 "Issuers"). A retiring
 //! key never signs again:
 //!
-//! - **`pre-published`**: in the key set, not signing. A verifier that caches the key set learns the
-//!   key before the first token is signed with it, which is the lesson of v1 (SLU-290: a verifier
-//!   may hold a key set for a long time and does not refetch on an unknown `kid`; v1.80.2 publishes a
-//!   key for 12 hours before it signs). A key becomes `active` after [`Timing::prepublish`].
+//! - **`pre-published`**: in the key set, not signing. Every cache between sluis and a verifier learns
+//!   the key before the first token is signed with it. The lead time, [`Timing::prepublish`], is
+//!   derived from the cache budget that sluis publishes (ADR 0006 "Rotation"): the key set's
+//!   `max-age` of 300 s, the edge cache's time to live of at most as much, 10 minutes for a
+//!   verifier's throttled refetch on an unknown `kid` (OpenID Connect Core section 10.1.1) and
+//!   5 minutes of clock skew, 25 minutes, rounded up to 30. A verifier that keeps the set longer than
+//!   `max-age` and does not refetch on an unknown `kid` is broken; v1 published a key for 12 hours
+//!   because of one, and v2 detects such a verifier instead. A key becomes `active` after the lead time.
 //! - **`active`**: the key that signs. `signer` signs only when the key key@ signs with is `active`.
 //! - **`retiring`**: stopped signing, still in the key set until every token it signed has expired:
 //!   the longest token lifetime plus the clock skew (REQ-KEYS-007). Any instance then drops it.
@@ -75,7 +79,9 @@ impl Kind for RingKind {
 /// How long a key is published before it signs, and after it stopped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Timing {
-    /// A new key is published this long before it signs. v1.80.2 uses 12 hours (SLU-290).
+    /// A new key is published this long before it signs: the key set's `max-age` (300 s), the edge
+    /// time to live (at most 300 s), a verifier's throttled refetch (10 minutes) and clock skew
+    /// (5 minutes), rounded up to 30 minutes (ADR 0006 "Rotation", REQ-KEYS-076).
     pub prepublish: Duration,
     /// A key that stopped signing stays published this long: the longest token lifetime of one hour
     /// (ADR 0020 "Lifetimes") plus five minutes of clock skew (REQ-KEYS-007).
@@ -86,9 +92,9 @@ pub struct Timing {
 }
 
 impl Timing {
-    /// The values of v1, kept so that a relying party tuned to them keeps working.
+    /// The values of ADR 0006 "Rotation": 30 minutes before a key signs, 65 minutes after.
     pub const DEFAULT: Self = Self {
-        prepublish: Duration::from_secs(12 * 3600),
+        prepublish: Duration::from_secs(30 * 60),
         retain: Duration::from_secs(HARD_CAP_SECS.unsigned_abs() + 5 * 60),
         bootstrap: Duration::from_secs(15 * 60),
     };
@@ -403,7 +409,7 @@ mod tests {
 
     const MIN: u64 = 60;
     const HOUR: u64 = 3600;
-    const WINDOW: u64 = 12 * HOUR;
+    const WINDOW: u64 = 30 * MIN;
     const A: &str = "node-a";
     const B: &str = "node-b";
 
@@ -437,8 +443,12 @@ mod tests {
     }
 
     #[test]
-    fn the_window_is_the_twelve_hours_of_v1() {
-        assert_eq!(T.prepublish, Duration::from_secs(12 * HOUR));
+    fn the_window_is_the_cache_budget_of_the_key_set() {
+        // 300 s of max-age + 300 s of edge time to live + 10 minutes of refetch + 5 minutes of
+        // skew is 25 minutes, rounded up to 30 (ADR 0006 "Rotation").
+        let derived = Duration::from_secs(300 + 300 + 10 * 60 + 5 * 60);
+        assert!(T.prepublish >= derived);
+        assert_eq!(T.prepublish, Duration::from_secs(30 * MIN));
         assert_eq!(T.retain, Duration::from_secs(65 * MIN));
     }
 
