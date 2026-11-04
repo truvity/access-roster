@@ -22,6 +22,8 @@ default:
     - signer.ring.add
     - signer.ring.change
     - signer.ring.drop
+    - exchange.token
+    - exchange.refused
     # entry: one action per route, named entry.<route> (actors/entry/src/audit.rs); a request that
     # matched no route is entry.unrouted (actors/entry/src/handler.rs).
     - entry.connection
