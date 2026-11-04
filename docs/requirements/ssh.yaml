@@ -9,6 +9,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-65, section: "1", depth: Full}
@@ -24,6 +25,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-65, section: "1", depth: Full}
@@ -38,6 +40,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-65, section: "1", depth: Full}
@@ -51,6 +54,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-65, section: "1", depth: Full}
@@ -64,7 +68,9 @@ requirements:
     rationale: "Host certificates remove trust-on-first-use."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: attestation-missing
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-65, section: "1", depth: Full}
@@ -79,6 +85,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-66, section: "1", depth: Full}
@@ -92,6 +99,7 @@ requirements:
     level: MAY
     source: v1-parity
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-07, section: "OpenPubkey", depth: Full}
@@ -106,6 +114,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards: []
     issues: [1072]
@@ -118,6 +127,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1369]
     runtimes: ["bare-metal", "kubernetes"]
     standards: []
     features: ["design"]
@@ -130,6 +141,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1369]
     runtimes: ["bare-metal", "kubernetes"]
     standards: []
     features: ["design"]

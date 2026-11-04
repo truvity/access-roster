@@ -204,6 +204,7 @@ func wantRefusalNamed(t *testing.T, name string, err error, code connect.Code, r
 	t.Run(name, func(t *testing.T) { wantRefusal(t, err, code, reason) })
 }
 
+// verifies: REQ-KEYS-029
 func TestSealOpenRules(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

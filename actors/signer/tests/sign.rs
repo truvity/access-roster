@@ -1004,6 +1004,7 @@ async fn the_ring_is_created_once_per_boundary_even_when_two_instances_start_tog
     assert_eq!(w.store.writes.lock().unwrap().len(), 1);
 }
 
+/// verifies: REQ-KEYS-076, REQ-KEYS-078
 #[tokio::test]
 async fn a_new_key_is_published_before_it_signs_and_an_old_one_stays_while_its_tokens_live() {
     let w = World::new().await;
