@@ -13,6 +13,7 @@ func ctx() wrap.Context {
 	return wrap.Context{Boundary: "dev", Tenant: "acme", Purpose: "data", Generation: 1, Recipient: "node-1-abcdefghijklmnop"}
 }
 
+// verifies: REQ-ISO-068
 func TestWrapRoundTrip(t *testing.T) {
 	recipient, _ := ecdh.P384().GenerateKey(rand.Reader)
 	dk := bytes.Repeat([]byte{7}, 32)

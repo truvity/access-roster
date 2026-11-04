@@ -8,7 +8,9 @@ requirements:
     rationale: "One model, three runtimes."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -22,7 +24,9 @@ requirements:
     rationale: "One model, three runtimes."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -36,6 +40,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards:
       - {id: NC-09, section: "OCI", depth: Full}
@@ -50,6 +55,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     standards:
       - {id: NC-09, section: "OCI", depth: Full}
@@ -64,6 +70,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards:
       - {id: NC-09, section: "OCI", depth: Full}
@@ -76,7 +83,8 @@ requirements:
     rationale: "Only the edge is exposed."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -90,7 +98,8 @@ requirements:
     rationale: "Only the edge connector reaches entry, and entry runs with no network (ADR 0003)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-97, section: "1", depth: Partial}
@@ -117,7 +126,9 @@ requirements:
     rationale: "Least privilege on the host."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -131,7 +142,8 @@ requirements:
     rationale: "Least privilege on the host."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -144,7 +156,9 @@ requirements:
     rationale: "Tags are mutable."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: ["kubernetes"]
     standards:
       - {id: NC-09, section: "OCI", depth: Full}
@@ -172,7 +186,9 @@ requirements:
     rationale: "Honesty about test coverage."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-104, section: "1", depth: Full}
@@ -186,7 +202,9 @@ requirements:
     rationale: "The rendered artifacts are the contract, so any tool can apply them (ADR 0015)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [846]
@@ -199,6 +217,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [845]
@@ -213,6 +232,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -225,6 +245,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -237,6 +258,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -249,6 +271,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -261,6 +284,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -274,6 +298,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -286,6 +311,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876, 878]
@@ -298,6 +324,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -310,6 +337,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -322,6 +350,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards:
       - {id: ST-46, section: "AssumeRoleWithWebIdentity", depth: Full}

@@ -230,7 +230,7 @@ func TestAnEmptyAMRIsPresent(t *testing.T) {
 	}
 }
 
-// verifies: REQ-FED-001, REQ-FED-011, REQ-FED-012, REQ-FED-013, REQ-FED-015, REQ-FED-003
+// verifies: REQ-FED-001, REQ-FED-011, REQ-FED-012, REQ-FED-013, REQ-FED-015, REQ-FED-003, REQ-SEC-012
 func TestCompleteRefusesWhatDoesNotVerify(t *testing.T) {
 	other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {

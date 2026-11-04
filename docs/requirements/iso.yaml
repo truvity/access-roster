@@ -30,6 +30,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
@@ -77,6 +78,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [963, 800]
@@ -89,6 +91,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards:
@@ -105,6 +108,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards:
@@ -118,7 +122,9 @@ requirements:
     rationale: "A token key that signs certificates would let a token signer mint a CA."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards:
@@ -158,7 +164,9 @@ requirements:
     rationale: "A compromised key@ or caller is found by its signatures, so each one must be on the record."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards: []
@@ -216,6 +224,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [975, 839]
@@ -301,6 +310,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
@@ -313,7 +323,9 @@ requirements:
     rationale: "Create-if-absent means a compromised writer cannot rewrite what was already written."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1121, 837, 851]
@@ -326,6 +338,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [954]
@@ -339,7 +352,9 @@ requirements:
     rationale: "A sender that can write to another actor's queue can forge that actor's events."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-103, depth: Partial}
@@ -354,6 +369,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [kubernetes]
     standards:
       - {id: NC-17, depth: Partial}
@@ -369,6 +385,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [802]
@@ -383,6 +400,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-18, section: "7.1", depth: Partial}
@@ -397,7 +415,9 @@ requirements:
     rationale: "A readable client ID that each relying party pins stops a token for one client being accepted by another."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-52, section: "4.1.3", depth: Partial}
@@ -411,7 +431,9 @@ requirements:
     rationale: "A resource URL in aud would make the audience whatever the requester wrote."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-08, section: "2", depth: Partial}
@@ -425,6 +447,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Partial}
@@ -437,7 +460,9 @@ requirements:
     rationale: "A token signed in one environment then cannot verify in another, whatever its claims say."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-50, depth: Partial}
@@ -453,6 +478,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-12, depth: Partial}
@@ -466,6 +492,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -481,6 +508,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "7.2", depth: Partial}
@@ -494,7 +522,9 @@ requirements:
     rationale: "A stolen cookie then reaches only the boundaries with a loose freshness rule, and only for as long as the rule allows."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-24, section: "3", depth: Full}
@@ -508,6 +538,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-12, depth: Partial}
@@ -522,6 +553,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-12, depth: Partial}
@@ -548,6 +580,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-109, section: "2", depth: Partial}
@@ -563,6 +596,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-109, section: "5", depth: Partial}
@@ -578,6 +612,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-110, section: "3.2", depth: Partial}
@@ -592,7 +627,9 @@ requirements:
     rationale: "A compromised entry that cannot connect out cannot send what it sees anywhere."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -606,7 +643,9 @@ requirements:
     rationale: "What entry does not hold cannot be stolen from it."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -622,6 +661,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-06, depth: Partial}
@@ -636,6 +676,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [966]
@@ -648,6 +689,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [965]
@@ -660,6 +702,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-61, section: "5.1", depth: Partial}
@@ -674,6 +717,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [bare-metal, kubernetes]
     standards:
       - {id: ST-108, section: "4.1", depth: Partial}
@@ -700,6 +744,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [966, 967]
@@ -726,7 +771,9 @@ requirements:
     rationale: "Adapters hold vendor connections, so they must not also be able to sign for sluis."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [863]
@@ -766,7 +813,9 @@ requirements:
     rationale: "Generated policies help only while what is deployed still matches them."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [863]
@@ -781,6 +830,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-46, depth: Partial}
@@ -808,7 +858,9 @@ requirements:
     rationale: "A person link records that two accounts are one person; it must not merge what each company granted."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [807, 809]
@@ -834,6 +886,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [973]
@@ -845,7 +898,8 @@ requirements:
     rationale: "While the PIN is verified any local process can sign, and any client can reset the card or lock its PIN."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards: []
@@ -885,6 +939,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-108, depth: Partial}
@@ -898,6 +953,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-108, depth: Partial}
@@ -911,6 +967,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [892, 914]
@@ -922,7 +979,9 @@ requirements:
     rationale: "Only sluis itself verifies a grant, so a seal under a key that never leaves key@ makes a signature on a grant unnecessary."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [892, 914]
@@ -934,7 +993,8 @@ requirements:
     rationale: "Shredding a tenant deletes its wraps, and the context keeps one tenant's wraps from opening for another."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [914]
@@ -946,7 +1006,9 @@ requirements:
     rationale: "Thousands of tenants would otherwise mean thousands of store keys, policies and aliases; per-tenant signing keys are a possible later feature."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [914]
@@ -972,6 +1034,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: ST-108, depth: Partial}
@@ -984,7 +1047,9 @@ requirements:
     rationale: "Two boundaries then never share a uid, so the peer-uid check can tell their instances apart."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [863]
@@ -997,6 +1062,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [863]
@@ -1009,6 +1075,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal", "kubernetes"]
     standards: []
     issues: [968]
@@ -1021,6 +1088,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]
@@ -1046,6 +1114,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]
@@ -1058,6 +1127,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]
@@ -1069,7 +1139,9 @@ requirements:
     rationale: "A compromised adapter then reaches the upstreams of one boundary only."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [916]
@@ -1108,6 +1180,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1214]
@@ -1136,6 +1209,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [877, 851, 950]
@@ -1147,7 +1221,9 @@ requirements:
     rationale: "Two checks in different holders, with different credentials and different registries, mean a flaw in one is caught by the other (ADR 0007)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -1161,7 +1237,9 @@ requirements:
     rationale: "A work actor that holds a credential is a second holder and a bigger blast radius (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [949]
@@ -1175,6 +1253,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     standards: []
     issues: [949]
@@ -1186,7 +1265,9 @@ requirements:
     rationale: "Loading config and reading secrets belong to store@, and a driver belongs to its owner (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1213]
@@ -1198,7 +1279,9 @@ requirements:
     rationale: "An X.509 CA and an SSH CA have different callers, keys and blast radius (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1213]
@@ -1210,7 +1293,9 @@ requirements:
     rationale: "One transport for every call keeps the rules and the audit the same whether actors are fused or not (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1213]
@@ -1222,7 +1307,9 @@ requirements:
     rationale: "The call graph is a reviewed registry, and a compromised actor must not call outside it (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [949]
@@ -1235,7 +1322,9 @@ requirements:
     rationale: "A handwritten matrix drifts from what is enforced (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [949]
@@ -1247,7 +1336,9 @@ requirements:
     rationale: "Entry is the one actor that faces the internet, so it gets the most hostile input (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [entry]
     standards: []
@@ -1260,7 +1351,9 @@ requirements:
     rationale: "A plugin is code that nobody reviewed with the actor (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -1273,7 +1366,9 @@ requirements:
     rationale: "What entry cannot write it cannot plant (ADR 0002)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -1288,7 +1383,8 @@ requirements:
     rationale: "Unix sockets with a peer-uid check are the only inbound path, so the network reaches no actor (ADR 0003)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     standards: []
     issues: [866]
@@ -1300,7 +1396,8 @@ requirements:
     rationale: "Entry is then reached only by the tunnel's connector (ADR 0003)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal"]
     actors: [entry]
     standards: []
@@ -1314,6 +1411,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless"]
     actors: [entry]
     standards: []
@@ -1327,6 +1425,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1213]
@@ -1340,6 +1439,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -1352,6 +1452,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -1364,6 +1465,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -1375,7 +1477,9 @@ requirements:
     rationale: "An actor that can exec a driver can run it with its own arguments (ADR 0003)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [862]
@@ -1388,6 +1492,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1213]
@@ -1402,6 +1507,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1214]
@@ -1413,7 +1519,9 @@ requirements:
     rationale: "Core calls the adapter, and the adapter's one call is to policy for the grant of work that no caller started (ADR 0025)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1214]
@@ -1426,6 +1534,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1216]
@@ -1438,6 +1547,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1216]
@@ -1452,6 +1562,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [949, 876]
@@ -1464,6 +1575,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [949, 876]
@@ -1477,6 +1589,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -1489,6 +1602,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     actors: [entry]
     standards: []
@@ -1502,6 +1616,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["kubernetes"]
     standards: []
     issues: [876]
@@ -1514,6 +1629,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1023]

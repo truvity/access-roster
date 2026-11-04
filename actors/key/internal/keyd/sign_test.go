@@ -92,7 +92,7 @@ func TestSignTokenVerifiesWithJose(t *testing.T) {
 	}
 }
 
-// verifies: REQ-KEYS-029
+// verifies: REQ-ISO-008, REQ-KEYS-029
 func TestSignRefusals(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

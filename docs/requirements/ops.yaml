@@ -8,7 +8,9 @@ requirements:
     rationale: "Placement is derived from rules, not chosen."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -23,6 +25,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -35,7 +38,9 @@ requirements:
     rationale: "Silent typos are bugs."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -49,7 +54,8 @@ requirements:
     rationale: "Silent typos are bugs."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -132,7 +138,9 @@ requirements:
     rationale: "Fail closed with bounded impact."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -146,7 +154,9 @@ requirements:
     rationale: "Fail closed with bounded impact; cached group membership inside its bounded staleness window is not a weaker path, and past the window the request is refused (ADR 0017)."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -161,6 +171,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -174,6 +185,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -186,7 +198,9 @@ requirements:
     rationale: "Test doors must not ship."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -306,6 +320,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [864]
@@ -318,6 +333,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [805]
@@ -395,6 +411,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1017]
@@ -491,6 +508,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1061]
@@ -503,6 +521,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1142]
@@ -516,6 +535,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1142]
@@ -529,6 +549,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1157]
@@ -1003,6 +1024,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
@@ -1016,6 +1038,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1363]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1029,6 +1053,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1363]
     runtimes: all
     standards: []
     features: ["design"]

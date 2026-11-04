@@ -401,6 +401,7 @@ func TestTheRequestIsChecked(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-012
 func TestASubjectTokenThatIsNotAcceptableIsInvalidRequest(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	other := newSigner(t)
