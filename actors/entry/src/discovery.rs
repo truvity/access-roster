@@ -125,8 +125,8 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["ES384"],
         "code_challenge_methods_supported": ["S256"],
-        // Only what every grant of /token accepts: the exchange grant carries no client
-        // authentication yet (TokenExchangeRequest has no field for it), so a secret is not offered.
+        // Only what every grant of /token accepts: no grant authenticates a client by a secret
+        // yet, so a secret method is not offered.
         "token_endpoint_auth_methods_supported": ["none"],
     });
     serde_json::to_vec(&doc).ok()

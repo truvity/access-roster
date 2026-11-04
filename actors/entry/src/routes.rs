@@ -67,7 +67,8 @@ pub(crate) const TOKEN_REFRESH: &[&str] = &[
     "client_secret",
 ];
 
-/// `TokenExchangeRequest`: RFC 8693 section 2.1.
+/// `TokenExchangeRequest`: RFC 8693 section 2.1, and `client_secret` of RFC 6749 section 2.3.1.
+/// `authorization` is a header.
 pub(crate) const TOKEN_EXCHANGE: &[&str] = &[
     "grant_type",
     "subject_token",
@@ -79,6 +80,7 @@ pub(crate) const TOKEN_EXCHANGE: &[&str] = &[
     "client_id",
     "actor_token",
     "actor_token_type",
+    "client_secret",
 ];
 
 /// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
@@ -144,7 +146,7 @@ mod tests {
         );
         assert_eq!(
             fields(EXCHANGE, "TokenExchangeRequest"),
-            set(TOKEN_EXCHANGE, &[])
+            set(TOKEN_EXCHANGE, &["authorization"])
         );
         assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
     }

@@ -21,13 +21,14 @@ const (
 // "OAuth and OpenID Connect endpoints"). An unknown and a refused audience have the one text.
 var descriptions = map[string]string{
 	codeInvalidRequest:   "The request or the subject token is not acceptable.",
+	codeInvalidClient:    "Client authentication failed.",
 	codeInvalidTarget:    "A token for the requested audience cannot be issued.",
 	codeInvalidScope:     "The requested scope is not supported.",
 	codeUnsupportedGrant: "The grant type is not supported.",
 }
 
 // reply makes the HttpReply of the token endpoint: JSON that no cache keeps (RFC 6749 section 5.1).
-func reply(status int32, body any) *typev2alpha1.HttpReply {
+func reply(status int32, body any, extra ...*typev2alpha1.Header) *typev2alpha1.HttpReply {
 	b, err := json.Marshal(body)
 	if err != nil {
 		// Unreachable: the bodies are strings and numbers.
@@ -36,21 +37,29 @@ func reply(status int32, body any) *typev2alpha1.HttpReply {
 	}
 	return &typev2alpha1.HttpReply{
 		Status: status,
-		Headers: []*typev2alpha1.Header{
+		Headers: append([]*typev2alpha1.Header{
 			{Name: "Content-Type", Value: "application/json"},
 			{Name: "Cache-Control", Value: "no-store"},
 			{Name: "Pragma", Value: "no-cache"},
-		},
+		}, extra...),
 		Body: b,
 	}
 }
 
-// errorReply is the answer to a request that is refused (RFC 6749 section 5.2, RFC 8693 section 2.2.2).
-func errorReply(code string) *typev2alpha1.HttpReply {
-	return reply(400, struct {
+// errorReply is the answer to a request that is refused (RFC 6749 section 5.2, RFC 8693 section 2.2.2). An
+// invalid_client is a 401, and one for a client that used HTTP Basic names the scheme (RFC 6749 section 5.2).
+func errorReply(r *refused) *typev2alpha1.HttpReply {
+	body := struct {
 		Error       string `json:"error"`
 		Description string `json:"error_description"`
-	}{code, descriptions[code]})
+	}{r.code, descriptions[r.code]}
+	if r.code != codeInvalidClient {
+		return reply(400, body)
+	}
+	if r.basic {
+		return reply(401, body, &typev2alpha1.Header{Name: "WWW-Authenticate", Value: `Basic realm="sluis", charset="UTF-8"`})
+	}
+	return reply(401, body)
 }
 
 // successReply is the answer to an exchange (RFC 8693 section 2.2.1). It carries no refresh token (REQ-EXCH-010) and

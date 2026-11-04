@@ -11,17 +11,14 @@
 
 use connectrpc::error::ErrorCode;
 
-/// Which fixed body a refusal has, beyond the status. Two answers are specified by the standard
-/// for one case and are fixed too.
+/// Which fixed body a refusal has, beyond the status. One answer is specified by the standard for
+/// one case and is fixed too.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     /// The one body of the status.
     Standard,
     /// A `grant_type` this boundary does not serve (RFC 6749 section 5.2).
     UnsupportedGrant,
-    /// A client that authenticated in a way the endpoint cannot accept: 401 with `WWW-Authenticate`
-    /// (RFC 6749 section 5.2, `invalid_client`).
-    ClientAuth,
 }
 
 /// A refusal: the HTTP status, the reason for the audit record, and the methods to offer on a 405.
@@ -49,13 +46,6 @@ impl Refuse {
         Self {
             kind: Kind::UnsupportedGrant,
             ..Self::new(400, "grant_type")
-        }
-    }
-
-    pub(crate) const fn client_auth(reason: &'static str) -> Self {
-        Self {
-            kind: Kind::ClientAuth,
-            ..Self::new(401, reason)
         }
     }
 
@@ -88,7 +78,7 @@ impl Refuse {
     }
 }
 
-/// The fixed body of a refusal: one per status, and the two of [`Kind`].
+/// The fixed body of a refusal: one per status, and the one of [`Kind`] besides.
 pub(crate) fn body_of(r: &Refuse) -> &'static str {
     match r.kind {
         Kind::UnsupportedGrant => {

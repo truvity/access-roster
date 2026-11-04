@@ -23,6 +23,8 @@ message TokenExchangeRequest {
   string client_id = 8;             // the client
   string actor_token = 9;           // the token of the actor, if any
   string actor_token_type = 10;     // the type of the actor token
+  string authorization = 11;        // the HTTP Authorization header, for client_secret_basic (RFC 6749 section 2.3.1)
+  string client_secret = 12;        // client_secret_post (RFC 6749 section 2.3.1)
 }
 
 // VerifierKeyCache is the temp kind VerifierKeyCache (0022 "Proofs and the exchange"): the published keys of a proof
