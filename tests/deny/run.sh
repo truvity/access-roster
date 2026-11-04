@@ -11,6 +11,8 @@
 #   SLUIS_KEYCLOAK_SECRETS   a file with SLUIS_LOCAL_CLIENT_SECRET (default: $SLUIS_BUILD_DIR/keycloak-secrets.env)
 #   SLUIS_DENY_PROJECT       the Compose project (default sluis-deny)
 #   SLUIS_DENY_PORT          the loopback port of the forwarder (default 18443)
+#   SLUIS_DENY_SUBNET        a subnet for the project's network (default: the one Docker picks). Set it when the host's
+#                            firewall lets only some subnets reach the upstream, for example SLUIS_DENY_SUBNET=10.99.0.0/24
 #   SLUIS_DENY_KEEP=1        leave the project up afterwards (remove it yourself with `docker compose -p <name> down -v`)
 #   SLUIS_DENY_REPORT        write the report to this file as well
 set -euo pipefail
@@ -36,6 +38,10 @@ secrets=${SLUIS_KEYCLOAK_SECRETS:-${SLUIS_BUILD_DIR:+$SLUIS_BUILD_DIR/keycloak-s
 mkdir -p "$work"
 sed "s#sluis-local/#$project/#g; s#^name: .*#name: $project#" deploy/local/compose.yaml >"$work/compose.yaml"
 compose=(docker compose --project-directory deploy/local -p "$project" -f "$work/compose.yaml")
+if [ -n "${SLUIS_DENY_SUBNET:-}" ]; then
+	printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$SLUIS_DENY_SUBNET" >"$work/network.yaml"
+	compose+=(-f "$work/network.yaml")
+fi
 
 cleanup() {
 	if [ "${SLUIS_DENY_KEEP:-}" = 1 ]; then
