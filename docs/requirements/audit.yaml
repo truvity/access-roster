@@ -2128,7 +2128,7 @@ requirements:
     standards: []
     issues: [841]
     verification:
-      - {kind: integration-test, ref: "an idle installation writes no audit entry; one real call, a refused one included, writes one"}
+      - {kind: integration-test, ref: "an idle installation writes no audit entry; one real call, a refused one included, writes one (entry: a_health_probe_is_not_audited_and_a_real_call_is)"}
   - id: REQ-AUDIT-162
     area: AUDIT
     statement: "A health or readiness probe MUST NOT make another actor write an audit record."
@@ -2140,4 +2140,4 @@ requirements:
     standards: []
     issues: [841]
     verification:
-      - {kind: integration-test, ref: "an installation whose probes run for a minute writes no audit entry at any actor"}
+      - {kind: integration-test, ref: "an installation whose probes run for a minute writes no audit entry at any actor (a_health_probe_is_not_audited_and_a_real_call_is covers entry only)"}
