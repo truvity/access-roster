@@ -126,6 +126,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [831, 832]
@@ -138,6 +139,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [831]
@@ -150,6 +152,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [831]
@@ -175,6 +178,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-04, depth: Partial}
@@ -214,6 +218,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [927]
@@ -226,6 +231,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [927]

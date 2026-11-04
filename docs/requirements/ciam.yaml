@@ -82,6 +82,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.4", depth: Partial}
@@ -97,6 +98,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.4", depth: Partial}
@@ -111,6 +113,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
@@ -126,6 +129,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}

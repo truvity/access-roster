@@ -341,6 +341,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["bare-metal"]
     actors: [exporter, key]
     standards:
@@ -834,6 +835,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -902,6 +904,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
@@ -914,6 +917,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]

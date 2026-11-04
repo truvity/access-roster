@@ -200,6 +200,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -227,6 +228,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -269,6 +271,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []

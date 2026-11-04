@@ -367,6 +367,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -409,6 +410,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -422,6 +424,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -435,6 +438,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1207]
@@ -447,6 +451,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -460,6 +465,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -473,6 +479,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -516,6 +523,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: v1-parity
     runtimes: all
     actors: [console]
     standards: []
@@ -1128,6 +1136,7 @@ requirements:
     source: design-decision
     status: partial
     gap: no-proving-test
+    milestone: quota
     runtimes: all
     actors: [store]
     standards: []
@@ -1168,6 +1177,7 @@ requirements:
     source: design-decision
     status: partial
     gap: no-proving-test
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -1182,6 +1192,7 @@ requirements:
     source: design-decision
     status: partial
     gap: smoke-not-in-ci
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]
     standards: []
@@ -1515,6 +1526,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     actors: [store]
     standards: []

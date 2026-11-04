@@ -47,6 +47,7 @@ requirements:
     source: v1-parity
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Full}
@@ -393,6 +394,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -422,6 +424,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -646,6 +649,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -736,6 +740,7 @@ requirements:
     source: design-decision
     status: partial
     gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -750,6 +755,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [914, 864]
@@ -820,6 +826,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -863,6 +870,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -877,6 +885,7 @@ requirements:
     source: design-decision
     status: partial
     gap: no-proving-test
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -904,6 +913,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -917,6 +927,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -1307,6 +1318,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []

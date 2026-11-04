@@ -84,6 +84,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-81, section: "8446", depth: Full}
@@ -98,6 +99,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-81, section: "8446", depth: Full}
@@ -112,6 +114,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-81, section: "8446", depth: Full}
@@ -254,6 +257,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [960]
@@ -424,6 +428,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -436,6 +441,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -448,6 +454,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -460,6 +467,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -472,6 +480,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -484,6 +493,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -496,6 +506,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1012]
@@ -880,6 +891,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -892,6 +904,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -904,6 +917,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -916,6 +930,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -928,6 +943,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -940,6 +956,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -952,6 +969,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -964,6 +982,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -976,6 +995,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -988,6 +1008,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -1000,6 +1021,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]
@@ -1012,6 +1034,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1220]

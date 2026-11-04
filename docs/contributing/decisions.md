@@ -76,7 +76,7 @@ Add `issues:` with the numbers of the issues that deliver the requirement, for e
 - **What CI checks.** A `done` record has evidence: a tagged test the collector finds, or an attestation; anything else fails. A tag that names an unknown id fails, and evidence on a `planned`, `open` or `withdrawn` record is a warning that names the record. The check proves that the evidence is present; the reviewer judges whether it proves the clause, and the test's own CI run proves that it passes.
 - **Undoing.** When the tests are removed or the behaviour is dropped, the pull request that does it moves the record back (`planned` or `partial`) or withdraws it. A `done` record whose test file is deleted fails the check.
 
-The [status page](/status/) counts `done` records in its Done column, and the records with evidence beside them as evidence-backed, per milestone and per area. A record sits under its `milestone`; one without it is placed by its issues and counted as inferred.
+The [status page](/status/) counts `done` records in its Done column, and the records with evidence beside them as evidence-backed, per milestone and per area. A record sits under its `milestone`, which every live record names.
 
 ### Checking the catalogue
 

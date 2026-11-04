@@ -10,6 +10,7 @@ requirements:
     source: v1-parity
     status: partial
     gap: partly-built
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Full}
@@ -187,6 +188,7 @@ requirements:
     source: v1-parity
     status: partial
     gap: no-proving-test
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2.2", depth: Partial}
@@ -200,6 +202,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1011]
@@ -212,6 +215,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1011]
@@ -224,6 +228,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1011]
@@ -238,6 +243,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1214]
@@ -250,6 +256,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []

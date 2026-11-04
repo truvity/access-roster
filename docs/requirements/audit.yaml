@@ -1176,6 +1176,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [985]
@@ -1201,6 +1202,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Partial}
@@ -1371,6 +1373,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     actors: [writer]
     standards:
@@ -1386,6 +1389,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards:
@@ -1400,6 +1404,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2 JSON event format", depth: Full}
@@ -1414,6 +1419,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Partial}
@@ -1441,6 +1447,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: quota
     runtimes: all
     standards: []
     issues: [839]
@@ -1583,6 +1590,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards: []
     issues: [841, 915]
@@ -1595,6 +1603,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards: []
     issues: [837, 915]
@@ -1607,6 +1616,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards:
       - {id: ST-100, section: "1.0.2 id", depth: Partial}
@@ -1820,6 +1830,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [914, 915]
@@ -1832,6 +1843,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards:
       - {id: ST-75, section: "1", depth: Partial}
@@ -1917,6 +1929,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards: []
     issues: [837, 915]
@@ -2050,6 +2063,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     actors: [writer]
     standards: []
@@ -2162,6 +2176,7 @@ requirements:
     source: design-decision
     status: partial
     gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
@@ -2293,6 +2308,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards: []
     issues: [841, 915]
@@ -2305,6 +2321,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: quota
     runtimes: all
     standards: []
     issues: [841, 915]
@@ -2331,6 +2348,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [841]
@@ -2343,6 +2361,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
@@ -2355,6 +2374,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
