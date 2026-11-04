@@ -5,6 +5,8 @@ Description=sluis indexer (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 Requires=sluis-drv-indexer-sqlite@%i.service sluis-drv-indexer-fs@%i.service
 After=sluis-drv-indexer-sqlite@%i.service sluis-drv-indexer-fs@%i.service
+StartLimitIntervalSec=120
+StartLimitBurst=40
 
 [Service]
 Type=simple
