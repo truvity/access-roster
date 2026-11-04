@@ -62,7 +62,7 @@ type unit struct {
 type mount struct{ Volume, Dest string }
 
 func docker(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "docker", args...) // #nosec G204 -- the arguments are built from inspect output and flags
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204/G702: a test harness; the arguments are built from inspect output and the harness's own flags and environment
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
@@ -222,7 +222,7 @@ func run(ctx context.Context, project, boundary, image, reportPath string) (bool
 		return false, err
 	}
 	if reportPath != "" {
-		if err := os.WriteFile(reportPath, []byte(out), 0o600); err != nil {
+		if err := os.WriteFile(reportPath, []byte(out), 0o600); err != nil { //nolint:gosec // G703: the report path is the operator's own choice, a flag or SLUIS_DENY_REPORT
 			return false, err
 		}
 	}
