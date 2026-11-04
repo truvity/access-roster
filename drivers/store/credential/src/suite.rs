@@ -35,6 +35,8 @@ pub fn run_temp() -> Result<()> {
     let tmp = tempfile::tempdir()?;
     let root = tmp.path().join("credentials");
     std::fs::create_dir(&root)?;
+    // Whatever the umask is: the driver refuses a directory that group or others can write.
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
     let dir = Dir::open(&root)?;
 
     // The bytes come back as they are, and the label does not depend on them alone.
@@ -110,6 +112,12 @@ pub fn run_temp() -> Result<()> {
         Dir::open(&tmp.path().join("root-link")).is_err(),
         "a symlink was opened as the directory"
     );
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o770))?;
+    ensure!(
+        Dir::open(&root).is_err(),
+        "a group-writable directory was opened"
+    );
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700))?;
     println!("ok: the directory is checked");
     Ok(())
 }

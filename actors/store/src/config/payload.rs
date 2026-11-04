@@ -408,11 +408,18 @@ fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
 fn exchange_trust(mut o: Obj) -> R<pb::ExchangeTrust> {
     let mut issuers = Vec::new();
     for mut t in o.objects("issuers")? {
+        let issuer = url(&mut t, "issuer")?;
+        let audiences = t.strings("audiences")?;
+        let proof_kind = t.required("proof_kind")?;
+        let jwks_uri = t.string("jwks_uri")?;
+        if !jwks_uri.is_empty() {
+            check_url(&jwks_uri, &t.at("jwks_uri"))?;
+        }
         issuers.push(pb::TrustedIssuer {
-            issuer: url(&mut t, "issuer")?,
-            audiences: t.strings("audiences")?,
-            proof_kind: t.required("proof_kind")?,
-            jwks_uri: t.string("jwks_uri")?,
+            issuer,
+            audiences,
+            proof_kind,
+            jwks_uri,
             ..pb::TrustedIssuer::default()
         });
         t.done()?;
