@@ -248,9 +248,13 @@ func (s *Service) complete(ctx context.Context, t *target, r *integrationv2alpha
 		return nil, oidc.Invalid("iss")
 	}
 	secret, err := s.opts.Config.ClientSecret(ctx, r.GetUpstream())
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNoSecret):
 		// No credential, no sign-in: a public client is not assumed (fail closed).
 		return nil, oidc.Unavailable("upstream.client_secret")
+	case err != nil:
+		// store@ did not answer: an outage, told apart from a missing secret by its path.
+		return nil, oidc.Unavailable("store")
 	}
 	raw, err := s.dir.Exchange(ctx, p, t.dev, oidc.CodeRequest{
 		ClientID: t.up.GetClientId(), ClientSecret: secret, Code: r.GetCode(), RedirectURI: r.GetRedirectUri(), CodeVerifier: r.GetCodeVerifier(),
@@ -379,7 +383,9 @@ func reasonOf(err error) string {
 }
 
 // Check verifies the configuration and its reach: the Boundary reads, and every Upstream is of a kind this adapter
-// serves, has a client secret, and answers discovery. It returns the paths at fault.
+// serves, names a client secret, and answers discovery. It returns the paths at fault. It runs every few seconds, so it
+// does not fetch the secret's value: it checks that the Upstream names one, and a sign-in reports a secret that the
+// secret source does not hold.
 func (s *Service) Check(ctx context.Context) []string {
 	b, err := s.opts.Config.Boundary(ctx)
 	if err != nil {
@@ -396,8 +402,8 @@ func (s *Service) Check(ctx context.Context) []string {
 			bad = append(bad, path+".kind")
 			continue
 		}
-		if _, err := s.opts.Config.ClientSecret(ctx, up.GetName()); err != nil {
-			bad = append(bad, path+".client_secret")
+		if up.GetSecret() == "" {
+			bad = append(bad, path+".secret")
 		}
 		if _, err := s.dir.Provider(ctx, up.GetIssuer(), development(b)); err != nil {
 			bad = append(bad, path+".issuer")

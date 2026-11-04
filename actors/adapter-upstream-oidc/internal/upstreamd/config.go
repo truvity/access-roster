@@ -95,9 +95,10 @@ func development(b *configv2alpha1.Boundary) bool {
 	return b.GetEnvironment() == developmentEnvironment
 }
 
-// errNoSecret says the upstream has no client secret that store@ will give: none declared, none in the secret source,
-// or one out of bounds. It carries no name and no value.
-var errNoSecret = errors.New("no client secret")
+// ErrNoSecret says the upstream has no client secret that store@ will give: none declared, none in the secret source,
+// or one out of bounds. It carries no name and no value. Any other error of ClientSecret is store@ unavailable, which a
+// caller reports apart from a missing secret.
+var ErrNoSecret = errors.New("no client secret")
 
 // ClientSecret reads the client secret of an upstream through store@, the secret kind UpstreamSecret (ADR 0025, "The
 // upstream contract"; ADR 0005, "Secret sources"). The caller uses it for one call and keeps it nowhere: the adapter
@@ -106,19 +107,21 @@ var errNoSecret = errors.New("no client secret")
 func (c *Config) ClientSecret(ctx context.Context, upstream string) (string, error) {
 	it, err := c.secrets.Get(ctx, "", upstream)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", errNoSecret
+		return "", ErrNoSecret
 	}
 	if err != nil {
 		return "", err
 	}
 	sec := it.Value.GetSecret()
+	// The decoded copy is wiped once the string is made: the string lives for the one call.
+	defer clear(sec)
 	if len(sec) > maxSecret || it.Value.GetUpstream() != upstream {
-		return "", errNoSecret
+		return "", ErrNoSecret
 	}
 	// A secret written by a tool ends with a newline that is not part of the secret.
 	out := strings.TrimRight(string(sec), "\r\n")
 	if out == "" {
-		return "", errNoSecret
+		return "", ErrNoSecret
 	}
 	return out, nil
 }

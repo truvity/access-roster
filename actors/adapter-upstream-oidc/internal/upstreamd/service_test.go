@@ -47,7 +47,7 @@ func pkcePair(t *testing.T) (verifier, challenge string) {
 func upstreamOf(issuer string) *configv2alpha1.Upstream {
 	return &configv2alpha1.Upstream{
 		Name: "workforce", Kind: "oidc", Issuer: issuer, ClientId: idpClientID,
-		SubjectClaim: "preferred_username", OrgClaim: "org", Scopes: []string{"profile", "email"},
+		SubjectClaim: "preferred_username", OrgClaim: "org", Scopes: []string{"profile", "email"}, Secret: "upstream-workforce",
 	}
 }
 
@@ -455,6 +455,32 @@ func TestNoClientSecretNoSignIn(t *testing.T) {
 	}
 }
 
+// verifies: REQ-ISO-106
+// The health check reads no secret value: it checks that the Upstream names one. A sign-in tells a store@ outage
+// (path store) from a secret store@ does not hold (path upstream.client_secret).
+func TestTheCheckReadsNoSecretAndAnOutageIsNotAMissingSecret(t *testing.T) {
+	f := newFixture(t, nil)
+	if bad := f.svc.Check(context.Background()); len(bad) != 0 {
+		t.Fatalf("Check = %v", bad)
+	}
+	if n := f.store.count("upstream-secret"); n != 0 {
+		t.Fatalf("Check read the secret %d times", n)
+	}
+	up := upstreamOf(f.idp.issuer)
+	up.Secret = ""
+	f.store.set("upstream/workforce", up)
+	if bad := f.svc.Check(context.Background()); len(bad) != 1 || bad[0] != "upstream.workforce.secret" {
+		t.Fatalf("Check without a declared secret = %v", bad)
+	}
+	f.store.set("upstream/workforce", upstreamOf(f.idp.issuer))
+	f.store.failOn("upstream-secret", refusal.New(connect.CodeUnavailable, "engine", ""))
+	_, err := f.complete(context.Background(), f.completeReq())
+	refused(t, err, "UNAVAILABLE", connect.CodeUnavailable, "store")
+	if f.idp.tokenHits.Load() != 0 {
+		t.Fatal("a token request was made without a credential")
+	}
+}
+
 func TestOnlyTheCallersOfTheRegistryMayCall(t *testing.T) {
 	// policy is not a caller of the upstream adapter (actors.yaml): the call is refused before the message is decoded.
 	f := newFixture(t, func(o *envOptions, _ *fakeIDP) { o.caller = "policy" })
@@ -553,7 +579,8 @@ func TestTheClientSecretIsReadThroughStoreForEachCall(t *testing.T) {
 	if f.idp.basicSecret != idpClientSecret || f.store.count("upstream-secret") != 1 {
 		t.Fatalf("token request secret ok=%v, %d reads of UpstreamSecret", f.idp.basicSecret == idpClientSecret, f.store.count("upstream-secret"))
 	}
-	// The upstream's client secret is rotated in the secret source. The fake upstream accepts the new one only.
+	// The upstream's client secret is rotated in the secret source. The fake upstream records the secret each token
+	// request carries.
 	const rotated = "rotated-client-secret-value"
 	f.store.set("upstream-secret/workforce", &configv2alpha1.UpstreamSecret{Upstream: "workforce", Secret: []byte(rotated)})
 	f.idp.mu.Lock()

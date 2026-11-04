@@ -83,6 +83,7 @@ upstreams:
     issuer: https://idp.example.org
     client_id: sluis-partner
     subject_claim: sub
+    secret: upstream-partner         # the name of the client secret in the secret source; store@ serves it as UpstreamSecret
     domains: [partner.example]       # the e-mail domains this upstream serves, declared by the operator
     trust: partner                   # what this sign-in may reach
     assurance:                       # how strong this sign-in counts
