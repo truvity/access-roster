@@ -282,6 +282,7 @@ type QueryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Items         []*DriverItem          `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`                                        // the items of the page
 	NextPageToken []byte                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"` // empty on the last page
+	LogHead       uint64                 `protobuf:"varint,3,opt,name=log_head,json=logHead,proto3" json:"log_head,omitempty"`                    // the newest change-log sequence, read before the page: a Watch from it misses nothing the page shows
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -328,6 +329,13 @@ func (x *QueryResponse) GetNextPageToken() []byte {
 		return x.NextPageToken
 	}
 	return nil
+}
+
+func (x *QueryResponse) GetLogHead() uint64 {
+	if x != nil {
+		return x.LogHead
+	}
+	return 0
 }
 
 // TransactRequest is a set of conditions, puts and deletes, applied all or none.
@@ -796,10 +804,11 @@ const file_sluis_port_item_v2alpha1_item_proto_rawDesc = "" +
 	"indexValue\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
-	"page_token\x18\x05 \x01(\fR\tpageToken\"s\n" +
+	"page_token\x18\x05 \x01(\fR\tpageToken\"\x8e\x01\n" +
 	"\rQueryResponse\x12:\n" +
 	"\x05items\x18\x01 \x03(\v2$.sluis.port.item.v2alpha1.DriverItemR\x05items\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\fR\rnextPageToken\"\xc5\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\fR\rnextPageToken\x12\x19\n" +
+	"\blog_head\x18\x03 \x01(\x04R\alogHead\"\xc5\x01\n" +
 	"\x0fTransactRequest\x12C\n" +
 	"\n" +
 	"conditions\x18\x01 \x03(\v2#.sluis.port.item.v2alpha1.ConditionR\n" +

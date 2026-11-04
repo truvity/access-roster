@@ -39,8 +39,8 @@ pub fn flags(cmd: Command) -> Command {
         Arg::new("changelog-retention")
             .long("changelog-retention")
             .value_name("DURATION")
-            .default_value("24h")
-            .help("How long change-log rows are kept, e.g. 24h"),
+            .default_value("1h")
+            .help("How long change-log rows are kept, e.g. 1h; at most 7d. A watcher that was away longer lists again"),
     ))
     .arg(global(
         Arg::new("basic-auth-file")
@@ -83,9 +83,23 @@ impl Settings {
         Ok(Self {
             driver: Driver::new(Rq::new(&url, auth.as_deref())?, ns),
             sweep_interval: duration("sweep-interval")?,
-            retention: duration("changelog-retention")?,
+            retention: check_retention(duration("changelog-retention")?)
+                .context("--changelog-retention")?,
         })
     }
+}
+
+/// The longest the change log is kept (0005 "Watch and the resume point").
+pub const MAX_RETENTION: Duration = Duration::from_secs(7 * 24 * 3600);
+
+/// A retention of the change log within the maximum.
+///
+/// # Errors
+///
+/// For a retention above [`MAX_RETENTION`]: a longer log is storage nobody asked for.
+pub fn check_retention(d: Duration) -> anyhow::Result<Duration> {
+    anyhow::ensure!(d <= MAX_RETENTION, "at most 7d");
+    Ok(d)
 }
 
 /// A duration such as `200ms`, `30s`, `5m` or `24h`. Zero is refused: no interval and no
@@ -114,6 +128,33 @@ pub fn parse_duration(text: &str) -> anyhow::Result<Duration> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// verifies: REQ-DATA-105
+    #[test]
+    fn the_retention_of_the_log_is_an_hour_by_default_and_at_most_seven_days() {
+        assert_eq!(
+            check_retention(parse_duration("1h").unwrap()).unwrap(),
+            Duration::from_secs(3600)
+        );
+        assert!(check_retention(parse_duration("168h").unwrap()).is_ok());
+        assert!(check_retention(parse_duration("169h").unwrap()).is_err());
+        // The default of the flag is the hour.
+        let cmd = flags(clap::Command::new("t"));
+        let m = cmd
+            .try_get_matches_from([
+                "t",
+                "--rqlite-url",
+                "http://127.0.0.1:1",
+                "--namespace",
+                "durable",
+            ])
+            .unwrap();
+        assert_eq!(
+            m.get_one::<String>("changelog-retention")
+                .map(String::as_str),
+            Some("1h")
+        );
+    }
 
     #[test]
     fn durations() {

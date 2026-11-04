@@ -2,7 +2,8 @@
 //! and trims the change log. Correctness never depends on it: a read checks the expiry itself.
 //!
 //! An item with no `expires_at` is never swept, which is what a `Lease` relies on (0005 "Leases").
-//! Expiry is not a change, so a swept item leaves no log row: the read already hid it.
+//! An item that was written with a log row leaves a delete row when it is swept, so a watcher sees
+//! its expiry as a delete (0005 "Watch and the resume point"); the read hid it from the expiry on.
 
 use std::time::Duration;
 
@@ -37,7 +38,7 @@ pub async fn sweep_once(driver: &Driver, retention: Duration) -> anyhow::Result<
         if let Some((i, _, message)) = first_failure(&out) {
             bail!("sweep statement {i} failed: {message}");
         }
-        let Some(Outcome::Done { affected, .. }) = out.get(1) else {
+        let Some(Outcome::Done { affected, .. }) = out.get(2) else {
             bail!("the sweep answered no result");
         };
         freed += usize::try_from(*affected).unwrap_or(0);

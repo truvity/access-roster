@@ -48,6 +48,7 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("index_query", s.index_query()).await,
         run_case("log_order_and_from_sequence", s.log_order()).await,
         run_case("sequence_expired", s.sequence_expired()).await,
+        run_case("query_log_head", s.query_log_head()).await,
     ];
     // What the cases wrote is removed; a failure to do so is a failed case of its own, so a driver
     // that cannot delete does not pass.
@@ -793,6 +794,62 @@ impl Suite {
             "the later write came as another row"
         );
         Ok(())
+    }
+
+    /// The log position that a page of a query reflects: never 0 (0 means "from now"), at least the
+    /// newest row, and a tail from it misses nothing written after the page.
+    async fn query_log_head(&self) -> anyhow::Result<()> {
+        let (a, b) = (self.key("head", "a"), self.key("head", "b"));
+        let mine = self.key("head", "");
+        let h0 = self.query_head(&mine).await?;
+        ensure!(
+            h0 >= 1,
+            "the log head of a query is 0: a snapshot of an empty log would have no position to watch from"
+        );
+        let logged = |k: &[u8]| Put {
+            log: true,
+            ..put(k, b"v")
+        };
+        // A tail from the head of a page sees what was written after the page, and nothing of it is lost.
+        let mut tail = self.open_tail(h0).await?;
+        self.transact(vec![absent(&a)], vec![logged(&a)], vec![])
+            .await?;
+        let h1 = self.query_head(&mine).await?;
+        ensure!(
+            h1 > h0,
+            "a logged write did not move the log head of a query ({h0} then {h1})"
+        );
+        let row = tail.row(&mine, ARRIVES).await?;
+        ensure!(
+            row.key == a && row.sequence > h0 && row.sequence <= h1,
+            "the tail from the head of a query did not give the write after it"
+        );
+        // A write that follows the page is behind its head, and a tail from that head gives it.
+        let mut later = self.open_tail(h1).await?;
+        self.transact(vec![absent(&b)], vec![logged(&b)], vec![])
+            .await?;
+        let row = later.row(&mine, ARRIVES).await?;
+        ensure!(
+            row.key == b,
+            "the tail from the second head did not give the next write"
+        );
+        self.transact(vec![], vec![], vec![del(&a), del(&b)])
+            .await?;
+        Ok(())
+    }
+
+    /// The `log_head` of a query for `prefix`.
+    async fn query_head(&self, prefix: &[u8]) -> Result<u64, ConnectError> {
+        Ok(self
+            .rpc()
+            .query(QueryRequest {
+                prefix: prefix.to_vec(),
+                page_size: 1,
+                ..QueryRequest::default()
+            })
+            .await?
+            .into_owned()
+            .log_head)
     }
 
     async fn sequence_expired(&self) -> anyhow::Result<()> {

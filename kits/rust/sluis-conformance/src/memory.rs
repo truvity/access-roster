@@ -31,6 +31,8 @@ struct Row {
     version: u64,
     value: Vec<u8>,
     expires_ms: Option<i64>,
+    /// Written with a change-log row: its expiry is logged as a delete when it is swept.
+    logged: bool,
     /// Sorted by name and value, without repeats.
     indexes: Vec<(String, Vec<u8>)>,
 }
@@ -67,10 +69,24 @@ struct LogRow {
     deleted: bool,
 }
 
-#[derive(Default)]
 struct State {
     items: BTreeMap<Vec<u8>, Row>,
     log: Vec<LogRow>,
+}
+
+impl Default for State {
+    /// The log starts with a marker row, sequence 1, so that its head is never 0 (0 means "from now").
+    fn default() -> Self {
+        Self {
+            items: BTreeMap::new(),
+            log: vec![LogRow {
+                sequence: 1,
+                key: Vec::new(),
+                version: 0,
+                deleted: false,
+            }],
+        }
+    }
 }
 
 impl State {
@@ -80,6 +96,24 @@ impl State {
 
     fn head(&self) -> u64 {
         self.log.last().map_or(0, |r| r.sequence)
+    }
+
+    /// Frees the expired items, as the sweeper of a real engine does, and logs the removal of each one that
+    /// was written with a log row. Expiry is a delete to a watcher.
+    fn sweep(&mut self, now: i64) {
+        let gone: Vec<Vec<u8>> = self
+            .items
+            .iter()
+            .filter(|(_, r)| !r.live(now))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in gone {
+            if let Some(row) = self.items.remove(&key)
+                && row.logged
+            {
+                self.append(&key, row.version, true);
+            }
+        }
     }
 
     fn append(&mut self, key: &[u8], version: u64, deleted: bool) {
@@ -132,6 +166,12 @@ impl MemoryEngine {
         sluis_kit::serve_with(cfg, router, shutdown, identities).await
     }
 
+    /// One tick of the sweeper: frees the expired items and logs the removal of those that were logged. A real
+    /// engine runs it on a timer; here a tail runs it when it looks for rows, and a test may call it.
+    pub fn sweep(&self) {
+        self.lock().sweep(now_ms());
+    }
+
     fn lock(&self) -> MutexGuard<'_, State> {
         // A panic while the lock was held leaves a map that is still consistent for a test.
         self.state
@@ -174,6 +214,7 @@ impl ItemService for MemoryEngine {
         }
         let now = now_ms();
         let st = self.lock();
+        let log_head = st.head();
         let from = if req.page_token.is_empty() {
             Bound::Included(req.prefix.clone())
         } else {
@@ -202,6 +243,7 @@ impl ItemService for MemoryEngine {
         Response::ok(QueryResponse {
             items: found,
             next_page_token,
+            log_head,
             ..QueryResponse::default()
         })
     }
@@ -252,6 +294,7 @@ impl ItemService for MemoryEngine {
                 version,
                 value: p.value.clone(),
                 expires_ms: p.expires_at.as_option().map(rules::ts_to_ms),
+                logged: p.log,
                 indexes,
             };
             written.push(row.item(&p.key));
@@ -294,7 +337,8 @@ impl ItemService for MemoryEngine {
             async move {
                 loop {
                     let rows: Vec<TailLogResponse> = {
-                        let st = engine.lock();
+                        let mut st = engine.lock();
+                        st.sweep(now_ms());
                         let start = st.log.partition_point(|r| r.sequence <= last);
                         st.log[start..]
                             .iter()
@@ -324,6 +368,7 @@ mod tests {
     use super::*;
     use crate::{item_suite, report};
 
+    /// verifies: REQ-DATA-102
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_memory_engine_passes_the_item_suite() {
         let dir = tempfile::tempdir().unwrap();
