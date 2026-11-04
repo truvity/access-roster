@@ -216,20 +216,23 @@ func TestCacheTimeToLive(t *testing.T) {
 	}
 }
 
-func TestCacheTTLFloor(t *testing.T) {
+func TestCacheTTLRange(t *testing.T) {
 	for _, c := range []struct {
-		in   *configv2alpha1.KeyPlan
-		want time.Duration
+		in      *configv2alpha1.KeyPlan
+		want    time.Duration
+		refused bool
 	}{
-		{&configv2alpha1.KeyPlan{}, 15 * time.Minute},
-		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(0)}, 15 * time.Minute},
-		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(-time.Second)}, 15 * time.Minute},
-		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(5 * time.Minute)}, 5 * time.Minute},
-		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(time.Hour)}, time.Hour},
-		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(2 * time.Hour)}, time.Hour},
+		{&configv2alpha1.KeyPlan{}, 15 * time.Minute, false},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(0)}, 15 * time.Minute, false},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(5 * time.Minute)}, 5 * time.Minute, false},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(time.Hour)}, time.Hour, false},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(-time.Second)}, 0, true},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(time.Hour + time.Nanosecond)}, 0, true},
+		{&configv2alpha1.KeyPlan{CacheTtl: durationpb.New(2 * time.Hour)}, 0, true},
 	} {
-		if got := cacheTTL(c.in); got != c.want {
-			t.Errorf("cacheTTL(%v) = %v, want %v", c.in.GetCacheTtl().AsDuration(), got, c.want)
+		got, err := cacheTTL(c.in)
+		if (err != nil) != c.refused || got != c.want {
+			t.Errorf("cacheTTL(%v) = %v, %v; want %v, refused=%v", c.in.GetCacheTtl().AsDuration(), got, err, c.want, c.refused)
 		}
 	}
 }

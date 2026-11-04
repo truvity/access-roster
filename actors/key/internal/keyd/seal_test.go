@@ -5,13 +5,18 @@ package keyd
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"testing"
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/truvity/sluis/v2/actors/key/internal/envelope"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
+	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // The vector of store-api.md, "The sealed envelope".
@@ -311,4 +316,76 @@ func TestSealGrantAndOpenGrant(t *testing.T) {
 	e.clock.advance(time.Minute + time.Second)
 	_, err = n.client("store").OpenGrant(context.Background(), connect.NewRequest(&keyv2alpha1.OpenGrantRequest{SealedGrant: sealed}))
 	wantRefusal(t, err, connect.CodeFailedPrecondition, "expired")
+}
+
+// sealGrantUnchecked seals a grant the way SealGrant would, but without its checks: what an older or a buggy
+// policy could have made. checkGrant must hold on its own.
+func sealGrantUnchecked(t *testing.T, n *node, g *typev2alpha1.Grant) []byte {
+	t.Helper()
+	pt, err := proto.Marshal(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := g.GetDecisionId()
+	var env []byte
+	err = n.srv.withKey(context.Background(), keyRef{"", "grant", 1}, true, func(key []byte) error {
+		var e error
+		env, e = envelope.Seal(key, envelope.CodeGrant, 1, envelope.Address{Boundary: testBoundary, Tenant: "-", Kind: "grant", ID: id}, pt)
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := binary.BigEndian.AppendUint16(nil, uint16(len(id))) //nolint:gosec // a decision id is short
+	return append(append(out, id...), env...)
+}
+
+// A grant lives 60 s from now, not 60 s from any issued_at: a window in the future is refused when it is sealed,
+// and again when it is used.
+func TestGrantWindowIsBoundedByNow(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	now := e.clock.now()
+	seal := func(g *typev2alpha1.Grant) error {
+		_, err := n.client("policy").SealGrant(context.Background(), connect.NewRequest(&keyv2alpha1.SealGrantRequest{Grant: g}))
+		return err
+	}
+	for name, c := range map[string]struct {
+		issued time.Time
+		life   time.Duration
+		path   string
+	}{
+		"issued a year ahead":         {now.AddDate(1, 0, 0), 30 * time.Second, "grant.issued_at"},
+		"issued a minute ahead":       {now.Add(time.Minute), time.Second, "grant.issued_at"},
+		"expires beyond now plus 60s": {now.Add(4 * time.Second), 60*time.Second + 2*time.Second, "grant.expires_at"},
+	} {
+		err := seal(grantProto("session", []string{"acme"}, c.issued, c.life))
+		wantRefusalNamed(t, name, err, connect.CodeInvalidArgument, "schema")
+		if p, _ := refusal.FieldPath(err); p != c.path {
+			t.Errorf("%s: field path %q, want %q", name, p, c.path)
+		}
+	}
+	// Inside the skew is fine, and so is a window that starts in the past.
+	if err := seal(grantProto("session", []string{"acme"}, now.Add(4*time.Second), 60*time.Second)); err != nil {
+		t.Errorf("a window 4 s ahead: %v", err)
+	}
+	if err := seal(grantProto("session", []string{"acme"}, now.Add(-30*time.Second), 60*time.Second)); err != nil {
+		t.Errorf("a window that began 30 s ago: %v", err)
+	}
+
+	// checkGrant holds on its own: a grant sealed with a far window is no grant.
+	far := sealGrantUnchecked(t, n, grantProto("session", []string{"acme"}, now.AddDate(1, 0, 0), 30*time.Second))
+	late := sealGrantUnchecked(t, n, grantProto("session", []string{"acme"}, now, 5*time.Minute))
+	for name, g := range map[string][]byte{"issued a year ahead": far, "expires beyond now plus 60s": late} {
+		_, err := seal1(n.client("session"), "data", "person", "acme", vecID, []byte("x"), g)
+		wantRefusalNamed(t, "use: "+name, err, connect.CodePermissionDenied, "grant")
+	}
+	// OpenGrant refuses them too, so the store cannot be handed one.
+	_, err := n.client("store").OpenGrant(context.Background(), connect.NewRequest(&keyv2alpha1.OpenGrantRequest{SealedGrant: far}))
+	wantRefusal(t, err, connect.CodePermissionDenied, "grant")
+	// A grant inside the window still works.
+	ok := sealGrantUnchecked(t, n, grantProto("session", []string{"acme"}, now, 60*time.Second))
+	if _, err := seal1(n.client("session"), "data", "person", "acme", vecID, []byte("x"), ok); err != nil {
+		t.Errorf("a grant inside the window: %v", err)
+	}
 }

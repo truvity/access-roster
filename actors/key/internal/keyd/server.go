@@ -71,7 +71,7 @@ type Server struct {
 	now     func() time.Time
 	st      storev2alpha1connect.StoreServiceClient
 	driver  keystorev2alpha1connect.KeyStoreServiceClient
-	wraps   wrapStore
+	wraps   *store.Client[*keyv2alpha1.DataKeyWrap]
 	certs   *store.Client[*keyv2alpha1.KeyCertificate]
 	boundCl *store.Client[*configv2alpha1.Boundary]
 	planCl  *store.Client[*configv2alpha1.KeyPlan]
@@ -116,7 +116,8 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if now == nil {
 		now = time.Now
 	}
-	ws, err := newWrapStore(st)
+	// DataKeyWrap is tenant-scoped, and the boundary's own purposes have no tenant.
+	ws, err := store.New(st, "DataKeyWrap", func() *keyv2alpha1.DataKeyWrap { return &keyv2alpha1.DataKeyWrap{} }, store.OptionalTenant())
 	if err != nil {
 		return nil, err
 	}
@@ -209,15 +210,19 @@ func (s *Server) checkFloor(ctx context.Context, environment string) error {
 // errSoftwareInProduction is the refusal of the floor.
 const errSoftwareInProduction = "software key driver refused in production"
 
-// cacheTTL applies the built-in maximum to the KeyPlan's time to live.
-func cacheTTL(plan *configv2alpha1.KeyPlan) time.Duration {
+// cacheTTL reads the KeyPlan's time to live. Unset (nil or zero) is the default. A value below zero or above the
+// built-in maximum is refused, and so is the KeyPlan: "A longer value is refused when the configuration loads"
+// (ADR 0006, "The cache"; "Floors in code": a KeyPlan may shorten a limit and never lengthen it past the maximum).
+func cacheTTL(plan *configv2alpha1.KeyPlan) (time.Duration, error) {
+	if plan.GetCacheTtl() == nil {
+		return defaultCacheTTL, nil
+	}
 	ttl := plan.GetCacheTtl().AsDuration()
 	switch {
-	case plan.GetCacheTtl() == nil || ttl <= 0:
-		return defaultCacheTTL
-	case ttl > maxCacheTTL:
-		slog.Warn("KeyPlan cache_ttl is above the built-in maximum and is clamped", "max", maxCacheTTL.String())
-		return maxCacheTTL
+	case ttl == 0:
+		return defaultCacheTTL, nil
+	case ttl < 0 || ttl > maxCacheTTL:
+		return 0, fmt.Errorf("keyplan/default: cache_ttl is outside 0 to %s", maxCacheTTL)
 	}
-	return ttl
+	return ttl, nil
 }

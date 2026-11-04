@@ -21,6 +21,19 @@ import (
 // maxGrantLife is the longest a grant lives (ADR 0007, "Sealed grants": about 60 seconds).
 const maxGrantLife = 60 * time.Second
 
+// grantSkew is the clock skew key@ allows when it checks a grant's times against its own clock. A grant lives
+// 60 s: without a bound on where the window sits, a grant issued a year ahead would stay valid for a year.
+const grantSkew = 5 * time.Second
+
+// grantBounded says whether the grant's window lies where a grant made now may lie: issued no later than now plus
+// the skew, and expiring no later than now plus the life of a grant plus the skew.
+func (s *Server) grantBounded(g *typev2alpha1.Grant) bool {
+	now := s.now()
+	return g.GetIssuedAt() != nil && g.GetExpiresAt() != nil &&
+		!g.GetIssuedAt().AsTime().After(now.Add(grantSkew)) &&
+		!g.GetExpiresAt().AsTime().After(now.Add(maxGrantLife+grantSkew))
+}
+
 // grantKind is the kind part of the address a grant is sealed at: tenant "-", kind "grant", id the decision id.
 const grantKind = "grant"
 
@@ -67,7 +80,8 @@ func (s *Server) checkGrant(ctx context.Context, st *grantState, caller, op, pur
 		g.GetHolder() != caller,
 		!slices.Contains(g.GetTenants(), tenant) && !slices.Contains(g.GetTenants(), "*"),
 		!slices.Contains(g.GetKeyOps(), op),
-		g.GetExpiresAt() == nil || !g.GetExpiresAt().AsTime().After(s.now()):
+		g.GetExpiresAt() == nil || !g.GetExpiresAt().AsTime().After(s.now()),
+		!s.grantBounded(g):
 		return deny()
 	}
 	return nil
@@ -139,6 +153,12 @@ func (s *Server) SealGrant(ctx context.Context, req *connect.Request[keyv2alpha1
 	if life := g.GetExpiresAt().AsTime().Sub(g.GetIssuedAt().AsTime()); life <= 0 || life > maxGrantLife {
 		return nil, bad("grant.expires_at")
 	}
+	if !s.grantBounded(g) { // a window that starts in the future, or ends later than a grant may live
+		if g.GetIssuedAt().AsTime().After(s.now().Add(grantSkew)) {
+			return nil, bad("grant.issued_at")
+		}
+		return nil, bad("grant.expires_at")
+	}
 	for _, t := range g.GetTenants() {
 		if t != "*" && !validTenant(t) {
 			return nil, bad("grant.tenants")
@@ -193,7 +213,10 @@ func (s *Server) OpenGrant(ctx context.Context, req *connect.Request[keyv2alpha1
 	case err != nil:
 		return nil, s.keyFailure(ctx, caller, "open", "grant", "", err, false)
 	}
-	if g.GetExpiresAt() == nil || !g.GetExpiresAt().AsTime().After(s.now()) {
+	if !s.grantBounded(g) {
+		return nil, s.refuse(ctx, caller, "open", "grant", "", connect.CodePermissionDenied, reasonGrant, "sealed_grant")
+	}
+	if !g.GetExpiresAt().AsTime().After(s.now()) {
 		return nil, s.refuse(ctx, caller, "open", "grant", "", connect.CodeFailedPrecondition, reasonExpired, "sealed_grant")
 	}
 	return connect.NewResponse(&keyv2alpha1.OpenGrantResponse{Grant: g}), nil
