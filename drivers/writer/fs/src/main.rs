@@ -40,6 +40,9 @@ impl Commands for Fsd {
         }
         // The root is checked before the socket exists: no socket, no service.
         let fs = Fs::open(&root(&f)?)?;
+        // A crash can leave temporary files; serve is the one command that may remove them.
+        let swept = fs.sweep()?;
+        tracing::info!(swept, "temporary files of an earlier run removed");
         let cfg = ServerConfig {
             actor: NAME,
             boundary: f.boundary,
