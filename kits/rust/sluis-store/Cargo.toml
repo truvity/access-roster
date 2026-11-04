@@ -23,5 +23,6 @@ thiserror = "2"
 sluis-kit = { path = "../sluis-kit", features = ["test-identities"] }
 rustix = { version = "1", features = ["process"] }
 anyhow = "1"
+serde_json = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }

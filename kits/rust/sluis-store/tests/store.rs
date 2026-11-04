@@ -335,19 +335,19 @@ async fn list_pages_and_the_tenant_rules() {
     let ids: Vec<_> = all.iter().map(|i| i.id.as_str()).collect();
     assert_eq!(ids, ["id-0", "id-1", "id-2", "id-3", "id-4"]);
 
-    // A kind with a tenant needs one; a kind with none refuses one; "-" is "none".
+    // A kind with a tenant needs one; a kind with none refuses one; "-" is never a tenant id.
     assert!(matches!(p.get("", "x").await, Err(Error::Address(f)) if f == "tenant"));
     assert!(matches!(p.get("-", "x").await, Err(Error::Address(f)) if f == "tenant"));
     let l = Store::<Lease>::new(up.client.clone()).unwrap();
     assert!(
         matches!(l.get("acme", "adapter-github/sync").await, Err(Error::Address(f)) if f == "tenant")
     );
-    l.create("-", "adapter-github/sync", &prov("l"), WriteOpts::default())
+    assert!(matches!(l.get("-", "x").await, Err(Error::Address(f)) if f == "tenant"));
+    l.create("", "adapter-github/sync", &prov("l"), WriteOpts::default())
         .await
         .unwrap();
-    // The tenant of a kind with none is empty on the wire, and the same item answers "" and "-".
+    // The tenant of a kind with none is empty on the wire.
     assert_eq!(l.get("", "adapter-github/sync").await.unwrap().tenant, "");
-    assert_eq!(l.get("-", "adapter-github/sync").await.unwrap().version, 1);
 
     // A bad id never reaches the wire.
     assert!(matches!(p.get("acme", "Bad").await, Err(Error::Address(f)) if f == "id[0]"));
@@ -358,6 +358,44 @@ async fn list_pages_and_the_tenant_rules() {
 
     let _ = up.stop.send(());
     up.done.await.unwrap().unwrap();
+}
+
+/// The language-neutral vectors both kits read (`kits/conformance/kit/store-address-vectors.json`).
+fn vectors() -> serde_json::Value {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../conformance/kit/store-address-vectors.json");
+    serde_json::from_slice(&std::fs::read(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display())))
+        .unwrap()
+}
+
+#[test]
+fn the_shared_vectors_hold() {
+    let v = vectors();
+    let valid = v["valid"].as_array().unwrap();
+    let invalid = v["invalid"].as_array().unwrap();
+    let segments = v["segments"].as_array().unwrap();
+    assert!(
+        !valid.is_empty() && !invalid.is_empty() && !segments.is_empty(),
+        "an empty sweep proves nothing"
+    );
+    for a in valid {
+        let a = a.as_str().unwrap();
+        validate_address(a).unwrap_or_else(|e| panic!("{a}: {e}"));
+    }
+    for c in invalid {
+        let a = c["address"].as_str().unwrap();
+        assert!(
+            validate_address(a).is_err(),
+            "{a:?} must be refused: {}",
+            c["why"]
+        );
+    }
+    for s in segments {
+        assert_eq!(
+            segment_of(s["kind"].as_str().unwrap()),
+            s["segment"].as_str().unwrap()
+        );
+    }
 }
 
 #[test]
