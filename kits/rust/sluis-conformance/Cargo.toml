@@ -1,0 +1,32 @@
+[package]
+name = "sluis-conformance"
+description = "The item-port conformance suite (store-api.md, The command line and the suite), the rules both engines share, and the in-memory engine that passes the suite (tests only, behind the memory feature)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# The in-memory engine. It serves with a uid table of its own, so it needs the kit's test-only
+# feature: a product binary never enables it (the rqlite driver links the suite, not the engine).
+memory = ["sluis-kit/test-identities", "dep:rustix"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+buffa = { version = "=0.9.2", features = ["json"] }
+buffa-types = { version = "=0.9.2", features = ["json"] }
+connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
+futures = "0.3"
+rustix = { version = "1", features = ["process"], optional = true }
+sluis-kit = { path = "../sluis-kit" }
+sluis-proto = { path = "../sluis-proto" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+
+[dev-dependencies]
+sluis-conformance = { path = ".", features = ["memory"] }
+tempfile = "3"
