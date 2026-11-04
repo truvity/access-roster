@@ -56,12 +56,9 @@ catalogue:
     quota: "Quota"
     backlog: "Backlog"
   gaps:
-    stakeholder-only: "A stakeholder needs it but no v2 feature accepts it yet."
     register-gap: "The standards register or the feature plan is weaker than this requirement."
     keyplan-trust: "key@ reads the KeyPlan through store@ and does not verify its signature or seq itself, and removing a recipient deletes none of its wraps and makes no new generation; these wait for the key-compromise work."
-    proposed-design: "The design is proposed in research and not yet decided."
-    partly-built: "The decision is made; the part the record names is not built yet."
-    smoke-not-in-ci: "Covered only by a smoke program that does not run in CI; the record is done once a test that CI runs proves it."
-    untested: "The behaviour is built or holds, but no tagged test that CI runs proves the whole statement; the record is done once one does."
-    no-attestation: "Verified by manual review, and no attestation records the check yet; the record is done once attestations.yaml holds one."
-    external-suite-not-run: the external conformance suite or vector set named in its verification does not run in CI yet
+    partly-built: "Part of the statement is built; the rest is not yet."
+    no-proving-test: "The code exists, but no test that runs in CI would fail if the statement were broken."
+    attestation-missing: "Its verification includes a manual check, and no attestation records that check yet."
+    external-suite-not-run: "The external conformance suite or vector set named in its verification does not run in CI yet; the tests that do run are tagged as evidence."

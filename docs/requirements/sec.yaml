@@ -68,7 +68,7 @@ requirements:
     standards:
       - {id: ST-14, section: "2-4", depth: Full}
     issues: [775, 777, 782]
-    gap: register-gap
+    gap: attestation-missing
     manual_reason: "A checklist review is the requirement; the tests it maps to are listed in the next requirement."
     verification:
       - {kind: manual, ref: "checklist review"}
@@ -230,7 +230,7 @@ requirements:
     source: standard
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -246,7 +246,7 @@ requirements:
     source: security-review
     status: partial
     milestone: first-version
-    gap: no-attestation
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -293,7 +293,7 @@ requirements:
     source: standard
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-52, section: "7", depth: Full}

@@ -128,7 +128,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: v1-parity
-    gap: untested
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -188,7 +188,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-attestation
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-104, section: "1", depth: Full}

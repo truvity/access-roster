@@ -461,7 +461,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-50, depth: Partial}
@@ -523,7 +523,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-24, section: "3", depth: Full}
@@ -628,7 +628,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -644,7 +644,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -772,7 +772,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [863]
@@ -859,7 +859,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: v1-parity
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [807, 809]
@@ -980,7 +980,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [892, 914]
@@ -1007,7 +1007,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [914]
@@ -1140,7 +1140,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [916]
@@ -1222,7 +1222,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -1238,7 +1238,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [949]
@@ -1266,7 +1266,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1213]
@@ -1352,7 +1352,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -1367,7 +1367,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
@@ -1383,7 +1383,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: untested
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     standards: []
     issues: [866]
@@ -1478,7 +1478,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [862]
@@ -1520,7 +1520,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: untested
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1214]
