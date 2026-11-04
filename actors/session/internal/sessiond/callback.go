@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
@@ -143,6 +144,9 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	}
 
 	subject, created, err := s.linkPerson(ctx, tenant, candidate, assertion, v.grant, now)
+	if errors.Is(err, errPinContradicted) {
+		return deny("access_denied", "the person may not sign in", reasonPin, &v)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -223,12 +227,42 @@ func upstreamErrorCode(c string) string {
 	return "access_denied"
 }
 
+// errPinContradicted says the upstream's configured subject claim is not the one its issuer's first link pinned.
+var errPinContradicted = errors.New("sessiond: the subject claim contradicts the issuer's pin")
+
+// pinOf reads the UpstreamPin of an issuer. It returns errPinContradicted when the pin names another claim than the
+// assertion's, and pinned false when the issuer has no pin yet (its first link writes it).
+func (s *Service) pinOf(ctx context.Context, tenant, id string, a *integrationv2alpha1.Assertion) (pinned bool, err error) {
+	raw, err := s.sealed.get(ctx, "UpstreamPin", tenant, id)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return false, nil
+	case err != nil:
+		return false, unavailable("store", err)
+	}
+	p := &sessionv2alpha1.UpstreamPin{}
+	if err := proto.Unmarshal(raw, p); err != nil || p.GetIssuer() == "" || p.GetSubjectClaim() == "" {
+		return false, internal("pin", errors.New("damaged"))
+	}
+	if p.GetIssuer() != a.GetIssuer() || p.GetSubjectClaim() != a.GetSubjectClaim() {
+		return true, errPinContradicted
+	}
+	return true, nil
+}
+
 // linkPerson finds the person of the upstream account, or makes one. The account is the pair (issuer, subject claim
-// value) and never an e-mail address (0019 "Linking an upstream account"). A new person and the link are written in
-// one batch; the link is a create, so when two first sign-ins of one account race, one batch wins and the other
-// fails with already exists, reads the link and continues as the winner. Two people never result.
+// value) and never an e-mail address (0019 "Linking an upstream account"). The issuer's UpstreamPin holds the claim
+// its first link used: a sign-in whose configured claim differs is refused with errPinContradicted, never linked
+// again (REQ-SUBJ-041). A new person and the link are written in one batch, with the pin when it is the issuer's
+// first; every item is a create, so when two first sign-ins race, one batch wins and the other fails with already
+// exists. The loser checks the pin again, reads the link and continues as the winner when the account was the same;
+// when only the pin was taken, it makes its person and link without the pin. Two people never result.
 func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *integrationv2alpha1.Assertion, grant []byte, now time.Time) (subject string, created bool, err error) {
-	id, err := s.keys.linkID(ctx, a.GetIssuer(), a.GetSubjectClaim(), a.GetSubject())
+	pin, err := s.keys.pinID(ctx, a.GetIssuer())
+	if err != nil {
+		return "", false, unavailable("key", err)
+	}
+	id, err := s.keys.linkID(ctx, a.GetIssuer(), a.GetSubject())
 	if err != nil {
 		return "", false, unavailable("key", err)
 	}
@@ -243,28 +277,36 @@ func (s *Service) linkPerson(ctx context.Context, tenant, candidate string, a *i
 		}
 		return l.GetSubject(), nil
 	}
-	sub, err := read()
-	switch {
-	case err == nil:
-		return s.checkSubject(sub)
-	case !errors.Is(err, store.ErrNotFound):
-		return "", false, unavailable("store", err)
-	}
-	err = s.sealed.createAll(ctx, tenant, grant,
-		newSealed{kind: "Person", id: candidate, value: &sessionv2alpha1.Person{Subject: candidate, CreatedAt: timestamppb.New(now)}},
-		newSealed{kind: "UpstreamLink", id: id, value: &sessionv2alpha1.UpstreamLink{Subject: candidate, Issuer: a.GetIssuer(), SubjectClaim: a.GetSubjectClaim()}},
-	)
-	switch {
-	case err == nil:
-		return candidate, true, nil
-	case errors.Is(err, store.ErrExists):
-		sub, err = read()
+	// Two rounds at most: the second follows a lost race, after which the pin exists.
+	for range 2 {
+		pinned, err := s.pinOf(ctx, tenant, pin, a)
 		if err != nil {
+			return "", false, err
+		}
+		sub, err := read()
+		switch {
+		case err == nil:
+			return s.checkSubject(sub)
+		case !errors.Is(err, store.ErrNotFound):
 			return "", false, unavailable("store", err)
 		}
-		return s.checkSubject(sub)
+		items := []newSealed{
+			{kind: "Person", id: candidate, value: &sessionv2alpha1.Person{Subject: candidate, CreatedAt: timestamppb.New(now)}},
+			{kind: "UpstreamLink", id: id, value: &sessionv2alpha1.UpstreamLink{Subject: candidate, Issuer: a.GetIssuer(), SubjectClaim: a.GetSubjectClaim()}},
+		}
+		if !pinned {
+			items = append(items, newSealed{kind: "UpstreamPin", id: pin, plain: true,
+				value: &sessionv2alpha1.UpstreamPin{Issuer: a.GetIssuer(), SubjectClaim: a.GetSubjectClaim()}})
+		}
+		err = s.sealed.createAll(ctx, tenant, grant, items...)
+		switch {
+		case err == nil:
+			return candidate, true, nil
+		case !errors.Is(err, store.ErrExists):
+			return "", false, unavailable("store", err)
+		}
 	}
-	return "", false, unavailable("store", err)
+	return "", false, unavailable("store", errors.New("the link and the pin kept moving"))
 }
 
 // checkSubject refuses a link whose subject is not a valid id: the item is damaged, and a damaged item is not
