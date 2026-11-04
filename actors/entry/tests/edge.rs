@@ -811,7 +811,7 @@ async fn token_is_dispatched_by_grant_type() {
     );
 }
 
-/// verifies: REQ-AUTHN-036, REQ-AUTHN-015
+/// verifies: REQ-AUTHN-036, REQ-AUTHN-015, REQ-AUTHN-012
 #[tokio::test]
 async fn token_refuses_what_its_grant_does_not_list() {
     let up = up().await;
@@ -1120,6 +1120,7 @@ async fn callback_passes_the_signin_cookie_and_only_that_cookie() {
     );
 }
 
+/// verifies: REQ-AUTHN-012
 #[tokio::test]
 async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     let up = up().await;

@@ -397,7 +397,8 @@ requirements:
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
     level: MUST
     source: security-review
-    status: done
+    status: partial
+    gap: no-proving-test
     milestone: v1-parity
     runtimes: all
     standards:

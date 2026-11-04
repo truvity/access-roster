@@ -523,7 +523,8 @@ requirements:
     rationale: "A relying party must not read a grant meant for another system (ADR 0020)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     standards: []

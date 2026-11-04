@@ -187,7 +187,6 @@ requirements:
     source: v1-parity
     status: partial
     gap: no-proving-test
-    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2.2", depth: Partial}
