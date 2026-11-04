@@ -3,14 +3,14 @@
 [Unit]
 Description=sluis writer (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
-Requires=sluis-drv-writer-fs@%i.service
-After=sluis-drv-writer-fs@%i.service
+Requires=sluis-drv-writer-spool@%i.service sluis-drv-writer-fs@%i.service
+After=sluis-drv-writer-spool@%i.service sluis-drv-writer-fs@%i.service
 
 [Service]
 Type=simple
 User=sluis-writer-%i
 Group=sluis-writer-%i
-SupplementaryGroups=sluis-drv-writer-fs-%i sluis-key-%i sluis-policy-%i sluis-store-%i
+SupplementaryGroups=sluis-drv-writer-fs-%i sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i
 ExecStart=/opt/sluis/bin/actors/writer serve --boundary %i --socket /run/sluis/writer/%i.sock
 Restart=on-failure
 RestartSec=2s
