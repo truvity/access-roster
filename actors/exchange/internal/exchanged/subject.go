@@ -60,8 +60,10 @@ type Subject struct {
 	Subject  string // sub
 	Audience string // aud, the one client id
 	ClientID string // client_id, the client the token was issued to
-	JTI      string
-	SID      string // sid, the session chain that backs the token
+	// Client is the declaration of ClientID, read when the token was verified; nil for the token of a trusted issuer.
+	Client *configv2alpha1.InstallationClient
+	JTI    string
+	SID    string // sid, the session chain that backs the token
 
 	ACR         *string
 	AMR         []string
@@ -177,17 +179,18 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 	if !mayBeExchanged(c) {
 		return nil, invalidRequest(reasonClientKind)
 	}
+	s.Client = c
 	return s, nil
 }
 
-// mayBeExchanged says whether a token issued to the client may be the subject of an exchange. The exchange contract
-// has no client authentication yet, so the subject token is the whole proof, and a relying party's own sign-in token
-// would let that relying party mint a token for any audience. Until it has one, only the native public client that a
-// person runs on their own machine (0021: the profile `native`, as the installation's CLI) is a subject. A
-// confidential client, a machine client and a browser client are not.
-// planned: exchange grants for relying parties, with client authentication on the exchange (REQ-EXCH-001, -007, -011)
+// mayBeExchanged says whether a token issued to the client may be the subject of an exchange (REQ-EXCH-020). Until
+// `private_key_jwt` lands, exchange cannot check every way a client may authenticate, so a relying party's own
+// sign-in token must not let that relying party, or another, mint a token for any audience. Only the token of the
+// native public client that a person runs on their own machine (0021: kind `public`, profile `native`, as the
+// installation's CLI) is a subject. A public client with no profile, a confidential client, a machine client and a
+// browser client are not.
 func mayBeExchanged(c *configv2alpha1.InstallationClient) bool {
-	return c.GetKind() == "public" && (c.GetProfile() == "native" || c.GetProfile() == "")
+	return c.GetKind() == "public" && c.GetProfile() == "native"
 }
 
 // verifyTrusted checks a token of an issuer that ExchangeTrust names: the keys are the issuer's published ones, the

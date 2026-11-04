@@ -335,20 +335,20 @@ func TestTokenRefusesWhatItDoesNotServe(t *testing.T) {
 		code   string
 	}
 	cases := map[string]c{
-		"unknown client":       {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "nobody" }, 401, "invalid_client"},
-		"no client":            {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "" }, 401, "invalid_client"},
-		"confidential client":  {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "confidential-app" }, 401, "invalid_client"},
-		"public with a secret": {func(r *sessionv2alpha1.TokenRequest) { r.ClientSecret = "x" }, 401, "invalid_client"},
-		"public with basic":    {func(r *sessionv2alpha1.TokenRequest) { r.Authorization = "Basic c2x1aXMtY2xpOng=" }, 401, "invalid_client"},
-		"no code":              {func(r *sessionv2alpha1.TokenRequest) { r.Code = "" }, 400, "invalid_request"},
-		"no verifier":          {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = "" }, 400, "invalid_request"},
-		"short verifier":       {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = "short" }, 400, "invalid_request"},
-		"verifier with space":  {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = strings.Repeat("a b", 20) }, 400, "invalid_request"},
-		"no redirect":          {func(r *sessionv2alpha1.TokenRequest) { r.RedirectUri = "" }, 400, "invalid_request"},
-		"code with a control":  {func(r *sessionv2alpha1.TokenRequest) { r.Code = "a\nb" }, 400, "invalid_request"},
-		"unsupported grant":    {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "password" }, 400, "unsupported_grant_type"},
-		"no grant":             {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "" }, 400, "unsupported_grant_type"},
-		"token exchange":       {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" }, 400, "unsupported_grant_type"},
+		"unknown client":                      {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "nobody" }, 401, "invalid_client"},
+		"no client":                           {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "" }, 401, "invalid_client"},
+		"confidential client":                 {func(r *sessionv2alpha1.TokenRequest) { r.ClientId = "confidential-app" }, 401, "invalid_client"},
+		"REQ-CLIENT-001/public with a secret": {func(r *sessionv2alpha1.TokenRequest) { r.ClientSecret = "x" }, 401, "invalid_client"},
+		"REQ-CLIENT-001/public with basic":    {func(r *sessionv2alpha1.TokenRequest) { r.Authorization = "Basic c2x1aXMtY2xpOng=" }, 401, "invalid_client"},
+		"no code":                             {func(r *sessionv2alpha1.TokenRequest) { r.Code = "" }, 400, "invalid_request"},
+		"no verifier":                         {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = "" }, 400, "invalid_request"},
+		"short verifier":                      {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = "short" }, 400, "invalid_request"},
+		"verifier with space":                 {func(r *sessionv2alpha1.TokenRequest) { r.CodeVerifier = strings.Repeat("a b", 20) }, 400, "invalid_request"},
+		"no redirect":                         {func(r *sessionv2alpha1.TokenRequest) { r.RedirectUri = "" }, 400, "invalid_request"},
+		"code with a control":                 {func(r *sessionv2alpha1.TokenRequest) { r.Code = "a\nb" }, 400, "invalid_request"},
+		"unsupported grant":                   {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "password" }, 400, "unsupported_grant_type"},
+		"no grant":                            {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "" }, 400, "unsupported_grant_type"},
+		"token exchange":                      {func(r *sessionv2alpha1.TokenRequest) { r.GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" }, 400, "unsupported_grant_type"},
 	}
 	var bodies []string
 	for name, tc := range cases {

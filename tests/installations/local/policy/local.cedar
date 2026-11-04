@@ -68,6 +68,19 @@ permit (
 )
 when { principal has grants && resource.requires.containsAny(principal.grants) };
 
+// A confidential client that exchanges a person's token gets a token for itself and for no other client. The
+// public client that exchanges its own token (`sluis token`) is not held to this: it is the person's own tool.
+// Without a requester in the context (an exchange asked for by an older caller) the rule does not apply.
+@id("exchange-confidential-for-itself")
+forbid (
+  principal is Person,
+  action == Action::"token.exchange",
+  resource is Client
+)
+when {
+  context has requester && context.requester.kind == "confidential" && context.requester != resource
+};
+
 // ---- Step-up ---------------------------------------------------------------------------
 
 // `example-app` of the `dev` boundary wants multi-factor authentication no older than 15

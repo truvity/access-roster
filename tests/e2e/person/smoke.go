@@ -25,7 +25,7 @@ var services = []string{"policy", "signer", "key", "store", "writer", "entry", "
 // every step is audited). An event is its action name in the audit catalogue.
 var wanted = []string{
 	"entry.authorize", "session.authorize", "upstream.begin", "entry.callback", "upstream.complete", "session.signin",
-	"entry.token", "session.token", "policy.decide", "signer.sign", "key.sign", "exchange.token",
+	"entry.token", "session.token", "policy.decide", "signer.sign", "key.sign", "exchange.token", "exchange.refused",
 }
 
 // smoke runs the M2 proof. With PERSON_TRACE set, a failure also prints the failed steps of the audit log (their closed
@@ -163,6 +163,21 @@ func smokeRun(cfg *config, fromOut *int64) error {
 		return errors.New("the ID token's sub and the exchanged token's sub differ: session and exchange must build the same pairwise subject")
 	}
 	fmt.Println("subjects:      the sign-in's sub and the exchanged token's sub are the same pairwise subject")
+
+	// --- 2b. The same exchange as a confidential client: its secret authenticates the client that asks (ADR 0022), and
+	// the subject token is still the public native client's.
+	fmt.Println("\n== 2b. token exchange as the confidential client " + confidentialClient + " (HTTP Basic)")
+	cHdr, cClaims, err := s.confidentialExchange(ctx, loginAT)
+	if err != nil {
+		return err
+	}
+	if err := checkExchanged(cHdr, cClaims, atClaims); err != nil {
+		return fmt.Errorf("the confidential client's exchange: %w", err)
+	}
+	if cClaims["sub"] != xClaims["sub"] {
+		return errors.New("the confidential client's exchange gave another sub than the CLI's")
+	}
+	fmt.Println("client exchange: 200, a token for " + audience + ", the same pairwise subject; the subject token was sluis-cli's")
 
 	// --- 3. The audit trail.
 	fmt.Println("\n== 3. The audit trail (emitters, spool, writer, fs blob)")

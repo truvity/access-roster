@@ -8,11 +8,12 @@ requirements:
     rationale: "A secret in a public client is a configuration error that must be visible."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-01, section: "2.3", depth: Full}
     issues: [789]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go, actors/session/internal/sessiond/token_test.go]
     verification:
       - {kind: integration-test, ref: "negative test"}
   - id: REQ-CLIENT-002
