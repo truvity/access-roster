@@ -24,7 +24,7 @@ const SPKI_PREFIX: [u8; 23] = [
 ];
 
 /// The config sources of the local installation, by kind segment.
-pub const LOCAL: [(&str, &str); 8] = [
+pub const LOCAL: [(&str, &str); 9] = [
     (
         "boundary",
         include_str!("../../../../tests/installations/local/config/boundary.yaml"),
@@ -40,6 +40,10 @@ pub const LOCAL: [(&str, &str); 8] = [
     (
         "grant-vocabulary",
         include_str!("../../../../tests/installations/local/config/grant-vocabulary.yaml"),
+    ),
+    (
+        "policy",
+        include_str!("../../../../tests/installations/local/config/policy.cedar"),
     ),
     (
         "audit-log",
