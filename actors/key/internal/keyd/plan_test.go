@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -53,6 +55,11 @@ func TestForgedKeyPlanStopsTheStart(t *testing.T) {
 			func(e *testEnv, n *node) []byte {
 				return planPayload(t, e.forgedPlan(thief, n.driver.wrappingID()))
 			}, "step 1:"},
+		"a document the right key signed for another kind": {
+			func(e *testEnv, n *node) []byte {
+				// A real, reviewed Boundary document of the publisher, served in place of the KeyPlan.
+				return e.signKind("publisher-1", e.pub, 99, "Boundary", planPayload(t, e.forgedPlan(thief, n.driver.wrappingID())))
+			}, "step 2: kind is not the kind of the document asked for"},
 		"a document that is not JSON": {
 			func(*testEnv, *node) []byte { return []byte("recipients: [x]") }, "step 1:"},
 	} {
@@ -191,11 +198,11 @@ func TestReplayedLowerSeqIsRefused(t *testing.T) {
 	}
 }
 
-// REQ-KEYS-110/cold_start_residual. What key@ cannot guarantee: a process that has just started has seen no seq, so it takes the latest document that
-// is validly signed, also an older one that store@ serves in place of the newest. The sequence protects a running
-// process only (ADR 0005, "Freshness at a cold start"). The older document is still one the publisher signed: a
-// compromised store@ can roll the list back to a commit that was reviewed, and cannot write a list of its own.
-func TestColdStartTakesTheLatestSignedDocumentWhateverItsSeq(t *testing.T) {
+// REQ-KEYS-110/cold_start_residual. What key@ cannot guarantee: a node with no mark (a first start, a new disk, a purged volume) has seen no seq,
+// so it takes the latest document that is validly signed, also an older one that store@ serves in place of the newest.
+// The older document is still one the publisher signed: a compromised store@ can roll the list back to a commit that was
+// reviewed, and cannot write a list of its own. A node that has a mark does better (TestRestartKeepsTheHighestSeq).
+func TestColdStartWithoutAMarkTakesTheLatestSignedDocumentWhateverItsSeq(t *testing.T) {
 	e := newTestEnv(t, "development")
 	first := e.newNode(nodeOpts{name: "node-1"})
 	older := e.store.signed["key-plan"] // lists node-1
@@ -208,6 +215,141 @@ func TestColdStartTakesTheLatestSignedDocumentWhateverItsSeq(t *testing.T) {
 	if seq, ok := first.srv.planSeq.Held(); !ok || seq != e.seq-1 {
 		t.Fatalf("held seq = %d, %v; want the older document's %d", seq, ok, e.seq-1)
 	}
+}
+
+// REQ-KEYS-110/restart_keeps_the_highest_seq. key@ keeps the highest seq it verified in its own state directory, so a restart refuses an older KeyPlan
+// and a second payload under the same seq, and takes the same one again and a newer one.
+func TestRestartKeepsTheHighestSeq(t *testing.T) {
+	e := newTestEnv(t, "development")
+	state := shortDir(t)
+	d := newFakeDriver("software")
+	a := e.startedNode(nodeOpts{name: "node-1", driver: d, stateDir: state})
+	older := e.store.signed["key-plan"]
+	o := newOutsider(t)
+	e.inject(o)
+	e.list(o.id)
+	if err := a.srv.Rewrap(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	newer, newerSeq := e.store.signed["key-plan"], e.seq
+	a.stop()
+
+	// The mark is the seq and the digest of the payload, in a file of key@'s own that nobody else can read.
+	raw, err := os.ReadFile(filepath.Join(state, planMarkFile)) //nolint:gosec // a path in the test's temporary directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := parseMark(raw)
+	if err != nil || m.seq != newerSeq {
+		t.Fatalf("mark = %+v, %v; want seq %d", m, err, newerSeq)
+	}
+	if fi, err := os.Stat(filepath.Join(state, planMarkFile)); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mark mode = %v, %v; want 0600", fi.Mode().Perm(), err)
+	}
+
+	serve := func(doc []byte) {
+		e.store.mu.Lock()
+		e.store.signed["key-plan"] = doc
+		e.store.mu.Unlock()
+	}
+	// store@ serves the older document that the right key signed, to a key@ that restarted.
+	serve(older)
+	b := e.newNode(nodeOpts{name: "node-1", driver: d, stateDir: state, unlisted: true})
+	err = b.srv.Init(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "step 5: a lower seq") {
+		t.Fatalf("Init after a rollback = %v, want a refusal at step 5", err)
+	}
+	// A second payload under the seq in force.
+	plan := proto.Clone(e.plan).(*configv2alpha1.KeyPlan)
+	plan.Recipients = plan.Recipients[:1]
+	serve(e.sign("publisher-1", e.pub, newerSeq, planPayload(t, plan)))
+	if err := e.newNode(nodeOpts{name: "node-1", driver: d, stateDir: state, unlisted: true}).srv.Init(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "step 5: the same seq with another payload") {
+		t.Fatalf("Init with a second payload = %v, want a refusal at step 5", err)
+	}
+	// The check command refuses what the serving process would, and writes nothing.
+	if err := os.Remove(filepath.Join(state, planMarkFile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, planMarkFile), raw, 0o600); err != nil { //nolint:gosec // a path in the test's temporary directory
+		t.Fatal(err)
+	}
+	serve(older)
+	if err := e.newNode(nodeOpts{name: "node-1", driver: d, stateDir: state, unlisted: true}).srv.Check(context.Background()); err == nil ||
+		!strings.Contains(err.Error(), "step 5: a lower seq") {
+		t.Fatalf("Check after a rollback = %v", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(state, planMarkFile)) //nolint:gosec // a path in the test's temporary directory
+	if string(after) != string(raw) {
+		t.Fatal("the check command changed the mark")
+	}
+	// The same document, and then a newer one, start.
+	serve(newer)
+	c := e.newNode(nodeOpts{name: "node-1", driver: d, stateDir: state, unlisted: true})
+	if err := c.srv.Init(context.Background()); err != nil {
+		t.Fatalf("Init with the same document: %v", err)
+	}
+	e.list(o.id) // unchanged list, but a newer seq
+	if err := e.newNode(nodeOpts{name: "node-1", driver: d, stateDir: state, unlisted: true}).srv.Init(context.Background()); err != nil {
+		t.Fatalf("Init with a newer document: %v", err)
+	}
+	raw2, _ := os.ReadFile(filepath.Join(state, planMarkFile)) //nolint:gosec // a path in the test's temporary directory
+	if m2, err := parseMark(raw2); err != nil || m2.seq != e.seq {
+		t.Fatalf("mark after the newer document = %+v, %v; want seq %d", m2, err, e.seq)
+	}
+}
+
+// REQ-KEYS-110/mark_is_not_guessed. A mark that is damaged, a state directory that is missing or open to others, and one that cannot be written, stop the start with the
+// cause. A mark that cannot be saved means the plan is not used: a restart would have forgotten it.
+func TestDamagedMarkAndBadStateDirectoryStopTheStart(t *testing.T) {
+	cases := map[string]func(t *testing.T, dir string){
+		"a mark that is not a mark": func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, planMarkFile), []byte("seq banana\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a mark with a seq of zero": func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, planMarkFile), []byte("seq 0\nsha384 "+strings.Repeat("0", 96)+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a state directory open to the group": func(t *testing.T, dir string) {
+			if err := os.Chmod(dir, 0o770); err != nil { //nolint:gosec // a path in the test's temporary directory
+				t.Fatal(err)
+			}
+		},
+		"a state directory that is missing": func(t *testing.T, dir string) {
+			if err := os.RemoveAll(dir); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, damage := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newTestEnv(t, "development")
+			state := shortDir(t)
+			n := e.newNode(nodeOpts{stateDir: state})
+			damage(t, state)
+			if err := n.srv.Init(context.Background()); err == nil {
+				t.Fatal("started with a damaged mark or a bad state directory")
+			}
+			if len(n.driver.keys) != 1 { // the wrapping key the test made to learn its id
+				t.Fatalf("the driver holds %d keys after a refused start", len(n.driver.keys))
+			}
+		})
+	}
+	t.Run("a mark that cannot be saved", func(t *testing.T) {
+		e := newTestEnv(t, "development")
+		state := shortDir(t)
+		n := e.newNode(nodeOpts{stateDir: state})
+		if err := os.Chmod(state, 0o500); err != nil { //nolint:gosec // a path in the test's temporary directory
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(state, 0o700) }) //nolint:gosec // a path in the test's temporary directory
+		if err := n.srv.Init(context.Background()); err == nil || !strings.Contains(err.Error(), "mark cannot be saved") {
+			t.Fatalf("Init = %v, want a refusal that says the mark cannot be saved", err)
+		}
+	})
 }
 
 // REQ-KEYS-110/payload_is_a_keyplan. A document the right key signed whose payload is not a KeyPlan is refused at step 6, and a payload with a key the
@@ -242,7 +384,7 @@ func TestSignedPayloadThatIsNotAKeyPlanIsRefused(t *testing.T) {
 // against, and a file that does not read is no anchor.
 func TestKeyDoesNotStartWithoutAPublisherAnchor(t *testing.T) {
 	e := newTestEnv(t, "development")
-	base := Config{Boundary: testBoundary, RunDir: shortDir(t), StoreSocket: e.sock, DriverSocket: "/nonexistent/d.sock", Node: "node-1", Auditor: &recorder{}}
+	base := Config{Boundary: testBoundary, RunDir: shortDir(t), StoreSocket: e.sock, DriverSocket: "/nonexistent/d.sock", Node: "node-1", StateDir: shortDir(t), Auditor: &recorder{}}
 	if _, err := New(base); err == nil {
 		t.Fatal("started with no bootstrap file named")
 	}

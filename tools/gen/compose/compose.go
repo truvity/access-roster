@@ -59,12 +59,15 @@ const (
 
 // actorSpec is what an actor's command line and container have beyond `serve --boundary B`.
 type actorSpec struct {
-	Socket  bool     // serves /run/sluis/<actor>/<boundary>.sock
-	Args    []string // the actor's own flags; %B is the boundary
-	Check   bool     // has a `check` command, which is the health check
-	Egress  bool     // has a network (a bridge) for its upstream; every other container has none
-	Creds   string   // the volume of its credentials directory, mounted at /run/credentials
-	Boot    bool     // mounts the bootstrap file's volume
+	Socket bool     // serves /run/sluis/<actor>/<boundary>.sock
+	Args   []string // the actor's own flags; %B is the boundary
+	Check  bool     // has a `check` command, which is the health check
+	Egress bool     // has a network (a bridge) for its upstream; every other container has none
+	Creds  string   // the volume of its credentials directory, mounted at /run/credentials
+	Boot   bool     // mounts the bootstrap file's volume
+	// State is the volume of the actor's own durable local state, mounted read-write at /var/lib/sluis-state/<boundary>/<actor>
+	// and named by --state-dir. It is the actor's alone, and never another's or store@'s.
+	State   string
 	Joins   []string // registry names whose group the actor joins although the call graph does not say so
 	Publish bool
 	// Vkeys mounts the volume of the log verifier keys, read-only, at /etc/sluis/vkeys (the indexer's --verifier-key-dir).
@@ -80,8 +83,9 @@ var actorSpecs = map[string]actorSpec{
 	"store": {Socket: true, Check: true, Boot: true,
 		Args: []string{"--bootstrap", "/etc/sluis/bootstrap.d/%B.yaml"}},
 	// key@ reads the publishers block of the bootstrap file, read-only, to verify the KeyPlan itself (REQ-KEYS-075).
-	"key": {Check: true, Boot: true, Args: []string{
+	"key": {Check: true, Boot: true, State: "state-key", Args: []string{
 		"--bootstrap", "/etc/sluis/bootstrap.d/%B.yaml",
+		"--state-dir", "/var/lib/sluis-state/%B/key",
 		"--run-dir", "/run/sluis/key/%B",
 		"--store-socket", "/run/sluis/store/%B.sock",
 		"--driver-socket", "/run/sluis/key/%B/driver/key-store.sock",
@@ -488,6 +492,10 @@ func (p *plan) build() error {
 		if spec.Boot {
 			p.volume(volume{Name: "bootstrap", Owner: 0, Group: 0, Mode: "0755"})
 			s.Mounts = append(s.Mounts, mount{"bootstrap", "/etc/sluis/bootstrap.d", true})
+		}
+		if spec.State != "" {
+			p.volume(volume{Name: spec.State, Owner: u, Group: u, Mode: "0700"})
+			s.Mounts = append(s.Mounts, mount{spec.State, b.path("/var/lib/sluis-state/%B/" + a.Name), false})
 		}
 		if spec.Creds != "" {
 			p.volume(volume{Name: spec.Creds, Owner: u, Group: u, Mode: "0700"})

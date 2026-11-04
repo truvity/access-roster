@@ -15,7 +15,7 @@ import (
 
 // flags holds the flags of key@ beyond the common ones.
 type flags struct {
-	runDir, storeSocket, driverSocket, transportSocket, node, bootstrap string
+	runDir, storeSocket, driverSocket, transportSocket, node, bootstrap, stateDir string
 }
 
 func (f *flags) add(fs *flag.FlagSet) {
@@ -24,6 +24,7 @@ func (f *flags) add(fs *flag.FlagSet) {
 	fs.StringVar(&f.driverSocket, "driver-socket", "", "the socket of the key-store driver, <run-dir>/driver/key-store.sock")
 	fs.StringVar(&f.transportSocket, "transport-socket", "", "the emit socket of the audit transport, /run/sluis/audit/<boundary>/emit.sock")
 	fs.StringVar(&f.bootstrap, "bootstrap", "", "the bootstrap file, /etc/sluis/bootstrap.d/<boundary>.yaml: key@ reads its publishers block, the keys that sign the KeyPlan it verifies")
+	fs.StringVar(&f.stateDir, "state-dir", "", "key@'s own durable state, /var/lib/sluis-state/<boundary>/key: the highest KeyPlan seq verified, kept across restarts")
 	fs.StringVar(&f.node, "node", "", "the recipient label base of this node: node-1 locally, the board's short name on a board")
 }
 
@@ -31,7 +32,7 @@ func (f *flags) server(c cli.Flags) (*keyd.Server, error) {
 	var missing []string
 	for name, v := range map[string]string{
 		"boundary": c.Boundary, "run-dir": f.runDir, "store-socket": f.storeSocket,
-		"driver-socket": f.driverSocket, "transport-socket": f.transportSocket, "node": f.node, "bootstrap": f.bootstrap,
+		"driver-socket": f.driverSocket, "transport-socket": f.transportSocket, "node": f.node, "bootstrap": f.bootstrap, "state-dir": f.stateDir,
 	} {
 		if v == "" {
 			missing = append(missing, "--"+name)
@@ -46,7 +47,7 @@ func (f *flags) server(c cli.Flags) (*keyd.Server, error) {
 	}
 	s, err := keyd.New(keyd.Config{
 		Boundary: c.Boundary, RunDir: f.runDir, StoreSocket: f.storeSocket,
-		DriverSocket: f.driverSocket, TransportSocket: f.transportSocket, Node: f.node, Bootstrap: f.bootstrap,
+		DriverSocket: f.driverSocket, TransportSocket: f.transportSocket, Node: f.node, Bootstrap: f.bootstrap, StateDir: f.stateDir,
 		Auditor: a,
 	})
 	if err != nil {

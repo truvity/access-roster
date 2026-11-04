@@ -226,6 +226,9 @@ type actorSpec struct {
 	Credentials []string
 	// Joins are registry names whose group the unit joins although the call graph does not say so.
 	Joins []string
+	// State gives the actor a state directory of its own below StateRoot, 0700, named by the --state-dir in Args. It
+	// is for what the actor must remember across a restart (key@'s highest KeyPlan seq) and is no other unit's.
+	State bool
 }
 
 // forwarder is the registry name of the edge's reverse proxy, the only caller of entry's listener. It is a harness piece,
@@ -237,8 +240,9 @@ var actorSpecs = map[string]actorSpec{
 	// the platform (tmpfiles); the driver's socket is <run-dir>/driver/key-store.sock; --node is the board's short name.
 	// --bootstrap is the root's public file store@ reads too; key@ reads its publishers block to verify the KeyPlan itself
 	// (REQ-KEYS-075). ProtectSystem=strict keeps /etc read-only for the unit, so the file is read-only to it.
-	"key": {NoSocket: true, Args: []string{
+	"key": {NoSocket: true, State: true, Args: []string{
 		"--bootstrap", "/etc/sluis/bootstrap.d/%i.yaml",
+		"--state-dir", StateRoot + "/%i/key",
 		"--run-dir", "/run/sluis/key/%i",
 		"--store-socket", "/run/sluis/store/%i.sock",
 		"--driver-socket", "/run/sluis/key/%i/" + keyDriverSocket,
@@ -655,6 +659,10 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	}
 	for _, c := range spec.Credentials {
 		b.line("LoadCredential=%s:%s/%%i/%s/%s", c, LoadRoot, unitStem(a.Name), c)
+	}
+	if spec.State {
+		b.line("StateDirectory=%s", strings.TrimPrefix(fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name), "/var/lib/"))
+		b.line("StateDirectoryMode=0700")
 	}
 	b.blank()
 	b.harden(len(a.Egress) == 0)
