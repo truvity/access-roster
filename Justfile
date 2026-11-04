@@ -461,3 +461,19 @@ local-deny:
 local-smoke:
     CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
+
+# The sign-in of `sluis login --issuer https://sluis.dev.local.test` for one user of the test identity provider (alice by
+# default), headless: the harness fills in the identity provider's form and computes the TOTP code from the user's secret
+# (SLUIS_KEYCLOAK_SECRETS), where a browser and an authenticator would. Prints what the CLI printed. Needs `local-up`.
+local-login-headless user='alice':
+    CGO_ENABLED=0 go build -o dist/local/person ./tests/e2e/person
+    SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/person login {{ user }}
+
+# The M2 proof against the running local installation (`just local-up` first): the CLI signs alice in through the forwarder,
+# entry, session, the upstream adapter and the identity provider; `sluis token --audience example-app` has exchange
+# do the RFC 8693 exchange. It prints the claims of the ID token (sub pairwise, acr and amr as the upstream gave them) and of
+# the exchanged token (groups narrowed to the audience), checks both against /jwks, finds the records of every step in the
+# audit log and runs `sluis audit verify` on it. Exits non-zero on any failure. Needs Docker; CI does not run it.
+local-person-smoke:
+    CGO_ENABLED=0 go build -o dist/local/person ./tests/e2e/person
+    SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/person smoke
