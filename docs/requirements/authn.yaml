@@ -1127,8 +1127,8 @@ requirements:
       - {kind: integration-test, ref: "a callback with an extra response parameter completes the sign-in; the same extra parameter on a request to authorize is refused"}
   - id: REQ-AUTHN-079
     area: AUTHN
-    statement: "The form post response page MUST carry a form-action directive set to the web origin of the redirect URI of that response."
-    rationale: "The page posts the code to the client, so the browser must refuse a post to any other origin (ADR 0017)."
+    statement: "The form post response page MUST carry a form-action directive set to the scheme, host and port of the redirect URI of that response."
+    rationale: "The page posts the code to the client, so the browser must refuse a post to any other address (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1138,4 +1138,4 @@ requirements:
       - {id: NC-05, section: "CSP", depth: Partial}
     issues: [979, 796]
     verification:
-      - {kind: integration-test, ref: "form post page CSP test: form-action is the origin of that response redirect_uri"}
+      - {kind: integration-test, ref: "form post page CSP test: form-action is the scheme, host and port of that response redirect_uri"}
