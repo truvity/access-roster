@@ -39,3 +39,4 @@ sluis-kit = { path = ".", features = ["test-identities"] }
 rustix = { version = "1", features = ["process"] }
 tempfile = "3"
 
+sluis-kit-echo = { path = "../sluis-kit-echo" }

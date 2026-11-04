@@ -235,14 +235,11 @@ impl Guard {
             name,
             uid_block: block,
         };
-        let inherited = Inherited {
-            correlation: from_headers(ctx.headers()),
-            deadline: ctx.deadline(),
-        };
+        let correlation = from_headers(ctx.headers());
         let ext = ctx.extensions_mut();
         ext.insert(peer);
-        if let Some(id) = &inherited.correlation {
-            ext.insert(CorrelationId(id.clone()));
+        if let Some(id) = correlation {
+            ext.insert(CorrelationId(id));
         }
         Ok(())
     }
