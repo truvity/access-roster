@@ -279,7 +279,7 @@ func TestReadRecipients(t *testing.T) {
 	}
 }
 
-// verifies: REQ-SUBJ-044
+// The binding of REQ-SUBJ-044 in the local policy: by sub, rendered here, never by the user name.
 func TestThePolicyBindsTheTestUserBySubAndAnUnfilledBindingIsNotSigned(t *testing.T) {
 	src, err := os.ReadFile(filepath.Join(repoConfig, "policy.cedar"))
 	if err != nil {
