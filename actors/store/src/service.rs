@@ -230,8 +230,10 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         match kind.scope {
             Scope::Boundary if !tenant.is_empty() => return Err(bad(kind)),
             Scope::BoundaryTenant if tenant.is_empty() => {
-                // The boundary's own wraps are a `DataKeyWrap` at no tenant (kinds.yaml, notes).
-                if kind.name != "DataKeyWrap" {
+                // The boundary's own wraps are a `DataKeyWrap` at no tenant (kinds.yaml, notes), and so is a
+                // revocation of a boundary's key, purpose or recipient (ADR 0041): only a data key generation of a
+                // tenant has a tenant.
+                if !matches!(kind.name, "DataKeyWrap" | "KeyRevocation") {
                     return Err(bad(kind));
                 }
             }
@@ -295,6 +297,12 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         // over at 1, and an apply would take the lease without naming the version it read. So a
         // lease is created once and then taken over by a conditional update, and nothing else.
         if kind.name == "Lease" && matches!(verb, "delete" | "apply") {
+            return Err(denied("rule"));
+        }
+        // A revocation only grows (ADR 0041; REQ-KEYS-091). `Lease`'s rule above allows an update, so it is not the
+        // model: for every caller, key@ included, an update and a delete of a `KeyRevocation` are refused, and an apply is
+        // refused on an item that exists (write_inner turns it into a create that must find the address free).
+        if kind.name == "KeyRevocation" && matches!(verb, "update" | "delete") {
             return Err(denied("rule"));
         }
         let write = matches!(verb, "create" | "update" | "delete" | "apply");
@@ -777,7 +785,7 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         // of `DataKeyWrap`: key@ is the other check there (ADR 0005 "Rules").
         let needs_grant = |t: &Target| {
             t.kind.scope == Scope::BoundaryTenant
-                && !(caller == "key" && t.kind.name == "DataKeyWrap")
+                && !(caller == "key" && matches!(t.kind.name, "DataKeyWrap" | "KeyRevocation"))
         };
         if planned.iter().any(|p| needs_grant(&p.2)) {
             let denied = |t: &Target, verb: &'static str| {
@@ -829,6 +837,8 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
             let watched = t.kind.watched || t.kind.exportable;
             let expect = match *verb {
                 "create" => Some(Expect::Absent(true)),
+                // An apply on a revocation must find the address free: it never replaces an item (REQ-KEYS-091).
+                "apply" if t.kind.name == "KeyRevocation" => Some(Expect::Absent(true)),
                 "update" if op.if_version == 0 => {
                     return Err(blame(refuse(
                         ErrorCode::Aborted,
@@ -1037,7 +1047,13 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 // Without the index, the first condition is the best answer the driver left.
                 let c = idx.unwrap_or(0).min(tx.conditions.len().saturating_sub(1));
                 let op = condition_ops.get(c).copied().unwrap_or(0);
-                let mut r = if verbs.get(op).copied() == Some("create") {
+                let mut r = if verbs.get(op).copied() == Some("apply") {
+                    // Only a revocation's apply has a condition: the item exists, and an apply on it is refused.
+                    let mut r = refuse(ErrorCode::PermissionDenied, "rule", "");
+                    r.kind = Some("KeyRevocation");
+                    r.verb = "apply";
+                    r
+                } else if verbs.get(op).copied() == Some("create") {
                     refuse(
                         ErrorCode::AlreadyExists,
                         "taken",

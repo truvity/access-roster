@@ -1957,3 +1957,125 @@ async fn a_refusal_carries_the_correlation_id_of_the_call() {
     assert_eq!(ev[0].correlation_id.as_deref(), Some("req-42"));
     assert_eq!(ev[1].correlation_id, None, "a call without an id has none");
 }
+
+// ---- KeyRevocation: create only (ADR 0041) ----
+
+/// verifies: REQ-KEYS-091
+/// A revocation only grows. For every actor of the registry, key@ included, an update, a delete and an apply on an
+/// existing KeyRevocation item are refused and the item is as it was; key@ creates one, at no tenant and at a tenant,
+/// with no grant, and an apply on an address that is free creates it. Nobody else can write the kind at all.
+#[tokio::test]
+async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
+    let f = F::new().await;
+    f.as_("key");
+    let kid = |id: &str, v: &[u8]| op(Verb::CREATE, "key-revocation", "", id, v);
+    f.write(vec![kid("kid/aaaa", b"first")], &[]).await.unwrap();
+    // A tenant's data key generation: a tenant in the address, and still no grant for key@, its one writer.
+    f.write(
+        vec![op(
+            Verb::CREATE,
+            "key-revocation",
+            "acme",
+            "generation/data/3",
+            b"gen",
+        )],
+        &[],
+    )
+    .await
+    .unwrap();
+    // A second create of the same target is taken, not a replacement.
+    refused(
+        f.write(vec![kid("kid/aaaa", b"again")], &[]).await,
+        ErrorCode::AlreadyExists,
+        "taken",
+    );
+    // An apply on a free address creates it.
+    f.write(
+        vec![op(
+            Verb::APPLY,
+            "key-revocation",
+            "",
+            "purpose/token-signing",
+            b"p",
+        )],
+        &[],
+    )
+    .await
+    .unwrap();
+
+    let actors: Vec<&'static str> = sluis_registry::actors().iter().map(|a| a.name).collect();
+    assert!(
+        actors.contains(&"key") && actors.len() > 10,
+        "the sweep must cover the registry"
+    );
+    for actor in actors {
+        f.as_(actor);
+        for (verb, name) in [
+            (Verb::UPDATE, "update"),
+            (Verb::DELETE, "delete"),
+            (Verb::APPLY, "apply"),
+        ] {
+            for id in ["kid/aaaa", "purpose/token-signing"] {
+                let o = if verb == Verb::UPDATE {
+                    with_version(op(verb, "key-revocation", "", id, b"changed"), 1)
+                } else {
+                    op(verb, "key-revocation", "", id, b"changed")
+                };
+                let e = f
+                    .write(vec![o], &[])
+                    .await
+                    .expect_err(&format!("{actor} {name} {id} must be refused"));
+                assert_eq!(
+                    e.code,
+                    ErrorCode::PermissionDenied,
+                    "{actor} {name} {id}: {e:?}"
+                );
+            }
+        }
+    }
+    // The items are as key@ made them.
+    f.as_("key");
+    assert_eq!(
+        f.get("key-revocation", "", "kid/aaaa")
+            .await
+            .unwrap()
+            .item
+            .value,
+        b"first"
+    );
+    assert_eq!(
+        f.get("key-revocation", "", "purpose/token-signing")
+            .await
+            .unwrap()
+            .item
+            .value,
+        b"p"
+    );
+    // The refusals were audited.
+    assert!(
+        f.audit()
+            .iter()
+            .filter(|e| e.action == "store.refused")
+            .count()
+            > 100
+    );
+}
+
+/// verifies: REQ-KEYS-091
+/// Only key@ writes the kind: a create by an actor that reads it, or by any other, has no rule.
+#[tokio::test]
+async fn req_keys_091_only_key_creates_a_key_revocation() {
+    let f = F::new().await;
+    for actor in ["signer", "entry", "exporter", "ca", "session", "policy"] {
+        f.as_(actor);
+        refused(
+            f.write(
+                vec![op(Verb::CREATE, "key-revocation", "", "kid/bbbb", b"x")],
+                &[],
+            )
+            .await,
+            ErrorCode::PermissionDenied,
+            "rule",
+        );
+    }
+}

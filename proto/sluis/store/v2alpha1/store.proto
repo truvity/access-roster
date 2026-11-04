@@ -97,7 +97,7 @@ message ListResponse {
 // WriteRequest is a batch of operations, applied all or none.
 message WriteRequest {
   repeated Operation operations = 1;  // at most 64, applied all or none, to kinds of the calling actor
-  bytes grant = 2;                    // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap)
+  bytes grant = 2;                    // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap and KeyRevocation)
 }
 
 // Operation is one write of a batch.

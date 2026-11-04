@@ -640,7 +640,7 @@ func (x *ListResponse) GetNextPageToken() string {
 type WriteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Operations    []*Operation           `protobuf:"bytes,1,rep,name=operations,proto3" json:"operations,omitempty"` // at most 64, applied all or none, to kinds of the calling actor
-	Grant         []byte                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`           // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap)
+	Grant         []byte                 `protobuf:"bytes,2,opt,name=grant,proto3" json:"grant,omitempty"`           // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap and KeyRevocation)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

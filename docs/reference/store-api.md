@@ -80,7 +80,7 @@ message ListResponse { repeated Item items = 1; string next_page_token = 2; }
 ```proto
 message WriteRequest {
   repeated Operation operations = 1;  // at most 64, applied all or none, to kinds of the calling actor
-  bytes grant = 2;                    // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap)
+  bytes grant = 2;                    // the sealed grant; required when an address is tenant-scoped (not for key@'s DataKeyWrap and KeyRevocation)
 }
 message Operation {
   Verb verb = 1;                      // CREATE, UPDATE, DELETE or APPLY
@@ -102,7 +102,7 @@ message WriteResponse { repeated Item items = 1; }  // the items as written, wit
 | `APPLY` | Creates the item or sets it to the value, for a writer that owns the whole item and replays idempotently | Never for a version |
 
 - **A batch is all or none,** by one actor to its own kinds. There are no interactive transactions: a flow over several items is idempotent steps with a recovery marker. A batch of more than 64 operations is refused.
-- **store@ checks, on every operation,** the rule of the actor, the kind and the verb; the schema of the kind; a TTL within the kind's maximum; the version; the bounds and the direction rule of a layered kind; the links the registry says are checked at write; and that the caller is the kind's one writer ([0005](/decisions/0005-the-store/#rules)). On a write to a tenant-scoped address, except key@'s own writes of `DataKeyWrap` ([0005](/decisions/0005-the-store/#rules)), it has key@ open the grant, and refuses the write unless the grant names the address's tenant and allows the verb ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
+- **store@ checks, on every operation,** the rule of the actor, the kind and the verb; the schema of the kind; a TTL within the kind's maximum; the version; the bounds and the direction rule of a layered kind; the links the registry says are checked at write; and that the caller is the kind's one writer ([0005](/decisions/0005-the-store/#rules)). On a write to a tenant-scoped address, except key@'s own writes of `DataKeyWrap` and `KeyRevocation` ([0005](/decisions/0005-the-store/#rules)), it has key@ open the grant, and refuses the write unless the grant names the address's tenant and allows the verb ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
 - **While `MaintenanceMode` is set,** every write except those of the restore command is refused ([0010](/decisions/0010-backup-and-recovery/#restore)).
 - **A write that changes a watched kind** also writes its change-log row in the same transaction. A kind that nobody watches writes none, and a hot counter is one conditional update ([Item contract](#the-item-contract)).
 

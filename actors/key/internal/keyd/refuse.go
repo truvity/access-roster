@@ -31,6 +31,7 @@ const (
 	reasonStore     = "store"     // unavailable: store@ failed
 	reasonDriver    = "driver"    // unavailable: the key-store driver failed
 	reasonAudit     = "audit"     // unavailable: the audit fact of a signature could not be made durable
+	reasonRevoked   = "revoked"   // permission_denied: the key is listed in KeyRevocation and signs nothing more (revocation.go)
 	reasonWrap      = "wrap"      // unavailable: the data key exists but this node holds no wrap of it yet
 )
 

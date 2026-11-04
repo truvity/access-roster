@@ -135,3 +135,15 @@ message KeyCertificate {
   repeated bytes chain = 4;                   // the certificate chain, DER, leaf first; empty when there is none
   google.protobuf.Timestamp added_at = 5;     // when key@ published it
 }
+
+// KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
+// is its one writer, on a declaration of an operator; the signer, entry, exporter@ and ca read it. The operator and
+// any free-text reason are in the audit fact, not here: this kind is plain so that the publishers can read it.
+// Its id is <target_kind>/<target>: kid/<recipient label of the kid>, purpose/<purpose>, recipient/<label> or
+// generation/<purpose>/<generation> (the last in the tenant of the data key).
+message KeyRevocation {
+  string target_kind = 1;                       // kid, purpose, generation or recipient
+  string target = 2;                            // the kid, the purpose, "<purpose>/<generation>" or the recipient
+  string reason_code = 3;                       // compromise, suspicion, lost-board or drill
+  google.protobuf.Timestamp revoked_at = 4;     // when key@ wrote it
+}

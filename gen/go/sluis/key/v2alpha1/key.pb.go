@@ -1015,6 +1015,79 @@ func (x *KeyCertificate) GetAddedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
+// is its one writer, on a declaration of an operator; the signer, entry, exporter@ and ca read it. The operator and
+// any free-text reason are in the audit fact, not here: this kind is plain so that the publishers can read it.
+// Its id is <target_kind>/<target>: kid/<recipient label of the kid>, purpose/<purpose>, recipient/<label> or
+// generation/<purpose>/<generation> (the last in the tenant of the data key).
+type KeyRevocation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TargetKind    string                 `protobuf:"bytes,1,opt,name=target_kind,json=targetKind,proto3" json:"target_kind,omitempty"` // kid, purpose, generation or recipient
+	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`                           // the kid, the purpose, "<purpose>/<generation>" or the recipient
+	ReasonCode    string                 `protobuf:"bytes,3,opt,name=reason_code,json=reasonCode,proto3" json:"reason_code,omitempty"` // compromise, suspicion, lost-board or drill
+	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`    // when key@ wrote it
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KeyRevocation) Reset() {
+	*x = KeyRevocation{}
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KeyRevocation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KeyRevocation) ProtoMessage() {}
+
+func (x *KeyRevocation) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_key_v2alpha1_key_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KeyRevocation.ProtoReflect.Descriptor instead.
+func (*KeyRevocation) Descriptor() ([]byte, []int) {
+	return file_sluis_key_v2alpha1_key_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *KeyRevocation) GetTargetKind() string {
+	if x != nil {
+		return x.TargetKind
+	}
+	return ""
+}
+
+func (x *KeyRevocation) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *KeyRevocation) GetReasonCode() string {
+	if x != nil {
+		return x.ReasonCode
+	}
+	return ""
+}
+
+func (x *KeyRevocation) GetRevokedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.RevokedAt
+	}
+	return nil
+}
+
 var File_sluis_key_v2alpha1_key_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
@@ -1086,7 +1159,15 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\trecipient\x18\x02 \x01(\tR\trecipient\x12\x19\n" +
 	"\bspki_der\x18\x03 \x01(\fR\aspkiDer\x12\x14\n" +
 	"\x05chain\x18\x04 \x03(\fR\x05chain\x125\n" +
-	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt2\xc3\x04\n" +
+	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\"\xa4\x01\n" +
+	"\rKeyRevocation\x12\x1f\n" +
+	"\vtarget_kind\x18\x01 \x01(\tR\n" +
+	"targetKind\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12\x1f\n" +
+	"\vreason_code\x18\x03 \x01(\tR\n" +
+	"reasonCode\x129\n" +
+	"\n" +
+	"revoked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt2\xc3\x04\n" +
 	"\n" +
 	"KeyService\x12I\n" +
 	"\x04Seal\x12\x1f.sluis.key.v2alpha1.SealRequest\x1a .sluis.key.v2alpha1.SealResponse\x12I\n" +
@@ -1110,7 +1191,7 @@ func file_sluis_key_v2alpha1_key_proto_rawDescGZIP() []byte {
 	return file_sluis_key_v2alpha1_key_proto_rawDescData
 }
 
-var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_sluis_key_v2alpha1_key_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*SealRequest)(nil),           // 0: sluis.key.v2alpha1.SealRequest
 	(*SealResponse)(nil),          // 1: sluis.key.v2alpha1.SealResponse
@@ -1129,36 +1210,38 @@ var file_sluis_key_v2alpha1_key_proto_goTypes = []any{
 	(*PublicKeyResponse)(nil),     // 14: sluis.key.v2alpha1.PublicKeyResponse
 	(*DataKeyWrap)(nil),           // 15: sluis.key.v2alpha1.DataKeyWrap
 	(*KeyCertificate)(nil),        // 16: sluis.key.v2alpha1.KeyCertificate
-	(*v2alpha1.Address)(nil),      // 17: sluis.type.v2alpha1.Address
-	(*v2alpha1.Grant)(nil),        // 18: sluis.type.v2alpha1.Grant
-	(*timestamppb.Timestamp)(nil), // 19: google.protobuf.Timestamp
+	(*KeyRevocation)(nil),         // 17: sluis.key.v2alpha1.KeyRevocation
+	(*v2alpha1.Address)(nil),      // 18: sluis.type.v2alpha1.Address
+	(*v2alpha1.Grant)(nil),        // 19: sluis.type.v2alpha1.Grant
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
 }
 var file_sluis_key_v2alpha1_key_proto_depIdxs = []int32{
-	17, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
-	17, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
+	18, // 0: sluis.key.v2alpha1.SealRequest.address:type_name -> sluis.type.v2alpha1.Address
+	18, // 1: sluis.key.v2alpha1.OpenItem.address:type_name -> sluis.type.v2alpha1.Address
 	2,  // 2: sluis.key.v2alpha1.OpenRequest.items:type_name -> sluis.key.v2alpha1.OpenItem
-	18, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
-	18, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
-	19, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
-	0,  // 6: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
-	3,  // 7: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
-	5,  // 8: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
-	7,  // 9: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
-	9,  // 10: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
-	11, // 11: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
-	13, // 12: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
-	1,  // 13: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
-	4,  // 14: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
-	6,  // 15: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
-	8,  // 16: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
-	10, // 17: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
-	12, // 18: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
-	14, // 19: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
-	13, // [13:20] is the sub-list for method output_type
-	6,  // [6:13] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	19, // 3: sluis.key.v2alpha1.SealGrantRequest.grant:type_name -> sluis.type.v2alpha1.Grant
+	19, // 4: sluis.key.v2alpha1.OpenGrantResponse.grant:type_name -> sluis.type.v2alpha1.Grant
+	20, // 5: sluis.key.v2alpha1.KeyCertificate.added_at:type_name -> google.protobuf.Timestamp
+	20, // 6: sluis.key.v2alpha1.KeyRevocation.revoked_at:type_name -> google.protobuf.Timestamp
+	0,  // 7: sluis.key.v2alpha1.KeyService.Seal:input_type -> sluis.key.v2alpha1.SealRequest
+	3,  // 8: sluis.key.v2alpha1.KeyService.Open:input_type -> sluis.key.v2alpha1.OpenRequest
+	5,  // 9: sluis.key.v2alpha1.KeyService.SealGrant:input_type -> sluis.key.v2alpha1.SealGrantRequest
+	7,  // 10: sluis.key.v2alpha1.KeyService.OpenGrant:input_type -> sluis.key.v2alpha1.OpenGrantRequest
+	9,  // 11: sluis.key.v2alpha1.KeyService.Sign:input_type -> sluis.key.v2alpha1.SignRequest
+	11, // 12: sluis.key.v2alpha1.KeyService.Mac:input_type -> sluis.key.v2alpha1.MacRequest
+	13, // 13: sluis.key.v2alpha1.KeyService.PublicKey:input_type -> sluis.key.v2alpha1.PublicKeyRequest
+	1,  // 14: sluis.key.v2alpha1.KeyService.Seal:output_type -> sluis.key.v2alpha1.SealResponse
+	4,  // 15: sluis.key.v2alpha1.KeyService.Open:output_type -> sluis.key.v2alpha1.OpenResponse
+	6,  // 16: sluis.key.v2alpha1.KeyService.SealGrant:output_type -> sluis.key.v2alpha1.SealGrantResponse
+	8,  // 17: sluis.key.v2alpha1.KeyService.OpenGrant:output_type -> sluis.key.v2alpha1.OpenGrantResponse
+	10, // 18: sluis.key.v2alpha1.KeyService.Sign:output_type -> sluis.key.v2alpha1.SignResponse
+	12, // 19: sluis.key.v2alpha1.KeyService.Mac:output_type -> sluis.key.v2alpha1.MacResponse
+	14, // 20: sluis.key.v2alpha1.KeyService.PublicKey:output_type -> sluis.key.v2alpha1.PublicKeyResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_sluis_key_v2alpha1_key_proto_init() }
@@ -1172,7 +1255,7 @@ func file_sluis_key_v2alpha1_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_key_v2alpha1_key_proto_rawDesc), len(file_sluis_key_v2alpha1_key_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

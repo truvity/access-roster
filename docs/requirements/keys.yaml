@@ -1375,7 +1375,7 @@ requirements:
     rationale: "A revocation is terminal, and the direction rule alone would still allow a delete; Lease allows an update, so its rule is not the model (ADR 0041, ADR 0004)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     issues: [1362]
     runtimes: all
@@ -1628,7 +1628,8 @@ requirements:
     rationale: "A revoked key signs nothing more, and this holds for the SSH CAs, the X.509 intermediates, the checkpoint keys and the workload-issuer key as for a token key, whichever actor asks (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1362, 1369]
     runtimes: all
