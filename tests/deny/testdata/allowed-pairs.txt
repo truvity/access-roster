@@ -1,0 +1,55 @@
+# The allowed (caller -> socket) pairs of the local installation's deny matrix, the oracle that does not come from the
+# guard's own function (tests/deny, REQ-ISO-090). Every pair below must reach its callee past the guard, and every other
+# pair of the sweep must be refused. A change of the actor registry or of the Compose project that changes the call
+# graph changes this list, and the pull request that makes it updates the list on purpose, where a reviewer sees it.
+# The socket names are the ids of tests/deny/internal/spec (the numbered list of the report).
+adapter-upstream-oidc -> key/adapter-upstream-oidc
+adapter-upstream-oidc -> policy
+adapter-upstream-oidc -> spool-emit
+adapter-upstream-oidc -> store
+entry -> adapter
+entry -> key/entry
+entry -> spool-emit
+entry -> store
+exchange -> adapter
+exchange -> key/exchange
+exchange -> policy
+exchange -> signer
+exchange -> spool-emit
+exchange -> store
+harness-forwarder -> entry
+indexer -> key/indexer
+indexer -> policy
+indexer -> spool-emit
+indexer -> store
+key -> drv-key
+key -> spool-emit
+key -> store
+policy -> key/policy
+policy -> spool-emit
+policy -> store
+reader -> key/reader
+reader -> policy
+reader -> spool-emit
+reader -> store
+session -> adapter
+session -> key/session
+session -> policy
+session -> signer
+session -> spool-emit
+session -> store
+signer -> key/signer
+signer -> spool-emit
+signer -> store
+store -> drv-config
+store -> drv-durable
+store -> drv-secret
+store -> drv-temp
+store -> key/store
+store -> spool-emit
+writer -> drv-blob
+writer -> key/writer
+writer -> policy
+writer -> spool-emit
+writer -> spool-receive
+writer -> store

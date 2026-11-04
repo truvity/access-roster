@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,12 +37,14 @@ func main() {
 	boundary := flag.String("boundary", "dev", "the boundary")
 	image := flag.String("probe-image", "", "the image of the probe (a built tests/deny/probe on the distroless base)")
 	report := flag.String("report", "", "also write the report to this file")
+	compose := flag.String("compose", "deploy/local/compose.yaml", "the Compose project file the installation runs, for the callers it must probe")
+	golden := flag.String("golden", "tests/deny/testdata/allowed-pairs.txt", "the golden file of the allowed pairs")
 	flag.Parse()
 	if *project == "" || *image == "" || flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "deny: -project and -probe-image are required")
 		os.Exit(2)
 	}
-	ok, err := run(context.Background(), *project, *boundary, *image, *report)
+	ok, err := run(context.Background(), sweep{project: *project, boundary: *boundary, image: *image, report: *report, compose: *compose, golden: *golden})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "deny:", err)
 		os.Exit(1)
@@ -115,11 +118,19 @@ func discover(ctx context.Context, project string) ([]unit, error) {
 
 // callers are the registry names that run, each with the unit that stands for it: the first service by name that runs as
 // its uid, except the sidecar that borrows the adapter's uid and has none of its groups.
-func callers(us []unit) ([]string, map[string]unit) {
+func callers(us []unit) ([]string, map[string]unit, error) {
 	by := map[string]unit{}
 	var names []string
 	for _, u := range us {
-		if u.Name == "" || u.Service == "idp-loopback" {
+		if u.Name == "" {
+			uid, err := strconv.ParseUint(strings.SplitN(u.User, ":", 2)[0], 10, 32)
+			if err == nil && spec.NotCaller(uint32(uid)) {
+				continue
+			}
+			// A running process whose uid the registry does not name would drop out of the sweep unseen.
+			return nil, nil, fmt.Errorf("the container of %s runs as %q, which maps to no registry name", u.Service, u.User)
+		}
+		if u.Service == "idp-loopback" {
 			continue
 		}
 		if _, dup := by[u.Name]; !dup {
@@ -128,7 +139,7 @@ func callers(us []unit) ([]string, map[string]unit) {
 		}
 	}
 	sort.Strings(names)
-	return names, by
+	return names, by, nil
 }
 
 // mounts are every socket directory of the project, once by path, for the probe to mount read-only.
@@ -176,7 +187,28 @@ func runProbe(ctx context.Context, image string, project string, u unit, ms []mo
 	return rs, nil
 }
 
-func run(ctx context.Context, project, boundary, image, reportPath string) (bool, error) {
+// sweep is one run of the matrix: the project, the probe, and the two files the run is checked against.
+type sweep struct {
+	project, boundary, image, report string
+	compose                          string // the Compose project file: the callers that must be probed
+	golden                           string // the golden file of the allowed pairs
+}
+
+func run(ctx context.Context, sw sweep) (bool, error) {
+	project, boundary, image, reportPath := sw.project, sw.boundary, sw.image, sw.report
+	cb, err := os.ReadFile(sw.compose)
+	if err != nil {
+		return false, err
+	}
+	expected, err := spec.ExpectedCallers(cb)
+	if err != nil {
+		return false, err
+	}
+	gb, err := os.ReadFile(sw.golden)
+	if err != nil {
+		return false, err
+	}
+	golden := spec.ParseGolden(gb)
 	us, err := discover(ctx, project)
 	if err != nil {
 		return false, err
@@ -185,7 +217,14 @@ func run(ctx context.Context, project, boundary, image, reportPath string) (bool
 	if err != nil {
 		return false, err
 	}
-	names, by := callers(us)
+	names, by, err := callers(us)
+	if err != nil {
+		return false, err
+	}
+	// An empty or a partial sweep is no evidence: every caller the project file runs must be probed.
+	if !slices.Equal(names, expected) {
+		return false, fmt.Errorf("the running callers %v are not the %d the project file runs, %v", names, len(expected), expected)
+	}
 	ts := spec.Targets(boundary)
 	serving := map[string]unit{}
 	for _, u := range us {
@@ -213,6 +252,24 @@ func run(ctx context.Context, project, boundary, image, reportPath string) (bool
 			vs = append(vs, spec.Judge(c, t, rs[i]))
 		}
 	}
+	if want := len(expected) * len(ts); len(vs) != want || want == 0 {
+		return false, fmt.Errorf("the sweep judged %d pairs, not %d (%d callers x %d sockets)", len(vs), want, len(expected), len(ts))
+	}
+	// The oracle that is not the guard's own function: the pairs that reached their callee are the golden ones, and the
+	// registry's allowed set is the golden one too.
+	var reached []string
+	for _, v := range vs {
+		if v.Result.Outcome == spec.Reached {
+			reached = append(reached, spec.Pair(v.Caller, v.Target.ID))
+		}
+	}
+	sort.Strings(reached)
+	if !slices.Equal(reached, golden) {
+		return false, fmt.Errorf("the pairs that reached their callee differ from %s: reached %d, golden %d", sw.golden, len(reached), len(golden))
+	}
+	if allowed := spec.AllowedPairs(names, ts); !slices.Equal(allowed, golden) {
+		return false, fmt.Errorf("the registry allows %d pairs and %s lists %d: update the golden file on purpose", len(allowed), sw.golden, len(golden))
+	}
 	logs, err := checkLogs(ctx, vs, serving, since)
 	if err != nil {
 		return false, err
@@ -222,7 +279,7 @@ func run(ctx context.Context, project, boundary, image, reportPath string) (bool
 		return false, err
 	}
 	if reportPath != "" {
-		if err := os.WriteFile(reportPath, []byte(out), 0o600); err != nil { //nolint:gosec // G703: the report path is the operator's own choice, a flag or SLUIS_DENY_REPORT
+		if err := os.WriteFile(reportPath, []byte(out), 0o600); err != nil {
 			return false, err
 		}
 	}

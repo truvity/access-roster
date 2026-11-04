@@ -24,7 +24,10 @@ func TestDenyMatrix(t *testing.T) {
 	if boundary == "" {
 		boundary = "dev"
 	}
-	ok, err := run(context.Background(), project, boundary, image, os.Getenv("SLUIS_DENY_REPORT"))
+	ok, err := run(context.Background(), sweep{
+		project: project, boundary: boundary, image: image, report: os.Getenv("SLUIS_DENY_REPORT"),
+		compose: "../../deploy/local/compose.yaml", golden: "testdata/allowed-pairs.txt",
+	})
 	if err != nil {
 		t.Fatalf("the matrix did not run: %v", err)
 	}

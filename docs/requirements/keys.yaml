@@ -703,8 +703,9 @@ requirements:
     rationale: "A socket that another uid can open is a path around the rules (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []

@@ -309,6 +309,7 @@ jobs:
         run: |
           set -euo pipefail
           admin=$(openssl rand -hex 16)
+          echo "::add-mask::$admin"
           docker run -d --name idp -p 8180:8080 \
             -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$admin" \
             -e KC_HTTP_ENABLED=true -e KC_HOSTNAME_STRICT=false \
@@ -316,7 +317,7 @@ jobs:
             quay.io/keycloak/keycloak@sha256:3f3c5f8e03c614774b4bd9173b88391fefa4153bfc010d8012d59ad825377332 \
             start-dev --import-realm >/dev/null
           for _ in $(seq 1 90); do
-            if curl -fsS -o /dev/null http://127.0.0.1:8180/realms/sluis-test/.well-known/openid-configuration; then exit 0; fi
+            if curl -fsS --max-time 5 -o /dev/null http://127.0.0.1:8180/realms/sluis-test/.well-known/openid-configuration; then exit 0; fi
             sleep 2
           done
           docker logs idp 2>&1 | tail -40
@@ -325,7 +326,9 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          printf 'SLUIS_LOCAL_CLIENT_SECRET=%s\n' "$(openssl rand -hex 24)" >"$RUNNER_TEMP/upstream.env"
+          secret=$(openssl rand -hex 24)
+          echo "::add-mask::$secret"
+          printf 'SLUIS_LOCAL_CLIENT_SECRET=%s\n' "$secret" >"$RUNNER_TEMP/upstream.env"
           echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
       - run: devbox run -- just rqlite-fetch local-deny
 

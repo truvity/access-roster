@@ -962,8 +962,9 @@ requirements:
     rationale: "A driver holds a credential, and a socket another actor could open would be a second holder (ADR 0005)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
