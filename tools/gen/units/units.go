@@ -78,6 +78,11 @@ type driverProc struct {
 	After           []string // units outside the generator that this one starts after
 	// Credentials are systemd credentials the unit loads: name -> source file below LoadRoot/<boundary>/<stem>/.
 	Credentials []string
+	// Openat2 is set for a driver that opens its files with openat2(RESOLVE_BENEATH or RESOLVE_NO_SYMLINKS). Under
+	// RestrictSUIDSGID=yes systemd answers openat2 with ENOSYS on every version, because the seccomp filter cannot read
+	// the flags in the open_how struct, so those units go without that one line. Measured on a board running systemd 249,
+	// 2026-11-04.
+	Openat2 bool
 }
 
 var drivers = map[string]driverSpec{
@@ -92,7 +97,7 @@ var drivers = map[string]driverSpec{
 	// drivers/writer/fs: serve --socket --root [--socket-gid].
 	"driver-writer-fs": {
 		Language: "Rust",
-		Units:    []driverProc{{Socket: "blob.sock", State: true, Args: []string{"--root", "%STATE%"}}},
+		Units:    []driverProc{{Socket: "blob.sock", State: true, Openat2: true, Args: []string{"--root", "%STATE%"}}},
 	},
 	// drivers/writer/spool: serve --socket-dir --root [--socket-gid]. It makes emit.sock (every emitting actor) and
 	// receive.sock (the writer) in one directory, 0660 for the spool's group, which the emitters and the writer join.
@@ -116,7 +121,7 @@ var drivers = map[string]driverSpec{
 	// drivers/store/file: serve --socket --dir [--socket-gid]. The signed config documents the harness put on the board.
 	"driver-store-file": {
 		Language: "Rust",
-		Units:    []driverProc{{Socket: "config-source.sock", Args: []string{"--dir", "/etc/sluis/config/%i"}}},
+		Units:    []driverProc{{Socket: "config-source.sock", Openat2: true, Args: []string{"--dir", "/etc/sluis/config/%i"}}},
 	},
 	// drivers/store/credential: serve --socket [--dir] [--socket-gid]. The directory is $CREDENTIALS_DIRECTORY, which
 	// systemd makes for the LoadCredential= lines. The names are those of tests/installations/local/install.yaml, the
@@ -124,7 +129,7 @@ var drivers = map[string]driverSpec{
 	"driver-store-credential": {
 		Language: "Rust",
 		Units: []driverProc{{
-			Socket: "secret-source.sock", Credentials: []string{"client-dev", "client-example-app", "upstream-workforce"},
+			Socket: "secret-source.sock", Openat2: true, Credentials: []string{"client-dev", "client-example-app", "upstream-workforce"},
 		}},
 	},
 }
@@ -486,6 +491,11 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("Requires=%s", strings.Join(owned, " "))
 		b.line("After=%s", strings.Join(owned, " "))
 	}
+	// An actor dials the sockets of the actors it calls when it starts, and systemd does not order the actors among
+	// themselves, so it may fail a few times while a peer comes up. The default limit (5 starts in 10 s, with
+	// RestartSec=2s) would put it out for good after 10 s; this one gives a board two minutes to settle.
+	b.line("StartLimitIntervalSec=120")
+	b.line("StartLimitBurst=40")
 	b.blank()
 	b.line("[Service]")
 	b.line("Type=simple")
@@ -524,7 +534,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("LoadCredential=%s:%s/%%i/%s/%s", c, LoadRoot, unitStem(a.Name), c)
 	}
 	b.blank()
-	b.harden(len(a.Egress) == 0)
+	b.harden(len(a.Egress) == 0, true)
 	b.line("ReadWritePaths=/run/sluis/%s", a.Name)
 	b.blank()
 	b.line("[Install]")
@@ -683,7 +693,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("LoadCredential=%s:%s/%%i/%s/%s", c, LoadRoot, stem, c)
 	}
 	b.blank()
-	b.harden(!spec.Network)
+	b.harden(!spec.Network, !du.Openat2)
 	b.line("ReadWritePaths=%s", socketDir)
 	b.blank()
 	b.line("[Install]")
@@ -693,7 +703,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 }
 
 // harden is the hardening of PLAN.md section 6 and ADR 0003. Without egress a unit has no network at all.
-func (b *unitText) harden(noNetwork bool) {
+func (b *unitText) harden(noNetwork, restrictSUID bool) {
 	b.line("# Hardening (ADR 0003)")
 	b.line("NoNewPrivileges=yes")
 	b.line("CapabilityBoundingSet=")
@@ -710,7 +720,9 @@ func (b *unitText) harden(noNetwork bool) {
 	b.line("ProtectHostname=yes")
 	b.line("ProtectProc=invisible")
 	b.line("ProcSubset=pid")
-	b.line("RestrictSUIDSGID=yes")
+	if restrictSUID {
+		b.line("RestrictSUIDSGID=yes")
+	}
 	b.line("RestrictRealtime=yes")
 	b.line("RestrictNamespaces=yes")
 	b.line("LockPersonality=yes")

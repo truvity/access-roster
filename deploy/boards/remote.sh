@@ -18,6 +18,8 @@ allowed_path() {
 	"$bin_dir"/actors/* | "$bin_dir"/drivers/* | "$bin_dir"/cli/*) return 0 ;;
 	/etc/systemd/system/sluis-*@.service) return 0 ;;
 	/etc/sysusers.d/sluis-*-"$boundary".conf | /etc/tmpfiles.d/sluis-*-"$boundary".conf) return 0 ;;
+	/etc/sluis/config/"$boundary"/*.jws | /etc/sluis/bootstrap.d/"$boundary".yaml | /etc/sluis/rqlite-"$boundary".env) return 0 ;;
+	/etc/sluis/credentials/"$boundary"/sluis-*/*) return 0 ;;
 	esac
 	return 1
 }
@@ -26,6 +28,8 @@ allowed_dir() {
 	"$bin_dir"/actors | "$bin_dir"/drivers | "$bin_dir"/drivers/* | "$bin_dir"/cli) return 0 ;;
 	/run/sluis | /run/sluis/*) return 0 ;;
 	/etc/sluis | /etc/sysusers.d) return 0 ;;
+	/etc/sluis/config | /etc/sluis/config/"$boundary" | /etc/sluis/bootstrap.d) return 0 ;;
+	/etc/sluis/credentials | /etc/sluis/credentials/"$boundary" | /etc/sluis/credentials/"$boundary"/sluis-*) return 0 ;;
 	"$state_root" | "$state_root"/*) return 0 ;;
 	esac
 	return 1
@@ -117,6 +121,51 @@ deploy)
 	systemd-tmpfiles --create "${tmpfiles[@]}"
 	sort_manifest
 
+	# The seed: the signed config and the bootstrap file (root's, public), the credentials (root's, mode 0400, read by
+	# systemd's LoadCredential=), and the rqlite address of this board. Every file is listed before it is made.
+	if [ -d "$stage/files/etc" ]; then
+		mkdir_noted() { # dir mode
+			if [ ! -d "$1" ]; then
+				note dir "$1"
+				install -d -m "$2" -o root -g root "$1"
+			fi
+		}
+		mkdir_noted /etc/sluis/config 0755
+		mkdir_noted "/etc/sluis/config/$boundary" 0755
+		mkdir_noted /etc/sluis/bootstrap.d 0755
+		for old in "/etc/sluis/config/$boundary"/*.jws; do # a document the new seed no longer holds must not stay
+			[ -e "$old" ] || continue
+			[ -e "$stage/files/etc/config/$(basename "$old")" ] || rm -f -- "$old"
+		done
+		for f in "$stage"/files/etc/config/*.jws; do
+			dest=/etc/sluis/config/$boundary/$(basename "$f")
+			allowed_path "$dest" || { echo "remote: refusing $dest" >&2; exit 1; }
+			note file "$dest"
+			install -m 0644 -o root -g root "$f" "$dest"
+		done
+		dest=/etc/sluis/bootstrap.d/$boundary.yaml
+		note file "$dest"
+		install -m 0644 -o root -g root "$stage/files/etc/bootstrap.yaml" "$dest"
+		dest=/etc/sluis/rqlite-$boundary.env
+		note file "$dest"
+		install -m 0644 -o root -g root "$stage/files/etc/rqlite.env" "$dest"
+		if [ -d "$stage/files/etc/credentials" ]; then
+			mkdir_noted /etc/sluis/credentials 0700
+			mkdir_noted "/etc/sluis/credentials/$boundary" 0700
+			for d in "$stage"/files/etc/credentials/*/; do
+				owner=$(basename "$d")
+				mkdir_noted "/etc/sluis/credentials/$boundary/$owner" 0700
+				for f in "$d"*; do
+					dest=/etc/sluis/credentials/$boundary/$owner/$(basename "$f")
+					allowed_path "$dest" || { echo "remote: refusing $dest" >&2; exit 1; }
+					note file "$dest"
+					install -m 0400 -o root -g root "$f" "$dest"
+				done
+			done
+		fi
+		sort_manifest
+	fi
+
 	# Verify before anything starts.
 	units=()
 	while IFS=$'\t' read -r instance _; do
@@ -138,11 +187,24 @@ deploy)
 	for u in "${units[@]}"; do
 		systemctl enable "$u" 2>&1 | sed "s|^|enable $u: |"
 	done
-	# Start in the order of the plan: drivers first.
-	for u in "${units[@]}"; do
-		systemctl restart "$u" || true
+	# Stop in reverse order and start in the order of the plan, drivers first. A restart of each unit in turn would
+	# restart the actors that Requires= it again and again, and the start limit (5 in 10 s) would put them out.
+	for ((i = ${#units[@]} - 1; i >= 0; i--)); do
+		systemctl stop "${units[$i]}" || true
 	done
-	sleep 2
+	systemctl reset-failed "${units[@]}" || true
+	for u in "${units[@]}"; do
+		systemctl start "$u" || true
+	done
+	# The actors dial each other when they start and retry every two seconds until the peer is up: give them time.
+	for _ in $(seq 1 30); do
+		sleep 2
+		pending=0
+		for u in "${units[@]}"; do
+			[ "$(systemctl is-active "$u" || true)" = active ] || pending=1
+		done
+		[ "$pending" = 1 ] || break
+	done
 	fail=0
 	for u in "${units[@]}"; do
 		st=$(systemctl is-active "$u" || true)
