@@ -444,6 +444,76 @@ async fn the_correlation_id_and_the_deadline_left_are_passed_on() {
 }
 
 #[tokio::test]
+async fn a_correlation_id_that_is_not_1_to_64_of_alnum_dash_underscore_is_dropped() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = sock(&dir, "c.sock");
+    let r = start(
+        &s,
+        "store",
+        Allow::Exact("policy"),
+        Some(("policy", 0)),
+        0,
+        Duration::from_secs(5),
+        None,
+    );
+    wait_for(&s).await;
+    let c = store_client(&r);
+    for bad in ["", "has space", "semi;colon", "dot.dot", &"a".repeat(65)] {
+        let opts = CallOptions::default().with_header("sluis-correlation-id", bad);
+        c.get_with_options(GetRequest::default(), opts)
+            .await
+            .unwrap();
+        assert_eq!(
+            r.seen.lock().unwrap().correlation,
+            None,
+            "{bad:?} must be dropped"
+        );
+    }
+    for good in ["a", "A-b_9", &"z".repeat(64)] {
+        let opts = CallOptions::default().with_header("sluis-correlation-id", good);
+        c.get_with_options(GetRequest::default(), opts)
+            .await
+            .unwrap();
+        assert_eq!(r.seen.lock().unwrap().correlation.as_deref(), Some(good));
+    }
+    r.stop().await;
+}
+
+#[tokio::test]
+async fn a_live_listener_is_never_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = sock(&dir, "live.sock");
+    let first = start(
+        &s,
+        "store",
+        Allow::Exact("policy"),
+        Some(("policy", 0)),
+        0,
+        Duration::from_secs(5),
+        None,
+    );
+    wait_for(&s).await;
+    let second = start(
+        &s,
+        "store",
+        Allow::Exact("policy"),
+        Some(("policy", 0)),
+        0,
+        Duration::from_secs(5),
+        None,
+    );
+    let err = second.done.await.unwrap().unwrap_err();
+    assert!(err.to_string().contains("live listener"), "{err:#}");
+    // The first server still answers on the same path.
+    store_client(&first)
+        .get(GetRequest::default())
+        .await
+        .expect("the first server is untouched");
+    assert_eq!(first.calls.load(Ordering::SeqCst), 1);
+    first.stop().await;
+}
+
+#[tokio::test]
 async fn a_server_stream_of_50_arrives_in_order_and_a_refusal_keeps_its_detail() {
     let dir = tempfile::tempdir().unwrap();
     let s = sock(&dir, "s.sock");
