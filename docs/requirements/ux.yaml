@@ -8,7 +8,9 @@ requirements:
     rationale: "Detailed reasons help an attacker."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -22,7 +24,9 @@ requirements:
     rationale: "Detailed reasons help an attacker."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -36,6 +40,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
@@ -50,6 +55,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
@@ -92,6 +98,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
@@ -105,6 +112,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
@@ -154,6 +162,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards: []
     issues: [927]
@@ -179,6 +188,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards: []
     issues: [927]
@@ -191,6 +201,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards: []
     issues: [927]

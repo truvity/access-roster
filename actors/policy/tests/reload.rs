@@ -55,6 +55,7 @@ async fn nothing_changed_nothing_happens() {
     );
 }
 
+/// verifies: REQ-POLICY-008
 #[tokio::test]
 async fn a_set_that_fails_is_refused_once_and_the_last_good_one_stays_in_force() {
     let (rig, r) = rig_with_reloader().await;

@@ -149,6 +149,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
@@ -162,6 +163,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
@@ -175,6 +177,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -398,6 +401,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "5", depth: Partial}
@@ -467,6 +471,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -480,6 +485,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-01, section: "5.2", depth: Partial}
@@ -507,6 +513,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Partial}
@@ -520,6 +527,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2.1", depth: Partial}
@@ -816,6 +824,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-28, section: "5.4", depth: Full}
@@ -843,6 +852,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]

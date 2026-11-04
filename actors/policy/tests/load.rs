@@ -40,6 +40,7 @@ fn the_local_installation_loads_and_has_a_digest() {
     );
 }
 
+/// verifies: REQ-POLICY-001
 #[test]
 fn a_policy_that_does_not_fit_the_schema_is_refused_naming_the_policy() {
     // an attribute the schema does not have
@@ -117,6 +118,7 @@ fn step_up_is_for_a_forbid_and_holds_acr_values_and_max_age() {
     }
 }
 
+/// verifies: REQ-POLICY-006
 #[test]
 fn a_grant_name_the_vocabulary_does_not_declare_is_refused_with_the_policy() {
     let e = refused(&with(

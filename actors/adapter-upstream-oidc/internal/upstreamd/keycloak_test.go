@@ -245,6 +245,7 @@ func TestKeycloakRefusesANonceThatIsNotTheBeginStep(t *testing.T) {
 	refused(t, err, "INVALID", connect.CodeInvalidArgument, "id_token.nonce")
 }
 
+// verifies: REQ-FED-003
 func TestKeycloakRefusesAnIssThatIsNotTheUpstreams(t *testing.T) {
 	k := realKeycloak(t)
 	e := k.env(t)

@@ -417,6 +417,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-04, section: "WCAG 2.1", depth: Partial}
@@ -430,6 +431,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-14, section: "SPF DKIM DMARC", depth: Partial}
@@ -443,6 +445,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-14, section: "SPF DKIM DMARC", depth: Partial}
@@ -456,6 +459,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-14, section: "DKIM", depth: Full}
@@ -469,6 +473,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-14, section: "SPF DKIM DMARC", depth: Partial}
@@ -709,6 +714,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -722,6 +728,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "1", depth: Partial}
@@ -777,6 +784,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -790,6 +798,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -817,6 +826,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -1027,6 +1037,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-14, section: "SPF DKIM DMARC", depth: Partial}

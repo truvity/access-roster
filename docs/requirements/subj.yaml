@@ -63,6 +63,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
@@ -89,7 +90,9 @@ requirements:
     rationale: "Sites in different sectors must not be able to join their customer lists."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
@@ -105,7 +108,9 @@ requirements:
     rationale: "A key that cannot be read cannot be brute-forced offline."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
@@ -119,7 +124,8 @@ requirements:
     rationale: "A fixed encoding makes the value verifiable by vector."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
@@ -132,7 +138,9 @@ requirements:
     rationale: "A sector is one audience, so sites that must recognise the same user share one sector."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
@@ -145,7 +153,9 @@ requirements:
     rationale: "Sites in different sectors get different subjects by design, so they cannot correlate a person."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
@@ -158,7 +168,9 @@ requirements:
     rationale: "Relying parties key their records by subject, and single sign-on follows the sluis session, so pairwise subjects do not affect it."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
@@ -171,7 +183,9 @@ requirements:
     rationale: "The subject must not expose the upstream identifier."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Full}
@@ -214,6 +228,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: NC-06, section: "2104", depth: Partial}
@@ -395,6 +410,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "5", depth: Partial}
@@ -408,6 +424,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-59, section: "5", depth: Partial}
@@ -420,7 +437,9 @@ requirements:
     rationale: "Resource servers key their records by it."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Partial}
@@ -460,7 +479,9 @@ requirements:
     rationale: "E-mail addresses change and are personal data."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Partial}
@@ -501,7 +522,8 @@ requirements:
     rationale: "One pair identifies an account whichever path reaches it (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1081, 1106]
@@ -513,7 +535,9 @@ requirements:
     rationale: "Microsoft Entra needs oid because its sub differs per application, and Google uses sub (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
@@ -525,7 +549,9 @@ requirements:
     rationale: "An address is reused, renamed and not always verified, so linking by it lets whoever obtains an address take over an account."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1081, 1106]
@@ -537,7 +563,9 @@ requirements:
     rationale: "There is no fallback to another claim, so a missing claim cannot create a second identity."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
@@ -550,6 +578,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
@@ -561,7 +590,8 @@ requirements:
     rationale: "The link is created only if absent, so a race cannot make two subjects for one account."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1081]
@@ -573,7 +603,9 @@ requirements:
     rationale: "A hold is a tighten-only action and takes effect at once (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1081]
@@ -586,6 +618,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
@@ -634,6 +667,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -646,6 +680,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -658,6 +693,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -670,6 +706,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -682,6 +719,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -694,6 +732,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -720,6 +759,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -732,6 +772,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -745,7 +786,9 @@ requirements:
     rationale: "An id never contains personal data, and a natural key is hashed before it is stored (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -758,7 +801,9 @@ requirements:
     rationale: "A reason is free text and may name a person (ADR 0019)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
@@ -798,6 +843,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -810,6 +856,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -822,6 +869,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -834,6 +882,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [1024]
@@ -857,7 +906,9 @@ requirements:
     rationale: "An exchanged token must not carry the subject of the token it was exchanged for (ADR 0034)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1024]
@@ -869,7 +920,8 @@ requirements:
     rationale: "The upstream's claim can change, and the Person id is the stable identity (ADR 0034)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [1024]
@@ -881,7 +933,8 @@ requirements:
     rationale: "With both parts prefixed, no two pairs of strings give one input, and session and exchange derive one subject (ADR 0034)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
