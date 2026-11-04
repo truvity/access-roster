@@ -62,7 +62,8 @@
 #   issues             open issues of truvity/sluis that build it; the labels script applies the label
 #
 # Platform pieces are programs an installation runs that are not actors of any family: the node agent
-# is the one that uses a key purpose, so it is listed under `platform`. The edge connector, the card
+# is the one that uses a key purpose, so it is listed under `platform`. The edge connector has a uid and a group
+# in tools/gen/registry/uids.yaml (`edge-connector`, beside the harness's `harness-forwarder`) and nothing else here; the card
 # service and the engine processes take no part in the registry.
 schema: 1
 

@@ -45,6 +45,7 @@ The log itself, its projects and buckets, sealing, witnesses, lock modes, encryp
 - **The default transport follows the runtime:** spool on bare metal, SQS on serverless, NATS JetStream on Kubernetes. Each of the three stays possible on the other runtimes where it fits. Direct is a supported driver with no default.
 - **In direct mode the emitter falls back to a local spool** when the writer is down. Direct mode therefore needs a disk and is not available on serverless.
 - **The transport authenticates every emitter by its platform identity** (T-13): the peer uid of a Unix socket for spool and direct, an IAM role for SQS, NATS credentials or a service-account token on Kubernetes. A product's emitter uses the product's own platform identity, so it needs no sluis credential.
+- **The spool's receive socket has a group of its own, which only the writer joins.** The emit socket is open to the group of the emitters. Measured on 2026-11-04 by the deny matrix on the local installation: one audit group opens both sockets, so the seven other emitters are refused by the guard and not at the socket. The separate group is planned; until then the guard is the second lock.
 
 ### NATS JetStream
 

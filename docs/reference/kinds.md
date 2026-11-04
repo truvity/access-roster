@@ -192,7 +192,7 @@ Retention windows per data class; must be at or above the built-in floor. The pe
 
 ### `AuditLog`
 
-The logs of the boundary (audit, usage, issuance): log ids, lock mode, lifecycle tiers, the compliance profile and the per-log retention. Loaded and verified by store@ like every config kind; the audit pieces read it through the data port.
+The logs of the boundary (audit, usage, issuance): log ids, the verifier key of each log, lock mode, lifecycle tiers, the compliance profile and the per-log retention. The verifier key (`verifier_key`) is the public half of the log's key as a C2SP verifier key text, signed with the rest of the document, so the indexer and the reader take it from the signed config through the data port and from no file. Loaded and verified by store@ like every config kind; the audit pieces read it through the data port.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the audit family.
 - **Writer:** `IaC`.

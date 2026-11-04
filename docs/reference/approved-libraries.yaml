@@ -28,8 +28,8 @@ go:
   - { name: "github.com/go-jose/go-jose/v4/cipher", for: "AES key wrap (RFC 3394) of a data key for the key-agreement key of a board's card; the key-wrap function only", scope: "key@ only; AES-KW only; no JWE", needed_by: "ADR 0006", evaluated: "v4.1.7, 2026-10-30; floor v4.1.7, as the module" }
   - { name: "github.com/zitadel/oidc/v3", for: "The OpenID Provider of session and exchange (pkg/op) and the relying party of the oidc upstream (pkg/client/rp)", needed_by: "ADR 0012", evaluated: "v3.51.16, 2026-10-15; floor v3.47.0 (advisory of 2026-08-24)" }
   - { name: "golang.org/x/oauth2", for: "The OAuth 2.0 client under the relying party of the oidc upstream", needed_by: "ADR 0017", evaluated: "v0.37.0, 2026-08-25" }
-  - { name: "golang.org/x/mod/sumdb/note", for: "C2SP signed notes in writer and witness; the signer goes through the keys port", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
-  - { name: "golang.org/x/mod/sumdb/tlog", for: "Hashes and tiles of a tiled log in writer and witness", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
+  - { name: "golang.org/x/mod/sumdb/note", for: "C2SP signed notes in writer and witness, and in the CLI that verifies a log; the signer goes through the keys port", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
+  - { name: "golang.org/x/mod/sumdb/tlog", for: "Hashes and tiles of a tiled log in writer and witness, and in the CLI that verifies a log", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
   - { name: "filippo.io/torchwood", for: "C2SP checkpoints, cosignatures and tiles, and the tile client, in writer and witness", needed_by: "ADR 0029", evaluated: "v0.10.0, 2026-09-24 (before 1.0)" }
   - { name: "filippo.io/sunlight", for: "C2SP static-ct-api entries and checkpoints, in the issuance log of ca", needed_by: "ADR 0023", evaluated: "v0.10.2, 2026-10-26" }
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
@@ -47,6 +47,9 @@ rust:
   - { name: "signed_note", for: "C2SP signed notes in indexer and reader; the P-256 verifier of the log key is a NoteVerifier on aws-lc-rs", needed_by: "ADR 0029", evaluated: "0.2.0, 2025-04-18 (repository changed 2026-10-27; a pinned revision needs a pull request to this file)" }
   - { name: "tlog_tiles", for: "C2SP checkpoints and tiles in indexer and reader", needed_by: "ADR 0029", evaluated: "0.2.0, 2025-04-18 (repository changed 2026-10-27; a pinned revision needs a pull request to this file)" }
   - { name: "saphyr-parser", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "0.3.3, 2026-10-27" }
+  - { name: "hyper", for: "The HTTP/1.1 and HTTP/2 server of entry and of the Rust kit: it parses the request head and frames the body", needed_by: "ADR 0012", evaluated: "1.9.0, locked 2026-11-04" }
+  - { name: "hyper-util", for: "The connection builder, the graceful shutdown and the Tokio glue of hyper's server", needed_by: "ADR 0012", evaluated: "0.1.20, locked 2026-11-04" }
+  - { name: "serde_json", for: "Reading and writing JSON: the audit records of the emitter and the indexer, and the error bodies of entry", needed_by: "ADR 0030", evaluated: "1.0.154, locked 2026-11-04" }
   - { name: "ssh-key", for: "OpenSSH keys and certificates in ssh-ca, with a signing key that signs through the keys port", needed_by: "ADR 0023", evaluated: "0.6.7, 2024-10-15 (last stable); 0.7.0-rc.11, 2026-06-29. Condition: a stable 0.7, or 0.6.7 with the certificate interop tests, or ssh-ca in Go (rule R11)" }
   - { name: "aws-sdk-* (the AWS SDK for Rust)", for: "Calls to AWS services from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module", needed_by: "ADR 0012" }
 

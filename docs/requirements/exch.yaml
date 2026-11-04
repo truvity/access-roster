@@ -23,11 +23,12 @@ requirements:
     rationale: "Ignoring a parameter implies delegation semantics that sluis does not provide."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.1", depth: Partial}
     issues: [782]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "actor_token negative test"}
   - id: REQ-EXCH-008
@@ -37,11 +38,12 @@ requirements:
     rationale: "Ignoring a parameter implies delegation semantics that sluis does not provide."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.1", depth: Partial}
     issues: [782]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "requested_token_type negative test"}
   - id: REQ-EXCH-003
@@ -50,12 +52,13 @@ requirements:
     rationale: "A uniform answer hides which audiences exist."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2.2", depth: Full}
       - {id: ST-08, section: "2", depth: Partial}
     issues: [782, 785]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "uniform-refusal test"}
   - id: REQ-EXCH-009
@@ -65,12 +68,13 @@ requirements:
     rationale: "The operator still needs the real reason."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2.2", depth: Full}
       - {id: ST-08, section: "2", depth: Partial}
     issues: [782, 785]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "refusal audit-record test"}
   - id: REQ-EXCH-004
@@ -93,11 +97,12 @@ requirements:
     rationale: "A refresh token would extend the lifetime beyond the subject token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2.2", depth: Full}
     issues: [782, 785]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "no-refresh-token test"}
   - id: REQ-EXCH-005
@@ -106,12 +111,13 @@ requirements:
     rationale: "Logout must cut every derived token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-07, section: "2", depth: Full}
       - {id: ST-30, section: "1", depth: Partial}
     issues: [782, 793]
+    tests: [actors/exchange/internal/exchanged/exchange_test.go]
     verification:
       - {kind: integration-test, ref: "post-logout exchange test"}
   - id: REQ-EXCH-006

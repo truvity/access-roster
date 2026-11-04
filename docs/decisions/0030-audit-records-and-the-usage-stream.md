@@ -84,6 +84,7 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 | Console write (configuration, client registration, lowered limit) | 3004 / 1, 3, 4; value in `updated_entity.data`, revision in `entity.version` |
 | Tenant created by a product's push, suspended or erased | 3004 / 1, 3, 4, the tenant in `entity` |
 | Quota admit, refusal or allowance push | 6003 API Activity / 1, 3, 4, request id in `api.request.uid` |
+| A request at the edge, answered or refused (`entry`) | 6003 API Activity / 2 Read for `GET` and `HEAD`, 1 Create for `POST`, 99 Other; the route, the HTTP status and a closed reason in `unmapped.sluis`, never a path, query, header, cookie or parameter value |
 | Audit read (search, get, tail, proof) | 6003 / 2 Read |
 | Audit export | 1008 Event Log Activity / 3 Export |
 | Key use (sign, open) | 6003 / 99 "Sign" or "Open", the key in `resources[]` |
@@ -91,6 +92,7 @@ Checked against OCSF 1.9.0 on 2026-11-01.
 | Configuration start or reload | 6002 Application Lifecycle / 99 "Reload" |
 | Writer and log lifecycle | 1008 Event Log Activity |
 
+- **A request that the HTTP library of `entry` rejects itself is audited too,** with the same row, the status the library answered and a closed reason, even though no handler runs: a malformed or oversized head, a header or body timeout, an unsupported protocol. Today only a request that reaches the handler is audited; the rejected ones are planned.
 - **A policy decision is part of the record of the action it gates,** in the `security_control` profile (`action_id`, `authorizations`, `policy`), not a record of its own.
 - **Token stages stay activity 99.** Activities 3 to 5 are described as Kerberos tickets and no vendor mapping read on 2026-11-01 uses them for OAuth. A step-up is a Logon because it is a second authentication of an open session, so a rule on failed logons sees it; a token grant is not a logon.
 - **A refresh rotation names two tokens:** `session.uid` is the session chain, `session.credential_uid` the presented token, `authentication_token` the new one.

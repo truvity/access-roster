@@ -155,11 +155,12 @@ requirements:
     rationale: "Upstream roles are not evidence that sluis has verified."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.2", depth: Partial}
     issues: [1106, 916]
+    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go, actors/adapter-upstream-oidc/internal/upstreamd/idp_test.go]
     verification:
       - {kind: integration-test, ref: "role-claim negative test"}
   - id: REQ-FED-017

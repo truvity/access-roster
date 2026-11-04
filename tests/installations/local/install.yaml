@@ -28,7 +28,7 @@ boundaries:
 
 drivers:
   keys: software
-  state: embedded
+  state: rqlite
   lease: local-lock
   blob: fs
   transport: spool
