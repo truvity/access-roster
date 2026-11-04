@@ -1,0 +1,8 @@
+# The engine of the local installation: the pinned rqlite release (Justfile, rqlite-fetch, which checks the SHA-256 of the
+# release archive) in a container. The release binary links to glibc, so the base is distroless base, not static; the
+# debug variant is used because its busybox answers the health check (`wget`), and the engine has no command for it.
+#
+# The base is pinned by digest: gcr.io/distroless/base-debian12:debug-nonroot, MEASURED 2026-11-04.
+FROM gcr.io/distroless/base-debian12:debug-nonroot@sha256:9162795c8ec16d4f83921e4c173d07ce366a5d6eef9c461e707dbef4f81146b9
+COPY --chmod=0555 rqlited /rqlited
+ENTRYPOINT ["/rqlited"]

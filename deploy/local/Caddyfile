@@ -1,0 +1,15 @@
+# The forwarder of the local installation (docs/runtimes/local.md, "Topology"): a generic reverse proxy. TLS ends here
+# with the leaf of the harness CA for the boundary's host; the request goes on over the Unix socket of `entry`, which
+# has no network. It is a harness piece and no code of the product.
+{
+	auto_https off
+	admin off
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://sluis.dev.local.test:8443 {
+	tls /tls/leaf.pem /tls/leaf.key
+	reverse_proxy unix//run/sluis/entry/dev.sock
+}
