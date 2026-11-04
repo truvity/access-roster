@@ -339,6 +339,24 @@ async fn the_sweeper_frees_expired_items_and_trims_the_log_but_never_a_lease() {
     })
     .await
     .unwrap();
+    // A tail that fell behind the retention is refused, not skipped ahead: rows 1..=3 are gone, so
+    // a tail at 1 or 2 has missed rows, one at the floor (3) has not, and the later row is next.
+    for behind in [0, 1, 2] {
+        let err = d
+            .poll(behind)
+            .await
+            .map(|_| ())
+            .expect_err("a tail behind the floor");
+        assert_eq!(err.code, ErrorCode::FailedPrecondition, "behind {behind}");
+        assert_eq!(refusal_reason(&err).as_deref(), Some("sequence_expired"));
+    }
+    let next = d.poll(3).await.unwrap().expect("the row after the floor");
+    assert_eq!(next.len(), 1);
+    assert!(
+        d.poll(4).await.unwrap().is_none(),
+        "at the head there is nothing yet"
+    );
+
     // A server stream carries its refusal in the first message, not in the call.
     let tail = |from_sequence| {
         let rpc = &rpc;

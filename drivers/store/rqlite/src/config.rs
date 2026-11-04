@@ -13,6 +13,7 @@ use crate::sql::Ns;
 /// Adds the driver's flags to the command line. They are global, so `rqlite serve --namespace
 /// durable` and `rqlite --namespace durable serve` both work.
 pub fn flags(cmd: Command) -> Command {
+    // planned: TLS and auth for the rqlite client (D-13)
     let global = |a: Arg| a.global(true);
     cmd.arg(global(
         Arg::new("rqlite-url")

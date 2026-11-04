@@ -119,6 +119,7 @@ impl Rq {
     ///
     /// When the URL is not a plain `http://` address, or the credentials do not make a header.
     pub fn new(url: &str, basic_auth: Option<&str>) -> anyhow::Result<Self> {
+        // planned: TLS and auth for the rqlite client (D-13)
         let base = url.trim_end_matches('/');
         let rest = base.strip_prefix("http://").with_context(
             || "--rqlite-url: only an http:// address is served tonight (no TLS client yet)",
