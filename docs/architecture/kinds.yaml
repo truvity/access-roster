@@ -670,6 +670,20 @@ kinds:
       boundary: [grant, cookie, mac, data]
     notes: "Id <purpose>/<generation>/<recipient>. Each tenant has five data keys, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated), `evidence` (audit and usage) and `chain` (the facts of a session chain, which session seals and opens and exchange opens). Boundary purposes (tenant `-`): `grant`, `cookie`, `mac` (the key behind key@'s Mac operation) and `data` (the kinds that are sealed and have no tenant: EnrolmentToken, PendingEnrolment). They are generated software data keys, not KMS keys: on AWS key@ calls GenerateDataKey under the boundary's one symmetric KMS key with the encryption context {boundary, tenant, purpose} and stores only the wrapped copy; on boards key@ generates them in software and wraps them by ECDH for each board's card and the recovery recipient. A tenant declared to keep its keys in a customer account has its wraps made under KMS keys of that account (ADR 0006). The value is already ciphertext, so the treatment is plain. A tenant's exit deletes its `data`, `pseudonym`, `pairwise` and `chain` wraps at once (crypto-shred); the `evidence` wrap is deleted when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
 
+  - name: KeyRevocation
+    serves: keys
+    scope: boundary+tenant
+    class: durable
+    treatment: plain
+    profile: Operable
+    writer: key@
+    readers: [key@, signer, entry, exporter@]
+    watched_by: [key@]
+    exportable: no
+    backed_up: yes
+    indexes: [by_target]
+    notes: "Create only: store@ refuses an update and a delete, as for Lease (ADR 0041). Each item revokes one target, a token-signing kid, a data key generation, a purpose or a recipient. The target, the time and a reason code from a closed list are plain, because signer, entry and exporter@ read them to filter published key sets and a sealed kind could not be read there; the operator and any free-text reason are in the audit fact, which is where they belong. key@ writes it for the operator command and for the signer of any node. Merged by union on a restore, and re-applied by the roll-forward."
+
   - name: Tenant
     serves: work
     scope: boundary+tenant
