@@ -28,13 +28,15 @@ clap = { version = "4", features = ["derive", "string"] }
 connectrpc = { version = "=0.9.1", default-features = false, features = ["json", "gzip", "client", "server"] }
 rustix = { version = "1", features = ["process"] }
 saphyr-parser = "=0.3.3"
+serde_json = "1"
+sluis-audit = { path = "../../kits/rust/sluis-audit" }
 sluis-kit = { path = "../../kits/rust/sluis-kit" }
 sluis-proto = { path = "../../kits/rust/sluis-proto" }
 sluis-registry = { path = "../../kits/rust/sluis-registry" }
+sluis-version = { path = "../../kits/rust/sluis-version" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "signal", "time", "macros", "sync"] }
 tracing = "0.1"
 
 [dev-dependencies]
 sluis-kit = { path = "../../kits/rust/sluis-kit", features = ["test-identities"] }
-serde_json = "1"
 tempfile = "3"

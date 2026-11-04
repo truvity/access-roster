@@ -11,7 +11,7 @@ use sluis_kit::cli::{Commands, Flags, Refused, shutdown_signal};
 use sluis_kit::{Allow, ServerConfig, dial};
 use sluis_proto::sluis::store::v2alpha1::StoreServiceExt as _;
 
-use crate::audit::LogSink;
+use crate::audit::EmitterSink;
 use crate::bootstrap::Bootstrap;
 use crate::config::NoConfig;
 use crate::engine::DriverEngine;
@@ -56,7 +56,6 @@ pub fn extra(c: Command) -> Command {
 /// The paths a run uses, from the flags and the boundary of the file.
 struct Paths {
     key: PathBuf,
-    #[allow(dead_code)] // planned: the emitter of sluis-audit dials it (WP-10)
     transport: PathBuf,
     service: PathBuf,
 }
@@ -105,13 +104,14 @@ async fn reach(path: &Path) -> Result<(), String> {
 }
 
 /// The sockets store@ needs, with the name of each.
-fn needed(b: &Bootstrap, key: &Path) -> Vec<(String, PathBuf)> {
+fn needed(b: &Bootstrap, key: &Path, transport: &Path) -> Vec<(String, PathBuf)> {
     let mut v: Vec<_> = b
         .destinations()
         .into_iter()
         .map(|(port, d)| (format!("{port} ({} driver)", d.driver), d.socket.clone()))
         .collect();
     v.push(("key@".into(), key.to_owned()));
+    v.push(("audit transport".into(), transport.to_owned()));
     v
 }
 
@@ -135,7 +135,7 @@ impl Commands for Store {
         let p = paths(&f, &b.boundary);
 
         // A cold start refuses on any failure (ADR 0005): wait for the drivers up to start_timeout.
-        let wanted = needed(&b, &p.key);
+        let wanted = needed(&b, &p.key, &p.transport);
         let deadline = Instant::now() + b.start_timeout;
         loop {
             let missing = unreachable(&wanted).await;
@@ -159,8 +159,15 @@ impl Commands for Store {
             grants: KeyOpener::new(&dial(&p.key)),
             // planned: the signed config snapshot (WP-11) replaces NoConfig.
             config: Arc::new(NoConfig),
-            // planned: the emitter of sluis-audit replaces LogSink (WP-10), on `p.transport`.
-            audit: LogSink,
+            audit: EmitterSink(sluis_audit::Emitter::new(sluis_audit::Config {
+                actor: "store".into(),
+                boundary: b.boundary.clone(),
+                release: sluis_version::VERSION.into(),
+                transport_socket: p.transport.clone(),
+                // store@ has no pseudonym rule: it names no person.
+                key_socket: None,
+                now: None,
+            })?),
             clock: Arc::new(SystemTime::now),
         });
         svc.announce_start(
@@ -195,7 +202,7 @@ impl Store {
     async fn check_inner(&self, f: &Flags) -> anyhow::Result<()> {
         let b = load(f)?;
         let p = paths(f, &b.boundary);
-        let missing = unreachable(&needed(&b, &p.key)).await;
+        let missing = unreachable(&needed(&b, &p.key, &p.transport)).await;
         if missing.is_empty() {
             Ok(())
         } else {

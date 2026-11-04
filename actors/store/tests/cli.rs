@@ -33,12 +33,15 @@ fn check_exits_3_and_names_each_unreachable_socket() {
     // The example's sockets (/run/sluis/store/dev/...) do not exist where the tests run.
     let file = write_bootstrap(dir.path(), LOCAL, 0o640);
     let key = dir.path().join("no-key.sock");
+    let transport = dir.path().join("no-emit.sock");
     let o = store(&[
         "check",
         "--bootstrap",
         &file,
         "--key-socket",
         key.to_str().unwrap(),
+        "--transport-socket",
+        transport.to_str().unwrap(),
     ]);
     let err = stderr(&o);
     assert_eq!(o.status.code(), Some(3), "{err}");
@@ -48,6 +51,7 @@ fn check_exits_3_and_names_each_unreachable_socket() {
         "durable.sock",
         "temp.sock",
         "no-key.sock",
+        "no-emit.sock",
     ] {
         assert!(err.contains(socket), "{socket} is not named: {err}");
     }
@@ -69,6 +73,8 @@ fn check_passes_when_every_socket_answers_so_it_does_not_fail_on_nothing() {
     }
     let key = dir.path().join("key.sock");
     _listeners.push(UnixListener::bind(&key).unwrap());
+    let transport = dir.path().join("emit.sock");
+    _listeners.push(UnixListener::bind(&transport).unwrap());
     let file = write_bootstrap(dir.path(), &text, 0o600);
     let o = store(&[
         "check",
@@ -76,6 +82,8 @@ fn check_passes_when_every_socket_answers_so_it_does_not_fail_on_nothing() {
         &file,
         "--key-socket",
         key.to_str().unwrap(),
+        "--transport-socket",
+        transport.to_str().unwrap(),
     ]);
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
 }
