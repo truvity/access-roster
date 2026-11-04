@@ -97,9 +97,27 @@ impl Bootstrap {
     /// [`BootstrapError`] for an unreadable or writable-by-others file and for every rule of
     /// [`Bootstrap::parse`].
     pub fn load(path: &Path, own_uid: u32) -> Result<Self, BootstrapError> {
-        let mut file = std::fs::File::open(path).map_err(|e| {
-            BootstrapError(format!("bootstrap: cannot open the file ({})", e.kind()))
-        })?;
+        Self::load_with(path, Some(own_uid))
+    }
+
+    /// As [`Bootstrap::load`], with the owner rule only when `own_uid` is given. `sluis config check` reads the file
+    /// on a CI runner or a workstation, where the file belongs to whoever checked it out: who owns it on the host is a
+    /// check of the installation, not of the file (#1419). Every other rule holds.
+    ///
+    /// # Errors
+    ///
+    /// As [`Bootstrap::load`].
+    pub fn load_with(path: &Path, own_uid: Option<u32>) -> Result<Self, BootstrapError> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        // NONBLOCK: the open of a FIFO returns at once, and `is_file` below refuses it, so a FIFO cannot hang a start
+        // or a check.
+        let mut file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(rustix::fs::OFlags::NONBLOCK.bits().cast_signed())
+            .open(path)
+            .map_err(|e| {
+                BootstrapError(format!("bootstrap: cannot open the file ({})", e.kind()))
+            })?;
         // The checks are on the open file, so the file checked is the file read.
         let meta = file.metadata().map_err(|e| {
             BootstrapError(format!("bootstrap: cannot stat the file ({})", e.kind()))
@@ -107,7 +125,10 @@ impl Bootstrap {
         if !meta.is_file() {
             return err("bootstrap", "not a regular file");
         }
-        if meta.uid() != 0 && meta.uid() != own_uid {
+        if let Some(own_uid) = own_uid
+            && meta.uid() != 0
+            && meta.uid() != own_uid
+        {
             return err("bootstrap", "owner must be root or the uid of store@");
         }
         if meta.mode() & 0o022 != 0 {

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // verifies: REQ-KEYS-110
@@ -69,5 +70,30 @@ func TestKeyPlanPayloadVectors(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// verifies: REQ-KEYS-039
+// key@'s maximum of the cache is the one of the shared vectors, which store@ holds too (actors/store/tests/vectors.rs):
+// a plan at the maximum is read, and one second over it is refused, by both readers.
+func TestKeyPlanCacheMaximumIsTheVectorsMaximum(t *testing.T) {
+	raw, err := os.ReadFile("../../../../tests/testdata/signed-config/keyplan-payloads.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Max int64 `json:"cache_ttl_max_seconds"`
+	}
+	if err := json.Unmarshal(raw, &f); err != nil {
+		t.Fatal(err)
+	}
+	if f.Max == 0 || time.Duration(f.Max)*time.Second != maxCacheTTL {
+		t.Fatalf("the vectors' maximum is %d s, key@'s is %s", f.Max, maxCacheTTL)
+	}
+	if _, err := decodeKeyPlan([]byte("default:\n  cache_ttl: 3600s\n")); err != nil {
+		t.Errorf("at the maximum: %v", err)
+	}
+	if _, err := decodeKeyPlan([]byte("default:\n  cache_ttl: 3601s\n")); err == nil || !strings.Contains(err.Error(), "default.cache_ttl") {
+		t.Errorf("one second over: %v", err)
 	}
 }

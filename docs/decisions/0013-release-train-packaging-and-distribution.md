@@ -1,7 +1,8 @@
 # 0013 — One repository, one version, one release train, and packaging follows the runtime
 
 **Status:** Accepted
-**Date:** 2026-11-04
+**Date:** 2026-11-03
+**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version))
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -25,7 +26,7 @@ Two platform facts are hard constraints. The YubiKey driver talks to the smart-c
 - **One build tool: GoReleaser v2, open-source edition,** for Go and Rust executables alike, with one SBOM generator and one build definition. The Rust executables are built with cargo-zigbuild, current crates and rustls, as static musl binaries, except the binaries that link `libpcsclite`. GoReleaser builds the images from the binaries of the same run with `dockers_v2`, and truvity/ocictl packages and pushes the Helm chart from the same output, with every image pinned by digest. There is no FIPS build in 2.0 ([0006](/decisions/0006-keys-and-sealing/#algorithms)).
 - **The YubiKey driver, and the build of key@ that links `piv-go`, are built in a native job per architecture,** inside the userland of the oldest supported distribution, so they run on every supported glibc. The jobs' outputs join the rest of the release.
 - **One command-line tool, `sluis`, with subcommands** for operators and users, such as `sluis config check`, `sluis doctor`, `sluis trust sync` and `sluis key request|install|status`. Root ceremonies belong to [ritueel](https://ritueel.id). Actors, drivers, the node agent and the host service are separate executables, one per process, because each runs as its own user, unit, function or container.
-- **`sluis config check` runs the store executable of the same release as a helper** ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The CLI looks for it in this order: its `--helper` flag, the `SLUIS_STORE_HELPER` variable, `store` in the CLI's own directory, and the install path `../libexec/sluis/actors/store` beside that directory. So a tarball that holds both executables in one directory works as it is unpacked, and so does a host with the `sluis` and `sluis-store` packages. The helper is a Linux executable, so `config check` runs on Linux only.
+- **`sluis config check` runs the store executable of the same release as a helper** ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The CLI looks for it in this order: its `--helper` flag, the `SLUIS_STORE_HELPER` variable, the install path `../libexec/sluis/actors/store` beside the CLI's own directory, and `store` in that directory. So a host with the `sluis` and `sluis-store` packages uses the package's store, and a tarball that holds both executables in one directory works as it is unpacked. The CLI refuses a helper whose version is not its own. The helper is a Linux executable, so `config check` runs on Linux only.
 
 ### Packaging per runtime
 
