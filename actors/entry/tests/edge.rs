@@ -161,12 +161,22 @@ impl StoreService for FakeStore {
             }
             .encode_to_vec(),
             "signing-ring" => SigningRing {
-                keys: vec![SigningKey {
-                    key_id: "kid-1".into(),
-                    algorithm: "ES384".into(),
-                    spki_der: spki(),
-                    ..SigningKey::default()
-                }],
+                keys: vec![
+                    SigningKey {
+                        key_id: "kid-1".into(),
+                        algorithm: "ES384".into(),
+                        state: "active".into(),
+                        spki_der: spki(),
+                        ..SigningKey::default()
+                    },
+                    SigningKey {
+                        key_id: "kid-revoked".into(),
+                        algorithm: "ES384".into(),
+                        state: "revoked".into(),
+                        spki_der: spki(),
+                        ..SigningKey::default()
+                    },
+                ],
                 ..SigningRing::default()
             }
             .encode_to_vec(),
@@ -270,6 +280,7 @@ fn fake_server(
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o660,
+        socket_gid: None,
         allow: Allow::Exact("entry"),
         default_deadline: Duration::from_secs(5),
     };
@@ -285,7 +296,19 @@ fn fake_server(
     ));
 }
 
+/// The uid table of a test: this process is `name` in uid block `block`.
+type Table = Box<dyn Fn(u32) -> Option<(&'static str, u32)> + Send + Sync>;
+
+fn me_as(name: &'static str, block: u32) -> Table {
+    let me = rustix::process::geteuid().as_raw();
+    Box::new(move |u| (u == me).then_some((name, block)))
+}
+
 async fn up() -> Up {
+    up_as(me_as("harness-forwarder", 0)).await
+}
+
+async fn up_as(table: Table) -> Up {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     let fake = Arc::new(Fake::default());
@@ -323,19 +346,13 @@ async fn up() -> Up {
     let socket = d.join("entry.sock");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     stop.push(tx);
-    tokio::spawn(entry::serve(
-        Config {
-            boundary: "dev".into(),
-            front: Front::Identity,
-            socket: socket.clone(),
-            socket_mode: 0o600,
-            socket_group: None,
-            sockets: sockets.clone(),
-            release: "0.0.0-test".into(),
-        },
+    tokio::spawn(entry::serve_with(
+        config(&socket, &sockets, 0o600),
         async move {
             let _ = rx.await;
         },
+        0,
+        table,
     ));
     for s in [
         &sockets.session,
@@ -351,6 +368,18 @@ async fn up() -> Up {
         fake,
         socket,
         _stop: stop,
+    }
+}
+
+fn config(socket: &Path, sockets: &Sockets, mode: u32) -> Config {
+    Config {
+        boundary: "dev".into(),
+        front: Front::Identity,
+        socket: socket.to_path_buf(),
+        socket_mode: mode,
+        socket_gid: None,
+        sockets: sockets.clone(),
+        release: "0.0.0-test".into(),
     }
 }
 
@@ -687,6 +716,18 @@ async fn token_refuses_what_its_grant_does_not_list() {
         assert_eq!(r.status, 400, "{body}");
         assert!(!r.text().contains("password"));
     }
+    // An unserved grant is `unsupported_grant_type`; a missing one is `invalid_request`.
+    for body in [
+        "grant_type=password&username=a",
+        "grant_type=",
+        "grant_type=authorization_codes",
+    ] {
+        let r = post_token(&up, body).await;
+        assert_eq!(r.status, 400);
+        assert!(r.text().contains("\"unsupported_grant_type\""), "{body}");
+    }
+    let missing = post_token(&up, "code=c").await;
+    assert!(missing.text().contains("\"invalid_request\""));
     let ex_with_code = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t&code=c";
     assert_eq!(post_token(&up, ex_with_code).await.status, 400);
     // the query string takes no parameter on the token endpoint
@@ -794,7 +835,9 @@ async fn client_authentication_by_header_reaches_session_and_never_exchange() {
         ex.as_bytes(),
     )
     .await;
-    assert_eq!(r.status, 400);
+    assert_eq!(r.status, 401);
+    assert_eq!(r.h("www-authenticate"), Some("Basic realm=\"sluis\""));
+    assert!(r.text().contains("invalid_client"));
     assert!(up.fake.calls.lock().unwrap().exchange.is_empty());
 }
 
@@ -854,10 +897,19 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
     let doc: Value = serde_json::from_slice(&d.body).unwrap();
     assert_eq!(doc["issuer"], ISSUER);
     assert_eq!(doc["jwks_uri"], format!("{ISSUER}/jwks"));
+    assert_eq!(
+        doc["token_endpoint_auth_methods_supported"],
+        serde_json::json!(["none"])
+    );
     let k = http(&up, "GET", "/jwks", &[], b"").await;
     assert_eq!(k.status, 200);
     assert_eq!(k.h("cache-control"), Some("public, max-age=300"));
     let set: Value = serde_json::from_slice(&k.body).unwrap();
+    assert_eq!(
+        set["keys"].as_array().unwrap().len(),
+        1,
+        "a revoked key is not published"
+    );
     assert_eq!(set["keys"][0]["kid"], "kid-1");
     assert_eq!(set["keys"][0]["crv"], "P-384");
     assert_eq!(set["keys"][0]["alg"], "ES384");
@@ -936,4 +988,111 @@ async fn the_socket_has_the_asked_for_mode() {
     let up = up().await;
     let mode = std::fs::metadata(&up.socket).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o600);
+}
+
+#[tokio::test]
+async fn only_the_forwarder_of_this_boundary_is_served() {
+    for (name, block) in [("session", 0), ("entry", 0), ("harness-forwarder", 1)] {
+        let up = up_as(me_as(name, block)).await;
+        let mut s = tokio::net::UnixStream::connect(&up.socket).await.unwrap();
+        let _ = s
+            .write_all(b"GET /jwks HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+            .await;
+        let mut raw = Vec::new();
+        let _ = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut raw)).await;
+        assert!(raw.is_empty(), "{name}@{block} got an answer");
+        // The refusal is audited, with no value of the connection.
+        for _ in 0..200 {
+            if !up.fake.emitted.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let recs = up.fake.emitted.lock().unwrap().clone();
+        assert_eq!(recs.len(), 1, "{name}@{block}");
+        assert_eq!(recs[0]["metadata"]["event_code"], "entry.connection");
+        assert_eq!(recs[0]["status_code"], "peer");
+        assert_eq!(recs[0]["status_id"], 2);
+        assert_eq!(
+            *up.fake.store_gets.lock().unwrap(),
+            0,
+            "no actor was called"
+        );
+    }
+    // The right peer is served.
+    let up = up().await;
+    assert_eq!(http(&up, "GET", "/jwks", &[], b"").await.status, 200);
+}
+
+#[tokio::test]
+async fn a_socket_mode_that_gives_anything_to_others_is_refused_at_start() {
+    let dir = tempfile::tempdir().unwrap();
+    let sockets = Sockets::under(dir.path(), "dev");
+    for mode in [0o666, 0o662, 0o601, 0o777, 0o4660, 0o1660] {
+        let socket = dir.path().join(format!("e{mode:o}.sock"));
+        let err = entry::serve_with(
+            config(&socket, &sockets, mode),
+            std::future::pending(),
+            0,
+            me_as("harness-forwarder", 0),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("socket mode"), "{mode:o}: {err}");
+        assert!(!socket.exists(), "{mode:o}");
+    }
+    let mut cfg = config(&dir.path().join("g0.sock"), &sockets, 0o660);
+    cfg.socket_gid = Some(0);
+    let err = entry::serve_with(
+        cfg,
+        std::future::pending(),
+        0,
+        me_as("harness-forwarder", 0),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("group 0"), "{err}");
+}
+
+#[tokio::test]
+async fn a_form_post_page_gets_the_relaxed_policy_and_nothing_else_does() {
+    let up = up().await;
+    let page = |ct: &str| reply(200, &[("Content-Type", ct)]);
+    *up.fake.reply.lock().unwrap() = Some(page("text/html; charset=utf-8"));
+    let q = format!("/authorize?{AUTHORIZE_Q}&response_mode=form_post");
+    let r = http(&up, "GET", &q, &[], b"").await;
+    let csp = r.h("content-security-policy").unwrap();
+    assert!(
+        csp.contains("script-src 'unsafe-inline'") && !csp.contains("form-action"),
+        "{csp}"
+    );
+    assert!(csp.contains("frame-ancestors 'none'"));
+    let r = http(&up, "GET", "/callback?code=c", &[], b"").await;
+    assert!(
+        !r.h("content-security-policy")
+            .unwrap()
+            .contains("form-action")
+    );
+    // JSON on the same route, an error page, and HTML on the token route keep the strict policy.
+    *up.fake.reply.lock().unwrap() = Some(page("application/json"));
+    let r = http(&up, "GET", &q, &[], b"").await;
+    assert!(
+        r.h("content-security-policy")
+            .unwrap()
+            .contains("form-action 'self'")
+    );
+    *up.fake.reply.lock().unwrap() = Some(reply(400, &[("Content-Type", "text/html")]));
+    let r = http(&up, "GET", &q, &[], b"").await;
+    assert!(
+        r.h("content-security-policy")
+            .unwrap()
+            .contains("form-action 'self'")
+    );
+    *up.fake.reply.lock().unwrap() = Some(page("text/html"));
+    let r = post_token(&up, "grant_type=refresh_token&refresh_token=r").await;
+    assert!(
+        r.h("content-security-policy")
+            .unwrap()
+            .contains("form-action 'self'")
+    );
 }

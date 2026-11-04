@@ -11,6 +11,19 @@
 
 use connectrpc::error::ErrorCode;
 
+/// Which fixed body a refusal has, beyond the status. Two answers are specified by the standard
+/// for one case and are fixed too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// The one body of the status.
+    Standard,
+    /// A `grant_type` this boundary does not serve (RFC 6749 section 5.2).
+    UnsupportedGrant,
+    /// A client that authenticated in a way the endpoint cannot accept: 401 with `WWW-Authenticate`
+    /// (RFC 6749 section 5.2, `invalid_client`).
+    ClientAuth,
+}
+
 /// A refusal: the HTTP status, the reason for the audit record, and the methods to offer on a 405.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Refuse {
@@ -19,6 +32,7 @@ pub(crate) struct Refuse {
     pub reason: &'static str,
     /// The `Allow` header of a 405.
     pub allow: Option<&'static str>,
+    pub kind: Kind,
 }
 
 impl Refuse {
@@ -27,6 +41,21 @@ impl Refuse {
             status,
             reason,
             allow: None,
+            kind: Kind::Standard,
+        }
+    }
+
+    pub(crate) const fn unsupported_grant() -> Self {
+        Self {
+            kind: Kind::UnsupportedGrant,
+            ..Self::new(400, "grant_type")
+        }
+    }
+
+    pub(crate) const fn client_auth(reason: &'static str) -> Self {
+        Self {
+            kind: Kind::ClientAuth,
+            ..Self::new(401, reason)
         }
     }
 
@@ -35,6 +64,7 @@ impl Refuse {
             status: 405,
             reason: "method",
             allow: Some(allow),
+            kind: Kind::Standard,
         }
     }
 
@@ -55,6 +85,16 @@ impl Refuse {
             _ => (500, "rpc_internal"),
         };
         Self::new(status, reason)
+    }
+}
+
+/// The fixed body of a refusal: one per status, and the two of [`Kind`].
+pub(crate) fn body_of(r: &Refuse) -> &'static str {
+    match r.kind {
+        Kind::UnsupportedGrant => {
+            r#"{"error":"unsupported_grant_type","error_description":"unsupported grant type","status":400,"title":"Invalid request","type":"urn:sluis:problem:unsupported-grant-type"}"#
+        }
+        _ => body(status_of(r.status)),
     }
 }
 

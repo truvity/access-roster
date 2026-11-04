@@ -61,6 +61,20 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// A connection from a uid that is not the forwarder's was dropped: audit the refusal.
+    pub(crate) async fn refuse_peer(&self) {
+        self.audit
+            .request(Request {
+                route: "connection",
+                method: &Method::CONNECT,
+                status: 403,
+                reason: "peer",
+                grant: "",
+                correlation: &crate::ids::new_correlation_id(),
+            })
+            .await;
+    }
+
     pub(crate) fn new(front: Front, s: &Sockets, audit: Auditor) -> Self {
         let session: Client = dial(&s.session);
         let exchange: Client = dial(&s.exchange);
@@ -96,7 +110,7 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
     // contracts.md "Every call": entry makes the id and a client cannot choose it.
     let id = crate::ids::new_correlation_id();
     let method = req.method().clone();
-    let reply = correlation::scope(Some(id.clone()), async {
+    correlation::scope(Some(id.clone()), async {
         let mut trace = Trace::default();
         let outcome = tokio::time::timeout(REQUEST, route(state, req, &mut trace))
             .await
@@ -124,16 +138,15 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
                 correlation: &id,
             })
             .await;
-        reply
+        crate::headers::secure(reply, &id, trace.route)
     })
-    .await;
-    crate::headers::secure(reply, &id)
+    .await
 }
 
 fn refused(r: Refuse) -> Reply {
     let status = refuse::status_of(r.status);
     let mut resp = Response::new(Full::new(Bytes::from_static(
-        refuse::body(status).as_bytes(),
+        refuse::body_of(&r).as_bytes(),
     )));
     *resp.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let h = resp.headers_mut();
@@ -143,6 +156,13 @@ fn refused(r: Refuse) -> Reply {
     );
     if let Some(a) = r.allow {
         h.insert(ALLOW, HeaderValue::from_static(a));
+    }
+    if r.kind == refuse::Kind::ClientAuth {
+        // RFC 6749 section 5.2: a 401 for a client that used the Authorization header names a scheme.
+        h.insert(
+            WWW_AUTHENTICATE,
+            HeaderValue::from_static("Basic realm=\"sluis\""),
+        );
     }
     if status == 429 {
         h.insert(http::header::RETRY_AFTER, HeaderValue::from_static("5"));
@@ -465,9 +485,9 @@ async fn token(
             trace.grant = "token_exchange";
             let p = p.only(routes::TOKEN_EXCHANGE).map_err(bad)?;
             // TokenExchangeRequest has no field for client authentication (a contract gap), so a
-            // request that authenticates with a header is refused rather than run unauthenticated.
+            // request that authenticates with a header is `invalid_client`, not run unauthenticated.
             if headers.contains_key(AUTHORIZATION) {
-                return Err(Refuse::new(400, "authorization"));
+                return Err(Refuse::client_auth("authorization"));
             }
             let r = TokenExchangeRequest {
                 grant_type: p.get("grant_type"),
@@ -490,6 +510,7 @@ async fn token(
             Ok(Done::Relay(reply.into_owned()))
         }
         // Absent, repeated (refused above), or a grant this boundary does not serve.
-        _ => Err(Refuse::new(400, "grant_type")),
+        "" if !p.has("grant_type") => Err(Refuse::new(400, "grant_type")),
+        _ => Err(Refuse::unsupported_grant()),
     }
 }
