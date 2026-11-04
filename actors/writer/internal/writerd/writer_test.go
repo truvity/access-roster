@@ -579,7 +579,7 @@ func TestWithoutAGrantNothingIsSealedOrAcknowledged(t *testing.T) {
 	e.mustVerify(t)
 }
 
-// verifies: REQ-AUDIT-007, REQ-AUDIT-050
+// verifies: REQ-AUDIT-007, REQ-AUDIT-050, REQ-ISO-022
 func TestASecondWriterCannotFork(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)

@@ -230,6 +230,7 @@ func TestAnEmptyAMRIsPresent(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-012
 func TestCompleteRefusesWhatDoesNotVerify(t *testing.T) {
 	other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {

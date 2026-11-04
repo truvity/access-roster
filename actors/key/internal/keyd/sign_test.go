@@ -92,6 +92,7 @@ func TestSignTokenVerifiesWithJose(t *testing.T) {
 	}
 }
 
+// verifies: REQ-ISO-008
 func TestSignRefusals(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})

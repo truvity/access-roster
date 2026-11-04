@@ -9,13 +9,14 @@ requirements:
     level: MUST
     source: standard
     status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-56, section: "3", depth: Full}
       - {id: ST-52, section: "7", depth: Full}
       - {id: ST-49, section: "5", depth: Full}
     issues: [830, 869]
-    gap: register-gap
     verification:
       - {kind: test-vectors, ref: "JWT BCP negative vectors"}
   - id: REQ-SEC-012
@@ -26,13 +27,14 @@ requirements:
     level: MUST
     source: standard
     status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-56, section: "3", depth: Full}
       - {id: ST-52, section: "7", depth: Full}
       - {id: ST-49, section: "5", depth: Full}
     issues: [830, 869]
-    gap: register-gap
     verification:
       - {kind: test-vectors, ref: "JWT BCP negative vectors"}
   - id: REQ-SEC-013
@@ -43,13 +45,14 @@ requirements:
     level: MUST
     source: standard
     status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-56, section: "3", depth: Full}
       - {id: ST-52, section: "7", depth: Full}
       - {id: ST-49, section: "5", depth: Full}
     issues: [830, 869]
-    gap: register-gap
     verification:
       - {kind: test-vectors, ref: "JWT BCP negative vectors"}
       - {kind: test-vectors, ref: "RFC 7520 cookbook"}
@@ -60,11 +63,12 @@ requirements:
     level: MUST
     source: standard
     status: partial
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "2-4", depth: Full}
     issues: [775, 777, 782]
-    gap: register-gap
+    gap: attestation-missing
     manual_reason: "A checklist review is the requirement; the tests it maps to are listed in the next requirement."
     verification:
       - {kind: manual, ref: "checklist review"}
@@ -76,11 +80,12 @@ requirements:
     level: MUST
     source: standard
     status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "2-4", depth: Full}
     issues: [775, 777, 782]
-    gap: register-gap
     verification:
       - {kind: integration-test, ref: "one test per recommendation"}
   - id: REQ-SEC-003
@@ -90,6 +95,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "Fetch Metadata", depth: Full}
@@ -104,6 +110,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "Fetch Metadata", depth: Full}
@@ -118,6 +125,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: NC-05, section: "Fetch Metadata", depth: Full}
@@ -130,7 +138,9 @@ requirements:
     rationale: "Browser headers are the second line of defence."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: NC-05, section: "CSP/HSTS", depth: Full}
@@ -144,6 +154,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -157,6 +168,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -171,6 +183,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -183,7 +196,9 @@ requirements:
     rationale: "Parsers fail on unexpected inputs."
     level: MUST
     source: standard
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Partial}
@@ -196,7 +211,9 @@ requirements:
     rationale: "Home-made crypto is the main risk."
     level: MUST
     source: standard
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -211,7 +228,9 @@ requirements:
     rationale: "Home-made crypto is the main risk."
     level: MUST
     source: standard
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -225,7 +244,9 @@ requirements:
     rationale: "Independent tests find different bugs."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -241,6 +262,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -254,7 +276,9 @@ requirements:
     rationale: "Operator doors do not belong on the internet."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -267,7 +291,9 @@ requirements:
     rationale: "Cross-installation replay breaks isolation, and a declared trust of one operator is the one way across (ADR 0008)."
     level: MUST
     source: standard
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-52, section: "7", depth: Full}
@@ -282,6 +308,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -294,6 +321,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -331,7 +359,9 @@ requirements:
     rationale: "A client needs to know when to retry."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: ciam-upstream
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [916]
@@ -344,6 +374,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [916]
@@ -356,6 +387,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards: []
     issues: [916]
@@ -370,6 +402,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [entry]
     standards: []
@@ -383,6 +416,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1207]
@@ -395,6 +429,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Full}
@@ -408,6 +443,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Partial}
@@ -421,6 +457,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: NC-13, section: "8657", depth: Partial}
@@ -434,6 +471,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     standards: []
     issues: [1211]
@@ -446,6 +484,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     standards: []
     issues: [1211]
@@ -458,6 +497,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
@@ -470,6 +511,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1370]
     runtimes: [serverless, kubernetes]
     standards: []
     features: ["design"]
@@ -482,6 +525,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
