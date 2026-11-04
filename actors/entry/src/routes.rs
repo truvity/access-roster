@@ -9,7 +9,7 @@
 pub enum Front {
     /// The identity front: sign-in, token, exchange, discovery and the key set.
     Identity,
-    /// The audit front. It routes nothing until the audit contracts exist.
+    /// The audit front: the reader's Search.
     Audit,
 }
 
@@ -69,6 +69,23 @@ pub(crate) const TOKEN_EXCHANGE: &[&str] = &[
     "actor_token_type",
 ];
 
+/// `SearchRequest` of the reader (0028 "The audit front"): the body of the call, by the proto names.
+pub(crate) const SEARCH: &[&str] = &[
+    "tenants",
+    "project",
+    "q",
+    "action",
+    "status_code",
+    "status_id",
+    "actor_uid",
+    "trace_id",
+    "record_id",
+    "from_ms",
+    "to_ms",
+    "page_size",
+    "page_token",
+];
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -77,6 +94,7 @@ mod tests {
 
     const SESSION: &str = include_str!("../../../proto/sluis/session/v2alpha1/session.proto");
     const EXCHANGE: &str = include_str!("../../../proto/sluis/exchange/v2alpha1/exchange.proto");
+    const READER: &str = include_str!("../../../proto/sluis/reader/v2alpha1/reader.proto");
 
     /// The field names of `message <name> { ... }`: the identifier before ` = <number>;`.
     fn fields(proto: &str, name: &str) -> BTreeSet<String> {
@@ -115,6 +133,7 @@ mod tests {
             fields(EXCHANGE, "TokenExchangeRequest"),
             set(TOKEN_EXCHANGE, &[])
         );
+        assert_eq!(fields(READER, "SearchRequest"), set(SEARCH, &[]));
     }
 
     #[test]

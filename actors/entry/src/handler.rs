@@ -15,6 +15,7 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::body::{Body, Incoming};
 use sluis_kit::{Client, correlation, dial};
 use sluis_proto::sluis::exchange::v2alpha1::{ExchangeServiceClient, TokenExchangeRequest};
+use sluis_proto::sluis::reader::v2alpha1::ReaderServiceClient;
 use sluis_proto::sluis::session::v2alpha1::{
     AuthorizeRequest, CallbackRequest, SessionServiceClient, TokenRequest,
 };
@@ -26,6 +27,7 @@ use crate::discovery::Source;
 use crate::params::{Bad, FORM_MAX, Params, QUERY_MAX};
 use crate::refuse::{self, Refuse};
 use crate::routes::{self, Front};
+use crate::search;
 
 /// The whole request, from the first byte read to the last written.
 const REQUEST: Duration = Duration::from_secs(30);
@@ -56,6 +58,7 @@ pub(crate) struct State {
     front: Front,
     session: SessionServiceClient<sluis_kit::Transport>,
     exchange: ExchangeServiceClient<sluis_kit::Transport>,
+    reader: ReaderServiceClient<sluis_kit::Transport>,
     docs: Source,
     audit: Auditor,
 }
@@ -78,10 +81,12 @@ impl State {
     pub(crate) fn new(front: Front, s: &Sockets, audit: Auditor) -> Self {
         let session: Client = dial(&s.session);
         let exchange: Client = dial(&s.exchange);
+        let reader: Client = dial(&s.reader);
         Self {
             front,
             session: SessionServiceClient::new(session.transport(), session.config()),
             exchange: ExchangeServiceClient::new(exchange.transport(), exchange.config()),
+            reader: ReaderServiceClient::new(reader.transport(), reader.config()),
             docs: Source::new(&s.store),
             audit,
         }
@@ -331,10 +336,73 @@ async fn route(
             trace.route = "jwks";
             public_document(state, &parts.method, query, &body, true).await
         }
-        // The audit front's routes arrive with the reader's contract; until then it routes nothing.
-        // planned: the audit contracts of 0028 "The audit front"
+        (Front::Audit, search::PATH) => {
+            trace.route = "search";
+            method_ok(&parts.method, &[Method::POST], "POST")?;
+            audit_search(state, &parts.headers, query, body).await
+        }
         _ => Err(Refuse::new(404, "route")),
     }
+}
+
+/// The reader's `Search` as the Connect protocol's unary call with the JSON codec: the body is the closed
+/// `SearchRequest`, the answer is the typed `SearchResponse` as JSON. Who may read what is the reader's, which
+/// `policy` and key@ back; `entry` only parses.
+async fn audit_search(
+    state: &State,
+    headers: &HeaderMap,
+    query: &str,
+    body: Incoming,
+) -> Result<Done, Refuse> {
+    // The call takes no query string.
+    if !query.is_empty() {
+        return Err(Refuse::new(400, "unknown_parameter"));
+    }
+    if !is_json(headers) {
+        return Err(Refuse::new(415, "content_type"));
+    }
+    let declared = headers
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok());
+    if declared.is_some_and(|n| n > search::BODY_MAX) {
+        return Err(Refuse::new(413, "body_size"));
+    }
+    let raw = Limited::new(body, search::BODY_MAX)
+        .collect()
+        .await
+        .map_err(|e| {
+            if e.downcast_ref::<http_body_util::LengthLimitError>()
+                .is_some()
+            {
+                Refuse::new(413, "body_size")
+            } else {
+                Refuse::new(400, "body")
+            }
+        })?
+        .to_bytes();
+    let req = search::request(&raw, routes::SEARCH).map_err(bad)?;
+    let reply = state
+        .reader
+        .search_with_options(req, opts())
+        .await
+        .map_err(|e| rpc(&e))?;
+    Ok(Done::Json {
+        body: Bytes::from(search::response(&reply.into_owned())),
+        public: false,
+    })
+}
+
+/// `application/json`, optionally with `charset=utf-8` (the Connect protocol's JSON codec).
+fn is_json(h: &HeaderMap) -> bool {
+    let mut it = h.get_all(CONTENT_TYPE).iter();
+    let (Some(v), None) = (it.next(), it.next()) else {
+        return false;
+    };
+    let Ok(v) = v.to_str() else { return false };
+    let v = v.to_ascii_lowercase();
+    let mut parts = v.split(';').map(str::trim);
+    parts.next() == Some("application/json") && parts.all(|p| p == "charset=utf-8")
 }
 
 async fn public_document(

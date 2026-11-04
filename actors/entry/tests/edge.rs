@@ -22,6 +22,9 @@ use sluis_proto::sluis::port::transport::v2alpha1::{
     AckRequest, AckResponse, EmitRequest, EmitResponse, ReceiveRequest, ReceiveResponse,
     TransportService, TransportServiceExt,
 };
+use sluis_proto::sluis::reader::v2alpha1::{
+    Hit, ReaderService, ReaderServiceExt, SearchRequest, SearchResponse,
+};
 use sluis_proto::sluis::session::v2alpha1::{
     AuthorizeRequest, CallbackRequest, SessionService, SessionServiceExt, TokenRequest,
 };
@@ -43,6 +46,7 @@ struct Calls {
     callback: Vec<CallbackRequest>,
     token: Vec<TokenRequest>,
     exchange: Vec<TokenExchangeRequest>,
+    search: Vec<SearchRequest>,
 }
 
 #[derive(Default)]
@@ -111,6 +115,37 @@ impl SessionService for FakeSession {
             .token
             .push(r.to_owned_message());
         self.0.answer()
+    }
+}
+
+struct FakeReader(Arc<Fake>);
+impl ReaderService for FakeReader {
+    async fn search(
+        &self,
+        _: RequestContext,
+        r: ServiceRequest<'_, SearchRequest>,
+    ) -> ServiceResult<SearchResponse> {
+        self.0
+            .calls
+            .lock()
+            .unwrap()
+            .search
+            .push(r.to_owned_message());
+        if let Some((code, reason)) = *self.0.error.lock().unwrap() {
+            return Err(refusal(code, reason, "secret.field.path"));
+        }
+        Response::ok(SearchResponse {
+            hits: vec![Hit {
+                tenant: "acme".into(),
+                seq: 7,
+                time_ms: 1_700_000_000_000,
+                action: "signer.sign".into(),
+                record: "{\"a\":1}".into(),
+                ..Hit::default()
+            }],
+            next_page_token: vec![9, 9],
+            ..SearchResponse::default()
+        })
     }
 }
 
@@ -309,6 +344,10 @@ async fn up() -> Up {
 }
 
 async fn up_as(table: Table) -> Up {
+    up_front(table, Front::Identity).await
+}
+
+async fn up_front(table: Table, front: Front) -> Up {
     let dir = tempfile::tempdir().unwrap();
     let d = dir.path();
     let fake = Arc::new(Fake::default());
@@ -318,7 +357,14 @@ async fn up_as(table: Table) -> Up {
         exchange: d.join("exchange.sock"),
         store: d.join("store.sock"),
         audit: d.join("emit.sock"),
+        reader: d.join("reader.sock"),
     };
+    fake_server(
+        &sockets.reader,
+        "reader",
+        Arc::new(FakeReader(fake.clone())).register(Router::new()),
+        &mut stop,
+    );
     fake_server(
         &sockets.session,
         "session",
@@ -346,8 +392,10 @@ async fn up_as(table: Table) -> Up {
     let socket = d.join("entry.sock");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     stop.push(tx);
+    let mut cfg = config(&socket, &sockets, 0o600);
+    cfg.front = front;
     tokio::spawn(entry::serve_with(
-        config(&socket, &sockets, 0o600),
+        cfg,
         async move {
             let _ = rx.await;
         },
@@ -355,6 +403,7 @@ async fn up_as(table: Table) -> Up {
         table,
     ));
     for s in [
+        &sockets.reader,
         &sockets.session,
         &sockets.exchange,
         &sockets.store,
@@ -1094,5 +1143,118 @@ async fn a_form_post_page_gets_the_relaxed_policy_and_nothing_else_does() {
         r.h("content-security-policy")
             .unwrap()
             .contains("form-action 'self'")
+    );
+}
+
+// ---------------------------------------------------------------- the audit front
+
+const JSON: (&str, &str) = ("Content-Type", "application/json");
+const SEARCH: &str = "/sluis.reader.v2alpha1.ReaderService/Search";
+
+async fn audit_front() -> Up {
+    up_front(me_as("harness-forwarder", 0), Front::Audit).await
+}
+
+#[tokio::test]
+async fn the_audit_front_routes_search_to_the_reader_and_nothing_else() {
+    let up = audit_front().await;
+    let body =
+        br#"{"tenants":["acme"],"action":"signer.sign","from_ms":"1700000000000","page_size":5}"#;
+    let r = http(&up, "POST", SEARCH, &[JSON], body).await;
+    assert_eq!(r.status, 200, "{}", r.text());
+    assert_eq!(r.h("content-type"), Some("application/json"));
+    assert_eq!(r.h("cache-control"), Some("no-store"));
+    let v: Value = serde_json::from_slice(&r.body).unwrap();
+    assert_eq!(v["hits"][0]["tenant"], "acme");
+    assert_eq!(v["hits"][0]["seq"], "7");
+    assert_eq!(v["hits"][0]["timeMs"], "1700000000000");
+    assert_eq!(v["nextPageToken"], "CQk=");
+    // The reader got the typed request, with the 64-bit integer read from its string.
+    let seen = up.fake.calls.lock().unwrap().search.clone();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].tenants, ["acme"]);
+    assert_eq!(
+        (seen[0].action.as_str(), seen[0].from_ms, seen[0].page_size),
+        ("signer.sign", 1_700_000_000_000, 5)
+    );
+    // The call is audited as the route `search`.
+    let emitted = up.fake.emitted.lock().unwrap().clone();
+    assert!(
+        emitted
+            .iter()
+            .any(|e| e["metadata"]["event_code"] == "entry.search")
+    );
+    // The identity front's routes do not exist here, and this route does not exist there.
+    for path in [
+        "/authorize",
+        "/token",
+        "/jwks",
+        "/.well-known/openid-configuration",
+        "/search",
+    ] {
+        assert_eq!(http(&up, "GET", path, &[], b"").await.status, 404, "{path}");
+    }
+    let identity = up_as(me_as("harness-forwarder", 0)).await;
+    assert_eq!(
+        http(&identity, "POST", SEARCH, &[JSON], body).await.status,
+        404
+    );
+    assert!(identity.fake.calls.lock().unwrap().search.is_empty());
+}
+
+#[tokio::test]
+async fn the_audit_front_refuses_what_the_contract_does_not_have() {
+    let up = audit_front().await;
+    let cases: [(&str, &str, &[(&str, &str)], &[u8], u16); 8] = [
+        ("GET", SEARCH, &[], b"", 405),
+        ("POST", SEARCH, &[FORM], b"tenants=acme", 415),
+        ("POST", SEARCH, &[JSON], br#"{"tenant":"acme"}"#, 400),
+        ("POST", SEARCH, &[JSON], br#"{"tenants":"acme"}"#, 400),
+        ("POST", SEARCH, &[JSON], b"[]", 400),
+        ("POST", SEARCH, &[JSON], b"{", 400),
+        (
+            "POST",
+            "/sluis.reader.v2alpha1.ReaderService/Search?x=1",
+            &[JSON],
+            b"{}",
+            400,
+        ),
+        (
+            "POST",
+            "/sluis.reader.v2alpha1.ReaderService/Export",
+            &[JSON],
+            b"{}",
+            404,
+        ),
+    ];
+    for (m, path, h, body, want) in cases {
+        let r = http(&up, m, path, h, body).await;
+        assert_eq!(r.status, want, "{m} {path}: {}", r.text());
+    }
+    assert!(
+        up.fake.calls.lock().unwrap().search.is_empty(),
+        "a refused request reached the reader"
+    );
+    let big = vec![b' '; 20_000];
+    assert_eq!(http(&up, "POST", SEARCH, &[JSON], &big).await.status, 413);
+}
+
+#[tokio::test]
+async fn an_error_from_the_reader_shows_nothing_of_its_reason() {
+    let up = audit_front().await;
+    *up.fake.error.lock().unwrap() = Some((ErrorCode::PermissionDenied, "grant"));
+    let r = http(&up, "POST", SEARCH, &[JSON], br#"{"tenants":["acme"]}"#).await;
+    assert_eq!(r.status, 403);
+    assert!(
+        !r.text().contains("grant") && !r.text().contains("secret"),
+        "{}",
+        r.text()
+    );
+    *up.fake.error.lock().unwrap() = Some((ErrorCode::Unavailable, "engine"));
+    assert_eq!(
+        http(&up, "POST", SEARCH, &[JSON], br#"{"tenants":["acme"]}"#)
+            .await
+            .status,
+        503
     );
 }
