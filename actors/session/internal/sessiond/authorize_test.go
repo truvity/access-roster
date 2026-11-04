@@ -116,10 +116,15 @@ func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 		{"no openid scope", func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "profile" }, "invalid_scope", "request"},
 		{"no scope", func(r *sessionv2alpha1.AuthorizeRequest) { r.Scope = "" }, "invalid_scope", "request"},
 		{"state with a control character", func(r *sessionv2alpha1.AuthorizeRequest) { r.State = "a\nb" }, "invalid_request", "request"},
-		{"state too long", func(r *sessionv2alpha1.AuthorizeRequest) { r.State = strings.Repeat("a", 513) }, "invalid_request", "request"},
 		{"nonce with a control character", func(r *sessionv2alpha1.AuthorizeRequest) { r.Nonce = "a\x00b" }, "invalid_request", "request"},
 		{"silent request", func(r *sessionv2alpha1.AuthorizeRequest) { r.Prompt = "none" }, "login_required", "request"},
-		{"consent prompt", func(r *sessionv2alpha1.AuthorizeRequest) { r.Prompt = "consent" }, "invalid_request", "request"},
+		{"forced login", func(r *sessionv2alpha1.AuthorizeRequest) { r.Prompt = "login" }, "login_required", "request"},
+		{"consent prompt", func(r *sessionv2alpha1.AuthorizeRequest) { r.Prompt = "consent" }, "login_required", "request"},
+		{"select_account prompt", func(r *sessionv2alpha1.AuthorizeRequest) { r.Prompt = "select_account" }, "login_required", "request"},
+		{"max_age zero is a forced login", func(r *sessionv2alpha1.AuthorizeRequest) { r.MaxAge = "0" }, "login_required", "request"},
+		{"max_age negative", func(r *sessionv2alpha1.AuthorizeRequest) { r.MaxAge = "-5" }, "invalid_request", "request"},
+		{"state over the bound", func(r *sessionv2alpha1.AuthorizeRequest) { r.State = strings.Repeat("a", 257) }, "invalid_request", "request"},
+		{"nonce over the bound", func(r *sessionv2alpha1.AuthorizeRequest) { r.Nonce = strings.Repeat("a", 257) }, "invalid_request", "request"},
 		{"max_age not a number", func(r *sessionv2alpha1.AuthorizeRequest) { r.MaxAge = "soon" }, "invalid_request", "request"},
 	}
 	for _, c := range cases {
@@ -167,7 +172,7 @@ func safe(s string) string {
 			return ""
 		}
 	}
-	if len(s) > 512 {
+	if len(s) > 256 {
 		return ""
 	}
 	return s
@@ -341,4 +346,30 @@ func TestAuthorizeNeedsATenant(t *testing.T) {
 	if len(e.upstream.begins) != 0 {
 		t.Error("a sign-in started with no tenant")
 	}
+}
+
+func TestAuthorizeTheLargestRequestFitsTheCookie(t *testing.T) {
+	// Everything a client supplies at its bound, with the longest redirect_uri: the sealed cookie stays under what
+	// entry passes on (4096), and a request one past a bound is refused rather than set as a cookie entry would drop.
+	long := "https://app.example.com/" + strings.Repeat("p", 1000)
+	e := newEnv(t, func(o *options) { o.client.Redirects = []string{long} })
+	p := newAuthorize()
+	p.req.RedirectUri = long
+	p.req.State, p.req.Nonce = strings.Repeat("s", 256), strings.Repeat("n", 256)
+	p.req.Scope = "openid profile email"
+	r := e.authorize(p.req)
+	_ = location(t, r)
+	if v := cookieValue(t, r); v == "" || len(v) > 4096 {
+		t.Fatalf("cookie of %d bytes", len(v))
+	}
+	// And it opens: the callback accepts it.
+	up := location(t, r)
+	cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: up.Query().Get("state"), Cookie: cookieValue(t, r)})
+	if location(t, cb).Query().Get("code") == "" {
+		t.Fatal("the largest request did not complete")
+	}
+	// One past the redirect_uri bound is not served at all.
+	e = newEnv(t, func(o *options) { o.client.Redirects = []string{long + "p"} })
+	p.req.RedirectUri = long + "p"
+	assertErrorPage(t, e.authorize(p.req))
 }

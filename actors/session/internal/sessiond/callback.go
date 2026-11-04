@@ -113,6 +113,15 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	assure := assuranceOf(assertion)
 	account := up.GetName() + "/" + assertion.GetSubject()
 
+	// max_age (OpenID Connect Core section 3.1.2.1): the authentication must be no older than the client asked, and the
+	// upstream must say when it happened; an upstream that sends no auth_time cannot show it, so it is refused. This
+	// is also what makes auth_time reach the ID token whenever a client asked for max_age.
+	if m := pending.MaxAge; m != nil {
+		if age, ok := assure.authAge(now); !ok || age > *m {
+			return deny("login_required", "a fresher authentication is needed", reasonMaxAge, nil)
+		}
+	}
+
 	// The decision is the sign-in's admission: may a person with this account have a token for this client, with how
 	// they just authenticated. Its grant (about a minute) lets session open the link and write what follows. The
 	// subject is the candidate: the person's own when the link exists, the one a new person will get when it does not.

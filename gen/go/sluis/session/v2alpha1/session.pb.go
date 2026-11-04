@@ -371,6 +371,7 @@ type PendingSignIn struct {
 	UpstreamVerifier string                 `protobuf:"bytes,11,opt,name=upstream_verifier,json=upstreamVerifier,proto3" json:"upstream_verifier,omitempty"` // the PKCE verifier of the upstream request
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                      // when the request was made
 	ExpiresAt        *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`                      // when the pending sign-in ends
+	MaxAge           *int64                 `protobuf:"varint,14,opt,name=max_age,json=maxAge,proto3,oneof" json:"max_age,omitempty"`                        // the client's max_age in seconds, if sent; the callback refuses an older auth_time
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -494,6 +495,13 @@ func (x *PendingSignIn) GetExpiresAt() *timestamppb.Timestamp {
 		return x.ExpiresAt
 	}
 	return nil
+}
+
+func (x *PendingSignIn) GetMaxAge() int64 {
+	if x != nil && x.MaxAge != nil {
+		return *x.MaxAge
+	}
+	return 0
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.
@@ -995,7 +1003,7 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\rrefresh_token\x18\x06 \x01(\tR\frefreshToken\x12\x14\n" +
 	"\x05scope\x18\a \x01(\tR\x05scope\x12#\n" +
 	"\rclient_secret\x18\b \x01(\tR\fclientSecret\x12$\n" +
-	"\rauthorization\x18\t \x01(\tR\rauthorization\"\xdd\x03\n" +
+	"\rauthorization\x18\t \x01(\tR\rauthorization\"\x87\x04\n" +
 	"\rPendingSignIn\x12\x1b\n" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12!\n" +
 	"\fredirect_uri\x18\x02 \x01(\tR\vredirectUri\x12\x14\n" +
@@ -1012,7 +1020,10 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"]\n" +
+	"expires_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x1c\n" +
+	"\amax_age\x18\x0e \x01(\x03H\x00R\x06maxAge\x88\x01\x01B\n" +
+	"\n" +
+	"\b_max_age\"]\n" +
 	"\x06Person\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x129\n" +
 	"\n" +
@@ -1121,6 +1132,7 @@ func file_sluis_session_v2alpha1_session_proto_init() {
 	if File_sluis_session_v2alpha1_session_proto != nil {
 		return
 	}
+	file_sluis_session_v2alpha1_session_proto_msgTypes[3].OneofWrappers = []any{}
 	file_sluis_session_v2alpha1_session_proto_msgTypes[7].OneofWrappers = []any{}
 	file_sluis_session_v2alpha1_session_proto_msgTypes[8].OneofWrappers = []any{}
 	type x struct{}

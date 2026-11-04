@@ -44,6 +44,7 @@ const (
 	reasonRedirectURI  = "redirect_uri"  // not the client's registered redirect_uri
 	reasonRequest      = "request"       // a parameter missing, repeated or malformed
 	reasonPKCE         = "pkce"          // no S256 challenge, or the verifier does not match
+	reasonMaxAge       = "max_age"       // the upstream's authentication is older than the client allowed, or undated
 	reasonCookie       = "cookie"        // the sign-in cookie is missing, altered or expired
 	reasonState        = "state"         // the callback's state is not the one sent
 	reasonUpstream     = "upstream"      // the upstream refused or failed the sign-in
