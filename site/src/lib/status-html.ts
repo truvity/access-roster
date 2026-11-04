@@ -112,7 +112,11 @@ function cards(groups: Group[], when: string, builtAt?: string): string {
       ],
       [
         builtAt ? `Requirements: build of ${utc(builtAt)}. Issues: ${when}.` : `Issues: ${when}.`,
-        inferred ? `${inferred} of ${g.reqs.total} requirements are placed here by inference from their issues (inferred): they name no milestone.` : '',
+        inferred
+          ? (g.milestone
+            ? `${inferred} of ${g.reqs.total} requirements are placed here by inference from their issues (inferred): they name no milestone.`
+            : `${inferred} of ${g.reqs.total} requirements have no milestone set, and no issue places them in one.`)
+          : '',
       ]);
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
       + `<p class="ps-card-k">${g.milestone ? `Milestone ${i + 1}` : 'No milestone'}${g.current ? ' · <strong>current</strong>' : ''}</p>`

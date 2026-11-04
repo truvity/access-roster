@@ -466,6 +466,7 @@ await test('milestone: the page shows the evidence-backed count and says what wa
   assert.ok(html.includes('1 evidence-backed'), 'the Build caption names the count');
   assert.ok(html.includes('<dt>Evidence-backed</dt>'));
   assert.ok(html.includes('1 of 1 requirements are placed here by inference'), 'M1 says its one record is inferred');
+  assert.ok(html.includes('1 of 2 requirements have no milestone set'), 'Unassigned says no milestone is set, not inference');
   assert.ok(html.includes('>Evidence-backed</th>') && html.includes('>Inferred</th>'), 'two ledger columns');
 });
 await test('counting: the blocks add up to the totals', () => {
