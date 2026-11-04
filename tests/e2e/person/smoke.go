@@ -150,6 +150,10 @@ func smokeRun(cfg *config, fromOut *int64) error {
 	if err := checkExchanged(xHdr, xClaims, atClaims); err != nil {
 		return err
 	}
+	// RFC 9068 section 2.2: client_id is the client the token is issued to, here the CLI that asked.
+	if xClaims["client_id"] != cliID {
+		return fmt.Errorf("the CLI's exchanged token has client_id %v, want %s", xClaims["client_id"], cliID)
+	}
 	kid, err = verifyToken(tok, &jwks)
 	if err != nil {
 		return fmt.Errorf("the exchanged token: %w", err)
@@ -176,6 +180,10 @@ func smokeRun(cfg *config, fromOut *int64) error {
 	}
 	if cClaims["sub"] != xClaims["sub"] {
 		return errors.New("the confidential client's exchange gave another sub than the CLI's")
+	}
+	// The token is issued to the client that asked, not to the client of the subject token.
+	if cClaims["client_id"] != confidentialClient {
+		return fmt.Errorf("the confidential client's exchanged token has client_id %v, want %s", cClaims["client_id"], confidentialClient)
 	}
 	fmt.Println("client exchange: 200, a token for " + audience + ", the same pairwise subject; the subject token was sluis-cli's")
 

@@ -164,9 +164,12 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 	}
 	s.Kind = KindOwn
 	if s.JTI == "" || s.ClientID == "" || s.Audience == "" || s.Audience != s.ClientID {
-		// A token that the boundary issued to a client carries that client as aud and client_id (ADR 0020). A
-		// token that names another audience is an exchanged token or a token for a relying party, and neither may
-		// be exchanged again: an exchange only narrows (REQ-EXCH-004).
+		// A token that the boundary issued to a client carries that client as aud and client_id (ADR 0020). One that
+		// names another audience is a token for a relying party or the product of an exchange, and an exchange only
+		// narrows (REQ-EXCH-004). This check does NOT stop every exchanged token: a confidential client
+		// that exchanges for itself gets aud == client_id, the shape of a sign-in token, and exchange sets no marker
+		// that session does not. What refuses it is mayBeExchanged below (REQ-EXCH-020), so relaxing that rule needs
+		// a structural guard first (TestAnExchangedTokenIsNeverASubjectOnlyBecauseOfItsClientKind).
 		return nil, invalidRequest(reasonClaims)
 	}
 	c, err := v.cfg.Client(ctx, s.ClientID)
@@ -189,6 +192,11 @@ func (v *Verifier) verifyOwn(ctx context.Context, tok *jose.JSONWebSignature) (*
 // native public client that a person runs on their own machine (0021: kind `public`, profile `native`, as the
 // installation's CLI) is a subject. A public client with no profile, a confidential client, a machine client and a
 // browser client are not.
+//
+// This rule is also what keeps an exchanged token from being exchanged again: exchange issues client_id = the
+// requester, and a confidential client's token for itself has aud == client_id like a sign-in token. Nothing else
+// in the token tells the two apart (signer's claim set is fixed, ADR 0020), so a change that lets a confidential
+// client's token be a subject must first add a marker that only exchange sets, and refuse on it here.
 func mayBeExchanged(c *configv2alpha1.InstallationClient) bool {
 	return c.GetKind() == "public" && c.GetProfile() == "native"
 }

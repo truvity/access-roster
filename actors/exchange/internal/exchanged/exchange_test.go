@@ -423,9 +423,9 @@ func TestASubjectTokenThatIsNotAcceptableIsInvalidRequest(t *testing.T) {
 		{"a float exp", e.mint(subjectClaims(map[string]any{"exp": float64(t0.Unix()) + 0.5})), "claims"},
 		{"no jti", e.mint(subjectClaims(map[string]any{"jti": nil})), "claims"},
 		{"no client_id", e.mint(subjectClaims(map[string]any{"client_id": nil})), "claims"},
-		// An exchanged token names another audience than its client; it may not be exchanged again.
+		// A token for another audience than its client: a relying party's token, or an exchange for another client.
 		{"an exchanged token", e.mint(subjectClaims(map[string]any{"aud": "example-app"})), "claims"},
-		// Until the exchange can authenticate a client, only a native public client is a subject (REQ-EXCH-007).
+		// Until private_key_jwt lands, only a native public client's token is a subject (REQ-EXCH-020).
 		{"a confidential relying party's own sign-in token", e.mint(subjectClaims(map[string]any{"aud": "example-app", "client_id": "example-app"})), "client_kind"},
 		{"a browser client's token", e.mint(subjectClaims(map[string]any{"aud": "browser-app", "client_id": "browser-app"})), "client_kind"},
 		{"a machine client's token", e.mint(subjectClaims(map[string]any{"aud": "machine-app", "client_id": "machine-app"})), "client_kind"},
@@ -854,6 +854,43 @@ func TestAConfidentialClientIsRefusedAnAudiencePolicyDoesNotGrantToIt(t *testing
 	})
 	r.Audience = "native-app"
 	failure(t, e.exchange(r), "invalid_target")
+	rec := e.lastRecord()
+	auths, _ := rec["authorizations"].([]any)
+	if len(auths) != 1 || get(auths[0].(map[string]any), "policy", "uid") != "exchange-confidential-for-itself" {
+		t.Errorf("authorizations = %v", rec["authorizations"])
+	}
+}
+
+// REQ-EXCH-020 is the only thing that stops an exchanged token from being the subject of another exchange once its
+// audience is its own client: a confidential client that exchanges for itself gets aud == client_id, which is the
+// shape of a sign-in token, and exchange puts no marker in it that session does not. If a change lets a confidential
+// client's token be a subject, this test fails, and the change must first add a structural guard (a claim or token
+// type only exchange sets) and refuse on it in verifyOwn.
+func TestAnExchangedTokenIsNeverASubjectOnlyBecauseOfItsClientKind(t *testing.T) {
+	e := newEnv(t, envOptions{})
+	rep := e.exchange(authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	}))
+	if rep.GetStatus() != 200 {
+		t.Fatalf("%s", rep.GetBody())
+	}
+	token := body(t, rep)["access_token"].(string)
+	claims, _ := claimsOf(t, token)
+	if claims["aud"] != claims["client_id"] || claims["client_id"] != "example-app" {
+		t.Fatalf("claims = %v; the premise of the test is a token whose audience is its client", claims)
+	}
+	// As the confidential client that holds it, authenticated.
+	again := authed(e, func(r *exchangev2alpha1.TokenExchangeRequest) {
+		r.Authorization = basicHeader("example-app", appSecret)
+	})
+	again.SubjectToken = token
+	failure(t, e.exchange(again), "invalid_request")
+	if got := get(e.lastRecord(), "status_code"); got != "client_kind" {
+		t.Errorf("reason = %v, want client_kind", got)
+	}
+	// As the public native client, which names itself: the token is another client's.
+	pub := request(token)
+	failure(t, e.exchange(pub), "invalid_request")
 }
 
 func TestREQ_EXCH_019_EveryFailureOfClientAuthenticationIsTheOneInvalidClient(t *testing.T) {
@@ -993,7 +1030,7 @@ func TestAStoreThatIsDownIsAnOutageNotInvalidClient(t *testing.T) {
 func TestAPublicNativeClientMayExchangeItsOwnTokenAndNothingElseWithoutASecret(t *testing.T) {
 	e := newEnv(t, envOptions{})
 	// The rule: a native public client, naming itself, with the token it holds.
-	for _, id := range []string{"sluis-cli", "native-app"} { // no profile, and the profile native
+	for _, id := range []string{"sluis-cli", "native-app"} { // both public clients of the profile native
 		r := request(e.mint(subjectClaims(map[string]any{"aud": id, "client_id": id})))
 		r.ClientId = id
 		rep := e.exchange(r)

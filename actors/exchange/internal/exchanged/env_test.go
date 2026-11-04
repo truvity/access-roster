@@ -457,7 +457,6 @@ func newEnv(t *testing.T, o envOptions) *env {
 	st.put("installation-client", "example-app", app)
 	// The secret of example-app, as store@ answers a get of InstallationClientSecret. It has characters that a
 	// form-URL-encoded Basic header must carry (REQ-CLIENT-002).
-	app.Secret = "client-example-app"
 	st.put("installation-client-secret", "example-app", &configv2alpha1.InstallationClientSecret{Client: "example-app", Secret: []byte(appSecret)})
 	st.put("installation-client", "browser-app", &configv2alpha1.InstallationClient{Id: "browser-app", Kind: "public", Profile: "browser"})
 	st.put("installation-client", "native-app", &configv2alpha1.InstallationClient{Id: "native-app", Kind: "public", Profile: "native"})
