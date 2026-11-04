@@ -260,12 +260,13 @@ func (x *SigningRing) GetKeys() []*SigningKey {
 // SigningKey is one key of the ring.
 type SigningKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
-	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"`            // e.g. "ES384"
-	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
-	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                        // the certificate chain, DER, when there is one
-	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"` // when the key joined the ring
-	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`                    // the key's state in the ring
+	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                // RFC 7638 thumbprint, base64url
+	Algorithm     string                 `protobuf:"bytes,2,opt,name=algorithm,proto3" json:"algorithm,omitempty"`                     // e.g. "ES384"
+	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"`          // the public key, SubjectPublicKeyInfo in DER
+	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                                 // the certificate chain, DER, when there is one
+	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"`          // when the key joined the ring
+	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`                             // "pre-published", "active" or "retiring" (0006 "Rotation")
+	StateSince    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=state_since,json=stateSince,proto3" json:"state_since,omitempty"` // when the key entered its present state; the clocks of the prepublish and the retention
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -342,6 +343,13 @@ func (x *SigningKey) GetState() string {
 	return ""
 }
 
+func (x *SigningKey) GetStateSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StateSince
+	}
+	return nil
+}
+
 var File_sluis_signer_v2alpha1_signer_proto protoreflect.FileDescriptor
 
 const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
@@ -358,7 +366,7 @@ const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
 	"\x0eKeySetResponse\x12\x1b\n" +
 	"\tjwks_json\x18\x01 \x01(\fR\bjwksJson\"D\n" +
 	"\vSigningRing\x125\n" +
-	"\x04keys\x18\x01 \x03(\v2!.sluis.signer.v2alpha1.SigningKeyR\x04keys\"\xbb\x01\n" +
+	"\x04keys\x18\x01 \x03(\v2!.sluis.signer.v2alpha1.SigningKeyR\x04keys\"\xf8\x01\n" +
 	"\n" +
 	"SigningKey\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1c\n" +
@@ -366,7 +374,9 @@ const file_sluis_signer_v2alpha1_signer_proto_rawDesc = "" +
 	"\bspki_der\x18\x03 \x01(\fR\aspkiDer\x12\x10\n" +
 	"\x03x5c\x18\x04 \x03(\fR\x03x5c\x125\n" +
 	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\x12\x14\n" +
-	"\x05state\x18\x06 \x01(\tR\x05state2\xc6\x01\n" +
+	"\x05state\x18\x06 \x01(\tR\x05state\x12;\n" +
+	"\vstate_since\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"stateSince2\xc6\x01\n" +
 	"\rSignerService\x12^\n" +
 	"\tSignToken\x12'.sluis.signer.v2alpha1.SignTokenRequest\x1a(.sluis.signer.v2alpha1.SignTokenResponse\x12U\n" +
 	"\x06KeySet\x12$.sluis.signer.v2alpha1.KeySetRequest\x1a%.sluis.signer.v2alpha1.KeySetResponseB\xe7\x01\n" +
@@ -397,15 +407,16 @@ var file_sluis_signer_v2alpha1_signer_proto_goTypes = []any{
 var file_sluis_signer_v2alpha1_signer_proto_depIdxs = []int32{
 	5, // 0: sluis.signer.v2alpha1.SigningRing.keys:type_name -> sluis.signer.v2alpha1.SigningKey
 	6, // 1: sluis.signer.v2alpha1.SigningKey.added_at:type_name -> google.protobuf.Timestamp
-	0, // 2: sluis.signer.v2alpha1.SignerService.SignToken:input_type -> sluis.signer.v2alpha1.SignTokenRequest
-	2, // 3: sluis.signer.v2alpha1.SignerService.KeySet:input_type -> sluis.signer.v2alpha1.KeySetRequest
-	1, // 4: sluis.signer.v2alpha1.SignerService.SignToken:output_type -> sluis.signer.v2alpha1.SignTokenResponse
-	3, // 5: sluis.signer.v2alpha1.SignerService.KeySet:output_type -> sluis.signer.v2alpha1.KeySetResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 2: sluis.signer.v2alpha1.SigningKey.state_since:type_name -> google.protobuf.Timestamp
+	0, // 3: sluis.signer.v2alpha1.SignerService.SignToken:input_type -> sluis.signer.v2alpha1.SignTokenRequest
+	2, // 4: sluis.signer.v2alpha1.SignerService.KeySet:input_type -> sluis.signer.v2alpha1.KeySetRequest
+	1, // 5: sluis.signer.v2alpha1.SignerService.SignToken:output_type -> sluis.signer.v2alpha1.SignTokenResponse
+	3, // 6: sluis.signer.v2alpha1.SignerService.KeySet:output_type -> sluis.signer.v2alpha1.KeySetResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_sluis_signer_v2alpha1_signer_proto_init() }
