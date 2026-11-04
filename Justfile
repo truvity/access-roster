@@ -461,3 +461,10 @@ local-deny:
 local-smoke:
     CGO_ENABLED=0 go build -o dist/local/spine ./tests/e2e/spine
     SSL_CERT_FILE=.cache/local/ca/ca.pem dist/local/spine
+
+# Search the audit log through the audit front of the running local installation (`just local-up` first): `just
+# local-audit-search 'action:signer.sign since:2m'`. A word like key:value is a filter (action, status, actor, trace,
+# record, project, tenant, since), any other word is free text; the tenant is the grant that is asked for, acme by default.
+# The records appear a few seconds after the event: the writer seals every 5 s and the indexer follows.
+local-audit-search *query:
+    go run ./tools/harness/audit-search -ca .cache/local/ca/ca.pem {{ query }}

@@ -199,3 +199,43 @@ func TestOnlyTheDevBoundaryIsGenerated(t *testing.T) {
 		t.Fatal("a boundary other than dev was generated")
 	}
 }
+
+// The search path (WP-26): who reaches the reader, which volumes are read-only, and who writes what.
+func TestSearchPath(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	has := func(svc, line string) bool { return strings.Contains(svcs[svc], line) }
+	// Only the audit front's entry mounts the reader's socket directory, and read-only.
+	for name, body := range svcs {
+		if strings.Contains(body, "run-reader:/run/sluis/reader") && name != "reader" && name != "entry-audit" {
+			t.Errorf("%s mounts the reader's socket directory", name)
+		}
+	}
+	if !has("entry-audit", "run-reader:/run/sluis/reader:ro") || !has("entry-audit", `"--front", "audit"`) {
+		t.Errorf("the audit front is not entry with --front audit and the reader's socket:\n%s", svcs["entry-audit"])
+	}
+	if has("entry-audit", "run-store") || has("entry-audit", "run-session") {
+		t.Errorf("the audit front mounts what it does not call:\n%s", svcs["entry-audit"])
+	}
+	// The reader reads the indexer's sockets and never writes them; the blob driver of the writer is not its to reach.
+	if !has("reader", "drv-indexer:/run/sluis/indexer/dev:ro") || has("reader", "drv-writer") {
+		t.Errorf("the reader's mounts:\n%s", svcs["reader"])
+	}
+	// The read-only blob driver mounts the writer's directory read-only, and nobody else mounts it but the writer's driver.
+	if !has("drv-indexer-fs", "state-blob:/var/lib/sluis-state/dev/drv-writer-fs:ro") {
+		t.Errorf("the blob directory is not mounted read-only in drv-indexer-fs:\n%s", svcs["drv-indexer-fs"])
+	}
+	for name, body := range svcs {
+		if strings.Contains(body, "state-blob:") && name != "drv-writer-fs" && name != "drv-indexer-fs" && name != "init" {
+			t.Errorf("%s mounts the blob directory", name)
+		}
+	}
+	// The indexer is the only reader of the verifier keys, and no one but init writes them.
+	for name, body := range svcs {
+		if strings.Contains(body, "vkeys:") && name != "indexer" && name != "init" {
+			t.Errorf("%s mounts the verifier keys", name)
+		}
+	}
+	if !has("indexer", "vkeys:/etc/sluis/vkeys:ro") {
+		t.Errorf("the indexer does not read the verifier keys read-only:\n%s", svcs["indexer"])
+	}
+}

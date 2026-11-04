@@ -6,7 +6,8 @@
 //! contracts, refuses anything unknown with one fixed answer per status, and calls the actor that
 //! owns the step through its typed client: `session` for `/authorize`, `/callback` and the code and
 //! refresh grants of `/token`, `exchange` for the token-exchange grant (PLAN.md D-10). It serves the
-//! discovery document and the key set from the kinds `Boundary` and `SigningRing` (D-7).
+//! discovery document and the key set from the kinds `Boundary` and `SigningRing` (D-7). The audit front
+//! (`--front audit`, ADR 0028) is the same executable with one route, the reader's `Search`.
 //!
 //! `entry` holds no key, no secret and no state beyond a few seconds of public documents, makes no
 //! outbound connection but to the sockets of the actors the call graph allows, and sets no cookie.
@@ -19,6 +20,7 @@ mod ids;
 mod params;
 mod refuse;
 mod routes;
+mod search;
 mod serve;
 
 pub use routes::Front;

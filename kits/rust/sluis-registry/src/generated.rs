@@ -2632,10 +2632,11 @@ pub(crate) static CALLERS: &[(&str, &[&str])] = &[
 ];
 
 // The append-only list of tools/gen/registry/uids.yaml; the index is the ordinal.
-pub(crate) static UID_NAMES: &[&str] = &["entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder"];
+pub(crate) static UID_NAMES: &[&str] = &["entry", "session", "console", "exchange", "signer", "policy", "ca", "ssh-ca", "quota", "adapter-upstream-oidc", "adapter-github", "adapter-slack", "store", "exporter", "key", "writer", "witness", "indexer", "reader", "sluis-node", "driver-store-rqlite", "driver-store-file", "driver-store-credential", "driver-key-software", "driver-writer-spool", "driver-writer-fs", "driver-indexer-sqlite", "harness-forwarder", "driver-indexer-fs"];
 
 // (driver user, owning actor), sorted by driver.
 pub(crate) static DRIVER_OWNERS: &[(&str, &str)] = &[
+    ("driver-indexer-fs", "indexer"),
     ("driver-indexer-sqlite", "indexer"),
     ("driver-key-software", "key"),
     ("driver-store-credential", "store"),
