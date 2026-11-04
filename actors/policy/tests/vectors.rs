@@ -71,7 +71,13 @@ fn run(engine: &Engine, file: &str) -> usize {
             .iter()
             .map(|x| x.as_str().unwrap())
             .collect();
-        let mut have: Vec<&str> = got.reasons.iter().map(|x| x.policy_id.as_str()).collect();
+        // The vectors are the example policy's; the built-in layer has rules of its own.
+        let mut have: Vec<&str> = got
+            .reasons
+            .iter()
+            .filter(|x| x.layer != "built-in")
+            .map(|x| x.policy_id.as_str())
+            .collect();
         have.sort_unstable();
         let mut want = want;
         want.sort_unstable();

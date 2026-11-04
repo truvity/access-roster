@@ -56,6 +56,13 @@ permit (principal == Actor::"writer", action == Action::"audit.seal", resource i
 
 @id("builtin-audit-index-indexer")
 permit (principal == Actor::"indexer", action == Action::"audit.index", resource is Boundary);
+
+// The floor (ADR 0007 "Four layers": a forbid of a lower layer holds whatever a higher one adds):
+// an operator's hold takes effect at once and outlasts every binding (ADR 0019). The example
+// policy has the same rule as a config policy; this one does not depend on it.
+@id("builtin-person-not-live")
+forbid (principal is Person, action, resource)
+when { principal.state != "live" };
 "#;
 
 /// The text of the schema that is embedded, for the digest.

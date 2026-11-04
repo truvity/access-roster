@@ -522,6 +522,7 @@ pub fn token(
             subject: "p-1".into(),
             accounts: accounts.iter().map(|s| (*s).to_owned()).collect(),
             state: state.into(),
+            org: "acme".into(),
             ..PersonFacts::default()
         }
         .into(),
@@ -531,6 +532,7 @@ pub fn token(
                 "dev:example-app:user".into(),
                 "acme:example-app:user".into(),
             ],
+            kind: "confidential".into(),
             ..ClientFacts::default()
         }
         .into(),
@@ -584,5 +586,19 @@ pub fn auth_age(mut r: DecideRequest, age: i64) -> DecideRequest {
     let mut c = r.context.as_option().unwrap().clone();
     c.auth_age = Some(age);
     r.context = c.into();
+    r
+}
+
+pub fn org(mut r: DecideRequest, o: &str) -> DecideRequest {
+    let mut p = r.person.as_option().unwrap().clone();
+    p.org = o.into();
+    r.person = p.into();
+    r
+}
+
+pub fn kind(mut r: DecideRequest, k: &str) -> DecideRequest {
+    let mut c = r.client.as_option().unwrap().clone();
+    c.kind = k.into();
+    r.client = c.into();
     r
 }

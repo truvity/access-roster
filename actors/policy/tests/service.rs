@@ -165,8 +165,37 @@ async fn a_held_person_gets_nothing_and_holds_no_grant_name() {
         .unwrap()
         .into_owned();
     assert!(!allowed(r.decision.as_known().unwrap()));
-    assert_eq!(r.reasons[0].policy_id, "person-not-live");
+    // The built-in floor and the example's own rule both forbid.
+    let ids: Vec<&str> = r.reasons.iter().map(|x| x.policy_id.as_str()).collect();
+    assert_eq!(ids, ["builtin-person-not-live", "person-not-live"]);
     assert!(r.grant_names.is_empty());
+}
+
+#[tokio::test]
+async fn the_held_person_floor_does_not_depend_on_the_example_policy() {
+    // A boundary whose config says nothing about holds still refuses a held person.
+    let mut inputs = common::local_inputs();
+    inputs.policies[0].cedar = common::local("local.cedar")
+        .replace("@id(\"person-not-live\")", "@id(\"person-state\")")
+        .replace(
+            "principal.state != \"live\"",
+            "principal.state == \"never\"",
+        );
+    let rig = Rig::with("session", &inputs).await;
+    let r = rig
+        .client
+        .decide(token(
+            "token.issue",
+            &["workforce/u-1001"],
+            "held",
+            fresh_mfa(),
+        ))
+        .await
+        .unwrap()
+        .into_owned();
+    assert!(!allowed(r.decision.as_known().unwrap()));
+    assert_eq!(r.reasons[0].policy_id, "builtin-person-not-live");
+    assert_eq!(r.reasons[0].layer, "built-in");
 }
 
 #[tokio::test]
@@ -236,90 +265,116 @@ async fn a_wildcard_never_reaches_a_sensitive_scope_but_a_grant_named_in_full_do
 }
 
 #[tokio::test]
-async fn an_unknown_action_or_entity_or_a_misfit_is_a_denial_that_is_audited() {
+async fn a_question_that_is_not_one_is_refused_with_the_code_that_says_why_and_audited() {
+    use ErrorCode::{InvalidArgument as Bad, PermissionDenied as Denied};
     let rig = Rig::new("session").await;
-    let mut cases = Vec::new();
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    let ok = || token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    let mut cases: Vec<(
+        ErrorCode,
+        &str,
+        &str,
+        sluis_proto::sluis::policy::v2alpha1::DecideRequest,
+    )> = Vec::new();
+    let mut r = ok();
     r.action = "grant.hold".into(); // asked by policy for itself, never by an asker
-    cases.push(("action", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "action", r));
+    let mut r = ok();
     r.action = "nonsense".into();
-    cases.push(("action", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "action", r));
+    let mut r = ok();
     r.principal = common::entity("Spaceship", "p-1").into();
-    cases.push(("principal", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "principal.type", r));
+    let mut r = ok();
     r.resource = common::entity("Hangar", "example-app").into();
-    cases.push(("resource", r));
-    let r = subject(
-        token("token.issue", &["workforce/u-1001"], "live", fresh_mfa()),
-        "someone-else",
-    ); // not the principal
-    cases.push(("facts", r));
-    let r = accounts(
-        token("token.issue", &["workforce/u-1001"], "live", fresh_mfa()),
-        &["no-slash"],
-    );
-    cases.push(("facts", r));
-    let r = auth_age(
-        token("token.issue", &["workforce/u-1001"], "live", fresh_mfa()),
-        -1,
-    );
-    cases.push(("schema", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "resource.type", r));
+    cases.push((
+        Bad,
+        "schema",
+        "person.subject",
+        subject(ok(), "someone-else"),
+    ));
+    cases.push((
+        Bad,
+        "schema",
+        "person.accounts",
+        accounts(ok(), &["no-slash"]),
+    ));
+    cases.push((Bad, "schema", "person.org", common::org(ok(), "")));
+    cases.push((Bad, "schema", "client.kind", common::kind(ok(), "")));
+    cases.push((Bad, "schema", "client.kind", common::kind(ok(), "secret")));
+    cases.push((Bad, "schema", "context", auth_age(ok(), -1)));
+    let mut r = ok();
     r.tenant = "*".into(); // every tenant is for audit actions
-    cases.push(("tenant", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "tenant", r));
+    let mut r = ok();
     r.tenant = String::new();
-    cases.push(("tenant", r));
-    let mut r = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+    cases.push((Bad, "schema", "tenant", r));
+    let mut r = ok();
     r.grant_store_verbs = vec!["root".into()];
-    cases.push(("grant", r));
+    cases.push((Bad, "schema", "grant_store_verbs", r));
+    let mut r = ok();
+    r.grant_key_ops = vec!["root".into()];
+    cases.push((Bad, "schema", "grant_key_ops", r));
+    let mut r = ok();
+    r.action = "token.exchange".into(); // session asks token.issue only
+    cases.push((Denied, "rule", "action", r));
 
     let n = cases.len();
-    for (why, req) in cases {
-        let r = rig.client.decide(req).await.unwrap().into_owned();
-        assert!(!allowed(r.decision.as_known().unwrap()), "{why}");
-        assert!(
-            r.sealed_grant.is_empty() && r.reasons.is_empty() && r.grant_names.is_empty(),
-            "{why}"
+    for (code, reason, path, req) in cases {
+        let e = rig.client.decide(req).await.unwrap_err();
+        assert_eq!(
+            (e.code, refusal_reason(&e).as_deref()),
+            (code, Some(reason)),
+            "{path}"
         );
     }
     let d = rig.around.spool.of("policy.decide");
     assert_eq!(d.len(), n, "each one audited once");
-    assert!(
-        d.iter()
-            .all(|(r, _)| r["status_id"] == 2 && r["action_id"] == 2)
-    );
-    let codes: Vec<&str> = d
+    for (r, _) in &d {
+        assert_eq!(r["status_id"], 2);
+        assert!(
+            r.get("action_id").is_none(),
+            "nothing was decided, so no decision is recorded"
+        );
+    }
+    let paths: Vec<&str> = d
         .iter()
-        .map(|(r, _)| r["status_code"].as_str().unwrap())
+        .map(|(r, _)| r["unmapped"]["sluis"]["path"].as_str().unwrap())
         .collect();
-    assert_eq!(
-        codes,
-        [
-            "action",
-            "action",
-            "principal",
-            "resource",
-            "facts",
-            "facts",
-            "schema",
-            "tenant",
-            "tenant",
-            "grant"
-        ]
-    );
+    assert_eq!(paths[2], "principal.type");
+    assert_eq!(paths[n - 1], "action");
     // The text of an unknown action is the asker's, so the record says only that it was unknown.
     assert_eq!(d[1].0["unmapped"]["sluis"]["cedar_action"], "unknown");
     assert!(rig.around.keys.sealed.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
+async fn a_forbid_that_reads_the_kind_or_the_org_sees_what_the_asker_sent() {
+    let mut inputs = common::local_inputs();
+    inputs.policies.push(policy::engine::PolicyDoc {
+        file: "kinds".into(),
+        cedar: "@id(\"no-public\")\nforbid (principal is Person, action == Action::\"token.issue\", resource is Client) when { resource.kind == \"public\" };\n@id(\"no-globex\")\nforbid (principal is Person, action == Action::\"token.issue\", resource is Client) when { principal.org == \"globex\" };".into(),
+    });
+    let rig = Rig::with("session", &inputs).await;
+    let ask = |req| async { rig.client.decide(req).await.unwrap().into_owned() };
+    let ok = || token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+
+    assert!(allowed(ask(ok()).await.decision.as_known().unwrap()));
+    let r = ask(common::kind(ok(), "public")).await;
+    assert_eq!(r.reasons[0].policy_id, "no-public");
+    // The org is the person's, not the tenant of the question: tenant acme, person of globex.
+    let r = ask(common::org(ok(), "globex")).await;
+    assert!(!allowed(r.decision.as_known().unwrap()));
+    assert_eq!(r.reasons[0].policy_id, "no-globex");
+    let r = ask(common::org(ok(), "acme")).await;
+    assert!(allowed(r.decision.as_known().unwrap()));
+}
+
+#[tokio::test]
 async fn an_asker_asks_only_its_own_actions() {
-    // exchange asks token.exchange, not token.issue; session the other way round.
+    // exchange asks token.exchange, not token.issue.
     let rig = Rig::new("exchange").await;
-    let r = rig
+    let e = rig
         .client
         .decide(token(
             "token.issue",
@@ -328,12 +383,12 @@ async fn an_asker_asks_only_its_own_actions() {
             fresh_mfa(),
         ))
         .await
-        .unwrap()
-        .into_owned();
-    assert!(!allowed(r.decision.as_known().unwrap()));
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::PermissionDenied);
+    assert_eq!(refusal_reason(&e).as_deref(), Some("rule"));
     assert_eq!(
         rig.around.spool.of("policy.decide")[0].0["status_code"],
-        "asker"
+        "rule"
     );
     let r = rig
         .client
@@ -348,6 +403,41 @@ async fn an_asker_asks_only_its_own_actions() {
         .into_owned();
     assert!(allowed(r.decision.as_known().unwrap()));
     assert_eq!(open_sealed(&r.sealed_grant).holder, "exchange");
+}
+
+#[tokio::test]
+async fn an_action_cannot_widen_its_own_grant() {
+    // token.exchange may allow get, list, create, update and seal, open; whatever the asker asks.
+    let rig = Rig::new("exchange").await;
+    let mut req = token("token.exchange", &["workforce/u-1001"], "live", fresh_mfa());
+    req.grant_store_verbs = ["get", "create", "delete", "apply"]
+        .map(String::from)
+        .to_vec();
+    req.grant_key_ops = ["seal", "open", "mac", "sign"].map(String::from).to_vec();
+    let g = open_sealed(
+        &rig.client
+            .decide(req)
+            .await
+            .unwrap()
+            .into_owned()
+            .sealed_grant,
+    );
+    assert_eq!(g.store_verbs, ["create", "get"]);
+    assert_eq!(g.key_ops, ["open", "seal"]);
+
+    // An audit grant allows no store verb at all.
+    let rig = Rig::new("writer").await;
+    let mut req = audit("audit.seal", "writer", "acme");
+    req.grant_store_verbs = vec!["create".into(), "get".into()];
+    let g = open_sealed(
+        &rig.client
+            .decide(req)
+            .await
+            .unwrap()
+            .into_owned()
+            .sealed_grant,
+    );
+    assert!(g.store_verbs.is_empty());
 }
 
 #[tokio::test]
@@ -372,13 +462,21 @@ async fn the_audit_pieces_get_the_built_in_grants_for_themselves_only() {
     assert_eq!(g.key_ops, ["seal"]);
 
     // The writer cannot ask as another actor, or for another actor's action, or for every tenant.
-    for req in [
-        audit("audit.seal", "indexer", "acme"),
-        audit("audit.index", "writer", "acme"),
-        audit("audit.seal", "writer", "*"),
+    for (req, code) in [
+        (
+            audit("audit.seal", "indexer", "acme"),
+            ErrorCode::PermissionDenied,
+        ),
+        (
+            audit("audit.index", "writer", "acme"),
+            ErrorCode::PermissionDenied,
+        ),
+        (
+            audit("audit.seal", "writer", "*"),
+            ErrorCode::InvalidArgument,
+        ),
     ] {
-        let r = rig.client.decide(req).await.unwrap().into_owned();
-        assert!(!allowed(r.decision.as_known().unwrap()));
+        assert_eq!(rig.client.decide(req).await.unwrap_err().code, code);
     }
     // The reader has no built-in permit: audit.read comes from the bindings of the configuration.
     let rig = Rig::new("reader").await;
@@ -410,10 +508,10 @@ async fn the_indexer_may_index_every_tenant_of_the_boundary() {
 }
 
 #[tokio::test]
-async fn when_key_cannot_seal_policy_cannot_decide_and_denies() {
+async fn when_key_cannot_seal_the_caller_is_told_it_is_unavailable_and_gets_no_grant() {
     let rig = Rig::new("session").await;
     *rig.around.keys.fail.lock().unwrap() = true;
-    let r = rig
+    let e = rig
         .client
         .decide(token(
             "token.issue",
@@ -422,24 +520,21 @@ async fn when_key_cannot_seal_policy_cannot_decide_and_denies() {
             fresh_mfa(),
         ))
         .await
-        .unwrap()
-        .into_owned();
-    assert!(!allowed(r.decision.as_known().unwrap()));
-    assert!(r.sealed_grant.is_empty());
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::Unavailable);
+    assert_eq!(refusal_reason(&e).as_deref(), Some("keys"));
+    // Audit first, one record: the decision was made and is on record; nothing else is added.
     let d = rig.around.spool.of("policy.decide");
     assert_eq!(d.len(), 1);
-    assert_eq!(d[0].0["status_code"], "keys");
-    assert_eq!(
-        d[0].0["action_id"], 2,
-        "the record says denied, as the answer does"
-    );
+    assert!(d[0].1, "blocking");
+    assert_eq!(d[0].0["action_id"], 1);
 }
 
 #[tokio::test]
-async fn an_allow_whose_audit_fact_is_not_durable_is_withdrawn() {
+async fn an_allow_whose_audit_fact_is_not_durable_is_unavailable_and_no_grant_was_ever_sealed() {
     let rig = Rig::new("session").await;
     *rig.around.spool.fail.lock().unwrap() = Some(ErrorCode::Unavailable);
-    let r = rig
+    let e = rig
         .client
         .decide(token(
             "token.issue",
@@ -448,14 +543,13 @@ async fn an_allow_whose_audit_fact_is_not_durable_is_withdrawn() {
             fresh_mfa(),
         ))
         .await
-        .unwrap()
-        .into_owned();
-    assert!(!allowed(r.decision.as_known().unwrap()));
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::Unavailable);
+    assert_eq!(refusal_reason(&e).as_deref(), Some("audit"));
     assert!(
-        r.sealed_grant.is_empty(),
-        "a grant nobody can account for is never handed out"
+        rig.around.keys.sealed.lock().unwrap().is_empty(),
+        "audit comes first: a grant nobody can account for is never made"
     );
-    assert!(r.grant_names.is_empty());
 }
 
 #[tokio::test]
@@ -502,6 +596,7 @@ async fn an_allow_reached_past_a_policy_that_errored_is_a_denial() {
     assert!(r.sealed_grant.is_empty() && r.reasons.is_empty());
     let d = rig.around.spool.of("policy.decide");
     assert_eq!(d[0].0["status_code"], "evaluation");
+    assert_eq!(d[0].0["action_id"], 2);
     assert_eq!(d[0].0["unmapped"]["sluis"]["policy_errors"], 1);
 }
 

@@ -201,6 +201,7 @@ type PersonFacts struct {
 	Subject       string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`   // the opaque subject
 	Accounts      []string               `protobuf:"bytes,2,rep,name=accounts,proto3" json:"accounts,omitempty"` // "<upstream>/<subject claim value>"
 	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`       // the person's state
+	Org           string                 `protobuf:"bytes,4,opt,name=org,proto3" json:"org,omitempty"`           // the tenant the person belongs to, from the person's item; required
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -256,11 +257,19 @@ func (x *PersonFacts) GetState() string {
 	return ""
 }
 
+func (x *PersonFacts) GetOrg() string {
+	if x != nil {
+		return x.Org
+	}
+	return ""
+}
+
 // ClientFacts are what policy knows about the client asking.
 type ClientFacts struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`             // the client id
 	Requires      []string               `protobuf:"bytes,2,rep,name=requires,proto3" json:"requires,omitempty"` // what the client requires of a sign-in
+	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`         // "public", "confidential" or "exchange", from the client's declaration; required
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -307,6 +316,13 @@ func (x *ClientFacts) GetRequires() []string {
 		return x.Requires
 	}
 	return nil
+}
+
+func (x *ClientFacts) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
 }
 
 // ActorFacts are what policy knows about an actor asking; the audit pieces are principals (decision D-6).
@@ -632,14 +648,16 @@ const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"amrPresent\x12\x1e\n" +
 	"\bauth_age\x18\x04 \x01(\x03H\x01R\aauthAge\x88\x01\x01B\x06\n" +
 	"\x04_acrB\v\n" +
-	"\t_auth_age\"Y\n" +
+	"\t_auth_age\"k\n" +
 	"\vPersonFacts\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x1a\n" +
 	"\baccounts\x18\x02 \x03(\tR\baccounts\x12\x14\n" +
-	"\x05state\x18\x03 \x01(\tR\x05state\"9\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x12\x10\n" +
+	"\x03org\x18\x04 \x01(\tR\x03org\"M\n" +
 	"\vClientFacts\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
-	"\brequires\x18\x02 \x03(\tR\brequires\" \n" +
+	"\brequires\x18\x02 \x03(\tR\brequires\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\" \n" +
 	"\n" +
 	"ActorFacts\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"\xff\x03\n" +

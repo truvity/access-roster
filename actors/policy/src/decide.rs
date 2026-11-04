@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 
 use cedar_policy::Entities;
+use connectrpc::error::ErrorCode;
 use serde_json::{Map, Value, json};
 use sluis_proto::sluis::policy::v2alpha1::{Authentication, DecideRequest};
 
@@ -26,6 +27,11 @@ struct Spec {
     every_tenant: bool,
     /// Whether the question is about a person's token (their grant names are found first).
     token: bool,
+    /// The most a grant of this action may allow, whatever the asker asks and the registry gives
+    /// the asker: an action cannot widen its own grant (ADR 0007 "Sealed grants"). The store verbs
+    /// and key operations are those the action's work needs and no more.
+    verbs: &'static [&'static str],
+    ops: &'static [&'static str],
 }
 
 /// The actions this build decides: the ones whose facts the contract carries (policy.proto). The
@@ -37,6 +43,8 @@ const ACTIONS: [Spec; 5] = [
         askers: &["session"],
         every_tenant: false,
         token: true,
+        verbs: &["get", "list", "create", "update", "delete", "apply"],
+        ops: &["seal", "open"],
     },
     Spec {
         name: "token.exchange",
@@ -44,6 +52,8 @@ const ACTIONS: [Spec; 5] = [
         askers: &["exchange"],
         every_tenant: false,
         token: true,
+        verbs: &["get", "list", "create", "update"],
+        ops: &["seal", "open"],
     },
     Spec {
         name: "audit.seal",
@@ -51,6 +61,8 @@ const ACTIONS: [Spec; 5] = [
         askers: &["writer"],
         every_tenant: false,
         token: false,
+        verbs: &[],
+        ops: &["seal"],
     },
     Spec {
         name: "audit.index",
@@ -58,6 +70,8 @@ const ACTIONS: [Spec; 5] = [
         askers: &["indexer"],
         every_tenant: true,
         token: false,
+        verbs: &[],
+        ops: &["open"],
     },
     Spec {
         name: "audit.read",
@@ -65,6 +79,8 @@ const ACTIONS: [Spec; 5] = [
         askers: &["reader", "console"],
         every_tenant: true,
         token: false,
+        verbs: &[],
+        ops: &["open"],
     },
 ];
 
@@ -74,37 +90,59 @@ const REQUIRES_MAX: usize = 64;
 const AMR_MAX: usize = 16;
 const TEXT_MAX: usize = 256;
 
-/// The outcome of a decision before anything is sealed.
+/// The caps of an action's grant: the store verbs and key operations it may ever allow.
+#[must_use]
+pub fn caps(action: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
+    ACTIONS
+        .iter()
+        .find(|s| s.name == action)
+        .map(|s| (s.verbs, s.ops))
+}
+
+/// A question that was not decided because it is not one: the Connect code, the closed reason of
+/// the `Refusal` detail and the path of the field at fault (contracts.md "Errors"). The asker can
+/// tell it from a denial, which is an answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Refused {
+    pub code: ErrorCode,
+    pub reason: &'static str,
+    pub path: &'static str,
+}
+
+/// The request does not fit the contract: a missing or malformed field.
+pub(crate) const fn invalid(path: &'static str) -> Refused {
+    Refused {
+        code: ErrorCode::InvalidArgument,
+        reason: "schema",
+        path,
+    }
+}
+
+/// The caller is known and may not ask this.
+const fn forbidden(path: &'static str) -> Refused {
+    Refused {
+        code: ErrorCode::PermissionDenied,
+        reason: "rule",
+        path,
+    }
+}
+
+/// What Cedar decided about a question that was one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Verdict {
     pub allow: bool,
-    /// The Cedar action, when the request named one of this build's.
+    /// The Cedar action.
     pub action: &'static str,
     pub reasons: Vec<Reason>,
     /// For a token action, the full set of held grant names after the ladder (sorted).
     pub grant_names: Vec<String>,
-    /// The tenants a grant would name: the tenant of the question.
+    /// The tenant a grant would name: the tenant of the question.
     pub tenant: String,
-    /// Empty for a decision of Cedar. Otherwise the closed word for why the question was not
-    /// decided: `action`, `asker`, `principal`, `resource`, `tenant`, `facts`, `schema` or
-    /// `evaluation` (a policy errored on the way to an allow).
+    /// Empty for Cedar's own answer. `evaluation` when Cedar allowed past a policy that errored:
+    /// the answer is a denial, and the audit record says why.
     pub why: &'static str,
     /// Policies that errored while deciding.
     pub errors: usize,
-}
-
-impl Verdict {
-    fn denied(action: &'static str, tenant: &str, why: &'static str) -> Self {
-        Self {
-            allow: false,
-            action,
-            reasons: Vec::new(),
-            grant_names: Vec::new(),
-            tenant: tenant.to_owned(),
-            why,
-            errors: 0,
-        }
-    }
 }
 
 /// A tenant id, or `*` where the action takes every tenant: the part rule of store-api.md "Address
@@ -162,98 +200,111 @@ struct Person {
     subject: String,
     accounts: Vec<(String, String)>, // (the account id, its upstream)
     state: String,
+    /// The tenant the person belongs to. The contract carries it; it is never taken from the
+    /// tenant of the question.
+    org: String,
 }
 
-fn person_of(req: &DecideRequest) -> Option<Person> {
-    let p = req.person.as_option()?;
-    if !text_ok(&p.subject) || !text_ok(&p.state) || p.accounts.len() > ACCOUNTS_MAX {
-        return None;
+fn person_of(req: &DecideRequest) -> Result<Person, Refused> {
+    let p = req.person.as_option().ok_or(invalid("person"))?;
+    if !text_ok(&p.subject) {
+        return Err(invalid("person.subject"));
+    }
+    if !text_ok(&p.state) {
+        return Err(invalid("person.state"));
+    }
+    if !tenant_ok(&p.org, false) {
+        return Err(invalid("person.org"));
+    }
+    if p.accounts.len() > ACCOUNTS_MAX {
+        return Err(invalid("person.accounts"));
     }
     let mut accounts = Vec::new();
     for a in &p.accounts {
         // `<upstream>/<claim value>` (policy.md "Entity types").
-        let (up, claim) = a.split_once('/')?;
+        let (up, claim) = a.split_once('/').ok_or(invalid("person.accounts"))?;
         if !text_ok(a) || up.is_empty() || claim.is_empty() {
-            return None;
+            return Err(invalid("person.accounts"));
         }
         if !accounts.iter().any(|(id, _): &(String, String)| id == a) {
             accounts.push((a.clone(), up.to_owned()));
         }
     }
-    Some(Person {
+    Ok(Person {
         subject: p.subject.clone(),
         accounts,
         state: p.state.clone(),
+        org: p.org.clone(),
     })
 }
 
+/// The kinds of client of the schema (policy.md "Entity types").
+const CLIENT_KINDS: [&str; 3] = ["public", "confidential", "exchange"];
+
 impl Engine {
     /// Decides one request of `caller`, a registry name that the transport gave.
-    #[must_use]
-    pub fn decide(&self, caller: &str, req: &DecideRequest) -> Verdict {
+    ///
+    /// # Errors
+    ///
+    /// [`Refused`] when the question is not one: an unknown action, a request that does not fit
+    /// the contract, an asker that may not ask it. A denial, including an allow that Cedar reached
+    /// past an erroring policy, is an answer and not an error.
+    pub fn decide(&self, caller: &str, req: &DecideRequest) -> Result<Verdict, Refused> {
         let tenant = req.tenant.as_str();
-        let Some(spec) = ACTIONS.iter().find(|s| s.name == req.action) else {
-            return Verdict::denied("", tenant, "action");
-        };
-        let deny = |why| Verdict::denied(spec.name, tenant, why);
+        let spec = ACTIONS
+            .iter()
+            .find(|s| s.name == req.action)
+            .ok_or(invalid("action"))?;
         if !spec.askers.contains(&caller) {
-            return deny("asker");
+            return Err(forbidden("action"));
         }
         if !tenant_ok(tenant, spec.every_tenant) {
-            return deny("tenant");
+            return Err(invalid("tenant"));
         }
         let (Some(p), Some(r)) = (req.principal.as_option(), req.resource.as_option()) else {
-            return deny("schema");
+            return Err(invalid("principal"));
         };
         if !spec.principals.contains(&p.r#type.as_str()) {
-            return deny("principal");
+            return Err(invalid("principal.type"));
         }
         let mut entities = vec![json!({
             "uid": {"type": "Boundary", "id": self.boundary}, "attrs": {}, "parents": []})];
-        let (principal, resource_id, resource_type);
         let mut person = None;
-        match p.r#type.as_str() {
-            "Actor" => {
-                // An actor asks for itself, as the transport named it.
-                if p.id != caller || req.actor.as_option().is_some_and(|a| a.name != caller) {
-                    return deny("principal");
-                }
-                entities.push(
-                    json!({"uid": {"type": "Actor", "id": caller}, "attrs": {}, "parents": []}),
-                );
-                principal = uid_of("Actor", caller);
+        let principal = if p.r#type == "Actor" {
+            // An actor asks for itself, as the transport named it.
+            if p.id != caller || req.actor.as_option().is_some_and(|a| a.name != caller) {
+                return Err(forbidden("principal.id"));
             }
-            _ => {
-                let Some(pf) = person_of(req) else {
-                    return deny("facts");
-                };
-                if pf.subject != p.id {
-                    return deny("facts");
-                }
-                principal = uid_of("Person", &pf.subject);
-                person = Some(pf);
+            entities
+                .push(json!({"uid": {"type": "Actor", "id": caller}, "attrs": {}, "parents": []}));
+            uid_of("Actor", caller)
+        } else {
+            let pf = person_of(req)?;
+            if pf.subject != p.id {
+                return Err(invalid("person.subject"));
             }
-        }
-        match r.r#type.as_str() {
-            "Boundary" if r.id == self.boundary => {
-                resource_id = self.boundary.clone();
-                resource_type = "Boundary";
-            }
-            "Boundary" => return deny("resource"),
+            let u = uid_of("Person", &pf.subject);
+            person = Some(pf);
+            u
+        };
+        let (resource_type, resource_id) = match r.r#type.as_str() {
+            "Boundary" if r.id == self.boundary => ("Boundary", self.boundary.clone()),
+            "Boundary" => return Err(invalid("resource.id")),
             "Client" if spec.token => {
-                let Some(c) = req.client.as_option() else {
-                    return deny("facts");
-                };
-                if c.id != r.id
-                    || !text_ok(&c.id)
-                    || c.id.contains('/')
-                    || c.requires.len() > REQUIRES_MAX
-                {
-                    return deny("facts");
+                let c = req.client.as_option().ok_or(invalid("client"))?;
+                if c.id != r.id || !text_ok(&c.id) || c.id.contains('/') {
+                    return Err(invalid("client.id"));
+                }
+                // An empty or unknown kind is refused, not defaulted: a policy that forbids a
+                // kind of client would otherwise miss it.
+                if !CLIENT_KINDS.contains(&c.kind.as_str()) {
+                    return Err(invalid("client.kind"));
+                }
+                if c.requires.len() > REQUIRES_MAX {
+                    return Err(invalid("client.requires"));
                 }
                 // A client id carries its boundary (policy.md "Entity types"): `dev/example-app`.
-                resource_id = format!("{}/{}", self.boundary, c.id);
-                resource_type = "Client";
+                let id = format!("{}/{}", self.boundary, c.id);
                 // A required name the vocabulary does not declare can be held by nobody, so it
                 // cannot admit: it is left out and the client stays as strict as it was written.
                 let requires: Vec<Value> = c
@@ -262,95 +313,79 @@ impl Engine {
                     .filter_map(|n| self.vocab.parse_name(n))
                     .map(|g| entity_ref("Grant", &g.id()))
                     .collect();
-                // `kind` is not in the contract's facts (policy.proto ClientFacts); no policy of
-                // the schema reads it yet.
                 entities.push(json!({
-                    "uid": {"type": "Client", "id": resource_id},
-                    "attrs": {"kind": "", "requires": requires},
+                    "uid": {"type": "Client", "id": id},
+                    "attrs": {"kind": c.kind, "requires": requires},
                     "parents": [{"type": "Boundary", "id": self.boundary}],
                 }));
+                ("Client", id)
             }
-            _ => return deny("resource"),
-        }
-        let (Some(principal), Some(resource)) = (principal, uid_of(resource_type, &resource_id))
-        else {
-            return deny("schema");
+            _ => return Err(invalid("resource.type")),
+        };
+        let (Some(principal), Some(resource), Some(action)) = (
+            principal,
+            uid_of(resource_type, &resource_id),
+            uid_of("Action", spec.name),
+        ) else {
+            return Err(invalid("request"));
         };
 
-        let Some(context) = (if spec.name == "audit.seal" || spec.name == "audit.index" {
-            Some(json!({}))
+        let context = if spec.name == "audit.seal" || spec.name == "audit.index" {
+            json!({})
         } else {
-            context_of(req.context.as_option())
-        }) else {
-            return deny("schema");
+            context_of(req.context.as_option()).ok_or(invalid("context"))?
         };
 
         entities.extend(self.grant_entities.iter().cloned());
         let mut grant_names = Vec::new();
         if let Some(pf) = &person {
             for (id, up) in &pf.accounts {
+                // The account's own tenant is the sign-in's; the first version links an account
+                // in the tenant of the person (policy.md "Entity types").
                 entities.push(json!({
                     "uid": {"type": "Account", "id": id},
-                    "attrs": {"upstream": up, "org": tenant},
+                    "attrs": {"upstream": up, "org": pf.org},
                     "parents": [],
                 }));
             }
             let held = if spec.token {
-                match self.held_grants(pf, tenant, &entities) {
-                    Ok(h) => Some(h),
-                    Err(()) => return deny("schema"),
-                }
+                Some(
+                    self.held_grants(pf, &entities)
+                        .map_err(|()| invalid("request"))?,
+                )
             } else {
                 None
             };
             if let Some(h) = &held {
                 grant_names = h.iter().map(GrantName::id).collect();
             }
-            entities.push(person_entity(pf, tenant, held.as_ref()));
+            entities.push(person_entity(pf, held.as_ref()));
         }
-        let Ok(entities) = self.entities(entities) else {
-            return deny("schema");
-        };
-        let Some(action) = uid_of("Action", spec.name) else {
-            return deny("schema");
-        };
-        match self.evaluate_uids(principal, action, resource, context, &entities) {
-            // A policy that errored may have been a forbid, and Cedar skips it: an allow that was
-            // reached past an error is not one (ADR 0007: an evaluation that cannot be completed is
-            // a denial).
-            Ok(e) if e.allow && e.errors > 0 => Verdict {
-                allow: false,
-                action: spec.name,
-                reasons: Vec::new(),
-                grant_names: Vec::new(),
-                tenant: tenant.to_owned(),
-                why: "evaluation",
-                errors: e.errors,
-            },
-            Ok(e) => Verdict {
-                allow: e.allow,
-                action: spec.name,
-                reasons: e.reasons,
-                grant_names,
-                tenant: tenant.to_owned(),
-                why: "",
-                errors: e.errors,
-            },
-            Err(_) => deny("schema"),
-        }
+        let entities = self.entities(entities).map_err(|_| invalid("request"))?;
+        let e = self
+            .evaluate_uids(principal, action, resource, context, &entities)
+            .map_err(|_| invalid("request"))?;
+        // A policy that errored may have been a forbid, and Cedar skips it: an allow that was
+        // reached past an error is not one (ADR 0007: an evaluation that cannot be completed is a
+        // denial). That is Cedar's answer, so it is a denial and not an error.
+        let past_error = e.allow && e.errors > 0;
+        Ok(Verdict {
+            allow: e.allow && !past_error,
+            action: spec.name,
+            reasons: if past_error { Vec::new() } else { e.reasons },
+            grant_names: if past_error { Vec::new() } else { grant_names },
+            tenant: tenant.to_owned(),
+            why: if past_error { "evaluation" } else { "" },
+            errors: e.errors,
+        })
     }
 
     /// The grant names the person holds (policy.md "How a person's grants are found"): `grant.hold`
     /// asked for every grant name of the vocabulary, a sensitive one counted only when a
     /// determining policy names it in full (REQ-POLICY-011), then the ladder.
-    fn held_grants(
-        &self,
-        pf: &Person,
-        tenant: &str,
-        base: &[Value],
-    ) -> Result<BTreeSet<GrantName>, ()> {
+    fn held_grants(&self, pf: &Person, base: &[Value]) -> Result<BTreeSet<GrantName>, ()> {
         let mut ents = base.to_vec();
-        ents.push(person_entity(pf, tenant, None));
+        ents.push(person_entity(pf, None));
         let entities: Entities = self.entities(ents).map_err(|_| ())?;
         let principal = uid_of("Person", &pf.subject).ok_or(())?;
         let action = uid_of("Action", "grant.hold").ok_or(())?;
@@ -385,9 +420,9 @@ impl Engine {
     }
 }
 
-fn person_entity(pf: &Person, tenant: &str, grants: Option<&BTreeSet<GrantName>>) -> Value {
+fn person_entity(pf: &Person, grants: Option<&BTreeSet<GrantName>>) -> Value {
     let mut attrs = Map::new();
-    attrs.insert("org".into(), json!(tenant));
+    attrs.insert("org".into(), json!(pf.org));
     attrs.insert("state".into(), json!(pf.state));
     if let Some(g) = grants {
         attrs.insert(
@@ -400,4 +435,12 @@ fn person_entity(pf: &Person, tenant: &str, grants: Option<&BTreeSet<GrantName>>
         "attrs": Value::Object(attrs),
         "parents": pf.accounts.iter().map(|(id, _)| json!({"type": "Account", "id": id})).collect::<Vec<_>>(),
     })
+}
+
+impl Refused {
+    /// A field that does not fit the contract, named by path.
+    #[must_use]
+    pub const fn schema(path: &'static str) -> Self {
+        invalid(path)
+    }
 }

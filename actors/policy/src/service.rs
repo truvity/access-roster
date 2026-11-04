@@ -9,16 +9,16 @@ use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use connectrpc::error::ErrorCode;
-use connectrpc::{RequestContext, Response, ServiceRequest, ServiceResult};
-use sluis_audit::{Emitter, new_uuid_v7};
+use connectrpc::{ConnectError, RequestContext, Response, ServiceRequest, ServiceResult};
+use sluis_audit::{Decision, Emitter, new_uuid_v7};
 use sluis_kit::{Peer, Transport, refusal};
 use sluis_proto::sluis::key::v2alpha1::{KeyServiceClient, SealGrantRequest};
 use sluis_proto::sluis::policy::v2alpha1::{
-    DecideRequest, DecideResponse, Decision, PolicyService, Reason as WireReason,
+    DecideRequest, DecideResponse, Decision as WireDecision, PolicyService, Reason as WireReason,
 };
 
 use crate::audit::{self, Outcome};
-use crate::decide::Verdict;
+use crate::decide::{Refused, Verdict};
 use crate::engine::Engine;
 use crate::grant::{self, KEY_OPS, STORE_VERBS};
 
@@ -95,33 +95,156 @@ fn wire_reasons(v: &Verdict) -> Vec<WireReason> {
         .collect()
 }
 
+/// The store verbs and key operations of a grant: what the asker asked for, cut to what its action
+/// may ever allow and to what the registry gives the asker at all. Narrow, never widen.
+fn narrowed(
+    caller: &str,
+    action: &str,
+    req: &DecideRequest,
+) -> Result<(Vec<String>, Vec<String>), Refused> {
+    let (cap_verbs, cap_ops) = grant::caps(action).ok_or(Refused::schema("action"))?;
+    let (verbs, ops) = grant::ceiling(caller);
+    let verbs: Vec<&'static str> = verbs
+        .into_iter()
+        .filter(|v| cap_verbs.contains(v))
+        .collect();
+    let ops: Vec<&'static str> = ops.into_iter().filter(|o| cap_ops.contains(o)).collect();
+    Ok((
+        grant::narrow(&req.grant_store_verbs, &STORE_VERBS, &verbs)
+            .map_err(|_| Refused::schema("grant_store_verbs"))?,
+        grant::narrow(&req.grant_key_ops, &KEY_OPS, &ops)
+            .map_err(|_| Refused::schema("grant_key_ops"))?,
+    ))
+}
+
 impl Service {
-    /// Seals the grant of an allow. `Err` carries the closed reason the allow is withdrawn for.
-    async fn seal(
+    /// Audits a question that was not one, and builds its error.
+    async fn refuse(
         &self,
-        engine: &Engine,
-        caller: &str,
+        who: &Peer,
         req: &DecideRequest,
-        v: &Verdict,
+        r: Refused,
         decision_id: &str,
-        now: SystemTime,
-    ) -> Result<Vec<u8>, &'static str> {
-        let (verbs, ops) = grant::ceiling(caller);
-        // Narrow, never widen: what was asked, cut to what the caller can do at all.
-        let store_verbs =
-            grant::narrow(&req.grant_store_verbs, &STORE_VERBS, &verbs).map_err(|_| "grant")?;
-        let key_ops = grant::narrow(&req.grant_key_ops, &KEY_OPS, &ops).map_err(|_| "grant")?;
+        digest: &str,
+    ) -> ConnectError {
+        let principal = req.principal.as_option().map(|p| p.r#type.as_str());
+        // What the asker wrote is not recorded unless it is a word of ours.
+        let action = if grant::caps(&req.action).is_some() {
+            req.action.as_str()
+        } else {
+            "unknown"
+        };
+        let event = audit::decide(&Outcome {
+            decision_id,
+            digest,
+            asker: who.name,
+            principal_type: principal
+                .filter(|t| matches!(*t, "Person" | "Actor"))
+                .unwrap_or("unknown"),
+            subject: None,
+            action,
+            tenant: "",
+            reasons: &[],
+            grant_count: 0,
+            errors: 0,
+            status_code: r.reason,
+            path: r.path,
+            decision: None,
+        });
+        if let Err(e) = self.audit.emit(event).await {
+            tracing::error!(code = e.code.as_str(), "a refusal could not be audited");
+        }
+        refusal(r.code, r.reason, r.path)
+    }
+
+    async fn decide_inner(&self, who: &Peer, req: DecideRequest) -> ServiceResult<DecideResponse> {
+        let engine = self.engine();
+        let now = (self.clock)();
+        let decision_id = new_uuid_v7(unix_ms(now));
+        let digest = engine.digest().to_owned();
+        let verdict = match engine.decide(who.name, &req) {
+            Ok(v) => v,
+            Err(r) => return Err(self.refuse(who, &req, r, &decision_id, &digest).await),
+        };
+        // The verbs and operations are checked before anything is recorded as allowed.
+        let wanted = if verdict.allow {
+            match narrowed(who.name, verdict.action, &req) {
+                Ok(w) => Some(w),
+                Err(r) => return Err(self.refuse(who, &req, r, &decision_id, &digest).await),
+            }
+        } else {
+            None
+        };
+        let is_person = req
+            .principal
+            .as_option()
+            .is_some_and(|p| p.r#type == "Person");
+        let subject = req
+            .person
+            .as_option()
+            .map(|p| p.subject.as_str())
+            .filter(|s| is_person && !s.is_empty());
+        let principal_type = if req
+            .principal
+            .as_option()
+            .is_some_and(|p| p.r#type == "Person")
+        {
+            "Person"
+        } else {
+            "Actor"
+        };
+        let event = audit::decide(&Outcome {
+            decision_id: &decision_id,
+            digest: &digest,
+            asker: who.name,
+            principal_type,
+            subject,
+            action: verdict.action,
+            tenant: &verdict.tenant,
+            reasons: &verdict.reasons,
+            grant_count: verdict.grant_names.len(),
+            errors: verdict.errors,
+            status_code: verdict.why,
+            path: "",
+            decision: Some(if verdict.allow {
+                Decision::Allowed
+            } else {
+                Decision::Denied
+            }),
+        });
+
+        let Some((store_verbs, key_ops)) = wanted else {
+            // A denial hands out nothing, so its fact need not hold the answer.
+            if let Err(e) = self.audit.emit(event).await {
+                tracing::error!(code = e.code.as_str(), "a denial could not be audited");
+            }
+            return Ok(Response::new(DecideResponse {
+                decision: WireDecision::DENY.into(),
+                // A denial by a forbid names it: `session` reads `@step_up` from it.
+                reasons: wire_reasons(&verdict),
+                digest,
+                decision_id,
+                ..DecideResponse::default()
+            }));
+        };
+
+        // Audit first: a grant is a power, so its fact is durable before the grant exists. When the
+        // fact cannot be made the caller is told so, and there is no grant to withdraw.
+        if let Err(e) = self.audit.emit_blocking(event).await {
+            tracing::error!(code = e.code.as_str(), "the allow could not be audited");
+            return Err(refusal(ErrorCode::Unavailable, "audit", ""));
+        }
         let g = grant::build(grant::Parts {
             boundary: &engine.boundary,
-            holder: caller,
-            tenant: &v.tenant,
+            holder: who.name,
+            tenant: &verdict.tenant,
             store_verbs,
             key_ops,
-            decision_id,
-            action: v.action,
+            decision_id: &decision_id,
+            action: verdict.action,
             now,
         });
-        match self
+        let sealed = match self
             .keys
             .seal_grant(SealGrantRequest {
                 grant: g.into(),
@@ -129,133 +252,24 @@ impl Service {
             })
             .await
         {
-            Ok(r) => {
-                let sealed = r.into_owned().sealed_grant;
-                if sealed.is_empty() {
-                    Err("keys")
-                } else {
-                    Ok(sealed)
-                }
-            }
+            Ok(r) => r.into_owned().sealed_grant,
             Err(e) => {
                 tracing::warn!(code = e.code.as_str(), "key@ did not seal the grant");
-                Err("keys")
+                Vec::new()
             }
+        };
+        if sealed.is_empty() {
+            return Err(refusal(ErrorCode::Unavailable, "keys", ""));
         }
-    }
-
-    async fn decide_inner(&self, who: &Peer, req: DecideRequest) -> DecideResponse {
-        let engine = self.engine();
-        let now = (self.clock)();
-        let decision_id = new_uuid_v7(unix_ms(now));
-        let verdict = engine.decide(who.name, &req);
-        let digest = engine.digest().to_owned();
-
-        let mut allowed = verdict.allow;
-        let mut why = verdict.why;
-        let mut sealed = Vec::new();
-        if allowed {
-            match self
-                .seal(&engine, who.name, &req, &verdict, &decision_id, now)
-                .await
-            {
-                Ok(s) => sealed = s,
-                Err(w) => (allowed, why) = (false, w),
-            }
-        }
-        let principal = req.principal.as_option();
-        let principal_type = principal
-            .map(|p| p.r#type.as_str())
-            .filter(|t| matches!(*t, "Person" | "Actor"))
-            .unwrap_or("unknown");
-        let subject = (principal_type == "Person")
-            .then(|| req.person.as_option().map(|p| p.subject.as_str()))
-            .flatten()
-            .filter(|s| !s.is_empty());
-        let event = audit::decide(&Outcome {
-            verdict: &verdict,
-            decision_id: &decision_id,
-            digest: &digest,
-            asker: who.name,
-            principal_type,
-            subject,
-            allowed,
-            why,
-        });
-        // A grant is a power, so an allow leaves its audit fact durable before it is handed out
-        // (the rule key@ keeps for a signature). A denial hands out nothing, so its fact need not
-        // hold the answer.
-        if allowed {
-            if let Err(e) = self.audit.emit_blocking(event).await {
-                tracing::error!(
-                    code = e.code.as_str(),
-                    "the allow could not be audited; withdrawn"
-                );
-                // The grant was sealed and is dropped here; it expires unused.
-                allowed = false;
-                sealed.clear();
-                self.emit_withdrawn(
-                    &verdict,
-                    &decision_id,
-                    &digest,
-                    who.name,
-                    principal_type,
-                    subject,
-                )
-                .await;
-            }
-        } else if let Err(e) = self.audit.emit(event).await {
-            tracing::error!(code = e.code.as_str(), "a denial could not be audited");
-        }
-        if allowed {
-            DecideResponse {
-                decision: Decision::ALLOW.into(),
-                reasons: wire_reasons(&verdict),
-                grant_names: verdict.grant_names.clone(),
-                digest,
-                sealed_grant: sealed,
-                decision_id,
-                ..DecideResponse::default()
-            }
-        } else {
-            DecideResponse {
-                decision: Decision::DENY.into(),
-                // A denial by a forbid names it: `session` reads `@step_up` from it. A denial that
-                // was not Cedar's names nothing.
-                reasons: if why.is_empty() {
-                    wire_reasons(&verdict)
-                } else {
-                    Vec::new()
-                },
-                digest,
-                decision_id,
-                ..DecideResponse::default()
-            }
-        }
-    }
-
-    /// The fact that an allow was withdrawn because its own audit fact was not durable: one more
-    /// record, best effort, so the log shows the decision id that was never handed out.
-    async fn emit_withdrawn(
-        &self,
-        verdict: &Verdict,
-        decision_id: &str,
-        digest: &str,
-        asker: &str,
-        principal_type: &str,
-        subject: Option<&str>,
-    ) {
-        let event = audit::decide(&Outcome {
-            verdict,
-            decision_id,
+        Ok(Response::new(DecideResponse {
+            decision: WireDecision::ALLOW.into(),
+            reasons: wire_reasons(&verdict),
+            grant_names: verdict.grant_names.clone(),
             digest,
-            asker,
-            principal_type,
-            subject,
-            allowed: false,
-            why: "audit",
-        });
-        let _ = self.audit.emit(event).await;
+            sealed_grant: sealed,
+            decision_id,
+            ..DecideResponse::default()
+        }))
     }
 }
 
@@ -271,6 +285,6 @@ impl PolicyService for Service {
         let Some(who) = sluis_kit::peer(ctx.extensions()).cloned() else {
             return Err(refusal(ErrorCode::PermissionDenied, "caller", ""));
         };
-        Response::ok(self.decide_inner(&who, request.to_owned_message()).await)
+        self.decide_inner(&who, request.to_owned_message()).await
     }
 }

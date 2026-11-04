@@ -84,6 +84,8 @@ pub fn narrow(
     Ok(out)
 }
 
+pub use crate::decide::caps;
+
 /// A `SystemTime` as a protobuf timestamp.
 #[must_use]
 pub fn timestamp(t: SystemTime) -> Timestamp {
