@@ -41,6 +41,7 @@ const (
 	reasonUnknownKid    = "unknown-kid"    // failed_precondition: a kid no source of key@ knows, in a declaration that does not allow it
 	reasonState         = "state"          // unavailable: the mark of the declaration could not be saved in the state directory
 	reasonPartial       = "partial"        // unavailable: a store@ failure stopped a taken declaration half way; deliver it again
+	reasonWrappingKey   = "wrapping-key"   // failed_precondition: a kid is a wrapping key, which a declaration of signing keys never revokes
 )
 
 // refuse audits a refusal and returns it. The audit fact carries the caller, the operation, the purpose, the
