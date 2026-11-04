@@ -41,7 +41,7 @@ sequenceDiagram
 ```
 
 - **The value is sealed under the data key of its address's boundary, tenant and purpose,** with AES-256-GCM and the full address as authenticated data. A value copied to another row, kind, tenant or boundary does not open.
-- **key@ checks three things on every Seal and Open:** the caller's identity, by the transport; the caller's rule for the purpose and operation, generated from the actor registry; and the grant, which must be sealed for the address's tenant, name the operation and not be expired.
+- **key@ checks three things on every Seal and Open:** the caller's identity, by the transport; the caller's rule for the purpose and operation, generated from the actor registry; and, for a tenant's `data` and `evidence` keys, the grant, which must be sealed for the address's tenant, name the operation and not be expired. The tenant's `chain` key is checked by rule alone, with no grant, because `policy` needs the facts it seals in order to decide.
 - **Opens are batched,** so a request that needs a session cookie and a person's records pays one hop. On Lambda the hop was measured with the whole sign-in, which stays inside its budget ([0037](/decisions/0037-capacity-is-measured-before-it-is-promised/#the-warm-sign-in-on-lambda)).
 - **Mac** makes a keyed hash with HMAC-SHA384 over a data key: link ids and the hashed index entries of sealed kinds under the boundary's `mac` key, audit pseudonyms under a tenant's `pseudonym` key, and pairwise subjects under a tenant's `pairwise` key. There is no extra KMS key for hashing.
 
@@ -85,7 +85,7 @@ A tenant's exit deletes its `data`, `pseudonym`, `pairwise` and `chain` wraps at
 
 Only `policy` may ask key@ to seal a **grant**, the decision that a request is allowed. The store, `ca`, `signer`, key@ and the minters open it. A grant names the tenant and what it allows, is reusable for about 60 seconds, and is never stored; a one-shot irreversible action leaves a hashed `SpentGrant` marker. On a board grants are sealed under the boundary's `grant` data key, not a card key, so a grant costs a memory operation and not an ECDH. A grant sealed in one boundary opens in no other ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
 
-This is one of **two independent checks**: the store's rule with a grant sealed for the tenant, and key@'s grant check on every Seal and Open ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). The word *grant name* means something else: an entry of the grant vocabulary ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)).
+This is one of **two independent checks**: the store's rule with a grant sealed for the tenant, and key@'s grant check on a tenant's `data` and `evidence` keys, where the rule alone checks `pairwise`, `pseudonym` and `chain` ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). The word *grant name* means something else: an entry of the grant vocabulary ([ADR 0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)).
 
 ## Algorithms
 

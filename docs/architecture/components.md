@@ -155,7 +155,7 @@ A port is the narrowest interface that every driver can honour and every user ne
 | Port | Of | Operations | Notes |
 | ---- | -- | ---------- | ----- |
 | **Data** | Every work actor and audit piece | `get`, `list`, `create`, `update` (with `if_version`), `delete`, `apply`, `watch` | One generic store service on the wire, used through typed clients. The store applies the rule of the actor and the kind, and a grant sealed for the tenant on every tenant-scoped write ([0005](/decisions/0005-the-store/#the-store-api)) |
-| **Keys** | Every work actor and audit piece | `Seal`, `Open`, `Sign`, `Mac` | The caller names a key purpose, never a key id or a slot. key@ checks the caller, its rule for the purpose and the grant on every Seal and Open ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)) |
+| **Keys** | Every work actor and audit piece | `Seal`, `Open`, `Sign`, `Mac` | The caller names a key purpose, never a key id or a slot. key@ checks the caller, its rule for the purpose and, for a tenant's `data` and `evidence` keys, the grant ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)) |
 | **Audit emit** | Every actor | Hand a record to the emitter | The record reaches the transport; a request returns once its record is durable there ([0028](/decisions/0028-audit-pieces/#transport)) |
 | **Listener** | `entry` | Accept a request | The one port that faces the edge ([Listeners](/architecture/deployment/#listeners)) |
 | **Provider API**, **fetch** | Adapters; `session` and `exchange` | An outbound call to a vendor or an issuer | Limited to the hosts of the actor's egress classes in the registry |

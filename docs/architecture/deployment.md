@@ -68,7 +68,7 @@ A request meets two checks that do not depend on each other, whichever the runti
 | Check | Where | What it refuses |
 | ----- | ----- | --------------- |
 | The rule | store@: the actor × kind × verb of the kind registry, plus a grant sealed for the tenant on every tenant-scoped write | A write by an actor that is not the kind's writer, a read the rule does not list, a write with no grant for the address's tenant |
-| The grant | key@: the caller's rule for the purpose and a grant sealed for the address's tenant, on every Seal and Open | An open for a tenant the grant does not name, a purpose the actor may not use |
+| The grant | key@: the caller's rule for the purpose and, for a tenant's `data` and `evidence` keys, a grant sealed for the address's tenant, on every Seal and Open of those keys | An open for a tenant the grant does not name, a purpose the actor may not use |
 
 Under both sits the transport: socket groups and sandboxes, invoke resource policies, NetworkPolicies. A fault that disables one check leaves the others in force, and the build tests each with the others switched off.
 
