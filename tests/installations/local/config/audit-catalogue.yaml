@@ -12,3 +12,8 @@ default:
     - policy.start
     - policy.reload
     - policy.reload.refused
+    - signer.refused
+    - signer.sign
+    - signer.ring.add
+    - signer.ring.change
+    - signer.ring.drop
