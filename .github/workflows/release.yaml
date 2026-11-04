@@ -89,11 +89,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: truvity/ci-actions/public-runners@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/public-runners@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           runners: ubuntu-latest
           visibility: ${{ github.event.repository.visibility }}
-      - uses: truvity/ci-actions/setup-devbox@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445 # v0.10
@@ -122,7 +122,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/checksums.txt" --clobber
       # The charts and the flake read dist/ of the checkout goreleaser built in.
       - run: rm -rf dist && cp -a audit/dist dist
-      - uses: truvity/ci-actions/publish-charts@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/publish-charts@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           charts: '["audit"]'
           chart-root: charts
@@ -132,7 +132,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       # The CLI as a Nix flake, so that another repository's devbox pins
       # `audit verify` by hash.
-      - uses: truvity/ci-actions/publish-nix-flakes@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/publish-nix-flakes@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           flakes: '["audit"]'
           flake-dir: ${{ runner.temp }}/nix-flakes
@@ -154,11 +154,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/public-runners@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/public-runners@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           runners: ubuntu-latest
           visibility: ${{ github.event.repository.visibility }}
-      - uses: truvity/ci-actions/setup-devbox@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Log in to GHCR
@@ -251,11 +251,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/public-runners@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/public-runners@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           runners: ubuntu-latest
           visibility: ${{ github.event.repository.visibility }}
-      - uses: truvity/ci-actions/setup-devbox@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download the release assets
@@ -362,11 +362,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: truvity/ci-actions/public-runners@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/public-runners@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           runners: ubuntu-latest
           visibility: ${{ github.event.repository.visibility }}
-      - uses: truvity/ci-actions/setup-devbox@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/setup-devbox@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Log in to GHCR
@@ -428,7 +428,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: truvity/ci-actions/token-exchange@c0af6f2725824b0f199f7590be79b84b0ee895e6 # v3.8.0
+      - uses: truvity/ci-actions/token-exchange@82e404675ef3f826755e2939d1072cddcd07ed26 # v3.9.0
         id: app
         if: vars.ACCESS_ROSTER_ISSUER != ''
         with:
