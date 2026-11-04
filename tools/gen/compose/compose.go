@@ -74,6 +74,8 @@ var actorSpecs = map[string]actorSpec{
 		"--node", node,
 	}},
 	"signer": {Socket: true, Check: true, Args: []string{"--node", node}},
+	// policy: the sockets of store@, key@ and the audit transport have the defaults of the plan.
+	"policy": {Socket: true, Check: true},
 	// entry has no check command: its health is the forwarder's probe through it.
 	"entry":                 {Socket: true, Joins: []string{"harness-forwarder"}},
 	"adapter-upstream-oidc": {Socket: true, Check: true, Egress: true, Creds: "creds-adapter"}, //nolint:gosec // the name of a volume
