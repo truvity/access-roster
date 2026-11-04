@@ -564,11 +564,12 @@ requirements:
     rationale: "There is no fallback to another claim, so a missing claim cannot create a second identity."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
+    tests: [actors/adapter-upstream-oidc/internal/upstreamd/service_test.go, actors/session/internal/sessiond/callback_test.go]
     verification:
       - {kind: integration-test, ref: "a token without the claim, and one with a number or a 300-character value, are refused and no person is created"}
   - id: REQ-SUBJ-041
