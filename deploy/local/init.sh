@@ -41,6 +41,7 @@ dir /v/key-writer 61014 61015 2750
 dir /v/rqlite-data 60999 60999 0700
 dir /v/run-adapter-upstream-oidc 61009 61009 0751
 dir /v/run-entry 61000 61000 0751
+dir /v/run-exchange 61003 61003 0751
 dir /v/run-key 61014 61014 0751
 dir /v/run-key/dev 61014 61014 0751
 dir /v/run-key/dev/adapter-github 61014 61014 0751
@@ -64,6 +65,7 @@ dir /v/run-key/dev/store 61014 61014 0751
 dir /v/run-key/dev/witness 61014 61014 0751
 dir /v/run-key/dev/writer 61014 61014 0751
 dir /v/run-policy 61005 61005 0751
+dir /v/run-session 61001 61001 0751
 dir /v/run-signer 61004 61004 0751
 dir /v/run-store 61012 61012 0751
 dir /v/run-store/dev 61012 61012 0751

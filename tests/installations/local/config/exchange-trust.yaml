@@ -1,0 +1,5 @@
+# ExchangeTrust: the issuers whose tokens exchange accepts besides the boundary's own. The local installation trusts
+# none, so a token of another issuer is refused; exchange reads the kind at start, so the kind is declared with an
+# empty list.
+default:
+  issuers: []

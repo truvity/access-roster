@@ -47,8 +47,10 @@ services:
       - rqlite-data:/v/rqlite-data
       - run-adapter-upstream-oidc:/v/run-adapter-upstream-oidc
       - run-entry:/v/run-entry
+      - run-exchange:/v/run-exchange
       - run-key:/v/run-key
       - run-policy:/v/run-policy
+      - run-session:/v/run-session
       - run-signer:/v/run-signer
       - run-store:/v/run-store
       - state-blob:/v/state-blob
@@ -56,7 +58,7 @@ services:
       - state-spool:/v/state-spool
 
   adapter-upstream-oidc:
-    image: sluis-local/adapter-upstream-oidc:dev
+    image: sluis-local/adapter-upstream-oidc:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -96,7 +98,7 @@ services:
       idp-loopback: { condition: service_healthy }
 
   drv-key-software:
-    image: sluis-local/drv-key-software:dev
+    image: sluis-local/drv-key-software:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -125,7 +127,7 @@ services:
       init: { condition: service_completed_successfully }
 
   drv-store-credential:
-    image: sluis-local/drv-store-credential:dev
+    image: sluis-local/drv-store-credential:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -154,7 +156,7 @@ services:
       init: { condition: service_completed_successfully }
 
   drv-store-file:
-    image: sluis-local/drv-store-file:dev
+    image: sluis-local/drv-store-file:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -183,7 +185,7 @@ services:
       init: { condition: service_completed_successfully }
 
   drv-store-rqlite-durable:
-    image: sluis-local/drv-store-rqlite:dev
+    image: sluis-local/drv-store-rqlite:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -212,7 +214,7 @@ services:
       rqlite: { condition: service_healthy }
 
   drv-store-rqlite-temp:
-    image: sluis-local/drv-store-rqlite:dev
+    image: sluis-local/drv-store-rqlite:${SLUIS_LOCAL_TAG:-dev}
     pull_policy: never
     command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/store/dev/temp.sock", "--rqlite-url", "http://127.0.0.1:4001", "--namespace", "temp", "--socket-gid", "61020"]
     user: "61020:61020"
@@ -237,7 +239,7 @@ services:
       rqlite: { condition: service_healthy }
 
   drv-writer-fs:
-    image: sluis-local/drv-writer-fs:dev
+    image: sluis-local/drv-writer-fs:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -266,7 +268,7 @@ services:
       init: { condition: service_completed_successfully }
 
   drv-writer-spool:
-    image: sluis-local/drv-writer-spool:dev
+    image: sluis-local/drv-writer-spool:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -295,7 +297,7 @@ services:
       init: { condition: service_completed_successfully }
 
   entry:
-    image: sluis-local/entry:dev
+    image: sluis-local/entry:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -304,6 +306,8 @@ services:
     command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/entry/dev.sock", "--socket-gid", "61027"]
     user: "61000:61000"
     group_add:
+      - "61001"
+      - "61003"
       - "61009"
       - "61012"
       - "61024"
@@ -314,6 +318,8 @@ services:
       - run-store:/run/sluis/store:ro
       - key-entry:/run/sluis/key/dev/entry:ro
       - audit:/run/sluis/audit/dev:ro
+      - run-session:/run/sluis/session:ro
+      - run-exchange:/run/sluis/exchange:ro
       - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc:ro
     read_only: true
     cap_drop: [ALL]
@@ -326,6 +332,50 @@ services:
       key: { condition: service_healthy }
       signer: { condition: service_healthy }
       adapter-upstream-oidc: { condition: service_healthy }
+      session: { condition: service_healthy }
+      exchange: { condition: service_healthy }
+
+  exchange:
+    image: sluis-local/exchange:${SLUIS_LOCAL_TAG:-dev}
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/exchange
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/exchange/dev.sock"]
+    user: "61003:61003"
+    group_add:
+      - "61004"
+      - "61005"
+      - "61009"
+      - "61012"
+      - "61024"
+    network_mode: none
+    volumes:
+      - run-exchange:/run/sluis/exchange
+      - run-store:/run/sluis/store:ro
+      - key-exchange:/run/sluis/key/dev/exchange:ro
+      - audit:/run/sluis/audit/dev:ro
+      - run-signer:/run/sluis/signer:ro
+      - run-policy:/run/sluis/policy:ro
+      - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/exchange/dev.sock"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      key: { condition: service_healthy }
+      policy: { condition: service_healthy }
+      signer: { condition: service_healthy }
 
   forwarder:
     image: caddy@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5
@@ -377,7 +427,7 @@ services:
       init: { condition: service_completed_successfully }
 
   key:
-    image: sluis-local/key:dev
+    image: sluis-local/key:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -432,7 +482,7 @@ services:
       drv-writer-spool: { condition: service_healthy }
 
   policy:
-    image: sluis-local/policy:dev
+    image: sluis-local/policy:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -464,7 +514,7 @@ services:
       init: { condition: service_completed_successfully }
 
   rqlite:
-    image: sluis-local/rqlite:dev
+    image: sluis-local/rqlite:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/rqlite
       dockerfile: ../../../deploy/local/Dockerfile.rqlite
@@ -487,8 +537,53 @@ services:
     depends_on:
       init: { condition: service_completed_successfully }
 
+  session:
+    image: sluis-local/session:${SLUIS_LOCAL_TAG:-dev}
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/session
+    command: ["serve", "--boundary", "dev", "--socket", "/run/sluis/session/dev.sock"]
+    user: "61001:61001"
+    group_add:
+      - "61003"
+      - "61004"
+      - "61005"
+      - "61009"
+      - "61012"
+      - "61024"
+    network_mode: none
+    volumes:
+      - run-session:/run/sluis/session
+      - run-store:/run/sluis/store:ro
+      - key-session:/run/sluis/key/dev/session:ro
+      - audit:/run/sluis/audit/dev:ro
+      - run-exchange:/run/sluis/exchange:ro
+      - run-signer:/run/sluis/signer:ro
+      - run-policy:/run/sluis/policy:ro
+      - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev", "--socket", "/run/sluis/session/dev.sock"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      key: { condition: service_healthy }
+      policy: { condition: service_healthy }
+      signer: { condition: service_healthy }
+      adapter-upstream-oidc: { condition: service_healthy }
+
   signer:
-    image: sluis-local/signer:dev
+    image: sluis-local/signer:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -522,7 +617,7 @@ services:
       key: { condition: service_healthy }
 
   store:
-    image: sluis-local/store:dev
+    image: sluis-local/store:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -562,7 +657,7 @@ services:
       drv-writer-spool: { condition: service_healthy }
 
   writer:
-    image: sluis-local/writer:dev
+    image: sluis-local/writer:${SLUIS_LOCAL_TAG:-dev}
     build:
       context: ../../dist/local/bin
       dockerfile: ../../../deploy/local/Dockerfile
@@ -631,8 +726,10 @@ volumes:
   rqlite-data: {}
   run-adapter-upstream-oidc: {}
   run-entry: {}
+  run-exchange: {}
   run-key: {}
   run-policy: {}
+  run-session: {}
   run-signer: {}
   run-store: {}
   state-blob: {}

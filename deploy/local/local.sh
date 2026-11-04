@@ -9,6 +9,11 @@
 #   SLUIS_UPSTREAM_TARGET    host:port of the upstream identity provider, which the sidecar of the adapter forwards to
 #   SLUIS_KEYCLOAK_SECRETS   a file with SLUIS_LOCAL_CLIENT_SECRET (default: $SLUIS_BUILD_DIR/keycloak-secrets.env)
 #   SLUIS_LOCAL_PORT         the loopback port of the forwarder (default 8443)
+#   COMPOSE_PROJECT_NAME     the Compose project (default sluis-local); a second project on one machine sets this, a
+#                            SLUIS_LOCAL_PORT and a SLUIS_LOCAL_TAG of its own, so that it leaves the first alone
+#   SLUIS_LOCAL_TAG          the tag of the images this project builds (default dev)
+#   SLUIS_LOCAL_SUBNET       the subnet of the project's network, for a machine whose firewall lets only some subnets
+#                            reach the upstream (default: the one Docker picks)
 # The state of a run (the CA, the publisher key, the signed config, the credentials) is below .cache/local and is
 # deleted by `down`; the volumes go with it.
 set -euo pipefail
@@ -19,6 +24,11 @@ state=.cache/local
 seed=$state/seed
 export SLUIS_LOCAL_SEED=$root/$seed
 compose=(docker compose -f deploy/local/compose.yaml)
+if [ -n "${SLUIS_LOCAL_SUBNET:-}" ]; then
+	mkdir -p "$state"
+	printf 'networks:\n  default:\n    ipam:\n      config:\n        - subnet: %s\n' "$SLUIS_LOCAL_SUBNET" >"$state/network.yaml"
+	compose+=(-f "$state/network.yaml")
+fi
 host=sluis.dev.local.test
 
 need_env() {
@@ -104,7 +114,7 @@ cmd_down() {
 # character is put into the payload, so that the signature no longer covers it (signed-config.md, "Verifying a document").
 cmd_tamper() {
 	need_env_quiet
-	local vol=sluis-local_config doc=key-plan.jws image
+	local vol=${COMPOSE_PROJECT_NAME:-sluis-local}_config doc=key-plan.jws image
 	image=$(grep -m1 -o 'alpine@sha256:[0-9a-f]*' deploy/local/compose.yaml)
 	"${compose[@]}" stop store >/dev/null
 	docker run --rm -v "$vol:/c" --entrypoint sh "$image" -c \
