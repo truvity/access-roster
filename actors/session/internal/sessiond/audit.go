@@ -57,6 +57,7 @@ const (
 	reasonStepUp       = "step_up"       // policy asks for a fresher authentication
 	reasonScope        = "scope"         // a scope outside the grant
 	reasonClientSecret = "client_secret" // a public client sent a secret
+	reasonPin          = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
 )
 
 // audited is the outcome of one step, as the audit record names it.

@@ -72,14 +72,15 @@ func (s sealedStore) exists(ctx context.Context, kind, tenant, id string) (bool,
 	return false, err
 }
 
-// newSealed is one sealed item of createAll.
+// newSealed is one item of createAll: sealed, or plain for a kind whose treatment is plain (UpstreamPin).
 type newSealed struct {
 	kind, id string
 	value    proto.Message
+	plain    bool
 }
 
-// createAll seals each value under the tenant's data key and creates all the items in one write, all or none, under
-// the grant. If any address is taken nothing is written and the error is store.ErrExists.
+// createAll seals each value under the tenant's data key, or encodes a plain one, and creates all the items in one
+// write, all or none, under the grant. If any address is taken nothing is written and the error is store.ErrExists.
 func (s sealedStore) createAll(ctx context.Context, tenant string, grant []byte, items ...newSealed) error {
 	ops := make([]*storev2alpha1.Operation, 0, len(items))
 	for _, it := range items {
@@ -90,7 +91,12 @@ func (s sealedStore) createAll(ctx context.Context, tenant string, grant []byte,
 		if err := store.ValidateID(it.id); err != nil {
 			return err
 		}
-		env, err := s.keys.sealData(ctx, seg, tenant, it.id, it.value, grant)
+		var env []byte
+		if it.plain {
+			env, err = proto.MarshalOptions{Deterministic: true}.Marshal(it.value)
+		} else {
+			env, err = s.keys.sealData(ctx, seg, tenant, it.id, it.value, grant)
+		}
 		if err != nil {
 			return err
 		}

@@ -26,6 +26,7 @@ type keys struct {
 // The labels session gives to Mac (0006 "Sign and Mac": a label separates two uses of one purpose).
 const (
 	labelUpstreamLink = "sluis-upstream-link-v1"
+	labelUpstreamPin  = "sluis-upstream-pin-v1"
 	labelPairwise     = "pairwise"
 )
 
@@ -42,11 +43,22 @@ func (k keys) mac(ctx context.Context, purpose, tenant, label string, input []by
 	return res.Msg.GetMac(), nil
 }
 
-// linkID is the id of an UpstreamLink: a keyed hash of the issuer, the claim name and the claim value, made over the
-// boundary's mac key (0019 "Linking an upstream account"). The id holds no personal data, and session never holds
-// the key. It is 256 bits in lower-case base32, 52 characters.
-func (k keys) linkID(ctx context.Context, issuer, claim, value string) (string, error) {
-	m, err := k.mac(ctx, "mac", "", labelUpstreamLink, lengthPrefixed(issuer, claim, value))
+// linkID is the id of an UpstreamLink: a keyed hash of the issuer and the claim value, made over the boundary's mac
+// key (0019 "Linking an upstream account", "The records"). The claim name is not in it, so a changed claim cannot
+// make a second link for one account: the UpstreamPin refuses it (REQ-SUBJ-041). The id holds no personal data, and
+// session never holds the key. It is 256 bits in lower-case base32, 52 characters.
+func (k keys) linkID(ctx context.Context, issuer, value string) (string, error) {
+	m, err := k.mac(ctx, "mac", "", labelUpstreamLink, lengthPrefixed(issuer, value))
+	if err != nil {
+		return "", err
+	}
+	return lowerBase32(m[:32]), nil
+}
+
+// pinID is the id of an UpstreamPin: a keyed hash of the issuer over the boundary's mac key, under a label of its own
+// (0019 "The records").
+func (k keys) pinID(ctx context.Context, issuer string) (string, error) {
+	m, err := k.mac(ctx, "mac", "", labelUpstreamPin, lengthPrefixed(issuer))
 	if err != nil {
 		return "", err
 	}
