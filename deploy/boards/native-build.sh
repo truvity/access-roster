@@ -7,9 +7,10 @@
 # The output is dist/native/<arch>/<package>. A package with no executable, or one that is not an ELF of this
 # architecture that needs the libraries it should need, fails the build.
 #
-# The driver of a board's card talks to pcscd through libpcsclite (ADR 0006, 0013), so the oldest supported userland
-# decides which glibc and which pcsc-lite it runs on. The Go toolchain is the release of go.mod's `toolchain` line,
-# taken from go.dev and checked against the SHA-256 that Google publishes for it.
+# The driver of a board's card talks to pcscd through libpcsclite (ADR 0006, 0013), so the build userland (Ubuntu 22.04,
+# older than every supported system) decides which glibc symbols it asks for; native-build.sh holds them to GLIBC_2.34.
+# The Go toolchain is the release of go.mod's `toolchain` line, taken from go.dev and checked against the SHA-256 that Google
+# publishes for it.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -49,6 +50,7 @@ export PATH=/usr/local/go/bin:$PATH
 export GOFLAGS=-buildvcs=false GOTOOLCHAIN=local CGO_ENABLED=1
 go version
 
+glibc_max=2.34 # the newest glibc symbol the executables may ask for
 out=dist/native/$goarch
 rm -rf "$out"
 mkdir -p "$out"
@@ -79,6 +81,13 @@ while IFS=$'\t' read -r pkg tags; do
 	# The newest glibc symbol it asks for: the floor of every system it runs on.
 	glibc=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
 	echo "glibc: ${glibc:-none}"
+	# The supported systems have glibc 2.35 (Ubuntu 22.04, the build userland), 2.39 (Rocky 10) and 2.43 (Ubuntu 26.04), and the
+	# symbol floor of the card driver was measured at GLIBC_2.34 (docs/runtimes/bare-metal.md, "Supported operating systems"). A
+	# newer symbol raises the floor of every board: raise glibc_max with the page, on purpose.
+	if [ -n "$glibc" ] && [ "$(printf '%s\n%s\n' "${glibc#GLIBC_}" "$glibc_max" | sort -V | tail -1)" != "$glibc_max" ]; then
+		echo "native-build: $pkg needs $glibc, newer than the GLIBC_$glibc_max that the supported systems are documented to need" >&2
+		exit 1
+	fi
 	built=$((built + 1))
 done <deploy/boards/native.list
 [ "$built" -gt 0 ] || { echo "native-build: native.list names nothing: nothing was built" >&2; exit 1; }
