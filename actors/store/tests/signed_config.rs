@@ -289,8 +289,9 @@ fn the_sequence_table() {
     assert_eq!(sequence(None, &v1), Sequence::Newer);
 }
 
-// REQ-DATA-099: a document over the bound is refused at step 1 before anything is parsed, and one at the bound is not
-// refused for its size. The readers that verify for themselves hold the same bound (kits/go/signedconfig).
+/// verifies: REQ-DATA-099
+/// a document over the bound is refused at step 1 before anything is parsed, and one at the bound is not
+/// refused for its size. The readers that verify for themselves hold the same bound (kits/go/signedconfig).
 #[test]
 fn a_document_over_the_bound_is_refused_before_it_is_read() {
     use store::config::document::DOCUMENT_MAX;

@@ -483,7 +483,8 @@ func TestCreateAllChecksBeforeTheCall(t *testing.T) {
 	}
 }
 
-// REQ-DATA-099: the typed call returns the signed document unread, names a config kind only, and maps the refusals.
+// verifies: REQ-DATA-099
+// the typed call returns the signed document unread, names a config kind only, and maps the refusals.
 func TestGetSignedConfig(t *testing.T) {
 	f := &fake{items: map[string]*storev2alpha1.Item{}}
 	c := serveFake(t, f)
