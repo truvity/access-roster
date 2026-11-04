@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // The highest KeyPlan that key@ has verified is kept in key@'s own durable local state, so that a restart does not
@@ -54,17 +55,26 @@ func parseMark(b []byte) (planMark, error) {
 	return m, nil
 }
 
-// checkStateDir refuses a state directory that is missing or that group or world can write to, as it refuses the run
-// directory. The platform makes it; key@ does not.
+// checkStateDir refuses a state directory that is missing, that is not key@'s own (another owner than key@'s uid), or
+// that group or world can reach, as it refuses the run directory. The platform makes it; key@ does not.
 func checkStateDir(dir string) error {
 	fi, err := os.Stat(dir)
 	if err != nil || !fi.IsDir() {
 		return fmt.Errorf("state directory %s is missing", dir)
 	}
+	if !ownedBy(fi, os.Getuid()) {
+		return fmt.Errorf("state directory %s is not owned by key@'s user", dir)
+	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("state directory %s is open to group or world", dir)
 	}
 	return nil
+}
+
+// ownedBy reports whether the file belongs to the uid. A file whose owner cannot be read is not owned.
+func ownedBy(fi os.FileInfo, uid int) bool {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	return ok && int64(st.Uid) == int64(uid)
 }
 
 // restoreMark reads the mark of the state directory into the sequencer, before any KeyPlan is fetched. save says
@@ -77,11 +87,21 @@ func (s *Server) restoreMark(save bool) error {
 		return err
 	}
 	s.saveMark = save
-	b, err := os.ReadFile(filepath.Join(s.cfg.StateDir, planMarkFile))
-	switch {
-	case errors.Is(err, os.ErrNotExist):
+	path := filepath.Join(s.cfg.StateDir, planMarkFile)
+	fi, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
 		return nil // a first start: nothing to restore
-	case err != nil:
+	}
+	if err != nil {
+		return fmt.Errorf("the KeyPlan mark cannot be read: %w", err)
+	}
+	// The mark is key@'s own file: a regular file, key@'s, and 0600. Another owner, wider bits or a link is a file
+	// that something else could have written, and a guessed mark is a mark a thief could choose.
+	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o177 != 0 || !ownedBy(fi, os.Getuid()) {
+		return fmt.Errorf("the KeyPlan mark %s is not key@'s own regular file with mode 0600: remove it to start without one, knowing that key@ then takes the newest validly signed KeyPlan store@ shows", path)
+	}
+	b, err := os.ReadFile(path) //nolint:gosec // key@'s own state directory, checked above
+	if err != nil {
 		return fmt.Errorf("the KeyPlan mark cannot be read: %w", err)
 	}
 	m, err := parseMark(b)

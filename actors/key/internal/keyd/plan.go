@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strconv"
 
 	"go.yaml.in/yaml/v3"
@@ -104,6 +105,14 @@ func (s *Server) refusedPlan(ctx context.Context, doc []byte, why error) (*confi
 	}
 	if held {
 		return proto.Clone(s.planLast.plan).(*configv2alpha1.KeyPlan), nil
+	}
+	if errors.Is(why, signedconfig.ErrOlder) || errors.Is(why, signedconfig.ErrConflict) {
+		if seq, ok := s.planSeq.Held(); ok {
+			// The mark is ahead of everything store@ shows (a restore of the store, a reset of the seq).
+			return nil, fmt.Errorf("keyplan/default: the signed KeyPlan is refused: %w; the mark %s holds seq %d: publish a KeyPlan with a higher seq (preferred), "+
+				"or remove the mark on purpose, knowing that key@ then has no rollback protection until the next plan is verified",
+				why, filepath.Join(s.cfg.StateDir, planMarkFile), seq)
+		}
 	}
 	return nil, fmt.Errorf("keyplan/default: the signed KeyPlan is refused: %w", why)
 }
