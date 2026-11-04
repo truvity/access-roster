@@ -462,6 +462,7 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 	for _, c := range registry.CallersOf("key") {
 		callers[c] = true
 	}
+	refused := 0 // the calls the sweep saw refused by the rule
 	for _, act := range registry.Actors() {
 		for _, op := range []string{"seal", "open"} {
 			allowed := act.Name == "session" || (act.Name == "exchange" && op == "open")
@@ -483,11 +484,20 @@ func TestChainKeySealedBySessionOpenedBySessionAndExchangeAlone(t *testing.T) {
 			if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "rule" {
 				t.Errorf("%s %ss under chain: %v, want permission_denied/rule", act.Name, op, err)
 			}
+			refused++
 		}
 	}
-	// The envelope does not open at another address or at another tenant's key.
+	// A sweep over an empty registry, or over actors that cannot call key@, would pass whatever the rule says.
+	if refused == 0 {
+		t.Fatal("the sweep refused no call: it checked nothing")
+	}
+	// The envelope does not open at another address, nor at another tenant's key. That key exists first (globex seals
+	// a chain of its own), so the refusal comes from the address binding and the other key, not from a missing key.
 	_, err = open1(n.client("exchange"), "chain", "session-chain", "acme", "other"+vecID[5:], env, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	if _, err := seal1(n.client("session"), "chain", "session-chain", "globex", vecID, []byte("globex facts"), nil); err != nil {
+		t.Fatalf("session seals under globex's chain key: %v", err)
+	}
 	_, err = open1(n.client("exchange"), "chain", "session-chain", "globex", vecID, env, nil)
 	wantRefusal(t, err, connect.CodePermissionDenied, "open")
 	// A chain has a tenant: the key of the boundary does not exist.
@@ -513,8 +523,9 @@ func TestTenantExitMakesChainFactsUnopenable(t *testing.T) {
 	if pt, err := open1(a.client("exchange"), "chain", "session-chain", "acme", vecID, acme, nil); err != nil || string(pt) != "acme facts" {
 		t.Fatalf("before the exit: %q, %v", pt, err)
 	}
-	// The exit: every wrap of the tenant is deleted, and the cache that held the key is gone (a restart; on boards and
-	// on Kubernetes key@ drops the entry when it sees the wrap deleted, ADR 0006, "The cache").
+	// The exit: every wrap of the tenant is deleted, and the node starts again with an empty cache. This tests the
+	// erasure of the wraps plus a restart; key@ has no watch on DataKeyWrap yet (ADR 0006, "The cache"), so a warm node
+	// would still hold the key until its cache entry expires.
 	if got := e.store.eraseWraps("acme"); got == 0 {
 		t.Fatal("the tenant had no wraps to erase")
 	}
