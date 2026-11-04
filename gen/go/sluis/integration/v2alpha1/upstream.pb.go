@@ -154,6 +154,7 @@ type CompleteRequest struct {
 	RedirectUri   string                 `protobuf:"bytes,3,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`    // the redirect_uri of the begin step
 	CodeVerifier  string                 `protobuf:"bytes,4,opt,name=code_verifier,json=codeVerifier,proto3" json:"code_verifier,omitempty"` // the PKCE verifier for the begin step's challenge
 	Nonce         string                 `protobuf:"bytes,5,opt,name=nonce,proto3" json:"nonce,omitempty"`                                   // the nonce of the begin step
+	Iss           string                 `protobuf:"bytes,6,opt,name=iss,proto3" json:"iss,omitempty"`                                       // the iss parameter of the callback (RFC 9207); empty when the callback had none
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -219,6 +220,13 @@ func (x *CompleteRequest) GetCodeVerifier() string {
 func (x *CompleteRequest) GetNonce() string {
 	if x != nil {
 		return x.Nonce
+	}
+	return ""
+}
+
+func (x *CompleteRequest) GetIss() string {
+	if x != nil {
+		return x.Iss
 	}
 	return ""
 }
@@ -381,13 +389,14 @@ const file_sluis_integration_v2alpha1_upstream_proto_rawDesc = "" +
 	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12%\n" +
 	"\x0ecode_challenge\x18\x05 \x01(\tR\rcodeChallenge\"<\n" +
 	"\rBeginResponse\x12+\n" +
-	"\x11authorization_url\x18\x01 \x01(\tR\x10authorizationUrl\"\x9f\x01\n" +
+	"\x11authorization_url\x18\x01 \x01(\tR\x10authorizationUrl\"\xb1\x01\n" +
 	"\x0fCompleteRequest\x12\x1a\n" +
 	"\bupstream\x18\x01 \x01(\tR\bupstream\x12\x12\n" +
 	"\x04code\x18\x02 \x01(\tR\x04code\x12!\n" +
 	"\fredirect_uri\x18\x03 \x01(\tR\vredirectUri\x12#\n" +
 	"\rcode_verifier\x18\x04 \x01(\tR\fcodeVerifier\x12\x14\n" +
-	"\x05nonce\x18\x05 \x01(\tR\x05nonce\"\x84\x02\n" +
+	"\x05nonce\x18\x05 \x01(\tR\x05nonce\x12\x10\n" +
+	"\x03iss\x18\x06 \x01(\tR\x03iss\"\x84\x02\n" +
 	"\tAssertion\x12\x16\n" +
 	"\x06issuer\x18\x01 \x01(\tR\x06issuer\x12#\n" +
 	"\rsubject_claim\x18\x02 \x01(\tR\fsubjectClaim\x12\x18\n" +
