@@ -623,6 +623,7 @@ func TestSubIsTheMacOfTheSharedPairwiseInput(t *testing.T) {
 
 // REQ-KEYS-082: the chain carries the sign-in facts once (0006, "Data keys"), sealed under the chain key of the chain's
 // tenant. Session opens that copy at a refresh, and exchange would open it with the same tenant and address.
+// verifies: REQ-KEYS-082
 func TestChainFactsAreSealedOnceUnderTheTenantsChainKey(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()

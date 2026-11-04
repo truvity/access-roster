@@ -1,4 +1,4 @@
-export interface TaggedTest { file: string; line: number; test: string; via: 'comment' | 'subtest' }
+export interface TaggedTest { file: string; line: number; test: string; via: 'comment' | 'subtest' | 'name' }
 export const SCAN_DIRS: string[];
 export function idsIn(text: string): string[];
 export function scanGo(text: string, file: string): Array<TaggedTest & { id: string }>;
