@@ -124,7 +124,8 @@ requirements:
     rationale: "A fixed encoding makes the value verifiable by vector."
     level: MUST
     source: stakeholder-ciam
-    status: done
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
