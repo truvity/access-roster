@@ -9,30 +9,32 @@ use serde_json::{Value, json};
 use store::bootstrap::Publisher;
 use store::config::document::{Refused, Sequence, Verified, hex, sequence, verify};
 
-const PUBLISHER_KEY: &str = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEdptVIkeiLoSFwBZWL2/LzRofOQCC7BA2BYGuTFE2wadFKaURYGvjspVnyguB6GsAACzu7DrWqKQHCCIbBKyxDEBjjhO8P2aVMqgSE/MMGEjXQqtRIMj/MKggB9rQK8MI";
-const PARTY_KEY: &str = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAExkRYxl6/8Is/5qok2qf/MLahNJT8LOi6CH7ct31uCPNnozzwz7HmzNcPif4OFs341KMQJTvHAgGlHp+Hl3Ck/0Qog8jfiNY09Np96Vat4tP454C9gPE/eLebMQLshttM";
+const PUBLISHER_KEY: &str = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEEUKd6CE58PyZQlFf8Lr7OWUalh4lNPvrrA7mNmdNt8fOYSPky3w9E9KZmFNWOE+0TJJXt1i3+P5C4nYax8bkHrnS8/lGRv18eizHflv/jwhvtlX6XUZQsM7aMGQp7ZCQ";
+const PARTY_KEY: &str = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAENcY8rxK8EKeYUMn0cewM5s+NePDm4Ud/sHupp7zMuXn59VOyZLHsa/gkMqTwfoXh1TuHkYKdDLGSmWGf5YhED3sVqqfD7cqUgRKwViO6TrYXCCq+TZVFl0XZTamJNr0E";
 
 /// The kind of the vectors: any config kind will do, the signature layer does not look at it.
 const KIND: &str = "Boundary";
 
 const VECTOR_1: &str = r#"{
   "payload": "dmVjdG9yOiAxCg",
-  "signatures": [{
-    "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoxfQ",
-    "signature": "zKiPOs9_bUguvx-pEdmt7tct6fDu0uLJxfxaOmHWwNJydkZ18J8OJ4XjNEcJ8SlHeG8IFbfRd_jDPo3LhbUckbADNdt-dbrkQa0l9_NVox2eblSjQRMFiyemLXjrPsxK"
-  }]
+  "signatures": [
+    {
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoxLCJraW5kIjoiQm91bmRhcnkifQ",
+      "signature": "XZnPZpoRaLG7Ngq0DsY62EkyOh6gKstlbxkZjpHw90MqDNzXYMxxmhAjk5mhCuAskOqDWa6hCZQApDAo34HOSL98hFkKsOCT_r2Hm6qRiOKJ2Ilu5bkQhed16aPDF5oO"
+    }
+  ]
 }"#;
 
 const VECTOR_2: &str = r#"{
   "payload": "dmVjdG9yOiAyCg",
   "signatures": [
     {
-      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoyfQ",
-      "signature": "rS79BXecFNgvtbwdii5y_wX8BbslTxvelJ1zgVVtglOJcNkpH_whyaojPrce1JqnQ9tS1twx2fVKxiRLF5hjLxVE5FxDcEy8g8GJvWSuuaQiCze5u6oSiO7ogaSS-F_Q"
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InB1Ymxpc2hlci0xIiwic2VxIjoyLCJraW5kIjoiQm91bmRhcnkifQ",
+      "signature": "pyn38__B7njhEtDvE1CMAXlKnr0-oeuhkaIxPbZjmksasy823KZftzegAljIRfDWcIJ6W_g4sjDLqlnt8DbVvrfluvPEfniyagd9Pu9gFBT8yHdv3tTHq_r8yJ9DoUsG"
     },
     {
-      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InBhcnR5LTEiLCJzZXEiOjJ9",
-      "signature": "kZY-ULrPDd8Tk65F9iZAb7-Hdal3A84CbpxHLHWsDud3Kx8Ld3ItFR3Y2_z7wiMD0nAu9SRWVeG8XVqrhpwZGdQHjwGVUmf9MO1ky-IoszOuRifC4cCRJ00dq1ITDA1A"
+      "protected": "eyJhbGciOiJFUzM4NCIsImtpZCI6InBhcnR5LTEiLCJzZXEiOjIsImtpbmQiOiJCb3VuZGFyeSJ9",
+      "signature": "cVFQNr-RN24LgIQM75z46PlvpXuq5d4c4NZ8HVK4WynFqz5hS6-FWvBEdaiNda-8pe8Y_oB6IQAa7XLaZya93FMbyIzcQDT8kwsE9NeLgZXyaTlKlkc-9i3Ke8zDq6PA"
     }
   ]
 }"#;
@@ -142,20 +144,20 @@ fn a_changed_payload_or_header_does_not_verify() {
     // A byte-for-byte change of a value inside the header: seq 1 -> 3 with the old signature.
     d = json(VECTOR_1);
     d["signatures"][0]["protected"] = json!(header(
-        &json!({"alg": "ES384", "kid": "publisher-1", "seq": 3})
+        &json!({"alg": "ES384", "kid": "publisher-1", "seq": 3, "kind": KIND})
     ));
     assert_eq!(step(&d.to_string(), &plain()), 4);
 }
 
 #[test]
-fn only_es384_and_only_the_three_members_of_the_header() {
+fn only_es384_and_only_the_four_members_of_the_header() {
     let signed = |h: Value| {
         let mut d = json(VECTOR_1);
         d["signatures"][0]["protected"] = json!(header(&h));
         d.to_string()
     };
     for alg in ["ES256", "ES512", "HS384", "PS384", "none", "es384"] {
-        let doc = signed(json!({"alg": alg, "kid": "publisher-1", "seq": 1}));
+        let doc = signed(json!({"alg": alg, "kid": "publisher-1", "seq": 1, "kind": KIND}));
         assert_eq!(step(&doc, &plain()), 2, "alg {alg}");
     }
     for extra in [
@@ -166,23 +168,29 @@ fn only_es384_and_only_the_three_members_of_the_header() {
         ("jwk", json!({"kty": "EC"})),
         ("typ", json!("JWT")),
     ] {
-        let mut h = json!({"alg": "ES384", "kid": "publisher-1", "seq": 1});
+        let mut h = json!({"alg": "ES384", "kid": "publisher-1", "seq": 1, "kind": KIND});
         h[extra.0] = extra.1;
         assert_eq!(step(&signed(h), &plain()), 2, "header {}", extra.0);
     }
     // A missing member, a seq that is not a positive integer below 2^53, and a duplicate key.
     for h in [
-        json!({"alg": "ES384", "seq": 1}),
-        json!({"alg": "ES384", "kid": "publisher-1"}),
-        json!({"alg": "ES384", "kid": "publisher-1", "seq": 0}),
-        json!({"alg": "ES384", "kid": "publisher-1", "seq": -1}),
-        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1.5}),
-        json!({"alg": "ES384", "kid": "publisher-1", "seq": "1"}),
-        json!({"alg": "ES384", "kid": "publisher-1", "seq": 9_007_199_254_740_992_u64}),
+        json!({"alg": "ES384", "seq": 1, "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 0, "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": -1, "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1.5, "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": "1", "kind": KIND}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 9_007_199_254_740_992_u64, "kind": KIND}),
+        // The kind: missing, not a string, and another kind than the one asked for (ADR 0005, "Signed config documents").
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1, "kind": 1}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1, "kind": "TokenLifetime"}),
+        json!({"alg": "ES384", "kid": "publisher-1", "seq": 1, "kind": "boundary"}),
     ] {
         assert_eq!(step(&signed(h.clone()), &plain()), 2, "{h}");
     }
-    let dup = URL_SAFE_NO_PAD.encode(br#"{"alg":"ES384","kid":"publisher-1","seq":1,"seq":1}"#);
+    let dup = URL_SAFE_NO_PAD
+        .encode(br#"{"alg":"ES384","kid":"publisher-1","seq":1,"seq":1,"kind":"Boundary"}"#);
     let mut d = json(VECTOR_1);
     d["signatures"][0]["protected"] = json!(dup);
     assert_eq!(step(&d.to_string(), &plain()), 2);
@@ -191,8 +199,9 @@ fn only_es384_and_only_the_three_members_of_the_header() {
 #[test]
 fn the_signatures_of_one_document_carry_one_seq() {
     let mut d = json(VECTOR_2);
-    d["signatures"][1]["protected"] =
-        json!(header(&json!({"alg": "ES384", "kid": "party-1", "seq": 3})));
+    d["signatures"][1]["protected"] = json!(header(
+        &json!({"alg": "ES384", "kid": "party-1", "seq": 3, "kind": KIND})
+    ));
     assert_eq!(step(&d.to_string(), &both()), 2);
 }
 
@@ -278,4 +287,25 @@ fn the_sequence_table() {
     );
     // Vector 1 as the only document at a cold start, though seq 2 was published before.
     assert_eq!(sequence(None, &v1), Sequence::Newer);
+}
+
+// REQ-DATA-099: a document over the bound is refused at step 1 before anything is parsed, and one at the bound is not
+// refused for its size. The readers that verify for themselves hold the same bound (kits/go/signedconfig).
+#[test]
+fn a_document_over_the_bound_is_refused_before_it_is_read() {
+    use store::config::document::DOCUMENT_MAX;
+    let big = vec![b' '; DOCUMENT_MAX + 1];
+    let e = verify(&big, sluis_registry::kind_by_name(KIND).unwrap(), &plain()).unwrap_err();
+    assert_eq!(
+        (e.step, e.rule),
+        (1, "the document is larger than the bound")
+    );
+    // At the bound it is read as any document, and refused for what it is: not a JSON object.
+    let e = verify(
+        &big[..DOCUMENT_MAX],
+        sluis_registry::kind_by_name(KIND).unwrap(),
+        &plain(),
+    )
+    .unwrap_err();
+    assert_ne!(e.rule, "the document is larger than the bound");
 }

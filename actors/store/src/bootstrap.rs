@@ -511,8 +511,8 @@ mod tests {
 
     #[test]
     fn a_publisher_pin_must_match_its_key() {
-        let pin = "db0b54d40d09fffd2c296f8cadfa8454b7d4f2615a893a9b2f877621132c09e00fd8f33f199abc12b2bc1248246ece58";
-        let wrong = pin.replacen("db0b", "db0c", 1);
+        let pin = "d4c36e17a4d13238c8131db63e69bc2a70bd8797357fd39fea5b0d7e9e5d1919163152a3292201de5362906ad9afcbb4";
+        let wrong = pin.replacen(&pin[..4], "ffff", 1);
         assert_eq!(
             refusal(&local(&[(pin, &wrong)])),
             "publishers[0].spki_sha384: does not match the key"

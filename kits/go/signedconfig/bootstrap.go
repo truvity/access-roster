@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 
@@ -124,7 +125,8 @@ func publisher(n *yaml.Node) (Publisher, error) {
 		return Publisher{}, err
 	}
 	block, rest := pem.Decode([]byte(text))
-	if block == nil || block.Type != "PUBLIC KEY" || len(bytes.TrimSpace(rest)) != 0 {
+	// Text before the block is refused as text after it is: the value is one PEM block and nothing else.
+	if !strings.HasPrefix(strings.TrimSpace(text), "-----BEGIN PUBLIC KEY-----") || block == nil || block.Type != "PUBLIC KEY" || len(bytes.TrimSpace(rest)) != 0 {
 		return Publisher{}, errors.New("public_key: must be one PEM PUBLIC KEY block")
 	}
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)

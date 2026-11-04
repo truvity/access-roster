@@ -26,6 +26,7 @@ import (
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // The errors of a call, set by the Connect code of the store's refusal (store-api.md, "Refusals"). The error a
@@ -204,6 +205,10 @@ func GetSignedConfig(ctx context.Context, c storev2alpha1connect.StoreServiceCli
 	res, err := c.GetSignedConfig(ctx, connect.NewRequest(&storev2alpha1.GetSignedConfigRequest{Kind: k.Segment}))
 	if err != nil {
 		return nil, mapErr("get signed config", err)
+	}
+	// One bound for the document, here, in the verifier and in store@; rpc.ClientOptions bounds the message itself.
+	if len(res.Msg.GetDocument()) > signedconfig.MaxDocument {
+		return nil, describe("get signed config", refusal.New(connect.CodeInternal, "schema", "document"))
 	}
 	if len(res.Msg.GetDocument()) == 0 {
 		return nil, describe("get signed config", refusal.New(connect.CodeInternal, "schema", "document"))

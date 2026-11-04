@@ -1433,6 +1433,44 @@ async fn req_data_099_the_signed_document_of_a_config_kind_goes_to_its_readers_o
     }
 }
 
+// REQ-DATA-099: a self-scoped kind has no signed document for any caller. The document holds every actor's items, and
+// an actor may read its own only, so the call is refused even to an actor that may read its own items.
+#[tokio::test]
+async fn req_data_099_a_self_scoped_kind_has_no_signed_document_for_anyone() {
+    let f = F::new().await;
+    let jws: &[u8] = b"{\"payload\":\"AAAA\",\"signatures\":[]}";
+    for (actor, kind) in [
+        ("adapter-github", "integration"),
+        ("adapter-slack", "integration"),
+        ("key", "tunables"),
+        ("session", "tunables"),
+        ("key", "log-settings"),
+    ] {
+        f.docs
+            .signed
+            .lock()
+            .unwrap()
+            .insert(kind.into(), jws.to_vec());
+        f.docs.versions.lock().unwrap().insert(kind.into(), 1);
+        f.as_(actor);
+        // The same actor reads its own item.
+        f.docs
+            .items
+            .lock()
+            .unwrap()
+            .insert((kind.into(), format!("{actor}/x")), b"t".to_vec());
+        assert!(
+            f.get(kind, "", &format!("{actor}/x")).await.is_ok(),
+            "{actor} reads its own item of {kind}"
+        );
+        refused(
+            f.get_signed_config(kind).await,
+            ErrorCode::PermissionDenied,
+            "rule",
+        );
+    }
+}
+
 #[tokio::test]
 async fn a_self_scoped_config_kind_is_read_under_the_callers_name_only() {
     let f = F::new().await;

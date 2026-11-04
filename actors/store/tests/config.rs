@@ -315,7 +315,7 @@ impl Env {
         put(
             self.docs.path(),
             segment,
-            &self.pipeline.sign(text.as_bytes(), seq),
+            &self.pipeline.sign(segment, text.as_bytes(), seq),
         );
     }
 }
@@ -395,7 +395,11 @@ async fn a_cold_start_refuses_on_any_failure_and_says_why() {
                 put(
                     e.docs.path(),
                     "key-plan",
-                    &Pipeline::new("publisher-1").sign(source("key-plan").as_bytes(), 1),
+                    &Pipeline::new("publisher-1").sign(
+                        "key-plan",
+                        source("key-plan").as_bytes(),
+                        1,
+                    ),
                 )
             }),
             "KeyPlan: step 4",
@@ -406,7 +410,7 @@ async fn a_cold_start_refuses_on_any_failure_and_says_why() {
                 put(
                     e.docs.path(),
                     "key-plan",
-                    &Pipeline::new("rogue").sign(source("key-plan").as_bytes(), 1),
+                    &Pipeline::new("rogue").sign("key-plan", source("key-plan").as_bytes(), 1),
                 )
             }),
             "KeyPlan: step 3",
@@ -658,8 +662,8 @@ async fn a_regulated_party_co_signature_is_required_by_the_bootstrap_file() {
     let both = document(
         text.as_bytes(),
         &[
-            e.pipeline.signature(text.as_bytes(), 1),
-            party.signature(text.as_bytes(), 1),
+            e.pipeline.signature("key-plan", text.as_bytes(), 1),
+            party.signature("key-plan", text.as_bytes(), 1),
         ],
     );
     put(e.docs.path(), "key-plan", &both);

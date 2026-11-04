@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // repoConfig is the real config source of the local installation, two levels above tools/harness/sign-config.
@@ -30,11 +32,11 @@ func testKey(t *testing.T) *ecdsa.PrivateKey {
 func TestSignedDocumentVerifiesAndCarriesTheBytes(t *testing.T) {
 	k := testKey(t)
 	payload := []byte("default:\n  name: dev\n")
-	doc, err := Sign(k, "publisher-1", 7, payload)
+	doc, err := Sign(k, "publisher-1", 7, "Boundary", payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, seq, err := Verify(doc, &k.PublicKey)
+	got, seq, err := Verify(doc, &k.PublicKey, "Boundary")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,14 +44,29 @@ func TestSignedDocumentVerifiesAndCarriesTheBytes(t *testing.T) {
 		t.Fatalf("payload %q seq %d", got, seq)
 	}
 	// A key other than the publisher's refuses it.
-	if _, _, err := Verify(doc, &testKey(t).PublicKey); err == nil {
+	if _, _, err := Verify(doc, &testKey(t).PublicKey, "Boundary"); err == nil {
 		t.Fatal("a document verified under another key")
+	}
+}
+
+// REQ-DATA-099: a document names its kind in the signed header, so a document of one kind cannot be served as another.
+func TestADocumentNamesItsKind(t *testing.T) {
+	k := testKey(t)
+	doc, err := Sign(k, "publisher-1", 1, "KeyPlan", []byte("a: 1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Verify(doc, &k.PublicKey, "KeyPlan"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Verify(doc, &k.PublicKey, "Boundary"); err == nil {
+		t.Fatal("a KeyPlan document verified as a Boundary")
 	}
 }
 
 func TestOneChangedCharacterOfThePayloadIsRefused(t *testing.T) {
 	k := testKey(t)
-	doc, err := Sign(k, "publisher-1", 1, []byte("a: 1\n"))
+	doc, err := Sign(k, "publisher-1", 1, "Boundary", []byte("a: 1\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +78,7 @@ func TestOneChangedCharacterOfThePayloadIsRefused(t *testing.T) {
 	} else {
 		bad[i] = 'Y'
 	}
-	if _, _, err := Verify(bad, &k.PublicKey); err == nil {
+	if _, _, err := Verify(bad, &k.PublicKey, "Boundary"); err == nil {
 		t.Fatal("a tampered payload verified")
 	}
 }
@@ -71,7 +88,7 @@ func TestSignRefusesAKeyThatIsNotP384(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Sign(k, "publisher-1", 1, []byte("x")); err == nil {
+	if _, err := Sign(k, "publisher-1", 1, "Boundary", []byte("x")); err == nil {
 		t.Fatal("signed with a P-256 key")
 	}
 }
@@ -118,7 +135,7 @@ func TestRunSignsEverySourceOfTheLocalInstallationAndPinsTheKey(t *testing.T) {
 	if !strings.Contains(string(boot), hex.EncodeToString(sum[:])) {
 		t.Fatal("the bootstrap file does not carry the pin of the publisher key")
 	}
-	if strings.Contains(string(boot), "db0b54d40d09fffd") {
+	if strings.Contains(string(boot), "d4c36e17a4d13238") {
 		t.Fatal("the bootstrap file still pins the key of the vectors")
 	}
 	if !strings.Contains(string(boot), "config_source: { driver: file") {
@@ -130,7 +147,11 @@ func TestRunSignsEverySourceOfTheLocalInstallationAndPinsTheKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		payload, seq, err := Verify(doc, &k.PublicKey)
+		kind, ok := registry.KindBySegment(strings.TrimSuffix(n, ".jws"))
+		if !ok {
+			t.Fatalf("%s is not the segment of a kind", n)
+		}
+		payload, seq, err := Verify(doc, &k.PublicKey, kind.Name)
 		if err != nil || seq != 5 {
 			t.Fatalf("%s: %v seq %d", n, err, seq)
 		}
@@ -233,7 +254,7 @@ func TestRunSignsTheRecipientsIntoTheKeyPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, _, err := Verify(doc, &k.PublicKey)
+	payload, _, err := Verify(doc, &k.PublicKey, "KeyPlan")
 	if err != nil || !strings.Contains(string(payload), "    - "+idB+"\n") {
 		t.Fatalf("the signed KeyPlan does not list the recipient: %v\n%s", err, payload)
 	}
