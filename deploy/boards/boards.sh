@@ -103,7 +103,7 @@ run_on() { # board mode stage
 	local b=$1 m=$2 s=$3 d rc=0
 	d=$(board_ssh "$b" mktemp -d)
 	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
-		# The board's own node, per D-13 (no TLS, no authentication on the hive network).
+		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).
 		printf 'SLUIS_RQLITE_URL=http://%s:%s\n' "$b" "$rqlite_port" >"$s/files/etc/rqlite.env"
 	fi
 	tar -C "$s" -cf - . | board_ssh "$b" "tar -xf - -C '$d'"
