@@ -92,6 +92,10 @@ func (a *app) token(ctx context.Context, issuer, audience, secret string, res *r
 	if err != nil {
 		return tokenError(err, "token.exchange")
 	}
+	// RFC 8693 section 2.2.1: issued_token_type is REQUIRED, and this request asked for an access token.
+	if tr.IssuedTokenType != tokenTypeAccess {
+		return refused("token.issued_token_type")
+	}
 	e := exchanged{AccessToken: tr.AccessToken, ExpiresAt: a.now().Add(time.Duration(tr.ExpiresIn) * time.Second).UTC()}
 	if set.Exchanged == nil {
 		set.Exchanged = map[string]exchanged{}

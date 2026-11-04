@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -10,6 +13,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 // fakeIDP is a test fixture: an issuer with discovery, an authorization endpoint that signs the person in at once,
@@ -33,6 +38,24 @@ type fakeIDP struct {
 	// idTokenNonce, when set, replaces the nonce of the identity token.
 	idTokenNonce string
 	expiresIn    int64
+
+	// The identity token is signed with signAlg and signKey (a private key, or a secret for HS256), and the key set
+	// publishes pub. Tests change them to make a token that must be refused.
+	signAlg jose.SignatureAlgorithm
+	signKey any
+	pub     jose.JSONWebKey
+	// rawIDToken, when set, makes the token from the claims itself.
+	rawIDToken func(claims []byte) string
+	// issuedType replaces issued_token_type of an exchange; "-" leaves it out.
+	issuedType string
+}
+
+const fakeKeyID = "k1"
+
+// setKey makes the issuer sign with priv and publish its public key.
+func (f *fakeIDP) setKey(alg jose.SignatureAlgorithm, priv any) {
+	f.signAlg, f.signKey = alg, priv
+	f.pub = jose.JSONWebKey{Key: (&jose.JSONWebKey{Key: priv}).Public().Key, KeyID: fakeKeyID, Use: "sig", Algorithm: string(alg)}
 }
 
 type authRequest struct{ challenge, nonce, redirect, clientID string }
@@ -40,6 +63,11 @@ type authRequest struct{ challenge, nonce, redirect, clientID string }
 func newFakeIDP(t *testing.T) *fakeIDP {
 	t.Helper()
 	f := &fakeIDP{codes: map[string]authRequest{}, expiresIn: 300}
+	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.setKey(jose.ES384, priv)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		iss := f.srv.URL
@@ -50,8 +78,12 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 			"issuer":                           iss,
 			"authorization_endpoint":           f.srv.URL + "/auth",
 			"token_endpoint":                   f.srv.URL + "/token",
+			"jwks_uri":                         f.srv.URL + "/jwks",
 			"code_challenge_methods_supported": []string{"S256"},
 		})
+	})
+	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{f.pub}})
 	})
 	mux.HandleFunc("/auth", f.auth)
 	mux.HandleFunc("/token", f.token)
@@ -135,22 +167,39 @@ func (f *fakeIDP) token(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, http.StatusBadRequest, "invalid_target")
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{ //nolint:gosec // test fixture
-			"access_token": "exchanged-for-" + r.PostForm.Get("audience"), "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
-			"token_type": "Bearer", "expires_in": 120,
-		})
+		answer := map[string]any{"access_token": "exchanged-for-" + r.PostForm.Get("audience"), "issued_token_type": "urn:ietf:params:oauth:token-type:access_token", "token_type": "Bearer", "expires_in": 120} //nolint:gosec // test fixture
+		switch f.issuedType {
+		case "":
+		case "-":
+			delete(answer, "issued_token_type")
+		default:
+			answer["issued_token_type"] = f.issuedType
+		}
+		_ = json.NewEncoder(w).Encode(answer)
 	default:
 		jsonError(w, http.StatusBadRequest, "unsupported_grant_type")
 	}
 }
 
-// idToken is a compact JWS with a dummy signature: the CLI does not check the signature of an identity token that it
-// received from the token endpoint (OpenID Connect Core 1.0 section 3.1.3.7, item 6).
+// idToken is a compact JWS over the claims, signed as the fields of the fake say.
 func (f *fakeIDP) idToken(aud, nonce string) string {
-	enc := base64.RawURLEncoding.EncodeToString
-	hdr, _ := json.Marshal(map[string]string{"alg": "ES384"})
 	claims, _ := json.Marshal(map[string]any{"iss": f.srv.URL, "sub": "alice", "aud": aud, "exp": time.Now().Add(time.Hour).Unix(), "nonce": nonce})
-	return enc(hdr) + "." + enc(claims) + ".c2ln"
+	if f.rawIDToken != nil {
+		return f.rawIDToken(claims)
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: f.signAlg, Key: jose.JSONWebKey{Key: f.signKey, KeyID: fakeKeyID}}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		panic(err)
+	}
+	jws, err := signer.Sign(claims)
+	if err != nil {
+		panic(err)
+	}
+	out, err := jws.CompactSerialize()
+	if err != nil {
+		panic(err)
+	}
+	return out
 }
 
 func (f *fakeIDP) lastRequests() []url.Values {

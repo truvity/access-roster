@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,9 +168,31 @@ func TestParseVerifierKeyRejects(t *testing.T) {
 	if _, err := parseVerifierKey(key.vkey); err != nil {
 		t.Fatalf("a good key: %v", err)
 	}
-	bad := strings.Replace(key.vkey, "+", "+ff", 1)
-	if _, err := parseVerifierKey(bad); err == nil {
-		t.Fatal("a key with a wrong hash is accepted")
+	if _, err := parseVerifierKey(strings.Replace(key.vkey, "+", "+ff", 1)); err == nil {
+		t.Fatal("a key with a wrong ID is accepted")
+	}
+	// The key ID of an ECDSA key is the hash of the key alone: the Ed25519 rule (name, newline, type, key) is refused.
+	parts := strings.SplitN(key.vkey, "+", 3)
+	data, _ := base64.StdEncoding.DecodeString(parts[2])
+	sum := sha256.Sum256(append([]byte(parts[0]+"\n"), data...))
+	if _, err := parseVerifierKey(parts[0] + "+" + hex.EncodeToString(sum[:4]) + "+" + parts[2]); err == nil {
+		t.Fatal("a key ID made with the Ed25519 rule is accepted")
+	}
+	// Type 0x01 is Ed25519.
+	if _, err := parseVerifierKey(parts[0] + "+" + parts[1] + "+" + base64.StdEncoding.EncodeToString(append([]byte{1}, data[1:]...))); err == nil {
+		t.Fatal("signature type 0x01 is accepted")
+	}
+}
+
+func TestAuditVerifyRefusesAnotherDigest(t *testing.T) {
+	// A checkpoint signed over the SHA-256 digest, as the witness implementation does, is not one of ours.
+	key := newFixtureKey(t)
+	l := newFixtureLog(t, key, 300)
+	key.digest = func(msg []byte) []byte { d := sha256.Sum256(msg); return d[:] }
+	l.write(t, "checkpoint", l.checkpoint(t, key, 300, l.rootAt(t, 300)))
+	ta := newTestApp(t)
+	if code := ta.do(verifyArgs(l)...); code != 3 {
+		t.Fatalf("exit = %d, want 3", code)
 	}
 }
 

@@ -60,6 +60,22 @@ func cacheFile(dir, issuer string) string {
 	return filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 }
 
+// checkDir refuses a token directory that is not a real directory with mode 0700: another user could read, replace or
+// remove the files in it.
+func checkDir(dir string) error {
+	st, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return refused("cache.dir.type")
+	}
+	if st.Mode().Perm() != 0o700 {
+		return refused("cache.dir.mode")
+	}
+	return nil
+}
+
 // readSet reads a cache file. A file that the group or others can read, or that is not a regular file, is refused and
 // not used. The checks run on the open descriptor, so the file cannot change between the check and the read.
 func readSet(path string) (*tokenSet, error) {
@@ -92,6 +108,9 @@ func readSet(path string) (*tokenSet, error) {
 // directory and renamed over the old one, so a reader never sees half a file.
 func writeSet(dir string, s *tokenSet) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := checkDir(dir); err != nil {
 		return err
 	}
 	b, err := json.Marshal(s) //nolint:gosec // the cache file exists to hold the tokens; it is written 0600
@@ -134,6 +153,12 @@ func (a *app) loadSet(issuer string) (string, *tokenSet, error) {
 	dir, err := a.cacheDir()
 	if err != nil {
 		return "", nil, err
+	}
+	if err := checkDir(dir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return dir, nil, refused("cache.login")
+		}
+		return dir, nil, err
 	}
 	if issuer != "" {
 		s, err := readSet(cacheFile(dir, issuer))

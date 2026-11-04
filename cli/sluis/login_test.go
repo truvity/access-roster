@@ -1,12 +1,19 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 func login(t *testing.T, ta *testApp, f *fakeIDP, extra ...string) int {
@@ -98,6 +105,33 @@ func TestLoginWithClientSecretFromDescriptor(t *testing.T) {
 	}
 }
 
+func TestLoginAcceptsTheAllowedAlgorithms(t *testing.T) {
+	for name, mk := range map[string]func(t *testing.T, f *fakeIDP){
+		"ES256": func(t *testing.T, f *fakeIDP) {
+			k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.setKey(jose.ES256, k)
+		},
+		"RS256": func(t *testing.T, f *fakeIDP) {
+			k, err := rsa.GenerateKey(rand.Reader, 2048)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.setKey(jose.RS256, k)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeIDP(t)
+			mk(t, f)
+			if code := login(t, newTestApp(t), f); code != 0 {
+				t.Fatalf("exit = %d", code)
+			}
+		})
+	}
+}
+
 func TestLoginRefusals(t *testing.T) {
 	t.Run("issuer in the metadata differs", func(t *testing.T) {
 		f := newFakeIDP(t)
@@ -117,6 +151,63 @@ func TestLoginRefusals(t *testing.T) {
 			t.Fatal("a refused sign-in left a cache")
 		}
 	})
+	t.Run("signature of the identity token is not the issuer's", func(t *testing.T) {
+		f := newFakeIDP(t)
+		other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.signKey = other // signed with a key that the key set does not hold, under the published kid
+		ta := newTestApp(t)
+		if code := login(t, ta, f, "--output", "json"); code != 3 {
+			t.Fatalf("exit = %d, want 3; stderr %q", code, ta.err.String())
+		}
+		if !strings.Contains(ta.out.String(), "id_token.signature") {
+			t.Fatalf("stdout = %q", ta.out.String())
+		}
+		if _, err := os.Stat(filepath.Join(ta.cache, "sluis")); err == nil {
+			t.Fatal("a refused sign-in left a cache")
+		}
+	})
+	t.Run("claims changed after signing", func(t *testing.T) {
+		f := newFakeIDP(t)
+		sign := f.idToken
+		f.rawIDToken = func(claims []byte) string {
+			f.rawIDToken = nil
+			parts := strings.Split(sign("sluis-cli", "x"), ".")
+			forged := strings.Replace(string(claims), `"alice"`, `"mallory"`, 1)
+			return parts[0] + "." + base64.RawURLEncoding.EncodeToString([]byte(forged)) + "." + parts[2]
+		}
+		ta := newTestApp(t)
+		if code := login(t, ta, f, "--output", "json"); code != 3 || !strings.Contains(ta.out.String(), "id_token.signature") {
+			t.Fatalf("exit = %d, stdout %q", code, ta.out.String())
+		}
+	})
+	t.Run("algorithms outside the list", func(t *testing.T) {
+		enc := base64.RawURLEncoding.EncodeToString
+		for name, mk := range map[string]func(f *fakeIDP){
+			"HS256 with a secret": func(f *fakeIDP) { f.signAlg, f.signKey = jose.HS256, []byte("0123456789abcdef0123456789abcdef") },
+			"none": func(f *fakeIDP) {
+				f.rawIDToken = func(claims []byte) string { return enc([]byte(`{"alg":"none"}`)) + "." + enc(claims) + "." }
+			},
+			"PS256": func(f *fakeIDP) {
+				k, err := rsa.GenerateKey(rand.Reader, 2048)
+				if err != nil {
+					t.Fatal(err)
+				}
+				f.setKey(jose.PS256, k)
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				f := newFakeIDP(t)
+				mk(f)
+				ta := newTestApp(t)
+				if code := login(t, ta, f, "--output", "json"); code != 3 || !strings.Contains(ta.out.String(), "id_token.alg") {
+					t.Fatalf("exit = %d, stdout %q", code, ta.out.String())
+				}
+			})
+		}
+	})
 	t.Run("http issuer off loopback", func(t *testing.T) {
 		ta := newTestApp(t)
 		if code := ta.do("login", "--issuer", "http://idp.example.com", "--no-browser"); code != 1 {
@@ -124,6 +215,12 @@ func TestLoginRefusals(t *testing.T) {
 		}
 		if !strings.Contains(ta.err.String(), "loopback") {
 			t.Fatalf("stderr = %q", ta.err.String())
+		}
+	})
+	t.Run("issuer named localhost", func(t *testing.T) {
+		ta := newTestApp(t)
+		if code := ta.do("login", "--issuer", "http://localhost:8180", "--no-browser"); code != 1 {
+			t.Fatalf("exit = %d, want 1; stderr %q", code, ta.err.String())
 		}
 	})
 	t.Run("not a URL", func(t *testing.T) {
@@ -137,7 +234,7 @@ func TestCheckEndpoint(t *testing.T) {
 	for raw, ok := range map[string]bool{
 		"https://idp.example.com/realms/x": true,
 		"http://127.0.0.1:8180/realms/x":   true,
-		"http://localhost:8180":            true,
+		"http://localhost:8180":            false,
 		"http://[::1]:8180":                true,
 		"http://idp.example.com":           false,
 		"http://127.0.0.1.example.com":     false,
@@ -309,5 +406,51 @@ func TestUsageAndVersion(t *testing.T) {
 	}
 	if code := ta.do("--help"); code != 0 || !strings.Contains(ta.out.String(), "audit verify") {
 		t.Fatalf("help: exit = %d", code)
+	}
+}
+
+func TestCacheRefusesOpenDirectory(t *testing.T) {
+	f := newFakeIDP(t)
+	ta := newTestApp(t)
+	if code := login(t, ta, f); code != 0 {
+		t.Fatalf("login exit = %d", code)
+	}
+	dir := filepath.Join(ta.cache, "sluis", "tokens")
+	for _, mode := range []os.FileMode{0o750, 0o705, 0o755, 0o500} {
+		if err := os.Chmod(dir, mode); err != nil {
+			t.Fatal(err)
+		}
+		if code := ta.do("token", "--audience", "globex-app", "--output", "json"); code != 3 || !strings.Contains(ta.out.String(), "cache.dir.mode") {
+			t.Fatalf("mode %v: exit = %d, stdout %q", mode, code, ta.out.String())
+		}
+		// A sign-in does not write into it either.
+		if code := login(t, ta, f); code != 3 {
+			t.Fatalf("mode %v: login exit = %d, want 3", mode, code)
+		}
+	}
+	if err := os.Chmod(dir, 0o700); err != nil { //nolint:gosec // a directory needs the x bit
+		t.Fatal(err)
+	}
+	if code := ta.do("token", "--audience", "globex-app"); code != 0 {
+		t.Fatalf("mode 0700: exit = %d", code)
+	}
+}
+
+func TestTokenChecksIssuedTokenType(t *testing.T) {
+	for name, typ := range map[string]string{"missing": "-", "wrong": "urn:ietf:params:oauth:token-type:jwt"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeIDP(t)
+			ta := newTestApp(t)
+			if code := login(t, ta, f); code != 0 {
+				t.Fatalf("login exit = %d", code)
+			}
+			f.issuedType = typ
+			if code := ta.do("token", "--audience", "globex-app", "--output", "json"); code != 3 || !strings.Contains(ta.out.String(), "token.issued_token_type") {
+				t.Fatalf("exit = %d, stdout %q", code, ta.out.String())
+			}
+			if strings.Contains(ta.out.String(), "exchanged-for") {
+				t.Fatal("the token was printed")
+			}
+		})
 	}
 }

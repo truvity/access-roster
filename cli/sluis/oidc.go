@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 const maxBody = 1 << 20
@@ -28,8 +30,8 @@ func newHTTPClient() *http.Client {
 	}
 }
 
-// checkEndpoint accepts an https URL, or an http URL on a loopback host (decision D-11: an http issuer is for
-// development on one machine). The trust roots are the system's; SSL_CERT_FILE extends them for a harness CA, and there
+// checkEndpoint accepts an https URL, or an http URL on a loopback IP literal, 127.0.0.1 or [::1] (decision D-11: an
+// http issuer is for development on one machine; the name localhost can be made to resolve elsewhere). The trust roots are the system's; SSL_CERT_FILE extends them for a harness CA, and there
 // is no flag that turns verification off.
 func checkEndpoint(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
@@ -40,7 +42,7 @@ func checkEndpoint(raw string) (*url.URL, error) {
 	case "https":
 	case "http":
 		if !isLoopback(u.Hostname()) {
-			return nil, errors.New("an http URL is accepted only on a loopback host")
+			return nil, errors.New("an http URL is accepted only on a loopback address (127.0.0.1 or [::1])")
 		}
 	default:
 		return nil, errors.New("not an https URL")
@@ -48,12 +50,11 @@ func checkEndpoint(raw string) (*url.URL, error) {
 	return u, nil
 }
 
+// isLoopback is true for the two literals 127.0.0.1 and ::1 only (RFC 8252 section 7.3 names the IP literals, and
+// section 8.3 advises against the name localhost).
 func isLoopback(host string) bool {
-	if host == "localhost" {
-		return true
-	}
 	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return ip != nil && (ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback))
 }
 
 // provider is the part of the issuer's metadata that the CLI uses (OpenID Connect Discovery 1.0 section 3).
@@ -61,6 +62,7 @@ type provider struct {
 	Issuer                string   `json:"issuer"`
 	AuthorizationEndpoint string   `json:"authorization_endpoint"`
 	TokenEndpoint         string   `json:"token_endpoint"`
+	JWKSURI               string   `json:"jwks_uri"`
 	CodeChallengeMethods  []string `json:"code_challenge_methods_supported"`
 }
 
@@ -91,7 +93,7 @@ func discover(ctx context.Context, hc *http.Client, issuer string) (*provider, e
 	if p.Issuer != issuer {
 		return nil, refused("discovery.issuer")
 	}
-	for field, ep := range map[string]string{"authorization_endpoint": p.AuthorizationEndpoint, "token_endpoint": p.TokenEndpoint} {
+	for field, ep := range map[string]string{"authorization_endpoint": p.AuthorizationEndpoint, "token_endpoint": p.TokenEndpoint, "jwks_uri": p.JWKSURI} {
 		if _, err := checkEndpoint(ep); err != nil {
 			return nil, refused("discovery." + field)
 		}
@@ -167,6 +169,8 @@ type tokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	RefreshToken string `json:"refresh_token"`
 	IDToken      string `json:"id_token"`
+	// IssuedTokenType is REQUIRED in a token exchange answer (RFC 8693 section 2.2.1).
+	IssuedTokenType string `json:"issued_token_type"`
 }
 
 // oauthError is an error answer of the token endpoint (RFC 6749 section 5.2). It keeps the code, which is a short
@@ -245,19 +249,73 @@ func validErrorCode(s string) bool {
 	return true
 }
 
-// idTokenClaims checks the identity token of the code exchange and returns its subject. The token comes straight
-// from the token endpoint of the issuer over the connection that was just checked, so the signature is not checked
-// (OpenID Connect Core 1.0 section 3.1.3.7, item 6); the issuer, the audience, the expiry and the nonce are
-// (items 2, 3, 9 and 11).
-func idTokenClaims(raw, issuer, clientID, nonce string, now time.Time) (string, error) {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 3 {
-		return "", errors.New("id_token: not a compact JWS")
+// idTokenAlgs are the signature algorithms an identity token may use. The list is fixed: go-jose refuses any
+// other algorithm, "none" and the HMAC family included, before it looks at a key.
+var idTokenAlgs = []jose.SignatureAlgorithm{jose.ES256, jose.ES384, jose.RS256}
+
+// fetchJWKS reads the issuer's key set (OpenID Connect Discovery 1.0 section 3, jwks_uri).
+func fetchJWKS(ctx context.Context, hc *http.Client, uri string) (*jose.JSONWebKeySet, error) {
+	if _, err := checkEndpoint(uri); err != nil {
+		return nil, refused("discovery.jwks_uri")
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
-		return "", errors.New("id_token: the payload is not base64url")
+		return nil, err
 	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("jwks: %w", urlErrorWithoutURL(err))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("jwks: the issuer answered %d", resp.StatusCode)
+	}
+	var set jose.JSONWebKeySet
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxBody)).Decode(&set); err != nil {
+		return nil, errors.New("jwks: not a key set")
+	}
+	return &set, nil
+}
+
+// verifyIDToken checks the signature of the identity token against the issuer's key set, then its claims, and
+// returns the subject. The signature is checked even though the token came from the token endpoint: an issuer on
+// plain HTTP on loopback (D-11) has no TLS to lean on (OpenID Connect Core 1.0 section 3.1.3.7, item 6 would allow
+// skipping it only over TLS). The claims are the issuer, the audience, the expiry and the nonce (items 2, 3, 9, 11).
+func verifyIDToken(ctx context.Context, hc *http.Client, jwksURI, raw, issuer, clientID, nonce string, now time.Time) (string, error) {
+	tok, err := jose.ParseSignedCompact(raw, idTokenAlgs)
+	if err != nil || len(tok.Signatures) != 1 {
+		// Not a compact JWS, or an algorithm outside idTokenAlgs (none, HS256, ...).
+		return "", refused("id_token.alg")
+	}
+	set, err := fetchJWKS(ctx, hc, jwksURI)
+	if err != nil {
+		return "", err
+	}
+	var candidates []jose.JSONWebKey
+	if kid := tok.Signatures[0].Header.KeyID; kid != "" {
+		candidates = set.Key(kid)
+	} else {
+		candidates = set.Keys
+	}
+	var payload []byte
+	for _, k := range candidates {
+		if k.Use != "" && k.Use != "sig" {
+			continue
+		}
+		if b, err := tok.Verify(k); err == nil {
+			payload = b
+			break
+		}
+	}
+	if payload == nil {
+		return "", refused("id_token.signature")
+	}
+	return idTokenClaims(payload, issuer, clientID, nonce, now)
+}
+
+// idTokenClaims checks the claims of a verified identity token and returns its subject.
+func idTokenClaims(payload []byte, issuer, clientID, nonce string, now time.Time) (string, error) {
 	var c struct {
 		Iss   string          `json:"iss"`
 		Sub   string          `json:"sub"`
