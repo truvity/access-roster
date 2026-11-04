@@ -13,8 +13,9 @@ use connectrpc::{RequestContext, Response, Router, ServiceRequest, ServiceResult
 use sluis_kit::{Allow, Identities, ServerConfig, dial, refusal};
 use sluis_proto::sluis::store::v2alpha1::Provenance;
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, GetResponse, Item as WireItem, ListRequest, ListResponse, StoreService,
-    StoreServiceExt, Verb, WatchRequest, WatchResponse, WriteRequest, WriteResponse,
+    GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, Item as WireItem,
+    ListRequest, ListResponse, StoreService, StoreServiceExt, Verb, WatchRequest, WatchResponse,
+    WriteRequest, WriteResponse,
 };
 use sluis_store::{Error, Kind, Store, WriteOpts, segment_of, validate_address, validate_id};
 
@@ -171,6 +172,18 @@ impl StoreService for Mem {
             items: out,
             ..Default::default()
         })
+    }
+
+    async fn get_signed_config(
+        &self,
+        _ctx: RequestContext,
+        _request: ServiceRequest<'_, GetSignedConfigRequest>,
+    ) -> ServiceResult<GetSignedConfigResponse> {
+        Err(sluis_kit::refusal(
+            ErrorCode::Unimplemented,
+            "unsupported",
+            "",
+        ))
     }
 
     async fn watch(

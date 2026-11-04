@@ -1,0 +1,158 @@
+package signedconfig
+
+import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/sha512"
+	"crypto/subtle"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/truvity/sluis/v2/kits/go/registry"
+)
+
+// ParsePublishers reads the `publishers` block of a bootstrap file (bootstrap-file.md, "Publishers") and nothing
+// else of it: key@ reads no other key, and store@ is the file's only reader for the rest. It checks what the file's
+// own check does for this block: a key is a PEM PUBLIC KEY block holding an EC P-384 key, its pin
+// (spki_sha384) matches it, a kid is unique, and the block holds at least one key. A key with an anchor, an alias or
+// an explicit tag, or a second document, is refused, as the strict profile of the file refuses them.
+//
+// An error names a path, never a value.
+func ParsePublishers(bootstrap []byte) ([]Publisher, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(bootstrap))
+	var doc yaml.Node
+	if err := dec.Decode(&doc); err != nil {
+		return nil, errors.New("bootstrap: not YAML")
+	}
+	var second yaml.Node
+	if err := dec.Decode(&second); !errors.Is(err, io.EOF) {
+		return nil, errors.New("bootstrap: more than one document")
+	}
+	if err := plain(&doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, errors.New("bootstrap: not a mapping")
+	}
+	var list *yaml.Node
+	top := doc.Content[0]
+	for i := 0; i+1 < len(top.Content); i += 2 {
+		if top.Content[i].Value == "publishers" {
+			list = top.Content[i+1]
+		}
+	}
+	if list == nil || list.Kind != yaml.SequenceNode || len(list.Content) == 0 {
+		return nil, errors.New("publishers: must hold at least one publisher")
+	}
+	var out []Publisher
+	for i, item := range list.Content {
+		p, err := publisher(item)
+		if err != nil {
+			return nil, fmt.Errorf("publishers[%d]: %w", i, err)
+		}
+		for _, o := range out {
+			if o.KID == p.KID {
+				return nil, fmt.Errorf("publishers[%d].kid: not unique", i)
+			}
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// plain refuses what the strict profile refuses and a node tree shows: an anchor, an alias, an explicit tag and a
+// duplicate key.
+func plain(n *yaml.Node) error {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode || n.Style&yaml.TaggedStyle != 0 {
+		return errors.New("bootstrap: anchors, aliases and tags are refused")
+	}
+	if n.Kind == yaml.MappingNode {
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			k := n.Content[i].Value
+			if seen[k] {
+				return errors.New("bootstrap: duplicate key")
+			}
+			seen[k] = true
+		}
+	}
+	for _, c := range n.Content {
+		if err := plain(c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func publisher(n *yaml.Node) (Publisher, error) {
+	if n.Kind != yaml.MappingNode {
+		return Publisher{}, errors.New("must be a mapping")
+	}
+	fields := map[string]*yaml.Node{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		switch k := n.Content[i].Value; k {
+		case "kid", "public_key", "spki_sha384", "co_signs":
+			fields[k] = n.Content[i+1]
+		default:
+			return Publisher{}, errors.New("<key>: unknown key")
+		}
+	}
+	str := func(k string) (string, error) {
+		f := fields[k]
+		if f == nil || f.Kind != yaml.ScalarNode || f.ShortTag() != "!!str" {
+			return "", fmt.Errorf("%s: must be a string", k)
+		}
+		return f.Value, nil
+	}
+	kid, err := str("kid")
+	if err != nil {
+		return Publisher{}, err
+	}
+	text, err := str("public_key")
+	if err != nil {
+		return Publisher{}, err
+	}
+	pin, err := str("spki_sha384")
+	if err != nil {
+		return Publisher{}, err
+	}
+	block, rest := pem.Decode([]byte(text))
+	if block == nil || block.Type != "PUBLIC KEY" || len(bytes.TrimSpace(rest)) != 0 {
+		return Publisher{}, errors.New("public_key: must be one PEM PUBLIC KEY block")
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return Publisher{}, errors.New("public_key: not an EC P-384 SubjectPublicKeyInfo")
+	}
+	key, ok := pub.(*ecdsa.PublicKey)
+	if !ok || key.Curve != elliptic.P384() {
+		return Publisher{}, errors.New("public_key: not an EC P-384 SubjectPublicKeyInfo")
+	}
+	sum := sha512.Sum384(block.Bytes)
+	if want := hex.EncodeToString(sum[:]); len(pin) != len(want) || subtle.ConstantTimeCompare([]byte(pin), []byte(want)) != 1 {
+		return Publisher{}, errors.New("spki_sha384: does not match the key")
+	}
+	p := Publisher{KID: kid, Key: key}
+	if c := fields["co_signs"]; c != nil {
+		if c.Kind != yaml.SequenceNode {
+			return Publisher{}, errors.New("co_signs: must be a list")
+		}
+		for j, k := range c.Content {
+			if k.Kind != yaml.ScalarNode || k.ShortTag() != "!!str" {
+				return Publisher{}, fmt.Errorf("co_signs[%d]: must be a string", j)
+			}
+			if kind, ok := registry.KindByName(k.Value); !ok || kind.Class != "config" {
+				return Publisher{}, fmt.Errorf("co_signs[%d]: not a config kind of the registry", j)
+			}
+			p.CoSigns = append(p.CoSigns, k.Value)
+		}
+	}
+	return p, nil
+}

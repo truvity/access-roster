@@ -21,8 +21,9 @@ use sluis_proto::sluis::port::item::v2alpha1::{
     Condition, Delete, DriverItem, Put, QueryRequest, TransactRequest, condition::Expect,
 };
 use sluis_proto::sluis::store::v2alpha1::{
-    Consistency, GetRequest, GetResponse, Item, ListRequest, ListResponse, StoreService, Verb,
-    WatchRequest, WatchResponse, WriteRequest, WriteResponse,
+    Consistency, GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, Item,
+    ListRequest, ListResponse, StoreService, Verb, WatchRequest, WatchResponse, WriteRequest,
+    WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::{Address, IndexEntry};
 use sluis_registry::{Class, Kind, Scope};
@@ -410,6 +411,40 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
         Ok(GetResponse {
             item: self.wire_item(addr, &item).into(),
             ..GetResponse::default()
+        })
+    }
+
+    /// The signed document in force for a config kind, as the source gave it (store-api.md
+    /// "GetSignedConfig"). It is a read of the kind, so the readers of the kind in the registry may
+    /// call it and nobody else. store@ has verified the document, but the caller must not rely on
+    /// that: it verifies the bytes itself, which is why they are returned and not the decoded items.
+    fn get_signed_config_inner(
+        &self,
+        caller: &str,
+        req: &GetSignedConfigRequest,
+    ) -> Res<GetSignedConfigResponse> {
+        let bad = || refuse(ErrorCode::InvalidArgument, "address", "kind");
+        if !valid_part(&req.kind) {
+            return Err(bad());
+        }
+        let kind = sluis_registry::kind_by_segment(&req.kind).ok_or_else(bad)?;
+        let blame = |mut r: Refuse| {
+            r.kind = Some(kind.name);
+            r.verb = "get";
+            r
+        };
+        if kind.class != Class::Config {
+            return Err(blame(bad()));
+        }
+        self.authorise(caller, kind, "get", None).map_err(blame)?;
+        // A kind with no loaded document is unavailable, not empty.
+        let document = self
+            .config
+            .signed(kind.segment)
+            .ok_or_else(|| blame(engine_down()))?;
+        Ok(GetSignedConfigResponse {
+            document,
+            ..GetSignedConfigResponse::default()
         })
     }
 
@@ -1097,6 +1132,16 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> StoreService for Service<E, G,
     ) -> ServiceResult<WriteResponse> {
         let who = self.caller(&ctx).await?;
         let r = self.write_inner(who.name, request.to_owned_message()).await;
+        self.answer(&who, r).await
+    }
+
+    async fn get_signed_config(
+        &self,
+        ctx: RequestContext,
+        request: ServiceRequest<'_, GetSignedConfigRequest>,
+    ) -> ServiceResult<GetSignedConfigResponse> {
+        let who = self.caller(&ctx).await?;
+        let r = self.get_signed_config_inner(who.name, &request.to_owned_message());
         self.answer(&who, r).await
     }
 

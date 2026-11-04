@@ -46,8 +46,9 @@ use sluis_proto::sluis::port::index::v2alpha1::{
     IndexReadServiceClient, IndexReadServiceExt, IndexServiceExt, Partition, Row, SearchRequest,
 };
 use sluis_proto::sluis::store::v2alpha1::{
-    GetRequest, GetResponse, Item, ListRequest, ListResponse, StoreService, StoreServiceExt,
-    WatchRequest, WatchResponse, WriteRequest, WriteResponse,
+    GetRequest, GetResponse, GetSignedConfigRequest, GetSignedConfigResponse, Item, ListRequest,
+    ListResponse, StoreService, StoreServiceExt, WatchRequest, WatchResponse, WriteRequest,
+    WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::Address;
 use tokio::sync::oneshot;
@@ -653,6 +654,17 @@ impl StoreService for StoreSvc {
     ) -> ServiceResult<WriteResponse> {
         unimplemented()
     }
+    async fn get_signed_config(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, GetSignedConfigRequest>,
+    ) -> ServiceResult<GetSignedConfigResponse> {
+        Err(connectrpc::ConnectError::new(
+            connectrpc::error::ErrorCode::Unimplemented,
+            "not served by this fake",
+        ))
+    }
+
     async fn watch(
         &self,
         _: RequestContext,

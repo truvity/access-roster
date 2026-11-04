@@ -23,6 +23,10 @@ pub trait ConfigSnapshot: Send + Sync {
     /// The document's seq. None: no document of this kind is loaded, which the store service
     /// answers as `unavailable`/`engine` (fail closed), never as an empty kind.
     fn version(&self, segment: &str) -> Option<u64>;
+    /// The signed document in force for a kind: the bytes the config source gave, exactly. None: no
+    /// document of this kind is loaded. store@ vouches for nothing in them; a caller verifies them
+    /// itself (signed-config.md "Verifying a document").
+    fn signed(&self, segment: &str) -> Option<Vec<u8>>;
 }
 
 /// No snapshot: every config read is unavailable. For tests of the service; `serve` never uses it.
@@ -38,6 +42,9 @@ impl ConfigSnapshot for NoConfig {
     fn version(&self, _segment: &str) -> Option<u64> {
         None
     }
+    fn signed(&self, _segment: &str) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// The loader is the snapshot the service reads: every read sees the snapshot in force at that
@@ -51,6 +58,9 @@ impl ConfigSnapshot for Loader {
     }
     fn version(&self, segment: &str) -> Option<u64> {
         self.snapshot().version(segment)
+    }
+    fn signed(&self, segment: &str) -> Option<Vec<u8>> {
+        self.snapshot().signed(segment)
     }
 }
 

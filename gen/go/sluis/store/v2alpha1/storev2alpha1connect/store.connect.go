@@ -43,6 +43,9 @@ const (
 	StoreServiceWriteProcedure = "/sluis.store.v2alpha1.StoreService/Write"
 	// StoreServiceWatchProcedure is the fully-qualified name of the StoreService's Watch RPC.
 	StoreServiceWatchProcedure = "/sluis.store.v2alpha1.StoreService/Watch"
+	// StoreServiceGetSignedConfigProcedure is the fully-qualified name of the StoreService's
+	// GetSignedConfig RPC.
+	StoreServiceGetSignedConfigProcedure = "/sluis.store.v2alpha1.StoreService/GetSignedConfig"
 )
 
 // StoreServiceClient is a client for the sluis.store.v2alpha1.StoreService service.
@@ -51,6 +54,7 @@ type StoreServiceClient interface {
 	List(context.Context, *connect.Request[v2alpha1.ListRequest]) (*connect.Response[v2alpha1.ListResponse], error)
 	Write(context.Context, *connect.Request[v2alpha1.WriteRequest]) (*connect.Response[v2alpha1.WriteResponse], error)
 	Watch(context.Context, *connect.Request[v2alpha1.WatchRequest]) (*connect.ServerStreamForClient[v2alpha1.WatchResponse], error)
+	GetSignedConfig(context.Context, *connect.Request[v2alpha1.GetSignedConfigRequest]) (*connect.Response[v2alpha1.GetSignedConfigResponse], error)
 }
 
 // NewStoreServiceClient constructs a client for the sluis.store.v2alpha1.StoreService service. By
@@ -88,15 +92,22 @@ func NewStoreServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(storeServiceMethods.ByName("Watch")),
 			connect.WithClientOptions(opts...),
 		),
+		getSignedConfig: connect.NewClient[v2alpha1.GetSignedConfigRequest, v2alpha1.GetSignedConfigResponse](
+			httpClient,
+			baseURL+StoreServiceGetSignedConfigProcedure,
+			connect.WithSchema(storeServiceMethods.ByName("GetSignedConfig")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // storeServiceClient implements StoreServiceClient.
 type storeServiceClient struct {
-	get   *connect.Client[v2alpha1.GetRequest, v2alpha1.GetResponse]
-	list  *connect.Client[v2alpha1.ListRequest, v2alpha1.ListResponse]
-	write *connect.Client[v2alpha1.WriteRequest, v2alpha1.WriteResponse]
-	watch *connect.Client[v2alpha1.WatchRequest, v2alpha1.WatchResponse]
+	get             *connect.Client[v2alpha1.GetRequest, v2alpha1.GetResponse]
+	list            *connect.Client[v2alpha1.ListRequest, v2alpha1.ListResponse]
+	write           *connect.Client[v2alpha1.WriteRequest, v2alpha1.WriteResponse]
+	watch           *connect.Client[v2alpha1.WatchRequest, v2alpha1.WatchResponse]
+	getSignedConfig *connect.Client[v2alpha1.GetSignedConfigRequest, v2alpha1.GetSignedConfigResponse]
 }
 
 // Get calls sluis.store.v2alpha1.StoreService.Get.
@@ -119,12 +130,18 @@ func (c *storeServiceClient) Watch(ctx context.Context, req *connect.Request[v2a
 	return c.watch.CallServerStream(ctx, req)
 }
 
+// GetSignedConfig calls sluis.store.v2alpha1.StoreService.GetSignedConfig.
+func (c *storeServiceClient) GetSignedConfig(ctx context.Context, req *connect.Request[v2alpha1.GetSignedConfigRequest]) (*connect.Response[v2alpha1.GetSignedConfigResponse], error) {
+	return c.getSignedConfig.CallUnary(ctx, req)
+}
+
 // StoreServiceHandler is an implementation of the sluis.store.v2alpha1.StoreService service.
 type StoreServiceHandler interface {
 	Get(context.Context, *connect.Request[v2alpha1.GetRequest]) (*connect.Response[v2alpha1.GetResponse], error)
 	List(context.Context, *connect.Request[v2alpha1.ListRequest]) (*connect.Response[v2alpha1.ListResponse], error)
 	Write(context.Context, *connect.Request[v2alpha1.WriteRequest]) (*connect.Response[v2alpha1.WriteResponse], error)
 	Watch(context.Context, *connect.Request[v2alpha1.WatchRequest], *connect.ServerStream[v2alpha1.WatchResponse]) error
+	GetSignedConfig(context.Context, *connect.Request[v2alpha1.GetSignedConfigRequest]) (*connect.Response[v2alpha1.GetSignedConfigResponse], error)
 }
 
 // NewStoreServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -158,6 +175,12 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(storeServiceMethods.ByName("Watch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	storeServiceGetSignedConfigHandler := connect.NewUnaryHandler(
+		StoreServiceGetSignedConfigProcedure,
+		svc.GetSignedConfig,
+		connect.WithSchema(storeServiceMethods.ByName("GetSignedConfig")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.store.v2alpha1.StoreService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case StoreServiceGetProcedure:
@@ -168,6 +191,8 @@ func NewStoreServiceHandler(svc StoreServiceHandler, opts ...connect.HandlerOpti
 			storeServiceWriteHandler.ServeHTTP(w, r)
 		case StoreServiceWatchProcedure:
 			storeServiceWatchHandler.ServeHTTP(w, r)
+		case StoreServiceGetSignedConfigProcedure:
+			storeServiceGetSignedConfigHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -191,4 +216,8 @@ func (UnimplementedStoreServiceHandler) Write(context.Context, *connect.Request[
 
 func (UnimplementedStoreServiceHandler) Watch(context.Context, *connect.Request[v2alpha1.WatchRequest], *connect.ServerStream[v2alpha1.WatchResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("sluis.store.v2alpha1.StoreService.Watch is not implemented"))
+}
+
+func (UnimplementedStoreServiceHandler) GetSignedConfig(context.Context, *connect.Request[v2alpha1.GetSignedConfigRequest]) (*connect.Response[v2alpha1.GetSignedConfigResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.store.v2alpha1.StoreService.GetSignedConfig is not implemented"))
 }

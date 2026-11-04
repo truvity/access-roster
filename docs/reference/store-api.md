@@ -18,6 +18,7 @@ service StoreService {
   rpc List(ListRequest) returns (ListResponse);            // the items of a kind in a tenant, or by a declared index
   rpc Write(WriteRequest) returns (WriteResponse);         // create, update, delete or apply, all or none
   rpc Watch(WatchRequest) returns (stream WatchResponse);  // the changes of a kind from a resume point
+  rpc GetSignedConfig(GetSignedConfigRequest) returns (GetSignedConfigResponse);  // the signed document of a config kind, as the source holds it
 }
 
 message Address {
@@ -104,6 +105,17 @@ message WriteResponse { repeated Item items = 1; }  // the items as written, wit
 - **store@ checks, on every operation,** the rule of the actor, the kind and the verb; the schema of the kind; a TTL within the kind's maximum; the version; the bounds and the direction rule of a layered kind; the links the registry says are checked at write; and that the caller is the kind's one writer ([0005](/decisions/0005-the-store/#rules)). On a write to a tenant-scoped address, except key@'s own writes of `DataKeyWrap` ([0005](/decisions/0005-the-store/#rules)), it has key@ open the grant, and refuses the write unless the grant names the address's tenant and allows the verb ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)).
 - **While `MaintenanceMode` is set,** every write except those of the restore command is refused ([0010](/decisions/0010-backup-and-recovery/#restore)).
 - **A write that changes a watched kind** also writes its change-log row in the same transaction. A kind that nobody watches writes none, and a hot counter is one conditional update ([Item contract](#the-item-contract)).
+
+### GetSignedConfig
+
+```proto
+message GetSignedConfigRequest { string kind = 1; }           // the kind's segment; a config kind
+message GetSignedConfigResponse { bytes document = 1; }       // the JWS bytes exactly as the config source gave them
+```
+
+- **It returns the signed document in force of a config kind, unread.** The bytes are the ones the config source gave store@, which store@ verified before it swapped them into the snapshot ([Signed config](/reference/signed-config/#verifying-a-document)). store@ vouches for nothing in them: the point of the call is that a reader which must not rely on store@ for what a document says verifies the signature and the sequence itself, under the publisher keys of its own copy of the bootstrap file. key@ does so for the `KeyPlan` ([0006](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)).
+- **It is a read of the kind.** The readers of the kind in the registry may call it and nobody else, by peer uid, and every refusal of a read applies ([Refusals](#refusals)): `permission_denied` with the reason `rule` for an actor with no read rule on the kind, and `unavailable` with the reason `engine` for a kind with no loaded document. A kind that is not a config kind, an unknown segment and a malformed one are `invalid_argument` with the reason `address` and the path `kind`.
+- **It adds no edge to the call graph:** an actor that may call store@ at all is judged by its rule on the kind, as for `Get` ([REQ-DATA-099](/requirements/data/#REQ-DATA-099)).
 
 ### The lease value
 

@@ -13,6 +13,7 @@ service StoreService {
   rpc List(ListRequest) returns (ListResponse);            // the items of a kind in a tenant, or by a declared index
   rpc Write(WriteRequest) returns (WriteResponse);         // create, update, delete or apply, all or none
   rpc Watch(WatchRequest) returns (stream WatchResponse);  // the changes of a kind from a resume point
+  rpc GetSignedConfig(GetSignedConfigRequest) returns (GetSignedConfigResponse);  // the signed document of a config kind, as the source holds it
 }
 
 // Item is a stored item as store@ returns it.
@@ -126,4 +127,14 @@ message WatchResponse {
   uint64 resume_point = 1;   // hand this back after a restart
   ChangeType type = 2;       // PUT or DELETE
   Item item = 3;             // the item the change is about
+}
+
+// GetSignedConfigRequest asks for the signed document of one config kind.
+message GetSignedConfigRequest {
+  string kind = 1;  // the kind's segment; a config kind the caller may read
+}
+
+// GetSignedConfigResponse is the signed document in force, so that the caller verifies it itself.
+message GetSignedConfigResponse {
+  bytes document = 1;  // the JWS bytes exactly as the config source gave them (signed-config.md); store@ vouches for nothing in them
 }

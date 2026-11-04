@@ -29,11 +29,12 @@ import (
 // its own tests'.
 type fake struct {
 	storev2alpha1connect.UnimplementedStoreServiceHandler
-	mu    sync.Mutex
-	items map[string]*storev2alpha1.Item
-	seen  []*storev2alpha1.WriteRequest
-	reads []*storev2alpha1.GetRequest
-	lists []*storev2alpha1.ListRequest
+	mu     sync.Mutex
+	items  map[string]*storev2alpha1.Item
+	seen   []*storev2alpha1.WriteRequest
+	reads  []*storev2alpha1.GetRequest
+	lists  []*storev2alpha1.ListRequest
+	signed []string
 }
 
 func key(a *typev2alpha1.Address) string { return a.GetTenant() + "/" + a.GetKind() + "/" + a.GetId() }
@@ -50,6 +51,19 @@ func (f *fake) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequ
 		return connect.NewResponse(&storev2alpha1.GetResponse{Unchanged: true}), nil
 	}
 	return connect.NewResponse(&storev2alpha1.GetResponse{Item: it}), nil
+}
+
+func (f *fake) GetSignedConfig(_ context.Context, req *connect.Request[storev2alpha1.GetSignedConfigRequest]) (*connect.Response[storev2alpha1.GetSignedConfigResponse], error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signed = append(f.signed, req.Msg.GetKind())
+	switch req.Msg.GetKind() {
+	case "key-plan":
+		return connect.NewResponse(&storev2alpha1.GetSignedConfigResponse{Document: []byte(`{"payload":"AAAA","signatures":[]}`)}), nil
+	case "boundary":
+		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
+	return nil, refusal.New(connect.CodePermissionDenied, "rule", "")
 }
 
 func (f *fake) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
@@ -131,9 +145,9 @@ func (f *fake) Write(_ context.Context, req *connect.Request[storev2alpha1.Write
 	return connect.NewResponse(&storev2alpha1.WriteResponse{Items: out}), nil
 }
 
-func setup(t *testing.T, kind string, opts ...store.Option) (*store.Client[*typev2alpha1.Header], *fake) {
+// serveFake serves f on a socket and returns a client of it.
+func serveFake(t *testing.T, f *fake) storev2alpha1connect.StoreServiceClient {
 	t.Helper()
-	f := &fake{items: map[string]*storev2alpha1.Item{}}
 	dir, err := os.MkdirTemp("", "s")
 	if err != nil {
 		t.Fatal(err)
@@ -166,6 +180,13 @@ func setup(t *testing.T, kind string, opts ...store.Option) (*store.Client[*type
 	f.mu.Lock()
 	f.reads = nil
 	f.mu.Unlock()
+	return c
+}
+
+func setup(t *testing.T, kind string, opts ...store.Option) (*store.Client[*typev2alpha1.Header], *fake) {
+	t.Helper()
+	f := &fake{items: map[string]*storev2alpha1.Item{}}
+	c := serveFake(t, f)
 	cl, err := store.New(c, kind, newHeader, opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -454,5 +475,32 @@ func TestCreateAllChecksBeforeTheCall(t *testing.T) {
 	}
 	if got, err := c.CreateAll(ctx, mk(store.MaxBatch)); err != nil || len(got) != store.MaxBatch {
 		t.Fatalf("64 items: %d, %v", len(got), err)
+	}
+}
+
+// REQ-DATA-099: the typed call returns the signed document unread, names a config kind only, and maps the refusals.
+func TestGetSignedConfig(t *testing.T) {
+	f := &fake{items: map[string]*storev2alpha1.Item{}}
+	c := serveFake(t, f)
+	doc, err := store.GetSignedConfig(context.Background(), c, "KeyPlan")
+	if err != nil || string(doc) != `{"payload":"AAAA","signatures":[]}` {
+		t.Fatalf("KeyPlan: %q, %v", doc, err)
+	}
+	if len(f.signed) != 1 || f.signed[0] != "key-plan" {
+		t.Fatalf("asked for %v, want the segment key-plan", f.signed)
+	}
+	for _, kind := range []string{"DataKeyWrap", "NoSuchKind", ""} {
+		if _, err := store.GetSignedConfig(context.Background(), c, kind); err == nil {
+			t.Errorf("%q: a kind that is not a config kind must be refused before the call", kind)
+		}
+	}
+	if len(f.signed) != 1 {
+		t.Fatalf("a refused kind reached the store: %v", f.signed)
+	}
+	if _, err := store.GetSignedConfig(context.Background(), c, "Boundary"); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Errorf("an outage: %v", err)
+	}
+	if _, err := store.GetSignedConfig(context.Background(), c, "TokenLifetime"); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("a refusal: %v", err)
 	}
 }

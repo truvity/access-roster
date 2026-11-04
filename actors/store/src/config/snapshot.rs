@@ -37,6 +37,8 @@ pub struct Document {
     pub digest: [u8; 48],
     /// The source's version label of the bytes it gave.
     label: String,
+    /// The document as the source gave it, for a caller that verifies it itself (`GetSignedConfig`).
+    signed: Vec<u8>,
     items: Items,
 }
 
@@ -98,6 +100,10 @@ impl ConfigSnapshot for Snapshot {
 
     fn version(&self, segment: &str) -> Option<u64> {
         self.docs.get(segment).map(|d| d.seq)
+    }
+
+    fn signed(&self, segment: &str) -> Option<Vec<u8>> {
+        self.docs.get(segment).map(|d| d.signed.clone())
     }
 }
 
@@ -372,6 +378,7 @@ impl Loader {
             seq: v.seq,
             digest: v.digest,
             label: got.version.clone(),
+            signed: got.data.to_vec(),
             items,
         })
     }
