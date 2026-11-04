@@ -955,6 +955,26 @@ async fn client_authentication_by_header_or_form_reaches_session_and_exchange() 
 }
 
 #[tokio::test]
+async fn an_authorization_header_that_is_present_and_empty_is_refused() {
+    // An empty header must not read as "no authentication": it would hide a second method beside client_secret.
+    let up = up().await;
+    let ex = "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&subject_token=t&client_id=sluis-cli";
+    for form in [ex.to_owned(), format!("{ex}&client_secret=s")] {
+        let r = http(
+            &up,
+            "POST",
+            "/token",
+            &[FORM, ("Authorization", "")],
+            form.as_bytes(),
+        )
+        .await;
+        assert_eq!(r.status, 400);
+        assert!(r.text().contains("invalid_request"));
+    }
+    assert!(up.fake.calls.lock().unwrap().exchange.is_empty());
+}
+
+#[tokio::test]
 async fn two_client_authentication_methods_in_one_exchange_are_refused_at_the_edge() {
     // RFC 6749 section 2.3: a client uses one method per request. Even an empty secret is a second method.
     let up = up().await;

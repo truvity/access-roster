@@ -20,6 +20,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1/signerv2alpha1connect"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/clientauth"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/store"
@@ -55,6 +56,7 @@ type Service struct {
 	exchangev2alpha1connect.UnimplementedExchangeServiceHandler
 	opts     Options
 	verifier *Verifier
+	auth     *clientauth.Authenticator
 	now      func() time.Time
 }
 
@@ -67,7 +69,11 @@ func New(o Options) (*Service, error) {
 	if now == nil {
 		now = time.Now
 	}
-	return &Service{opts: o, verifier: NewVerifier(o.Config, o.Signer, now), now: now}, nil
+	auth, err := clientauth.New(o.Config)
+	if err != nil {
+		return nil, err
+	}
+	return &Service{opts: o, verifier: NewVerifier(o.Config, o.Signer, now), auth: auth, now: now}, nil
 }
 
 // ServerConfig is the configuration of the server on socket: the actor's registry name, and the call-graph check
@@ -128,15 +134,10 @@ func (s *Service) audit(ctx context.Context, a *attempt, err error) error {
 // dependency) or anything else (a bug).
 func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequest, a *attempt) (*typev2alpha1.HttpReply, error) {
 	// Client authentication comes before anything else, so that a failure shows nothing of the subject or the
-	// audience. exchange checks no client credential yet, so a request that carries one is refused rather than run
-	// as if it were unauthenticated (ADR 0022, "Proofs and the exchange").
-	// planned: authenticate a confidential client (REQ-EXCH-018)
-	if r.GetAuthorization() != "" && r.GetClientSecret() != "" {
-		// A client uses one method in a request (RFC 6749 section 2.3; contracts.md "The token exchange request").
-		return nil, invalidRequest(reasonClientMethods)
-	}
-	if r.GetAuthorization() != "" || r.GetClientSecret() != "" {
-		return nil, invalidClient()
+	// audience (REQ-EXCH-018, REQ-EXCH-019).
+	requester, err := s.authenticate(ctx, r, a)
+	if err != nil {
+		return nil, err
 	}
 	if err := checkRequest(r); err != nil {
 		return nil, err
@@ -166,10 +167,16 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 		// planned: workload exchange, with the first workload consumer (#961)
 		return nil, invalidRequest(reasonProofKind)
 	}
-	// The client of the request is the client the subject token was issued to. exchange authenticates no client yet,
-	// so the token is the only thing that ties the request to a client (REQ-EXCH-007 and REQ-EXCH-011).
-	if r.GetClientId() != "" && r.GetClientId() != subject.ClientID {
-		return nil, invalidRequest(reasonClient)
+	// An authenticated client is the one that asks. It need not be the client the subject token was issued to: the
+	// subject comes only from a public native client (REQ-EXCH-020, checked with the token) and the secret
+	// authenticates the confidential client that exchanges it (confirmation C-3). A request with no credentials is
+	// the public client's own exchange, and only that.
+	if requester == nil {
+		if !publicSelfExchange(r, subject) {
+			return nil, invalidClient()
+		}
+		a.client, a.method = audienceForRecord(r.GetClientId()), "none"
+		requester = subject.Client
 	}
 
 	// Everything that does not depend on the audience is checked first, so that a caller with a valid subject token
@@ -203,7 +210,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	if known {
 		audience = r.GetAudience()
 	}
-	verdict, err := s.decide(ctx, tenant, audience, client.GetRequires(), client.GetKind(), subject, &person)
+	verdict, err := s.decide(ctx, tenant, audience, client.GetRequires(), client.GetKind(), requester, subject, &person)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +241,7 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 	if err != nil {
 		return nil, err
 	}
-	claims, err := claimsOf(b.GetIssuer(), sub, r.GetAudience(), iat, exp, jti, subject, narrow(verdict.GetGrantNames(), client.GetRequires()))
+	claims, err := claimsOf(b.GetIssuer(), sub, r.GetAudience(), requester.GetId(), iat, exp, jti, subject, narrow(verdict.GetGrantNames(), client.GetRequires()))
 	if err != nil {
 		return nil, err
 	}
@@ -244,6 +251,54 @@ func (s *Service) run(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequ
 		return nil, unavailable("signer", err)
 	}
 	return successReply(res.Msg.GetToken(), exp-iat), nil
+}
+
+// publicSelfExchange says whether a request that carries no client authentication is served: it is the exchange of a
+// token that a public client of the native profile holds, by that same client (the decision of 2026-11-04, option (a),
+// ADR 0022; REQ-EXCH-007 and REQ-EXCH-011). The client of the request must be named and must be the client the
+// subject token was issued to, and mayBeExchanged has already limited a subject token of this boundary to the native
+// profile of a public client. Every other exchange is made by an authenticated confidential client.
+//
+// The rule is this one function: `sluis token --audience` is the public client exchanging its own token. A public
+// client that presents a secret never reaches it (authenticate refuses it, REQ-CLIENT-001).
+func publicSelfExchange(r *exchangev2alpha1.TokenExchangeRequest, subject *Subject) bool {
+	return r.GetClientId() != "" && r.GetClientId() == subject.ClientID
+}
+
+// authenticate checks the client credentials of a request (RFC 6749 section 2.3). It returns the confidential client
+// that authenticated, or nil for a request that presents none. A failure is invalid_client with the one answer for
+// a wrong secret, an unknown client, a public client that sends a secret (REQ-CLIENT-001) and a malformed header
+// (REQ-EXCH-019), and the secret is fetched and compared on the same path for all of them. A request that uses both
+// methods is an invalid request (RFC 6749 section 2.3).
+func (s *Service) authenticate(ctx context.Context, r *exchangev2alpha1.TokenExchangeRequest, a *attempt) (*configv2alpha1.InstallationClient, error) {
+	creds, present, err := clientauth.Parse(r.GetAuthorization(), r.GetClientId(), r.GetClientSecret())
+	switch {
+	case !present:
+		return nil, nil
+	case errors.Is(err, clientauth.ErrBothMethods):
+		return nil, invalidRequest(reasonClientMethods)
+	case err != nil:
+		return nil, invalidClient()
+	}
+	a.client, a.method = audienceForRecord(creds.ClientID), string(creds.Method)
+
+	// One path for every client: the secret is asked for and compared, and the declaration is read, whether the
+	// client exists, has a secret, or is public.
+	ok, err := s.auth.Authenticate(ctx, creds)
+	if err != nil {
+		return nil, unavailable("store", err)
+	}
+	client, err := s.opts.Config.Client(ctx, creds.ClientID)
+	known := err == nil
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return nil, unavailable("store", err)
+	}
+	// A client that exchanges is confidential (REQ-EXCH-007); a public client never authenticates by a secret.
+	if !ok || !known || client.GetKind() != "confidential" {
+		return nil, invalidClient()
+	}
+	a.authenticated = true
+	return client, nil
 }
 
 // checkRequest checks the parameters of RFC 8693 section 2.1 that need no other fact.
@@ -276,7 +331,7 @@ func checkRequest(r *exchangev2alpha1.TokenExchangeRequest) error {
 
 // decide asks policy whether the person's token may become a token for the audience (action token.exchange). The
 // answer carries the full set of held grant names; exchange narrows it (policy.md, "How a person's grants are found").
-func (s *Service) decide(ctx context.Context, t Tenant, audience string, requires []string, kind string, sub *Subject, p *Person) (*policyv2alpha1.DecideResponse, error) {
+func (s *Service) decide(ctx context.Context, t Tenant, audience string, requires []string, kind string, requester *configv2alpha1.InstallationClient, sub *Subject, p *Person) (*policyv2alpha1.DecideResponse, error) {
 	amr := append([]string{}, sub.AMR...)
 	res, err := s.opts.Policy.Decide(ctx, connect.NewRequest(&policyv2alpha1.DecideRequest{
 		Action:    "token.exchange",
@@ -288,6 +343,9 @@ func (s *Service) decide(ctx context.Context, t Tenant, audience string, require
 		},
 		Person: &policyv2alpha1.PersonFacts{Subject: p.ID, Accounts: p.Accounts, State: p.State, Org: p.Org},
 		Client: &policyv2alpha1.ClientFacts{Id: audience, Requires: requires, Kind: kind},
+		// The client that asks, authenticated or the public client's own: policy decides whether the person's and
+		// the requester's facts together allow the credential (ADR 0007, ADR 0022).
+		Requester: &policyv2alpha1.ClientFacts{Id: requester.GetId(), Requires: requester.GetRequires(), Kind: requester.GetKind()},
 		// The grant lets exchange ask key@ for the pairwise Mac.
 		GrantKeyOps: []string{"mac"},
 	}))

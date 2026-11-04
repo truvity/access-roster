@@ -383,6 +383,7 @@ type DecideRequest struct {
 	Actor           *ActorFacts            `protobuf:"bytes,8,opt,name=actor,proto3" json:"actor,omitempty"`                                              // facts about the actor, if the principal is one
 	GrantStoreVerbs []string               `protobuf:"bytes,9,rep,name=grant_store_verbs,json=grantStoreVerbs,proto3" json:"grant_store_verbs,omitempty"` // what the asker needs the grant to allow; policy narrows, never widens
 	GrantKeyOps     []string               `protobuf:"bytes,10,rep,name=grant_key_ops,json=grantKeyOps,proto3" json:"grant_key_ops,omitempty"`            // the key operations the asker needs the grant to allow
+	Requester       *ClientFacts           `protobuf:"bytes,11,opt,name=requester,proto3" json:"requester,omitempty"`                                     // token.exchange only: the client that asks for the exchange (ADR 0022); it is the audience client's own entity when they are the same
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -483,6 +484,13 @@ func (x *DecideRequest) GetGrantStoreVerbs() []string {
 func (x *DecideRequest) GetGrantKeyOps() []string {
 	if x != nil {
 		return x.GrantKeyOps
+	}
+	return nil
+}
+
+func (x *DecideRequest) GetRequester() *ClientFacts {
+	if x != nil {
+		return x.Requester
 	}
 	return nil
 }
@@ -660,7 +668,7 @@ const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\" \n" +
 	"\n" +
 	"ActorFacts\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xff\x03\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc1\x04\n" +
 	"\rDecideRequest\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12>\n" +
 	"\tprincipal\x18\x02 \x01(\v2 .sluis.policy.v2alpha1.EntityRefR\tprincipal\x12<\n" +
@@ -672,7 +680,8 @@ const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"\x05actor\x18\b \x01(\v2!.sluis.policy.v2alpha1.ActorFactsR\x05actor\x12*\n" +
 	"\x11grant_store_verbs\x18\t \x03(\tR\x0fgrantStoreVerbs\x12\"\n" +
 	"\rgrant_key_ops\x18\n" +
-	" \x03(\tR\vgrantKeyOps\"\xcd\x01\n" +
+	" \x03(\tR\vgrantKeyOps\x12@\n" +
+	"\trequester\x18\v \x01(\v2\".sluis.policy.v2alpha1.ClientFactsR\trequester\"\xcd\x01\n" +
 	"\x06Reason\x12\x1b\n" +
 	"\tpolicy_id\x18\x01 \x01(\tR\bpolicyId\x12\x14\n" +
 	"\x05layer\x18\x02 \x01(\tR\x05layer\x12P\n" +
@@ -730,16 +739,17 @@ var file_sluis_policy_v2alpha1_policy_proto_depIdxs = []int32{
 	3,  // 3: sluis.policy.v2alpha1.DecideRequest.person:type_name -> sluis.policy.v2alpha1.PersonFacts
 	4,  // 4: sluis.policy.v2alpha1.DecideRequest.client:type_name -> sluis.policy.v2alpha1.ClientFacts
 	5,  // 5: sluis.policy.v2alpha1.DecideRequest.actor:type_name -> sluis.policy.v2alpha1.ActorFacts
-	9,  // 6: sluis.policy.v2alpha1.Reason.annotations:type_name -> sluis.policy.v2alpha1.Reason.AnnotationsEntry
-	0,  // 7: sluis.policy.v2alpha1.DecideResponse.decision:type_name -> sluis.policy.v2alpha1.Decision
-	7,  // 8: sluis.policy.v2alpha1.DecideResponse.reasons:type_name -> sluis.policy.v2alpha1.Reason
-	6,  // 9: sluis.policy.v2alpha1.PolicyService.Decide:input_type -> sluis.policy.v2alpha1.DecideRequest
-	8,  // 10: sluis.policy.v2alpha1.PolicyService.Decide:output_type -> sluis.policy.v2alpha1.DecideResponse
-	10, // [10:11] is the sub-list for method output_type
-	9,  // [9:10] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	4,  // 6: sluis.policy.v2alpha1.DecideRequest.requester:type_name -> sluis.policy.v2alpha1.ClientFacts
+	9,  // 7: sluis.policy.v2alpha1.Reason.annotations:type_name -> sluis.policy.v2alpha1.Reason.AnnotationsEntry
+	0,  // 8: sluis.policy.v2alpha1.DecideResponse.decision:type_name -> sluis.policy.v2alpha1.Decision
+	7,  // 9: sluis.policy.v2alpha1.DecideResponse.reasons:type_name -> sluis.policy.v2alpha1.Reason
+	6,  // 10: sluis.policy.v2alpha1.PolicyService.Decide:input_type -> sluis.policy.v2alpha1.DecideRequest
+	8,  // 11: sluis.policy.v2alpha1.PolicyService.Decide:output_type -> sluis.policy.v2alpha1.DecideResponse
+	11, // [11:12] is the sub-list for method output_type
+	10, // [10:11] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_sluis_policy_v2alpha1_policy_proto_init() }

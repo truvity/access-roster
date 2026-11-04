@@ -461,7 +461,9 @@ fn authorization(h: &HeaderMap) -> Result<String, Refuse> {
     let v = v
         .to_str()
         .ok()
-        .filter(|v| v.len() <= HEADER_VALUE_MAX && it.next().is_none());
+        // A header that is present and empty is a method that the contract cannot carry (an empty string is an absent
+        // field), so it is refused and not read as no authentication (RFC 6749 section 2.3: one method per request).
+        .filter(|v| !v.is_empty() && v.len() <= HEADER_VALUE_MAX && it.next().is_none());
     v.map(str::to_owned)
         .ok_or(Refuse::new(400, "authorization"))
 }
