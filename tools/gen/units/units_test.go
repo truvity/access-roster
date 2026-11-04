@@ -216,7 +216,7 @@ func TestDriverUnits(t *testing.T) {
 func TestKeyUnitMatchesTheKeyActor(t *testing.T) {
 	files := generate(t)
 	svc := files["sluis-key@.service"]
-	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --run-dir /run/sluis/key/%i " +
+	want := "ExecStart=/opt/sluis/bin/actors/key serve --boundary %i --bootstrap /etc/sluis/bootstrap.d/%i.yaml --run-dir /run/sluis/key/%i " +
 		"--store-socket /run/sluis/store/%i.sock --driver-socket /run/sluis/key/%i/driver/key-store.sock " +
 		"--transport-socket /run/sluis/audit/%i/emit.sock --node %H\n"
 	if !strings.Contains(svc, want) {

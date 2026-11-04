@@ -1,0 +1,236 @@
+{
+ "description": "Test vectors of the KeyPlan payload (docs/reference/signed-config.md 'The payload'; the strict profile of docs/reference/bootstrap-file.md): the payload text, and either what both readers must read from it or the path that a refusal must contain. store@ (Rust, actors/store/tests/vectors.rs) and key@ (Go, actors/key/internal/keyd/plan_vectors_test.go) read the same file. A refusal in each language starts or contains the path; the wording of the rest differs.",
+ "cases": [
+  {
+   "name": "the local KeyPlan source",
+   "payload": "# KeyPlan: which keys exist and where they live (keys.yaml). The software key driver ignores the\n# slots; a board's card follows them.\ndefault:\n  cache_ttl: 15m\n  # The wrap recipients: the RFC 7638 thumbprint of each node's wrapping key, and no one else receives a wrap of a\n  # data key (ADR 0006, \"Who may receive a wrap\"). A software key is made at the first start, so the committed list\n  # is empty and the harness fills it in when it signs: deploy/local/local.sh up, deploy/boards/prepare.sh. They\n  # replace the line below, which must stay as it is.\n  recipients: []\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }\n    - { purpose: token-signing, algorithm: ES384, slot: 9a }\n    - { purpose: audit-log, algorithm: ES256, slot: \"84\" }\n    - { purpose: data, algorithm: AES-256-GCM }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": "9d"
+     },
+     {
+      "purpose": "token-signing",
+      "algorithm": "ES384",
+      "slot": "9a"
+     },
+     {
+      "purpose": "audit-log",
+      "algorithm": "ES256",
+      "slot": "84"
+     },
+     {
+      "purpose": "data",
+      "algorithm": "AES-256-GCM",
+      "slot": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "JSON, which is YAML, with two recipients",
+   "payload": "{\"default\": {\"cache_ttl\": \"1h\", \"recipients\": [\"NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs\", \"S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw\"], \"purposes\": [{\"purpose\": \"wrapping\", \"algorithm\": \"ECDH-P384\"}]}}",
+   "read": {
+    "cache_ttl_seconds": 3600,
+    "recipients": [
+     "NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs",
+     "S6so4ozvKppaEWY0wKql5mscesqW7SqnwqkfyQ_fabw"
+    ],
+    "purposes": [
+     {
+      "purpose": "wrapping",
+      "algorithm": "ECDH-P384",
+      "slot": ""
+     }
+    ]
+   }
+  },
+  {
+   "name": "no recipients key and no purposes",
+   "payload": "default:\n  cache_ttl: 30s\n",
+   "read": {
+    "cache_ttl_seconds": 30,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "recipients null",
+   "payload": "default:\n  cache_ttl: 2d\n  recipients: ~\n",
+   "read": {
+    "cache_ttl_seconds": 172800,
+    "recipients": [],
+    "purposes": []
+   }
+  },
+  {
+   "name": "a quoted slot that looks like a number",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: audit-log, algorithm: ES256, slot: \"84\" }\n",
+   "read": {
+    "cache_ttl_seconds": 900,
+    "recipients": [],
+    "purposes": [
+     {
+      "purpose": "audit-log",
+      "algorithm": "ES256",
+      "slot": "84"
+     }
+    ]
+   }
+  },
+  {
+   "name": "an unknown key",
+   "payload": "default:\n  cache_ttl: 15m\n  extra: 1\n",
+   "refused_path": "default"
+  },
+  {
+   "name": "an unknown key of a purpose",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, extra: x }\n",
+   "refused_path": "purposes[0]"
+  },
+  {
+   "name": "a purpose without an algorithm",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping }\n",
+   "refused_path": "purposes[0].algorithm"
+  },
+  {
+   "name": "purposes is not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes: wrapping\n",
+   "refused_path": "default.purposes"
+  },
+  {
+   "name": "a slot that is a number",
+   "payload": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: audit-log, algorithm: ES256, slot: 84 }\n",
+   "refused_path": "slot"
+  },
+  {
+   "name": "no cache_ttl",
+   "payload": "default:\n  recipients: []\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl zero",
+   "payload": "default:\n  cache_ttl: 0s\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl a bare number",
+   "payload": "default:\n  cache_ttl: 15\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl a fraction",
+   "payload": "default:\n  cache_ttl: 1.5s\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl a compound",
+   "payload": "default:\n  cache_ttl: 1h30m\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl ISO 8601",
+   "payload": "default:\n  cache_ttl: PT15M\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl an upper-case unit",
+   "payload": "default:\n  cache_ttl: 15M\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl ten digits",
+   "payload": "default:\n  cache_ttl: 1000000000s\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "cache_ttl a negative",
+   "payload": "default:\n  cache_ttl: -1s\n",
+   "refused_path": "default.cache_ttl"
+  },
+  {
+   "name": "no default item",
+   "payload": "other:\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "two items",
+   "payload": "default:\n  cache_ttl: 15m\nother:\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "the item is null",
+   "payload": "default:\n",
+   "refused_path": "default"
+  },
+  {
+   "name": "not a mapping",
+   "payload": "- default\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a recipient that is a label",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [node-1-abcdefghijklmnop]\n",
+   "refused_path": "recipients[0]"
+  },
+  {
+   "name": "a recipient too short",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9X]\n",
+   "refused_path": "recipients[0]"
+  },
+  {
+   "name": "a recipient padded",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs=]\n",
+   "refused_path": "recipients[0]"
+  },
+  {
+   "name": "a recipient with a non-canonical last character",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9XB]\n",
+   "refused_path": "recipients[0]"
+  },
+  {
+   "name": "a recipient listed twice",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs, NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs]\n",
+   "refused_path": "recipients[1]"
+  },
+  {
+   "name": "recipients is not a list",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs\n",
+   "refused_path": "default.recipients"
+  },
+  {
+   "name": "a recipient that is a number",
+   "payload": "default:\n  cache_ttl: 15m\n  recipients: [1]\n",
+   "refused_path": "recipients[0]"
+  },
+  {
+   "name": "a duplicate key",
+   "payload": "default:\n  cache_ttl: 15m\n  cache_ttl: 10m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "an anchor",
+   "payload": "default: &a\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a tag",
+   "payload": "default:\n  cache_ttl: !!str 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a second document",
+   "payload": "default:\n  cache_ttl: 15m\n---\ndefault:\n  cache_ttl: 15m\n",
+   "refused_path": ""
+  },
+  {
+   "name": "a tab",
+   "payload": "default:\n\tcache_ttl: 15m\n",
+   "refused_path": ""
+  }
+ ]
+}

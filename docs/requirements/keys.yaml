@@ -1029,16 +1029,30 @@ requirements:
     rationale: "The KeyCertificate items in the store are not signed, so a recipient taken from them would let a compromised store@ receive every data key (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     runtimes: all
     actors: [key]
     standards: []
     issues: [1208]
-    gap: keyplan-trust
     tests: [actors/key/internal/keyd/recipients_test.go]
     verification:
       - {kind: integration-test, ref: "a KeyCertificate for a node key id that the KeyPlan does not list is written to the store; a new data key has no wrap for it"}
       - {kind: integration-test, ref: "a KeyCertificate whose thumbprint differs from the listed id is not used"}
+  - id: REQ-KEYS-110
+    area: KEYS
+    statement: "key@ MUST verify the signature, the pinned publisher key and the sequence of the KeyPlan itself, and take no recipient, purpose or time to live from a KeyPlan it refuses."
+    rationale: "A compromised store@ could otherwise serve a KeyPlan that lists its own key, and the list is signed so that it cannot (ADR 0005, ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: done
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1208]
+    tests: [actors/key/internal/keyd/plan_test.go, actors/key/internal/keyd/plan_vectors_test.go, kits/go/signedconfig/vectors_test.go, actors/store/tests/vectors.rs]
+    verification:
+      - {kind: test-vectors, ref: "the shared vectors of the signed document: the Go and the Rust verifier give the same verdict at every step"}
+      - {kind: integration-test, ref: "a forged KeyPlan and one signed by the wrong key stop the start; a replayed lower seq is refused while key@ runs"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin."

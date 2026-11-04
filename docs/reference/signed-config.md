@@ -144,7 +144,7 @@ gRKwViO6TrYXCCq+TZVFl0XZTamJNr0E
 }
 ```
 
-The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step.
+The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step. [`keyplan-payloads.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/keyplan-payloads.json) does the same for the payload of a `KeyPlan`, which key@ reads from the bytes it verified.
 
 The payload of a vector is a stand-in: the signature layer does not look into it. Both vectors name the kind `Boundary`, and the page's keys were made on 2026-11-04 for the header that names a kind. Both vectors verify (checked 2026-11-04 with the Go verifier and the Rust verifier of sluis, which are the two implementations this page binds). The verdicts every implementation, Go and Rust, must give, with the bootstrap file listing both keys and the kind of the vectors under the party's `co_signs`:
 
