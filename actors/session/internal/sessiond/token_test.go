@@ -519,14 +519,11 @@ func TestSubjectIsPairwiseUnlessThePublicSectorIsDeclared(t *testing.T) {
 		t.Error("a sector named public was taken for the public one")
 	}
 	// Two sectors give one person two different subjects.
-	e = newEnv(t, func(o *options) { o.sectors = func(string) sessiond.Sector { return sessiond.Sector{Name: "other"} } })
-	if _, _ = sub(e); true {
-		e2 := newEnv(t, nil)
-		a, _ := sub(e2)
-		b, _ := sub(e)
-		if a == b {
-			t.Error("two sectors, one subject")
-		}
+	other := newEnv(t, func(o *options) { o.sectors = func(string) sessiond.Sector { return sessiond.Sector{Name: "other"} } })
+	sa, _ := sub(newEnv(t, nil))
+	sb, _ := sub(other)
+	if sa == sb {
+		t.Error("two sectors, one subject")
 	}
 }
 
