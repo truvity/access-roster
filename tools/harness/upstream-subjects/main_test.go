@@ -117,3 +117,20 @@ func TestReadAdminNeedsBothValues(t *testing.T) {
 		t.Fatal("a file without the administrator was read")
 	}
 }
+
+func TestTheAdminSignInFollowsNoRedirect(t *testing.T) {
+	hit := false
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit = true }))
+	t.Cleanup(other.Close)
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/realms/master/protocol/openid-connect/token", http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(s.Close)
+	c := &Client{HTTP: newHTTPClient(), Base: s.URL}
+	if err := c.Login(context.Background(), "admin", "pw-for-the-test"); err == nil || !strings.Contains(err.Error(), "307") {
+		t.Fatalf("a redirected sign-in: %v", err)
+	}
+	if hit {
+		t.Fatal("the password was sent again to the redirect's target")
+	}
+}

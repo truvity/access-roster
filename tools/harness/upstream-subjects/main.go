@@ -77,7 +77,7 @@ func run(configDir, secrets string, unbound bool, out string) error {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		c := &Client{HTTP: &http.Client{Timeout: 10 * time.Second}, Base: base}
+		c := &Client{HTTP: newHTTPClient(), Base: base}
 		if err := c.Login(ctx, admin[0], admin[1]); err != nil {
 			return err
 		}
@@ -173,6 +173,15 @@ func readAdmin(path string) ([2]string, error) {
 		return [2]string{}, errors.New("the secrets file has no KC_BOOTSTRAP_ADMIN_USERNAME and KC_BOOTSTRAP_ADMIN_PASSWORD")
 	}
 	return [2]string{user, pass}, nil
+}
+
+// newHTTPClient follows no redirect: a 307 or 308 would send the administrator's password again, to another address.
+// The redirect comes back as the answer, and do refuses it as a status that is not 200.
+func newHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout:       10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 // Client asks Keycloak's admin REST API.
