@@ -50,12 +50,44 @@ fn check_exits_3_and_names_each_unreachable_socket() {
         "secret-source.sock",
         "durable.sock",
         "temp.sock",
-        "no-key.sock",
         "no-emit.sock",
     ] {
         assert!(err.contains(socket), "{socket} is not named: {err}");
     }
+    // key@ starts after store@ (its Init reads store@), so it is a warning here, not a failure.
+    assert!(err.contains("WARN") && err.contains("no-key.sock"), "{err}");
     assert!(o.stdout.is_empty());
+}
+
+#[test]
+fn check_passes_with_a_warning_when_only_key_is_unreachable() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut text = LOCAL.to_owned();
+    let mut _listeners = Vec::new();
+    for name in ["config-source", "secret-source", "durable", "temp"] {
+        let sock = dir.path().join(format!("{name}.sock"));
+        text = text.replace(
+            &format!("/run/sluis/store/dev/{name}.sock"),
+            sock.to_str().unwrap(),
+        );
+        _listeners.push(UnixListener::bind(&sock).unwrap());
+    }
+    let transport = dir.path().join("emit.sock");
+    _listeners.push(UnixListener::bind(&transport).unwrap());
+    let file = write_bootstrap(dir.path(), &text, 0o600);
+    let o = store(&[
+        "check",
+        "--bootstrap",
+        &file,
+        "--key-socket",
+        dir.path().join("no-key.sock").to_str().unwrap(),
+        "--transport-socket",
+        transport.to_str().unwrap(),
+    ]);
+    let err = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{err}");
+    assert!(err.contains("WARN"), "{err}");
+    assert!(err.contains("no-key.sock"), "{err}");
 }
 
 #[test]
