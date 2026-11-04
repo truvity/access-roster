@@ -384,6 +384,13 @@ proto-check: proto-gen
 build-arm64:
     deploy/boards/build-arm64.sh
 
+# The executables that link a C library (deploy/boards/native.list: the card driver, which talks to pcscd through
+# libpcsclite) for arm64, built natively inside an Ubuntu 22.04 userland with docker buildx and QEMU, into
+# dist/native/arm64/. `build-arm64` leaves them out of its cross-compile (CGO off) and picks this output up. CI builds
+# the same on a hosted arm64 runner (the job native-arm64 of checks.yaml).
+build-arm64-native:
+    deploy/boards/build-arm64-native.sh
+
 # The systemd units, users and directories of the boards, from the registries, into deploy/boards/units/.
 # `go test ./tools/gen/units` (part of go-test) fails while the committed files differ from what this makes.
 units-gen:
