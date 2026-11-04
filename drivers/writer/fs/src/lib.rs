@@ -132,6 +132,17 @@ impl Fs {
         })
     }
 
+    /// Removes the temporary files a crash left behind: regular files named exactly
+    /// `.tmp-<digits>-<digits>`, nothing else. Only `serve` calls it, because a running driver's
+    /// own temporary files match too; `check` must not. Returns how many it removed.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the directory cannot be read.
+    pub fn sweep(&self) -> Result<usize> {
+        sweep_dir(&self.root.try_clone()?)
+    }
+
     /// Writes `data` at `path` if nothing is there; returns the entity tag.
     ///
     /// # Errors
@@ -162,8 +173,10 @@ impl Fs {
                 r => r,
             };
         }
-        // One driver serves one directory: the lock makes compare and replace one step.
+        // Compare and replace are one step: the mutex orders the threads of this process, the
+        // flock on the root orders processes (a second driver on the same directory).
         let _held = self.puts.lock().map_err(|_| Error::Version)?;
+        let _flock = Flock::take(&self.root)?;
         match self.get(path) {
             Ok((_, tag)) if tag == if_match => {}
             Ok(_) | Err(Error::Absent) => return Err(Error::Version),
@@ -188,13 +201,13 @@ impl Fs {
         segments(path, false)?;
         let fd = self.open_below(path, OFlags::RDONLY)?;
         let mut f = File::from(fd);
-        let m = f.metadata()?;
-        if !m.is_file() {
+        if !f.metadata()?.is_file() {
             return Err(Error::Absent);
         }
         let mut data = Vec::new();
         f.read_to_end(&mut data)?;
-        Ok((data, etag(&m)))
+        let tag = etag(&data);
+        Ok((data, tag))
     }
 
     /// One page of the paths that start with `prefix`, in byte order, after `token` (the last
@@ -263,6 +276,27 @@ impl Fs {
     }
 }
 
+/// An exclusive `flock` on a directory, released on drop.
+struct Flock<'a>(&'a OwnedFd);
+
+impl<'a> Flock<'a> {
+    fn take(fd: &'a OwnedFd) -> Result<Self> {
+        loop {
+            match rustix::fs::flock(fd, rustix::fs::FlockOperation::LockExclusive) {
+                Ok(()) => return Ok(Self(fd)),
+                Err(Errno::INTR) => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+}
+
+impl Drop for Flock<'_> {
+    fn drop(&mut self) {
+        let _ = rustix::fs::flock(self.0, rustix::fs::FlockOperation::Unlock);
+    }
+}
+
 fn open_dir(parent: &OwnedFd, name: &str) -> Result<OwnedFd> {
     Ok(rustix::fs::openat2(
         parent,
@@ -296,15 +330,17 @@ fn split<'a>(parts: &[&'a str]) -> (Vec<&'a str>, &'a str) {
     }
 }
 
-fn etag(m: &std::fs::Metadata) -> String {
-    // A replaced file is a new inode written at a new time, so the tag changes on every put.
-    format!(
-        "{:x}-{:x}-{:x}-{:x}",
-        m.ino(),
-        m.size(),
-        m.mtime(),
-        m.mtime_nsec()
-    )
+/// The entity tag: the SHA-384 of the content, in hex (ADR 0006 fixes SHA-384). A tag that depends
+/// on the content only cannot repeat for two contents, whatever the inode or clock does.
+fn etag(data: &[u8]) -> String {
+    use std::fmt::Write as _;
+    aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, data)
+        .as_ref()
+        .iter()
+        .fold(String::new(), |mut s, b| {
+            let _ = write!(s, "{b:02x}");
+            s
+        })
 }
 
 /// Writes `data` to a fresh temporary file in `d`, fsynced, mode 0640; returns its name and tag.
@@ -322,14 +358,14 @@ fn write_tmp(d: &OwnedFd, data: &[u8]) -> Result<(String, String)> {
         Mode::from_raw_mode(FILE_MODE),
     )?;
     let mut f = File::from(fd);
-    let written = (|| -> std::io::Result<String> {
+    let written = (|| -> std::io::Result<()> {
         f.set_permissions(std::fs::Permissions::from_mode(FILE_MODE))?;
         f.write_all(data)?;
         f.sync_all()?;
-        Ok(etag(&f.metadata()?))
+        Ok(())
     })();
     match written {
-        Ok(tag) => Ok((tmp, tag)),
+        Ok(()) => Ok((tmp, etag(data))),
         Err(e) => {
             let _ = rustix::fs::unlinkat(d, tmp.as_str(), AtFlags::empty());
             Err(e.into())
@@ -375,4 +411,33 @@ fn walk(d: &OwnedFd, rel: &str, only: &str, out: &mut Vec<String>) -> Result<()>
         }
     }
     Ok(())
+}
+
+/// True for `.tmp-<digits>-<digits>`, the names [`write_tmp`] makes.
+fn is_tmp(name: &str) -> bool {
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    name.strip_prefix(TMP)
+        .and_then(|r| r.split_once('-'))
+        .is_some_and(|(pid, n)| digits(pid) && digits(n))
+}
+
+fn sweep_dir(d: &OwnedFd) -> Result<usize> {
+    let mut removed = 0;
+    for entry in Dir::read_from(d)? {
+        let entry = entry?;
+        let Ok(name) = entry.file_name().to_str() else {
+            continue;
+        };
+        match entry.file_type() {
+            FileType::RegularFile if is_tmp(name) => {
+                rustix::fs::unlinkat(d, name, AtFlags::empty())?;
+                removed += 1;
+            }
+            FileType::Directory if !name.starts_with('.') => {
+                removed += sweep_dir(&open_dir(d, name)?)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(removed)
 }

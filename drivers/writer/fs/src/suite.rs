@@ -106,6 +106,83 @@ pub fn run_temp() -> Result<()> {
     );
     println!("ok: conditional put on pointers only");
 
+    // The tag is the SHA-384 of the content: same-size contents still differ, so a stale tag
+    // cannot win after other puts (an inode- or clock-based tag can repeat).
+    let ta = fs.put("tags/checkpoint", b"AAAA", "")?;
+    ensure!(
+        ta.len() == 96,
+        "a SHA-384 tag is 96 hex digits, got {}",
+        ta.len()
+    );
+    let tb = fs.put("tags/checkpoint", b"BBBB", &ta)?;
+    let tc = fs.put("tags/checkpoint", b"CCCC", &tb)?;
+    ensure!(
+        ta != tb && tb != tc && ta != tc,
+        "same-size contents share a tag"
+    );
+    refused!(fs.put("tags/checkpoint", b"DDDD", &ta), Error::Version);
+    ensure!(
+        fs.get("tags/checkpoint")? == (b"CCCC".to_vec(), tc),
+        "a stale tag changed the pointer"
+    );
+    println!("ok: tags follow the content");
+
+    // Two drivers on one directory (two open file descriptions, so two mutexes): of many puts
+    // under one tag exactly one wins, because the flock orders them.
+    let other = Fs::open(dir.path())?;
+    let t0 = fs.put("fence/checkpoint", b"0", "")?;
+    let putters: Vec<_> = (0..16u8)
+        .map(|i| {
+            let f = if i % 2 == 0 {
+                fs.clone()
+            } else {
+                other.clone()
+            };
+            let t0 = t0.clone();
+            std::thread::spawn(move || f.put("fence/checkpoint", &[b'a' + i], &t0))
+        })
+        .collect();
+    let mut wins = 0;
+    for p in putters {
+        match p.join() {
+            Ok(Ok(_)) => wins += 1,
+            Ok(Err(Error::Version)) => {}
+            other => bail!("a racing put answered {other:?}"),
+        }
+    }
+    ensure!(wins == 1, "{wins} puts won under one tag, want 1");
+    println!("ok: puts of two drivers are ordered by flock");
+
+    // A restart removes only the driver's own temporary names.
+    std::fs::create_dir_all(dir.path().join("sw/deep"))?;
+    for keep in [
+        "sw/.tmp-x-1",
+        "sw/.tmp-1",
+        "sw/.tmpfoo",
+        "sw/.tmp-1-2-3",
+        "sw/data",
+    ] {
+        std::fs::write(dir.path().join(keep), b"k")?;
+    }
+    for gone in ["sw/.tmp-12-3", "sw/deep/.tmp-4-5"] {
+        std::fs::write(dir.path().join(gone), b"t")?;
+    }
+    ensure!(fs.sweep()? == 2, "sweep removed another count");
+    for keep in [
+        "sw/.tmp-x-1",
+        "sw/.tmp-1",
+        "sw/.tmpfoo",
+        "sw/.tmp-1-2-3",
+        "sw/data",
+    ] {
+        ensure!(dir.path().join(keep).exists(), "sweep removed {keep}");
+    }
+    ensure!(
+        !dir.path().join("sw/.tmp-12-3").exists(),
+        "sweep left a temporary file"
+    );
+    println!("ok: sweep");
+
     // No path leaves the root.
     let outside = tempfile::tempdir()?;
     std::fs::write(outside.path().join("f"), b"secret")?;
