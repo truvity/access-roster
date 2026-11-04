@@ -1,3 +1,5 @@
+//go:build sluis_test
+
 package rpc_test
 
 import (

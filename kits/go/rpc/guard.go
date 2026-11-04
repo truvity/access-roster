@@ -20,13 +20,15 @@ const (
 
 // guard is the default-deny check of one server: who is the caller, and may it make this call.
 type guard struct {
-	actor string
-	block uint32
-	allow func(Peer, string) bool
+	actor      string
+	block      uint32
+	blockKnown bool // false: this process's own uid is not in the registry, and every call is refused
+	allow      func(Peer, string) bool
 }
 
 func newGuard(cfg ServerConfig) guard {
-	g := guard{actor: cfg.Actor, block: cfg.UIDBlock, allow: cfg.Allow}
+	g := guard{actor: cfg.Actor, allow: cfg.Allow}
+	g.block, g.blockKnown = cfg.ownBlock()
 	if g.allow == nil {
 		g.allow = func(p Peer, _ string) bool { return registry.MayCall(p.Name, cfg.Actor) }
 	}
@@ -37,7 +39,7 @@ func newGuard(cfg ServerConfig) guard {
 // transport only: ctx carries the credentials the server read from the socket.
 func (g guard) check(ctx context.Context, procedure string) *connect.Error {
 	cp, _ := ctx.Value(peerKey{}).(connPeer)
-	if !cp.known || cp.UIDBlock != g.block {
+	if !g.blockKnown || !cp.known || cp.UIDBlock != g.block {
 		g.logRefused(reasonCaller, cp, procedure)
 		return refusal.New(connect.CodePermissionDenied, reasonCaller, "")
 	}

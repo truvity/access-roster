@@ -14,7 +14,7 @@ const (
 	maxPart    = 128
 	maxAddress = 300
 
-	// NoTenant is the tenant part of the address of a kind that has none.
+	// NoTenant is the tenant part of the text form of the address of a kind that has none. It is never on the wire.
 	NoTenant = "-"
 )
 
@@ -77,23 +77,17 @@ func ValidateAddress(boundary, tenant, kind, id string) error {
 	return nil
 }
 
-// wireTenant encodes the tenant of a call: "" is "-", the part of a kind that has none. A tenant id is never "-".
+// wireTenant checks the tenant of a call and returns it as the Address field carries it: empty for a kind that has
+// none (type.proto, Address). Only the text form of an address, <boundary>/<tenant | ->/<kind>/<id>, carries "-"
+// there; a tenant id is never "-".
 func wireTenant(tenant string) (string, error) {
 	if tenant == "" {
-		return NoTenant, nil
+		return "", nil
 	}
 	if tenant == NoTenant || !validPart(tenant) {
 		return "", badAddress("tenant")
 	}
 	return tenant, nil
-}
-
-// fromWireTenant is the reverse of wireTenant.
-func fromWireTenant(tenant string) string {
-	if tenant == NoTenant {
-		return ""
-	}
-	return tenant
 }
 
 func describe(op string, err error) error {

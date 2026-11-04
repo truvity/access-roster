@@ -241,9 +241,10 @@ check: check-rules site-check site-workers
 go-build:
     go build ./...
 
-# Test every Go package with the race detector, uncached.
+# Test every Go package with the race detector, uncached. The tag sluis_test adds the test seams (the name
+# resolver of kits/go/rpc) that a normal build does not contain.
 go-test:
-    go test -race -count=1 ./...
+    go test -race -count=1 -tags sluis_test ./...
 
 # Lint the Go module.
 go-lint:

@@ -1,3 +1,5 @@
+//go:build sluis_test
+
 package rpc_test
 
 import (
@@ -10,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,8 +64,6 @@ func TestDefaultDenyBeforeTheHandler(t *testing.T) {
 		reason string
 	}{
 		{"caller outside the graph", rpc.ServerConfig{Actor: "policy"}, asSelf("signer", 0), "call_graph"},
-		{"unknown uid", rpc.ServerConfig{Actor: "policy"}, func(uint32) (string, uint32, bool) { return "", 0, false }, "caller"},
-		{"another boundary's uid block", rpc.ServerConfig{Actor: "policy", UIDBlock: 1}, asSelf("exchange", 0), "caller"},
 		{"allow func says no", rpc.ServerConfig{Actor: "policy", Allow: func(rpc.Peer, string) bool { return false }}, asSelf("exchange", 0), "call_graph"},
 		{"owner only, another caller", rpc.ServerConfig{Actor: "driver", Allow: rpc.OwnerOnly("store")}, asSelf("exchange", 0), "call_graph"},
 		{"exact caller, another caller", rpc.ServerConfig{Actor: "key", Allow: rpc.ExactCaller("signer")}, asSelf("exchange", 0), "call_graph"},
@@ -94,6 +95,52 @@ func TestDefaultDenyBeforeTheHandler(t *testing.T) {
 			}
 			none(t, rec.calls, tc.name)
 		})
+	}
+}
+
+// The uid block of a server is the block of its own uid; a caller of another block is another boundary's.
+func TestCallerOfAnotherUIDBlockIsRefused(t *testing.T) {
+	var peersAreBlock1, peersUnknown atomic.Bool
+	self := uint32(os.Getuid()) //nolint:gosec // a uid is non-negative
+	resolve := func(uid uint32) (string, uint32, bool) {
+		if peersUnknown.Load() {
+			return "", 0, false
+		}
+		if peersAreBlock1.Load() {
+			return "exchange", 1, uid == self
+		}
+		return "exchange", 0, uid == self // the server's own uid, read at start: block 0
+	}
+	rec := newRecorder()
+	socket, _ := start(t, rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy"}, resolve), rec)
+	if err := echo(context.Background(), echoClient(socket, true)); err != nil {
+		t.Fatalf("a caller of the same block was refused: %v", err)
+	}
+	recv(t, rec.calls)
+	peersAreBlock1.Store(true)
+	err := echo(context.Background(), echoClient(socket, true))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("code = %v (%v), want permission_denied", connect.CodeOf(err), err)
+	}
+	if r, _ := refusal.Reason(err); r != "caller" {
+		t.Fatalf("reason = %q, want caller", r)
+	}
+	none(t, rec.calls, "another uid block")
+
+	// A uid the registry does not know is refused the same way.
+	peersUnknown.Store(true)
+	err = echo(context.Background(), echoClient(socket, true))
+	if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "caller" {
+		t.Fatalf("unknown uid: code %v reason %q (%v), want permission_denied caller", connect.CodeOf(err), r, err)
+	}
+	none(t, rec.calls, "unknown uid")
+}
+
+func TestServeRefusesAProcessWithoutARegistryUID(t *testing.T) {
+	cfg := rpc.WithNameResolver(rpc.ServerConfig{Actor: "policy", Socket: filepath.Join(shortDir(t), "s.sock")},
+		func(uint32) (string, uint32, bool) { return "", 0, false })
+	if err := rpc.Serve(context.Background(), cfg); err == nil || !strings.Contains(err.Error(), "uid") {
+		t.Fatalf("err = %v, want a refusal to serve", err)
 	}
 }
 

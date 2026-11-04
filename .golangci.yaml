@@ -1,6 +1,9 @@
 version: "2"
 run:
   timeout: 5m
+  # Lint the test seams too (kits/go/rpc, kits/conformance/kit); a normal build does not contain them.
+  build-tags:
+    - sluis_test
 linters:
   default: standard
   enable:
