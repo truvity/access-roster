@@ -1,6 +1,7 @@
 //! The one command shape of every Rust executable: `serve`, `check`, `version`, `conformance`,
 //! with the exit codes of cli.md "Exit codes".
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -139,27 +140,47 @@ fn command(name: &str) -> Command {
 /// Exit codes: 0 ok, 1 any other error, 2 usage (and a command this executable does not have),
 /// 3 refused by a check ([`Refused`]).
 pub fn main(name: &str, c: impl Commands, extra: impl FnOnce(Command) -> Command) -> ! {
-    let code = run(name, c, extra, std::env::args_os());
+    let code = run(
+        name,
+        c,
+        extra,
+        std::env::args_os(),
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    );
     std::process::exit(i32::from(code))
 }
 
-/// [`main`] without the exit, for the kit's own tests.
+/// [`main`] without the exit and with its output streams, for the kit's own tests. Results go to
+/// `out`, everything a person reads to `err` (cli.md "Conventions").
 fn run(
     name: &str,
     c: impl Commands,
     extra: impl FnOnce(Command) -> Command,
     argv: impl IntoIterator<Item = std::ffi::OsString>,
+    out: &mut impl Write,
+    err: &mut impl Write,
 ) -> u8 {
     let matches = match extra(command(name)).try_get_matches_from(argv) {
         Ok(m) => m,
         Err(e) => {
-            let code = if e.use_stderr() { EXIT_USAGE } else { EXIT_OK };
-            let _ = e.print();
+            let (code, rendered) = (
+                if e.use_stderr() { EXIT_USAGE } else { EXIT_OK },
+                e.render().to_string(),
+            );
+            let _ = if code == EXIT_OK {
+                out.write_all(rendered.as_bytes())
+            } else {
+                err.write_all(rendered.as_bytes())
+            };
             return code;
         }
     };
     let Some((sub, sm)) = matches.subcommand() else {
-        eprintln!("{name}: a command is needed: serve, check, version or conformance");
+        let _ = writeln!(
+            err,
+            "{name}: a command is needed: serve, check, version or conformance"
+        );
         return EXIT_USAGE;
     };
     let flags = Flags {
@@ -180,13 +201,13 @@ fn run(
         matches: matches.clone(),
     };
     if sub == "version" {
-        print_version(name, flags.json);
+        print_version(out, name, flags.json);
         return EXIT_OK;
     }
     let filter = match EnvFilter::try_new(&flags.log_level) {
         Ok(f) => f,
         Err(_) => {
-            eprintln!("{name}: --log-level: not a tracing filter");
+            let _ = writeln!(err, "{name}: --log-level: not a tracing filter");
             return EXIT_USAGE;
         }
     };
@@ -202,7 +223,7 @@ fn run(
     {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("{name}: runtime: {e}");
+            let _ = writeln!(err, "{name}: runtime: {e}");
             return EXIT_FAILURE;
         }
     };
@@ -217,28 +238,31 @@ fn run(
     match (sub, outcome) {
         (_, Some(Ok(()))) => EXIT_OK,
         (_, Some(Err(e))) if e.downcast_ref::<Refused>().is_some() => {
-            eprintln!("{name} {sub}: refused: {e}");
+            let _ = writeln!(err, "{name} {sub}: refused: {e}");
             EXIT_REFUSED
         }
         (_, Some(Err(e))) => {
-            eprintln!("{name} {sub}: {e:#}");
+            let _ = writeln!(err, "{name} {sub}: {e:#}");
             EXIT_FAILURE
         }
         // A check that cannot run is "not run", never a pass.
         (sub, None) => {
-            eprintln!("{sub}: not-run");
+            let _ = writeln!(err, "{sub}: not-run");
             EXIT_USAGE
         }
     }
 }
 
-fn print_version(name: &str, json: bool) {
+fn print_version(out: &mut impl Write, name: &str, json: bool) {
     let v = sluis_version::VERSION;
-    if json {
-        println!(r#"{{"name":"{name}","version":"{v}","contracts":["v2alpha1"]}}"#);
+    let _ = if json {
+        writeln!(
+            out,
+            r#"{{"name":"{name}","version":"{v}","contracts":["v2alpha1"]}}"#
+        )
     } else {
-        println!("{name} {v}\ncontracts v2alpha1");
-    }
+        writeln!(out, "{name} {v}\ncontracts v2alpha1")
+    };
 }
 
 /// Exit code as `ExitCode`, for an executable that does not use [`main`].
@@ -275,32 +299,61 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn version_exits_0() {
-        assert_eq!(run("t", Plain, |c| c, argv(&["version"])), EXIT_OK);
+    /// Runs the command line; returns the exit code, standard output and standard error.
+    fn go(c: impl Commands, a: &[&str]) -> (u8, String, String) {
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        let code = run("t", c, |c| c, argv(a), &mut out, &mut err);
+        (
+            code,
+            String::from_utf8(out).unwrap(),
+            String::from_utf8(err).unwrap(),
+        )
     }
 
     #[test]
-    fn unknown_command_exits_2() {
-        assert_eq!(run("t", Plain, |c| c, argv(&["frobnicate"])), EXIT_USAGE);
-        assert_eq!(run("t", Plain, |c| c, argv(&[])), EXIT_USAGE);
-        assert_eq!(
-            run("t", Plain, |c| c, argv(&["serve", "--nope"])),
-            EXIT_USAGE
+    fn version_exits_0_and_prints_the_version_and_the_contracts() {
+        let (code, out, _) = go(Plain, &["version"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(
+            out.starts_with(&format!("t {}", sluis_version::VERSION)),
+            "{out}"
+        );
+        assert!(out.contains("v2alpha1"));
+        let (code, out, _) = go(Plain, &["version", "--json"]);
+        assert_eq!(code, EXIT_OK);
+        assert!(
+            out.starts_with('{') && out.trim_end().ends_with('}'),
+            "{out}"
         );
     }
 
     #[test]
+    fn unknown_command_exits_2() {
+        assert_eq!(go(Plain, &["frobnicate"]).0, EXIT_USAGE);
+        assert_eq!(go(Plain, &[]).0, EXIT_USAGE);
+        assert_eq!(go(Plain, &["serve", "--nope"]).0, EXIT_USAGE);
+        assert_eq!(go(Plain, &["serve", "--log-level", "[[["]).0, EXIT_USAGE);
+    }
+
+    #[test]
     fn missing_check_is_not_run_and_exits_2() {
-        assert_eq!(run("t", Plain, |c| c, argv(&["check"])), EXIT_USAGE);
-        assert_eq!(run("t", Plain, |c| c, argv(&["conformance"])), EXIT_USAGE);
+        let (code, out, err) = go(Plain, &["check"]);
+        assert_eq!(code, EXIT_USAGE);
+        assert!(err.contains("not-run"), "{err}");
+        assert!(
+            out.is_empty(),
+            "a result goes to standard output only when there is one"
+        );
+        let (code, _, err) = go(Plain, &["conformance"]);
+        assert_eq!(code, EXIT_USAGE);
+        assert!(err.contains("not-run"), "{err}");
     }
 
     #[test]
     fn serve_ok_error_and_refusal_codes() {
-        assert_eq!(run("t", Plain, |c| c, argv(&["serve"])), EXIT_OK);
-        assert_eq!(run("t", Refusing, |c| c, argv(&["serve"])), EXIT_FAILURE);
-        assert_eq!(run("t", Refusing, |c| c, argv(&["check"])), EXIT_REFUSED);
+        assert_eq!(go(Plain, &["serve"]).0, EXIT_OK);
+        assert_eq!(go(Refusing, &["serve"]).0, EXIT_FAILURE);
+        assert_eq!(go(Refusing, &["check"]).0, EXIT_REFUSED);
     }
 
     #[test]
@@ -337,6 +390,8 @@ mod tests {
                 "a",
                 "b",
             ]),
+            &mut Vec::new(),
+            &mut Vec::new(),
         );
         assert_eq!(code, EXIT_OK);
     }

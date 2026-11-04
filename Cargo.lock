@@ -937,6 +937,7 @@ dependencies = [
  "hyper-util",
  "rustix",
  "sluis-kit",
+ "sluis-kit-echo",
  "sluis-proto",
  "sluis-registry",
  "sluis-version",
@@ -945,6 +946,17 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sluis-kit-echo"
+version = "0.0.0"
+dependencies = [
+ "buffa",
+ "buffa-types",
+ "connectrpc",
+ "connectrpc-build",
+ "serde",
 ]
 
 [[package]]
@@ -961,6 +973,23 @@ dependencies = [
 [[package]]
 name = "sluis-registry"
 version = "0.0.0"
+
+[[package]]
+name = "sluis-store"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "buffa",
+ "buffa-types",
+ "connectrpc",
+ "rustix",
+ "sluis-kit",
+ "sluis-proto",
+ "sluis-registry",
+ "tempfile",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "sluis-version"
