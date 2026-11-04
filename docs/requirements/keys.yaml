@@ -8,7 +8,9 @@ requirements:
     rationale: "One holder is where the rules, the audit and the content checks sit."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards:
@@ -26,7 +28,9 @@ requirements:
     rationale: "One port makes drivers swappable and auditable."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-89, section: "6", depth: Full}
@@ -41,7 +45,8 @@ requirements:
     rationale: "A key that cannot leave the device cannot be stolen from disk."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Full}
@@ -57,6 +62,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -74,7 +80,9 @@ requirements:
     rationale: "ES384 stays the default everywhere else, so one curve serves the rest."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: ciam-upstream
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -88,12 +96,13 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-51, section: "3", depth: Partial}
       - {id: ST-88, section: "1", depth: Partial}
     issues: [800]
-    gap: register-gap
     verification:
       - {kind: integration-test, ref: "driver declaration test"}
   - id: REQ-KEYS-015
@@ -103,13 +112,13 @@ requirements:
     rationale: "PS256 on a hardware token is slow and EdDSA needs recent firmware."
     level: MUST
     source: design-decision
-    status: partial
+    status: planned
+    milestone: first-version
     runtimes: ["bare-metal", "serverless", "kubernetes"]
     standards:
       - {id: ST-51, section: "3", depth: Partial}
       - {id: ST-88, section: "1", depth: Partial}
     issues: [800, 864]
-    gap: register-gap
     verification:
       - {kind: integration-test, ref: "config-check matrix per driver"}
   - id: REQ-KEYS-005
@@ -119,6 +128,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-51, section: "3.3", depth: Partial}
@@ -131,7 +141,9 @@ requirements:
     rationale: "Key rotation depends on timely discovery."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-50, section: "5", depth: Full}
@@ -146,7 +158,8 @@ requirements:
     rationale: "Rotation depends on timely discovery, and the lead time of a new key is derived from this figure (ADR 0006)."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-50, section: "5", depth: Full}
@@ -162,6 +175,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
@@ -173,7 +187,8 @@ requirements:
     rationale: "A new key must be verifiable before it signs, and a compromised key must not wait for an overlap that exists for a healthy one (ADR 0041)."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-50, section: "5", depth: Full}
@@ -186,7 +201,8 @@ requirements:
     rationale: "A development configuration loaded on the wrong board must not make a software key a production authority key."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards:
@@ -200,7 +216,9 @@ requirements:
     rationale: "Cross-protocol key reuse is avoidable."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-62, section: "5280", depth: Partial}
@@ -216,7 +234,9 @@ requirements:
     rationale: "Cross-protocol key reuse is avoidable."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-62, section: "5280", depth: Partial}
@@ -247,7 +267,9 @@ requirements:
     rationale: "A false claim of validation would mislead regulated users."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: backlog
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Full}
@@ -261,7 +283,9 @@ requirements:
     rationale: "Staying within the approved set lets a FIPS build variant be added later without changing a format or a stored value."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: backlog
+    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -277,6 +301,7 @@ requirements:
     level: MAY
     source: design-decision
     status: out-of-scope
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -290,6 +315,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -304,6 +330,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards:
@@ -319,6 +346,7 @@ requirements:
     level: MUST
     source: security-review
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
@@ -332,6 +360,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-57, section: "9964", depth: Full}
@@ -362,7 +391,8 @@ requirements:
     rationale: "PIV EdDSA needs a recent device firmware."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal", "kubernetes"]
     standards:
       - {id: NC-10, section: "PIV", depth: Partial}
@@ -377,6 +407,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -389,7 +420,8 @@ requirements:
     rationale: "A key that existed outside its store cannot be attested and may have been copied."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards: []
@@ -402,7 +434,9 @@ requirements:
     rationale: "Its callers and its blast radius differ from the token-signing key's, and signing keys are never shared (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [914, 870]
@@ -416,7 +450,9 @@ requirements:
     rationale: "Every authority key, wrapping key and data key is then reachable through one holder whose rules say who may ask for what (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards: []
@@ -430,7 +466,9 @@ requirements:
     rationale: "The rules are generated from the actor registry, so a compromised actor cannot ask for a purpose it was not given (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -445,6 +483,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -457,7 +496,9 @@ requirements:
     rationale: "The grant check is the second of two independent checks between an actor and a tenant's sealed value (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -471,7 +512,9 @@ requirements:
     rationale: "A pattern of refusals is the first sign of a compromised actor (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards: []
@@ -484,7 +527,9 @@ requirements:
     rationale: "A data key stored or sent in the clear would give its holder every value sealed under it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -498,7 +543,9 @@ requirements:
     rationale: "A value copied to another row, kind, tenant or boundary then no longer opens, so a flaw that lets an actor write somewhere does not let it read what it moved (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -512,7 +559,8 @@ requirements:
     rationale: "A caller-chosen nonce repeats and breaks the confidentiality and integrity of every value under that key (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -525,7 +573,9 @@ requirements:
     rationale: "Purposes never share a key, so a tenant's exit can delete personal data and keep evidence (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -538,7 +588,9 @@ requirements:
     rationale: "The wrap is the only route to the key, so every value sealed for the tenant stops opening (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: ciam-upstream
+    gap: partly-built
     runtimes: all
     actors: [key]
     standards: []
@@ -552,6 +604,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
@@ -564,7 +617,8 @@ requirements:
     rationale: "A cached key opens without a card or KMS call, and its time to live is the erasure delay on Lambda (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -577,7 +631,9 @@ requirements:
     rationale: "A plan may shorten a limit and never lengthen it past the maximum in code (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1210]
@@ -602,7 +658,9 @@ requirements:
     rationale: "Nothing is pushed to a warm function, so the time to live is the longest time a deleted tenant's data can still be opened (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: ["serverless"]
     actors: [key]
     standards: []
@@ -615,7 +673,9 @@ requirements:
     rationale: "Two uses then never give the same keyed hash for the same input, and the key never leaves key@ (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -628,7 +688,9 @@ requirements:
     rationale: "Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -641,7 +703,9 @@ requirements:
     rationale: "A socket that another uid can open is a path around the rules (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: smoke-not-in-ci
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -654,7 +718,9 @@ requirements:
     rationale: "The permission check and the peer check are two walls around the same socket (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
+    milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -667,7 +733,8 @@ requirements:
     rationale: "A slot shared by two purposes would share a key between them (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -680,7 +747,8 @@ requirements:
     rationale: "A purpose without a key would fall back to something weaker at the first request (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [914, 864]
@@ -692,7 +760,9 @@ requirements:
     rationale: "A purpose that is not enabled costs no key, no slot and no review (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1211]
@@ -704,7 +774,9 @@ requirements:
     rationale: "Data keys are not KMS keys, so a new tenant adds none and the baseline stays small and countable (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: ["serverless", "kubernetes"]
     standards: []
     issues: [1211]
@@ -717,6 +789,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless", "kubernetes"]
     actors: [key]
     standards: []
@@ -731,6 +804,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: ["serverless", "kubernetes"]
     actors: [key]
     standards: []
@@ -743,7 +817,8 @@ requirements:
     rationale: "Any board opens it with its own card, and the loss of all cards does not lose the data (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -756,7 +831,9 @@ requirements:
     rationale: "A wrap that is not bound to its address could be moved to another row or tenant (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -769,7 +846,8 @@ requirements:
     rationale: "When two key@ instances make a key at once, one wins and the other discards its key and reads the winner's (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -782,7 +860,8 @@ requirements:
     rationale: "A rewrap needs the recipient's public key only and touches no sealed value (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -795,7 +874,8 @@ requirements:
     rationale: "Using it is a ceremony, so no actor, not even key@, can open a wrap made for it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -809,6 +889,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
@@ -821,7 +902,7 @@ requirements:
     rationale: "The card blocks after three attempts and then needs the PUK (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
@@ -848,7 +929,9 @@ requirements:
     rationale: "A log is one continuous history, and its signatures must verify for the life of the log (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -861,7 +944,9 @@ requirements:
     rationale: "A key that leaves its store can no longer be stopped by it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -875,6 +960,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [914]
@@ -887,6 +973,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -900,6 +987,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -913,6 +1001,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1211]
@@ -925,6 +1014,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
@@ -940,6 +1030,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     actors: [key]
     standards: []
@@ -953,6 +1044,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     actors: [key]
     standards: []
@@ -966,6 +1058,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     standards: []
     issues: [1211]
@@ -978,6 +1071,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     actors: [key]
     standards: []
@@ -991,6 +1085,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: [serverless, kubernetes]
     actors: [key]
     standards: []
@@ -1003,7 +1098,9 @@ requirements:
     rationale: "A new key would change every pairwise subject of the tenant (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
@@ -1017,6 +1114,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     actors: [key]
     standards: []
@@ -1030,6 +1128,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -1045,6 +1144,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: [bare-metal, kubernetes]
     actors: [key]
     standards: []
@@ -1060,6 +1160,7 @@ requirements:
     level: MUST
     source: design-decision
     status: open
+    milestone: first-version
     gap: boundary-unverified
     runtimes: [bare-metal, kubernetes]
     actors: [key]
@@ -1073,7 +1174,8 @@ requirements:
     rationale: "Every cache between sluis and a relying party must hold the key before the first token carries it, and the lead time follows from the cache budget that sluis publishes (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
@@ -1086,7 +1188,8 @@ requirements:
     rationale: "One node's rotation must not retire the key that another node is signing with; revoking another node's key is a tightening that REQ-KEYS-090 allows (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
@@ -1099,7 +1202,8 @@ requirements:
     rationale: "A token signed just before the change must verify for its whole life (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
@@ -1112,7 +1216,9 @@ requirements:
     rationale: "A key that has begun to leave the key set, or has been revoked, must not return to signing or to the set (ADR 0006, ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     actors: [signer]
     standards: []
@@ -1125,7 +1231,8 @@ requirements:
     rationale: "On a first deploy there is no cached key set to wait for (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [signer]
     standards: []
@@ -1138,7 +1245,8 @@ requirements:
     rationale: "A generic witness or checkpoint verifier checks the standard C2SP signature of type 0x02 only (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -1153,6 +1261,7 @@ requirements:
     level: MUST
     source: design-decision
     status: done
+    milestone: first-version
     runtimes: all
     actors: [key]
     standards: []
@@ -1167,6 +1276,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards: []
@@ -1179,7 +1289,9 @@ requirements:
     rationale: "A static key set is published later than the store is written, so counting from the write could let a key sign before a verifier can have it (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: no-proving-test
     runtimes: all
     actors: [signer]
     standards: []
@@ -1193,11 +1305,11 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
+    gap: partly-built
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [914]
-    gap: partly-built
     verification:
       - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}
   - id: REQ-KEYS-087
@@ -1207,6 +1319,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1219,6 +1333,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1231,6 +1347,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1243,6 +1361,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1256,6 +1376,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1268,6 +1390,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1362]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1280,6 +1404,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
     features: ["design"]
@@ -1292,6 +1418,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
     features: ["design"]
@@ -1304,6 +1432,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1316,6 +1446,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1328,6 +1460,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1340,6 +1474,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
     features: ["design"]
@@ -1353,6 +1489,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1372]
     runtimes: [serverless, kubernetes]
     standards: []
     features: ["design"]
@@ -1365,6 +1503,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1372]
     runtimes: [serverless, kubernetes]
     standards: []
     features: ["design"]
@@ -1377,6 +1517,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1389,6 +1531,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1401,6 +1545,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1413,6 +1559,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1366]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1425,6 +1573,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
+    issues: [1365]
     runtimes: ["bare-metal"]
     standards: []
     features: ["design"]
@@ -1437,6 +1587,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1449,6 +1601,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1461,6 +1615,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1361, 1362]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1473,6 +1629,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
+    issues: [1362, 1369]
     runtimes: all
     standards: []
     features: ["design"]

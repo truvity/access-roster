@@ -9,6 +9,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -24,6 +25,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -38,6 +40,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-85, section: "1", depth: Full}
@@ -53,6 +56,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-85, section: "1", depth: Full}
@@ -67,12 +71,12 @@ requirements:
     rationale: "Dependency transparency."
     level: MUST
     source: v1-parity
-    status: partial
+    status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-87, section: "1", depth: Full}
     issues: [848]
-    gap: register-gap
     verification:
       - {kind: integration-test, ref: "SBOM validator"}
   - id: REQ-SUPPLY-004
@@ -125,7 +129,9 @@ requirements:
     rationale: "Review is a control."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    milestone: backlog
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
@@ -196,6 +202,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -208,6 +215,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -220,6 +228,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -233,6 +242,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -246,6 +256,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-83, section: "9580", depth: Full}
@@ -259,6 +270,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -271,6 +283,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-83, section: "5.2", depth: Full}
@@ -284,6 +297,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -296,6 +310,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -308,6 +323,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [890]
@@ -319,7 +335,9 @@ requirements:
     rationale: "One key under two formats lets an input chosen for one pass as a signature in the other."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [890]
@@ -332,6 +350,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1022]
@@ -344,6 +363,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1022]
@@ -356,6 +376,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1022]
@@ -370,6 +391,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1223]
@@ -382,6 +404,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1223]
