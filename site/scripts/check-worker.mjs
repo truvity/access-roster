@@ -60,7 +60,8 @@ function fakeGitHub(state) {
         id: 'PVT_test', field: { options: state.board.options.map((name) => ({ id: name, name })) },
         items: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: state.board.issues.map((i) => ({
           content: { __typename: 'Issue', number: i.number, title: i.title, state: i.open ? 'OPEN' : 'CLOSED', labels: { nodes: i.labels.map((name) => ({ name })) }, repository: { nameWithOwner: 'truvity/sluis' } },
-          fieldValueByName: i.milestone ? { name: i.milestone } : null,
+          milestone: i.milestone ? { name: i.milestone } : null,
+          status: i.inProgress ? { name: 'In Progress' } : { name: i.open ? 'Todo' : 'Done' },
         })) },
       } } } });
     }
@@ -83,8 +84,8 @@ function world() {
     calls: [],
     runsVersion: 1,
     board: { options: ['M1', 'M2'], issues: [
-      { number: 1, title: 'First <script>', open: true, labels: ['type:decision'], milestone: 'M1' },
-      { number: 2, title: 'Second', open: false, labels: [], milestone: 'M2' },
+      { number: 1, title: 'First <script>', open: true, labels: ['type:decision'], milestone: 'M1', inProgress: false },
+      { number: 2, title: 'Second', open: false, labels: [], milestone: 'M2', inProgress: false },
     ] },
     runs: [{ name: 'Site', head_branch: 'main', status: 'completed', conclusion: 'success', html_url: 'https://github.com/truvity/sluis/actions/runs/1', head_sha: 'a'.repeat(40), updated_at: '2026-11-01T10:00:00Z' }],
   };
@@ -211,7 +212,7 @@ await test('/api/status: 503 before the first refresh, then JSON with a short ca
   assert.equal(body.schema, 1);
   assert.deepEqual(body.milestones.map((m) => m.name), ['M1', 'M2', 'Unassigned']);
   assert.equal(body.milestones[0].current, true);
-  assert.deepEqual(body.milestones[0].issues, { open: 1, closed: 0, blocked: 0, needsDecision: 0 });
+  assert.deepEqual(body.milestones[0].issues, { open: 1, closed: 0, inProgress: 0, blocked: 0, needsDecision: 0 });
   assert.equal(body.milestones[0].requirements.total, 1);
   assert.equal(body.ci.main[0].conclusion, 'success');
   assert.equal((await api(req('/api/status/'), env, ctx)).status, 200);
@@ -276,21 +277,74 @@ await test('the snapshot and the live block come from one renderer', () => {
 
 await test('the milestone cards: a Design group and a Build group, named, with their own figures', () => {
   // M1 holds the open requirement REQ-AA-001, the accepted record 0001-a and one open issue.
-  const groups = groupStatus({ options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] }, REPO);
-  const html = statusBodyHtml({ groups, mode: 'live', asOf: '2026-11-01T10:00:00Z', available: true });
+  const board = { options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] };
+  const html = statusBodyHtml({ groups: groupStatus(board, REPO), mode: 'live', asOf: '2026-11-01T10:00:00Z', repoBuiltAt: '2026-10-31T08:00:00Z', available: true });
   const card = /<article class="ps-card[^"]*"[\s\S]*?<\/article>/.exec(html)?.[0] ?? '';
   assert.ok(card, 'one card for the milestone');
   assert.ok(card.includes('ps-bargroup-design') && card.includes('ps-bargroup-build'), 'a Design group and a Build group');
   assert.ok(card.indexOf('ps-bargroup-design') < card.indexOf('ps-bargroup-build'));
   assert.ok(card.includes('aria-label="Design: 1 of 1 ADRs accepted, 0 of 1 requirements decided"'), card);
-  assert.ok(card.includes('aria-label="Build: 0 of 1 requirements done, 0 of 1 issues closed"'), card);
-  for (const k of ['ADRs accepted', 'Requirements decided', 'Requirements done', 'Issues closed']) assert.ok(card.includes(`<dt>${k}</dt>`), k);
-  assert.equal(card.match(/<meter /g).length, 4);
+  assert.ok(card.includes('aria-label="Build: 0 done and 0 partial of 1 requirements, 0 closed and 0 in progress of 1 issues"'), card);
+  for (const k of ['ADRs accepted', 'Requirements decided', 'Requirements', 'Issues']) assert.ok(card.includes(`<dt>${k}</dt>`), k);
+  assert.ok(card.includes('0 done, 0 partial of 1') && card.includes('0 closed, 0 in progress of 1'), 'each part has its own number');
+  // Two plain bars in Design, and two in Build that are each two meters (the whole, and its first part).
+  assert.equal(card.match(/<meter /g).length, 6);
+  assert.equal(card.match(/class="ps-stack"/g).length, 2);
+  // Nothing done, partial or in progress: the Design block says "not built".
+  assert.ok(card.includes('decided on paper, not built') && !card.includes('build in progress'), card);
+  // Each source is named with its own time.
+  assert.ok(card.includes('Requirements: build of 2026-10-31 08:00 UTC. Issues: live, as of 2026-11-01 10:00 UTC.'), card);
   // A decided requirement moves the Design bar and not the Build bar.
   const decided = { ...REPO, requirements: [{ ...REPO.requirements[0], status: 'planned' }] };
-  const g2 = groupStatus({ options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] }, decided);
-  const card2 = statusBodyHtml({ groups: g2, mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
-  assert.ok(card2.includes('1 of 1 requirements decided') && card2.includes('0 of 1 requirements done'), 'planned counts as decided, not as done');
+  const card2 = statusBodyHtml({ groups: groupStatus(board, decided), mode: 'snapshot', asOf: '2026-11-01T10:00:00Z', available: true });
+  assert.ok(card2.includes('1 of 1 requirements decided') && card2.includes('0 done, 0 partial of 1'), 'planned counts as decided, not as done');
+  assert.ok(card2.includes('decided on paper, not built'));
+});
+
+await test('the Build bars show partial requirements and issues in progress, and the caption follows', () => {
+  const issue = (number, open, inProgress) => ({ number, title: `i${number}`, open, labels: [], milestone: 'M1', inProgress });
+  const repo = (statuses) => ({ ...REPO, requirements: statuses.map((status, k) => ({ id: `REQ-AA-${k}`, area: 'AA', status, issues: [1], auto: false })) });
+  const card = (board, r) => /<article class="ps-card[^"]*"[\s\S]*?<\/article>/.exec(
+    statusBodyHtml({ groups: groupStatus(board, r), mode: 'live', asOf: '2026-11-01T10:00:00Z', available: true }))?.[0] ?? '';
+  // Issues: one closed, two open and in progress, one open and not started. A closed issue is not "in progress".
+  const board = { options: ['M1'], issues: [issue(1, false, true), issue(2, true, true), issue(3, true, true), issue(4, true, false)] };
+  const g = groupStatus(board, repo(['done', 'partial', 'partial', 'planned', 'open']))[0];
+  assert.deepEqual(g.issues, { open: 3, closed: 1, inProgress: 2, blocked: 0, needsDecision: 0 });
+  assert.deepEqual([g.reqs.done, g.reqs.partial, g.reqs.total], [1, 2, 5]);
+  const c = card(board, repo(['done', 'partial', 'partial', 'planned', 'open']));
+  assert.ok(c.includes('1 done, 2 partial of 5'), c);
+  assert.ok(c.includes('1 closed, 2 in progress of 4'), c);
+  // The whole is the sum of the parts: closed + in progress, done + partial.
+  assert.ok(c.includes('max="5" value="3"') && c.includes('max="5" value="1"'), 'requirements: 3 of 5 below, 1 of 5 above');
+  assert.ok(c.includes('max="4" value="3"') && c.includes('max="4" value="1"'), 'issues: 3 of 4 below, 1 of 4 above');
+  assert.ok(c.includes('aria-label="Build: 1 done and 2 partial of 5 requirements, 1 closed and 2 in progress of 4 issues"'), c);
+  assert.ok(c.includes('decided on paper, build in progress') && !c.includes('not built'), 'any progress drops "not built"');
+  // Each of the three alone drops "not built".
+  const cold = { options: ['M1'], issues: [issue(1, true, false)] };
+  assert.ok(card(cold, repo(['planned'])).includes('not built'));
+  assert.ok(card(cold, repo(['done'])).includes('build in progress'), 'done alone');
+  assert.ok(card(cold, repo(['partial'])).includes('build in progress'), 'partial alone');
+  assert.ok(card({ options: ['M1'], issues: [issue(1, true, true)] }, repo(['planned'])).includes('build in progress'), 'in progress alone');
+  // A board stored before the Status field was read has no `inProgress`: it counts as none.
+  const old = { options: ['M1'], issues: [{ number: 1, title: 'x', open: true, labels: [], milestone: 'M1' }] };
+  assert.equal(groupStatus(old, REPO)[0].issues.inProgress, 0);
+});
+
+await test('the Worker reads the board Status: In Progress reaches the API and the live block', async () => {
+  const { state, env } = world();
+  state.board.issues.push({ number: 3, title: 'Third', open: true, labels: [], milestone: 'M1', inProgress: true });
+  await refresh(env, 'test');
+  const doc = JSON.parse(env.STATUS.data.get(BOARD_KEY));
+  assert.deepEqual(doc.board.issues.map((i) => i.inProgress), [false, false, true]);
+  const body = await (await api(req('/api/status'), env, ctx)).json();
+  assert.deepEqual(body.milestones[0].issues, { open: 2, closed: 0, inProgress: 1, blocked: 0, needsDecision: 0 });
+  const live = await (await api(req('/api/status/live/'), env, ctx)).text();
+  assert.ok(live.includes('0 closed, 1 in progress of 2'), 'the live block draws it');
+  assert.ok(live.includes('decided on paper, build in progress'));
+  assert.ok(live.includes(`Requirements: build of 2026-11-01 10:00 UTC. Issues: live, as of `), 'the build time of repo.json');
+  // Moving an issue on the board changes what is stored, so the next refresh writes it.
+  state.board.issues[2].inProgress = false;
+  assert.match(await refresh(env, 'test'), /wrote \(changed/);
 });
 
 // ---- the counting: every record and every live requirement is in exactly one block

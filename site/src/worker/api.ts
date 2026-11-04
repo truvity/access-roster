@@ -71,7 +71,7 @@ async function liveBlock(request: Request, env: Env): Promise<Response> {
     });
   }
   const html = statusBodyHtml({
-    groups: live.groups, mode: 'live', asOf: live.asOf, available: true, runs: live.runs, coverage: live.coverage, conformance: live.conformance,
+    groups: live.groups, mode: 'live', asOf: live.asOf, repoBuiltAt: live.repoBuiltAt, available: true, runs: live.runs, coverage: live.coverage, conformance: live.conformance,
   });
   return new Response(html, { headers: { ...headers, 'content-type': 'text/html; charset=utf-8', 'cache-control': STATUS_CACHE } });
 }

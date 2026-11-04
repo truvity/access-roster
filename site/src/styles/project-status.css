@@ -40,6 +40,24 @@
 .ps-bargroup-design .ps-meter::-webkit-meter-even-less-good-value {
   background: repeating-linear-gradient(135deg, var(--sl-color-blue) 0 .3rem, var(--sl-color-blue-high) .3rem .45rem); }
 .ps-bargroup-design .ps-meter::-moz-meter-bar { background: repeating-linear-gradient(135deg, var(--sl-color-blue) 0 .3rem, var(--sl-color-blue-high) .3rem .45rem); }
+/* A bar with two parts: two meters in the same cell. The one below counts both parts and is
+   striped; the one above counts the first part, is solid and has no track of its own. */
+.ps-stack { grid-column: 1 / -1; display: grid; width: 100%; }
+/* margin: Starlight spaces a block that follows another one, which would pull the meters apart. */
+.ps .ps-stack > .ps-meter { grid-area: 1 / 1; margin: 0; }
+/* The text of a two-part bar is longer than "a of b": it goes beside the name when it fits and
+   on a line of its own, at the right, when it does not. The bar always has the full width. */
+.ps .ps-bars > div.ps-two { display: flex; flex-wrap: wrap; align-items: baseline; gap: .15rem .5rem; }
+.ps-two dt { order: 1; flex: 1 1 auto; }
+.ps-two .ps-v { order: 2; margin-left: auto; white-space: nowrap; }
+.ps-two .ps-stack { order: 3; flex: 0 0 100%; }
+.ps-stack > .ps-meter-main { background: transparent; }
+.ps-stack > .ps-meter-main::-webkit-meter-bar { background: transparent; }
+.ps-bargroup-build .ps-meter-more::-webkit-meter-optimum-value,
+.ps-bargroup-build .ps-meter-more::-webkit-meter-suboptimum-value,
+.ps-bargroup-build .ps-meter-more::-webkit-meter-even-less-good-value {
+  background: repeating-linear-gradient(135deg, var(--sl-color-green) 0 .15rem, var(--sl-color-gray-4) .15rem .3rem); }
+.ps-bargroup-build .ps-meter-more::-moz-meter-bar { background: repeating-linear-gradient(135deg, var(--sl-color-green) 0 .15rem, var(--sl-color-gray-4) .15rem .3rem); }
 .ps-v { grid-row: 1; grid-column: 2; font-family: var(--sl-font-mono); font-variant-numeric: tabular-nums; color: var(--sl-color-white); }
 
 /* the ledger */

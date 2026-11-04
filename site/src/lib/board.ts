@@ -6,6 +6,10 @@
 export const ORG = 'truvity';
 export const PROJECT_NUMBER = 9;
 export const FIELD = 'Product milestone';
+// The board's own `Status` field and the option of it that means work has started. An open
+// issue with this option is "in progress" on the status page.
+export const STATUS_FIELD = 'Status';
+export const IN_PROGRESS = 'In Progress';
 export const REPO = 'truvity/sluis';
 
 export interface BoardIssue {
@@ -14,6 +18,8 @@ export interface BoardIssue {
   open: boolean;
   labels: string[];
   milestone: string | null;
+  // The issue's `Status` on the board is the option "In Progress".
+  inProgress: boolean;
 }
 
 // `project` is the board's node id, which project webhooks name.
@@ -24,7 +30,7 @@ export interface Board {
   items: number;
 }
 
-const QUERY = `query($org: String!, $number: Int!, $field: String!, $after: String) {
+const QUERY = `query($org: String!, $number: Int!, $field: String!, $status: String!, $after: String) {
   organization(login: $org) {
     projectV2(number: $number) {
       id
@@ -33,7 +39,8 @@ const QUERY = `query($org: String!, $number: Int!, $field: String!, $after: Stri
         pageInfo { hasNextPage endCursor }
         nodes {
           content { __typename ... on Issue { number title state labels(first: 50) { nodes { name } } repository { nameWithOwner } } }
-          fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          milestone: fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          status: fieldValueByName(name: $status) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
         }
       }
     }
@@ -47,7 +54,7 @@ async function page(token: string, userAgent: string, after: string | null) {
   const res = await fetch('https://api.github.com/graphql', {
     method: 'POST',
     headers: { authorization: `bearer ${token}`, 'content-type': 'application/json', 'user-agent': userAgent },
-    body: JSON.stringify({ query: QUERY, variables: { org: ORG, number: PROJECT_NUMBER, field: FIELD, after } }),
+    body: JSON.stringify({ query: QUERY, variables: { org: ORG, number: PROJECT_NUMBER, field: FIELD, status: STATUS_FIELD, after } }),
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`GitHub GraphQL answered HTTP ${res.status}`);
@@ -78,13 +85,14 @@ export async function readBoard(token: string, userAgent: string): Promise<Board
       items++;
       const c = node.content;
       if (c?.__typename !== 'Issue' || c.repository?.nameWithOwner !== REPO) continue;
-      const value: string | null = node.fieldValueByName?.name ?? null;
+      const value: string | null = node.milestone?.name ?? null;
       issues.set(c.number, {
         number: c.number,
         title: c.title,
         open: c.state === 'OPEN',
         labels: (c.labels?.nodes ?? []).map((l: { name: string }) => l.name),
         milestone: value && options!.includes(value) ? value : null,
+        inProgress: node.status?.name === IN_PROGRESS,
       });
     }
     if (!project.items.pageInfo.hasNextPage) {

@@ -13,8 +13,11 @@ export interface Run { workflow: string; status: string; conclusion: string | nu
 export interface BodyInput {
   groups: Group[];
   mode: 'snapshot' | 'live';
-  // When the data is as of, ISO 8601 UTC.
+  // When the board data (issues, their board Status) is as of, ISO 8601 UTC.
   asOf: string;
+  // When the repository facts (requirements, decision records) were built, ISO 8601 UTC. The
+  // cards name it beside `asOf`, because the two sources are not read at the same time.
+  repoBuiltAt?: string;
   // Whether the board was read; the snapshot of a build without a token has no issue data.
   available: boolean;
   runs?: Run[] | null;
@@ -46,17 +49,34 @@ const runFailed = (r: Run) => r.status === 'completed' && !['success', 'skipped'
 // A bar group on a milestone card: a heading that says what the bars measure, and the bars.
 // Design and Build are drawn apart and named, so that a record or a requirement decided on
 // paper is never read as code that runs.
-type Bar = [label: string, value: number, total: number];
-function barGroup(kind: 'design' | 'build', head: string, sub: string, summary: string, bars: Bar[], note = ''): string {
+// A bar is one meter, or two when it has a second part (`more`): the meter below counts both
+// parts and is striped, the one above counts the first part and is solid, so the first part
+// is a segment of the whole. The words beside the bar give each part its own number, so that
+// the colour and the stripes are never the only carrier.
+interface Bar { k: string; a: number; total: number; more?: { n: number; word: string }; word?: string }
+const meter = (cls_: string, value: number, total: number) =>
+  `<meter class="ps-meter ${cls_}" min="0" max="${total || 1}" value="${value}" aria-hidden="true">${frac(value, total)}%</meter>`;
+function barGroup(kind: 'design' | 'build', head: string, sub: string, summary: string, bars: Bar[], notes: string[] = []): string {
+  const row = ({ k, a, total, more, word }: Bar) => {
+    const fill = more
+      ? `<span class="ps-stack">${meter('ps-meter-more', a + more.n, total)}${meter('ps-meter-main', a, total)}</span>`
+      : meter('ps-meter-main', a, total);
+    const text = more ? `${a} ${word}, ${more.n} ${more.word} of ${total}` : `${a} of ${total}`;
+    return `<div${more ? ' class="ps-two"' : ''}><dt>${esc(k)}</dt><dd>${fill}<span class="ps-v">${esc(text)}</span></dd></div>`;
+  };
   return `<div class="ps-bargroup ps-bargroup-${kind}" role="group" aria-label="${esc(summary)}">`
     + `<p class="ps-bars-k">${esc(head)} <span class="ps-bars-s">${esc(sub)}</span></p>`
-    + `<dl class="ps-bars">${bars.map(([k, a, b]) =>
-      `<div><dt>${esc(k)}</dt><dd><meter class="ps-meter" min="0" max="${b || 1}" value="${a}" aria-hidden="true">${frac(a, b)}%</meter>`
-      + `<span class="ps-v">${a} of ${b}</span></dd></div>`).join('')}</dl>`
-    + (note ? `<p class="ps-bars-n">${esc(note)}</p>` : '') + '</div>';
+    + `<dl class="ps-bars">${bars.map(row).join('')}</dl>`
+    + notes.filter(Boolean).map((n) => `<p class="ps-bars-n">${esc(n)}</p>`).join('') + '</div>';
 }
 
-function cards(groups: Group[]): string {
+// What a card says about the Design block: "not built" only while nothing is done, partial or
+// in progress in that milestone; once there is any build progress it says so instead.
+export function designSub(done: number, partial: number, inProgress: number): string {
+  return done + partial + inProgress === 0 ? 'decided on paper, not built' : 'decided on paper, build in progress';
+}
+
+function cards(groups: Group[], when: string, builtAt?: string): string {
   // A card for each milestone, and one for "Unassigned" when something sits there, so that
   // the cards add up to the totals in the page's header.
   const shown = groups.filter((g) => g.issues && (g.milestone || g.reqs.total > 0 || g.adrs.records.length > 0 || g.issues.open + g.issues.closed > 0));
@@ -70,15 +90,22 @@ function cards(groups: Group[]): string {
     const adrTotal = g.adrs.records.length;
     const decided = g.reqs.total - g.reqs.open;
     const toWrite = g.adrs.toWrite ?? 0;
-    const design = barGroup('design', 'Design', 'decided on paper, not built',
+    const design = barGroup('design', 'Design', designSub(g.reqs.done, g.reqs.partial, iss.inProgress),
       `Design: ${g.adrs.accepted} of ${adrTotal} ADRs accepted, ${decided} of ${g.reqs.total} requirements decided`,
-      [['ADRs accepted', g.adrs.accepted, adrTotal], ['Requirements decided', decided, g.reqs.total]],
-      toWrite ? `${toWrite} more ${toWrite === 1 ? 'decision' : 'decisions'} to write, not counted above` : '');
-    // Build: requirements marked done (set by hand in the pull request that adds the passing
-    // tests), and the issues closed, which also count decision issues.
+      [{ k: 'ADRs accepted', a: g.adrs.accepted, total: adrTotal }, { k: 'Requirements decided', a: decided, total: g.reqs.total }],
+      [toWrite ? `${toWrite} more ${toWrite === 1 ? 'decision' : 'decisions'} to write, not counted above` : '']);
+    // Build: requirements marked done or partial (set by hand in the pull request that adds the
+    // passing tests), and the issues: closed, and in progress on the board (its Status field,
+    // open issues only). Closed issues also count decision issues. The two sources are read at
+    // different times, and the note says when each is as of.
+    const total = iss.open + iss.closed;
     const build = barGroup('build', 'Build', 'code and tests',
-      `Build: ${g.reqs.done} of ${g.reqs.total} requirements done, ${iss.closed} of ${iss.open + iss.closed} issues closed`,
-      [['Requirements done', g.reqs.done, g.reqs.total], ['Issues closed', iss.closed, iss.open + iss.closed]]);
+      `Build: ${g.reqs.done} done and ${g.reqs.partial} partial of ${g.reqs.total} requirements, ${iss.closed} closed and ${iss.inProgress} in progress of ${total} issues`,
+      [
+        { k: 'Requirements', a: g.reqs.done, total: g.reqs.total, more: { n: g.reqs.partial, word: 'partial' }, word: 'done' },
+        { k: 'Issues', a: iss.closed, total, more: { n: iss.inProgress, word: 'in progress' }, word: 'closed' },
+      ],
+      [builtAt ? `Requirements: build of ${utc(builtAt)}. Issues: ${when}.` : `Issues: ${when}.`]);
     return `<article class="${cls('ps-card', g.current && 'ps-current')}" aria-labelledby="card-${esc(g.slug)}">`
       + `<p class="ps-card-k">${g.milestone ? `Milestone ${i + 1}` : 'No milestone'}${g.current ? ' · <strong>current</strong>' : ''}</p>`
       + `<p class="ps-card-n" id="card-${esc(g.slug)}"><a href="#${esc(g.slug)}">${esc(g.name)}</a></p>`
@@ -189,6 +216,6 @@ function openWork(groups: Group[], when: string, available: boolean): string {
 export function statusBodyHtml(input: BodyInput): string {
   const when = input.mode === 'live' ? `live, as of ${utc(input.asOf)}` : `snapshot as of ${utc(input.asOf)}`;
   return `<div class="ps-body" data-mode="${input.mode}" data-as-of="${esc(input.asOf)}">`
-    + cards(input.groups) + ledger(input.groups, when) + checks(input) + openWork(input.groups, when, input.available)
+    + cards(input.groups, when, input.repoBuiltAt) + ledger(input.groups, when) + checks(input) + openWork(input.groups, when, input.available)
     + '</div>';
 }
