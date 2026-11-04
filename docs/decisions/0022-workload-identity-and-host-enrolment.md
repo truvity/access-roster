@@ -1,7 +1,7 @@
 # 0022 — Workload identity follows SPIFFE, and hosts enrol the same way
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-04
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -18,7 +18,8 @@ SPIFFE is the published standard for workload identity: the ID format, the trust
 ### Proofs and the exchange
 
 - **Every machine credential is obtained the same way.** The machine presents a proof from something sluis trusts, `exchange@<boundary>` verifies it in an RFC 8693 token exchange, `policy` decides whether the facts of the proof allow the credential ([0007](/decisions/0007-policy-and-sealed-grants/)), and sluis returns a short-lived credential: a JWT-SVID, an X.509-SVID, an SSH certificate or a database client certificate ([0023](/decisions/0023-certificate-authorities/)), or cloud credentials through the adapter of that cloud ([0025](/decisions/0025-integrations/#credential-minters)).
-- **Machines use no OAuth client credentials.** A machine proves what it is; it holds no client secret. RFC 7523 JWT client assertions stay a possible middle ground.
+- **Machines use no OAuth client credentials.** A machine proves what it is; it holds no client secret. The client authentication below is for a client that exchanges a person's token. RFC 7523 JWT client assertions stay a possible middle ground.
+- **A client that exchanges a person's token authenticates** (decided 2026-11-04). `TokenExchangeRequest` carries the client's authentication with the RFC 8693 parameters: `authorization`, the HTTP Basic header, and `client_secret` now, and `private_key_jwt` later ([REQ-EXCH-018](/requirements/exch/#REQ-EXCH-018), [REQ-EXCH-021](/requirements/exch/#REQ-EXCH-021); the fields are on [Contracts and errors](/reference/contracts/#the-token-exchange-request)). `exchange` checks it against the client's declaration ([0021](/decisions/0021-clients/#the-client-declaration)) and answers a failure with `invalid_client`, the same for a wrong secret and an unknown client ([REQ-EXCH-019](/requirements/exch/#REQ-EXCH-019)). Until `private_key_jwt` lands, **only a token issued to a public client of the `native` profile may be the subject of an exchange**, because `exchange` cannot yet check every way a client may authenticate ([REQ-EXCH-020](/requirements/exch/#REQ-EXCH-020)).
 - **Proof kinds are verifiers inside `exchange`**, holding public material only: roots, key sets, a registry of known devices. The config kind `ExchangeTrust` names the issuers, audiences and proof kinds an installation accepts. The published keys of a proof issuer (a cluster's ServiceAccount keys, a CI provider's OIDC keys) are cached in the temp kind `VerifierKeyCache`, for as long as HTTP caching allows and 24 hours at most. A proof that carries a `jti` is checked against the self-scoped temp kind `ReplayGuard` ([0004](/decisions/0004-the-data-model/#one-writer-per-kind)).
 
   | Milestone | Verifier | Proof |

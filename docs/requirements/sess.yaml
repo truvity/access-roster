@@ -628,3 +628,55 @@ requirements:
     issues: [1023]
     verification:
       - {kind: integration-test, ref: "a chain and a cookie of tenant A presented at the issuer of tenant B in the same boundary are refused"}
+  - id: REQ-SESS-047
+    area: SESS
+    statement: "session MUST keep the state of a pending sign-in in the sealed cookie __Host-sluis_signin and store nothing before a person is known."
+    rationale: "An unauthenticated request must create no stored state, and no grant for a tenant's keys exists before a person is decided (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [793]
+    verification:
+      - {kind: integration-test, ref: "a sign-in start writes no item of any kind but its rate bucket"}
+  - id: REQ-SESS-048
+    area: SESS
+    statement: "session MUST seal the sign-in cookie under the boundary's cookie data key and bind it to the request that began the sign-in."
+    rationale: "A cookie from another browser or another request must not complete a sign-in (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [793]
+    verification:
+      - {kind: integration-test, ref: "a sign-in cookie presented with another state, another browser or a tampered byte is refused"}
+  - id: REQ-SESS-049
+    area: SESS
+    statement: "session MUST refuse a sign-in cookie older than 10 minutes."
+    rationale: "An unfinished sign-in must not stay completable (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [793]
+    verification:
+      - {kind: integration-test, ref: "a callback at 10 minutes and one second with a moved clock is refused"}
+  - id: REQ-SESS-050
+    area: SESS
+    statement: "session MUST refuse to set a sign-in cookie larger than 4 KiB."
+    rationale: "A cookie over the browser's limit is dropped silently and would break the sign-in (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [session]
+    standards: []
+    issues: [793]
+    verification:
+      - {kind: integration-test, ref: "an authorize request whose state would exceed 4 KiB is refused"}

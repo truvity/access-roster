@@ -342,8 +342,8 @@ requirements:
       - {kind: integration-test, ref: "claims and authorization_details negative tests"}
   - id: REQ-AUTHN-012
     area: AUTHN
-    statement: "Each protocol endpoint MUST accept only the parameters on its closed list."
-    rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
+    statement: "Each protocol endpoint MUST accept only the parameters on its closed list in a request made to sluis."
+    rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured; a response from an upstream is not such a request (ADR 0025)."
     level: MUST
     source: security-review
     status: planned
@@ -357,7 +357,7 @@ requirements:
   - id: REQ-AUTHN-036
     area: AUTHN
     split_from: REQ-AUTHN-012
-    statement: "Each protocol endpoint MUST refuse any other parameter with invalid_request."
+    statement: "Each protocol endpoint MUST refuse any other parameter of a request made to sluis with invalid_request."
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
     level: MUST
     source: security-review
@@ -373,7 +373,7 @@ requirements:
   - id: REQ-AUTHN-037
     area: AUTHN
     split_from: REQ-AUTHN-012
-    statement: "Each protocol endpoint MUST refuse a repeated security-relevant parameter."
+    statement: "Each protocol endpoint MUST refuse a repeated security-relevant parameter of a request made to sluis."
     rationale: "Refusing instead of ignoring prevents a client from believing a requirement was honoured."
     level: MUST
     source: security-review
@@ -1112,3 +1112,16 @@ requirements:
     issues: [1178]
     verification:
       - {kind: integration-test, ref: "a restore of an archive from before a credential change leaves the signed config set as it is"}
+  - id: REQ-AUTHN-078
+    area: AUTHN
+    statement: "The callback endpoint MUST ignore a parameter of an upstream's authorization response that is not on its list."
+    rationale: "A client ignores unrecognised response parameters, so an upstream that adds one does not break sign-in (RFC 6749 section 4.1.2)."
+    level: MUST
+    source: standard
+    status: planned
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "4.1.2", depth: Partial}
+    issues: [796]
+    verification:
+      - {kind: integration-test, ref: "a callback with an extra response parameter completes the sign-in; the same extra parameter on a request to authorize is refused"}

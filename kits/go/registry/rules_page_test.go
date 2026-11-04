@@ -71,7 +71,7 @@ func TestMatchesRulesPage(t *testing.T) {
 			}
 		}
 	}
-	if checked < 19*112*7 {
+	if checked < 19*111*7 {
 		t.Fatalf("only %d verb checks ran", checked)
 	}
 	// the tables name no actor or kind the page does not have

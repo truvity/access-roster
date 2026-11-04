@@ -305,10 +305,11 @@ requirements:
     rationale: "One source must not fill the state with unfinished sign-ins."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-SESS-047]
     verification:
       - {kind: integration-test, ref: "pending cap per source test"}
   - id: REQ-SEC-023
@@ -317,10 +318,11 @@ requirements:
     rationale: "Unfinished sign-ins must not accumulate."
     level: MUST
     source: design-decision
-    status: planned
+    status: withdrawn
     runtimes: all
     standards: []
     issues: [916]
+    superseded_by: [REQ-SESS-049]
     verification:
       - {kind: integration-test, ref: "expiry test with a moved clock"}
   - id: REQ-SEC-024

@@ -503,7 +503,7 @@ requirements:
       - {kind: test-vectors, ref: "documents with an unknown key, a wrong type and a retired field are refused before any decoder runs"}
   - id: REQ-DATA-039
     area: DATA
-    statement: "The Go and Rust protovalidate validators MUST give the same verdict on every shared conformance vector."
+    statement: "The Go protovalidate validator and the Rust kit's checks MUST give the same verdict on every shared conformance vector."
     rationale: "A validator that disagrees across languages makes two actors read the same document differently (ADR 0004)."
     level: MUST
     source: design-decision
@@ -512,7 +512,7 @@ requirements:
     standards: []
     issues: [1177]
     verification:
-      - {kind: test-vectors, ref: "the shared protovalidate vector set run by both validators"}
+      - {kind: test-vectors, ref: "the shared protovalidate vector set run by the Go validator and the Rust checks"}
   - id: REQ-DATA-040
     area: DATA
     statement: "A published schema identifier MUST never change."
@@ -1244,3 +1244,28 @@ requirements:
     issues: [1202]
     verification:
       - {kind: integration-test, ref: "the kind registry holds no kind for these; a scan of the engine finds no key material or grant"}
+  - id: REQ-DATA-097
+    area: DATA
+    statement: "store@ MUST refuse a DELETE and an APPLY on the kind Lease."
+    rationale: "A lease's version is a fencing token, so nothing may remove the item or set its version back (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: integration-test, ref: "a DELETE and an APPLY on a Lease are refused; a takeover by a conditional update still works"}
+  - id: REQ-DATA-098
+    area: DATA
+    statement: "After a delete or a sweep, an item created again at the same address MUST have version 1."
+    rationale: "The store keeps no tombstone, so a caller must not rely on a version across a deletion (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [864]
+    verification:
+      - {kind: conformance-suite, ref: "version conformance on every engine: create, delete, create again gives 1"}

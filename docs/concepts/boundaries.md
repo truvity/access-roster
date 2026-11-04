@@ -91,7 +91,7 @@ Each environment boundary has its own issuer, and each tenant has an issuer host
 | The group issuer, at the front | `https://sluis.example.com` |
 | An environment's issuer | `https://sluis.<env>.example.com`, one web origin per host, no path |
 
-- **Discovery and keys are static documents** in a bucket of the boundary, so verification survives a compute outage. The key set is the exportable kind `SigningRing`, and it lists every active token key with its `x5c` chain.
+- **Discovery and keys are static documents** in a bucket of the boundary, so verification survives a compute outage. The key set is the exportable kind `SigningRing`, and it lists every pre-published, active and retiring token key with its `x5c` chain.
 - **A boundary has no sign-in of its own.** Its `entry@<boundary>` takes the group issuer as its upstream; a passkey tap is asked for only where that boundary's policy wants fresh multi-factor authentication.
 - **The CLI signs in once** at the front, and then exchanges tokens silently at each boundary's own token endpoint. The front never sees a boundary's tokens.
 - **One relying-party ID serves every issuer.** The boundary hosts are siblings of the group host, so the passkey's relying-party ID is the registrable parent (`example.com`), and every verifier checks a strict allow-list of web origins: the sluis hosts and their audit hosts, nothing else.
