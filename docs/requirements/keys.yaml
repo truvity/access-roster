@@ -1181,8 +1181,8 @@ requirements:
       - {kind: integration-test, ref: "a forged Boundary, one for another kind and an unsigned item that says development leave the production floor in force; a lower seq is refused after a restart"}
   - id: REQ-KEYS-112
     area: KEYS
-    statement: "key@ MUST refuse a key revocation declaration whose seq is not above the highest it has taken, and keep that seq in state of its own."
-    rationale: "A declaration is taken once: a replay or an older declaration must not make a second set of facts, also after a restart; a node whose state is gone takes a valid declaration again, which writes only revocations that exist (ADR 0041, The declaration)."
+    statement: "key@ MUST refuse a key revocation declaration whose seq is below the highest it has taken, or equal to it with another payload, and keep that seq and digest in state of its own."
+    rationale: "An older declaration must not come back, and the same declaration again is a retry that completes one a store@ failure stopped half way, writing only what is missing (ADR 0041, The declaration)."
     level: MUST
     source: design-decision
     status: done
@@ -1192,11 +1192,11 @@ requirements:
     actors: [key]
     standards: []
     verification:
-      - {kind: integration-test, ref: "the same declaration again and a lower seq are refused, in the process and after a restart on the same state; a higher seq is taken"}
+      - {kind: integration-test, ref: "a lower seq and another payload under the last seq are refused, also after a restart; a declaration stopped half way is completed by a retry"}
   - id: REQ-KEYS-113
     area: KEYS
-    statement: "key@ MUST refuse a key revocation declaration that names a key it does not know: a signing key it holds or a token key that SigningRing lists."
-    rationale: "A mistyped key id must not be written as a revocation that stops nothing while the operator believes the key revoked; the ring makes another node's token key known, so it is revoked from any node (ADR 0041, The declaration)."
+    statement: "key@ MUST refuse a key revocation declaration without allow_unknown that names a key it does not know: one it holds, one SigningRing lists or one a signing KeyCertificate certifies."
+    rationale: "A mistyped key id must not be written as a revocation that stops nothing, while a lost board's own keys, which no source knows, are revoked with allow_unknown, which the publisher signs and the audit fact marks (ADR 0041, The declaration)."
     level: MUST
     source: design-decision
     status: done
@@ -1206,7 +1206,7 @@ requirements:
     actors: [key]
     standards: []
     verification:
-      - {kind: integration-test, ref: "a declaration with an unknown kid or a wrapping key is refused whole; another node's token key in the ring is taken; a ring that cannot be read is unavailable, not unknown"}
+      - {kind: integration-test, ref: "an unknown kid or a wrapping key refuses the declaration; the ring and a certificate make a key known; allow_unknown writes an unknown key, marked"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."

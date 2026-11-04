@@ -115,6 +115,9 @@ type fakeStore struct {
 	items      map[string]*storev2alpha1.Item
 	wrapWrites int // CREATE operations of data-key-wrap that were applied
 	failWrites bool
+	// writesLeft, when above zero, is how many more writes succeed before every write fails, as a store@ that goes
+	// down half way.
+	writesLeft int
 	// failKind makes every Get of the kind (a segment) unavailable, as a store@ that is down for it.
 	failKind string
 	// signed holds the signed document of a config kind by its segment, as a config source would. A store@ that is
@@ -199,6 +202,12 @@ func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.
 	defer f.mu.Unlock()
 	if f.failWrites {
 		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
+	}
+	if f.writesLeft > 0 {
+		f.writesLeft--
+		if f.writesLeft == 0 {
+			f.failWrites = true
+		}
 	}
 	seen := map[string]bool{}
 	for _, op := range req.Msg.GetOperations() { // all or none: check first

@@ -7,7 +7,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -192,8 +195,9 @@ func swapPayload(t *testing.T, doc, from []byte) []byte {
 }
 
 // verifies: REQ-KEYS-112
-// key@ takes a declaration only with a seq above the highest it took: the same declaration again (a replay) and an
-// older one are refused, in the process and after a restart, because the mark is kept in the state directory.
+// key@ takes a declaration only with a seq above the highest it took, or the same seq with the same payload, which is
+// a retry of the last one and writes nothing that exists. The same seq with another payload, and an older seq, are
+// refused, in the process and after a restart, because the mark is kept in the state directory with its digest.
 func TestADeclarationIsTakenOnceAndNeverAnOlderOne(t *testing.T) {
 	e := newTestEnv(t, "development")
 	state := shortDir(t)
@@ -203,18 +207,83 @@ func TestADeclarationIsTakenOnceAndNeverAnOlderOne(t *testing.T) {
 	if _, err := n.revoke(first); err != nil {
 		t.Fatalf("Revoke: %v", err)
 	}
-	_, err := n.revoke(first)
+	res, err := n.revoke(first)
+	if err != nil || !res.GetKeys()[0].GetAlready() {
+		t.Fatalf("the same declaration again is a retry that writes nothing new: %v, %v", res, err)
+	}
+	_, err = n.revoke(e.declare(50, "suspicion", logKey))
 	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
 	_, err = n.revoke(e.declare(49, "suspicion", logKey))
 	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
 
-	// After a restart on the same state the mark still holds 50.
+	// After a restart on the same state the mark still holds 50 and its digest.
 	n.stop()
 	m := e.startedNode(nodeOpts{stateDir: state, driver: n.driver})
 	_, err = m.revoke(e.declare(50, "suspicion", logKey))
 	m.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonSeq, "seq")
+	if _, err := m.revoke(first); err != nil {
+		t.Fatalf("a retry of the last declaration after the restart: %v", err)
+	}
 	if _, err := m.revoke(e.declare(51, "suspicion", logKey)); err != nil {
 		t.Fatalf("a higher seq after the restart: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-112
+// A store@ that fails after the mark is saved leaves the declaration taken in part: key@ refuses it as "partial",
+// names the keys still pending in the detail, and the audit fact says so. Delivering the same declaration again, also
+// after a restart, completes it.
+func TestADeclarationStoppedHalfWayIsCompletedByARetry(t *testing.T) {
+	e := newTestEnv(t, "development")
+	state := shortDir(t)
+	n := e.startedNode(nodeOpts{stateDir: state})
+	token, logKey := n.srv.keys["token-signing"].keyID, n.srv.keys["audit-log"].keyID
+	decl := e.declare(70, "compromise", token, logKey)
+	e.store.mu.Lock()
+	e.store.writesLeft = 1 // the first item is written, then store@ is down
+	e.store.mu.Unlock()
+	_, err := n.revoke(decl)
+	wantRefusal(t, err, connect.CodeUnavailable, reasonPartial)
+	var ce *connect.Error
+	if !errors.As(err, &ce) {
+		t.Fatalf("not a Connect error: %v", err)
+	}
+	var detail *keyv2alpha1.RevokeResponse
+	for _, d := range ce.Details() {
+		if v, derr := d.Value(); derr == nil {
+			if m, ok := v.(*keyv2alpha1.RevokeResponse); ok {
+				detail = m
+			}
+		}
+	}
+	if len(detail.GetKeys()) != 2 || detail.GetKeys()[0].GetPending() || !detail.GetKeys()[1].GetPending() {
+		t.Fatalf("the detail = %v", detail)
+	}
+	if len(e.revocationItems()) != 1 {
+		t.Fatalf("%d items, want the first only", len(e.revocationItems()))
+	}
+	var partial bool
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionRevoke && ev.Failure && ev.Fields["partial"] == true && slices.Equal(ev.Fields["pending"].([]string), []string{logKey}) {
+			partial = true
+		}
+	}
+	if !partial {
+		t.Fatal("no audit fact of the partial declaration")
+	}
+
+	// store@ is back and key@ restarted: the same declaration completes.
+	e.store.mu.Lock()
+	e.store.failWrites = false
+	e.store.mu.Unlock()
+	n.stop()
+	m := e.startedNode(nodeOpts{stateDir: state, driver: n.driver})
+	res, err := m.revoke(decl)
+	if err != nil {
+		t.Fatalf("the retry: %v", err)
+	}
+	if !res.GetKeys()[0].GetAlready() || res.GetKeys()[1].GetAlready() || res.GetKeys()[1].GetPending() || len(e.revocationItems()) != 2 {
+		t.Fatalf("the retry = %v", res)
 	}
 }
 
@@ -311,4 +380,123 @@ func TestTheAdminSocketRefusesAnotherUser(t *testing.T) {
 func (e *testEnv) nextSeq() uint64 {
 	e.seqD += 1000
 	return e.seqD
+}
+
+// verifies: REQ-KEYS-113
+// A key that a KeyCertificate of a signing purpose certifies is known; a wrapping certificate does not make a key
+// known. A declaration with allow_unknown revokes keys that no source knows, and the audit fact and the answer mark
+// them unknown; without it they are refused.
+func TestAllowUnknownRevokesKeysNoSourceKnows(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	certified := newSPKIKid(t)
+	e.store.put("key-certificate", "", "x509/"+strings.ToLower(certified.kid[:8]), &keyv2alpha1.KeyCertificate{Purpose: "x509", SpkiDer: certified.spki})
+	wrapping := newSPKIKid(t)
+	e.store.put("key-certificate", "", "wrapping/"+strings.ToLower(wrapping.kid[:8]), &keyv2alpha1.KeyCertificate{Purpose: "wrapping", SpkiDer: wrapping.spki})
+	if _, err := n.revoke(e.declare(e.nextSeq(), "compromise", certified.kid)); err != nil {
+		t.Fatalf("a certified key: %v", err)
+	}
+	_, err := n.revoke(e.declare(e.nextSeq(), "compromise", wrapping.kid))
+	n.refusedAdmin(t, err, connect.CodeFailedPrecondition, reasonUnknownKid, "kids[0]")
+
+	lost := "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	token := n.srv.keys["token-signing"].keyID
+	payload := string(declarationPayload(testBoundary, "lost-board", token, lost)) + "allow_unknown: true\n"
+	res, err := n.revoke(e.signKind("publisher-1", e.pub, e.nextSeq(), declarationKind, []byte(payload)))
+	if err != nil {
+		t.Fatalf("allow_unknown: %v", err)
+	}
+	if res.GetKeys()[0].GetUnknown() || !res.GetKeys()[1].GetUnknown() {
+		t.Fatalf("Revoke = %v", res)
+	}
+	if e.revocationItems()[revocationID(targetKid, lost)].GetReasonCode() != "lost-board" {
+		t.Fatal("the unknown key was not written")
+	}
+	var marked bool
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionRevoke && slices.Equal(ev.Fields["unknown"].([]string), []string{lost}) {
+			marked = true
+		}
+	}
+	if !marked {
+		t.Fatal("the audit fact does not mark the unknown key")
+	}
+	bad := string(declarationPayload(testBoundary, "drill", token)) + "allow_unknown: yes\n"
+	_, err = n.revoke(e.signKind("publisher-1", e.pub, e.nextSeq(), declarationKind, []byte(bad)))
+	n.refusedAdmin(t, err, connect.CodeInvalidArgument, reasonSchema, "allow_unknown")
+}
+
+// verifies: REQ-SEC-034
+// The audit fact names the node that took the declaration and the uid that delivered it. When the fact cannot be
+// made durable the keys are still revoked, and the answer says the fact is missing.
+func TestTheRevocationFactNamesTheNodeAndTheCaller(t *testing.T) {
+	e := newTestEnv(t, "development")
+	rec := &recorder{}
+	n := e.startedNode(nodeOpts{name: "node-7", audit: rec})
+	token := n.srv.keys["token-signing"].keyID
+	if _, err := n.revoke(e.declare(1, "drill", token)); err != nil {
+		t.Fatal(err)
+	}
+	var f map[string]any
+	for _, ev := range rec.all() {
+		if ev.Action == ActionRevoke {
+			f = ev.Fields
+		}
+	}
+	if f["node"] != "node-7" || f["peer_uid"] != int64(os.Getuid()) {
+		t.Fatalf("the fact = %v", f)
+	}
+
+	rec.mu.Lock()
+	rec.failing = true
+	rec.mu.Unlock()
+	logKey := n.srv.keys["audit-log"].keyID
+	res, err := n.revoke(e.declare(2, "drill", logKey))
+	if err != nil || res.GetAudited() {
+		t.Fatalf("Revoke with the audit transport down = %v, %v; want audited false", res, err)
+	}
+	if _, ok := e.revocationItems()[revocationID(targetKid, logKey)]; !ok {
+		t.Fatal("the key is not revoked when the audit fact fails")
+	}
+}
+
+// The admin socket's own rule, root only, refuses this test's user through a real Unix socket and SO_PEERCRED.
+func TestTheAdminSocketServesRootOnly(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("SKIP: the test runs as root, which the rule allows; it needs another user")
+	}
+	e := newTestEnv(t, "development")
+	n := e.newNode(nodeOpts{})
+	n.srv.adminAllow = rootOnly
+	n.start()
+	_, err := n.revoke(e.declare(1, "compromise", n.srv.keys["token-signing"].keyID))
+	if connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("Revoke as uid %d = %v, want permission_denied", os.Getuid(), err)
+	}
+	if len(e.revocationItems()) != 0 {
+		t.Fatal("a refused caller wrote an item")
+	}
+}
+
+type spkiKid struct {
+	spki []byte
+	kid  string
+}
+
+// newSPKIKid makes a P-384 public key and its RFC 7638 thumbprint.
+func newSPKIKid(t *testing.T) spkiKid {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := x509.MarshalPKIXPublicKey(&k.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := spkiThumbprint(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return spkiKid{spki: der, kid: id}
 }

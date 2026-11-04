@@ -178,7 +178,7 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 		return nil, err
 	}
 	return &Server{cfg: cfg, now: now, st: st, revocations: rev, ring: ring, driver: driver, wraps: ws, certs: certs,
-		adminAllow: func(uid uint32) bool { return uid == 0 },
+		adminAllow: rootOnly,
 		plan:       &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
 		boundary:   &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
 		limits:     newLimiters(now)}, nil
