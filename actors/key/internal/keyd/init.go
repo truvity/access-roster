@@ -79,7 +79,7 @@ func (s *Server) Check(ctx context.Context) error {
 		return err
 	}
 	// The check reads the mark and writes nothing: it refuses what the serving process would.
-	if err := s.restoreMark(false); err != nil {
+	if err := s.restoreMarks(false); err != nil {
 		return err
 	}
 	b, plan, err := s.loadConfig(ctx)
@@ -118,7 +118,7 @@ func (s *Server) Init(ctx context.Context) error {
 	if err := s.checkRunDir(); err != nil {
 		return err
 	}
-	if err := s.restoreMark(true); err != nil {
+	if err := s.restoreMarks(true); err != nil {
 		return err
 	}
 	b, plan, err := s.loadConfig(ctx)
@@ -161,7 +161,8 @@ func (s *Server) Init(ctx context.Context) error {
 		"node": s.cfg.Node, "recipient": s.recipient, "purposes": int64(len(s.keys)),
 		// The KeyPlan this start verified, so that a reviewer matches it to the reviewed file and sees a lag
 		// (ADR 0005, "Freshness at a cold start").
-		"keyplan_seq": int64(s.planLast.seq), "keyplan_sha384": s.planLast.sha384, //nolint:gosec // seq is below 2^53
+		"keyplan_seq": int64(s.plan.last.seq), "keyplan_sha384": s.plan.last.sha384, //nolint:gosec // seq is below 2^53
+		"boundary_seq": int64(s.boundary.last.seq), "boundary_sha384": s.boundary.last.sha384, //nolint:gosec // seq is below 2^53
 	}})
 	listed, _ := plannedRecipients(plan)
 	slog.Info("key@ ready", "boundary", s.cfg.Boundary, "recipient", s.recipient, "purposes", len(s.keys),

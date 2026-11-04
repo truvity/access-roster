@@ -98,7 +98,7 @@ func (s *Server) warnLegacy(labels []string) {
 // A listed recipient with no key is reported and audited, once for each set of them; the wrap set is incomplete
 // until the key appears, and it is never completed with a key the list does not name.
 func (s *Server) recipients(ctx context.Context) (recipientSet, error) {
-	plan, err := s.keyPlan(ctx)
+	plan, err := fetchVerified(ctx, s, s.plan)
 	if err != nil {
 		return recipientSet{}, err
 	}

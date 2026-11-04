@@ -60,7 +60,7 @@ type Config struct {
 	Bootstrap string
 	// StateDir is key@'s own durable local state, /var/lib/sluis-state/<boundary>/key: the board's state directory or the
 	// local volume, 0700 and key@'s alone. It holds the highest KeyPlan seq verified, so that a restart does not forget it
-	// (plan_state.go).
+	// (signed_state.go).
 	StateDir string
 	Node     string // the name of the node in logs and audit facts: node-1 locally, the board's short name on a board
 	Auditor  Auditor
@@ -82,20 +82,18 @@ type purposeKey struct {
 
 // Server is key@.
 type Server struct {
-	cfg     Config
-	now     func() time.Time
-	st      storev2alpha1connect.StoreServiceClient
-	driver  keystorev2alpha1connect.KeyStoreServiceClient
-	wraps   *store.Client[*keyv2alpha1.DataKeyWrap]
-	certs   *store.Client[*keyv2alpha1.KeyCertificate]
-	boundCl *store.Client[*configv2alpha1.Boundary]
+	cfg    Config
+	now    func() time.Time
+	st     storev2alpha1connect.StoreServiceClient
+	driver keystorev2alpha1connect.KeyStoreServiceClient
+	wraps  *store.Client[*keyv2alpha1.DataKeyWrap]
+	certs  *store.Client[*keyv2alpha1.KeyCertificate]
 
-	// The KeyPlan is verified here and never taken as a decoded item from store@ (plan.go).
+	// The KeyPlan and the Boundary are verified here and never taken as decoded items from store@ (signed_kind.go).
 	publishers []signedconfig.Publisher // the publisher keys of the bootstrap file
-	planMu     sync.Mutex               // one fetch and verification at a time
-	planSeq    signedconfig.Sequencer   // the highest document seen in this process
-	planLast   *verifiedPlan            // the KeyPlan last verified
-	saveMark   bool                     // this process writes the mark (the serving process; the check command only reads)
+	plan       *signedKind[*configv2alpha1.KeyPlan]
+	boundary   *signedKind[*configv2alpha1.Boundary]
+	saveMark   bool // this process writes the marks (the serving process; the check command only reads them)
 
 	// serverConfig, when set, adjusts the ServerConfig of each socket. Tests use it to name their caller; a
 	// normal build has no way to set it, and the name resolver it would set exists only under the sluis_test tag.
@@ -162,12 +160,10 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 	if err != nil {
 		return nil, err
 	}
-	bnd, err := store.New(st, "Boundary", func() *configv2alpha1.Boundary { return &configv2alpha1.Boundary{} })
-	if err != nil {
-		return nil, err
-	}
-	return &Server{cfg: cfg, now: now, st: st, driver: driver, wraps: ws, certs: certs, boundCl: bnd,
-		limits: newLimiters(now)}, nil
+	return &Server{cfg: cfg, now: now, st: st, driver: driver, wraps: ws, certs: certs,
+		plan:     &signedKind[*configv2alpha1.KeyPlan]{kind: keyPlanKind, label: "KeyPlan", op: "keyplan", reason: reasonKeyPlan, markFile: planMarkFile, decode: decodeKeyPlan},
+		boundary: &signedKind[*configv2alpha1.Boundary]{kind: boundaryKind, label: "Boundary", op: "boundary", reason: reasonBoundary, markFile: boundaryMarkFile, decode: decodeBoundary},
+		limits:   newLimiters(now)}, nil
 }
 
 // validNode reports whether node is a lower-case address part of reasonable length.
@@ -206,18 +202,18 @@ func (s *Server) checkRunDir() error {
 	return nil
 }
 
-// loadConfig reads Boundary and KeyPlan, the config kinds key@ needs (D-17: one item, id "default"). A missing
-// document means no start.
+// loadConfig reads Boundary and KeyPlan, the config kinds key@ needs (D-17: one item, id "default"), each from the signed
+// document that key@ verifies itself. A missing or refused document means no start.
 func (s *Server) loadConfig(ctx context.Context) (*configv2alpha1.Boundary, *configv2alpha1.KeyPlan, error) {
-	b, err := s.boundCl.Get(ctx, "", "default")
+	b, err := fetchVerified(ctx, s, s.boundary)
 	if err != nil {
 		return nil, nil, fmt.Errorf("boundary/default: %w", err)
 	}
-	plan, err := s.keyPlan(ctx)
+	plan, err := fetchVerified(ctx, s, s.plan)
 	if err != nil {
 		return nil, nil, fmt.Errorf("keyplan/default: %w", err)
 	}
-	return b.Value, plan, nil
+	return b, plan, nil
 }
 
 // checkFloor applies the floors in code to the driver and the environment (ADR 0006, "Floors in code"): the

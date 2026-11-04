@@ -54,7 +54,7 @@ store@ takes these steps in this order and stops at the first failure. Nothing b
 
 A failure names the document by its kind, never the value. A document that is refused is never read.
 
-**A second verifier checks the same steps in Go.** A caller that must not rely on store@ for what a document says reads the signed bytes through [`GetSignedConfig`](/reference/store-api/#getsignedconfig) and takes steps 1 to 5 itself (`kits/go/signedconfig`). key@ does so for the `KeyPlan`, under the `publishers` block of its own copy of the bootstrap file, so a compromised store@ cannot choose who receives a data key ([0006](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). The two verifiers are one contract and not shared code, and the [vectors](#test-vectors) hold them to it.
+**A second verifier checks the same steps in Go.** A caller that must not rely on store@ for what a document says reads the signed bytes through [`GetSignedConfig`](/reference/store-api/#getsignedconfig) and takes steps 1 to 5 itself (`kits/go/signedconfig`). key@ does so for the `KeyPlan` and the `Boundary`, under the `publishers` block of its own copy of the bootstrap file, so a compromised store@ cannot choose who receives a data key ([0006](/decisions/0006-keys-and-sealing/#who-may-receive-a-wrap)). The two verifiers are one contract and not shared code, and the [vectors](#test-vectors) hold them to it.
 
 ## The sequence number
 
@@ -144,7 +144,7 @@ gRKwViO6TrYXCCq+TZVFl0XZTamJNr0E
 }
 ```
 
-The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step. [`keyplan-payloads.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/keyplan-payloads.json) does the same for the payload of a `KeyPlan`, which key@ reads from the bytes it verified.
+The vectors are committed as data in [`tests/testdata/signed-config/vectors.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/vectors.json), with the two vectors above, about forty refused variants and the sequence cases. store@ (Rust) and `kits/go/signedconfig` (Go) run the same file and must give the same verdict, step for step. [`keyplan-payloads.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/keyplan-payloads.json) and [`boundary-payloads.json`](https://github.com/truvity/sluis/blob/main/tests/testdata/signed-config/boundary-payloads.json) do the same for the payloads of a `KeyPlan` and a `Boundary`, which key@ reads from the bytes it verifies.
 
 The payload of a vector is a stand-in: the signature layer does not look into it. Both vectors name the kind `Boundary`, and the page's keys were made on 2026-11-04 for the header that names a kind. Both vectors verify (checked 2026-11-04 with the Go verifier and the Rust verifier of sluis, which are the two implementations this page binds). The verdicts every implementation, Go and Rust, must give, with the bootstrap file listing both keys and the kind of the vectors under the party's `co_signs`:
 
