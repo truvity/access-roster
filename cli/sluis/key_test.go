@@ -188,3 +188,39 @@ func TestKeyRevokeRefusesABadDeclaration(t *testing.T) {
 		t.Fatal("a refused declaration was written")
 	}
 }
+
+// verifies: REQ-KEYS-112
+// A declaration that key@ took in part is reported key by key, revoked or not yet, with exit 1 and the advice to
+// deliver it again; --allow-unknown is written into the declaration.
+func TestKeyRevokeReportsAPartialDeclaration(t *testing.T) {
+	e := krefusal.New(connect.CodeUnavailable, "partial", "")
+	d, err := connect.NewErrorDetail(&keyv2alpha1.RevokeResponse{Seq: 9, Audited: true, Keys: []*keyv2alpha1.RevokedKey{
+		{Kid: kidA}, {Kid: kidB, Pending: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.AddDetail(d)
+	sock := serveKeyAdmin(t, &fakeKeyAdmin{refuse: e})
+	ta := newTestApp(t)
+	signed := filepath.Join(t.TempDir(), "revoke.jws")
+	if err := os.WriteFile(signed, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := ta.do("key", "revoke", "--boundary", "dev", "--declaration", signed, "--socket", sock); code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if !strings.Contains(ta.err.String(), kidA+" revoked") || !strings.Contains(ta.err.String(), kidB+" not yet revoked") ||
+		!strings.Contains(ta.err.String(), "deliver the same declaration again") {
+		t.Fatalf("stderr = %q", ta.err.String())
+	}
+
+	out := filepath.Join(t.TempDir(), "revoke.yaml")
+	if code := ta.do("key", "revoke", "--boundary", "dev", "--kid", kidA, "--reason", "lost-board", "--allow-unknown", "--out", out); code != 0 {
+		t.Fatalf("exit %d; %s", code, ta.err.String())
+	}
+	b, err := os.ReadFile(out) //nolint:gosec // the test's own temporary file
+	if err != nil || !strings.Contains(string(b), "allow_unknown: true\n") {
+		t.Fatalf("the declaration = %q, %v", b, err)
+	}
+}

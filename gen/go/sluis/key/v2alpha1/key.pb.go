@@ -73,7 +73,9 @@ func (x *RevokeRequest) GetDeclaration() []byte {
 	return nil
 }
 
-// RevokeResponse says what key@ did with each key the declaration names.
+// RevokeResponse says what key@ did with each key the declaration names. A declaration that a store@ failure stopped
+// half way is refused with the reason "partial", and the refusal carries this message as a detail, with the keys that
+// are not written yet marked pending; delivering the same declaration again completes it.
 type RevokeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`         // the seq of the declaration, now the highest key@ has taken
@@ -139,6 +141,8 @@ type RevokedKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Kid           string                 `protobuf:"bytes,1,opt,name=kid,proto3" json:"kid,omitempty"`          // the RFC 7638 thumbprint, base64url
 	Already       bool                   `protobuf:"varint,2,opt,name=already,proto3" json:"already,omitempty"` // the key was revoked before this declaration; nothing new was written
+	Unknown       bool                   `protobuf:"varint,3,opt,name=unknown,proto3" json:"unknown,omitempty"` // no source of key@ knows the key; written because the declaration allows it
+	Pending       bool                   `protobuf:"varint,4,opt,name=pending,proto3" json:"pending,omitempty"` // not written yet: a store@ failure stopped the declaration before it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -187,13 +191,30 @@ func (x *RevokedKey) GetAlready() bool {
 	return false
 }
 
+func (x *RevokedKey) GetUnknown() bool {
+	if x != nil {
+		return x.Unknown
+	}
+	return false
+}
+
+func (x *RevokedKey) GetPending() bool {
+	if x != nil {
+		return x.Pending
+	}
+	return false
+}
+
 // KeyRevocationDeclaration is the payload of a key revocation declaration (ADR 0041; signed-config.md,
 // "Declarations"): what an operator declares, signed with a publisher key. It names the exact keys, never a purpose.
 type KeyRevocationDeclaration struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Boundary      string                 `protobuf:"bytes,1,opt,name=boundary,proto3" json:"boundary,omitempty"` // the boundary the declaration is for; key@ of another boundary refuses it
-	Kids          []string               `protobuf:"bytes,2,rep,name=kids,proto3" json:"kids,omitempty"`         // the RFC 7638 thumbprints, base64url, of the keys to revoke; 1 to 64, each once
-	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`     // compromise, suspicion, lost-board or drill
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Boundary string                 `protobuf:"bytes,1,opt,name=boundary,proto3" json:"boundary,omitempty"` // the boundary the declaration is for; key@ of another boundary refuses it
+	Kids     []string               `protobuf:"bytes,2,rep,name=kids,proto3" json:"kids,omitempty"`         // the RFC 7638 thumbprints, base64url, of the keys to revoke; 1 to 64, each once
+	Reason   string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`     // compromise, suspicion, lost-board or drill
+	// Revoke keys that no source of key@ knows (a lost board's own keys, a signer that left the ring). Without it a
+	// key key@ does not know refuses the whole declaration, so that a mistyped id is not written as a revocation.
+	AllowUnknown  bool `protobuf:"varint,4,opt,name=allow_unknown,json=allowUnknown,proto3" json:"allow_unknown,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -247,6 +268,13 @@ func (x *KeyRevocationDeclaration) GetReason() string {
 		return x.Reason
 	}
 	return ""
+}
+
+func (x *KeyRevocationDeclaration) GetAllowUnknown() bool {
+	if x != nil {
+		return x.AllowUnknown
+	}
+	return false
 }
 
 // SealRequest seals a value under the data key of a purpose.
@@ -1323,15 +1351,18 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\x0eRevokeResponse\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x122\n" +
 	"\x04keys\x18\x02 \x03(\v2\x1e.sluis.key.v2alpha1.RevokedKeyR\x04keys\x12\x18\n" +
-	"\aaudited\x18\x03 \x01(\bR\aaudited\"8\n" +
+	"\aaudited\x18\x03 \x01(\bR\aaudited\"l\n" +
 	"\n" +
 	"RevokedKey\x12\x10\n" +
 	"\x03kid\x18\x01 \x01(\tR\x03kid\x12\x18\n" +
-	"\aalready\x18\x02 \x01(\bR\aalready\"b\n" +
+	"\aalready\x18\x02 \x01(\bR\aalready\x12\x18\n" +
+	"\aunknown\x18\x03 \x01(\bR\aunknown\x12\x18\n" +
+	"\apending\x18\x04 \x01(\bR\apending\"\x87\x01\n" +
 	"\x18KeyRevocationDeclaration\x12\x1a\n" +
 	"\bboundary\x18\x01 \x01(\tR\bboundary\x12\x12\n" +
 	"\x04kids\x18\x02 \x03(\tR\x04kids\x12\x16\n" +
-	"\x06reason\x18\x03 \x01(\tR\x06reason\"\x93\x01\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12#\n" +
+	"\rallow_unknown\x18\x04 \x01(\bR\fallowUnknown\"\x93\x01\n" +
 	"\vSealRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x126\n" +
 	"\aaddress\x18\x02 \x01(\v2\x1c.sluis.type.v2alpha1.AddressR\aaddress\x12\x1c\n" +

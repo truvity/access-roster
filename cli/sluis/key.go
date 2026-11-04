@@ -55,6 +55,8 @@ type revokeOut struct {
 type revokedKeyOut struct {
 	Kid     string `json:"kid"`
 	Already bool   `json:"already"`
+	Unknown bool   `json:"unknown,omitempty"`
+	Pending bool   `json:"pending,omitempty"`
 }
 
 // kidList is a repeated --kid.
@@ -69,6 +71,7 @@ func (a *app) revokeCommand() command {
 		reason, out string
 		declaration string
 		socket      string
+		allowUnk    bool
 	)
 	return command{
 		name: "key revoke",
@@ -76,6 +79,7 @@ func (a *app) revokeCommand() command {
 			fs.Var(&kids, "kid", "the RFC 7638 thumbprint of a key to revoke; repeat it for each key")
 			fs.StringVar(&reason, "reason", "", "compromise, suspicion, lost-board or drill")
 			fs.StringVar(&out, "out", "", "write the declaration to this file, not to standard output")
+			fs.BoolVar(&allowUnk, "allow-unknown", false, "let key@ revoke keys that it does not know (a lost board's own keys); without it such a key refuses the declaration")
 			fs.StringVar(&declaration, "declaration", "", "deliver this signed declaration to key@ on this node")
 			fs.StringVar(&socket, "socket", "", "key@'s admin socket; by default "+keyAdminSocketPrefix+"/<boundary>/admin.sock")
 		},
@@ -87,15 +91,15 @@ func (a *app) revokeCommand() command {
 				return cli.Usage(errors.New("name the boundary with --boundary"))
 			}
 			if declaration != "" {
-				if len(kids) > 0 || reason != "" || out != "" {
-					return cli.Usage(errors.New("--declaration delivers a signed declaration: it takes no --kid, --reason or --out"))
+				if len(kids) > 0 || reason != "" || out != "" || allowUnk {
+					return cli.Usage(errors.New("--declaration delivers a signed declaration: it takes no --kid, --reason, --out or --allow-unknown"))
 				}
 				return a.deliverDeclaration(ctx, declaration, socket, res)
 			}
 			if socket != "" {
 				return cli.Usage(errors.New("--socket is for --declaration"))
 			}
-			return a.writeDeclaration(kids, reason, out, res)
+			return a.writeDeclaration(kids, reason, out, allowUnk, res)
 		},
 	}
 }
@@ -115,7 +119,7 @@ func validBoundary(b string) bool {
 
 // writeDeclaration checks the keys and the reason and writes the payload of the declaration. It names keys and never a
 // purpose (ADR 0041, "The declaration").
-func (a *app) writeDeclaration(kids []string, reason, out string, res *result) error {
+func (a *app) writeDeclaration(kids []string, reason, out string, allowUnknown bool, res *result) error {
 	if len(kids) == 0 || len(kids) > maxRevokeKids {
 		return cli.Usage(fmt.Errorf("name 1 to %d keys with --kid", maxRevokeKids))
 	}
@@ -138,6 +142,9 @@ func (a *app) writeDeclaration(kids []string, reason, out string, res *result) e
 		fmt.Fprintf(&b, "  - %s\n", k)
 	}
 	fmt.Fprintf(&b, "reason: %s\n", reason)
+	if allowUnknown {
+		b.WriteString("allow_unknown: true\n")
+	}
 	if out == "" {
 		res.Text = strings.TrimSuffix(b.String(), "\n")
 		res.Revoke = &revokeOut{}
@@ -181,37 +188,76 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, res *
 	hc, url := rpc.Dial(socket)
 	c := keyv2alpha1connect.NewKeyAdminServiceClient(hc, url, rpc.ClientOptions()...)
 	r, err := c.Revoke(ctx, connect.NewRequest(&keyv2alpha1.RevokeRequest{Declaration: doc}))
+	var msg *keyv2alpha1.RevokeResponse
+	partial := false
 	if err != nil {
-		if reason, ok := krefusal.Reason(err); ok {
-			if p, _ := krefusal.FieldPath(err); p != "" && p != reason {
-				return refused(reason, p)
+		reason, ok := krefusal.Reason(err)
+		if ok && reason == "partial" {
+			msg, partial = partialOf(err), true
+		}
+		if msg == nil {
+			if ok {
+				if p, _ := krefusal.FieldPath(err); p != "" && p != reason {
+					return refused(reason, p)
+				}
+				return refused(reason)
 			}
-			return refused(reason)
+			switch connect.CodeOf(err) {
+			case connect.CodePermissionDenied:
+				return refused("caller")
+			case connect.CodeUnavailable:
+				return errors.New("key revoke: key@'s admin socket cannot be reached (is key@ running, and are you root?)")
+			}
+			return fmt.Errorf("key revoke: %s", connect.CodeOf(err))
 		}
-		switch connect.CodeOf(err) {
-		case connect.CodePermissionDenied:
-			return refused("caller")
-		case connect.CodeUnavailable:
-			return errors.New("key revoke: key@'s admin socket cannot be reached (is key@ running, and are you root?)")
-		}
-		return fmt.Errorf("key revoke: %s", connect.CodeOf(err))
+	} else {
+		msg = r.Msg
 	}
-	audited := r.Msg.GetAudited()
-	o := &revokeOut{Seq: r.Msg.GetSeq(), Audited: &audited}
+	audited := msg.GetAudited()
+	o := &revokeOut{Seq: msg.GetSeq(), Audited: &audited}
 	var lines []string
-	for _, k := range r.Msg.GetKeys() {
-		o.Keys = append(o.Keys, revokedKeyOut{Kid: k.GetKid(), Already: k.GetAlready()})
+	for _, k := range msg.GetKeys() {
+		o.Keys = append(o.Keys, revokedKeyOut{Kid: k.GetKid(), Already: k.GetAlready(), Unknown: k.GetUnknown(), Pending: k.GetPending()})
 		state := "revoked"
-		if k.GetAlready() {
+		switch {
+		case k.GetPending():
+			state = "not yet revoked"
+		case k.GetAlready():
 			state = "already revoked"
+		}
+		if k.GetUnknown() {
+			state += " (a key key@ does not know)"
 		}
 		lines = append(lines, fmt.Sprintf("%s %s", k.GetKid(), state))
 	}
 	res.Revoke = o
 	res.Text = strings.Join(lines, "\n")
+	if partial {
+		// The text is printed only on success; a person reads the keys on standard error here.
+		_, _ = fmt.Fprintln(a.stderr, res.Text)
+		return errors.New("key revoke: key@ took the declaration in part (store@ failed); deliver the same declaration again to complete it")
+	}
 	_, _ = fmt.Fprintln(a.stderr, "not confirmed: this build does not yet fetch the published key set to check that the keys left it")
 	if !audited {
 		return errors.New("key revoke: the keys are revoked, but key@ could not make the audit fact durable")
+	}
+	return nil
+}
+
+// partialOf reads what key@ did from the detail of a "partial" refusal; nil when there is none.
+func partialOf(err error) *keyv2alpha1.RevokeResponse {
+	var ce *connect.Error
+	if !errors.As(err, &ce) {
+		return nil
+	}
+	for _, d := range ce.Details() {
+		v, derr := d.Value()
+		if derr != nil {
+			continue
+		}
+		if m, ok := v.(*keyv2alpha1.RevokeResponse); ok {
+			return m
+		}
 	}
 	return nil
 }

@@ -81,6 +81,15 @@ type (
 	}
 )
 
+// adminPeerOf is the uid of the peer of an admin call, from the transport.
+func adminPeerOf(ctx context.Context) (uint32, bool) {
+	p, ok := ctx.Value(adminPeerKey{}).(adminPeer)
+	return p.uid, ok && p.ok
+}
+
+// rootOnly is the rule of the admin socket: only root.
+func rootOnly(uid uint32) bool { return uid == 0 }
+
 // guardAdmin refuses a call whose peer is not root, before the request body is read.
 func guardAdmin(allow func(uint32) bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
