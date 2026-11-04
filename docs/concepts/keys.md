@@ -88,7 +88,7 @@ This is one of **two independent checks**: the store's rule with a grant sealed 
 
 ## Algorithms
 
-ES384 (ECDSA on P-384) is the default for everything sluis signs, including the checkpoints of the audit log and the issuance log. sluis supports the FAPI 2.0 set, ES256, PS256 and EdDSA, as the algorithms of that profile ([ADR 0038](/decisions/0038-fapi-2-profile/)). It has a short list of named exceptions, each with a key of its own that serves nothing else: cloud federation (ES256 for GCP, RS256 for Azure Entra), a per-audience RS256 key, NATS Ed25519 keys and the C2SP witness keys ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). Everything else stays within the FIPS-approved set, with no FIPS mode or certified build in 2.0 ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)). Support depends on the driver: PS256 on a YubiKey takes about 2.3 seconds a signature, and Ed25519 in PIV needs firmware 5.7 or newer.
+ES384 (ECDSA on P-384) is the default for everything sluis signs, the checkpoints of the issuance log included. The checkpoints of the audit log are the one exception: a P-256 key signing SHA-256, the standard C2SP signature, so that a generic witness verifies them. sluis supports the FAPI 2.0 set, ES256, PS256 and EdDSA, as the algorithms of that profile ([ADR 0038](/decisions/0038-fapi-2-profile/)). It has a short list of named exceptions, each with a key of its own that serves nothing else: cloud federation (ES256 for GCP, RS256 for Azure Entra), a per-audience RS256 key, NATS Ed25519 keys, the C2SP witness keys and the audit checkpoint key ([ADR 0006](/decisions/0006-keys-and-sealing/#named-exceptions)). Everything else stays within the FIPS-approved set, with no FIPS mode or certified build in 2.0 ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)). Support depends on the driver: PS256 on a YubiKey takes about 2.3 seconds a signature, and Ed25519 in PIV needs firmware 5.7 or newer.
 
 In Go, JOSE is `go-jose/v4` behind sluis's own `jose` package; Rust and TypeScript only verify ([Approved libraries](/reference/approved-libraries/#jose)). Tokens are standard JWS and JWT that any language verifies against the published key set.
 
@@ -110,7 +110,7 @@ Authority keys are born in their key store, sign in place and cannot be exported
 
 ## AWS KMS layout
 
-A boundary on AWS needs **1 symmetric key and 5 P-384 keys** in KMS, with one trust domain and one audit writer instance. Each further trust domain, or each further audit writer instance, adds one P-384 key.
+A boundary on AWS needs **1 symmetric key and 5 asymmetric keys** in KMS (4 P-384 keys and the audit log's P-256 key), with one trust domain and one audit writer instance. Each further trust domain adds one P-384 key and each further audit writer instance one P-256 key.
 
 | Key | Spec | Purpose |
 |---|---|---|

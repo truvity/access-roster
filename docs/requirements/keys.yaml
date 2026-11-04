@@ -518,7 +518,7 @@ requirements:
     standards: []
     issues: [1208]
     verification:
-      - {kind: integration-test, ref: "a new tenant gets exactly four DataKeyWrap purposes; a new boundary gets the four of its own: grant, cookie, mac and data"}
+      - {kind: integration-test, ref: "a new tenant gets exactly four DataKeyWrap purposes; a new boundary gets the five of its own: grant, cookie, chain, mac and data"}
   - id: REQ-KEYS-036
     area: KEYS
     statement: "A tenant's exit MUST delete its data, pseudonym and pairwise wraps at once, every generation and every recipient."
@@ -687,7 +687,7 @@ requirements:
       - {kind: integration-test, ref: "an installation without the release-signing purpose has no such key or slot; enabling it adds exactly one"}
   - id: REQ-KEYS-049
     area: KEYS
-    statement: "The KMS baseline of a boundary on AWS with one trust domain and one log MUST be one symmetric key and five P-384 keys, with each purpose enabled on use adding a key of its own."
+    statement: "The KMS baseline of a boundary on AWS with one trust domain and one log MUST be one symmetric key, four P-384 keys and one P-256 key, with each purpose enabled on use adding a key of its own."
     rationale: "Data keys are not KMS keys, so a new tenant adds none and the baseline stays small and countable (ADR 0006)."
     level: MUST
     source: design-decision
@@ -696,7 +696,7 @@ requirements:
     standards: []
     issues: [1211]
     verification:
-      - {kind: integration-test, ref: "registry check: the AWS baseline of 1 + 5 holds for the generated installation"}
+      - {kind: integration-test, ref: "registry check: the AWS baseline of 1 + 4 + 1 holds for the generated installation"}
   - id: REQ-KEYS-050
     area: KEYS
     statement: "The key policy of the symmetric KMS key of a boundary MUST name the role of key@ alone."
@@ -1010,3 +1010,122 @@ requirements:
     issues: [1024]
     verification:
       - {kind: integration-test, ref: "the pairwise subjects of a person before and after a promotion are equal"}
+  - id: REQ-KEYS-075
+    area: KEYS
+    statement: "key@ MUST wrap a data key only to the recipients in the signed list of the KeyPlan."
+    rationale: "The KeyCertificate items in the store are not signed, so a recipient taken from them would let a compromised store@ receive every data key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1208]
+    verification:
+      - {kind: integration-test, ref: "a KeyCertificate for a node key id that the KeyPlan does not list is written to the store; a new data key has no wrap for it"}
+      - {kind: integration-test, ref: "a KeyCertificate whose thumbprint differs from the listed id is not used"}
+  - id: REQ-KEYS-076
+    area: KEYS
+    statement: "A new token-signing key MUST be pre-published for 12 hours before it signs."
+    rationale: "A relying party that caches the key set must have a key before the first token carries it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "a key joins the key set as pre-published, signs nothing for 12 hours, and then becomes active"}
+  - id: REQ-KEYS-077
+    area: KEYS
+    statement: "A node MUST rotate only the token-signing key that its own key@ holds."
+    rationale: "One node's rotation must not retire the key that another node is signing with (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "the signer of one node does not change the state of, or remove, a key whose node is another"}
+  - id: REQ-KEYS-078
+    area: KEYS
+    statement: "A token-signing key MUST stay in the published key set for 65 minutes after it stops signing."
+    rationale: "A token signed just before the change must verify for its whole life (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "a retiring key is in the key set at 64 minutes and absent after 65 minutes with a moved clock"}
+  - id: REQ-KEYS-079
+    area: KEYS
+    statement: "A retiring token-signing key MUST NOT become active again."
+    rationale: "A key that has begun to leave the key set must not return to signing (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "a retiring key stays retiring through every later rotation step"}
+  - id: REQ-KEYS-080
+    area: KEYS
+    statement: "A node's first token-signing key MUST become active at once while no key in the key set is older than 15 minutes."
+    rationale: "On a first deploy there is no cached key set to wait for (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [signer]
+    standards: []
+    issues: [774]
+    verification:
+      - {kind: integration-test, ref: "three nodes start together and each key is active at once; a node added a day later pre-publishes for 12 hours"}
+  - id: REQ-KEYS-081
+    area: KEYS
+    statement: "The checkpoint key of an audit log MUST be a P-256 key that signs SHA-256."
+    rationale: "A generic witness or checkpoint verifier checks the standard C2SP signature of type 0x02 only (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [838]
+    verification:
+      - {kind: test-vectors, ref: "a checkpoint signed through key@ verifies with the C2SP signed-note verifier of transparency-dev"}
+      - {kind: integration-test, ref: "the key plan check refuses an audit-log purpose that is not ES256"}
+  - id: REQ-KEYS-082
+    area: KEYS
+    statement: "The chain data key of a boundary MUST be sealable by session alone and openable by session and exchange alone."
+    rationale: "Session-chain facts are read by exchange, which must not hold the cookie key or a tenant's data key (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1208]
+    verification:
+      - {kind: integration-test, ref: "exchange opens a chain-sealed value; exchange seal, and every other actor's seal or open, are refused"}
+  - id: REQ-KEYS-083
+    area: KEYS
+    statement: "key@ MUST delete a generation of the chain data key only after the longest time to live of a session chain has passed since it last sealed."
+    rationale: "A chain must stay readable for its whole life, and nothing sealed under an older generation may outlive it (ADR 0006)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [1208]
+    verification:
+      - {kind: integration-test, ref: "a generation is kept for 90 days after its last seal and deleted after that, with a moved clock"}

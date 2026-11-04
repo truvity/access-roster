@@ -598,7 +598,7 @@ chain:
       text: Hashes show each object is the one written. The lock (compliance where the install has it, removable otherwise, or none) stops anyone deleting before retention ends. Signed checkpoints show nothing was removed or added, and a witness shows the operator did not show two different histories.
       status: decided
     - title: The formats are the C2SP ones
-      text: Checkpoints are C2SP signed-note checkpoints (tlog-checkpoint), signed with the P-384 log key of the writer instance; the log is laid out as tlog-tiles; witnesses sign with tlog-cosignature (Ed25519 or ML-DSA-44 keys) and are asked through tlog-witness. ca keeps its issuance log of X.509 certificates as a witnessed static-ct-api log. sluis follows the specifications and invents no format.
+      text: Checkpoints are C2SP signed-note checkpoints (tlog-checkpoint), signed with the P-256 log key of the writer instance (the standard C2SP signature over SHA-256); the log is laid out as tlog-tiles; witnesses sign with tlog-cosignature (Ed25519 or ML-DSA-44 keys) and are asked through tlog-witness. ca keeps its issuance log of X.509 certificates as a witnessed static-ct-api log. sluis follows the specifications and invents no format.
       status: decided
     - title: Trust is the pin
       text: An auditor trusts a log key because they pinned it, out of band. A published key is distribution only; a verifier ignores a key it has not pinned.

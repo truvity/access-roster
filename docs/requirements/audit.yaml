@@ -2116,3 +2116,15 @@ requirements:
     issues: [841, 915]
     verification:
       - {kind: integration-test, ref: "a fact outside the bounds is counted at its recorded time and flagged"}
+  - id: REQ-AUDIT-161
+    area: AUDIT
+    statement: "An actor MUST audit every call except a health check."
+    rationale: "A health check reads and changes nothing, and auditing it grows the log with no callers (ADR 0030)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    issues: [841]
+    verification:
+      - {kind: integration-test, ref: "an idle installation writes no audit entry; one real call, a refused one included, writes one"}

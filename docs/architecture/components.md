@@ -174,8 +174,8 @@ Configuration, secrets and data all reach an actor as kinds through the data por
 
 The keys port binds a **key purpose** to a key and refuses a key too weak for it when the configuration loads; the code refuses a software key in production ([0006](/decisions/0006-keys-and-sealing/#floors-in-code)). Each boundary has its own keys, and a purpose an installation does not enable has none ([0006](/decisions/0006-keys-and-sealing/#key-purposes)).
 
-- **Authority keys sign in place.** The baseline of a boundary on AWS is one symmetric key and five P-384 keys: token signing, the X.509 intermediate of a trust domain, the SSH user CA, the SSH host CA and the audit log ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). On a board the same purposes sit in separate card slots ([the slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan)). [Keys](/reference/keys/) lists every purpose with its algorithm, its key type, its slot and the actor that uses it.
-- **Data keys seal values.** Each tenant has four data keys (`data`, `pseudonym`, `pairwise`, `evidence`) and each boundary has `grant`, `cookie`, `mac` and its own `data`. key@ generates them in software and keeps only their wraps, `DataKeyWrap`, and opens a data key once per cache entry ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
+- **Authority keys sign in place.** The baseline of a boundary on AWS is one symmetric key and five asymmetric keys: token signing, the X.509 intermediate of a trust domain, the SSH user CA and the SSH host CA (P-384), and the audit log (P-256) ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). On a board the same purposes sit in separate card slots ([the slot plan](/decisions/0006-keys-and-sealing/#the-slot-plan)). [Keys](/reference/keys/) lists every purpose with its algorithm, its key type, its slot and the actor that uses it.
+- **Data keys seal values.** Each tenant has four data keys (`data`, `pseudonym`, `pairwise`, `evidence`) and each boundary has `grant`, `cookie`, `chain`, `mac` and its own `data`. key@ generates them in software and keeps only their wraps, `DataKeyWrap`, and opens a data key once per cache entry ([0006](/decisions/0006-keys-and-sealing/#data-keys)).
 - **The port signs bytes or digests;** JWT shaping lives in `signer`. ES384 (P-384) is the default, and the cloud-federation keys and the FAPI 2.0 algorithms are the named exceptions, each a key of its own ([0006](/decisions/0006-keys-and-sealing/#named-exceptions)).
 
 A YubiKey 5 Nano signs P-384 in about 147 ms, about 7 signatures a second per card and about 21 for three boards (measured 2026-10-31, firmware 5.8.0; [Board capacity](/runtimes/bare-metal/#board-capacity)). Opening a data key is an ECDH of about 143 ms on a card (median on two boards' cards, measured 2026-11-03), paid once while the key stays in key@'s cache ([0006](/decisions/0006-keys-and-sealing/#the-cache)).
@@ -251,7 +251,7 @@ Every kind has exactly one writer. Others read through the store, under the rule
 | ------ | -------------------------- |
 | Infrastructure as code | Config and secret kinds of the installation: `Boundary`, `KeyPlan`, `Tunables`, `Upstream`, `AuditLog`, `BackupPlan`, `ExportDestination`, `BreakGlassPasskey`, and the secrets such as `UpstreamSecret` |
 | The publishing pipeline | Reviewed, signed config: `Policy`, `RegulatedPartyPolicy`, `GrantVocabulary`, `ExchangeTrust`, `PkiProfile`, `AuditCatalogue` |
-| `session` | Everything about people: `Person`, `UpstreamLink`, `StaffPasskey`; and the temp state of sign-in: `PendingSignIn`, `AuthCode`, `SessionChain`, `ClientDocument` |
+| `session` | Everything about people: `Person`, `UpstreamLink`, `StaffPasskey`; and the temp state of sign-in: `AuthCode`, `SessionChain`, `ClientDocument` |
 | `exchange` | What a tenant has configured: `Tenant`, `TenantClient`, `ClientSecret`, `ClientSecretExport`, `PolicyLink`, `PredefinedPolicyLink`; and enrolment: `EnrolmentToken`, `PendingEnrolment` |
 | An adapter | What its flow makes: `GitHubApp` and `GitHubInstallation` (`adapter-github`), `SlackConnection` (`adapter-slack`), `EntraConnection` (`adapter-upstream-oidc`); the connections `DirectoryConnection`, `MinterConnection` and `MinterTarget`; and the directory facts |
 | `key@` | `DataKeyWrap`, `KeyCertificate`, `PinReleaseRequest`, `PinRelease` |
@@ -413,7 +413,7 @@ Parallel implementations of the same small kits, one per language, keep the lang
 | --- | ---------- |
 | ConnectRPC over Unix sockets | A server and client that read peer credentials (`SO_PEERCRED`) on every call and expose them to the call-graph interceptor |
 | The typed store client | `store.Client[T Kind]` in Go and `Store<K: Kind>` in Rust, generated from the kind's message |
-| Schema validation | protovalidate in Go and Rust, and the generated JSON Schema checked before decoding ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)) |
+| Schema validation | protovalidate in Go, hand-written checks of the same rules in Rust, and the generated JSON Schema checked before decoding ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)) |
 | CLI conventions | `config check`, `config explain`, `doctor`, and a uniform `--help` |
 | Conformance suite | Shared vectors and behavioural tests that every kit and driver must pass, whatever its language |
 

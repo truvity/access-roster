@@ -83,7 +83,7 @@ A binding names log kinds as well as projects, so a finance reader may be grante
 sluis follows the C2SP specifications and invents no format for the log ([ADR 0029](/decisions/0029-the-audit-log/#tiled-log)):
 
 - **The log** is a `tlog-tiles` log in the project's bucket: entry bundles and hash tiles are static objects that anyone with read access can fetch without a server.
-- **Checkpoints** are C2SP `signed-note` documents in the `tlog-checkpoint` shape, signed with the P-384 log key, naming the log, its size and its root hash. Removing, reordering or altering an entry breaks every later checkpoint.
+- **Checkpoints** are C2SP `signed-note` documents in the `tlog-checkpoint` shape, signed with the log key (P-256 over SHA-256, the standard C2SP signature), naming the log, its size and its root hash. Removing, reordering or altering an entry breaks every later checkpoint.
 - **A witness** signs with `tlog-cosignature`, using an Ed25519 or ML-DSA-44 key, and is asked through the `tlog-witness` protocol.
 - **The issuance log** of `ca` records every X.509 certificate it issues in a C2SP `static-ct-api` log, witnessed in the same way.
 
