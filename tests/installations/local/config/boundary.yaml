@@ -14,6 +14,7 @@ default:
     - KeyPlan
     - TokenLifetime
     - GrantVocabulary
+    - Policy
     - AuditLog
     - AuditCatalogue
     - Upstream

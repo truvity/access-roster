@@ -56,6 +56,14 @@ async fn up(socket: &Path) {
     panic!("no socket");
 }
 
+/// A credentials directory; the driver refuses one that group or others can write, and a
+/// temporary directory takes the umask.
+fn credentials() -> tempfile::TempDir {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    d
+}
+
 fn credential(dir: &Path, name: &str, mode: u32) {
     let p = dir.join(name);
     std::fs::write(&p, SECRET).unwrap();
@@ -69,7 +77,7 @@ fn the_source_suite_passes() {
 
 #[tokio::test]
 async fn store_reads_a_secret_and_no_refusal_carries_it() {
-    let (creds, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (creds, s) = (credentials(), tempfile::tempdir().unwrap());
     let sock = s.path().join("secret-source.sock");
     credential(creds.path(), "upstream-workforce", 0o400);
     credential(creds.path(), "too-open", 0o644);
@@ -139,7 +147,7 @@ async fn store_reads_a_secret_and_no_refusal_carries_it() {
 #[tokio::test]
 async fn a_caller_that_is_not_store_gets_no_secret() {
     for caller in ["policy", "key", "writer", "exchange"] {
-        let (creds, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (creds, s) = (credentials(), tempfile::tempdir().unwrap());
         let sock = s.path().join("secret-source.sock");
         credential(creds.path(), "upstream-workforce", 0o400);
         let stop = serve(&sock, creds.path(), caller);
@@ -165,7 +173,7 @@ async fn a_caller_that_is_not_store_gets_no_secret() {
 
 #[test]
 fn serve_refuses_a_socket_gid_of_zero_or_text_before_it_listens() {
-    let (dir, run) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let (dir, run) = (credentials(), tempfile::tempdir().unwrap());
     for gid in ["0", "wheel"] {
         let sock = run.path().join("x.sock");
         let out = std::process::Command::new(env!("CARGO_BIN_EXE_credential"))
@@ -183,4 +191,55 @@ fn serve_refuses_a_socket_gid_of_zero_or_text_before_it_listens() {
         );
         assert!(!sock.exists());
     }
+}
+
+#[tokio::test]
+async fn a_fifo_or_a_foreign_kind_of_file_is_refused_as_bound_and_never_hangs() {
+    let (creds, s) = (credentials(), tempfile::tempdir().unwrap());
+    let sock = s.path().join("secret-source.sock");
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        creds.path().join("pipe"),
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::from_raw_mode(0o600),
+        0,
+    )
+    .unwrap();
+    std::fs::create_dir(creds.path().join("subdir")).unwrap();
+    let stop = serve(&sock, creds.path(), "store");
+    up(&sock).await;
+    let client = dial(&sock);
+    let c = SourceServiceClient::new(client.transport(), client.config());
+    for name in ["pipe", "subdir"] {
+        let call = c.read(ReadRequest {
+            name: name.into(),
+            ..Default::default()
+        });
+        let e = tokio::time::timeout(Duration::from_secs(10), call)
+            .await
+            .unwrap_or_else(|_| panic!("{name}: the read hung"))
+            .unwrap_err();
+        assert_eq!(
+            (e.code, refusal_reason(&e).as_deref()),
+            (ErrorCode::FailedPrecondition, Some("bound")),
+            "{name}"
+        );
+    }
+    let _ = stop.send(());
+}
+
+#[test]
+fn a_credentials_directory_that_others_can_write_is_not_served() {
+    let creds = credentials();
+    for mode in [0o770, 0o707, 0o777] {
+        std::fs::set_permissions(creds.path(), std::fs::Permissions::from_mode(mode)).unwrap();
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_credential"))
+            .args(["check", "--dir"])
+            .arg(creds.path())
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "{mode:o}");
+    }
+    std::fs::set_permissions(creds.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(Dir::open(creds.path()).is_ok());
 }

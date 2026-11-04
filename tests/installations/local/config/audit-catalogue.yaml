@@ -8,3 +8,12 @@ default:
     - store.refused
     - store.reload
     - store.reload.refused
+    - policy.decide
+    - policy.start
+    - policy.reload
+    - policy.reload.refused
+    - signer.refused
+    - signer.sign
+    - signer.ring.add
+    - signer.ring.change
+    - signer.ring.drop

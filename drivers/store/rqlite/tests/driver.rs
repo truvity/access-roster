@@ -517,3 +517,25 @@ async fn a_dead_engine_is_unavailable_engine() {
     );
     served.stop().await;
 }
+
+/// `--socket-gid` of zero or of text is refused before the socket exists, and before rqlite is
+/// waited for. This test needs no rqlited.
+#[test]
+fn serve_refuses_a_socket_gid_of_zero_or_text_before_it_listens() {
+    let run = tempfile::tempdir().unwrap();
+    for gid in ["0", "wheel"] {
+        let sock = run.path().join("x.sock");
+        let out = Command::new(env!("CARGO_BIN_EXE_rqlite"))
+            .args(["serve", "--socket"])
+            .arg(&sock)
+            .args(["--socket-gid", gid])
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "{gid}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("--socket-gid"),
+            "{gid}"
+        );
+        assert!(!sock.exists());
+    }
+}

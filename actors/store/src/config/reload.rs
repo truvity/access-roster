@@ -55,7 +55,9 @@ where
         let outcome = loader.reload().await;
         retry = match &outcome {
             // The source is retried with a back-off; a bad document is read again when it changes.
-            Reloaded::Refused { error, .. } if error.unreachable => {
+            // So is a declared kind with no document yet: only the kinds of the snapshot in force
+            // are watched, so nothing would tell the loop when the document arrives.
+            Reloaded::Refused { error, .. } if error.unreachable || error.absent => {
                 (retry * 2).clamp(BACKOFF_FIRST, BACKOFF_MAX)
             }
             _ => Duration::ZERO,

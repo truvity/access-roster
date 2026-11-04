@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! rqlite serve --socket P --rqlite-url URL --namespace durable|temp [--sweep-interval 30s]
-//!              [--changelog-retention 24h] [--basic-auth-file F]
+//!              [--changelog-retention 24h] [--basic-auth-file F] [--socket-gid GID]
 //! rqlite check --rqlite-url URL --namespace durable|temp [--basic-auth-file F]
 //! rqlite conformance --socket P
 //! rqlite version
@@ -11,6 +11,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use clap::Arg;
 use sluis_kit::cli::{self, Commands, Flags, Refused};
 use sluis_kit::{Allow, ServerConfig};
 use sluis_rqlite::client::Level;
@@ -24,9 +25,24 @@ const READY: Duration = Duration::from_secs(60);
 
 struct Rqlite;
 
+/// The group of the socket (`--socket-gid`), if given. The socket is then 0660 for that group, so that
+/// the owner, who joins it, can connect; without it the socket is 0600 for the driver's user alone.
+/// The peer check (`OwnerOnly`) still decides who may call.
+fn socket_gid(f: &Flags) -> anyhow::Result<Option<u32>> {
+    match f.matches.get_one::<String>("socket-gid") {
+        None => Ok(None),
+        Some(g) => match g.parse::<u32>() {
+            Ok(g) if g != 0 => Ok(Some(g)),
+            _ => bail!("--socket-gid must be a group number other than 0"),
+        },
+    }
+}
+
 impl Commands for Rqlite {
     async fn serve(&self, f: Flags) -> anyhow::Result<()> {
         anyhow::ensure!(!f.socket.as_os_str().is_empty(), "--socket is required");
+        // Checked before rqlite is waited for: a bad flag fails at once.
+        let gid = socket_gid(&f)?;
         let settings = Settings::from_flags(&f)?;
         let driver = settings.driver;
         // The unit starts after rqlite, but rqlite may still be electing a leader.
@@ -48,8 +64,8 @@ impl Commands for Rqlite {
             actor: DRIVER,
             boundary: f.boundary.clone(),
             socket: f.socket.clone(),
-            mode: 0o600,
-            socket_gid: None,
+            mode: gid.map_or(0o600, |_| 0o660),
+            socket_gid: gid,
             allow: Allow::OwnerOnly(owner),
             default_deadline: Duration::from_secs(30),
         };
@@ -95,5 +111,13 @@ async fn conformance(f: &Flags) -> anyhow::Result<()> {
 }
 
 fn main() {
-    cli::main("rqlite", Rqlite, config::flags)
+    cli::main("rqlite", Rqlite, |c| {
+        config::flags(c).arg(
+            Arg::new("socket-gid")
+                .long("socket-gid")
+                .value_name("GID")
+                .global(true)
+                .help("Open the socket (mode 0660) to this group; the default is 0600"),
+        )
+    })
 }
