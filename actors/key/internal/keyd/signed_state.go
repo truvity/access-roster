@@ -11,6 +11,8 @@ import (
 	"syscall"
 
 	"google.golang.org/protobuf/proto"
+
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // The highest document of each kind that key@ verifies (the KeyPlan, the Boundary) is kept in key@'s own durable
@@ -27,6 +29,8 @@ import (
 const (
 	planMarkFile     = "keyplan.mark"
 	boundaryMarkFile = "boundary.mark"
+	// declarationMarkFile holds the highest seq of a key revocation declaration that key@ took (declaration.go).
+	declarationMarkFile = "keyrevocation.mark"
 )
 
 // seqMark is the seq and the SHA-384 of the payload of the highest document of a kind that key@ verified.
@@ -111,37 +115,45 @@ func (s *Server) restoreMarks(save bool) error {
 	if err := restoreMark(s, s.plan); err != nil {
 		return err
 	}
-	return restoreMark(s, s.boundary)
+	if err := restoreMark(s, s.boundary); err != nil {
+		return err
+	}
+	return s.restoreMarkInto(declarationMarkFile, declarationKind, "key revocation declaration", &s.declarations.seq)
 }
 
 // restoreMark reads the mark of one kind.
 func restoreMark[T proto.Message](s *Server, k *signedKind[T]) error {
-	path := filepath.Join(s.cfg.StateDir, k.markFile)
+	return s.restoreMarkInto(k.markFile, k.kind, k.label, &k.seq)
+}
+
+// restoreMarkInto reads the mark file of a kind into its sequencer.
+func (s *Server) restoreMarkInto(markFile, kind, label string, seq *signedconfig.Sequencer) error {
+	path := filepath.Join(s.cfg.StateDir, markFile)
 	fi, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil // a first start: nothing to restore
 	}
 	if err != nil {
-		return fmt.Errorf("the %s mark cannot be read: %w", k.label, err)
+		return fmt.Errorf("the %s mark cannot be read: %w", label, err)
 	}
 	// The mark is key@'s own file: a regular file, key@'s, and 0600. Another owner, wider bits or a link is a file
 	// that something else could have written, and a guessed mark is a mark a thief could choose.
 	if !fi.Mode().IsRegular() || fi.Mode().Perm()&0o177 != 0 || !ownedBy(fi, os.Getuid()) {
-		return fmt.Errorf("the %s mark %s is not key@'s own regular file with mode 0600: remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", k.label, path, k.label)
+		return fmt.Errorf("the %s mark %s is not key@'s own regular file with mode 0600: remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", label, path, label)
 	}
 	b, err := os.ReadFile(path) //nolint:gosec // key@'s own state directory, checked above
 	if err != nil {
-		return fmt.Errorf("the %s mark cannot be read: %w", k.label, err)
+		return fmt.Errorf("the %s mark cannot be read: %w", label, err)
 	}
-	m, legacy, err := parseMark(b, k.kind)
+	m, legacy, err := parseMark(b, kind)
 	if err != nil {
-		return fmt.Errorf("the %s mark in %s is damaged (%w): remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", k.label, path, err, k.label)
+		return fmt.Errorf("the %s mark in %s is damaged (%w): remove it to start without one, knowing that key@ then takes the newest validly signed %s store@ shows", label, path, err, label)
 	}
-	k.seq.Restore(m.seq, m.sha384)
+	seq.Restore(m.seq, m.sha384)
 	if legacy && s.saveMark {
 		// The mark of the first form is rewritten with its kind, now, by the process that owns the state.
-		if err := s.writeMark(k.markFile, m); err != nil {
-			return fmt.Errorf("the %s mark cannot be rewritten in its current form: %w", k.label, err)
+		if err := s.writeMark(markFile, m); err != nil {
+			return fmt.Errorf("the %s mark cannot be rewritten in its current form: %w", label, err)
 		}
 	}
 	return nil

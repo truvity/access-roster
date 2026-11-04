@@ -57,7 +57,7 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	// A revoked key signs nothing more, whatever the purpose and whoever asks (REQ-KEYS-109). The check comes before the
 	// content is read. An unreadable KeyRevocation refuses the Sign and the refusal is audited: fail closed, so a store@
 	// outage stops token signing and audit checkpoints (principle 4: "not revoked" is verified, never assumed).
-	target, err := s.revoked(ctx, purpose, pk)
+	target, err := s.revoked(ctx, pk)
 	if err != nil {
 		slog.Warn("KeyRevocation cannot be read: no Sign", "purpose", purpose)
 		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeUnavailable, reasonRevocationUnreadable, "")

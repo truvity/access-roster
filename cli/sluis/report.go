@@ -11,16 +11,17 @@ import (
 // result is the end of a command. Its JSON form is the object of cli.md "JSON output": the members every command
 // has, and the one object of the command (token, login or audit).
 type result struct {
-	Output   int       `json:"output"`
-	Command  string    `json:"command"`
-	ExitCode int       `json:"exit_code"`
-	Outcome  string    `json:"outcome"`
-	Reasons  []string  `json:"reasons,omitempty"`
-	Error    string    `json:"error,omitempty"`
-	Token    *tokenOut `json:"token,omitempty"`
-	Login    *loginOut `json:"login,omitempty"`
-	Audit    *auditOut `json:"audit,omitempty"`
-	Node     *nodeOut  `json:"node,omitempty"`
+	Output   int        `json:"output"`
+	Command  string     `json:"command"`
+	ExitCode int        `json:"exit_code"`
+	Outcome  string     `json:"outcome"`
+	Reasons  []string   `json:"reasons,omitempty"`
+	Error    string     `json:"error,omitempty"`
+	Token    *tokenOut  `json:"token,omitempty"`
+	Login    *loginOut  `json:"login,omitempty"`
+	Audit    *auditOut  `json:"audit,omitempty"`
+	Node     *nodeOut   `json:"node,omitempty"`
+	Revoke   *revokeOut `json:"revoke,omitempty"`
 	// Checks is the `checks` member of `config check`.
 	Checks []configCheck `json:"checks,omitempty"`
 

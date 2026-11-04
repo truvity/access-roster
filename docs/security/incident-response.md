@@ -11,10 +11,10 @@ This page is the operator's runbook for a key that may be in the wrong hands. Th
 ## Before you start
 
 1. **Declare, do not wait.** A suspected compromise is handled as a compromise. A false alarm costs one refresh per client; a wait costs forged tokens ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#a-person-declares-and-a-suspicion-counts)).
-2. **Only a person declares.** Sign in with fresh multi-factor authentication, or use the [break-glass](/security/break-glass/) session when normal sign-in is down. An alert never revokes on its own.
+2. **Only a person declares.** You write a declaration that names the keys, sign it with the publisher key that signs the `KeyPlan`, and deliver it on a node as root ([`sluis key revoke`](/reference/cli/#sluis-key-revoke)). It needs neither sign-in nor the token keys, so it works when both are down. An alert never revokes on its own.
 3. **If the compromise is in the key service itself** (a stolen role, a key policy that let someone else sign, a card in someone else's hands), remove that access first, in the key service. Then declare. A replacement key made under the same access is not a transition ([principle 2](/principles/#2-trust-is-layered-and-redundancy-is-not-a-defence-against-compromise)).
 4. **Read the answer.** The command prints "not confirmed" until it has fetched the published key set from its public address and found the key gone ([principle 4](/principles/#4-verify-never-trust-a-claim)). Treat "not confirmed" as not done.
-5. **A revocation is an audit fact and an alert.** It names the key or the purpose, the reason and you.
+5. **A revocation is an audit fact and an alert.** It names the keys, the reason and the publisher key that signed the declaration.
 
 A revocation is never undone. A restore, a roll-forward or a write by the key's own node cannot bring a revoked key back ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-tighten-only-record)).
 
@@ -22,7 +22,7 @@ A revocation is never undone. A restore, a roll-forward or a write by the key's 
 
 This is the path with the most at stake, and the one a drill rehearses.
 
-1. **Declare.** `sluis key revoke --purpose token-signing --kid KID --reason compromise` (or `suspected`). The command asks `key@` to write a `KeyRevocation` item, and the `key@` of any node can, so a compromised or powered-off node does not block you. `store@` accepts only creates of that kind, so the revocation cannot be undone.
+1. **Declare.** `sluis key revoke --boundary B --kid KID --reason compromise --out revoke.yaml` (or `suspicion`), sign `revoke.yaml` with the publisher key, then `sluis key revoke --boundary B --declaration revoke.jws` as root on any node. The command asks `key@` to write a `KeyRevocation` item, and the `key@` of any node can, so a compromised or powered-off node does not block you. `store@` accepts only creates of that kind, so the revocation cannot be undone.
 2. **The key leaves the key set at once.** `exporter@` and `entry` omit every revoked `kid` from every key set they publish, and `exporter@` purges the edge copy. `signer` neither promotes nor signs with the revoked `kid`.
 3. **The replacement signs at once when no other key is active.** On a multi-node installation the other nodes' keys are already published and cached, so nothing else is needed when the compromise is one node's. On a single-key installation a new key is made, published and purged before its first token.
 4. **Wait for "confirmed".** If it stays "not confirmed", the edge copy is stale: purge it by hand and run `sluis key status`.
@@ -43,7 +43,7 @@ The certificate revocation list is no control for tokens. A standard verifier ig
 
 ## Data keys
 
-Declare with `sluis key revoke --purpose PURPOSE [--tenant TENANT] --reason compromise`. `key@` makes a new generation that every later seal uses and refuses every seal under the compromised one. Whether it also stops opening the compromised generation depends on what the key protects: the integrity keys (`grant`, `cookie`, `chain`) stop opening at once, because a forged value is the threat; the confidentiality keys (`data`, `pseudonym`, `evidence`) keep opening, because the thief already holds the key and refusing opens would only take the data offline. For `data` the re-seal job rewrites every value and then the old wraps are deleted.
+Declare the generation, by its exact name, with `sluis key revoke` and `--reason compromise`. `key@` makes a new generation that every later seal uses and refuses every seal under the compromised one. Whether it also stops opening the compromised generation depends on what the key protects: the integrity keys (`grant`, `cookie`, `chain`) stop opening at once, because a forged value is the threat; the confidentiality keys (`data`, `pseudonym`, `evidence`) keep opening, because the thief already holds the key and refusing opens would only take the data offline. For `data` the re-seal job rewrites every value and then the old wraps are deleted.
 
 | Purpose | What stops | What people see | After the declaration |
 |---|---|---|---|
@@ -68,13 +68,13 @@ An archive keeps the wraps and the values it held. Re-sealing cannot reach it, a
 
 ## An audit or issuance log key
 
-Declare with `sluis key revoke --purpose audit-log --reason compromise` (or `issuance-log`). The new key signs a checkpoint that names the last size a witness cosigned before the compromise. Give the verifier both keys, each with the size from which it applies: `sluis audit verify` trusts the old key up to that size and the new key after it.
+Declare the log key with `sluis key revoke --kid KID --reason compromise`, as for a token-signing key. The new key signs a checkpoint that names the last size a witness cosigned before the compromise. Give the verifier both keys, each with the size from which it applies: `sluis audit verify` trusts the old key up to that size and the new key after it.
 
 With no witness, nothing before the compromise can be trusted from the old key alone. A witness key's compromise is handled the same way: revoke it and drop it from the verifiers' witness list.
 
 ## An intermediate, an SSH CA and a release subkey
 
-- **An X.509 intermediate.** `sluis key revoke --purpose x509 --trust-domain DOMAIN --reason compromise` makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the root lists; sluis does not wait for it. **Assumption (not yet checked):** the host sync replaces its anchors with the bundle, and the anchors are the intermediates. If a host anchors a root, leaving the bundle stops nothing for it, and the controls are ritueel's root CRL and the short lifetimes of leaves; leaves carry no revocation address, so most clients never fetch a list. The follow-up in [#1341](https://github.com/truvity/sluis/issues/1341) states what the bundle holds and what the sync removes, and this step is corrected to the result.
+- **An X.509 intermediate.** `sluis key revoke --kid KID --reason compromise`, with the key id of the intermediate's key, makes `ca` stop issuing and removes the certificate from the trust bundle it renders. Hosts take the next bundle. Then ask ritueel to revoke the certificate in the root lists; sluis does not wait for it. **Assumption (not yet checked):** the host sync replaces its anchors with the bundle, and the anchors are the intermediates. If a host anchors a root, leaving the bundle stops nothing for it, and the controls are ritueel's root CRL and the short lifetimes of leaves; leaves carry no revocation address, so most clients never fetch a list. The follow-up in [#1341](https://github.com/truvity/sluis/issues/1341) states what the bundle holds and what the sync removes, and this step is corrected to the result.
 - **An SSH user CA or host CA.** A key revocation list cannot name certificates nobody knows exist. Replace the key on ritueel's signed list of SSH CA keys. `sluis-host` fetches the list at the interval the documentation states ([REQ-SSH-009](/requirements/ssh/#REQ-SSH-009)), and alerts when its copy is older than twice that interval ([REQ-SSH-010](/requirements/ssh/#REQ-SSH-010)). The time for a list to reach a host is the last row of the [measured times](#measured-times). For a host CA, also replace the `@cert-authority` line in every client's known-hosts file.
 - **An OpenPGP release subkey.** Revoke it under both primaries, as the release signing page describes ([REQ-SUPPLY-012](/requirements/supply/#REQ-SUPPLY-012)).
 
