@@ -162,6 +162,22 @@ func macEpoch(epoch string) (uint32, bool) {
 // maxLabel bounds a label, which is length-prefixed with 16 bits.
 const maxLabel = 1024
 
+// macTag is the construction of Mac (REQ-KEYS-042): HMAC-SHA384 (RFC 2104 with SHA-384, the vectors of RFC 4231)
+// under the data key, over the label's length as 16 bits big-endian, the label and the input. The epoch of a
+// pseudonym is not in the input: it chooses the key's generation. The label is at most maxLabel bytes.
+func macTag(key []byte, label string, input []byte) []byte {
+	return hmacSHA384(key, binary.BigEndian.AppendUint16(nil, uint16(len(label))), []byte(label), input) //nolint:gosec // bounded by maxLabel
+}
+
+// hmacSHA384 is HMAC-SHA384 under key over the parts, one after the other.
+func hmacSHA384(key []byte, parts ...[]byte) []byte {
+	h := hmac.New(sha512.New384, key)
+	for _, p := range parts {
+		h.Write(p)
+	}
+	return h.Sum(nil)
+}
+
 // Mac makes a keyed hash with HMAC-SHA384 over a data key (ADR 0006, "Sign and Mac"): the label is bound into
 // the input as u16 length | label | input, so two uses never produce the same hash for the same input. The
 // purposes are mac (the boundary's), pseudonym (a tenant's, by epoch) and pairwise (a tenant's). MacRequest.grant
@@ -205,11 +221,7 @@ func (s *Server) Mac(ctx context.Context, req *connect.Request[keyv2alpha1.MacRe
 	}
 	var tag []byte
 	err = s.withKey(ctx, keyRef{tenant, purpose, generation}, true, func(key []byte) error {
-		h := hmac.New(sha512.New384, key)
-		h.Write(binary.BigEndian.AppendUint16(nil, uint16(len(m.GetLabel())))) //nolint:gosec // bounded by maxLabel
-		h.Write([]byte(m.GetLabel()))
-		h.Write(m.GetInput())
-		tag = h.Sum(nil)
+		tag = macTag(key, m.GetLabel(), m.GetInput())
 		return nil
 	})
 	if err != nil {
