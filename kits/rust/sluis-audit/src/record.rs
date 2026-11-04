@@ -60,8 +60,13 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
     if a.name.is_empty() || !(1000..=99999).contains(&a.class_uid) || a.activity_id > 99 {
         return Err(invalid("schema", "action"));
     }
+    if a.activity_id == 99 && a.activity_name.is_empty() {
+        // 0030: activity 99 (Other) is described by activity_name.
+        return Err(invalid("schema", "action.activity_name"));
+    }
     for (v, path) in [
         (a.name.as_str(), "action.name"),
+        (a.activity_name.as_str(), "action.activity_name"),
         (ev.status_code.as_str(), "status_code"),
         (ev.tenant.as_str(), "tenant"),
     ] {
@@ -72,10 +77,19 @@ pub(crate) fn validate_event(ev: &Event) -> Result<()> {
             return Err(invalid("schema", "subject.value"));
         }
         // The subject is hashed and never sent, so an e-mail address is a fine subject.
+        if s.kind.is_empty() {
+            return Err(invalid("schema", "subject.kind"));
+        }
         bound(&s.value, "subject.value")?;
         bound(&s.tenant, "subject.tenant")?;
+        bound(&s.kind, "subject.kind")?;
     }
     if let Some(p) = &ev.policy {
+        // OCSF's Policy object needs one of name, type or uid, and the record gives it a uid: the
+        // decision id. A digest or a list of policies with no decision id has nothing to hang on.
+        if p.decision_id.is_empty() {
+            return Err(invalid("schema", "policy.decision_id"));
+        }
         check_text(&p.decision_id, "policy.decision_id")?;
         check_text(&p.digest, "policy.digest")?;
         for (i, id) in p.policy_ids.iter().enumerate() {
@@ -147,6 +161,10 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         "uid": inp.uid,
         "version": OCSF_VERSION,
     });
+    if ev.policy.is_some() {
+        // REQ-AUDIT-120: the record declares the profile whose attributes it uses.
+        md["profiles"] = json!(["security_control"]);
+    }
     if let Some(c) = inp.correlation.filter(|c| !c.is_empty()) {
         md["correlation_uid"] = json!(c);
     }
@@ -164,6 +182,9 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         "time": inp.time_ms,
         "type_uid": class * 100 + activity,
     });
+    if !a.activity_name.is_empty() {
+        rec["activity_name"] = json!(a.activity_name);
+    }
     if !ev.status_code.is_empty() {
         rec["status_code"] = json!(ev.status_code);
     }
@@ -174,24 +195,29 @@ pub(crate) fn build_record(inp: &RecordInput<'_>) -> Result<Vec<u8>> {
         rec["unmapped"] = json!({"sluis": ev.sluis});
     }
     if let Some(p) = &ev.policy {
-        // security_control: the policy object names the decision (uid) and the policy bundle
-        // (version, the digest); each policy that took part is an authorization_result with its
-        // policy.uid.
+        // security_control profile: the policy object names the decision (uid) and the policy
+        // bundle (version, the digest); action_id is the outcome; each policy that took part is an
+        // authorization_result with its policy.uid and the same decision.
         let mut pol = Map::new();
-        if !p.decision_id.is_empty() {
-            pol.insert("uid".into(), json!(p.decision_id));
-        }
+        pol.insert("uid".into(), json!(p.decision_id));
         if !p.digest.is_empty() {
             pol.insert("version".into(), json!(p.digest));
         }
-        if !pol.is_empty() {
-            rec["policy"] = Value::Object(pol);
+        rec["policy"] = Value::Object(pol);
+        if let Some(d) = p.decision {
+            rec["action_id"] = json!(d as i64);
         }
         if !p.policy_ids.is_empty() {
             let auths: Vec<Value> = p
                 .policy_ids
                 .iter()
-                .map(|id| json!({"policy": {"uid": id}}))
+                .map(|id| {
+                    let mut au = json!({"policy": {"uid": id}});
+                    if let Some(d) = p.decision {
+                        au["decision"] = json!(d.caption());
+                    }
+                    au
+                })
                 .collect();
             rec["authorizations"] = Value::Array(auths);
         }

@@ -233,6 +233,7 @@ fn sign_event() -> Event {
             name: "key.sign".into(),
             class_uid: 6003,
             activity_id: 99,
+            activity_name: "Sign".into(),
         },
         status: Status::Success,
         ..Event::default()
@@ -290,6 +291,7 @@ async fn the_pseudonym_comes_from_the_tenants_pseudonym_key() {
     ev.tenant = "acme".into();
     ev.subject = Some(Subject {
         tenant: "acme".into(),
+        kind: "person".into(),
         value: "person-123".into(),
     });
 
@@ -305,9 +307,15 @@ async fn the_pseudonym_comes_from_the_tenants_pseudonym_key() {
                 m.label.as_str(),
                 m.epoch.as_str()
             ),
-            ("pseudonym", "acme", "audit-subject", "202611")
+            ("pseudonym", "acme", "sluis-pseudonym-v1", "202611")
         );
-        assert_eq!(m.input, b"person-123");
+        // boundary, tenant, kind, identifier, each with a 4-byte big-endian length in front
+        let mut want = Vec::new();
+        for part in ["dev", "acme", "person", "person-123"] {
+            want.extend_from_slice(&u32::try_from(part.len()).unwrap().to_be_bytes());
+            want.extend_from_slice(part.as_bytes());
+        }
+        assert_eq!(m.input, want);
     }
     let v: Value = serde_json::from_slice(&rec).unwrap();
     assert_eq!(v["user"]["uid"], "p1.202611.AAECAwQFBgcICQoLDA0ODw");
@@ -324,6 +332,7 @@ async fn a_subject_without_a_key_socket_is_an_error_and_nothing_is_sent() {
     let mut ev = sign_event();
     ev.subject = Some(Subject {
         tenant: "acme".into(),
+        kind: "person".into(),
         value: "person-123".into(),
     });
 
@@ -343,6 +352,7 @@ async fn a_key_failure_stops_the_emit() {
     let mut ev = sign_event();
     ev.subject = Some(Subject {
         tenant: "acme".into(),
+        kind: "person".into(),
         value: "p".into(),
     });
 
@@ -381,4 +391,31 @@ async fn new_refuses_an_incomplete_config() {
     ] {
         assert!(Emitter::new(bad).is_err());
     }
+}
+
+#[tokio::test]
+async fn the_correlation_id_of_the_call_being_served_is_taken_when_none_is_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let u = up(dir.path()).await;
+    let e = emitter(&u, false);
+
+    let (inside, _) = sluis_kit::correlation::scope(Some("req-amb".into()), e.record(sign_event()))
+        .await
+        .unwrap();
+    let v: Value = serde_json::from_slice(&inside).unwrap();
+    assert_eq!(v["metadata"]["correlation_uid"], "req-amb");
+
+    // An id on the event wins over the ambient one.
+    let mut ev = sign_event();
+    ev.correlation_id = Some("req-own".into());
+    let (own, _) = sluis_kit::correlation::scope(Some("req-amb".into()), e.record(ev))
+        .await
+        .unwrap();
+    let v: Value = serde_json::from_slice(&own).unwrap();
+    assert_eq!(v["metadata"]["correlation_uid"], "req-own");
+
+    // Outside a handler there is none.
+    let (outside, _) = e.record(sign_event()).await.unwrap();
+    let v: Value = serde_json::from_slice(&outside).unwrap();
+    assert!(v["metadata"].get("correlation_uid").is_none());
 }
