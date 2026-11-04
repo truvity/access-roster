@@ -3,6 +3,7 @@ syntax = "proto3";
 
 package sluis.session.v2alpha1;
 
+import "google/protobuf/timestamp.proto";
 import "sluis/type/v2alpha1/type.proto";
 
 // SessionService serves the sign-in endpoints that entry routes to it.
@@ -49,4 +50,84 @@ message TokenRequest {
   string scope = 7;            // the requested scope, if narrowing
   string client_secret = 8;    // client_secret_post
   string authorization = 9;    // the HTTP Authorization header, for client_secret_basic
+}
+
+// PendingSignIn is the kind PendingSignIn (0025 "The upstream contract"): what session keeps between the authorize
+// request and the upstream's callback. It never leaves session unsealed: it travels in the sign-in cookie, sealed at
+// key@ under the boundary's cookie key, because no grant can exist for a tenant before a person is decided (the
+// PR's "Decisions for the maintainer").
+message PendingSignIn {
+  string client_id = 1;                          // the client that asked
+  string redirect_uri = 2;                       // the client's redirect_uri, checked against its declaration
+  string scope = 3;                              // the scopes the client asked for, as session granted them
+  string state = 4;                              // the client's state, returned to it
+  string nonce = 5;                              // the client's nonce, for its ID token
+  string code_challenge = 6;                     // the client's PKCE challenge (S256)
+  string tenant = 7;                             // the tenant of the client
+  string upstream = 8;                           // the name of the Upstream signed in at
+  string upstream_state = 9;                     // the state sent to the upstream; the callback must bring it back
+  string upstream_nonce = 10;                    // the nonce sent to the upstream
+  string upstream_verifier = 11;                 // the PKCE verifier of the upstream request
+  google.protobuf.Timestamp created_at = 12;     // when the request was made
+  google.protobuf.Timestamp expires_at = 13;     // when the pending sign-in ends
+  optional int64 max_age = 14;                   // the client's max_age in seconds, if sent; the callback refuses an older auth_time
+}
+
+// Person is the kind Person (0019 "The records"): the id is the subject.
+message Person {
+  string subject = 1;                         // the opaque subject, 128 random bits, base32
+  google.protobuf.Timestamp created_at = 2;   // when sluis first saw the person
+}
+
+// UpstreamLink is the kind UpstreamLink (0019 "The records"): the id is a keyed hash of the issuer, the claim name
+// and the claim value.
+message UpstreamLink {
+  string subject = 1;        // the subject of the person
+  string issuer = 2;         // the upstream's issuer
+  string subject_claim = 3;  // the name of the claim that held the subject
+}
+
+// SignInFacts are the facts about a person that policy needs to decide again: they are sealed with the cookie key
+// into AuthCode and SessionChain, because the account value is personal and neither kind may hold it in the clear.
+message SignInFacts {
+  repeated string accounts = 1;  // "<upstream>/<subject claim value>" for each linked account
+}
+
+// AuthCode is the kind AuthCode (0018): the id is the hash of the code the client holds, so the item can be compared
+// and never read back into a code.
+message AuthCode {
+  string client_id = 1;                          // the client the code was issued to
+  string redirect_uri = 2;                       // the redirect_uri of the authorize request
+  string scope = 3;                              // the scopes granted
+  string nonce = 4;                              // the client's nonce
+  string code_challenge = 5;                     // the client's PKCE challenge (S256)
+  string subject = 6;                            // the person's subject
+  google.protobuf.Timestamp authenticated_at = 7; // when sluis accepted the sign-in
+  google.protobuf.Timestamp auth_time = 8;       // when the person authenticated at the upstream, if it said
+  optional string acr = 9;                       // the upstream's acr, if it said one
+  repeated string amr = 10;                      // the upstream's amr
+  bool amr_present = 11;                         // true when the upstream said anything about amr
+  bytes sealed_facts = 12;                       // SignInFacts, sealed with the cookie key
+  bool spent = 13;                               // true once the code was redeemed
+  string session_id = 14;                        // the chain the redemption made; a replay ends it
+}
+
+// SessionChain is the kind SessionChain (0018 "Session chains"): a human session, from the sign-in that began it to
+// its last refresh. Its id is the session id (sid) that the refresh token names. It holds hashes of the refresh
+// tokens, never a token: a presented token is compared, not read back.
+message SessionChain {
+  string subject = 1;                              // the person's subject
+  string client_id = 2;                            // the client the chain belongs to
+  string class = 3;                                // "human"; fixed when the chain is made, never changed (0018 "The classes")
+  string scope = 4;                                // the scopes granted, which a refresh may narrow and never widen
+  bytes refresh_hash = 5;                          // SHA-384 of the current refresh token's secret
+  repeated bytes spent_hashes = 6;                 // SHA-384 of the secrets already rotated away (the spent markers)
+  google.protobuf.Timestamp started_at = 7;        // the moment sluis accepted the sign-in; the absolute limit counts from here
+  google.protobuf.Timestamp ends_at = 8;           // started_at plus the absolute limit, as it was when the chain began
+  google.protobuf.Timestamp refreshed_at = 9;      // the last refresh; the idle limit counts from here
+  google.protobuf.Timestamp auth_time = 10;        // when the person authenticated at the upstream; a refresh never changes it
+  optional string acr = 11;                        // the upstream's acr, if it said one
+  repeated string amr = 12;                        // the upstream's amr
+  bool amr_present = 13;                           // true when the upstream said anything about amr
+  bytes sealed_facts = 14;                         // SignInFacts, sealed with the cookie key
 }
