@@ -5,8 +5,12 @@
 //!   fsynced, then `link()`ed to the name, which fails if the name exists, and the directory is
 //!   fsynced. Of many racing creators exactly one wins.
 //! - `put` overwrites only a pointer (see [`POINTERS`]), under an entity tag.
-//! - Every path is checked textually and then opened with `openat2(RESOLVE_NO_SYMLINKS)` below the
-//!   root, so no `..`, absolute path or symlink leaves it.
+//! - Every path is checked textually and then opened with `openat2(RESOLVE_NO_SYMLINKS |
+//!   RESOLVE_BENEATH)` below the root, so no `..`, absolute path or symlink leaves it.
+//! - Where `openat2` answers `ENOSYS` (systemd's `RestrictSUIDSGID=yes` makes its seccomp filter
+//!   do so, and so does a kernel older than 5.6) and only then, the same path is walked one
+//!   component at a time with `openat(O_NOFOLLOW)`, which refuses the same things: see
+//!   [`open_nosymlinks`]. Any other error of `openat2` is the answer.
 
 pub mod service;
 pub mod suite;
@@ -266,14 +270,87 @@ impl Fs {
     }
 
     fn open_below(&self, path: &str, flags: OFlags) -> Result<OwnedFd> {
-        Ok(rustix::fs::openat2(
-            &*self.root,
-            path,
-            flags | OFlags::CLOEXEC,
-            Mode::empty(),
-            ResolveFlags::NO_SYMLINKS | ResolveFlags::BENEATH,
-        )?)
+        Ok(open_beneath(&self.root, path, flags)?)
     }
+}
+
+/// Opens `path` below `parent` and follows no symlink on the way: `openat2` where the system
+/// has it, the walk of [`open_nosymlinks`] where it answers `ENOSYS` and for no other error.
+fn open_beneath(
+    parent: &OwnedFd,
+    path: &str,
+    flags: OFlags,
+) -> std::result::Result<OwnedFd, Errno> {
+    let first = {
+        #[cfg(test)]
+        let refused = tests::OPENAT2_REFUSED.get();
+        #[cfg(not(test))]
+        let refused = false;
+        if refused {
+            // The seccomp filter's answer, for the tests of the fallback.
+            Err(Errno::NOSYS)
+        } else {
+            rustix::fs::openat2(
+                parent,
+                path,
+                flags | OFlags::CLOEXEC,
+                Mode::empty(),
+                ResolveFlags::NO_SYMLINKS | ResolveFlags::BENEATH,
+            )
+        }
+    };
+    or_fallback(first, || open_nosymlinks(parent, path, flags))
+}
+
+/// `first`, unless it is `ENOSYS`: only then is `fallback` tried. An `EPERM`, an `ELOOP` or any
+/// other error is the answer and must not be asked again by another road.
+fn or_fallback<T>(
+    first: std::result::Result<T, Errno>,
+    fallback: impl FnOnce() -> std::result::Result<T, Errno>,
+) -> std::result::Result<T, Errno> {
+    match first {
+        Err(Errno::NOSYS) => fallback(),
+        other => other,
+    }
+}
+
+/// What `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_BENEATH)` does, with `openat` only: every component
+/// is opened from the one before with `O_NOFOLLOW`, the ones before the last also with
+/// `O_DIRECTORY`. A symlink is refused wherever it stands (`ELOOP` or `ENOTDIR`), an absolute
+/// path, `..` and an empty component are refused (`EXDEV`) before any open, so no step can leave
+/// `parent`, and no race can put a link in the way and be followed.
+fn open_nosymlinks(
+    parent: &OwnedFd,
+    path: &str,
+    flags: OFlags,
+) -> std::result::Result<OwnedFd, Errno> {
+    let parts: Vec<&str> = path.split('/').collect();
+    if parts
+        .iter()
+        .any(|p| p.is_empty() || *p == "." || *p == "..")
+    {
+        return Err(Errno::XDEV);
+    }
+    let Some((last, dirs)) = parts.split_last() else {
+        return Err(Errno::XDEV);
+    };
+    let mut cur = parent
+        .try_clone()
+        .map_err(|e| Errno::from_io_error(&e).unwrap_or(Errno::IO))?;
+    for part in dirs {
+        cur = rustix::fs::openat(
+            &cur,
+            *part,
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::empty(),
+        )?;
+    }
+    rustix::fs::openat(
+        &cur,
+        *last,
+        flags | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
 }
 
 /// An exclusive `flock` on a directory, released on drop.
@@ -298,12 +375,10 @@ impl Drop for Flock<'_> {
 }
 
 fn open_dir(parent: &OwnedFd, name: &str) -> Result<OwnedFd> {
-    Ok(rustix::fs::openat2(
+    Ok(open_beneath(
         parent,
         name,
-        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
-        Mode::empty(),
-        ResolveFlags::NO_SYMLINKS | ResolveFlags::BENEATH,
+        OFlags::RDONLY | OFlags::DIRECTORY,
     )?)
 }
 
@@ -440,4 +515,159 @@ fn sweep_dir(d: &OwnedFd) -> Result<usize> {
         }
     }
     Ok(removed)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)] // a failed unwrap in a test is the failure
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    thread_local! {
+        /// Set, `openat2` answers `ENOSYS` on this thread, as it does under `RestrictSUIDSGID=yes`.
+        pub(super) static OPENAT2_REFUSED: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// Runs `body` once with `openat2` as the system has it and once with `ENOSYS` answered, so
+    /// each case holds on both roads.
+    fn both(body: impl Fn()) {
+        for refused in [false, true] {
+            OPENAT2_REFUSED.set(refused);
+            body();
+        }
+        OPENAT2_REFUSED.set(false);
+    }
+
+    fn root() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o750)).unwrap();
+        t
+    }
+
+    fn is_path_error(e: &Error) -> bool {
+        matches!(e, Error::Path)
+    }
+
+    #[test]
+    fn the_fallback_road_reads_what_it_wrote() {
+        both(|| {
+            let t = root();
+            let fs = Fs::open(t.path()).unwrap();
+            let tag = fs.create("a/b/c", b"hello").unwrap();
+            let (data, got) = fs.get("a/b/c").unwrap();
+            assert_eq!(data, b"hello");
+            assert_eq!(got, tag);
+            assert!(matches!(fs.get("a/b/none"), Err(Error::Absent)));
+            assert!(matches!(fs.get("none/b/c"), Err(Error::Absent)));
+            assert_eq!(fs.list("a/", "", 10).unwrap().0, vec!["a/b/c".to_owned()]);
+        });
+    }
+
+    #[test]
+    fn a_symlink_to_a_file_in_the_root_is_refused_on_both_roads() {
+        both(|| {
+            let t = root();
+            let fs = Fs::open(t.path()).unwrap();
+            fs.create("real", b"x").unwrap();
+            std::os::unix::fs::symlink("real", t.path().join("link")).unwrap();
+            assert!(is_path_error(&fs.get("link").unwrap_err()));
+        });
+    }
+
+    #[test]
+    fn a_symlink_that_leaves_the_root_is_refused_as_the_file_and_as_a_directory() {
+        both(|| {
+            let out = tempfile::tempdir().unwrap();
+            std::fs::write(out.path().join("secret"), b"s").unwrap();
+            let t = root();
+            let fs = Fs::open(t.path()).unwrap();
+            std::os::unix::fs::symlink(out.path().join("secret"), t.path().join("file")).unwrap();
+            std::os::unix::fs::symlink(out.path(), t.path().join("dir")).unwrap();
+            std::os::unix::fs::symlink("../", t.path().join("up")).unwrap();
+            assert!(is_path_error(&fs.get("file").unwrap_err()));
+            assert!(is_path_error(&fs.get("dir/secret").unwrap_err()));
+            assert!(is_path_error(&fs.get("up/secret").unwrap_err()));
+            // A create through a link in the path must not write outside either.
+            assert!(is_path_error(&fs.create("dir/new", b"x").unwrap_err()));
+            assert!(!out.path().join("new").exists());
+        });
+    }
+
+    #[test]
+    fn dot_dot_absolute_and_empty_components_are_refused_before_any_open() {
+        both(|| {
+            let t = root();
+            let fs = Fs::open(t.path()).unwrap();
+            fs.create("a/b", b"x").unwrap();
+            for p in ["../x", "a/../a/b", "/a/b", "a//b", "a/./b", "a/.."] {
+                assert!(is_path_error(&fs.get(p).unwrap_err()), "{p}");
+            }
+            // The fallback itself, called with the paths the textual check would have stopped.
+            for p in ["..", "../x", "/etc/passwd", "a/../b", "a//b", ".", ""] {
+                assert_eq!(
+                    open_nosymlinks(&fs.root, p, OFlags::RDONLY).err(),
+                    Some(Errno::XDEV),
+                    "{p:?}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn the_walk_refuses_a_symlink_in_every_position() {
+        let t = root();
+        let fs = Fs::open(t.path()).unwrap();
+        std::fs::create_dir_all(t.path().join("a/b")).unwrap();
+        std::fs::write(t.path().join("a/b/f"), b"x").unwrap();
+        std::os::unix::fs::symlink("a", t.path().join("first")).unwrap();
+        std::os::unix::fs::symlink("b", t.path().join("a/mid")).unwrap();
+        std::os::unix::fs::symlink("f", t.path().join("a/b/last")).unwrap();
+        let open = |p: &str| open_nosymlinks(&fs.root, p, OFlags::RDONLY);
+        assert!(open("a/b/f").is_ok());
+        for p in ["first/b/f", "a/mid/f", "a/b/last"] {
+            let e = open(p).err().unwrap();
+            assert!(matches!(e, Errno::LOOP | Errno::NOTDIR), "{p}: {e:?}");
+        }
+    }
+
+    #[test]
+    fn a_fifo_is_refused_as_a_directory_of_the_path_on_both_roads() {
+        both(|| {
+            let t = root();
+            let fs = Fs::open(t.path()).unwrap();
+            rustix::fs::mknodat(
+                rustix::fs::CWD,
+                t.path().join("pipe"),
+                FileType::Fifo,
+                Mode::from_raw_mode(0o600),
+                0,
+            )
+            .unwrap();
+            // As a directory in the path it is refused without being opened.
+            assert!(is_path_error(&fs.get("pipe/x").unwrap_err()));
+            // As the object, `get` opens it for reading: it must not be reached with a writer
+            // missing. The open below is non-blocking, as the walk passes `flags` through.
+            let fd = open_beneath(&fs.root, "pipe", OFlags::RDONLY | OFlags::NONBLOCK).unwrap();
+            assert!(!File::from(fd).metadata().unwrap().is_file());
+        });
+    }
+
+    #[test]
+    fn only_enosys_asks_for_the_fallback() {
+        for (first, want_asked) in [
+            (Err(Errno::NOSYS), 1),
+            (Err(Errno::PERM), 0),
+            (Err(Errno::LOOP), 0),
+            (Err(Errno::XDEV), 0),
+            (Err(Errno::NOENT), 0),
+            (Ok(1), 0),
+        ] {
+            let mut asked = 0;
+            let _ = or_fallback(first, || {
+                asked += 1;
+                Ok(2)
+            });
+            assert_eq!(asked, want_asked, "{first:?}");
+        }
+    }
 }
