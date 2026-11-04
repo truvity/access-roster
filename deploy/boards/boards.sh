@@ -48,19 +48,19 @@ board_ssh() { # board command...
 # stage builds the tree the board receives, from dist/arm64 and deploy/boards/units. Only executables that exist
 # are staged, and so only their units; the users of the groups a unit joins come along without their units.
 stage() { # dir
-	local s=$1 instance template binary needs stem n
+	local s=$1 instance template binary user needs stem n
 	mkdir -p "$s/files/bin" "$s/files/systemd" "$s/files/sysusers" "$s/files/tmpfiles"
 	: >"$s/plan.tsv"
 	local -A want=()
 	[ -f "$units/index.tsv" ] || { echo "boards: no $units/index.tsv: run 'just units-gen'" >&2; return 1; }
-	while IFS=$'\t' read -r instance template _kind binary _user _uid needs; do
+	while IFS=$'\t' read -r instance template _kind binary user _uid needs; do
 		[[ "$instance" != '#'* ]] || continue
 		[ -f "$dist/$binary" ] || continue
 		mkdir -p "$s/files/bin/$(dirname "$binary")"
 		install -m 0755 "$dist/$binary" "$s/files/bin/$binary"
 		cp "$units/$template" "$s/files/systemd/$template"
 		printf '%s\t%s\n' "$instance" "$template" >>"$s/plan.tsv"
-		want["${template%@.service}"]=1
+		want["${user%-dev}"]=1 # the user's stem: a driver with a unit per port (rqlite) has one user
 		if [ "$needs" != - ]; then
 			IFS=, read -ra ns <<<"$needs"
 			for n in "${ns[@]}"; do want["$n"]=1; done

@@ -3,12 +3,14 @@
 [Unit]
 Description=sluis store (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
+Requires=sluis-drv-store-rqlite-durable@%i.service sluis-drv-store-rqlite-temp@%i.service sluis-drv-store-file@%i.service sluis-drv-store-credential@%i.service
+After=sluis-drv-store-rqlite-durable@%i.service sluis-drv-store-rqlite-temp@%i.service sluis-drv-store-file@%i.service sluis-drv-store-credential@%i.service
 
 [Service]
 Type=simple
 User=sluis-store-%i
 Group=sluis-store-%i
-SupplementaryGroups=sluis-key-%i
+SupplementaryGroups=sluis-drv-store-credential-%i sluis-drv-store-file-%i sluis-drv-store-rqlite-%i sluis-drv-writer-spool-%i sluis-key-%i
 ExecStart=/opt/sluis/bin/actors/store serve --boundary %i --socket /run/sluis/store/%i.sock --bootstrap /etc/sluis/bootstrap.d/%i.yaml
 Restart=on-failure
 RestartSec=2s

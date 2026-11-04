@@ -8,11 +8,12 @@ Documentation=https://sluis.id/runtimes/bare-metal/
 Type=simple
 User=sluis-adapter-upstream-oidc-%i
 Group=sluis-adapter-upstream-oidc-%i
-SupplementaryGroups=sluis-key-%i sluis-policy-%i sluis-store-%i
+SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis-store-%i
 ExecStart=/opt/sluis/bin/actors/adapter-upstream-oidc serve --boundary %i --socket /run/sluis/adapter-upstream-oidc/%i.sock
 Restart=on-failure
 RestartSec=2s
 Environment=GOMEMLIMIT=24MiB
+LoadCredential=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

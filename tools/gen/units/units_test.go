@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -283,12 +284,13 @@ func TestIndex(t *testing.T) {
 			t.Errorf("%s must start before %s", order[i-1], order[i])
 		}
 	}
+	// A uid belongs to one user; a driver with a unit per port has one user and so one uid in more than one row.
 	uids := map[string]string{}
 	for _, r := range rows {
-		if other, dup := uids[r[5]]; dup {
-			t.Errorf("uid %s is %s and %s", r[5], other, r[0])
+		if other, dup := uids[r[5]]; dup && other != r[4] {
+			t.Errorf("uid %s is the user %s and %s", r[5], other, r[4])
 		}
-		uids[r[5]] = r[0]
+		uids[r[5]] = r[4]
 		if !strings.HasSuffix(r[1], "@.service") || !strings.HasPrefix(r[0], strings.TrimSuffix(r[1], "@.service")+"@") {
 			t.Errorf("row %v: instance and template disagree", r)
 		}
@@ -325,7 +327,8 @@ func TestCredentialsUseLoadCredential(t *testing.T) {
 	saved := drivers["driver-key-software"]
 	t.Cleanup(func() { drivers["driver-key-software"] = saved })
 	spec := saved
-	spec.Credentials = []string{"pin"}
+	spec.Units = slices.Clone(saved.Units)
+	spec.Units[0].Credentials = []string{"pin"}
 	drivers["driver-key-software"] = spec
 	body := generate(t)["sluis-drv-key-software@.service"]
 	if !strings.Contains(body, "\nLoadCredential=pin:/etc/sluis/credentials/%i/sluis-drv-key-software/pin\n") {
@@ -359,5 +362,234 @@ func TestDeterministic(t *testing.T) {
 		if b[k] != v {
 			t.Errorf("%s differs between two runs", k)
 		}
+	}
+}
+
+// Every flag of an ExecStart is one that the unit's binary defines: a flag is looked for, quoted, in the Go and Rust sources
+// of the binary's directory, except the two that the kits give to every executable. A flag that a package renames, or
+// that a row invented, fails here and not on a board.
+func TestEveryFlagIsDefinedByItsBinary(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	kit := map[string]bool{"boundary": true, "socket": true}
+	n := 0
+	for name, body := range generate(t) {
+		if !strings.HasSuffix(name, "@.service") {
+			continue
+		}
+		var exec string
+		for _, l := range strings.Split(body, "\n") {
+			if v, ok := strings.CutPrefix(l, "ExecStart="); ok {
+				exec = v
+			}
+		}
+		fields := strings.Fields(exec)
+		bin := strings.TrimPrefix(fields[0], BinDir+"/")
+		dir := filepath.Join(root, bin)
+		if _, err := os.Stat(dir); err != nil {
+			continue // the executable is not built yet: its unit is the generic one, with no flag of its own
+		}
+		var src strings.Builder
+		tree := os.DirFS(dir)
+		err := fs.WalkDir(tree, ".", func(p string, d fs.DirEntry, err error) error {
+			if err == nil && !d.IsDir() && (strings.HasSuffix(p, ".go") || strings.HasSuffix(p, ".rs")) && !strings.HasSuffix(p, "_test.go") {
+				b, rerr := fs.ReadFile(tree, p)
+				if rerr != nil {
+					return rerr
+				}
+				src.Write(b)
+			}
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range fields[1:] {
+			flag, ok := strings.CutPrefix(f, "--")
+			if !ok || kit[flag] {
+				continue
+			}
+			n++
+			if !strings.Contains(src.String(), `"`+flag+`"`) {
+				t.Errorf("%s: %s is not a flag of %s", name, f, bin)
+			}
+		}
+	}
+	if n < 15 {
+		t.Fatalf("only %d flags checked: an empty sweep checks nothing", n)
+	}
+}
+
+// The store's drivers: one process per port, the sockets of the bootstrap file, and --socket-gid wherever the binary takes it.
+func TestStoreDrivers(t *testing.T) {
+	files := generate(t)
+	owner := files["sluis-store@.service"]
+	for _, d := range []string{"rqlite-durable", "rqlite-temp", "file", "credential"} {
+		if !strings.Contains(owner, "sluis-drv-store-"+d+"@%i.service") {
+			t.Errorf("store@ does not wait for the driver %s:\n%s", d, owner)
+		}
+	}
+	for _, g := range []string{"sluis-drv-store-rqlite-%i", "sluis-drv-store-file-%i", "sluis-drv-store-credential-%i", "sluis-drv-writer-spool-%i"} {
+		if !strings.Contains(owner, g) {
+			t.Errorf("store@ does not join %s", g)
+		}
+	}
+	for port, want := range map[string]string{"durable": "durable.sock", "temp": "temp.sock"} {
+		body := files["sluis-drv-store-rqlite-"+port+"@.service"]
+		for _, w := range []string{
+			"User=sluis-drv-store-rqlite-%i\n",
+			"--socket /run/sluis/store/%i/" + want + " --rqlite-url ${SLUIS_RQLITE_URL} --namespace " + port + " --socket-gid 61020\n",
+			"EnvironmentFile=-/etc/sluis/rqlite-%i.env\n",
+			"AF_UNIX AF_INET AF_INET6",
+		} {
+			if !strings.Contains(body, w) {
+				t.Errorf("rqlite %s lacks %q:\n%s", port, w, body)
+			}
+		}
+		if strings.Contains(body, "PrivateNetwork") {
+			t.Errorf("rqlite %s: the engine needs the network:\n%s", port, body)
+		}
+	}
+	file := files["sluis-drv-store-file@.service"]
+	if !strings.Contains(file, "--socket /run/sluis/store/%i/config-source.sock --dir /etc/sluis/config/%i --socket-gid 61021\n") {
+		t.Errorf("the file driver is wrong:\n%s", file)
+	}
+	cred := files["sluis-drv-store-credential@.service"]
+	if !strings.Contains(cred, "--socket /run/sluis/store/%i/secret-source.sock --socket-gid 61022\n") ||
+		!strings.Contains(cred, "\nLoadCredential=client-dev:/etc/sluis/credentials/%i/sluis-drv-store-credential/client-dev\n") {
+		t.Errorf("the credential driver is wrong:\n%s", cred)
+	}
+	if !strings.Contains(files["sluis-store.tmpfiles"], "d /run/sluis/store/dev 1770 sluis-store-dev sluis-store-drv-dev -\n") {
+		t.Errorf("store's driver directory is wrong:\n%s", files["sluis-store.tmpfiles"])
+	}
+	// Two units of one driver have one user, once.
+	if strings.Count(files["index.tsv"], "\tsluis-drv-store-rqlite-dev\t61020\t") != 2 {
+		t.Errorf("the rqlite driver is not two rows of one user:\n%s", files["index.tsv"])
+	}
+	if !strings.Contains(files["sluis-store@.service"], "--bootstrap /etc/sluis/bootstrap.d/%i.yaml") {
+		t.Error("store@ has no bootstrap file")
+	}
+}
+
+// PLAN.md "Socket layout": the spool makes emit.sock and receive.sock in /run/sluis/audit/<boundary>. Every emitting actor
+// joins the spool's group to reach emit.sock, the writer joins it to reach receive.sock, and the directory is open to pass
+// through for everyone.
+func TestSpoolReachability(t *testing.T) {
+	files := generate(t)
+	spool := files["sluis-drv-writer-spool@.service"]
+	if !strings.Contains(spool, "serve --boundary %i --socket-dir /run/sluis/audit/%i --root /var/lib/sluis-state/%i/drv-writer-spool --socket-gid 61024\n") ||
+		!strings.Contains(spool, "SupplementaryGroups=sluis-writer-drv-%i\n") || !strings.Contains(spool, "\nPrivateNetwork=yes\n") ||
+		!strings.Contains(spool, "ReadWritePaths=/run/sluis/audit/%i\n") {
+		t.Errorf("the spool unit is wrong:\n%s", spool)
+	}
+	tmp := files["sluis-writer.tmpfiles"]
+	for _, w := range []string{"d /run/sluis/audit 0751 sluis-writer-dev sluis-writer-dev -\n", "d /run/sluis/audit/dev 1771 sluis-writer-dev sluis-writer-drv-dev -\n"} {
+		if !strings.Contains(tmp, w) {
+			t.Errorf("the writer's tmpfiles lack %q:\n%s", w, tmp)
+		}
+	}
+	w := files["sluis-writer@.service"]
+	if !strings.Contains(w, "sluis-drv-writer-spool-%i") || !strings.Contains(w, "sluis-drv-writer-fs-%i") {
+		t.Errorf("the writer does not join the groups of its drivers:\n%s", w)
+	}
+	n := 0
+	for _, a := range registry.Actors() {
+		if a.Family == "platform" || !slices.Contains(a.Ports, "audit-emit") {
+			continue
+		}
+		n++
+		if !strings.Contains(files["sluis-"+a.Name+"@.service"], "sluis-drv-writer-spool-%i") {
+			t.Errorf("%s emits audit records but does not join the spool's group", a.Name)
+		}
+	}
+	if n < 15 {
+		t.Fatalf("only %d emitting actors", n)
+	}
+}
+
+// entry's listener is the forwarder's: entry joins the forwarder's group to give the socket to it, the socket's group is
+// the forwarder's uid, and entry has no network.
+func TestEntryListenerBelongsToTheForwarder(t *testing.T) {
+	files := generate(t)
+	uid, ok := registry.UID("harness-forwarder", dev.UIDBlock)
+	if !ok {
+		t.Fatal("no uid for the forwarder")
+	}
+	e := files["sluis-entry@.service"]
+	for _, w := range []string{
+		"ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --socket /run/sluis/entry/%i.sock --socket-gid " + itoa(uid) + "\n",
+		" sluis-harness-forwarder-%i ",
+		"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n",
+	} {
+		if !strings.Contains(e, w) {
+			t.Errorf("entry lacks %q:\n%s", w, e)
+		}
+	}
+	if !strings.Contains(files["sluis-harness-forwarder.sysusers"], "u sluis-harness-forwarder-dev "+itoa(uid)+" ") {
+		t.Errorf("the forwarder's group is not made:\n%s", files["sluis-harness-forwarder.sysusers"])
+	}
+	if !strings.Contains(files["index.tsv"], "sluis-harness-forwarder") {
+		t.Error("the index does not say that entry needs the forwarder's group")
+	}
+}
+
+// The adapter reaches the upstream: no PrivateNetwork, the client secret as a systemd credential, a Go memory ceiling.
+func TestUpstreamAdapter(t *testing.T) {
+	a := generate(t)["sluis-adapter-upstream-oidc@.service"]
+	for _, w := range []string{
+		"LoadCredential=upstream.workforce.client-secret:/etc/sluis/credentials/%i/sluis-adapter-upstream-oidc/upstream.workforce.client-secret\n",
+		"RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n", "Environment=GOMEMLIMIT=24MiB\n",
+	} {
+		if !strings.Contains(a, w) {
+			t.Errorf("the adapter lacks %q:\n%s", w, a)
+		}
+	}
+	if strings.Contains(a, "PrivateNetwork") {
+		t.Errorf("the adapter has no network:\n%s", a)
+	}
+}
+
+// Every driver of a row gets the hardening, and only the engine's has a network.
+func TestDriverHardeningAndNetwork(t *testing.T) {
+	files := generate(t)
+	n := 0
+	for d, spec := range drivers {
+		for _, du := range spec.Units {
+			n++
+			body := files[driverTemplate(d, du.Port)]
+			if body == "" {
+				t.Errorf("no unit for %s %q", d, du.Port)
+				continue
+			}
+			for _, m := range []string{"NoNewPrivileges=yes", "ProtectSystem=strict", "CapabilityBoundingSet=\n", "SystemCallFilter=@system-service"} {
+				if !strings.Contains(body, m) {
+					t.Errorf("%s lacks %q", d, m)
+				}
+			}
+			if noNet := strings.Contains(body, "\nPrivateNetwork=yes\n"); noNet == spec.Network {
+				t.Errorf("%s: Network=%t but PrivateNetwork=%t", d, spec.Network, noNet)
+			}
+			if goMem := strings.Contains(body, "GOMEMLIMIT=24MiB"); goMem != (spec.Language == "Go") {
+				t.Errorf("%s (%s): GOMEMLIMIT=%t", d, spec.Language, goMem)
+			}
+		}
+	}
+	if n < 7 {
+		t.Fatalf("only %d driver units", n)
+	}
+}
+
+// policy takes no flag beyond the common ones: its sockets are the plan's, its group is its own and no egress is allowed.
+func TestPolicyUnit(t *testing.T) {
+	p := generate(t)["sluis-policy@.service"]
+	for _, w := range []string{
+		"ExecStart=/opt/sluis/bin/actors/policy serve --boundary %i --socket /run/sluis/policy/%i.sock\n",
+		"\nPrivateNetwork=yes\n", "\nRestrictAddressFamilies=AF_UNIX\n", "sluis-drv-writer-spool-%i", "sluis-key-%i", "sluis-store-%i",
+	} {
+		if !strings.Contains(p, w) {
+			t.Errorf("policy lacks %q:\n%s", w, p)
+		}
+	}
+	if _, err := os.Stat(filepath.Join("..", "..", "..", "actors", "policy")); err != nil {
+		t.Errorf("policy has a row but no binary directory: %v", err)
 	}
 }
