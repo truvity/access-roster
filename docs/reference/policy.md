@@ -407,9 +407,9 @@ things:
 
 ## A worked example
 
-The local installation's boundary `dev` has a `Policy` document, [`policy/local.cedar`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/local.cedar), and the vocabulary above. It also has one client, `example-app` in the boundary `dev`, which requires one of two grant names: `dev:example-app:user`, or the same role in the scope of the company `acme`. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
+The local installation's boundary `dev` has a `Policy` document, [`policy/local.cedar`](https://github.com/truvity/sluis/blob/main/tests/installations/local/policy/local.cedar), and the vocabulary above. It also has one client, `example-app` in the boundary `dev`, which requires the grant name `dev:example-app:user`, and the command-line client `sluis-cli`, which requires that or the same role in the scope of the company `acme`, so that its tokens carry the groups of both scopes and a token for `example-app` carries those of `dev` alone. The vocabulary has one thing, `example-app`, with a ladder of three roles, and three scopes, one of them sensitive.
 
-The policy has the held-person rule, four bindings, the standard rule, one step-up rule, the signing rule, two templates and two delegation policies.
+The policy has the held-person rule, six bindings, the standard rule, one step-up rule, the signing rule, two templates and two delegation policies.
 
 <!-- example: tests/installations/local/policy/local.cedar -->
 ```text
@@ -441,6 +441,21 @@ when { principal in [Account::"workforce/u-1001", Account::"workforce/u-1002"] }
 @id("bind-dev-admins")
 permit (principal in Account::"workforce/u-2001", action == Action::"grant.hold", resource)
 when { resource.scope == "dev" && resource.role == "admin" };
+
+// The test user `alice` of the identity provider (decision D-21: the upstream's subject claim is the user name). She
+// administers the example app in the scope `dev` and uses it in the scope `acme`, so that a token for an audience that
+// asks for `dev` alone shows its `groups` narrowed.
+@id("bind-alice-dev-admin")
+permit (principal in Account::"workforce/alice", action == Action::"grant.hold", resource)
+when { resource.scope == "dev" && resource.role == "admin" };
+
+@id("bind-alice-acme-user")
+permit (
+  principal is Person,
+  action == Action::"grant.hold",
+  resource == Grant::"acme:example-app:user"
+)
+when { principal in [Account::"workforce/alice"] };
 
 // A sensitive scope is named in full.
 @id("bind-prod-admins")

@@ -1,5 +1,17 @@
 # InstallationClient: the clients of the installation, one item for each client id.
+#
+# `requires` is what a client asks of a person: at least one of these grant names admits a sign-in or an exchange for
+# the client (policy: the standard rule `token-requires`), and the pairs `<scope>:<thing>` among them narrow the
+# `groups` of a token for the client (ADR 0020, "The claims of a token").
 sluis-cli:
   kind: public
   redirects: ["http://127.0.0.1/callback"]
   profile: native
+  # The command-line tool asks for a person's grants in two scopes, so its tokens carry both.
+  requires: ["dev:example-app:user", "acme:example-app:user"]
+# The audience of `sluis token --audience example-app`. A token for it names the grants of the scope `dev` only.
+example-app:
+  kind: confidential
+  redirects: ["https://app.local.test/callback"]
+  profile: web
+  requires: ["dev:example-app:user"]
