@@ -155,6 +155,7 @@ macro_rules! next {
     }};
 }
 
+/// verifies: REQ-AUDIT-014, REQ-AUDIT-032
 #[tokio::test]
 async fn emits_are_durable_ordered_acked_and_replayed_after_a_restart() {
     let (r, s) = (root(), tempfile::tempdir().unwrap());

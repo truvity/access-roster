@@ -139,6 +139,7 @@ async fn it_indexes_the_log_the_writer_made_and_a_reader_finds_the_records() {
     }
 }
 
+/// verifies: REQ-AUDIT-016
 #[tokio::test]
 async fn indexing_again_changes_nothing_and_a_new_index_is_rebuilt_from_the_log_alone() {
     let mut env = Env::new().await;
@@ -492,6 +493,7 @@ async fn two_indexers_on_one_index_do_no_harm() {
     assert_eq!(env.search(&["*"], "").await.len(), 200);
 }
 
+/// verifies: REQ-AUDIT-098
 #[tokio::test]
 async fn the_usage_log_and_the_logs_of_other_kinds_are_not_followed() {
     // The AuditLog of the environment declares a usage log with an origin and no key file: a follower that

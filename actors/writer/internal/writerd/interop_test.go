@@ -75,6 +75,7 @@ func newC2SPVerifier(t *testing.T, vkey string) *c2spECDSAVerifier {
 // wrote, the pointer and each checkpoints/<size>, opens with golang.org/x/mod/sumdb/note and a verifier built from
 // the C2SP standard alone, from a verifier key that is also built from the standard. It also shows that the
 // verifier is not vacuous: a SHA-384 signature of the same text, the former sluis deviation, is refused.
+// verifies: REQ-AUDIT-040, REQ-AUDIT-005
 func TestCheckpointsVerifyWithAnIndependentStandardVerifier(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)

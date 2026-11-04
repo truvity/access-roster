@@ -189,6 +189,7 @@ func (e *env) mustVerify(t *testing.T) string {
 
 // ---- tests
 
+// verifies: REQ-AUDIT-020, REQ-AUDIT-055, REQ-AUDIT-087, REQ-AUDIT-152
 func TestWriterWritesALogTheCLIVerifies(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -331,6 +332,7 @@ func TestManyBatchesCrossBundleAndTileBoundaries(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-034
 func TestDuplicatesAreDropped(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -393,6 +395,7 @@ func TestWriteOrderAndAckAfterDurability(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-014
 func TestNothingIsAcknowledgedWhenTheCheckpointFails(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -553,6 +556,7 @@ func TestAnIdleLogSignsNothing(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-159
 func TestWithoutAGrantNothingIsSealedOrAcknowledged(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -575,6 +579,7 @@ func TestWithoutAGrantNothingIsSealedOrAcknowledged(t *testing.T) {
 	e.mustVerify(t)
 }
 
+// verifies: REQ-AUDIT-007, REQ-AUDIT-050
 func TestASecondWriterCannotFork(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t)

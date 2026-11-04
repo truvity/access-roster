@@ -100,6 +100,7 @@ fn search() -> SearchRequest {
     }
 }
 
+/// verifies: REQ-AUDIT-145
 #[test]
 fn the_port_suite_passes() {
     suite::run_temp().unwrap();

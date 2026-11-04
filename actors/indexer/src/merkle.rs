@@ -146,6 +146,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-AUDIT-005
     #[test]
     fn the_range_gives_the_root_of_the_definition_at_every_size() {
         let leaves: Vec<Hash> = (0..70u32).map(|i| leaf_hash(&i.to_be_bytes())).collect();
@@ -174,6 +175,7 @@ mod tests {
         assert_eq!(Range::decode(&[]).expect("empty").root(), empty_root());
     }
 
+    /// verifies: REQ-AUDIT-005
     #[test]
     fn the_known_empty_and_one_leaf_roots() {
         // SHA-256 of the empty string, and of 0x00 (RFC 6962 section 2.1; the Go tlog package agrees).

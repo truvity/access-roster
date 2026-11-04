@@ -67,6 +67,7 @@ func TestStoreGolden(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-151
 func TestKeyGolden(t *testing.T) {
 	cases := []struct {
 		actor, scope, purpose, op string

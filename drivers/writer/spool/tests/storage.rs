@@ -37,6 +37,7 @@ const SMALL: Config = Config {
     segment: 64,
 };
 
+/// verifies: REQ-AUDIT-032
 #[test]
 fn the_transport_suite_passes() {
     suite::run_temp().unwrap();
