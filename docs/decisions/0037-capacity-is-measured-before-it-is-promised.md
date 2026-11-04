@@ -59,6 +59,7 @@ MEASURED on boards with a card each, on the dates in the first column ([Board ca
 | Date | What | Result |
 |---|---|---|
 | 2026-10-31 | One P-384 signature on a card | About 147 ms, about 7 a second per card, about 21 a second for three boards |
+| 2026-11-04 | One P-384 signature through the card driver (piv-go, one Connect call, a check of the signature) | Median 160 to 166 ms on each of three boards (50 signatures each); an ECDH about 149 ms; one P-256 signature about 87 ms |
 | 2026-11-03 | Opening a data key on a card (ECDH) | Median 143 ms, about 7 a second per card; a cached key costs a memory operation |
 | 2026-11-02 | Replicated commits, three boards, 10 clusters of three nodes | 400 a second delivered in full with a p99 of 118 to 127 ms; saturated at about 600 a second with the CPU 95% busy. This is not the budget: an installation has one cluster, which saturated at about 275 a second (2026-11-03, [Board capacity](/decisions/0037-capacity-is-measured-before-it-is-promised/#board-capacity)) |
 | 2026-11-02 | One replicated commit | p50 21 to 41 ms and p99 62 to 123 ms |
