@@ -74,7 +74,7 @@ func publisher(n *yaml.Node) (Publisher, error) {
 	}
 	str := func(k string) (string, error) {
 		f := fields[k]
-		if f == nil || f.Kind != yaml.ScalarNode || f.ShortTag() != "!!str" {
+		if f == nil || !IsString(f) {
 			return "", fmt.Errorf("%s: must be a string", k)
 		}
 		return f.Value, nil
@@ -114,7 +114,7 @@ func publisher(n *yaml.Node) (Publisher, error) {
 			return Publisher{}, errors.New("co_signs: must be a list")
 		}
 		for j, k := range c.Content {
-			if k.Kind != yaml.ScalarNode || k.ShortTag() != "!!str" {
+			if !IsString(k) {
 				return Publisher{}, fmt.Errorf("co_signs[%d]: must be a string", j)
 			}
 			if kind, ok := registry.KindByName(k.Value); !ok || kind.Class != "config" {

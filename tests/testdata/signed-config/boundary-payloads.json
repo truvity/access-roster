@@ -245,6 +245,219 @@
    "name": "a tab",
    "payload": "default:\n\tname: dev\n",
    "refused_path": ""
+  },
+  {
+   "name": "name Null is a string in the profile",
+   "payload": "default:\n  name: Null\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "Null",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name NULL is a string in the profile",
+   "payload": "default:\n  name: NULL\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "NULL",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name True is a string in the profile",
+   "payload": "default:\n  name: True\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "True",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name TRUE is a string in the profile",
+   "payload": "default:\n  name: TRUE\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "TRUE",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name False is a string in the profile",
+   "payload": "default:\n  name: False\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "False",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name FALSE is a string in the profile",
+   "payload": "default:\n  name: FALSE\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "FALSE",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name Yes is a string in the profile",
+   "payload": "default:\n  name: Yes\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "Yes",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name No is a string in the profile",
+   "payload": "default:\n  name: No\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "No",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name On is a string in the profile",
+   "payload": "default:\n  name: On\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "On",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "level Null is a string in the profile",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: Null\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "Null",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "name null is null, which a required string refuses",
+   "payload": "default:\n  name: null\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "name ~ is null, which a required string refuses",
+   "payload": "default:\n  name: ~\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "name true is a boolean",
+   "payload": "default:\n  name: true\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "name false is a boolean",
+   "payload": "default:\n  name: false\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "name 1e3 is a number",
+   "payload": "default:\n  name: 1e3\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "refused_path": "default.name"
+  },
+  {
+   "name": "name quoted true is a string",
+   "payload": "default:\n  name: \"true\"\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n",
+   "read": {
+    "name": "true",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
+  },
+  {
+   "name": "declared_kinds Null is a string, not a list",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  declared_kinds: Null\n",
+   "refused_path": "default.declared_kinds"
+  },
+  {
+   "name": "uid_block Null is a string, not an integer",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: Null\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "uid_block true is a boolean",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  uid_block: true\n",
+   "refused_path": "default.uid_block"
+  },
+  {
+   "name": "default_tenant Null is a string that is no tenant id",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: Null\n",
+   "refused_path": "default.default_tenant"
+  },
+  {
+   "name": "default_tenant null is null, no tenant",
+   "payload": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.example.test\n  default_tenant: null\n",
+   "read": {
+    "name": "dev",
+    "kind": "environment",
+    "level": "L2",
+    "environment": "development",
+    "issuer": "https://sluis.example.test",
+    "uid_block": 0,
+    "default_tenant": "",
+    "declared_kinds": []
+   }
   }
  ]
 }

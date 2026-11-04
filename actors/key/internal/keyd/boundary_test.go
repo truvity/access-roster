@@ -42,8 +42,13 @@ func TestEnvironmentFlippedByAnUnsignedPathIsIgnored(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), errSoftwareInProduction) {
 		t.Fatalf("Init = %v, want the refusal of the software driver in production", err)
 	}
-	if n.srv.environment != "" {
-		t.Fatalf("the environment %q was taken", n.srv.environment)
+	// The environment is set only after the floor passes: a refused start leaves it unset, and the driver made no key
+	// beyond the wrapping key the test made to learn its own id.
+	if got := n.srv.environment; got != "" {
+		t.Fatalf("the environment %q was taken from a start that was refused", got)
+	}
+	if len(n.driver.keys) != 1 || n.driver.keys["wrapping"] == nil {
+		t.Fatalf("the driver holds %d keys after a refused start", len(n.driver.keys))
 	}
 }
 
@@ -125,7 +130,7 @@ func TestBoundaryPayloadAndMark(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the mark of the Boundary is not saved: %v", err)
 	}
-	if m, err := parseMark(raw); err != nil || m.seq != e.seqB {
+	if m, err := parseMark(raw, boundaryKind); err != nil || m.seq != e.seqB {
 		t.Fatalf("mark = %+v, %v; want seq %d", m, err, e.seqB)
 	}
 	if fi, _ := os.Stat(filepath.Join(state, boundaryMarkFile)); fi.Mode().Perm() != 0o600 {

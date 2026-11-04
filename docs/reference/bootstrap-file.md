@@ -40,6 +40,7 @@ Schema v1 has only the keys that code of the first working version reads ([princ
   | a key `<<` | refused: merge key |
   | `a: !foo bar`, `a: !!str 12`, `a: ! 12` | refused: tag |
   | `a: yes`, `b: 0o17`, `c: 010`, `d: y` | read, all four strings |
+  | `a: Null`, `b: NULL`, `c: True`, `d: TRUE`, `e: False`, `f: FALSE` | read, all six strings: only `null`, `~`, an empty value, `true` and `false` are null and booleans (a YAML 1.1 reader reads the others as null and booleans, and the Go reader of key@ is held to this) |
   | `a: ~`, `c: 0x1F`, `d:` | read: `null`, the string `"0x1F"`, `null` |
   | `a: 1.5e3`, `b: .inf`, `c: +1`, `d: -0`, `e: 1_000` | read: the numbers `1.5e3` and `-0`, the strings `".inf"`, `"+1"` and `"1_000"` |
   | `a: "12"`, `b: 'true'`, `c: "null"` | read: three strings |
