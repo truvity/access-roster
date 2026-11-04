@@ -231,9 +231,17 @@ func signLocal(t *testing.T, src string) (docs, bootstrap string) {
 	t.Helper()
 	tmp := t.TempDir()
 	docs, bootstrap = filepath.Join(tmp, "docs"), filepath.Join(tmp, "dev.yaml")
-	cmd := exec.Command("go", "run", "./tools/harness/sign-config", "-config", src, //nolint:gosec // the test's own temporary paths
+	// The policy binds test users by their upstream subject ({{sub:alice}}). Offline there is no upstream, so each user
+	// gets a random subject that no account has, as deploy/boards/prepare.sh does (upstream-subjects -unbound).
+	subjects := filepath.Join(tmp, "subjects")
+	cmd := exec.Command("go", "run", "./tools/harness/upstream-subjects", "-config", src, "-unbound", "-out", subjects) //nolint:gosec // the test's own temporary paths
+	cmd.Dir = repoRoot(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("upstream-subjects: %v\n%s", err, out)
+	}
+	cmd = exec.Command("go", "run", "./tools/harness/sign-config", "-config", src, //nolint:gosec // the test's own temporary paths
 		"-bootstrap", "tests/installations/local/bootstrap.yaml", "-key-dir", filepath.Join(tmp, "key"),
-		"-out", docs, "-bootstrap-out", bootstrap, "-seq", "1")
+		"-out", docs, "-bootstrap-out", bootstrap, "-seq", "1", "-subjects", subjects)
 	cmd.Dir = repoRoot(t)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("sign-config: %v\n%s", err, out)
