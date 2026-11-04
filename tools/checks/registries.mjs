@@ -52,7 +52,7 @@ const TREATMENTS = ['hashed', 'sealed', 'plain'];
 const PROFILES = ['Fixed', 'Operable', 'Tenant-adjustable', '-'];
 const MODULES = ['core', 'CIAM module', 'quota module'];
 const KIND_FIELDS = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'layer', 'links', 'writer', 'readers', 'exportable', 'backed_up',
-  'ttl', 'indexes', 'purposes', 'self_scoped', 'status', 'layer_module', 'watched_by', 'personal', 'notes'];
+  'ttl', 'indexes', 'purposes', 'self_scoped', 'create_only', 'status', 'layer_module', 'watched_by', 'personal', 'notes'];
 const KIND_REQUIRED = ['name', 'serves', 'scope', 'class', 'treatment', 'profile', 'writer', 'readers', 'exportable', 'backed_up'];
 const KIND_TOP = ['schema', 'checked', 'writers_outside_sluis', 'combine_rules', 'layered_groups', 'built_in', 'not_kinds', 'kinds'];
 const OUTSIDE = ['IaC', 'pipeline'];
@@ -336,6 +336,8 @@ for (const [i, k] of list.entries()) {
   }
   if (k.self_scoped === true && w !== 'self') error(`${at}: self_scoped is for writer self`);
   if (k.self_scoped !== undefined && k.self_scoped !== true) error(`${at}: self_scoped is true or absent`);
+  if (k.create_only !== undefined && k.create_only !== true) error(`${at}: create_only is true or absent`);
+  if (k.create_only === true && !['durable', 'temp'].includes(k.class)) error(`${at}: create_only is for a durable or temp kind`);
   if (!Array.isArray(k.readers) || !k.readers.length) error(`${at}: readers must be a non-empty list`);
   else for (const rd of k.readers) {
     const r = ref(rd);
