@@ -437,7 +437,7 @@ func TestStoreDrivers(t *testing.T) {
 		body := files["sluis-drv-store-rqlite-"+port+"@.service"]
 		for _, w := range []string{
 			"User=sluis-drv-store-rqlite-%i\n",
-			"--socket /run/sluis/store/%i/" + want + " --rqlite-url ${SLUIS_RQLITE_URL} --namespace " + port + "\n",
+			"--socket /run/sluis/store/%i/" + want + " --rqlite-url ${SLUIS_RQLITE_URL} --namespace " + port + " --socket-gid 61020\n",
 			"EnvironmentFile=-/etc/sluis/rqlite-%i.env\n",
 			"AF_UNIX AF_INET AF_INET6",
 		} {
@@ -445,8 +445,8 @@ func TestStoreDrivers(t *testing.T) {
 				t.Errorf("rqlite %s lacks %q:\n%s", port, w, body)
 			}
 		}
-		if strings.Contains(body, "--socket-gid") || strings.Contains(body, "PrivateNetwork") {
-			t.Errorf("rqlite %s: the binary has no --socket-gid yet, and the engine needs the network:\n%s", port, body)
+		if strings.Contains(body, "PrivateNetwork") {
+			t.Errorf("rqlite %s: the engine needs the network:\n%s", port, body)
 		}
 	}
 	file := files["sluis-drv-store-file@.service"]
