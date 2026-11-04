@@ -105,8 +105,9 @@ func (e *PINError) Error() string {
 // ends the operation without a PIN attempt.
 type PINSource func() (string, error)
 
-// DefaultManagementKey is the factory 3DES management key of a PIV applet (NIST SP 800-78-4; Yubico documents it).
-// It is public. The driver uses it in development only, on a card in factory state.
+// DefaultManagementKey is the factory management key of a PIV applet: the 24 octets 01..08 three times (NIST SP 800-78-4;
+// Yubico documents it). It is 3DES before firmware 5.7 and AES-192 from it, with the same octets; piv-go picks the
+// algorithm from the firmware. It is public. The driver uses it in development only, on a card in factory state.
 var DefaultManagementKey = []byte{
 	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,

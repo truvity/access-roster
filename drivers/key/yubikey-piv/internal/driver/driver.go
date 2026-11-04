@@ -202,6 +202,8 @@ func (s *Service) adopt(e entry) (*slotKey, error) {
 	}
 	a, err := s.card.VerifyAttestation(s.attCert, cert)
 	if err != nil {
+		// The reason is the x509 error, which names a certificate and never a key; the refusal itself names none.
+		slog.Warn("attestation refused", "slot", e.slot.String(), "error", err.Error())
 		return nil, attestationError("chain: the attestation does not chain to the Yubico root")
 	}
 	switch {

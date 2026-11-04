@@ -88,12 +88,22 @@ func (c *pivCard) Attest(s Slot) (*x509.Certificate, error) {
 	return cert, err
 }
 
-// VerifyAttestation checks the chain against Yubico's roots, which piv-go carries, and reads the extensions.
+// VerifyAttestation checks the chain of the slot certificate through the card's attestation certificate to Yubico's root
+// with piv-go's verifier over the anchors of yubico.go, and reads the extensions.
 func (c *pivCard) VerifyAttestation(attCert, slotCert *x509.Certificate) (Attestation, error) {
-	a, err := piv.Verify(attCert, slotCert)
+	v, err := yubicoVerifier()
 	if err != nil {
 		return Attestation{}, err
 	}
+	a, err := v.Verify(attCert, slotCert)
+	if err != nil {
+		return Attestation{}, err
+	}
+	return toAttestation(a), nil
+}
+
+// toAttestation is what the driver keeps of piv-go's reading of a slot certificate.
+func toAttestation(a *piv.Attestation) Attestation {
 	out := Attestation{
 		Version: Version{a.Version.Major, a.Version.Minor, a.Version.Patch},
 		Serial:  a.Serial,
@@ -108,7 +118,7 @@ func (c *pivCard) VerifyAttestation(attCert, slotCert *x509.Certificate) (Attest
 	if a.TouchPolicy == piv.TouchPolicyNever {
 		out.Touch = TouchNever
 	}
-	return out, nil
+	return out
 }
 
 func (c *pivCard) Generate(managementKey []byte, s Slot, spec KeySpec) (crypto.PublicKey, error) {
