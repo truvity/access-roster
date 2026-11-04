@@ -338,6 +338,10 @@ func uidOf(name string) (uint32, error) {
 	return u, nil
 }
 
+// ownKeyDir in the groups of asActor is the group of the user's own directory of key@ (registry.KeyCallerGID), which
+// only that user's unit joins; the user's own group does not open the directory.
+const ownKeyDir = "key@"
+
 // asActor is the command prefix that runs a program under the uid of an actor with the groups of the actors it may
 // call. The groups are those of the units: the group of an actor has the number of its uid.
 func (b *board) asActor(user string, groups []string) (string, error) {
@@ -347,6 +351,14 @@ func (b *board) asActor(user string, groups []string) (string, error) {
 	}
 	gs := make([]string, 0, len(groups))
 	for _, g := range groups {
+		if g == ownKeyDir {
+			kg, ok := registry.KeyCallerGID(user, 0)
+			if !ok {
+				return "", fmt.Errorf("%s has no group for its directory of key@", user)
+			}
+			gs = append(gs, strconv.FormatUint(uint64(kg), 10))
+			continue
+		}
 		gid, err := uidOf(g)
 		if err != nil {
 			return "", err
@@ -415,7 +427,7 @@ func (b *board) audit(dec decideOut, corr string) error {
 		// The step dials key@ at /run/sluis/key/<boundary>/key.sock, as in the local installation, where each caller
 		// mounts its own directory of key@ there. On a board the directory of the indexer is bind-mounted over it, in a
 		// mount namespace of the step alone.
-		return b.stepIn(into, "indexer", []string{"policy"}, "/run/sluis/key/"+boundary+"/indexer:/run/sluis/key/"+boundary,
+		return b.stepIn(into, "indexer", []string{"policy", ownKeyDir}, "/run/sluis/key/"+boundary+"/indexer:/run/sluis/key/"+boundary,
 			"audit-find", "--boundary", boundary, "--blob", b.dir+"/log", "--decision-id", dec.DecisionID, "--correlation", corr)
 	}
 	var found auditOut
@@ -599,7 +611,7 @@ func (b *board) newKeyActiveAt() (time.Time, bool) {
 		KeyID string `json:"key_id"`
 	}
 	// The per-caller directory of signer is bound where the harness client looks for key@'s socket, as for the audit step.
-	if err := b.stepIn(&kp, "signer", nil, "/run/sluis/key/"+boundary+"/signer:/run/sluis/key/"+boundary, "key-public", "--boundary", boundary); err != nil || kp.KeyID == "" {
+	if err := b.stepIn(&kp, "signer", []string{ownKeyDir}, "/run/sluis/key/"+boundary+"/signer:/run/sluis/key/"+boundary, "key-public", "--boundary", boundary); err != nil || kp.KeyID == "" {
 		return time.Time{}, false
 	}
 	var ring readOut
