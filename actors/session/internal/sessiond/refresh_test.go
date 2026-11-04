@@ -140,6 +140,7 @@ func TestRefreshRefusesWhatIsNotARefreshToken(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SESS-002
 func TestRefreshBelongsToTheClientThatGotIt(t *testing.T) {
 	e := newEnv(t, func(o *options) {
 		o.extra = nil
@@ -159,6 +160,7 @@ func TestRefreshBelongsToTheClientThatGotIt(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SESS-027
 func TestRefreshLimits(t *testing.T) {
 	t.Run("idle", func(t *testing.T) {
 		e := newEnv(t, nil) // idle 8h, absolute 12h

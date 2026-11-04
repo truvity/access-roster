@@ -8,7 +8,8 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-13, section: "2.1", depth: Full}
@@ -24,7 +25,8 @@ requirements:
     rationale: "Verifiers select the key by kid."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-13, section: "2.1", depth: Full}
@@ -40,7 +42,8 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-13, section: "2.1", depth: Full}
@@ -55,7 +58,9 @@ requirements:
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -74,7 +79,8 @@ requirements:
     rationale: "One curve that every driver supports keeps the default simple."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -91,7 +97,8 @@ requirements:
     rationale: "Verifiers need a stable key set and a default that every driver supports."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-51, section: "3", depth: Partial}
@@ -108,7 +115,8 @@ requirements:
     rationale: "A single-audience token cannot be replayed at another resource."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-52, section: "4.1.3", depth: Full}
@@ -122,7 +130,9 @@ requirements:
     rationale: "The ID token audience is the client; leaking the resource confuses verifiers."
     level: MUST
     source: security-review
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -137,6 +147,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-08, section: "2", depth: Full}
@@ -151,6 +162,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-08, section: "2", depth: Full}
@@ -163,7 +175,9 @@ requirements:
     rationale: "Minimal disclosure limits the impact of a leaked token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.4", depth: Full}
@@ -178,7 +192,8 @@ requirements:
     rationale: "Minimal disclosure limits the impact of a leaked token."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "5.4", depth: Full}
@@ -208,7 +223,8 @@ requirements:
     rationale: "A default that follows the profile keeps ordinary verifiers working."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-13, section: "2.2", depth: Partial}
@@ -293,7 +309,8 @@ requirements:
     rationale: "Tokens must never be cached."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "5.1", depth: Full}
@@ -308,7 +325,8 @@ requirements:
     rationale: "Tokens must never be cached."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "5.1", depth: Full}
@@ -322,7 +340,9 @@ requirements:
     rationale: "Clients branch on the status and the code."
     level: MUST
     source: v1-parity
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "5.1", depth: Full}
@@ -338,6 +358,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-18, section: "7", depth: Full}
@@ -354,6 +375,7 @@ requirements:
     level: SHOULD
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-18, section: "7", depth: Full}
@@ -368,6 +390,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-18, section: "5", depth: Partial}
@@ -380,7 +403,8 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -396,7 +420,8 @@ requirements:
     rationale: "The nonce binds the token to the request."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -412,7 +437,8 @@ requirements:
     rationale: "The ID token is the proof of sign-in the client verifies."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -428,6 +454,7 @@ requirements:
     level: MAY
     source: stakeholder-ciam
     status: planned
+    milestone: backlog
     runtimes: all
     standards:
       - {id: ST-12, section: "2", depth: Full}
@@ -440,7 +467,9 @@ requirements:
     rationale: "Pairwise subjects prevent cross-service tracking, while single sign-on follows the sluis session and does not depend on the subject."
     level: MAY
     source: stakeholder-ciam
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "8.1", depth: Partial}
@@ -456,7 +485,8 @@ requirements:
     rationale: "Reversible subjects leak the underlying identifier."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -470,7 +500,8 @@ requirements:
     rationale: "Reversible subjects leak the underlying identifier."
     level: MUST
     source: stakeholder-ciam
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
@@ -483,7 +514,8 @@ requirements:
     rationale: "A relying party must not read a grant meant for another system (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -495,7 +527,8 @@ requirements:
     rationale: "A fixed set lets the claims be tested as a whole and keeps configuration from widening a token (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -507,7 +540,9 @@ requirements:
     rationale: "An absent value means unknown, and a default would claim an assurance that was never shown."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776, 1106]
@@ -519,7 +554,9 @@ requirements:
     rationale: "The default is v1's, so relying parties tuned to it keep working (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: test-gap
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -531,7 +568,8 @@ requirements:
     rationale: "A token must never outlive what it came from (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -543,7 +581,9 @@ requirements:
     rationale: "The maximum is fixed in code, and a longer token needs a new decision record."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -555,7 +595,8 @@ requirements:
     rationale: "The relying parties of v1 parity accept bearer tokens only (ADR 0020)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
+    milestone: first-version
     runtimes: all
     standards: []
     issues: [776]
@@ -568,6 +609,7 @@ requirements:
     level: MUST
     source: standard
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-37, depth: Partial}
@@ -582,6 +624,7 @@ requirements:
     level: MUST
     source: standard
     status: planned
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-37, depth: Partial}
@@ -594,7 +637,9 @@ requirements:
     rationale: "The lead time of a new key assumes a verifier that follows HTTP caching and the discovery rule, so the page must say what sluis relies on (ADR 0006)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: attestation-missing
+    milestone: first-version
     runtimes: all
     standards: []
     features: ["design"]

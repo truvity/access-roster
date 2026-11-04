@@ -619,6 +619,7 @@ async fn every_response_has_the_security_headers_and_a_fresh_correlation_id() {
     assert_eq!(ia.len(), 36);
 }
 
+/// verifies: REQ-AUTHN-012, REQ-AUTHN-037
 #[tokio::test]
 async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called() {
     let up = up().await;
@@ -652,6 +653,7 @@ async fn an_unknown_or_repeated_parameter_is_refused_before_any_actor_is_called(
     assert!(calls.authorize.is_empty() && calls.callback.is_empty());
 }
 
+/// verifies: REQ-AUTHN-078
 #[tokio::test]
 async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_one() {
     // The upstream answers sluis as a client: RFC 6749 section 4.1.2 says to ignore a response
@@ -809,6 +811,7 @@ async fn token_is_dispatched_by_grant_type() {
     );
 }
 
+/// verifies: REQ-AUTHN-036, REQ-AUTHN-015
 #[tokio::test]
 async fn token_refuses_what_its_grant_does_not_list() {
     let up = up().await;

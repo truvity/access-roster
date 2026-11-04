@@ -236,6 +236,7 @@ mod tests {
         assert_eq!(keys[1]["x5c"][0], "AQID");
     }
 
+    /// verifies: REQ-TOKEN-020
     #[test]
     fn only_published_states_are_in_the_key_set() {
         let with = |id: &str, state: &str| SigningKey {
