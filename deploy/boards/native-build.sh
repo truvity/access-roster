@@ -37,8 +37,8 @@ apt-get install -y -qq --no-install-recommends ca-certificates curl gcc libc6-de
 
 if ! command -v go >/dev/null || [ "$(go env GOVERSION 2>/dev/null)" != "go$go_version" ]; then
 	tgz=$(mktemp)
-	curl -fsSL --retry 3 "https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz" -o "$tgz"
-	want_sha=$(curl -fsSL --retry 3 "https://dl.google.com/go/go${go_version}.linux-${goarch}.tar.gz.sha256")
+	curl -fsSL --retry 5 --retry-all-errors "https://go.dev/dl/go${go_version}.linux-${goarch}.tar.gz" -o "$tgz"
+	want_sha=$(curl -fsSL --retry 5 --retry-all-errors "https://dl.google.com/go/go${go_version}.linux-${goarch}.tar.gz.sha256")
 	[[ "$want_sha" =~ ^[0-9a-f]{64}$ ]] || { echo "native-build: no SHA-256 published for Go ${go_version}" >&2; exit 1; }
 	echo "${want_sha}  $tgz" | sha256sum -c - >/dev/null
 	rm -rf /usr/local/go
