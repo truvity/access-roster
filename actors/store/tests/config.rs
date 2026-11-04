@@ -186,6 +186,7 @@ fn a_payload_is_refused_by_place_and_an_error_shows_no_value() {
     }
 }
 
+/// verifies: REQ-DATA-044
 #[test]
 fn durations_follow_the_grammar_and_the_built_in_cap() {
     let doc = |d: &str| {
@@ -375,6 +376,7 @@ async fn a_cold_start_loads_the_set_and_serves_it_read_only() {
     assert_eq!(up.sha384, store::config::document::hex(digest.as_ref()));
 }
 
+/// verifies: REQ-DATA-083
 #[tokio::test]
 async fn a_cold_start_refuses_on_any_failure_and_says_why() {
     // Each case starts from a valid directory and breaks one thing.
@@ -560,6 +562,7 @@ async fn a_bad_document_on_reload_keeps_the_snapshot_and_is_reported_once() {
     assert_eq!(t.id_token.seconds, 1200);
 }
 
+/// verifies: REQ-DATA-080
 #[tokio::test]
 async fn the_sequence_number_only_grows_on_a_running_store() {
     let e = env().await;

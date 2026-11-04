@@ -9,6 +9,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "5280", depth: Partial}
@@ -22,6 +23,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-46, section: "1", depth: Partial}
@@ -34,7 +36,9 @@ requirements:
     rationale: "A stored password defeats short-lived credentials."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}

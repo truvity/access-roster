@@ -24,6 +24,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
@@ -38,6 +39,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Full}
@@ -50,7 +52,9 @@ requirements:
     rationale: "Sessions and codes are temp kinds, so everyone signs in again after a restore (ADR 0010)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     actors: [exporter]
     standards:
@@ -66,6 +70,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -79,6 +84,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -95,6 +101,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -111,6 +118,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -127,6 +135,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -143,6 +152,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -158,6 +168,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Full}
@@ -172,6 +183,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-74, section: "1", depth: Full}
@@ -185,6 +197,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -198,6 +211,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards:
@@ -212,6 +226,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Partial}
@@ -226,6 +241,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -239,6 +255,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -252,6 +269,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -265,6 +283,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -277,6 +296,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-62, section: "4.1.2.2", depth: Partial}
@@ -290,6 +310,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter, key]
     standards:
@@ -305,6 +326,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [key]
     standards:
@@ -333,6 +355,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards:
@@ -349,6 +372,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-89, section: "6", depth: Partial}
@@ -362,6 +386,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -375,6 +400,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -389,6 +415,7 @@ requirements:
     level: MAY
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
@@ -401,7 +428,9 @@ requirements:
     rationale: "Separate identities limit what a stolen backup identity can do (ADR 0010)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     actors: [exporter, store]
     standards:
@@ -430,6 +459,7 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-77, section: "2.1", depth: Partial}
@@ -443,6 +473,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -455,6 +486,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards:
@@ -483,6 +515,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards:
       - {id: ST-95, section: "age", depth: Partial}
@@ -523,6 +556,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015, 1024]
@@ -535,6 +569,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015]
@@ -547,6 +582,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015]
@@ -559,6 +595,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015, 835]
@@ -571,6 +608,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -583,6 +621,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [835]
@@ -595,6 +634,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015]
@@ -609,6 +649,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -623,6 +664,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -637,6 +679,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -650,6 +693,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -663,6 +707,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -677,6 +722,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -690,6 +736,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -703,6 +750,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -716,6 +764,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1015, 864]
@@ -728,6 +777,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
@@ -741,6 +791,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -755,6 +806,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -768,6 +820,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -794,6 +847,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -807,6 +861,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [1202]
@@ -819,6 +874,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
+    milestone: v1-parity
     runtimes: all
     actors: [store]
     standards: []
@@ -831,7 +887,9 @@ requirements:
     rationale: "Tokens already issued keep verifying while the region is down (ADR 0010)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    milestone: v1-parity
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1142]

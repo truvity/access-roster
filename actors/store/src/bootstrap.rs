@@ -565,6 +565,7 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-DATA-089
     #[test]
     fn a_file_that_another_uid_can_write_is_refused() {
         use std::os::unix::fs::PermissionsExt as _;
