@@ -2,3 +2,4 @@
 sluis-cli:
   kind: public
   redirects: ["http://127.0.0.1/callback"]
+  profile: native

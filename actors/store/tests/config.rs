@@ -766,7 +766,7 @@ fn a_policy_payload_is_cedar_text_and_not_empty() {
 }
 
 #[test]
-fn the_local_catalogue_names_the_actions_policy_and_the_signer_emit() {
+fn the_local_catalogue_names_the_actions_policy_the_signer_and_exchange_emit() {
     let a = pb::AuditCatalogue::decode_from_slice(
         &payload::decode(kind("AuditCatalogue"), source("audit-catalogue").as_bytes())
             .unwrap()
@@ -784,6 +784,8 @@ fn the_local_catalogue_names_the_actions_policy_and_the_signer_emit() {
         "signer.ring.add",
         "signer.ring.change",
         "signer.ring.drop",
+        "exchange.token",
+        "exchange.refused",
     ] {
         assert!(a.actions.iter().any(|x| x == action), "{action}");
     }
