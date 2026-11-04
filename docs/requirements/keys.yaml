@@ -703,13 +703,13 @@ requirements:
     rationale: "A socket that another uid can open is a path around the rules (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: smoke-not-in-ci
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [866, 914]
+    tests: [tests/deny/deny_test.go]
     verification:
       - {kind: test-vectors, ref: "a process under another uid opens ca@prod's key@ socket; refused by the directory permissions"}
   - id: REQ-KEYS-045

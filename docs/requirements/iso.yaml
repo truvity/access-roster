@@ -1313,6 +1313,7 @@ requirements:
     runtimes: all
     standards: []
     issues: [949]
+    tests: [tests/deny/deny_test.go]
     verification:
       - {kind: integration-test, ref: "the generated deny matrix: every pair not listed is refused by the transport on each runtime"}
       - {kind: integration-test, ref: "drift test: a call added in code but not in the registry fails"}

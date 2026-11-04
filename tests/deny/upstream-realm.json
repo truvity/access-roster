@@ -1,0 +1,13 @@
+{
+  "realm": "sluis-test",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "sluis-local",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://sluis.dev.local.test/callback"]
+    }
+  ]
+}

@@ -962,13 +962,13 @@ requirements:
     rationale: "A driver holds a credential, and a socket another actor could open would be a second holder (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: smoke-not-in-ci
     runtimes: all
     actors: [store]
     standards: []
     issues: [862]
+    tests: [tests/deny/deny_test.go]
     verification:
       - {kind: integration-test, ref: "a process of a work actor opens the socket of a driver; refused by the file permissions and the unit"}
   - id: REQ-DATA-067
