@@ -115,6 +115,7 @@ type options struct {
 	extra    []*configv2alpha1.InstallationClient
 	lifetime *configv2alpha1.TokenLifetime
 	upstream *configv2alpha1.Upstream
+	sectors  func(string) sessiond.Sector
 	caller   string // the registry name session sees as its caller; default "entry"
 }
 
@@ -196,7 +197,7 @@ func newEnv(t *testing.T, mutate func(*options)) *env {
 		Policy:   policyv2alpha1connect.NewPolicyServiceClient(ph, purl, rpc.ClientOptions()...),
 		Signer:   signerv2alpha1connect.NewSignerServiceClient(gh, gurl, rpc.ClientOptions()...),
 		Upstream: integrationv2alpha1connectpkg.NewUpstreamServiceClient(uh, uurl, rpc.ClientOptions()...),
-		Audit:    em, Now: clk.now,
+		Audit:    em, Now: clk.now, Sectors: o.sectors,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -263,6 +264,15 @@ func (e *env) callback(r *sessionv2alpha1.CallbackRequest) *typev2alpha1.HttpRep
 	return res.Msg
 }
 
+func (e *env) token(r *sessionv2alpha1.TokenRequest) *typev2alpha1.HttpReply {
+	e.t.Helper()
+	res, err := e.client.Token(context.Background(), connect.NewRequest(r))
+	if err != nil {
+		e.t.Fatalf("Token: %v", err)
+	}
+	return res.Msg
+}
+
 func headerOf(r *typev2alpha1.HttpReply, name string) []string {
 	var out []string
 	for _, h := range r.GetHeaders() {
@@ -302,6 +312,24 @@ func cookieValue(t *testing.T, r *typev2alpha1.HttpReply) string {
 		return v
 	}
 	return ""
+}
+
+// signIn runs authorize and callback like a browser and entry do, and returns the code and the client's state.
+func (e *env) signIn() (code string, p authorizeParams) {
+	e.t.Helper()
+	p = newAuthorize()
+	a := e.authorize(p.req)
+	up := location(e.t, a)
+	cb := e.callback(&sessionv2alpha1.CallbackRequest{
+		Code: "upstream-code-" + up.Query().Get("state")[:8], State: up.Query().Get("state"),
+		Iss: "https://idp.example.test/realms/test", Cookie: cookieValue(e.t, a),
+	})
+	back := location(e.t, cb)
+	code = back.Query().Get("code")
+	if code == "" {
+		e.t.Fatalf("no code in %s", back.String())
+	}
+	return code, p
 }
 
 // records parses the audit records.
@@ -351,4 +379,8 @@ func protoOf[T proto.Message](t *testing.T, b []byte, m T) T {
 // sealAsWinner seals an UpstreamLink for the subject, as the instance that won a race would have.
 func sealAsWinner(e *env, tenant, id, subject string) ([]byte, error) {
 	return e.key.sealForTest("data", &typev2alpha1.Address{Kind: "upstream-link", Tenant: tenant, Id: id}, &sessionv2alpha1.UpstreamLink{Subject: subject})
+}
+
+func clientOf(id string) *configv2alpha1.InstallationClient {
+	return &configv2alpha1.InstallationClient{Id: id, Kind: "public", Redirects: []string{"http://127.0.0.1/callback"}}
 }

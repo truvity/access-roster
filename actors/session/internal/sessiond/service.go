@@ -44,6 +44,9 @@ type Options struct {
 	Audit    *audit.Emitter
 	// UpstreamName names the Upstream to sign people in at. Empty means the only one the boundary declares.
 	UpstreamName string
+	// Sectors says which sector a tenant is in (0034). Nil means the first working version's rule: no Tenant item
+	// declares one, so the sector is the tenant's own name and never public.
+	Sectors func(tenant string) Sector
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 }
@@ -55,7 +58,8 @@ type Service struct {
 	keys   keys
 	sealed sealedStore
 
-	codes *store.Client[*sessionv2alpha1.AuthCode]
+	codes  *store.Client[*sessionv2alpha1.AuthCode]
+	chains *store.Client[*sessionv2alpha1.SessionChain]
 }
 
 // New returns the service.
@@ -67,6 +71,9 @@ func New(o Options) (*Service, error) {
 	s := &Service{opts: o, keys: keys{o.Keys}, sealed: sealedStore{c: o.Store, keys: keys{o.Keys}}}
 	var err error
 	if s.codes, err = store.New(o.Store, "AuthCode", func() *sessionv2alpha1.AuthCode { return &sessionv2alpha1.AuthCode{} }); err != nil {
+		return nil, err
+	}
+	if s.chains, err = store.New(o.Store, "SessionChain", func() *sessionv2alpha1.SessionChain { return &sessionv2alpha1.SessionChain{} }); err != nil {
 		return nil, err
 	}
 	return s, nil

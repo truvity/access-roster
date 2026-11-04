@@ -110,3 +110,23 @@ message AuthCode {
   bool spent = 13;                               // true once the code was redeemed
   string session_id = 14;                        // the chain the redemption made; a replay ends it
 }
+
+// SessionChain is the kind SessionChain (0018 "Session chains"): a human session, from the sign-in that began it to
+// its last refresh. Its id is the session id (sid) that the refresh token names. It holds hashes of the refresh
+// tokens, never a token: a presented token is compared, not read back.
+message SessionChain {
+  string subject = 1;                              // the person's subject
+  string client_id = 2;                            // the client the chain belongs to
+  string class = 3;                                // "human"; fixed when the chain is made, never changed (0018 "The classes")
+  string scope = 4;                                // the scopes granted, which a refresh may narrow and never widen
+  bytes refresh_hash = 5;                          // SHA-384 of the current refresh token's secret
+  repeated bytes spent_hashes = 6;                 // SHA-384 of the secrets already rotated away (the spent markers)
+  google.protobuf.Timestamp started_at = 7;        // the moment sluis accepted the sign-in; the absolute limit counts from here
+  google.protobuf.Timestamp ends_at = 8;           // started_at plus the absolute limit, as it was when the chain began
+  google.protobuf.Timestamp refreshed_at = 9;      // the last refresh; the idle limit counts from here
+  google.protobuf.Timestamp auth_time = 10;        // when the person authenticated at the upstream; a refresh never changes it
+  optional string acr = 11;                        // the upstream's acr, if it said one
+  repeated string amr = 12;                        // the upstream's amr
+  bool amr_present = 13;                           // true when the upstream said anything about amr
+  bytes sealed_facts = 14;                         // SignInFacts, sealed with the cookie key
+}

@@ -529,6 +529,12 @@ func (f *fakeSigner) SignToken(_ context.Context, req *connect.Request[signerv2a
 	return connect.NewResponse(&signerv2alpha1.SignTokenResponse{Token: tok, KeyId: "kid-1"}), nil
 }
 
+func (f *fakeSigner) requests() []*signerv2alpha1.SignTokenRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]*signerv2alpha1.SignTokenRequest(nil), f.reqs...)
+}
+
 // ---- adapter-upstream-oidc ---------------------------------------------------------------------------------------
 
 // fakeUpstream is the adapter. It checks what the real adapter checks of session's calls: the callback it was given
