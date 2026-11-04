@@ -15,19 +15,22 @@
 # still on the key they have, because only a node that holds an old wrapping key can wrap the data keys for the new one:
 #   1. SLUIS_BOARDS=<board> SLUIS_BOARDS_KEY_DRIVER=yubikey-piv SLUIS_BOARD_CARD_SERIALS=<board>=<serial> just boards-deploy
 #      then `sluis node unlock` on that board. Its key@ makes a new wrapping key; it cannot open a data key yet, and the
-#      other boards keep serving.
+#      other boards keep serving. The deploy records the board as pending verification (in $SLUIS_BOARDS_STATE/switch-pending).
 #   2. SLUIS_BOARDS=<board> SLUIS_BOARDS_RECIPIENTS_SWITCHED=1 just boards-recipients
 #      reads the new id and replaces that board's old id, and only that one, in $SLUIS_BOARDS_STATE/recipients.
-#   3. just boards-prepare, then just boards-deploy (to every board): the maintainer's publisher key re-signs the KeyPlan
-#      with the new id and the boards load it.
+#   3. just boards-prepare, then just boards-deploy for every board, with SLUIS_BOARDS_KEY_DRIVER UNSET: each board keeps the
+#      key driver it runs, so no other board switches. The maintainer's publisher key re-signs the KeyPlan with the new id
+#      and the boards load it.
 #   4. The other boards' key@ wrap the data keys for the new id. Verify with `SLUIS_BOARDS=<board> just boards-key-check`
-#      (key@'s own check: "wrapping key listed: true", and it fails while the wrap set is incomplete).
-#   5. Only then the next board.
+#      (key@'s own check: "wrapping key listed: true", and it fails while the wrap set is incomplete). A pass clears the
+#      board's pending mark.
+#   5. Only then the next board: a deploy that would switch another board, and a switch-mode `recipients` for another board,
+#      are refused while a board is pending.
 # Rollback is the same five steps with SLUIS_BOARDS_KEY_DRIVER=software. The software key of a board stays in its state
 # directory when the card is taken, so the board comes back with the same id. The wraps for the id that left the KeyPlan stay
 # in the store, unused until the id is listed again; this script deletes none (0006 deletes the wraps of a lost recipient
 # by a procedure of its own). The signer pre-publishes the new token key of the board for 30 minutes before it signs, so a
-# smoke right after the switch says when the key is active.
+# smoke right after the switch says the earliest time at which the key is active.
 #
 # The repository names no host. The boards come from the environment (the run.env of the build):
 #   SLUIS_BOARDS                space-separated host names or addresses (required)
@@ -49,15 +52,19 @@
 #   SLUIS_BOARDS_STATE          the directory of the harness state (default .cache/boards); `recipients` writes its file
 #                               recipients there and `just boards-prepare` signs the KeyPlan with it
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
-#   SLUIS_BOARDS_KEY_DRIVER     the key driver of key@: software (the default) or yubikey-piv. The card driver replaces the
-#                               software one on every board of the run: its unit, a key@ unit that requires the card
+#   SLUIS_BOARDS_KEY_DRIVER     the key driver of key@ for every board of the run: software or yubikey-piv. UNSET, each board keeps
+#                               the key driver it runs now (a board with nothing deployed yet gets software), which is what
+#                               the deploys of a rollout other than the switch want. The card driver replaces the software
+#                               one on a board that gets it: its unit, a key@ unit that requires the card
 #                               driver instead (installed in place of the default template), a drop-in that closes the
 #                               card service (pcscd.socket) to everyone but the card driver and root, and, where pcscd
 #                               is built with polkit, a polkit rule. pcscd is installed if it is missing. It needs drivers/key/yubikey-piv in
 #                               dist/arm64, which `just build-arm64-native` makes and `just build-arm64` copies. Switching back is a deploy
 #                               with software: the card driver is stopped and its drop-ins removed. A run that would switch
 #                               the key driver of more than one board is refused (see the sequence above): set
-#                               SLUIS_BOARDS_NO_DATA_KEYS=1 only for a first deploy where no actor has made a data key yet.
+#                               SLUIS_BOARDS_NO_DATA_KEYS=1 only for a first deploy where no actor has made a data key yet;
+#                               it is not taken on trust: the deploy asks the rqlite node of each switching board (read
+#                               only) and refuses when it holds a DataKeyWrap item.
 #   SLUIS_BOARD_CARD_SERIALS    with the card driver, the serial of each board's card: space-separated board=serial pairs
 #                               (the board named as in SLUIS_BOARDS). Required for every board of the run: the driver is
 #                               bound to that card and adopts no other, so a genuine YubiKey that is not the board's is
@@ -89,7 +96,9 @@ dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
 only=${SLUIS_BOARDS_ONLY:-}
-keydrv=${SLUIS_BOARDS_KEY_DRIVER:-software}
+keydrv_set=${SLUIS_BOARDS_KEY_DRIVER:-} # unset: every board keeps the key driver it runs now (none yet: software)
+keydrv=${keydrv_set:-software}
+state=${SLUIS_BOARDS_STATE:-.cache/boards}
 case "$keydrv" in
 software | yubikey-piv) ;;
 *) echo "boards: SLUIS_BOARDS_KEY_DRIVER must be software or yubikey-piv, not '$keydrv'" >&2; exit 2 ;;
@@ -214,17 +223,64 @@ run_on() { # board mode stage
 	return "$rc"
 }
 
-# board_key_driver prints which key driver a board runs now: software, yubikey-piv, or none (nothing deployed yet).
+# board_key_driver prints which key driver a board runs now: software, yubikey-piv, or none (neither unit exists: nothing
+# deployed yet). Each unit is asked on its own and its LoadState is read, because `systemctl is-enabled A B` stops at the first
+# unit that does not exist and prints nothing for the rest on systemd 249 (Ubuntu 22.04), and a software board has no card unit.
 board_key_driver() { # board
-	local out
-	out=$(board_ssh "$1" "systemctl is-enabled sluis-drv-key-yubikey-piv@dev.service sluis-drv-key-software@dev.service 2>/dev/null; true") || {
+	local out card sw
+	# shellcheck disable=SC2016 # the loop runs on the board
+	out=$(board_ssh "$1" 'for u in sluis-drv-key-yubikey-piv@dev.service sluis-drv-key-software@dev.service; do
+printf "%s %s %s\n" "$u" "$(systemctl show -p LoadState --value "$u" 2>/dev/null)" "$(systemctl show -p UnitFileState --value "$u" 2>/dev/null)"
+done') || {
 		echo "boards: cannot read the key driver of the board '$1'" >&2
 		return 1
 	}
-	case "$(printf '%s\n' "$out" | sed -n 1p)" in
-	enabled) echo yubikey-piv ;;
-	*) if [ "$(printf '%s\n' "$out" | sed -n 2p)" = enabled ]; then echo software; else echo none; fi ;;
+	# One line per unit: name, LoadState (loaded, not-found, masked, error), UnitFileState (empty when the unit does not exist).
+	card=$(printf '%s\n' "$out" | awk '$1 == "sluis-drv-key-yubikey-piv@dev.service" { print $2 " " $3 }')
+	sw=$(printf '%s\n' "$out" | awk '$1 == "sluis-drv-key-software@dev.service" { print $2 " " $3 }')
+	case "$card" in "loaded enabled"* | "loaded disabled"* | "loaded static"* | "not-found"*) ;; *)
+		echo "boards: the board '$1' gave an unreadable state for the card driver unit: '$card'" >&2
+		return 1
+		;;
 	esac
+	case "$sw" in "loaded enabled"* | "loaded disabled"* | "loaded static"* | "not-found"*) ;; *)
+		echo "boards: the board '$1' gave an unreadable state for the software driver unit: '$sw'" >&2
+		return 1
+		;;
+	esac
+	case "$card:$sw" in
+	"loaded enabled"*:"loaded enabled"*)
+		echo "boards: the board '$1' has both key drivers enabled; fix that first" >&2
+		return 1
+		;;
+	"loaded enabled"*:*) echo yubikey-piv ;;
+	*:"loaded enabled"*) echo software ;;
+	*) echo none ;;
+	esac
+}
+
+# board_data_keys prints how many DataKeyWrap items the board's rqlite node holds, from a read-only query of its own node (the
+# key of an item is <boundary>/<tenant>/<kind>/<id>). A node whose table does not exist yet holds none. It fails when the
+# answer cannot be read: the guard that uses it refuses then.
+board_data_keys() { # board
+	local out
+	out=$(board_ssh "$1" "curl -fsS --get --data-urlencode \"q=SELECT count(*) FROM durable_items WHERE key LIKE '%/data-key-wrap/%'\" http://127.0.0.1:$rqlite_port/db/query") || return 1
+	if printf '%s' "$out" | grep -q 'no such table'; then echo 0; return 0; fi
+	printf '%s' "$out" | sed -n 's/.*"values":\[\[\([0-9][0-9]*\)\]\].*/\1/p' | grep -E '^[0-9]+$' || return 1
+}
+
+# switch_pending lists the boards that switched their key driver and whose wrap set has not been verified with `check` yet.
+pending_file=$state/switch-pending
+pending_has_other() { # board...: is a board other than these pending?
+	[ -s "$pending_file" ] || return 1
+	local p b skip
+	while read -r p; do
+		[ -n "$p" ] || continue
+		skip=0
+		for b in "$@"; do [ "$b" = "$p" ] && skip=1; done
+		[ "$skip" = 1 ] || { printf '%s\n' "$p"; return 0; }
+	done <"$pending_file"
+	return 1
 }
 
 # key_check runs the `check` command of key@ on a board with the flags of its unit, as local.sh does (never from the
@@ -254,41 +310,88 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 case "$mode" in
 deploy)
-	stage "$tmp"
-	if [ -d "$tmp/files/card" ]; then
-		for b in "${boards[@]}"; do card_serial "$b" >/dev/null || exit 2; done
-	fi
-	# A switch of the key driver changes a board's wrapping key, and only a node that still holds an old one can wrap the data
-	# keys for the new one (see the header): one board at a time.
 	if [ -n "$dry" ]; then
-		[ "${#boards[@]}" -lt 2 ] || echo "dry run: the key driver of the boards is not read, so the one-board-at-a-time rule is not checked" >&2
-	elif [ "${#boards[@]}" -gt 1 ] && [ -z "${SLUIS_BOARDS_NO_DATA_KEYS:-}" ]; then
-		switching=()
-		for b in "${boards[@]}"; do
-			cur=$(board_key_driver "$b") || exit 1
-			if [ "$cur" != none ] && [ "$cur" != "$keydrv" ]; then switching+=("$b"); fi
-		done
-		if [ "${#switching[@]}" -gt 1 ]; then
-			echo "boards: this run switches the key driver of ${#switching[@]} boards (${switching[*]}) to $keydrv. Switch one board at a time:" >&2
-			echo "boards: a data key is wrapped only to the keys of the signed KeyPlan, and with every board on a new key no node holds an old one to wrap for the new (see the header)." >&2
-			echo "boards: set SLUIS_BOARDS_NO_DATA_KEYS=1 only for a first deploy where no actor has made a data key yet." >&2
-			exit 2
+		# Nothing is read from the boards: one stage, of the driver the run names (software if none).
+		stage "$tmp/stage"
+		if [ -d "$tmp/stage/files/card" ]; then
+			for b in "${boards[@]}"; do card_serial "$b" >/dev/null || exit 2; done
 		fi
-	fi
-	echo "plan: $(wc -l <"$tmp/plan.tsv") units, in this order:"
-	sed 's/^/  /' "$tmp/plan.tsv" | cut -f1
-	if [ -n "$dry" ]; then
+		[ "${#boards[@]}" -lt 2 ] || echo "dry run: the key driver of the boards is not read, so the one-board-at-a-time rule is not checked" >&2
+		echo "plan: $(wc -l <"$tmp/stage/plan.tsv") units, in this order:"
+		sed 's/^/  /' "$tmp/stage/plan.tsv" | cut -f1
 		echo "dry run: staged files"
-		(cd "$tmp" && find files -type f | sort | sed 's/^/  /')
-		if [ -f "$tmp/files/systemd/sluis-key@.service" ]; then
-			echo "key@ unit requires: $(grep -E '^Requires=sluis-drv-key-' "$tmp/files/systemd/sluis-key@.service" | tr '\n' ' ')"
+		(cd "$tmp/stage" && find files -type f | sort | sed 's/^/  /')
+		if [ -f "$tmp/stage/files/systemd/sluis-key@.service" ]; then
+			echo "key@ unit requires: $(grep -E '^Requires=sluis-drv-key-' "$tmp/stage/files/systemd/sluis-key@.service" | tr '\n' ' ')"
 		fi
 		exit 0
 	fi
+	# The key driver of each board now, and the one it gets: SLUIS_BOARDS_KEY_DRIVER for every board, or, when it is unset, the
+	# one it runs (a board with nothing deployed yet gets software). A switch changes a board's wrapping key, and only a node that
+	# still holds an old one can wrap the data keys for the new one (see the header): one board at a time, and the next only
+	# after `check` passed for the last.
+	declare -A cur drv
+	switching=()
+	for b in "${boards[@]}"; do
+		cur[$b]=$(board_key_driver "$b") || exit 1
+		if [ -n "$keydrv_set" ]; then
+			drv[$b]=$keydrv_set
+		elif [ "${cur[$b]}" = none ]; then
+			drv[$b]=software
+		else
+			drv[$b]=${cur[$b]}
+		fi
+		if [ "${cur[$b]}" != none ] && [ "${cur[$b]}" != "${drv[$b]}" ]; then switching+=("$b"); fi
+	done
+	if [ "${#switching[@]}" -gt 0 ]; then
+		if [ -z "${SLUIS_BOARDS_NO_DATA_KEYS:-}" ]; then
+			if [ "${#switching[@]}" -gt 1 ]; then
+				echo "boards: this run switches the key driver of ${#switching[@]} boards (${switching[*]}). Switch one board at a time:" >&2
+				echo "boards: a data key is wrapped only to the keys of the signed KeyPlan, and with every board on a new key no node holds an old one to wrap for the new (see the header)." >&2
+				echo "boards: set SLUIS_BOARDS_NO_DATA_KEYS=1 only for a first deploy where no actor has made a data key yet." >&2
+				exit 2
+			fi
+			if other=$(pending_has_other "${switching[@]}"); then
+				echo "boards: the board '$other' switched its key driver and has not been verified: run 'just boards-key-check' for it (SLUIS_BOARDS=$other) before another board switches." >&2
+				exit 2
+			fi
+		else
+			# The override says no data key exists. Ask each switching board's own store (read only) and refuse if one does.
+			for b in "${switching[@]}"; do
+				n=$(board_data_keys "$b") || { echo "boards: cannot read the data keys of the board '$b'; SLUIS_BOARDS_NO_DATA_KEYS is not taken on trust" >&2; exit 1; }
+				if [ "$n" != 0 ]; then
+					echo "boards: SLUIS_BOARDS_NO_DATA_KEYS is set, but the store of '$b' holds $n DataKeyWrap items: this is not a first deploy. Switch one board at a time (see the header)." >&2
+					exit 2
+				fi
+			done
+		fi
+	fi
+	# One stage for each key driver that a board gets.
+	for d in $(printf '%s\n' "${drv[@]}" | sort -u); do
+		keydrv=$d
+		stage "$tmp/stage-$d"
+	done
+	for b in "${boards[@]}"; do
+		if [ "${drv[$b]}" = yubikey-piv ]; then card_serial "$b" >/dev/null || exit 2; fi
+	done
+	first=$tmp/stage-${drv[${boards[0]}]}
+	echo "plan: $(wc -l <"$first/plan.tsv") units, in this order:"
+	sed 's/^/  /' "$first/plan.tsv" | cut -f1
 	rc=0
 	for b in "${boards[@]}"; do
-		echo "== board $b: deploy"
-		run_on "$b" deploy "$tmp" || { echo "board $b: deploy FAILED" >&2; rc=1; }
+		echo "== board $b: deploy (key driver ${drv[$b]})"
+		if run_on "$b" deploy "$tmp/stage-${drv[$b]}"; then
+			case " ${switching[*]:-} " in
+			*" $b "*)
+				mkdir -p "$state"
+				grep -qxF "$b" "$pending_file" 2>/dev/null || printf '%s\n' "$b" >>"$pending_file"
+				echo "board $b: switched to ${drv[$b]}; now: unlock it if needed, 'boards-recipients' with SLUIS_BOARDS_RECIPIENTS_SWITCHED=1, re-sign, deploy, then 'boards-key-check'"
+				;;
+			esac
+		else
+			echo "board $b: deploy FAILED" >&2
+			rc=1
+		fi
 	done
 	exit "$rc"
 	;;
@@ -312,13 +415,27 @@ recipients | check)
 				continue
 			fi
 			printf '%s\n' "$out"
-			printf '%s\n' "$out" | grep -q '^wrapping key listed: true' || { echo "board $b: its wrapping key is not in the KeyPlan yet" >&2; rc=1; }
+			if printf '%s\n' "$out" | grep -q '^wrapping key listed: true'; then
+				# Verified: a board that switched its key driver is no longer pending.
+				if [ -s "$pending_file" ] && grep -qxF "$b" "$pending_file"; then
+					grep -vxF "$b" "$pending_file" >"$tmp/pending.new" || true
+					cat "$tmp/pending.new" >"$pending_file"
+					echo "board $b: verified; the next board may switch"
+				fi
+			else
+				echo "board $b: its wrapping key is not in the KeyPlan yet" >&2
+				rc=1
+			fi
 		done
 		exit "$rc"
 	fi
 	switched=${SLUIS_BOARDS_RECIPIENTS_SWITCHED:-}
 	if [ -n "$switched" ] && [ "${#boards[@]}" -ne 1 ]; then
 		echo "recipients: SLUIS_BOARDS_RECIPIENTS_SWITCHED needs SLUIS_BOARDS to name exactly one board: the board that switched its key driver." >&2
+		exit 2
+	fi
+	if [ -n "$switched" ] && other=$(pending_has_other "${boards[0]}"); then
+		echo "recipients: the board '$other' switched its key driver and has not been verified ('just boards-key-check' with SLUIS_BOARDS=$other); another board does not switch before that." >&2
 		exit 2
 	fi
 	: >"$tmp/ids"
@@ -350,6 +467,9 @@ recipients | check)
 			echo "recipients: no record of the id that ${boards[0]} gave before ($boards_file), so the id to replace is not known." >&2
 			echo "recipients: nothing was written. Name every board once with SLUIS_BOARDS_RECIPIENTS_REPLACE=1 to record them." >&2
 			exit 1
+		fi
+		if ! grep -qxF "$old" "$tmp/ids.old"; then
+			echo "recipients: warning: the id $old that ${boards[0]} gave before is not in $state/recipients (edited by hand, or replaced already); the new id is added and nothing is removed." >&2
 		fi
 		echo "recipients: ${boards[0]} switched its key driver: its id $old is replaced, every other id is kept"
 		{ grep -vxF "$old" "$tmp/ids.old" || true; cat "$tmp/ids.sorted"; } | sort -u >"$tmp/ids.new"

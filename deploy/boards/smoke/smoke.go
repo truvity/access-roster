@@ -34,7 +34,8 @@ const (
 // units the smoke needs active on a board before it starts. The key driver is the software one, or the card driver when
 // the boards were deployed with SLUIS_BOARDS_KEY_DRIVER=yubikey-piv (the same variable; boards.sh); the card driver must
 // have been unlocked first (`sluis node unlock`), or key@ cannot sign. SLUIS_SMOKE_STOP_AFTER=token ends the run after
-// the token (steps 0 to 2), which then needs neither the audit writer nor the rest of the trail.
+// the token (steps 0 to 2), which then needs neither the audit writer nor the rest of the trail. With the variable unset the
+// board's own driver is the one that is active (a fleet in the middle of a switch has both).
 func unitsFor(keyDriver, stopAfter string) ([]string, error) {
 	var drv string
 	switch keyDriver {
@@ -60,8 +61,11 @@ func unitsFor(keyDriver, stopAfter string) ([]string, error) {
 	return l, nil
 }
 
-// units is the list of this run, set by smoke.
-var units []string
+// keyDriverEnv is SLUIS_BOARDS_KEY_DRIVER, and units the list of the board that is being run, set by run.
+var (
+	keyDriverEnv string
+	units        []string
+)
 
 // board is one board reached over SSH.
 type board struct {
@@ -83,7 +87,8 @@ func smoke() error {
 	}
 	stopAfter := os.Getenv("SLUIS_SMOKE_STOP_AFTER")
 	var err error
-	if units, err = unitsFor(os.Getenv("SLUIS_BOARDS_KEY_DRIVER"), stopAfter); err != nil {
+	keyDriverEnv = os.Getenv("SLUIS_BOARDS_KEY_DRIVER")
+	if _, err = unitsFor(keyDriverEnv, stopAfter); err != nil {
 		return err
 	}
 	root, err := repoRoot()
@@ -125,6 +130,15 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 		return err
 	}
 	b.node = strings.TrimSpace(out)
+	drv := keyDriverEnv
+	if drv == "" { // the board's own driver: the card driver's unit is active on a board that was switched
+		if out, _ := b.sh(nil, "systemctl is-active sluis-drv-key-yubikey-piv@dev.service"); strings.TrimSpace(out) == "active" {
+			drv = "yubikey-piv"
+		}
+	}
+	if units, err = unitsFor(drv, os.Getenv("SLUIS_SMOKE_STOP_AFTER")); err != nil {
+		return err
+	}
 	fmt.Printf("== 0. The units (node %s)\n", b.node)
 	if err := b.requireActive(); err != nil {
 		return err
@@ -141,7 +155,7 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 		"--issuer", "https://"+host, "--audience", audience, "--correlation", corr); err != nil {
 		if strings.Contains(err.Error(), `"key_set"`) {
 			if at, ok := b.newKeyActiveAt(); ok {
-				return fmt.Errorf("the token key of node %s is pre-published and not active yet: it is active at %s (%s from now); re-run then (%w)",
+				return fmt.Errorf("the token key of node %s is pre-published and not active yet: the signer makes it active at %s at the earliest (%s from now), at its next tick after that; re-run then (%w)",
 					b.node, at.Format(time.RFC3339), time.Until(at).Round(time.Second), err)
 			}
 		}
@@ -575,39 +589,40 @@ func verifyToken(token string, set *jose.JSONWebKeySet) error {
 // 30 minutes since #1310), counted from when the key entered the state pre-published.
 const prepublishLead = 30 * time.Minute
 
-// newKeyActiveAt reads the signing ring and, when the node of this board has a pre-published key and no active one, says
-// when the signer makes it active. This is the state right after a board switched its key driver (a new key). It is false
-// when the ring cannot be read or does not look like that.
+// newKeyActiveAt asks key@ which key it signs with now and reads the signing ring: when that key is still pre-published, it says
+// the earliest time at which the signer makes it active. This is the state right after a board switched its key driver: the
+// old key of the node is still active in the ring (the signer cannot use it any more, its private half is gone from key@) and
+// the new one is pre-published, so the test is on the key that key@ holds now and not on "an active key of the node". It is
+// false when either cannot be read or the key is active.
 func (b *board) newKeyActiveAt() (time.Time, bool) {
+	var kp struct {
+		KeyID string `json:"key_id"`
+	}
+	// The per-caller directory of signer is bound where the harness client looks for key@'s socket, as for the audit step.
+	if err := b.stepIn(&kp, "signer", nil, "/run/sluis/key/"+boundary+"/signer:/run/sluis/key/"+boundary, "key-public", "--boundary", boundary); err != nil || kp.KeyID == "" {
+		return time.Time{}, false
+	}
 	var ring readOut
 	if err := b.step(&ring, "signer", []string{"store"}, "store-read", "--kind", "signing-ring", "--tenant", ""); err != nil || len(ring.Items) != 1 {
 		return time.Time{}, false
 	}
-	return activeAt(ring.Items[0].Detail, b.node)
+	return activeAt(ring.Items[0].Detail, kp.KeyID)
 }
 
-// activeAt parses the lines "<kid> <alg> <state> node=<node> since=<RFC 3339>" of the signing ring: the time at which the
-// earliest pre-published key of node becomes active, and false if the node has an active key or no pre-published one.
-func activeAt(detail []string, node string) (time.Time, bool) {
-	var at time.Time
-	found := false
+// activeAt parses the lines "<kid> <alg> <state> node=<node> since=<RFC 3339>" of the signing ring: the earliest time at which
+// the key kid becomes active, when its state is pre-published. It is the earliest because the signer decides at its next tick
+// after that time, which is not a time the smoke can know. False for any other state or a key not in the ring.
+func activeAt(detail []string, kid string) (time.Time, bool) {
 	for _, l := range detail {
 		f := strings.Fields(l)
-		if len(f) < 5 || f[3] != "node="+node {
+		if len(f) < 5 || f[0] != kid || f[2] != "pre-published" {
 			continue
 		}
-		switch f[2] {
-		case "active":
-			return time.Time{}, false
-		case "pre-published":
-			since, err := time.Parse(time.RFC3339, strings.TrimPrefix(f[4], "since="))
-			if err != nil {
-				continue
-			}
-			if t := since.Add(prepublishLead); !found || t.Before(at) {
-				at, found = t, true
-			}
+		since, err := time.Parse(time.RFC3339, strings.TrimPrefix(f[4], "since="))
+		if err != nil {
+			continue
 		}
+		return since.Add(prepublishLead), true
 	}
-	return at, found
+	return time.Time{}, false
 }

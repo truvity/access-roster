@@ -78,6 +78,8 @@ func runStep(args []string) error {
 		out, err = decideAndSign(ctx, sk, *tenant, *issuer, *audience)
 	case "store-read":
 		out, err = storeRead(ctx, sk["store"], *kind, *tenant)
+	case "key-public":
+		out, err = keyPublic(ctx, sk["key"])
 	case "audit-find":
 		out, err = auditFind(ctx, sk, *boundary, *blob, *logOrigin, *decisionID, *correlation)
 	default:
@@ -87,6 +89,23 @@ func runStep(args []string) error {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(out)
+}
+
+// keyPublicOut is the id of the key that key@ signs tokens with now.
+type keyPublicOut struct {
+	KeyID string `json:"key_id"`
+}
+
+// keyPublic asks key@ for the public key of the token-signing purpose, as the caller of the step may (signer): its RFC 7638
+// thumbprint is the id of the key that key@ signs with now, which the signing ring names.
+func keyPublic(ctx context.Context, socket string) (*keyPublicOut, error) {
+	hc, url := rpc.Dial(socket)
+	kc := keyv2alpha1connect.NewKeyServiceClient(hc, url, rpc.ClientOptions()...)
+	res, err := kc.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: "token-signing"}))
+	if err != nil {
+		return nil, describe("key PublicKey token-signing", err)
+	}
+	return &keyPublicOut{KeyID: res.Msg.GetKeyId()}, nil
 }
 
 // describe turns a Connect error into a line that has a reason and a path and never a value.
