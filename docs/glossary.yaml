@@ -498,7 +498,7 @@ terms:
     avoid: ["sealing key", "KEK (in prose)", "environment key"]
 
   - term: DataKeyWrap
-    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey. key@ is its only writer."
+    definition: "The durable kind that holds one data key wrapped for one recipient: on boards one wrap per board's card plus one for the recovery recipient (ECDH P-384, HKDF-SHA384, AES key wrap); on AWS the ciphertext of GenerateDataKey plus one for the recovery recipient. key@ is its only writer."
     category: keys
     see: ["0006-keys-and-sealing#datakeywrap"]
     avoid: ["data-key", "data-key escrow"]
