@@ -277,11 +277,11 @@ func (s *Server) Run(ctx context.Context) error {
 // stamp is the time the writer records, in milliseconds.
 func (s *Server) stamp() int64 { return s.now().UnixMilli() }
 
-// recover brings the log, the state and the pointer to one place after a start. It reads the state, checks the
-// committed checkpoint, and adopts the entries a crash left in the blob beyond it: the bundles are written before
-// the checkpoint, and the same bytes cannot be created again with other contents, so the entries that are there
-// are the ones the log takes. It then makes sure a signed checkpoint covers them, registers them in the state
-// (their ids, so the transport's repeat of them is dropped) and moves the pointer.
+// recover brings the log, the state and the pointer to one place after a start. It reads the state and adopts the
+// entries a crash left in the blob beyond it: the bundles are written before the state, and the same bytes cannot be
+// created again with other contents, so the entries that are there are the ones the log takes. It registers them in
+// the state (their ids, so the transport's repeat of them is dropped), makes sure a signed checkpoint covers the
+// state's size (signing the one a crash left missing) and moves the pointer.
 func (s *Server) recover(ctx context.Context) error {
 	s.tree = newLogTree(s.blob, s.prefix)
 	st, err := loadState(ctx, s.blob)
@@ -291,15 +291,6 @@ func (s *Server) recover(ctx context.Context) error {
 	size, root, err := st.position(s.logName)
 	if err != nil {
 		return err
-	}
-	if size > 0 {
-		cp, _, err := s.readCheckpoint(ctx, size)
-		if err != nil {
-			return fmt.Errorf("%w: the checkpoint of the committed size: %w", ErrFence, err)
-		}
-		if cp.root != root {
-			return fmt.Errorf("%w: the checkpoint of the committed size has another root", ErrFence)
-		}
 	}
 	tail, err := s.tree.loadTail(ctx, size)
 	if err != nil {
@@ -323,9 +314,7 @@ func (s *Server) recover(ctx context.Context) error {
 				ids = append(ids, uid)
 			}
 		}
-		if _, err := s.checkpointAt(ctx, adopted.size, adopted.root); err != nil {
-			return err
-		}
+		// The state first, as in a batch: a writer that lost the fence must not have signed.
 		if err := st.commit(ctx, s.blob, st.next(s.logName, adopted.size, adopted.root, ids, s.stamp())); err != nil {
 			return err
 		}
@@ -335,6 +324,8 @@ func (s *Server) recover(ctx context.Context) error {
 	if cur.size == 0 {
 		return nil
 	}
+	// The state is the commit. A checkpoint that is there must verify and name the state's root (another key's or
+	// another root is the fence); one that is missing is a crash between the state and the signature, and is signed now.
 	data, err := s.checkpointAt(ctx, cur.size, cur.root)
 	if err != nil {
 		return err
