@@ -1009,3 +1009,29 @@ requirements:
     manual_reason: "A drill is a procedure whose record is checked by reading it."
     verification:
       - {kind: manual, ref: "drill record review: the date of the drill, the planned rotation it precedes, and the verifiers that failed to see the new key, with their ua_product and asn"}
+  - id: REQ-OPS-079
+    area: OPS
+    statement: "The documentation MUST contain an incident page that states, for each key kind, the command, the effect, what consumers see and the time that a drill measured with its date and versions."
+    rationale: "An operator under pressure needs one page, and a figure without a date cannot be judged (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    manual_reason: "A page is judged by reading it."
+    verification:
+      - {kind: manual, ref: "page review: every key kind has a row, and an empty time is marked as not yet measured"}
+  - id: REQ-OPS-080
+    area: OPS
+    statement: "A key-compromise drill for the token-signing key MUST run at least once a year and after a change to the key path, and record the time from declaration to a verifier's refusal."
+    rationale: "A procedure that has not been run is not a procedure, and the figure on the incident page comes from it (ADR 0041)."
+    level: MUST
+    source: design-decision
+    status: planned
+    runtimes: all
+    standards: []
+    features: ["design"]
+    manual_reason: "A drill is a procedure whose record is checked by reading it."
+    verification:
+      - {kind: manual, ref: "drill record review: the date, the versions, the installation, the measured time and the verifiers that failed"}
