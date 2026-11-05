@@ -325,13 +325,15 @@ requirements:
     rationale: "An operator must see where an effective value comes from."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [864, 1419]
+    tests: [actors/store/tests/validate.rs, cli/sluis/configexplain_test.go]
     verification:
-      - {kind: integration-test, ref: "explain provenance test"}
+      - {kind: integration-test, ref: "explain provenance test: layer, version and source of each setting, a credential as its reference, a refused set not explained"}
   - id: REQ-OPS-024
     area: OPS
     statement: "On a push notification an integration MUST read the full state from the product's API instead of storing the notification's content."

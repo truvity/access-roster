@@ -148,6 +148,7 @@ pub fn bootstrap(publishers: Vec<Publisher>) -> Bootstrap {
     Bootstrap {
         boundary: "dev".into(),
         start_timeout: Duration::from_secs(5),
+        start_timeout_set: true,
         config_source: d("config-source"),
         secret_source: d("secret-source"),
         durable: d("durable"),

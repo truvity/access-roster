@@ -24,6 +24,8 @@ type result struct {
 	Revoke   *revokeOut `json:"revoke,omitempty"`
 	// Checks is the `checks` member of `config check`.
 	Checks []configCheck `json:"checks,omitempty"`
+	// Fields is the `fields` member of `config explain`.
+	Fields []configField `json:"fields,omitempty"`
 
 	// Text is what a person reads on standard output when the command is done.
 	Text string `json:"-"`

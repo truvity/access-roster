@@ -1,5 +1,6 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify, config check, node unlock, key revoke and version; the rest of the tree belongs to later milestones.
+// audit verify, config check and explain, node unlock, key revoke and version; the rest of the tree belongs to later
+// milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
 // the global flags --boundary, --output and --log-level. The kit's Run knows only serve, check, version and
@@ -78,6 +79,8 @@ commands:
   audit verify DIR         check a tiled audit log offline
   config check DIR         validate the bootstrap file and the signed config documents in DIR offline,
                            with store@'s own rules (runs the store executable; Linux only)
+  config explain DIR       print what each setting of the bootstrap file and the documents in DIR resolves to,
+                           and its layer, version and source (--field PATH limits it)
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
                            on this node (--declaration FILE)
@@ -115,7 +118,10 @@ func (a *app) run(ctx context.Context, args []string) int {
 		if len(args) > 1 && args[1] == "check" {
 			return a.exec(ctx, a.configCheckCommand(), args[2:])
 		}
-		_, _ = fmt.Fprintf(a.stderr, "sluis: config: expected the command check\n\n%s", usageText)
+		if len(args) > 1 && args[1] == "explain" {
+			return a.exec(ctx, a.configExplainCommand(), args[2:])
+		}
+		_, _ = fmt.Fprintf(a.stderr, "sluis: config: expected the command check or explain\n\n%s", usageText)
 		return cli.ExitUsage
 	case "node":
 		if len(args) > 1 && args[1] == "unlock" {
