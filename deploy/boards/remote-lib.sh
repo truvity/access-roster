@@ -133,3 +133,36 @@ relabel() {
 	fi
 }
 
+
+# check_pinned_groups before|after FILE...: the groups of the sysusers files that pin a number ("g NAME GID", the groups of key@'s
+# caller directories) must have that number. systemd-sysusers gives a group another number, and says nothing, when the pinned
+# one is taken (sysusers.d(5)), and a number in systemd's dynamic range can be. The units join the group by name, so they would
+# still work, but Compose, the uid plan and every reader of a number would name another group. `before` refuses, before
+# anything is written, a group of that name with another number and a pinned number that another group already has; `after`,
+# once systemd-sysusers has run, refuses any group that does not have its pinned number.
+check_pinned_groups() {
+	local when=$1 f kind name gid line got bad=()
+	shift
+	for f in "$@"; do
+		while read -r kind name gid _; do
+			[ "$kind" = g ] || continue
+			case "$gid" in '' | *[!0-9]*) continue ;; esac
+			line=$(getent group "$name") || line=""
+			got=""
+			[ -z "$line" ] || IFS=: read -r _ _ got _ <<<"$line"
+			if [ -n "$got" ] && [ "$got" != "$gid" ]; then
+				bad+=("$name has the number $got, not $gid")
+			elif [ -z "$got" ] && [ "$when" = after ]; then
+				bad+=("$name does not exist")
+			elif [ -z "$got" ]; then
+				line=$(getent group "$gid") || line=""
+				[ -z "$line" ] || bad+=("$gid, the number of $name, is already the group ${line%%:*}")
+			fi
+		done <"$f"
+	done
+	if [ "${#bad[@]}" -gt 0 ]; then
+		local IFS=';'
+		echo "remote: a group does not have its pinned number (${bad[*]}). systemd-sysusers takes another number when the pinned one is taken, and the deploy refuses that: free the number on the board, run 'just boards-undeploy' if this deploy made the group, then deploy again." >&2
+		return 1
+	fi
+}

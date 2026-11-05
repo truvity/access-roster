@@ -338,8 +338,10 @@ func uidOf(name string) (uint32, error) {
 	return u, nil
 }
 
-// ownKeyDir in the groups of asActor is the group of the user's own directory of key@ (registry.KeyCallerGID), which
-// only that user's unit joins; the user's own group does not open the directory.
+// ownKeyDir in the groups of asActor is the group of the user's own directory of key@ (registry.KeyCallerGroup), which
+// only that user's unit joins; the user's own group does not open the directory. It is joined by its name, as the unit
+// joins it (SupplementaryGroups=): systemd-sysusers gives the group another number when the pinned one is taken, and
+// the deploy refuses a board where it did, but the name is the group the directory has either way.
 const ownKeyDir = "key@"
 
 // asActor is the command prefix that runs a program under the uid of an actor with the groups of the actors it may
@@ -352,11 +354,11 @@ func (b *board) asActor(user string, groups []string) (string, error) {
 	gs := make([]string, 0, len(groups))
 	for _, g := range groups {
 		if g == ownKeyDir {
-			kg, ok := registry.KeyCallerGID(user, 0)
+			kg, ok := registry.KeyCallerGroup(user, boundary)
 			if !ok {
 				return "", fmt.Errorf("%s has no group for its directory of key@", user)
 			}
-			gs = append(gs, strconv.FormatUint(uint64(kg), 10))
+			gs = append(gs, kg) // setpriv(1) takes a group by name or number
 			continue
 		}
 		gid, err := uidOf(g)

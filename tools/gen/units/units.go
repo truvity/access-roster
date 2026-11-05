@@ -934,12 +934,13 @@ func sysusersFor(o Options, u Unit) (string, error) {
 // isKeyCaller says whether the registry name is a caller of key@, which has a directory of its own below key@'s.
 func isKeyCaller(regName string) bool { return slices.Contains(registry.CallersOf("key"), regName) }
 
-// keyCallerGroup is the group of a caller's directory of key@: sluis-keyc-<ordinal>-<boundary>, with the caller's
-// ordinal in tools/gen/registry/uids.yaml. The caller's name does not fit: sluis-adapter-upstream-oidc-dev is already
-// the 31 characters of a name, so the ordinal stands for it, as it does in the group's number (uid plus 700).
+// keyCallerGroup is the group of a caller's directory of key@ (registry.KeyCallerGroup): sluis-keyc-<ordinal>-<boundary>.
 func keyCallerGroup(caller, boundary string) string {
-	uid, _ := registry.UID(caller, 0)
-	return fmt.Sprintf("sluis-keyc-%03d-%s", uid-61000, boundary)
+	g, ok := registry.KeyCallerGroup(caller, boundary)
+	if !ok {
+		panic("not a caller of key@: " + caller)
+	}
+	return g
 }
 
 func baseTmpfiles(o Options) string {

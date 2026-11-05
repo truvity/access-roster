@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -361,5 +362,30 @@ func TestTableSizes(t *testing.T) {
 	}
 	if entries != 485 || verbs != 1754 || selfMarks != 704 || keyEntries != 63 || keyOps != 90 {
 		t.Errorf("store entries %d, verbs %d, self marks %d, key entries %d, key ops %d", entries, verbs, selfMarks, keyEntries, keyOps)
+	}
+}
+
+// TestKeyCallerGroup: the name of each caller's group of key@ is its own and carries its ordinal, the same ordinal as
+// its number (KeyCallerGID - 700 - 61000 in block 0), and nothing that is not a caller of key@ has one.
+func TestKeyCallerGroup(t *testing.T) {
+	seen := map[string]string{}
+	for _, c := range CallersOf("key") {
+		g, ok := KeyCallerGroup(c, "dev")
+		if !ok {
+			t.Fatalf("KeyCallerGroup(%s) is not known", c)
+		}
+		gid, _ := KeyCallerGID(c, 0)
+		if want := fmt.Sprintf("sluis-keyc-%03d-dev", gid-700-61000); g != want {
+			t.Errorf("KeyCallerGroup(%s) = %q, want %q", c, g, want)
+		}
+		if other, dup := seen[g]; dup {
+			t.Errorf("KeyCallerGroup(%s) = %q is also %s's", c, g, other)
+		}
+		seen[g] = c
+	}
+	for _, n := range []string{"key", "driver-store-rqlite", "harness-forwarder", "nobody"} {
+		if _, ok := KeyCallerGroup(n, "dev"); ok {
+			t.Errorf("KeyCallerGroup(%s) is known, but %s is not a caller of key@", n, n)
+		}
 	}
 }
