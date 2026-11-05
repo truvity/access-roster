@@ -3,7 +3,7 @@
 // an administrator delivers it on the local admin socket with `sluis node unlock`.
 //
 //	yubikey-piv serve --socket PATH --admin-socket PATH --node NAME --environment development|staging|production
-//	              [--serial N] [--socket-gid GID]
+//	              --bootstrap PATH --state-dir PATH [--serial N] [--socket-gid GID]
 //	yubikey-piv check [--serial N]
 //	yubikey-piv conformance --socket PATH
 //	yubikey-piv version
@@ -16,12 +16,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 
 	"github.com/truvity/sluis/v2/drivers/key/yubikey-piv/internal/driver"
 	"github.com/truvity/sluis/v2/kits/go/cli"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 func main() {
@@ -33,6 +35,8 @@ func flags(fs *flag.FlagSet) {
 	fs.String("node", "", "the node whose card this is (required for serve)")
 	fs.String("admin-socket", "", "the absolute path of the local admin socket that takes the PIN (required for serve); root only")
 	fs.Uint("serial", 0, "the serial number of the card the driver is bound to; required outside development (in development, none means the only card, and two cards are refused)")
+	fs.String("bootstrap", "", "the bootstrap file of the boundary (required for serve): its publisher keys verify the KeyPlan of a PIN release, as key@'s do")
+	fs.String("state-dir", "", "the driver's own state directory, mode 0700 (required for serve): it holds the highest KeyPlan seq verified")
 	fs.Uint("socket-gid", 0, "open the socket (mode 0660) to this group, which the owner joins; 0 keeps mode 0600 for the driver's user alone")
 }
 
@@ -74,6 +78,20 @@ func serve(ctx context.Context, f cli.Flags) error {
 	if node == "" {
 		return cli.Usage(errors.New("--node is required"))
 	}
+	// The PIN release is verified by the driver itself against the publisher keys key@ pins (ADR 0006, "Touch and PIN"),
+	// with a mark of the highest KeyPlan seq in a state directory of its own.
+	bootstrap, stateDir := value(f, "bootstrap"), value(f, "state-dir")
+	if bootstrap == "" || stateDir == "" {
+		return cli.Usage(errors.New("--bootstrap and --state-dir are required"))
+	}
+	raw, err := os.ReadFile(bootstrap) //nolint:gosec // the operator names the boundary's bootstrap file
+	if err != nil {
+		return errors.New("the bootstrap file cannot be read")
+	}
+	publishers, err := signedconfig.ParsePublishers(raw)
+	if err != nil {
+		return fmt.Errorf("the bootstrap file: %w", err)
+	}
 	sn, err := serial(f)
 	if err != nil {
 		return err
@@ -101,7 +119,7 @@ func serve(ctx context.Context, f cli.Flags) error {
 	// The administrator of a node is root, reached through sudo: the socket is mode 0600 and the driver checks the
 	// peer's uid again before it reads the PIN.
 	admin := driver.AdminConfig{Socket: adminSocket, Allow: func(uid uint32) bool { return uid == 0 }}
-	return driver.Run(ctx, driver.Options{Environment: env, Node: node, Serial: sn}, cfg, admin)
+	return driver.Run(ctx, driver.Options{Environment: env, Node: node, Serial: sn, Publishers: publishers, StateDir: stateDir}, cfg, admin)
 }
 
 // check opens the card, applies the firmware floor and verifies the attestation of every key it holds. It

@@ -77,7 +77,7 @@ func (d *fakeDriver) VerifyAttestation(_ context.Context, req *connect.Request[k
 	return connect.NewResponse(&keystorev2alpha1.VerifyAttestationResponse{SpkiDer: a.SPKI, Slot: a.Slot, PinPolicy: a.PIN, TouchPolicy: a.Touch}), nil
 }
 
-func (d *fakeDriver) BeginPinRelease(context.Context, *connect.Request[keystorev2alpha1.BeginPinReleaseRequest]) (*connect.Response[keystorev2alpha1.BeginPinReleaseResponse], error) {
+func (d *fakeDriver) BeginPinRelease(_ context.Context, req *connect.Request[keystorev2alpha1.BeginPinReleaseRequest]) (*connect.Response[keystorev2alpha1.BeginPinReleaseResponse], error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.locked {
@@ -87,8 +87,24 @@ func (d *fakeDriver) BeginPinRelease(context.Context, *connect.Request[keystorev
 	if err != nil {
 		return nil, err
 	}
-	d.oneTime = k
-	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes()}), nil
+	text, err := pinrelease.RequestText(pinrelease.Request{Boundary: d.boundary, Node: d.node, ID: req.Msg.GetRequestId(), Ephemeral: k.PublicKey().Bytes()})
+	if err != nil {
+		return nil, refusal.New(connect.CodeInvalidArgument, "request_text", "request_id")
+	}
+	d.oneTime, d.oneText = k, text
+	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text}), nil
+}
+
+// The fake verifies nothing (the card driver's own tests do): it checks only that key@ hands it a signature and the
+// KeyPlan document, and refuses as the card driver's check does when refuseCheck is set.
+func (d *fakeDriver) checked(sig, keyPlan []byte) error {
+	if d.refuseCheck != "" {
+		return refusal.New(connect.CodeFailedPrecondition, d.refuseCheck, "")
+	}
+	if len(sig) == 0 || len(keyPlan) == 0 {
+		return refusal.New(connect.CodeFailedPrecondition, "key_plan", "key_plan")
+	}
+	return nil
 }
 
 func (d *fakeDriver) SealPin(_ context.Context, req *connect.Request[keystorev2alpha1.SealPinRequest]) (*connect.Response[keystorev2alpha1.SealPinResponse], error) {
@@ -96,6 +112,9 @@ func (d *fakeDriver) SealPin(_ context.Context, req *connect.Request[keystorev2a
 	defer d.mu.Unlock()
 	if d.locked || d.held == nil {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
+	}
+	if err := d.checked(req.Msg.GetRequestSignatureDer(), req.Msg.GetKeyPlan()); err != nil {
+		return nil, err
 	}
 	pub, sealed, err := pinrelease.Seal(d.held, req.Msg.GetRequestText())
 	if err != nil {
@@ -111,12 +130,19 @@ func (d *fakeDriver) FinishPinRelease(_ context.Context, req *connect.Request[ke
 	if !d.locked {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "unlocked", "")
 	}
-	k := d.oneTime
-	d.oneTime = nil
+	if err := d.checked(req.Msg.GetAnswerSignatureDer(), req.Msg.GetKeyPlan()); err != nil {
+		return nil, err
+	}
+	a, err := pinrelease.ParseAnswer(req.Msg.GetAnswerText())
+	if err != nil {
+		return nil, refusal.New(connect.CodeInvalidArgument, "answer_text", "answer_text")
+	}
+	k, text := d.oneTime, d.oneText
+	d.oneTime, d.oneText = nil, nil
 	if k == nil {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "one_time_key", "")
 	}
-	pin, err := pinrelease.Open(k, req.Msg.GetRequestText(), req.Msg.GetReleaserPublic(), req.Msg.GetSealed())
+	pin, err := pinrelease.Open(k, text, a.Ephemeral, a.Sealed)
 	if err != nil {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "sealed", "sealed")
 	}
@@ -172,6 +198,7 @@ func boards(t *testing.T, names []string, edit func(*configv2alpha1.KeyPlan)) (*
 		d := newFakeDriver("yubikey-piv")
 		d.now = e.clock.now
 		d.cardPIN = "123456"
+		d.node, d.boundary = name, testBoundary
 		if i == 0 {
 			d.held = []byte("123456")
 		} else {
@@ -322,6 +349,27 @@ func TestAVerifiedRequestIsAnsweredOnce(t *testing.T) {
 	release(t, bs[0])
 	if bs[0].n.audit.count(ActionPinRelease) != 1 {
 		t.Fatal("a request was answered twice")
+	}
+}
+
+// verifies: REQ-KEYS-115
+// key@ hands the card driver the request's signature and the KeyPlan document it verified, and a refusal of the
+// driver's own check is a refused request: audited once, marked as decided, and never answered or retried.
+func TestARequestTheCardDriverRefusesIsRefused(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+	bs[0].d.refuseCheck = "signature"
+	id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+	release(t, bs[0])
+	release(t, bs[0])
+	if answered(e, id) {
+		t.Fatal("a request the driver refused was answered")
+	}
+	wantWhy(t, bs[0].n, "driver-signature")
+	if n := len(refusedWhy(bs[0].n)); n != 1 {
+		t.Fatalf("%d refusals audited, want 1", n)
+	}
+	if bs[0].n.audit.count(ActionPinRelease) != 0 {
+		t.Fatal("a release was audited")
 	}
 }
 

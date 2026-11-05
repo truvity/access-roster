@@ -464,7 +464,7 @@ fn key_plan(mut o: Obj) -> R<pb::KeyPlan> {
     })
 }
 
-/// The longest node name, as key@ bounds it (`maxNodeChars`).
+/// The longest node name, as key@ and the card driver bound it (`pinrelease.MaxNodeChars`).
 const NODE_MAX: usize = 64;
 
 /// The slot map of the KeyPlan (D20b), read for its shape as key@ reads it (plan.go `decodeSlotMap`): a node is an

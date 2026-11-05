@@ -1,6 +1,7 @@
 package keyd
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha512"
 	"encoding/hex"
@@ -38,11 +39,13 @@ type signedKind[T proto.Message] struct {
 	last *verified[T]
 }
 
-// verified is the value key@ last verified, with the seq and digest of its document.
+// verified is the value key@ last verified, with the seq and digest of its document, and the document itself, which
+// the card driver verifies again for a PIN release (pinrelease.go).
 type verified[T proto.Message] struct {
 	value  T
 	seq    uint64
 	sha384 string
+	doc    []byte
 }
 
 // fetchVerified fetches the signed document of the kind, verifies it and returns the value of the verified payload.
@@ -58,18 +61,29 @@ type verified[T proto.Message] struct {
 // the latest validly signed document the store gives it, as store@ does (ADR 0005, "Freshness at a cold start"): a
 // compromised store@ can serve it a validly signed older document. It cannot sign a new one.
 func fetchVerified[T proto.Message](ctx context.Context, s *Server, k *signedKind[T]) (T, error) {
+	v, _, err := fetchVerifiedDoc(ctx, s, k)
+	return v, err
+}
+
+// fetchVerifiedDoc is fetchVerified that also returns the signed document of the value it returns: the one it just
+// verified, or the one it holds when store@'s is refused.
+func fetchVerifiedDoc[T proto.Message](ctx context.Context, s *Server, k *signedKind[T]) (T, []byte, error) {
 	var zero T
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	doc, err := store.GetSignedConfig(ctx, s.st, k.kind)
 	if err != nil {
-		return zero, unavailable(reasonStore)
+		return zero, nil, unavailable(reasonStore)
 	}
 	v, err := verifyKind(s, k, doc)
 	if err != nil {
-		return refusedKind(ctx, s, k, doc, err)
+		held, err := refusedKind(ctx, s, k, doc, err)
+		if err != nil {
+			return zero, nil, err
+		}
+		return held, bytes.Clone(k.last.doc), nil
 	}
-	return proto.Clone(v.value).(T), nil
+	return proto.Clone(v.value).(T), bytes.Clone(v.doc), nil
 }
 
 // verifyKind takes the steps of signed-config.md on the document and reads its payload, and remembers the result.
@@ -95,7 +109,7 @@ func verifyKind[T proto.Message](s *Server, k *signedKind[T], doc []byte) (*veri
 			return nil, fmt.Errorf("the %s mark cannot be saved", k.label)
 		}
 	}
-	k.last = &verified[T]{value: value, seq: v.Seq, sha384: hex.EncodeToString(v.Digest[:])}
+	k.last = &verified[T]{value: value, seq: v.Seq, sha384: hex.EncodeToString(v.Digest[:]), doc: bytes.Clone(doc)}
 	return k.last, nil
 }
 

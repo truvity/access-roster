@@ -280,10 +280,16 @@ type fakeDriver struct {
 	made map[string]time.Time
 	// The PIN of a card driver (pinrelease_test.go): locked is a driver that holds no PIN, cardPIN is the PIN its card
 	// takes, held the PIN it holds once unlocked. A locked driver signs with the pin-release key only.
-	locked      bool
-	cardPIN     string
-	held        []byte
-	oneTime     *ecdh.PrivateKey
+	locked   bool
+	cardPIN  string
+	held     []byte
+	oneTime  *ecdh.PrivateKey
+	oneText  []byte // the request text Begin wrote, for the one-time key
+	node     string // the node and boundary Begin writes into the request text
+	boundary string
+	// refuseCheck makes SealPin and FinishPinRelease refuse with this reason of the card driver's own check, as a
+	// driver whose verification disagrees with key@'s does.
+	refuseCheck string
 	finishCalls atomic.Int64
 	pinTries    atomic.Int64
 	// attestLie makes the attestation of the pin-release key state PIN once.

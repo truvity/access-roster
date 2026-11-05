@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
@@ -17,11 +18,18 @@ import (
 )
 
 // The PIN release between boards (ADR 0006, "Touch and PIN"; decided 2026-11-04). The PIN never leaves this process:
-// an unlocked driver seals the PIN it holds to a request that key@ has verified (SealPin), and a locked driver makes a
-// one-time key for its own request (BeginPinRelease) and opens the answer with it, then gives the PIN to its card once
-// (FinishPinRelease), as the admin socket's Unlock does. key@ makes every check on the request and the answer, and the
-// store writes; the driver also verifies the attestation of another card's slot for key@ (VerifyAttestation), because
-// piv-go and the pinned Yubico anchors live in the driver only.
+// an unlocked driver seals the PIN it holds to a request (SealPin), and a locked driver makes a one-time key and the
+// text of its own request (BeginPinRelease), opens the answer with the key, then gives the PIN to its card once
+// (FinishPinRelease), as the admin socket's Unlock does.
+//
+// key@ makes every check on the request and the answer, and the store writes; the driver makes the checks that a
+// compromised key@ must not be able to skip, with its own crypto (#914). It verifies the signed KeyPlan (keyplan.go),
+// and seals only to a request signed by the pin-release key that the slot map lists for a peer of this boundary, and
+// opens only an answer signed likewise for the request it began itself. So key@ can neither have the boundary PIN
+// sealed to a key of its own nor spend the card's PIN tries with an answer no listed peer card signed. What stays
+// key@'s alone: revocation (the driver cannot read the store), the freshness and the reuse of a request id, and the
+// attestation of the slot map, which the driver reads for key@ (VerifyAttestation) because piv-go and the pinned Yubico
+// anchors live in the driver only.
 
 // The reasons of the refusals of the PIN release calls.
 const (
@@ -30,10 +38,19 @@ const (
 	reasonSealed      = "sealed"       // the sealed PIN does not open
 	reasonRequest     = "request_text" // the request text is not of the format, or not this node's
 	reasonAttestation = "attestation"  // the attestation does not verify
+	reasonKeyPlan     = "key_plan"     // the KeyPlan does not verify, is older than one seen, or the driver has no anchor
+	reasonBoundary    = "boundary"     // the request or answer is of another boundary
+	reasonUnlisted    = "peer"         // the other node is this one, or the slot map lists no pin-release key for it
+	reasonSignature   = "signature"    // the signature does not verify with the peer's pin-release key
+	reasonAnswer      = "answer_text"  // the answer is not of the format, or not for the request in flight
 )
 
-// oneTime is the private half of the one-time key of the request in flight. The caller holds mu.
-type oneTime struct{ key *ecdh.PrivateKey }
+// oneTime is the one-time key of the request in flight and the text the driver wrote for it. The caller holds mu.
+type oneTime struct {
+	key  *ecdh.PrivateKey
+	id   string
+	text []byte
+}
 
 // Attest returns the attestation of the key of a purpose, for the slot map of the KeyPlan.
 func (s *Service) Attest(ctx context.Context, req *connect.Request[keystorev2alpha1.AttestRequest]) (*connect.Response[keystorev2alpha1.AttestResponse], error) {
@@ -111,9 +128,14 @@ func touchPolicyName(t card.TouchPolicy) string {
 	return ""
 }
 
-// BeginPinRelease makes the one-time key of a request, in place of any earlier one. A driver that holds the PIN
-// refuses: there is nothing to release to it.
-func (s *Service) BeginPinRelease(ctx context.Context, _ *connect.Request[keystorev2alpha1.BeginPinReleaseRequest]) (*connect.Response[keystorev2alpha1.BeginPinReleaseResponse], error) {
+// BeginPinRelease makes the one-time key of a request and the request's text, in place of any earlier ones. key@
+// gives the id, and the driver writes its own boundary and node into the text and keeps it: FinishPinRelease takes an
+// answer for this text only. A driver that holds the PIN refuses: there is nothing to release to it.
+func (s *Service) BeginPinRelease(ctx context.Context, req *connect.Request[keystorev2alpha1.BeginPinReleaseRequest]) (*connect.Response[keystorev2alpha1.BeginPinReleaseResponse], error) {
+	id := req.Msg.GetRequestId()
+	if _, err := pinrelease.UUIDv7Time(id); err != nil {
+		return nil, refuse(ctx, "BeginPinRelease", connect.CodeInvalidArgument, reasonRequest, "request_id")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pin.held() {
@@ -123,66 +145,126 @@ func (s *Service) BeginPinRelease(ctx context.Context, _ *connect.Request[keysto
 	if err != nil {
 		return nil, internalRefusal(ctx, "BeginPinRelease")
 	}
-	s.oneTime = &oneTime{key: k}
-	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes()}), nil
+	text, err := pinrelease.RequestText(pinrelease.Request{Boundary: s.boundary, Node: s.node, ID: id, Ephemeral: k.PublicKey().Bytes()})
+	if err != nil {
+		return nil, refuse(ctx, "BeginPinRelease", connect.CodeFailedPrecondition, reasonRequest, "")
+	}
+	s.oneTime = &oneTime{key: k, id: id, text: text}
+	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text}), nil
 }
 
-// SealPin seals the PIN this driver holds to the ephemeral key of a request that key@ verified.
-//
-// planned: #914 — verify the KeyPlan's signature and the peer's slot 87 signature over the request here, so that a
-// compromised key@ cannot have the PIN sealed to a key of its own (ADR 0006, "Touch and PIN"). D20a: a boundary has
-// one PIN, so the PIN of this card is the PIN of the requesting card.
+// SealPin seals the PIN this driver holds to the ephemeral key of a request, after it verified the request itself: the
+// KeyPlan's publisher signature and seq, a request of this boundary from another node, and its signature with the
+// pin-release key that the verified slot map lists for that node. The text it verifies is the one it seals to, byte
+// for byte, and the ephemeral key is the one inside it. D20a: a boundary has one PIN, so the PIN of this card is the
+// PIN of the requesting card.
 func (s *Service) SealPin(ctx context.Context, req *connect.Request[keystorev2alpha1.SealPinRequest]) (*connect.Response[keystorev2alpha1.SealPinResponse], error) {
+	const method = "SealPin"
 	text := req.Msg.GetRequestText()
-	if _, err := pinrelease.ParseRequest(text); err != nil {
-		return nil, refuse(ctx, "SealPin", connect.CodeInvalidArgument, reasonRequest, "request_text")
+	r, err := pinrelease.ParseRequest(text)
+	if err != nil {
+		return nil, refuse(ctx, method, connect.CodeInvalidArgument, reasonRequest, "request_text")
+	}
+	s.mu.Lock()
+	held := s.pin.held()
+	s.mu.Unlock()
+	if !held {
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonLocked, "")
+	}
+	if cerr := s.verifyPeer(ctx, method, req.Msg.GetKeyPlan(), r.Boundary, r.Node, text, req.Msg.GetRequestSignatureDer(), "request_signature_der"); cerr != nil {
+		return nil, cerr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pin, ok := s.pin.get()
 	if !ok {
-		return nil, refuse(ctx, "SealPin", connect.CodeFailedPrecondition, reasonLocked, "")
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonLocked, "")
 	}
 	defer clear(pin)
 	pub, sealed, err := pinrelease.Seal(pin, text)
 	if err != nil {
-		return nil, internalRefusal(ctx, "SealPin")
+		return nil, internalRefusal(ctx, method)
 	}
+	slog.Info("sealed the PIN to a verified request of a peer", "node", r.Node, "request", r.ID)
 	return connect.NewResponse(&keystorev2alpha1.SealPinResponse{ReleaserPublic: pub, Sealed: sealed}), nil
 }
 
-// FinishPinRelease opens a release with the one-time key and gives the PIN to the card once. The one-time key is used
-// once and dropped, whatever the outcome; a release that does not open is not a PIN attempt. key@ calls it only after
-// it has verified the answer's signature, so a forged answer never reaches the card.
+// FinishPinRelease takes a signed answer to the request this driver began, verifies it, opens it with the one-time key
+// and gives the PIN to the card once. It verifies before it opens: the KeyPlan, an answer of this boundary from another
+// node to this node's request in flight (its id and the SHA-384 of the text the driver wrote), and the answer's
+// signature with the pin-release key that the slot map lists for the releasing node. An answer that fails is no PIN
+// attempt and leaves the one-time key in place; one that verifies uses the key once, whatever follows.
 func (s *Service) FinishPinRelease(ctx context.Context, req *connect.Request[keystorev2alpha1.FinishPinReleaseRequest]) (*connect.Response[keystorev2alpha1.FinishPinReleaseResponse], error) {
-	text := req.Msg.GetRequestText()
-	r, err := pinrelease.ParseRequest(text)
-	if err != nil || r.Node != s.node {
-		return nil, refuse(ctx, "FinishPinRelease", connect.CodeInvalidArgument, reasonRequest, "request_text")
+	const method = "FinishPinRelease"
+	at := req.Msg.GetAnswerText()
+	a, err := pinrelease.ParseAnswer(at)
+	if err != nil {
+		return nil, refuse(ctx, method, connect.CodeInvalidArgument, reasonAnswer, "answer_text")
+	}
+	s.mu.Lock()
+	if s.pin.held() {
+		s.mu.Unlock()
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonUnlocked, "")
+	}
+	ot := s.oneTime
+	s.mu.Unlock()
+	if ot == nil {
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonOneTimeKey, "")
+	}
+	if a.Requester != s.node || a.ID != ot.id || !bytes.Equal(a.RequestSHA384, pinrelease.Digest(ot.text)) {
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonAnswer, "answer_text")
+	}
+	if cerr := s.verifyPeer(ctx, method, req.Msg.GetKeyPlan(), a.Boundary, a.Releaser, at, req.Msg.GetAnswerSignatureDer(), "answer_signature_der"); cerr != nil {
+		return nil, cerr
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.pin.held() {
-		return nil, refuse(ctx, "FinishPinRelease", connect.CodeFailedPrecondition, reasonUnlocked, "")
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonUnlocked, "")
 	}
-	ot := s.oneTime
-	if ot == nil {
-		return nil, refuse(ctx, "FinishPinRelease", connect.CodeFailedPrecondition, reasonOneTimeKey, "")
+	if s.oneTime != ot {
+		// A new request replaced this one while the answer was verified: the answer is for a key that is gone.
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonOneTimeKey, "")
 	}
 	s.oneTime = nil // used once, whatever follows
-	pin, err := pinrelease.Open(ot.key, text, req.Msg.GetReleaserPublic(), req.Msg.GetSealed())
+	pin, err := pinrelease.Open(ot.key, ot.text, a.Ephemeral, a.Sealed)
 	if err != nil {
 		if errors.Is(err, pinrelease.ErrFormat) {
-			return nil, refuse(ctx, "FinishPinRelease", connect.CodeInvalidArgument, reasonSealed, "releaser_public")
+			return nil, refuse(ctx, method, connect.CodeInvalidArgument, reasonSealed, "answer_text")
 		}
-		return nil, refuse(ctx, "FinishPinRelease", connect.CodeFailedPrecondition, reasonSealed, "sealed")
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonSealed, "answer_text")
 	}
 	defer clear(pin)
-	if cerr := s.unlockHeld(ctx, "FinishPinRelease", pin); cerr != nil {
+	if cerr := s.unlockHeld(ctx, method, pin); cerr != nil {
 		return nil, cerr
 	}
-	slog.Info("unlocked by a peer's PIN release: the driver holds the PIN in locked memory")
+	slog.Info("unlocked by a peer's PIN release: the driver holds the PIN in locked memory", "releaser", a.Releaser, "request", a.ID)
 	return connect.NewResponse(&keystorev2alpha1.FinishPinReleaseResponse{}), nil
+}
+
+// verifyPeer is the check of the other side of a PIN release, with the driver's own crypto: the signed KeyPlan, the
+// boundary, a node that is not this one and that the verified slot map lists with a pin-release key in slot 87, and
+// an ES384 signature over the text by that key. It logs a refusal by its word and names, never a value.
+func (s *Service) verifyPeer(ctx context.Context, method string, keyPlan []byte, boundary, node string, text, sig []byte, sigField string) *connect.Error {
+	if boundary != s.boundary {
+		slog.Warn("a PIN release of another boundary refused", "call", method)
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonBoundary, "")
+	}
+	slotMap, err := s.slotMap(keyPlan)
+	if err != nil {
+		slog.Warn("a PIN release refused: the KeyPlan", "call", method, "why", err.Error())
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonKeyPlan, "key_plan")
+	}
+	pub, ok := s.peerKey(slotMap, node)
+	if !ok {
+		slog.Warn("a PIN release refused: not a listed peer", "call", method, "node", node)
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonUnlisted, "")
+	}
+	if !verifySigned(pub, text, sig) {
+		slog.Warn("a PIN release refused: the signature", "call", method, "node", node)
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonSignature, sigField)
+	}
+	return nil
 }
 
 // internalRefusal is an internal failure of a PIN release call, logged without a value.

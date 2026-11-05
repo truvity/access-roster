@@ -30,6 +30,7 @@ import (
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1/keystorev2alpha1connect"
 	signerv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/signer/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/store/v2alpha1/storev2alpha1connect"
+	"github.com/truvity/sluis/v2/kits/go/pinrelease"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 	"github.com/truvity/sluis/v2/kits/go/signedconfig"
@@ -42,8 +43,6 @@ const (
 	maxCacheTTL     = time.Hour
 	// DefaultRewrapEvery is the period of the rewrap pass (ADR 0006, "Keys per board").
 	DefaultRewrapEvery = 60 * time.Second
-	// maxNodeChars bounds the node name, which labels logs and audit facts (an address part holds 128 characters).
-	maxNodeChars = 64
 )
 
 // Config is the configuration of one key@.
@@ -198,9 +197,9 @@ func newServer(cfg Config, st storev2alpha1connect.StoreServiceClient, driver ke
 		limits:     newLimiters(now)}, nil
 }
 
-// validNode reports whether node is a lower-case address part of reasonable length.
+// validNode reports whether node is a lower-case address part of reasonable length (pinrelease.ValidNode).
 func validNode(node string) bool {
-	return len(node) <= maxNodeChars && store.ValidateID(node) == nil && !strings.Contains(node, "/")
+	return pinrelease.ValidNode(node)
 }
 
 // recipientLabel is the recipient part of a wrap's id and of its certificate's id: the lower-case base32, without
