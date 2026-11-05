@@ -10,6 +10,7 @@ pub mod bootstrap;
 pub mod config;
 pub mod engine;
 pub mod grant;
+pub mod install;
 pub mod messages;
 pub mod run;
 pub mod secret;

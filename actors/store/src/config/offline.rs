@@ -25,7 +25,8 @@ pub struct Check {
     pub result: &'static str,
     /// The kind a document check is about; empty for the bootstrap file and the set.
     pub path: String,
-    /// The step and rule that failed, with the field path; empty when it passed. Never a value.
+    /// The step and rule that failed, with the field path; empty when it passed. For a check that did not run, what
+    /// to do to run it. Never a value.
     pub rule: String,
 }
 
@@ -47,7 +48,7 @@ pub fn to_json(checks: &[Check]) -> serde_json::Value {
 }
 
 impl Check {
-    fn ok(name: &'static str, path: &str) -> Self {
+    pub(crate) fn ok(name: &'static str, path: &str) -> Self {
         Self {
             name,
             result: "ok",
@@ -56,7 +57,7 @@ impl Check {
         }
     }
 
-    fn fail(name: &'static str, path: &str, rule: impl Into<String>) -> Self {
+    pub(crate) fn fail(name: &'static str, path: &str, rule: impl Into<String>) -> Self {
         Self {
             name,
             result: "fail",
@@ -66,11 +67,16 @@ impl Check {
     }
 
     fn not_run(name: &'static str, path: &str) -> Self {
+        Self::not_run_because(name, path, "")
+    }
+
+    /// A check that did not run, with the reason a person needs to run it.
+    pub(crate) fn not_run_because(name: &'static str, path: &str, why: impl Into<String>) -> Self {
         Self {
             name,
             result: "not-run",
             path: path.to_owned(),
-            rule: String::new(),
+            rule: why.into(),
         }
     }
 }

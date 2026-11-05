@@ -55,6 +55,19 @@ pub fn extra(c: Command) -> Command {
             ),
     )
     .arg(
+        Arg::new("runtime")
+            .long("runtime")
+            .global(true)
+            .value_name("RUNTIME")
+            .value_parser(clap::builder::PossibleValuesParser::new(
+                crate::install::Runtime::NAMES,
+            ))
+            .help(
+                "check --validate only: the runtime of the installation, bare-metal, serverless or kubernetes; \
+                 the drivers of the bootstrap file are checked against it",
+            ),
+    )
+    .arg(
         Arg::new("transport-socket")
             .long("transport-socket")
             .global(true)
@@ -293,6 +306,18 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
                 path: String::new(),
                 rule: String::new(),
             }];
+            // The runtime is the caller's to name: no file carries it (ADR 0011, "Runtime kinds").
+            match f
+                .matches
+                .get_one::<String>("runtime")
+                .and_then(|r| crate::install::Runtime::parse(r))
+            {
+                Some(runtime) => c.extend(crate::install::check_drivers(
+                    &b,
+                    crate::install::Installation { runtime },
+                )),
+                None => c.push(crate::install::not_run()),
+            }
             c.extend(config::offline::check_dir(dir, &b));
             c
         }

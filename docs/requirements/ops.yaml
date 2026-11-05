@@ -24,12 +24,14 @@ requirements:
     rationale: "Placement is derived from rules, not chosen."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
     milestone: first-version
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
     issues: [864, 867, 1419]
+    tests: [actors/store/tests/validate.rs, cli/sluis/configcheck_test.go]
     verification:
       - {kind: integration-test, ref: "compatibility matrix tests"}
   - id: REQ-OPS-002
