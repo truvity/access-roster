@@ -1426,7 +1426,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke the only key: a new key signs at once after its set is published and purged; a verifier that fetches on an unfamiliar kid accepts the token, and one that does not is reported"}
+      - {kind: integration-test, ref: "revoke the only key: the replacement is active in the ring and signs once entry can list it; a normal rotation still waits. Edge purge pending (REQ-KEYS-088)"}
   - id: REQ-KEYS-090
     area: KEYS
     statement: "The signer of any node and the operator command MUST each be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."

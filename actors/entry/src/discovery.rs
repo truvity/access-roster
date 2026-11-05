@@ -30,8 +30,9 @@ use crate::refuse::Refuse;
 
 /// The singleton id of both kinds (PLAN.md D-17).
 const ID: &str = "default";
-/// How long a built pair is kept.
-const KEEP: Duration = Duration::from_secs(5);
+/// How long a built pair is kept: the time `signer` waits before it signs with a key that skipped the
+/// lead time, so the constant is shared (`sluis_store::KEY_SET_CACHE`).
+const KEEP: Duration = sluis_store::KEY_SET_CACHE;
 /// How long a read of the store may take.
 const READ: Duration = Duration::from_secs(5);
 

@@ -23,6 +23,11 @@ use sluis_registry::Scope;
 
 pub mod revocation;
 
+/// How long `entry` keeps the key set it built from the ring and `KeyRevocation`: a key written to the
+/// ring is in the key set `entry` serves at most this long after. `signer` waits this long (and a margin)
+/// before it signs with a key that skipped the lead time (ADR 0041, REQ-KEYS-089).
+pub const KEY_SET_CACHE: Duration = Duration::from_secs(5);
+
 /// A kind, bound to its Protobuf message at compile time.
 pub trait Kind {
     /// The type of the id (`AsRef<str>`; the client takes `&str`).
