@@ -33,6 +33,10 @@
 //! stop the installation from starting. A node that joins later, or a key that replaces another,
 //! is published for the full window first.
 //!
+//! A key also signs at once when the issuer has no other key that signs: no `active` key of the ring
+//! that `KeyRevocation` does not list (see "A replacement for a revoked key"). Waiting would stop
+//! every sign-in for the whole lead time, and there is no cached key for a verifier to rely on.
+//!
 //! # A revoked key
 //!
 //! `revoked` is a fourth state, and a key is in it when `KeyRevocation` lists its kid (ADR 0041, "The
@@ -40,6 +44,21 @@
 //! added, promoted or signed with here (REQ-KEYS-106), and it is not in the key set that `signer`
 //! answers with (REQ-KEYS-107). `signer` reads `KeyRevocation` at every call that needs it, and a
 //! `KeyRevocation` that cannot be read refuses the call.
+//!
+//! # A replacement for a revoked key
+//!
+//! A replacement signs at once when the issuer has no non-revoked `active` key (ADR 0041, "The
+//! replacement", REQ-KEYS-089), not after the lead time. The issuer is the boundary, so the keys of
+//! every node count: while any node still has a live `active` key, the issuer signs, verifiers know
+//! that key and see no unfamiliar `kid`, and a replacement is published for the full window like
+//! any other new key. The rule reads the one fact that makes the wait pointless, that nothing signs,
+//! so a normal rotation (the old key is `active`) and a revoked spare (the live `active` key is
+//! still there) never skip the window. A revoked entry counts for nothing in that check, and a
+//! revoked key itself never gets the shortcut (REQ-KEYS-106). The new key is written to the ring,
+//! and so is in the key set, before its first token: the ring is written before `signing_key`
+//! answers. A verifier that meets the unfamiliar `kid` fetches the key set again (OpenID Connect
+//! Core 1.0, section 10.1.1), and one that keeps its copy past the cache budget is broken, not
+//! accommodated (ADR 0041); a copy may still lack the key for the key set's `max-age`.
 //!
 //! # How it is written
 //!
@@ -166,7 +185,9 @@ fn enter(k: &mut SigningKey, state: &str, now: SystemTime) {
 ///
 /// Only the keys of `node` are changed, apart from the drop of any key that has been retiring for
 /// the retention. A revoked key is not added to the ring and is not promoted or made to retire others
-/// (REQ-KEYS-106): the item of `KeyRevocation` is its state, and the ring does not write it.
+/// (REQ-KEYS-106): the item of `KeyRevocation` is its state, and the ring does not write it. A key
+/// that replaces a revoked one is `active` at once when no non-revoked key of the ring is `active`
+/// (REQ-KEYS-089), and published for the lead time otherwise.
 #[must_use]
 pub fn plan(
     ring: &SigningRing,
@@ -178,6 +199,11 @@ pub fn plan(
 ) -> (SigningRing, Vec<Change>) {
     let cur_revoked = revoked.contains(&cur.key_id);
     let mut keys = ring.keys.clone();
+    // Whether the issuer signs now: an `active` key of any node that `KeyRevocation` does not list.
+    // When nothing signs, a key waits for the lead time for nobody (REQ-KEYS-089).
+    let issuer_signs = keys
+        .iter()
+        .any(|k| k.state == ACTIVE && !revoked.contains(&k.key_id));
     let mut changes = Vec::new();
     let change = |k: &str, kind| Change {
         key_id: k.to_owned(),
@@ -195,7 +221,7 @@ pub fn plan(
             let young = keys
                 .iter()
                 .all(|k| instant(k.added_at.as_option()).is_some_and(|at| now < at + t.bootstrap));
-            let state = if first_of_node && young {
+            let state = if (first_of_node && young) || !issuer_signs {
                 ACTIVE
             } else {
                 PRE_PUBLISHED
@@ -215,12 +241,13 @@ pub fn plan(
         }
         Some(i) => {
             let k = &mut keys[i];
-            // Only the node's own key, and only a key that was published for the whole window. A
-            // retiring key does not come back, and another node's key is not ours to promote.
+            // Only the node's own key, and only a key that was published for the whole window, or any
+            // time once the issuer has no key that signs. A retiring key does not come back, and
+            // another node's key is not ours to promote.
             if !cur_revoked
                 && k.node == node
                 && k.state == PRE_PUBLISHED
-                && now >= since(k, now) + t.prepublish
+                && (!issuer_signs || now >= since(k, now) + t.prepublish)
             {
                 enter(k, ACTIVE, now);
                 changes.push(change(&cur.key_id, ChangeKind::Activated));
@@ -229,7 +256,8 @@ pub fn plan(
     }
 
     // Once the key key@ signs with is active, the node's earlier keys stop. The keys of other nodes
-    // are theirs: their signers retire them.
+    // are theirs: their signers retire them. A revoked key is left as it is: the item of
+    // `KeyRevocation` is its state, and it is not in the key set.
     if !cur_revoked
         && keys
             .iter()
@@ -238,6 +266,7 @@ pub fn plan(
         for k in keys.iter_mut().filter(|k| {
             k.node == node
                 && k.key_id != cur.key_id
+                && !revoked.contains(&k.key_id)
                 && (k.state == ACTIVE || k.state == PRE_PUBLISHED)
         }) {
             enter(k, RETIRING, now);
@@ -551,6 +580,161 @@ mod tests {
         assert_eq!(r2, r);
     }
 
+    /// A ring that is long past its first deploy, with `a` the only key of A, active.
+    fn old_ring_of_one() -> SigningRing {
+        step(&SigningRing::default(), A, "a", 1000).0
+    }
+
+    /// verifies: REQ-KEYS-089
+    #[test]
+    fn the_replacement_of_the_only_key_signs_at_once_when_that_key_is_revoked() {
+        let r = old_ring_of_one();
+        let now = 1000 + 30 * HOUR;
+        let (r2, ch) = plan(&r, &cur("a2"), A, at(now), &T, &revoked(&["a"]));
+        assert_eq!(states(&r2), [("a", ACTIVE), ("a2", ACTIVE)]);
+        assert_eq!(ch, [added("a2", ChangeKind::Added(ACTIVE))]);
+        // The revoked entry is left as it is: its state is the item of `KeyRevocation`.
+        assert_eq!(r2.keys[0], r.keys[0]);
+    }
+
+    /// verifies: REQ-KEYS-089
+    #[test]
+    fn the_replacement_signs_at_once_even_in_the_first_minutes_of_the_ring() {
+        // The revoked entry makes the ring young and the node's key not its first; neither is needed.
+        let r = old_ring_of_one();
+        let (r2, _) = plan(&r, &cur("a2"), A, at(1000 + MIN), &T, &revoked(&["a"]));
+        assert_eq!(states(&r2), [("a", ACTIVE), ("a2", ACTIVE)]);
+    }
+
+    /// verifies: REQ-KEYS-089
+    #[test]
+    fn a_pre_published_key_activates_at_once_when_the_active_key_is_revoked() {
+        // a2 was published a minute ago for a rotation, then a was revoked: a2 signs now.
+        let (r, _) = step(&old_ring_of_one(), A, "a2", 5000);
+        assert_eq!(states(&r), [("a", ACTIVE), ("a2", PRE_PUBLISHED)]);
+        let (r2, ch) = plan(&r, &cur("a2"), A, at(5000 + MIN), &T, &revoked(&["a"]));
+        assert_eq!(states(&r2), [("a", ACTIVE), ("a2", ACTIVE)]);
+        assert_eq!(ch, [added("a2", ChangeKind::Activated)]);
+        // Without the revocation it waits for the window.
+        let (r3, ch) = step(&r, A, "a2", 5000 + MIN);
+        assert!(ch.is_empty());
+        assert_eq!(r3, r);
+    }
+
+    /// verifies: REQ-KEYS-089
+    #[test]
+    fn the_replacement_retires_the_nodes_other_live_keys_but_leaves_the_revoked_one() {
+        let (r, _) = step(&old_ring_of_one(), A, "a2", 5000);
+        let (r, _) = step(&r, A, "a3", 5001);
+        // a is revoked and a2 is a live spare; a3 signs at once and a2 stops, a stays as it is.
+        let (r2, ch) = plan(&r, &cur("a3"), A, at(6000), &T, &revoked(&["a"]));
+        assert_eq!(
+            states(&r2),
+            [("a", ACTIVE), ("a2", RETIRING), ("a3", ACTIVE)]
+        );
+        assert_eq!(
+            ch,
+            [
+                added("a3", ChangeKind::Activated),
+                added("a2", ChangeKind::Retired)
+            ]
+        );
+    }
+
+    /// verifies: REQ-KEYS-089, REQ-KEYS-106
+    #[test]
+    fn a_revoked_replacement_never_signs_at_once() {
+        let r = old_ring_of_one();
+        let (r2, ch) = plan(
+            &r,
+            &cur("a2"),
+            A,
+            at(1000 + 30 * HOUR),
+            &T,
+            &revoked(&["a", "a2"]),
+        );
+        assert!(ch.is_empty());
+        assert_eq!(r2, r);
+    }
+
+    /// verifies: REQ-KEYS-089, REQ-KEYS-076
+    #[test]
+    fn a_node_with_a_revoked_key_waits_for_the_window_while_another_node_signs() {
+        // Both boards have a key, long after the first deploy. A's key is revoked: the issuer still
+        // signs with B's key, which every verifier has, so A's replacement is published first.
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, B, "b", 1000);
+        let now = 2 * HOUR;
+        let (r2, ch) = plan(&r, &cur("a2"), A, at(now), &T, &revoked(&["a"]));
+        assert_eq!(
+            states(&r2),
+            [("a", ACTIVE), ("b", ACTIVE), ("a2", PRE_PUBLISHED)]
+        );
+        assert_eq!(ch, [added("a2", ChangeKind::Added(PRE_PUBLISHED))]);
+        let (r3, ch) = plan(
+            &r2,
+            &cur("a2"),
+            A,
+            at(now + WINDOW - 1),
+            &T,
+            &revoked(&["a"]),
+        );
+        assert!(ch.is_empty());
+        assert_eq!(r3, r2);
+        let (r4, _) = plan(&r2, &cur("a2"), A, at(now + WINDOW), &T, &revoked(&["a"]));
+        assert_eq!(states(&r4), [("a", ACTIVE), ("b", ACTIVE), ("a2", ACTIVE)]);
+        // When B's key is revoked too, nothing signs, and A's replacement signs at once.
+        let (r5, _) = plan(&r, &cur("a2"), A, at(now), &T, &revoked(&["a", "b"]));
+        assert_eq!(r5.keys[2].state, ACTIVE);
+    }
+
+    /// verifies: REQ-KEYS-089, REQ-KEYS-076
+    #[test]
+    fn a_normal_rotation_and_a_revoked_spare_still_wait_for_the_window() {
+        let r = old_ring_of_one();
+        let now = 1000 + 30 * HOUR;
+        // No revocation at all.
+        let (r2, _) = step(&r, A, "a2", now);
+        assert_eq!(states(&r2), [("a", ACTIVE), ("a2", PRE_PUBLISHED)]);
+        // A revoked entry of another state, or of another node, that is not the live active key.
+        let mut ring = r.clone();
+        ring.keys.push(SigningKey {
+            key_id: "old".into(),
+            state: RETIRING.into(),
+            node: A.into(),
+            ..SigningKey::default()
+        });
+        ring.keys.push(SigningKey {
+            key_id: "spare".into(),
+            state: PRE_PUBLISHED.into(),
+            node: B.into(),
+            ..SigningKey::default()
+        });
+        let (r3, ch) = plan(
+            &ring,
+            &cur("a2"),
+            A,
+            at(now),
+            &T,
+            &revoked(&["old", "spare"]),
+        );
+        assert_eq!(r3.keys[3].state, PRE_PUBLISHED);
+        assert_eq!(ch, [added("a2", ChangeKind::Added(PRE_PUBLISHED))]);
+        // The live active key is revoked for an unrelated kid only: the window stands.
+        let (r4, _) = plan(&r, &cur("a2"), A, at(now), &T, &revoked(&["unrelated"]));
+        assert_eq!(states(&r4), [("a", ACTIVE), ("a2", PRE_PUBLISHED)]);
+        let (r5, ch) = plan(
+            &r4,
+            &cur("a2"),
+            A,
+            at(now + WINDOW - 1),
+            &T,
+            &revoked(&["unrelated"]),
+        );
+        assert!(ch.is_empty());
+        assert_eq!(r5, r4);
+    }
+
     #[test]
     fn the_window_is_the_cache_budget_of_the_key_set() {
         // 300 s of max-age + 300 s of edge time to live + 10 minutes of refetch + 5 minutes of
@@ -765,10 +949,10 @@ mod tests {
             ..SigningRing::default()
         };
         let (r, ch) = step(&ring, A, "a", 10_000_000);
-        // a joins pre-published (the ring was not young: no key has a stamp, so none counts as old,
-        // and the node has no key yet); "old" counts from now and stays; "odd" is untouched.
+        // a joins active at once: the ring holds no key that signs, so waiting would be for nobody.
+        // "old" counts from now and stays; "odd" is untouched.
         assert_eq!(r.keys.len(), 3);
-        assert_eq!(r.keys[2].state, PRE_PUBLISHED);
+        assert_eq!(r.keys[2].state, ACTIVE);
         assert_eq!(r.keys[0].state, RETIRING);
         assert_eq!(r.keys[1].state, "revoked");
         assert_eq!(ch.len(), 1);
