@@ -158,9 +158,13 @@ id_entry() {
 #           systemd-sysusers counts as taken, and a pinned gid that a user of another name has as its uid (systemd-sysusers
 #           keeps that gid; the deploy refuses it anyway, because the uid plan keeps one number for one name);
 #   after   once systemd-sysusers has run, refuses any user or group that does not have its pinned number.
-# Both fail closed: no getent, or a getent that fails for another reason than "not found", is a refusal.
+# A user's own group is checked with it: for "u NAME UID" systemd-sysusers makes the group NAME with the number UID, or puts
+# the user in a group NAME that exists with whatever number it has, so a group NAME with another number, and a user whose
+# primary group is not UID, are refused (for "u NAME UID:GID", the primary group must be GID).
+# Both fail closed: no getent, or a getent that fails for another reason than "not found", is a refusal; so are a line of a
+# kind the check does not know (the kinds are u, g, m and r), and a sweep that finds no pinned number to check.
 check_pinned_ids() {
-	local when=$1 f kind name id strict line got other bad=()
+	local when=$1 f kind name id raw strict line got ugid pgid pgroup other checked=0 bad=() unknown=()
 	shift
 	if ! command -v getent >/dev/null 2>&1; then
 		echo "remote: getent is missing, so the pinned uids and gids cannot be checked; the deploy refuses rather than take them as free." >&2
@@ -168,17 +172,34 @@ check_pinned_ids() {
 	fi
 	for f in "$@"; do
 		while read -r kind name id _; do
-			strict=""
+			case "$kind" in
+			'' | \#*) continue ;;
+			m | r) continue ;; # a membership or a range pins no number
+			u | g) ;;
+			*)
+				# A kind this check does not know (u! of a newer systemd, a typo) could make a user or group it never saw.
+				unknown+=("${f##*/}: $kind")
+				continue
+				;;
+			esac
+			raw=$id strict=""
 			case "$kind:$id" in
 			u:*:*) strict=1 id=${id%%:*} ;; # "uid:gid": systemd-sysusers does not weigh the groups for the uid
-			u:* | g:*) ;;
-			*) continue ;;
 			esac
 			case "$id" in '' | *[!0-9]*) continue ;; esac
+			checked=$((checked + 1))
 			if [ "$kind" = u ]; then
+				# The user's primary group: the group of its own name, which systemd-sysusers makes with the uid's number or
+				# takes as it finds it when one of that name exists; or the GID of "uid:gid" (a group named there pins no
+				# number here).
+				pgid=$id pgroup=$name
+				if [ -n "$strict" ]; then
+					pgid=${raw#*:} pgroup=""
+					case "$pgid" in '' | *[!0-9]*) pgid="" ;; esac
+				fi
 				line=$(id_entry passwd "$name") || { bad+=("getent cannot read the user $name"); continue; }
-				got=""
-				[ -z "$line" ] || IFS=: read -r _ _ got _ <<<"$line"
+				got="" ugid=""
+				[ -z "$line" ] || IFS=: read -r _ _ got ugid _ <<<"$line"
 				if [ -n "$got" ] && [ "$got" != "$id" ]; then
 					bad+=("the user $name has the uid $got, not $id")
 				elif [ -z "$got" ] && [ "$when" = after ]; then
@@ -186,10 +207,22 @@ check_pinned_ids() {
 				elif [ -z "$got" ]; then
 					line=$(id_entry passwd "$id") || { bad+=("getent cannot read the user $id"); continue; }
 					[ -z "$line" ] || bad+=("$id, the uid of $name, is already the user ${line%%:*}")
-					[ -z "$strict" ] || continue
-					line=$(id_entry group "$id") || { bad+=("getent cannot read the group $id"); continue; }
-					other=${line%%:*}
-					[ -z "$line" ] || [ "$other" = "$name" ] || bad+=("$id, the uid of $name, is already the number of the group $other")
+					if [ -z "$strict" ]; then
+						line=$(id_entry group "$id") || { bad+=("getent cannot read the group $id"); continue; }
+						other=${line%%:*}
+						[ -z "$line" ] || [ "$other" = "$name" ] || bad+=("$id, the uid of $name, is already the number of the group $other")
+					fi
+				elif [ -n "$pgid" ] && [ "$ugid" != "$pgid" ]; then
+					bad+=("the user $name has the primary group number $ugid, not $pgid")
+				fi
+				[ -n "$pgroup" ] || continue
+				line=$(id_entry group "$pgroup") || { bad+=("getent cannot read the group $pgroup"); continue; }
+				got=""
+				[ -z "$line" ] || IFS=: read -r _ _ got _ <<<"$line"
+				if [ -n "$got" ] && [ "$got" != "$id" ]; then
+					bad+=("the group $pgroup of the user $name has the number $got, not $id")
+				elif [ -z "$got" ] && [ "$when" = after ]; then
+					bad+=("the group $pgroup of the user $name does not exist")
 				fi
 				continue
 			fi
@@ -209,9 +242,18 @@ check_pinned_ids() {
 			fi
 		done <"$f"
 	done
+	if [ "${#unknown[@]}" -gt 0 ]; then
+		local IFS=';'
+		echo "remote: a sysusers line of a kind this check does not know (${unknown[*]}); the deploy refuses a user or group it cannot check." >&2
+		return 1
+	fi
 	if [ "${#bad[@]}" -gt 0 ]; then
 		local IFS=';'
 		echo "remote: a user or group does not have its pinned number (${bad[*]}). systemd-sysusers takes another number when the pinned one is taken, and the deploy refuses that: free the number on the board, run 'just boards-undeploy' if this deploy made the user or group, then deploy again." >&2
+		return 1
+	fi
+	if [ "$checked" -eq 0 ]; then
+		echo "remote: no sysusers line with a pinned uid or gid was found in $# file(s): a check of nothing is no check, and the deploy refuses it." >&2
 		return 1
 	fi
 }
