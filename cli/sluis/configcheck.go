@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/truvity/sluis/v2/kits/go/cli"
@@ -27,6 +28,9 @@ type configCheck struct {
 	Rule   string `json:"rule,omitempty"`
 }
 
+// runtimes are the kinds of runtime of an installation (ADR 0011, "Runtime kinds"); the helper takes the same names.
+var runtimes = []string{"bare-metal", "serverless", "kubernetes"}
+
 // helperEnv names the store helper when --helper does not.
 const helperEnv = "SLUIS_STORE_HELPER"
 
@@ -39,11 +43,13 @@ const helperOutputMax = 1 << 20
 // check and store@ cannot disagree, and maps the helper's checks to the exit codes of cli.md: 0 when every check
 // passes, 3 when one fails, 1 when the helper cannot run.
 func (a *app) configCheckCommand() command {
-	var bootstrap, helper string
+	var bootstrap, helper, runtimeKind string
 	return command{
 		name: "config check",
 		flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&bootstrap, "bootstrap", "", "the bootstrap file; by default /etc/sluis/bootstrap.d/<boundary>.yaml")
+			fs.StringVar(&runtimeKind, "runtime", "", "the runtime of the installation, "+strings.Join(runtimes, ", ")+
+				"; the drivers of the bootstrap file are checked against it, and without it that check does not run")
 			fs.StringVar(&helper, "helper", "", "the store executable that runs the checks; by default $"+helperEnv+
 				", then store beside this executable, then ../libexec/sluis/actors/store beside it")
 		},
@@ -51,18 +57,21 @@ func (a *app) configCheckCommand() command {
 			if len(positional) != 1 {
 				return cli.Usage(errors.New("config check takes one argument, the directory of the signed config documents"))
 			}
+			if runtimeKind != "" && !slices.Contains(runtimes, runtimeKind) {
+				return cli.Usage(errors.New("--runtime is one of " + strings.Join(runtimes, ", ")))
+			}
 			if bootstrap == "" {
 				if a.boundary == "" || strings.ContainsAny(a.boundary, "/.") {
 					return cli.Usage(errors.New("name the bootstrap file with --bootstrap, or the boundary with --boundary"))
 				}
 				bootstrap = filepath.Join("/etc/sluis/bootstrap.d", a.boundary+".yaml")
 			}
-			return a.configCheck(ctx, positional[0], bootstrap, helper, res)
+			return a.configCheck(ctx, positional[0], bootstrap, helper, runtimeKind, res)
 		},
 	}
 }
 
-func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper string, res *result) error {
+func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper, runtimeKind string, res *result) error {
 	if a.goos() != "linux" {
 		return errors.New("config check runs store@'s own validation, and the store executable is built for Linux only")
 	}
@@ -74,8 +83,11 @@ func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper string, re
 		return err
 	}
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, path, //nolint:gosec // the store executable the operator named or installed beside sluis
-		"check", "--output", "json", "--log-level", "error", "--bootstrap", bootstrap, "--validate", dir)
+	args := []string{"check", "--output", "json", "--log-level", "error", "--bootstrap", bootstrap, "--validate", dir}
+	if runtimeKind != "" {
+		args = append(args, "--runtime", runtimeKind)
+	}
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // the store executable the operator named or installed beside sluis
 	cmd.Stdout = &limited{w: &stdout, n: helperOutputMax}
 	cmd.Stderr = &limited{w: &stderr, n: helperOutputMax}
 	cmd.Env = []string{} // the helper reads nothing from the environment

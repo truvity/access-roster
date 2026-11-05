@@ -241,6 +241,15 @@ pub fn uid(name: &str, uid_block: u32) -> Option<u32> {
     u32::try_from(uid).ok()
 }
 
+/// Whether the uid block gives a valid uid to every pinned name (REQ-ISO-073). The name with the highest ordinal has
+/// the highest uid of the block, so one lookup decides for all of them.
+#[must_use]
+pub fn uid_block_in_range(uid_block: u32) -> bool {
+    UID_NAMES
+        .last()
+        .is_some_and(|name| uid(name, uid_block).is_some())
+}
+
 /// The reverse of [`uid`]: the name and the uid block.
 #[must_use]
 pub fn name_for_uid(uid: u32) -> Option<(&'static str, u32)> {
@@ -276,6 +285,20 @@ pub fn actors() -> &'static [Actor] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The last uid block that gives every pinned name a uid is the one before the top of the uid space (REQ-ISO-073).
+    #[test]
+    fn the_uid_block_range_ends_where_the_last_name_runs_out_of_uids() {
+        let last = u32::try_from(UID_NAMES.len() - 1).unwrap();
+        let top = (u32::MAX - 2 - UID_BASE - last) / UID_BLOCK_STRIDE;
+        assert!(uid_block_in_range(0));
+        assert!(uid_block_in_range(top));
+        assert!(!uid_block_in_range(top + 1));
+        assert!(!uid_block_in_range(u32::MAX));
+        // The last name has the highest uid of the block: it is the one that runs out first.
+        assert!(uid(UID_NAMES[UID_NAMES.len() - 1], top).is_some());
+        assert!(uid(UID_NAMES[UID_NAMES.len() - 1], top + 1).is_none());
+    }
 
     /// The tables are sorted, which the binary searches rely on, and agree on their sizes.
     #[test]

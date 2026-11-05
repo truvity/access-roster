@@ -179,14 +179,10 @@ impl Bootstrap {
             Some(v) => duration(v, "start_timeout")?,
             None => START_TIMEOUT_DEFAULT,
         };
-        let config_source = destination(m.require("config_source")?, "config_source", &["file"])?;
-        let secret_source = destination(
-            m.require("secret_source")?,
-            "secret_source",
-            &["credential"],
-        )?;
-        let durable = destination(m.require("durable")?, "durable", &["rqlite"])?;
-        let temp = destination(m.require("temp")?, "temp", &["rqlite"])?;
+        let config_source = destination(m.require("config_source")?, "config_source")?;
+        let secret_source = destination(m.require("secret_source")?, "secret_source")?;
+        let durable = destination(m.require("durable")?, "durable")?;
+        let temp = destination(m.require("temp")?, "temp")?;
         let publishers = publishers(m.require("publishers")?)?;
 
         let b = Bootstrap {
@@ -299,13 +295,14 @@ pub(crate) fn duration(v: Value, path: &str) -> Result<Duration, BootstrapError>
     Ok(Duration::from_secs(n * per))
 }
 
-fn destination(v: Value, path: &str, drivers: &[&str]) -> Result<Destination, BootstrapError> {
+/// A destination of the port `path`; the drivers of a port are the ones `install::DRIVERS` declares for it.
+fn destination(v: Value, path: &str) -> Result<Destination, BootstrapError> {
     let Value::Map(entries) = v else {
         return err(path, "must be a mapping");
     };
     let mut m = Fields::new(path, entries, &["driver", "socket"])?;
     let driver = match m.require("driver")? {
-        Value::String(s) if drivers.contains(&s.as_str()) => s,
+        Value::String(s) if crate::install::declared(path, &s).is_some() => s,
         Value::String(_) => {
             return err(
                 &child(path, "driver"),

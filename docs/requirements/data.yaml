@@ -1149,11 +1149,12 @@ requirements:
     rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [864, 1419]
+    tests: [actors/store/tests/validate.rs, cli/sluis/configcheck_test.go]
     verification:
       - {kind: integration-test, ref: "config check negative test: rqlite on serverless is refused"}
   - id: REQ-DATA-073

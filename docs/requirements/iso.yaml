@@ -1061,7 +1061,22 @@ requirements:
       - {kind: integration-test, ref: "generate the Compose file for two boundaries: every instance has a distinct uid and the one-boundary file uses the base uids"}
   - id: REQ-ISO-073
     area: ISO
-    statement: "sluis config check MUST refuse a uid block that is out of range or used by two boundaries."
+    statement: "sluis config check MUST refuse a uid block that is out of range."
+    rationale: "A block past the end of the uid space gives no actor of the boundary a uid."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [863, 1419]
+    tests: [actors/store/tests/validate.rs, cli/sluis/configcheck_test.go]
+    verification:
+      - {kind: integration-test, ref: "a block past the last uid block that fits is refused with the field path of the Boundary, and the number is not printed"}
+  - id: REQ-ISO-118
+    area: ISO
+    split_from: REQ-ISO-073
+    statement: "sluis config check MUST refuse a uid block that two boundaries of one installation use."
     rationale: "A repeated block would give two boundaries one uid."
     level: MUST
     source: design-decision
@@ -1071,7 +1086,7 @@ requirements:
     standards: []
     issues: [863, 1419]
     verification:
-      - {kind: integration-test, ref: "a repeated block and a block of 55 are refused"}
+      - {kind: integration-test, ref: "the Boundary documents of two boundaries with one block are refused, naming the field path of each"}
   - id: REQ-ISO-074
     area: ISO
     statement: "sluis trust sync MUST refuse a root list that has the sequence of the list it holds but different content."

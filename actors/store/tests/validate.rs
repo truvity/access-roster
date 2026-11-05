@@ -48,7 +48,7 @@ fn write_bootstrap(dir: &Path, p: &Pipeline, mode: u32) -> String {
     file.to_str().unwrap().to_owned()
 }
 
-fn validate(bootstrap: &str, docs: &Path) -> Output {
+fn validate(bootstrap: &str, docs: &Path, extra: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_store"))
         .args([
             "check",
@@ -59,13 +59,19 @@ fn validate(bootstrap: &str, docs: &Path) -> Output {
             "--validate",
         ])
         .arg(docs)
+        .args(extra)
         .output()
         .unwrap()
 }
 
 /// The exit code, the checks of the JSON object, and everything printed.
 fn run(bootstrap: &str, docs: &Path) -> (Option<i32>, Vec<Value>, String) {
-    let o = validate(bootstrap, docs);
+    run_with(bootstrap, docs, &[])
+}
+
+/// [`run`] with more flags, such as the runtime of the installation.
+fn run_with(bootstrap: &str, docs: &Path, extra: &[&str]) -> (Option<i32>, Vec<Value>, String) {
+    let o = validate(bootstrap, docs, extra);
     let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
     let all = format!("{stdout}{}", String::from_utf8_lossy(&o.stderr));
     let v: Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {all}"));
@@ -130,11 +136,116 @@ fn the_local_set_passes_every_check_and_exits_0() {
     let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
     assert_eq!(code, Some(0), "{all}");
     assert!(failures(&checks).is_empty(), "{all}");
-    // The bootstrap file, the Boundary document, the nine kinds it declares, and the set: a sweep over nothing
-    // would prove nothing.
-    assert_eq!(checks.len(), 12, "{all}");
-    assert!(checks.iter().all(|c| c["result"] == "ok"), "{all}");
+    // The bootstrap file, the check that the installation was not named, the Boundary document, the nine kinds it
+    // declares, and the set: a sweep over nothing would prove nothing.
+    assert_eq!(checks.len(), 13, "{all}");
+    let not_run: Vec<_> = checks.iter().filter(|c| c["result"] != "ok").collect();
+    assert_eq!(not_run.len(), 1, "{all}");
+    assert_eq!(not_run[0]["name"], "installation", "{all}");
+    assert_eq!(not_run[0]["result"], "not-run", "{all}");
     assert_eq!(checks.last().unwrap()["name"], "set");
+}
+
+fn installation_checks(checks: &[Value]) -> Vec<(String, String)> {
+    checks
+        .iter()
+        .filter(|c| c["name"] == "installation")
+        .map(|c| {
+            (
+                c["path"].as_str().unwrap().to_owned(),
+                c["result"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// verifies: REQ-DATA-072, REQ-OPS-009
+#[test]
+fn the_local_drivers_fit_a_bare_metal_installation() {
+    let e = env();
+    let (code, checks, all) = run_with(&e.bootstrap(), e.docs.path(), &["--runtime", "bare-metal"]);
+    assert_eq!(code, Some(0), "{all}");
+    // One check for each of the four ports: a sweep over nothing would prove nothing.
+    assert_eq!(
+        installation_checks(&checks),
+        [
+            ("config_source.driver", "ok"),
+            ("secret_source.driver", "ok"),
+            ("durable.driver", "ok"),
+            ("temp.driver", "ok"),
+        ]
+        .map(|(p, r)| (p.to_owned(), r.to_owned())),
+        "{all}"
+    );
+    assert!(checks.iter().all(|c| c["result"] == "ok"), "{all}");
+}
+
+/// verifies: REQ-DATA-072, REQ-OPS-009
+#[test]
+fn a_driver_that_does_not_fit_the_runtime_is_refused_with_its_field_and_not_its_name() {
+    for runtime in ["serverless", "kubernetes"] {
+        let e = env();
+        let (code, checks, all) = run_with(&e.bootstrap(), e.docs.path(), &["--runtime", runtime]);
+        assert_eq!(code, Some(3), "{runtime}: {all}");
+        // rqlite and the systemd credentials need a disk and a node; the file driver fits every runtime.
+        let want = format!("the driver does not fit the {runtime} runtime");
+        assert_eq!(
+            failures(&checks),
+            [
+                format!("installation secret_source.driver: {want}"),
+                format!("installation durable.driver: {want}"),
+                format!("installation temp.driver: {want}"),
+            ],
+            "{runtime}"
+        );
+        assert_eq!(
+            installation_checks(&checks)[0],
+            ("config_source.driver".to_owned(), "ok".to_owned()),
+            "{runtime}"
+        );
+        // The documents are still checked: one run shows every problem.
+        assert_eq!(checks.last().unwrap()["name"], "set", "{runtime}");
+        for name in ["rqlite", "credential"] {
+            assert!(!all.contains(name), "{runtime}: the output names a driver");
+        }
+    }
+}
+
+#[test]
+fn an_unknown_runtime_is_a_usage_error() {
+    let e = env();
+    let o = validate(&e.bootstrap(), e.docs.path(), &["--runtime", "edge"]);
+    assert_eq!(o.status.code(), Some(2));
+}
+
+/// verifies: REQ-ISO-073
+#[test]
+fn a_uid_block_past_the_uid_space_is_refused_with_its_path_and_never_its_value() {
+    let b = source("boundary");
+    assert!(b.contains("  uid_block: 0\n"));
+    // The edge itself is pinned in the registry's own test; here a far block fits and the ends of the range do not.
+    for (block, ok) in [(4_000_000, true), (4_294_907, false), (u32::MAX, false)] {
+        let e = env();
+        e.sign(
+            "boundary",
+            &b.replace("  uid_block: 0\n", &format!("  uid_block: {block}\n")),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        if ok {
+            assert_eq!(code, Some(0), "block {block}: {all}");
+        } else {
+            assert_eq!(code, Some(3), "block {block}: {all}");
+            assert_eq!(
+                failures(&checks),
+                ["document Boundary: step 6: default.uid_block: no pinned uid fits in this block"],
+                "block {block}"
+            );
+            assert!(
+                !all.contains(&block.to_string()),
+                "block {block}: the value is printed"
+            );
+        }
+    }
 }
 
 #[test]
