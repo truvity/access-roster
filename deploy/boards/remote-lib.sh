@@ -134,35 +134,84 @@ relabel() {
 }
 
 
-# check_pinned_groups before|after FILE...: the groups of the sysusers files that pin a number ("g NAME GID", the groups of key@'s
-# caller directories) must have that number. systemd-sysusers gives a group another number, and says nothing, when the pinned
-# one is taken (sysusers.d(5)), and a number in systemd's dynamic range can be. The units join the group by name, so they would
-# still work, but Compose, the uid plan and every reader of a number would name another group. `before` refuses, before
-# anything is written, a group of that name with another number and a pinned number that another group already has; `after`,
-# once systemd-sysusers has run, refuses any group that does not have its pinned number.
-check_pinned_groups() {
-	local when=$1 f kind name gid line got bad=()
+# id_entry DB KEY: getent's entry for KEY, a name or a number, in DB (group or passwd), or nothing when there is none (getent's
+# exit 2). Any other failure of getent fails, so a lookup that could not be made never reads as a free number.
+id_entry() {
+	local out rc=0
+	out=$(getent "$1" "$2") || rc=$?
+	case "$rc" in
+	0) printf '%s\n' "$out" ;;
+	2) ;;
+	*) return 1 ;;
+	esac
+}
+
+# check_pinned_ids before|after FILE...: the users and groups of the sysusers files that pin a number ("u NAME UID", the users
+# of the uid plan; "g NAME GID", the groups of key@'s caller directories) must have that number. systemd-sysusers gives a user
+# or group another number, and says nothing, when the pinned one is taken (sysusers.d(5)). It counts a pinned uid as taken
+# when a user has it, or a group of another name has it as its gid (uid_is_ok with check_with_gid, for "u NAME UID"; not for
+# "u NAME UID:GID"); it counts a pinned gid as taken when a group has it (gid_is_ok, which does not weigh the users for a
+# pinned gid). The gids sit in systemd's dynamic range (61184 and up), and so do the uids of every uid block but 0. The units
+# join a group by name, so they would still work, but the peer-uid check, Compose, the uid plan and every reader of a number
+# would name another user or group.
+#   before  refuses, before anything is written, a user or group of the name with another number, a pinned number that
+#           systemd-sysusers counts as taken, and a pinned gid that a user of another name has as its uid (systemd-sysusers
+#           keeps that gid; the deploy refuses it anyway, because the uid plan keeps one number for one name);
+#   after   once systemd-sysusers has run, refuses any user or group that does not have its pinned number.
+# Both fail closed: no getent, or a getent that fails for another reason than "not found", is a refusal.
+check_pinned_ids() {
+	local when=$1 f kind name id strict line got other bad=()
 	shift
+	if ! command -v getent >/dev/null 2>&1; then
+		echo "remote: getent is missing, so the pinned uids and gids cannot be checked; the deploy refuses rather than take them as free." >&2
+		return 1
+	fi
 	for f in "$@"; do
-		while read -r kind name gid _; do
-			[ "$kind" = g ] || continue
-			case "$gid" in '' | *[!0-9]*) continue ;; esac
-			line=$(getent group "$name") || line=""
+		while read -r kind name id _; do
+			strict=""
+			case "$kind:$id" in
+			u:*:*) strict=1 id=${id%%:*} ;; # "uid:gid": systemd-sysusers does not weigh the groups for the uid
+			u:* | g:*) ;;
+			*) continue ;;
+			esac
+			case "$id" in '' | *[!0-9]*) continue ;; esac
+			if [ "$kind" = u ]; then
+				line=$(id_entry passwd "$name") || { bad+=("getent cannot read the user $name"); continue; }
+				got=""
+				[ -z "$line" ] || IFS=: read -r _ _ got _ <<<"$line"
+				if [ -n "$got" ] && [ "$got" != "$id" ]; then
+					bad+=("the user $name has the uid $got, not $id")
+				elif [ -z "$got" ] && [ "$when" = after ]; then
+					bad+=("the user $name does not exist")
+				elif [ -z "$got" ]; then
+					line=$(id_entry passwd "$id") || { bad+=("getent cannot read the user $id"); continue; }
+					[ -z "$line" ] || bad+=("$id, the uid of $name, is already the user ${line%%:*}")
+					[ -z "$strict" ] || continue
+					line=$(id_entry group "$id") || { bad+=("getent cannot read the group $id"); continue; }
+					other=${line%%:*}
+					[ -z "$line" ] || [ "$other" = "$name" ] || bad+=("$id, the uid of $name, is already the number of the group $other")
+				fi
+				continue
+			fi
+			line=$(id_entry group "$name") || { bad+=("getent cannot read the group $name"); continue; }
 			got=""
 			[ -z "$line" ] || IFS=: read -r _ _ got _ <<<"$line"
-			if [ -n "$got" ] && [ "$got" != "$gid" ]; then
-				bad+=("$name has the number $got, not $gid")
+			if [ -n "$got" ] && [ "$got" != "$id" ]; then
+				bad+=("$name has the number $got, not $id")
 			elif [ -z "$got" ] && [ "$when" = after ]; then
 				bad+=("$name does not exist")
 			elif [ -z "$got" ]; then
-				line=$(getent group "$gid") || line=""
-				[ -z "$line" ] || bad+=("$gid, the number of $name, is already the group ${line%%:*}")
+				line=$(id_entry group "$id") || { bad+=("getent cannot read the group $id"); continue; }
+				[ -z "$line" ] || bad+=("$id, the number of $name, is already the group ${line%%:*}")
+				line=$(id_entry passwd "$id") || { bad+=("getent cannot read the user $id"); continue; }
+				other=${line%%:*}
+				[ -z "$line" ] || [ "$other" = "$name" ] || bad+=("$id, the number of $name, is already the uid of the user $other")
 			fi
 		done <"$f"
 	done
 	if [ "${#bad[@]}" -gt 0 ]; then
 		local IFS=';'
-		echo "remote: a group does not have its pinned number (${bad[*]}). systemd-sysusers takes another number when the pinned one is taken, and the deploy refuses that: free the number on the board, run 'just boards-undeploy' if this deploy made the group, then deploy again." >&2
+		echo "remote: a user or group does not have its pinned number (${bad[*]}). systemd-sysusers takes another number when the pinned one is taken, and the deploy refuses that: free the number on the board, run 'just boards-undeploy' if this deploy made the user or group, then deploy again." >&2
 		return 1
 	fi
 }
