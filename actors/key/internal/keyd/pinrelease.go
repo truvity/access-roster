@@ -201,19 +201,12 @@ func verifySigned(pub *ecdsa.PublicKey, text, sig []byte) bool {
 	return ecdsa.VerifyASN1(pub, pinrelease.Digest(text), sig)
 }
 
-// signPinText signs a text with this node's pin-release key, which signs whether or not the driver holds the PIN.
-func (s *Server) signPinText(ctx context.Context, text []byte) ([]byte, error) {
-	res, err := s.driver.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{
-		Purpose: pinReleasePurpose, Digest: pinrelease.Digest(text), Algorithm: algES384,
-	}))
-	if err != nil {
-		return nil, err
-	}
+// ownSigned checks that a text the card driver wrote and signed is signed by this node's pin-release key, as the
+// KeyPlan names it: a driver that signs with another key is caught before the text is published. The driver signs
+// these texts itself; its Sign refuses the pin-release purpose.
+func (s *Server) ownSigned(text, sig []byte) bool {
 	pk, ok := s.keys[pinReleasePurpose]
-	if !ok || !verifySigned(pk.pub, text, res.Msg.GetSignatureDer()) {
-		return nil, errors.New("the pin-release signature does not verify with the key of the plan")
-	}
-	return res.Msg.GetSignatureDer(), nil
+	return ok && verifySigned(pk.pub, text, sig)
 }
 
 // refusePin audits a refused request or answer once per distinct text and reason, and logs it. It carries names and
@@ -344,16 +337,12 @@ func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, te
 		}
 		return fmt.Errorf("key-store driver seal: %w", err)
 	}
-	at, err := pinrelease.AnswerText(pinrelease.Answer{
-		Boundary: s.cfg.Boundary, Releaser: s.cfg.Node, Requester: r.Node, ID: r.ID, RequestSHA384: pinrelease.Digest(text),
-		Ephemeral: sealed.Msg.GetReleaserPublic(), Sealed: sealed.Msg.GetSealed(),
-	})
-	if err != nil {
-		return err
-	}
-	answerSig, err := s.signPinText(ctx, at)
-	if err != nil {
-		return err
+	// The driver wrote and signed the answer; it is published only if it is this node's answer to this request.
+	at, answerSig := sealed.Msg.GetAnswerText(), sealed.Msg.GetAnswerSignatureDer()
+	a, err := pinrelease.ParseAnswer(at)
+	if err != nil || a.Boundary != s.cfg.Boundary || a.Releaser != s.cfg.Node || a.Requester != r.Node || a.ID != r.ID ||
+		!bytes.Equal(a.RequestSHA384, pinrelease.Digest(text)) || !s.ownSigned(at, answerSig) {
+		return errors.New("key-store driver seal: the answer is not this node's answer to the request")
 	}
 	// The release is an effect on a secret: its fact is durable before the answer is written (ADR 0024, "Every
 	// signature is an audit fact").
@@ -452,15 +441,13 @@ func (s *Server) RequestPin(ctx context.Context) error {
 		}
 		return fmt.Errorf("key-store driver begin: %w", err)
 	}
-	// The driver writes the text, which it keeps for the answer: key@ signs it only if it is the request it asked for.
-	text := begin.Msg.GetRequestText()
+	// The driver writes and signs the text, and keeps it for the answer: key@ publishes it only if it is the request it
+	// asked for, signed by this node's pin-release key.
+	text, sig := begin.Msg.GetRequestText(), begin.Msg.GetRequestSignatureDer()
 	r, err := pinrelease.ParseRequest(text)
-	if err != nil || r.Boundary != s.cfg.Boundary || r.Node != s.cfg.Node || r.ID != rid || !bytes.Equal(r.Ephemeral, begin.Msg.GetEphemeralPublic()) {
-		return errors.New("key-store driver begin: the request text is not this node's request")
-	}
-	sig, err := s.signPinText(ctx, text)
-	if err != nil {
-		return fmt.Errorf("sign the PIN release request: %w", err)
+	if err != nil || r.Boundary != s.cfg.Boundary || r.Node != s.cfg.Node || r.ID != rid || !bytes.Equal(r.Ephemeral, begin.Msg.GetEphemeralPublic()) ||
+		!s.ownSigned(text, sig) {
+		return errors.New("key-store driver begin: the request is not this node's request")
 	}
 	id := r.Node + "/" + r.ID
 	if _, err := s.pinReqs.Create(ctx, "", id, &keyv2alpha1.PinReleaseRequest{Text: text, SignatureDer: sig}); err != nil {
@@ -528,7 +515,7 @@ func (s *Server) takeAnswer(ctx context.Context, r pinrelease.Request, text []by
 		reason, _ := refusal.Reason(err)
 		s.refusePin(ctx, "answer", a.Releaser, r.ID, at, "driver-"+reason)
 		switch reason {
-		case "pin", "pin_retries", "pin_blocked":
+		case "pin", "pin_retries", "pin_blocked", "pin_refused":
 			return ErrPINRefused
 		case "unlocked":
 			return ErrUnlocked
@@ -598,8 +585,8 @@ func (s *Server) pinLoops(ctx context.Context) {
 			case errors.Is(err, ErrUnlocked):
 				wait = s.pinEvery(pinUnlockedRecheck)
 			case errors.Is(err, ErrPINRefused):
-				// The stop is in memory and a restart asks again; that is acceptable because the driver never sends a PIN
-				// to a card with one attempt left, so repeated refusals cannot block the card.
+				// The stop here is in memory; the card driver keeps its own in its state directory, so a restart of either
+				// asks again but sends the card no released PIN (pin_refused) until a person unlocks the board.
 				slog.Error("the card did not take a released PIN: no more PIN release requests; unlock the board with sluis node unlock")
 				return
 			default:

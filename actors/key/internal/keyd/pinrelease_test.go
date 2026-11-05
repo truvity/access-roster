@@ -91,8 +91,21 @@ func (d *fakeDriver) BeginPinRelease(_ context.Context, req *connect.Request[key
 	if err != nil {
 		return nil, refusal.New(connect.CodeInvalidArgument, "request_text", "request_id")
 	}
+	sig, err := d.signPin(text)
+	if err != nil {
+		return nil, err
+	}
 	d.oneTime, d.oneText = k, text
-	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text}), nil
+	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text, RequestSignatureDer: sig}), nil
+}
+
+// signPin signs a text the fake wrote with its pin-release key, as the card driver does. The caller holds mu.
+func (d *fakeDriver) signPin(text []byte) ([]byte, error) {
+	k, ok := d.keys["pin-release"]
+	if !ok {
+		return nil, refusal.New(connect.CodeNotFound, "absent", "")
+	}
+	return ecdsa.SignASN1(rand.Reader, k, pinrelease.Digest(text))
 }
 
 // The fake verifies nothing (the card driver's own tests do): it checks only that key@ hands it a signature and the
@@ -116,11 +129,25 @@ func (d *fakeDriver) SealPin(_ context.Context, req *connect.Request[keystorev2a
 	if err := d.checked(req.Msg.GetRequestSignatureDer(), req.Msg.GetKeyPlan()); err != nil {
 		return nil, err
 	}
-	pub, sealed, err := pinrelease.Seal(d.held, req.Msg.GetRequestText())
+	text := req.Msg.GetRequestText()
+	r, err := pinrelease.ParseRequest(text)
 	if err != nil {
 		return nil, refusal.New(connect.CodeInvalidArgument, "request_text", "request_text")
 	}
-	return connect.NewResponse(&keystorev2alpha1.SealPinResponse{ReleaserPublic: pub, Sealed: sealed}), nil
+	pub, sealed, err := pinrelease.Seal(d.held, text)
+	if err != nil {
+		return nil, refusal.New(connect.CodeInvalidArgument, "request_text", "request_text")
+	}
+	at, err := pinrelease.AnswerText(pinrelease.Answer{Boundary: d.boundary, Releaser: d.node, Requester: r.Node, ID: r.ID,
+		RequestSHA384: pinrelease.Digest(text), Ephemeral: pub, Sealed: sealed})
+	if err != nil {
+		return nil, err
+	}
+	sig, err := d.signPin(at)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&keystorev2alpha1.SealPinResponse{AnswerText: at, AnswerSignatureDer: sig}), nil
 }
 
 func (d *fakeDriver) FinishPinRelease(_ context.Context, req *connect.Request[keystorev2alpha1.FinishPinReleaseRequest]) (*connect.Response[keystorev2alpha1.FinishPinReleaseResponse], error) {

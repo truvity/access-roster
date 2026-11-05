@@ -807,15 +807,17 @@ func (x *BeginPinReleaseRequest) GetRequestId() string {
 	return ""
 }
 
-// BeginPinReleaseResponse carries the public half of the one-time key and the request text. The driver writes the text
-// (its own boundary and node, the id, the key) and keeps it with the private half until FinishPinRelease opens a
-// release with it, or the next BeginPinRelease replaces both: an answer is taken for this text only.
+// BeginPinReleaseResponse carries the public half of the one-time key and the signed request. The driver writes the
+// text (the boundary and node of its own configuration, the id, the key), signs it with the pin-release key, and keeps
+// it with the private half until FinishPinRelease opens a release with it, or the next BeginPinRelease replaces both:
+// an answer is taken for this text only. The pin-release key signs nothing else (Sign refuses its purpose).
 type BeginPinReleaseResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	EphemeralPublic []byte                 `protobuf:"bytes,1,opt,name=ephemeral_public,json=ephemeralPublic,proto3" json:"ephemeral_public,omitempty"` // SEC1 uncompressed P-384
-	RequestText     []byte                 `protobuf:"bytes,2,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`             // the text of the PinReleaseRequest, which key@ signs with the pin-release key
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	EphemeralPublic     []byte                 `protobuf:"bytes,1,opt,name=ephemeral_public,json=ephemeralPublic,proto3" json:"ephemeral_public,omitempty"`               // SEC1 uncompressed P-384
+	RequestText         []byte                 `protobuf:"bytes,2,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`                           // the text of the PinReleaseRequest
+	RequestSignatureDer []byte                 `protobuf:"bytes,3,opt,name=request_signature_der,json=requestSignatureDer,proto3" json:"request_signature_der,omitempty"` // ES384 over SHA-384 of request_text by the pin-release key, ASN.1 DER
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *BeginPinReleaseResponse) Reset() {
@@ -858,6 +860,13 @@ func (x *BeginPinReleaseResponse) GetEphemeralPublic() []byte {
 func (x *BeginPinReleaseResponse) GetRequestText() []byte {
 	if x != nil {
 		return x.RequestText
+	}
+	return nil
+}
+
+func (x *BeginPinReleaseResponse) GetRequestSignatureDer() []byte {
+	if x != nil {
+		return x.RequestSignatureDer
 	}
 	return nil
 }
@@ -925,14 +934,16 @@ func (x *SealPinRequest) GetKeyPlan() []byte {
 	return nil
 }
 
-// SealPinResponse carries the sealed PIN: ECDH P-384 with the request's key, HKDF-SHA384 with the request text as info,
-// AES-256-GCM with the request text as additional data.
+// SealPinResponse carries the signed answer, which the driver writes and signs with the pin-release key: the boundary
+// and node of its own configuration, the request's node and id, the SHA-384 of the request text, its ephemeral key and
+// the sealed PIN (ECDH P-384 with the request's key, HKDF-SHA384 with the request text as info, AES-256-GCM with the
+// request text as additional data).
 type SealPinResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	ReleaserPublic []byte                 `protobuf:"bytes,1,opt,name=releaser_public,json=releaserPublic,proto3" json:"releaser_public,omitempty"` // the releaser's ephemeral public key, SEC1 uncompressed P-384
-	Sealed         []byte                 `protobuf:"bytes,2,opt,name=sealed,proto3" json:"sealed,omitempty"`                                       // the nonce, then the ciphertext and tag
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	AnswerText         []byte                 `protobuf:"bytes,3,opt,name=answer_text,json=answerText,proto3" json:"answer_text,omitempty"`                           // the text of the PinRelease
+	AnswerSignatureDer []byte                 `protobuf:"bytes,4,opt,name=answer_signature_der,json=answerSignatureDer,proto3" json:"answer_signature_der,omitempty"` // ES384 over SHA-384 of answer_text by the pin-release key, ASN.1 DER
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *SealPinResponse) Reset() {
@@ -965,16 +976,16 @@ func (*SealPinResponse) Descriptor() ([]byte, []int) {
 	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{17}
 }
 
-func (x *SealPinResponse) GetReleaserPublic() []byte {
+func (x *SealPinResponse) GetAnswerText() []byte {
 	if x != nil {
-		return x.ReleaserPublic
+		return x.AnswerText
 	}
 	return nil
 }
 
-func (x *SealPinResponse) GetSealed() []byte {
+func (x *SealPinResponse) GetAnswerSignatureDer() []byte {
 	if x != nil {
-		return x.Sealed
+		return x.AnswerSignatureDer
 	}
 	return nil
 }
@@ -1132,17 +1143,19 @@ const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
 	"\x06serial\x18\x05 \x01(\rR\x06serial\"7\n" +
 	"\x16BeginPinReleaseRequest\x12\x1d\n" +
 	"\n" +
-	"request_id\x18\x01 \x01(\tR\trequestId\"g\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"\x9b\x01\n" +
 	"\x17BeginPinReleaseResponse\x12)\n" +
 	"\x10ephemeral_public\x18\x01 \x01(\fR\x0fephemeralPublic\x12!\n" +
-	"\frequest_text\x18\x02 \x01(\fR\vrequestText\"\x82\x01\n" +
+	"\frequest_text\x18\x02 \x01(\fR\vrequestText\x122\n" +
+	"\x15request_signature_der\x18\x03 \x01(\fR\x13requestSignatureDer\"\x82\x01\n" +
 	"\x0eSealPinRequest\x12!\n" +
 	"\frequest_text\x18\x01 \x01(\fR\vrequestText\x122\n" +
 	"\x15request_signature_der\x18\x02 \x01(\fR\x13requestSignatureDer\x12\x19\n" +
-	"\bkey_plan\x18\x03 \x01(\fR\akeyPlan\"R\n" +
-	"\x0fSealPinResponse\x12'\n" +
-	"\x0freleaser_public\x18\x01 \x01(\fR\x0ereleaserPublic\x12\x16\n" +
-	"\x06sealed\x18\x02 \x01(\fR\x06sealed\"\xb4\x01\n" +
+	"\bkey_plan\x18\x03 \x01(\fR\akeyPlan\"\x89\x01\n" +
+	"\x0fSealPinResponse\x12\x1f\n" +
+	"\vanswer_text\x18\x03 \x01(\fR\n" +
+	"answerText\x120\n" +
+	"\x14answer_signature_der\x18\x04 \x01(\fR\x12answerSignatureDerJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03R\x0freleaser_publicR\x06sealed\"\xb4\x01\n" +
 	"\x17FinishPinReleaseRequest\x12\x1f\n" +
 	"\vanswer_text\x18\x04 \x01(\fR\n" +
 	"answerText\x120\n" +

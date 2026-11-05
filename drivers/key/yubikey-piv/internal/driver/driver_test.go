@@ -69,8 +69,12 @@ func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	opts.Environment, opts.Serial, opts.Open = environment, c.SerialNo, c.Opener()
 	base := shortDir(t)
 	r := running{socket: filepath.Join(base, "d.sock"), adm: filepath.Join(base, "a.sock"), card: c}
+	boundary := "test"
+	if opts.Boundary != "" {
+		boundary = opts.Boundary // Run takes the boundary from the server configuration
+	}
 	cfg := rpc.ServerConfig{
-		Actor: driver.Name, Boundary: "test", Socket: r.socket, Mode: 0o600,
+		Actor: driver.Name, Boundary: boundary, Socket: r.socket, Mode: 0o600,
 		Allow: rpc.OwnerOnly(driver.Owner()),
 	}
 	cfg = rpc.WithNameResolver(cfg, asSelf(caller))
@@ -245,12 +249,13 @@ func TestItStartsLocked(t *testing.T) {
 	if r.card.LoginAttempts != 0 || r.card.Signs != 0 {
 		t.Fatalf("the locked driver talked to the card: %d logins, %d signatures", r.card.LoginAttempts, r.card.Signs)
 	}
-	// The public keys are public, and the PIN release key signs while the board is locked (0006 "Touch and PIN").
+	// The public keys are public. The PIN release key signs while the board is locked (0006 "Touch and PIN"), but only
+	// the request the driver writes itself.
 	if _, err := r.key.PublicKey(context.Background(), connect.NewRequest(&keystorev2alpha1.KeyStorePublicKeyRequest{Purpose: "token-signing"})); err != nil {
 		t.Fatalf("PublicKey while locked: %v", err)
 	}
-	if _, err := sign(r.key, "pin-release", "ES384", digest384()); err != nil {
-		t.Fatalf("pin-release while locked: %v", err)
+	if _, err := r.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: "01a1a66e-2a00-7abc-8def-0123456789ab"})); err != nil {
+		t.Fatalf("a signed request while locked: %v", err)
 	}
 	// Unlocked, the same call works.
 	r.unlock(t, "123456")

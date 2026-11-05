@@ -27,6 +27,7 @@ import (
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1/keystorev2alpha1connect"
 	"github.com/truvity/sluis/v2/kits/go/cli"
+	"github.com/truvity/sluis/v2/kits/go/pinrelease"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
@@ -106,6 +107,9 @@ type Service struct {
 	boundary   string
 	publishers []signedconfig.Publisher
 	plan       planState
+	// refused is set when the card refused a released PIN: the driver then tries no released PIN until a person
+	// unlocks it on the admin socket (refused.go). The caller holds mu.
+	refused refusedMark
 
 	mu      sync.Mutex // one conversation with the card at a time
 	card    card.Card
@@ -139,7 +143,11 @@ func New(opts Options) (*Service, error) {
 		return nil, err
 	}
 	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{}),
-		boundary: opts.Boundary, publishers: opts.Publishers, plan: planState{dir: opts.StateDir}}
+		boundary: opts.Boundary, publishers: opts.Publishers, plan: planState{dir: opts.StateDir}, refused: refusedMark{dir: opts.StateDir}}
+	if err := s.refused.restore(); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
 	if err := s.plan.restore(); err != nil {
 		_ = c.Close()
 		return nil, err
@@ -427,6 +435,11 @@ func (s *Service) Sign(ctx context.Context, req *connect.Request[keystorev2alpha
 	purpose := req.Msg.GetPurpose()
 	e, ok := planFor(purpose)
 	if !ok {
+		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonPurpose, "purpose")
+	}
+	// The pin-release key signs while the board is locked (PIN never), so it signs only the texts the driver writes
+	// itself, in BeginPinRelease and SealPin: a digest from key@ could be of a request with a key of key@'s own.
+	if purpose == pinrelease.PurposePinRelease {
 		return nil, refuse(ctx, "Sign", connect.CodeInvalidArgument, reasonPurpose, "purpose")
 	}
 	// The algorithm must be the purpose's own: ES256 (SHA-256) for audit-log, ES384 (SHA-384) for the rest. The

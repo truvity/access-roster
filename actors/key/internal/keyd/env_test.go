@@ -371,7 +371,11 @@ func (d *fakeDriver) key(purpose string) (*ecdsa.PrivateKey, error) {
 }
 
 func (d *fakeDriver) Sign(_ context.Context, req *connect.Request[keystorev2alpha1.KeyStoreSignRequest]) (*connect.Response[keystorev2alpha1.KeyStoreSignResponse], error) {
-	if d.isLocked() && req.Msg.GetPurpose() != "pin-release" {
+	// As the card driver: the pin-release key signs only the texts the driver writes (BeginPinRelease, SealPin).
+	if req.Msg.GetPurpose() == "pin-release" {
+		return nil, refusal.New(connect.CodeInvalidArgument, "purpose", "purpose")
+	}
+	if d.isLocked() {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "locked", "")
 	}
 	k, err := d.key(req.Msg.GetPurpose())
