@@ -348,6 +348,32 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 	}
 }
 
+// TestConfigCheckRefusesASubjectClaimThatChangesForAPerson runs the CLI with the real store executable on the signed
+// local set with the Upstream's subject_claim set to each of the four claims that change for a person: each is refused,
+// with the kind and the path of the field, and the set with `sub` passes (above).
+//
+// verifies: REQ-SUBJ-044
+func TestConfigCheckRefusesASubjectClaimThatChangesForAPerson(t *testing.T) {
+	if testing.Short() {
+		t.Skip("SKIP: -short: the test builds the store executable")
+	}
+	helper := storeHelper(t)
+	for _, claim := range []string{"email", "preferred_username", "upn", "name"} {
+		src := copyLocal(t)
+		replaceIn(t, filepath.Join(src, "upstream.yaml"), "subject_claim: sub", "subject_claim: "+claim)
+		docs, bootstrap := signLocal(t, src)
+		ta := newTestApp(t)
+		got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper)
+		all := ta.out.String() + ta.err.String()
+		if got != cli.ExitRefused {
+			t.Fatalf("%s: exit %d: %s", claim, got, all)
+		}
+		if !strings.Contains(all, "Upstream") || !strings.Contains(all, "workforce.subject_claim: is a claim that changes for a person") {
+			t.Errorf("%s: the refusal does not name the kind and the field: %s", claim, all)
+		}
+	}
+}
+
 func TestConfigCheckRefusesAHelperOfAnotherRelease(t *testing.T) {
 	ta := newTestApp(t)
 	ta.os = "linux"
