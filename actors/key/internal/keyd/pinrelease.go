@@ -436,8 +436,11 @@ func (s *Server) RequestPin(ctx context.Context) error {
 	}
 	begin, err := s.driver.BeginPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: rid}))
 	if err != nil {
-		if reason, _ := refusal.Reason(err); connect.CodeOf(err) == connect.CodeFailedPrecondition && reason == "unlocked" {
+		switch reason, _ := refusal.Reason(err); {
+		case connect.CodeOf(err) == connect.CodeFailedPrecondition && reason == "unlocked":
 			return ErrUnlocked
+		case connect.CodeOf(err) == connect.CodeFailedPrecondition && reason == "pin_refused":
+			return ErrPINRefused // the driver's stop after a refused PIN: a person unlocks the board
 		}
 		return fmt.Errorf("key-store driver begin: %w", err)
 	}
