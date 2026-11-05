@@ -1659,10 +1659,11 @@ requirements:
     rationale: "A revoked key must not return to signing even if its own node writes the ring (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
-    issues: [1361]
+    issues: [1361, 1362]
     runtimes: all
+    actors: [signer]
     standards: []
     features: ["design"]
     verification:
@@ -1673,9 +1674,10 @@ requirements:
     rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
-    issues: [1361]
+    issues: [1361, 1362]
     runtimes: all
     standards: []
     features: ["design"]

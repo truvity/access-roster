@@ -129,6 +129,7 @@ impl From<RingError> for Refuse {
             RingError::Store => refuse(ErrorCode::Unavailable, "store", ""),
             RingError::Key(_) => refuse(ErrorCode::Unavailable, "key", ""),
             RingError::NotActive => refuse(ErrorCode::Unavailable, "key_set", ""),
+            RingError::Revoked => refuse(ErrorCode::Unavailable, "key_revoked", ""),
         }
     }
 }

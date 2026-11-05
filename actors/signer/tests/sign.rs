@@ -34,7 +34,8 @@ use signer::{Config, Sockets};
 use sluis_kit::{Allow, Identities, ServerConfig, refusal, refusal_reason};
 use sluis_proto::sluis::config::v2alpha1::{Boundary, InstallationClient, TokenLifetime};
 use sluis_proto::sluis::key::v2alpha1::{
-    KeyService, KeyServiceExt, PublicKeyRequest, PublicKeyResponse, SignRequest, SignResponse,
+    KeyRevocation, KeyService, KeyServiceExt, PublicKeyRequest, PublicKeyResponse, SignRequest,
+    SignResponse,
 };
 use sluis_proto::sluis::port::transport::v2alpha1::{
     AckRequest, AckResponse, EmitRequest, EmitResponse, ReceiveRequest, ReceiveResponse,
@@ -49,6 +50,7 @@ use sluis_proto::sluis::store::v2alpha1::{
     WriteResponse,
 };
 use sluis_proto::sluis::r#type::v2alpha1::Address;
+use sluis_store::revocation::kid_item_id;
 use tempfile::TempDir;
 use tokio::sync::oneshot;
 
@@ -66,6 +68,8 @@ struct FakeStore {
     writes: Mutex<Vec<(&'static str, String)>>,
     /// Refuse every read with `unavailable`.
     down: AtomicBool,
+    /// Refuse every read of `KeyRevocation` with `unavailable`.
+    revocations_down: AtomicBool,
 }
 
 impl FakeStore {
@@ -74,6 +78,21 @@ impl FakeStore {
             .lock()
             .unwrap()
             .insert((kind.into(), id.into()), (1, value));
+    }
+
+    /// Lists the key as revoked, as `key@` does when it takes a declaration.
+    fn revoke(&self, kid: &str) {
+        self.put(
+            "key-revocation",
+            &kid_item_id(kid).unwrap(),
+            KeyRevocation {
+                target_kind: "kid".into(),
+                target: kid.into(),
+                reason_code: "compromise".into(),
+                ..KeyRevocation::default()
+            }
+            .encode_to_vec(),
+        );
     }
 
     fn ring(&self) -> Option<(u64, sluis_proto::sluis::signer::v2alpha1::SigningRing)> {
@@ -115,6 +134,9 @@ impl StoreService for StoreSvc {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
         let (kind, id) = (r.address.kind.to_string(), r.address.id.to_string());
+        if kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst) {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
         let items = self.0.items.lock().unwrap();
         match items.get(&(kind.clone(), id.clone())) {
             Some((v, bytes)) => Response::ok(GetResponse {
@@ -127,9 +149,24 @@ impl StoreService for StoreSvc {
     async fn list(
         &self,
         _: RequestContext,
-        _: ServiceRequest<'_, ListRequest>,
+        r: ServiceRequest<'_, ListRequest>,
     ) -> ServiceResult<ListResponse> {
-        Err(refusal(ErrorCode::Unimplemented, "unsupported", ""))
+        if self.0.down.load(Ordering::SeqCst)
+            || (r.kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst))
+        {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
+        let kind = r.kind.to_string();
+        let items = self.0.items.lock().unwrap();
+        let mut rows: Vec<_> = items.iter().filter(|((k, _), _)| *k == kind).collect();
+        rows.sort_by(|a, b| a.0.1.cmp(&b.0.1));
+        Response::ok(ListResponse {
+            items: rows
+                .into_iter()
+                .map(|((k, id), (v, bytes))| item(k, id, *v, bytes))
+                .collect(),
+            ..ListResponse::default()
+        })
     }
     async fn write(
         &self,
@@ -1379,4 +1416,136 @@ fn the_sockets_are_where_plan_md_puts_them() {
     assert_eq!(s.store, Path::new("/run/sluis/store/dev.sock"));
     assert_eq!(s.key, Path::new("/run/sluis/key/dev/signer/key.sock"));
     assert_eq!(s.audit, Path::new("/run/sluis/audit/dev/emit.sock"));
+}
+
+/// verifies: REQ-KEYS-106, REQ-KEYS-107
+#[tokio::test]
+async fn a_revoked_key_signs_nothing_more_and_leaves_the_key_set_at_once() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let kid = w.key.current.lock().unwrap().kid.clone();
+    let issued_at = w.clock.secs();
+    let before = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let jwks = key_set(&c).await;
+    assert_eq!(
+        verify(&w, &jwks, &before.token, "example-app", "at+jwt").unwrap(),
+        kid
+    );
+    let calls = w.key.calls.load(Ordering::SeqCst);
+
+    // An operator's declaration reaches store@. No time passes: the next call is refused, and the key
+    // set that the very next fetch gets lacks the kid, with no wait for the ring's look every ten seconds.
+    w.store.revoke(&kid);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "key_revoked")
+    );
+    assert_eq!(
+        w.key.calls.load(Ordering::SeqCst),
+        calls,
+        "key@ was not asked to sign with the revoked key"
+    );
+    assert_eq!(w.spool.records("signer.refused").len(), 1);
+    let jwks = key_set(&c).await;
+    let v: Value = serde_json::from_slice(&jwks).unwrap();
+    assert!(v["keys"].as_array().unwrap().is_empty());
+    assert!(
+        verify_at(
+            &w,
+            &jwks,
+            &before.token,
+            "example-app",
+            "at+jwt",
+            issued_at + 1
+        )
+        .is_err(),
+        "a token it signed fails against the set"
+    );
+}
+
+/// verifies: REQ-KEYS-106
+#[tokio::test]
+async fn the_owner_node_of_a_revoked_key_cannot_make_it_active_or_sign_with_it() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let first = w.key.current.lock().unwrap().kid.clone();
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+
+    // key@ moves to a new key, which the ring publishes. It is revoked before its window ends.
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    w.clock.advance(11);
+    let _ = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600)).await;
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(
+        ring.keys
+            .iter()
+            .any(|k| k.key_id == new_kid && k.state == "pre-published")
+    );
+    w.store.revoke(&new_kid);
+    let calls = w.key.calls.load(Ordering::SeqCst);
+
+    // The window is over, and the loop and the next call look at the ring: nothing is promoted.
+    w.clock.advance(31 * 60);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "key_set"),
+        "not active, so not asked of key@"
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    let state = |id: &str| {
+        ring.keys
+            .iter()
+            .find(|k| k.key_id == id)
+            .map(|k| k.state.clone())
+    };
+    assert_eq!(state(&new_kid).as_deref(), Some("pre-published"));
+    assert_eq!(state(&first).as_deref(), Some("active"));
+    assert_eq!(w.key.calls.load(Ordering::SeqCst), calls);
+    let v: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    let kids: Vec<_> = v["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["kid"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(kids, [first], "the new key is revoked and not published");
+}
+
+/// verifies: REQ-KEYS-106, REQ-KEYS-107
+#[tokio::test]
+async fn it_fails_closed_when_key_revocation_cannot_be_read() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    let e = sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "store")
+    );
+    let e = c.key_set(KeySetRequest::default()).await.unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "store")
+    );
+    w.store.revocations_down.store(false, Ordering::SeqCst);
+    sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
+        .await
+        .unwrap();
 }

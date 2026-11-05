@@ -26,6 +26,7 @@
 //! | `unavailable` | `store` | store@ cannot be reached |
 //! | `unavailable` | `key` | key@ cannot be reached or refused |
 //! | `unavailable` | `key_set` | the key that key@ signs with is not yet, or no longer, an active key of the ring |
+//! | `unavailable` | `key_revoked` | `KeyRevocation` lists the key that key@ signs with, so `signer` signs nothing with it (REQ-KEYS-106) |
 //! | `internal` | `signature` | key@ returned a signature that does not verify |
 
 pub mod audit;

@@ -21,6 +21,8 @@ use sluis_proto::sluis::store::v2alpha1::{
 use sluis_proto::sluis::r#type::v2alpha1::{Address, IndexEntry};
 use sluis_registry::Scope;
 
+pub mod revocation;
+
 /// A kind, bound to its Protobuf message at compile time.
 pub trait Kind {
     /// The type of the id (`AsRef<str>`; the client takes `&str`).
@@ -166,6 +168,8 @@ pub struct Store<K: Kind> {
     client: StoreServiceClient<Transport>,
     segment: &'static str,
     scope: Scope,
+    /// Whether a tenant-scoped kind may also be addressed with no tenant (see [`Store::new_optional_tenant`]).
+    optional_tenant: bool,
     _kind: std::marker::PhantomData<fn() -> K>,
 }
 
@@ -181,8 +185,23 @@ impl<K: Kind> Store<K> {
             client: StoreServiceClient::new(client.transport(), client.config()),
             segment: kind.segment,
             scope: kind.scope,
+            optional_tenant: false,
             _kind: std::marker::PhantomData,
         })
+    }
+
+    /// As [`Store::new`], for a tenant-scoped kind whose boundary's own items have no tenant: the tenant
+    /// may then be empty (on the wire it is empty, as for a kind with none; its text form is `-`). It is for
+    /// `KeyRevocation`, whose revocations of a boundary's key have no tenant (ADR 0041), as the Go client's
+    /// `OptionalTenant` is.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::UnknownKind`] when the name is not in the registry.
+    pub fn new_optional_tenant(client: Client) -> Result<Self, Error> {
+        let mut s = Self::new(client)?;
+        s.optional_tenant = true;
+        Ok(s)
     }
 
     /// The wire tenant: empty for a kind with none, the tenant id otherwise. `-` is only the text
@@ -190,6 +209,7 @@ impl<K: Kind> Store<K> {
     fn wire_tenant(&self, tenant: &str) -> Result<String, Error> {
         match (self.scope, tenant.is_empty()) {
             (Scope::Boundary, true) => Ok(String::new()),
+            (Scope::BoundaryTenant, true) if self.optional_tenant => Ok(String::new()),
             (Scope::BoundaryTenant, false) if tenant != "-" && valid_part(tenant) => {
                 Ok(tenant.to_owned())
             }

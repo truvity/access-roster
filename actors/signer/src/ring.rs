@@ -33,18 +33,28 @@
 //! stop the installation from starting. A node that joins later, or a key that replaces another,
 //! is published for the full window first.
 //!
+//! # A revoked key
+//!
+//! `revoked` is a fourth state, and a key is in it when `KeyRevocation` lists its kid (ADR 0041, "The
+//! tighten-only record"): the item is the state, so `signer` writes nothing for it. A revoked key is never
+//! added, promoted or signed with here (REQ-KEYS-106), and it is not in the key set that `signer`
+//! answers with (REQ-KEYS-107). `signer` reads `KeyRevocation` at every call that needs it, and a
+//! `KeyRevocation` that cannot be read refuses the call.
+//!
 //! # How it is written
 //!
 //! The ring is created once (`create`: it fails if another instance did it first) and every later
 //! change is an `update` at the version that was read, so two instances of `signer` never overwrite
 //! each other: the one that loses re-reads and plans again. Each change is an audit fact.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use buffa_types::google::protobuf::Timestamp;
 use sluis_kit::Client;
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
+use sluis_store::revocation::KeyRevocations;
 use sluis_store::{Error as StoreError, Kind, Store, WriteOpts};
 use tokio::sync::Mutex;
 
@@ -150,11 +160,13 @@ fn enter(k: &mut SigningKey, state: &str, now: SystemTime) {
     k.state_since = stamp(now).into();
 }
 
-/// Plans the next ring from the ring as it is, the key key@ signs with, the node it belongs to, and
-/// the clock. Nothing is written here. The ring is unchanged when the list of changes is empty.
+/// Plans the next ring from the ring as it is, the key key@ signs with, the node it belongs to, the
+/// kids that `KeyRevocation` lists, and the clock. Nothing is written here. The ring is unchanged when
+/// the list of changes is empty.
 ///
 /// Only the keys of `node` are changed, apart from the drop of any key that has been retiring for
-/// the retention.
+/// the retention. A revoked key is not added to the ring and is not promoted or made to retire others
+/// (REQ-KEYS-106): the item of `KeyRevocation` is its state, and the ring does not write it.
 #[must_use]
 pub fn plan(
     ring: &SigningRing,
@@ -162,7 +174,9 @@ pub fn plan(
     node: &str,
     now: SystemTime,
     t: &Timing,
+    revoked: &HashSet<String>,
 ) -> (SigningRing, Vec<Change>) {
+    let cur_revoked = revoked.contains(&cur.key_id);
     let mut keys = ring.keys.clone();
     let mut changes = Vec::new();
     let change = |k: &str, kind| Change {
@@ -171,6 +185,8 @@ pub fn plan(
     };
 
     match keys.iter().position(|k| k.key_id == cur.key_id) {
+        // A revoked key does not join the ring, in any state.
+        None if cur_revoked => {}
         None => {
             // A node's first key signs at once while the ring is young (the first deploy); every other
             // key is published for the full window first.
@@ -201,7 +217,11 @@ pub fn plan(
             let k = &mut keys[i];
             // Only the node's own key, and only a key that was published for the whole window. A
             // retiring key does not come back, and another node's key is not ours to promote.
-            if k.node == node && k.state == PRE_PUBLISHED && now >= since(k, now) + t.prepublish {
+            if !cur_revoked
+                && k.node == node
+                && k.state == PRE_PUBLISHED
+                && now >= since(k, now) + t.prepublish
+            {
                 enter(k, ACTIVE, now);
                 changes.push(change(&cur.key_id, ChangeKind::Activated));
             }
@@ -210,9 +230,10 @@ pub fn plan(
 
     // Once the key key@ signs with is active, the node's earlier keys stop. The keys of other nodes
     // are theirs: their signers retire them.
-    if keys
-        .iter()
-        .any(|k| k.key_id == cur.key_id && k.node == node && k.state == ACTIVE)
+    if !cur_revoked
+        && keys
+            .iter()
+            .any(|k| k.key_id == cur.key_id && k.node == node && k.state == ACTIVE)
     {
         for k in keys.iter_mut().filter(|k| {
             k.node == node
@@ -251,6 +272,8 @@ pub enum RingError {
     /// The key that key@ signs with is not an active key of the ring: it is still being published
     /// (or it is not one of the states that sign).
     NotActive,
+    /// `KeyRevocation` lists the key that key@ signs with: it signs nothing more (REQ-KEYS-106).
+    Revoked,
 }
 
 /// What `signer` knows of the ring a moment ago.
@@ -265,6 +288,7 @@ struct Snapshot {
 /// sign.
 pub struct RingKeeper {
     store: Store<RingKind>,
+    revocations: KeyRevocations,
     key: Arc<KeyAt>,
     audit: Arc<Auditor>,
     clock: Clock,
@@ -289,6 +313,7 @@ impl RingKeeper {
     ) -> Result<Self, StoreError> {
         Ok(Self {
             store: Store::new(store.clone())?,
+            revocations: KeyRevocations::new(store)?,
             key,
             audit,
             clock,
@@ -319,10 +344,15 @@ impl RingKeeper {
                 s
             }
         };
-        if snap.active {
-            Ok(snap.current)
-        } else {
-            Err(RingError::NotActive)
+        if !snap.active {
+            return Err(RingError::NotActive);
+        }
+        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: look
+        // at the key's own item at every call, and refuse when it cannot be read (fail closed).
+        match self.revocations.is_revoked(&snap.current.key_id).await {
+            Ok(false) => Ok(snap.current),
+            Ok(true) => Err(RingError::Revoked),
+            Err(_) => Err(RingError::Store),
         }
     }
 
@@ -338,15 +368,27 @@ impl RingKeeper {
         Ok(())
     }
 
-    /// The ring as store@ holds it (empty when none was written).
+    /// The ring as store@ holds it (empty when none was written), without the keys that
+    /// `KeyRevocation` lists: the ring that the key set is built from (REQ-KEYS-107).
     ///
     /// # Errors
     ///
-    /// [`RingError::Store`].
+    /// [`RingError::Store`], also when `KeyRevocation` cannot be read: a key set that might list a
+    /// revoked key is not served.
     pub async fn read(&self) -> Result<SigningRing, RingError> {
-        match tokio::time::timeout(CALL, self.store.get("", ID)).await {
-            Ok(Ok(item)) => Ok(item.value),
-            Ok(Err(StoreError::NotFound)) => Ok(SigningRing::default()),
+        let ring = match tokio::time::timeout(CALL, self.store.get("", ID)).await {
+            Ok(Ok(item)) => item.value,
+            Ok(Err(StoreError::NotFound)) => SigningRing::default(),
+            _ => return Err(RingError::Store),
+        };
+        let revoked = self.revoked().await?;
+        Ok(without_revoked(ring, &revoked))
+    }
+
+    /// The kids that `KeyRevocation` lists.
+    async fn revoked(&self) -> Result<HashSet<String>, RingError> {
+        match tokio::time::timeout(CALL, self.revocations.revoked_kids()).await {
+            Ok(Ok(kids)) => Ok(kids),
             _ => Err(RingError::Store),
         }
     }
@@ -359,10 +401,11 @@ impl RingKeeper {
                 Ok(Err(StoreError::NotFound)) => (SigningRing::default(), 0),
                 _ => return Err(RingError::Store),
             };
+            let revoked = self.revoked().await?;
             let now = (self.clock)();
-            let (next, changes) = plan(&ring, &cur, &self.node, now, &self.timing);
+            let (next, changes) = plan(&ring, &cur, &self.node, now, &self.timing, &revoked);
             if changes.is_empty() {
-                return Ok(snapshot(&ring, cur, now));
+                return Ok(snapshot(&ring, cur, now, &revoked));
             }
             let written = if version == 0 {
                 self.store.create("", ID, &next, WriteOpts::default()).await
@@ -380,7 +423,7 @@ impl RingKeeper {
                             tracing::error!(key_id = %c.key_id, "the audit of a change of the ring failed");
                         }
                     }
-                    return Ok(snapshot(&next, cur, now));
+                    return Ok(snapshot(&next, cur, now, &revoked));
                 }
                 // Another instance wrote first: read again and plan again.
                 Err(StoreError::Exists | StoreError::Version) => {}
@@ -391,11 +434,23 @@ impl RingKeeper {
     }
 }
 
-fn snapshot(ring: &SigningRing, current: Current, at: SystemTime) -> Snapshot {
-    let active = ring
-        .keys
-        .iter()
-        .any(|k| k.key_id == current.key_id && k.state == ACTIVE);
+/// The ring without the keys that `KeyRevocation` lists.
+fn without_revoked(mut ring: SigningRing, revoked: &HashSet<String>) -> SigningRing {
+    ring.keys.retain(|k| !revoked.contains(&k.key_id));
+    ring
+}
+
+fn snapshot(
+    ring: &SigningRing,
+    current: Current,
+    at: SystemTime,
+    revoked: &HashSet<String>,
+) -> Snapshot {
+    let active = !revoked.contains(&current.key_id)
+        && ring
+            .keys
+            .iter()
+            .any(|k| k.key_id == current.key_id && k.state == ACTIVE);
     Snapshot {
         at,
         current,
@@ -439,7 +494,77 @@ mod tests {
 
     /// Runs `signer` of `node`, whose key@ signs with `id`, at `secs`, and returns the ring.
     fn step(ring: &SigningRing, node: &str, id: &str, secs: u64) -> (SigningRing, Vec<Change>) {
-        plan(ring, &cur(id), node, at(secs), &T)
+        plan(ring, &cur(id), node, at(secs), &T, &HashSet::new())
+    }
+
+    fn revoked(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|i| (*i).to_owned()).collect()
+    }
+
+    /// verifies: REQ-KEYS-106
+    #[test]
+    fn a_revoked_key_is_never_added_to_the_ring() {
+        let (r, ch) = plan(
+            &SigningRing::default(),
+            &cur("a"),
+            A,
+            at(1000),
+            &T,
+            &revoked(&["a"]),
+        );
+        assert!(r.keys.is_empty());
+        assert!(ch.is_empty());
+    }
+
+    /// verifies: REQ-KEYS-106
+    #[test]
+    fn a_revoked_key_is_never_promoted_even_when_its_window_is_over() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let due = 2000 + WINDOW;
+        let (r2, ch) = plan(&r, &cur("a2"), A, at(due), &T, &revoked(&["a2"]));
+        assert!(
+            ch.is_empty(),
+            "the owner node promoted a revoked key: {ch:?}"
+        );
+        assert_eq!(states(&r2), [("a", ACTIVE), ("a2", PRE_PUBLISHED)]);
+        // Nor does the revoked key stop the key that is signing.
+        let (r3, ch) = plan(&r, &cur("a2"), A, at(due), &T, &revoked(&[]));
+        assert_eq!(states(&r3), [("a", RETIRING), ("a2", ACTIVE)]);
+        assert_eq!(ch.len(), 2);
+    }
+
+    /// verifies: REQ-KEYS-106
+    #[test]
+    fn a_revoked_active_key_does_not_retire_the_nodes_other_keys() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        // key@ is back on `a`, which is active and revoked: the plan leaves the ring alone.
+        let (r2, ch) = plan(&r, &cur("a"), A, at(2000 + WINDOW), &T, &revoked(&["a"]));
+        assert!(ch.is_empty());
+        assert_eq!(r2, r);
+    }
+
+    /// verifies: REQ-KEYS-107
+    #[test]
+    fn the_ring_of_the_key_set_lacks_a_revoked_kid_in_every_state() {
+        let key = |id: &str, state: &str| SigningKey {
+            key_id: id.into(),
+            state: state.into(),
+            ..SigningKey::default()
+        };
+        let ring = SigningRing {
+            keys: vec![
+                key("a", ACTIVE),
+                key("b", PRE_PUBLISHED),
+                key("c", RETIRING),
+                key("d", ACTIVE),
+            ],
+            ..SigningRing::default()
+        };
+        let out = without_revoked(ring.clone(), &revoked(&["a", "b", "c"]));
+        assert_eq!(states(&out), [("d", ACTIVE)]);
+        assert_eq!(without_revoked(ring.clone(), &revoked(&[])), ring);
     }
 
     #[test]
