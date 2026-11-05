@@ -330,7 +330,7 @@ requirements:
     gap: partly-built
     runtimes: all
     standards: []
-    issues: [864, 1419]
+    issues: [864, 1419, 1450]
     tests: [actors/store/tests/validate.rs, cli/sluis/configexplain_test.go]
     verification:
       - {kind: integration-test, ref: "explain provenance test: layer, version and source of each setting, a credential as its reference, a refused set not explained"}

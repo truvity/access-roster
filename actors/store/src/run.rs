@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime};
 use anyhow::{Context as _, bail};
 use clap::{Arg, Command};
 use connectrpc::Router;
-use sluis_kit::cli::{Commands, Flags, Refused, shutdown_signal};
+use sluis_kit::cli::{Commands, Flags, Refused, Usage, shutdown_signal};
 use sluis_kit::{Allow, ServerConfig, dial};
 use sluis_proto::sluis::store::v2alpha1::StoreServiceExt as _;
 
@@ -319,7 +319,7 @@ impl Store {
 fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
     let explain = f.matches.get_flag("explain");
     // The owner of the file is the host's to check (#1419); its mode and content are the file's.
-    let mut fields = Vec::new();
+    let mut groups = Vec::new();
     let checks = match load_as(f, None) {
         Ok(b) => {
             let mut c = vec![config::offline::Check {
@@ -343,11 +343,11 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
                     None => c.push(crate::install::not_run()),
                 }
             }
-            let (set, docs) = config::offline::load_dir(dir, &b);
+            let (set, docs) = config::offline::load_dir(dir, &b, explain);
             c.extend(set);
-            // Only a set that passes every check is one store@ would load, and only that has effective values.
-            if explain && c.iter().all(|c| c.result == "ok") {
-                fields = explained(&b, &docs)?;
+            // Only a set that passes its checks is one store@ would load, and only that has effective values.
+            if explain && set_loads(&c) {
+                groups = explained(&b, &docs)?;
             }
             c
         }
@@ -373,24 +373,35 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
             ]
         }
     };
-    let field = f.matches.get_one::<String>("field");
-    if let Some(scope) = field {
-        fields.retain(|x| config::explain::within(&x.path, scope));
+    let explained_set = explain && set_loads(&checks);
+    if let Some(scope) = f.matches.get_one::<String>("field") {
+        config::explain::retain_within(&mut groups, scope);
+        // A path that names no setting is input the command cannot act on. In JSON the caller reads the empty list.
+        if explained_set && groups.is_empty() && !f.json {
+            return Err(Usage("--field: no setting is at that path".into()).into());
+        }
     }
     let mut out = std::io::stdout().lock();
     if f.json {
         let mut o = config::offline::to_json(&checks);
         if explain {
-            o["fields"] = config::explain::to_json(&fields);
+            o["groups"] = config::explain::to_json(&groups);
         }
         writeln!(out, "{o}")?;
-    } else if explain && checks.iter().all(|c| c.result == "ok") {
-        for x in &fields {
-            writeln!(
-                out,
-                "{} = {} ({} {} {} {})",
-                x.path, x.value, x.class, x.layer, x.version, x.source
-            )?;
+    } else if explained_set {
+        for g in &groups {
+            for x in &g.settings {
+                writeln!(
+                    out,
+                    "{} = {} ({} {} {} {})",
+                    config::explain::lossy(&x.path),
+                    config::explain::lossy(&x.value),
+                    g.class,
+                    g.layer,
+                    g.version,
+                    config::explain::lossy(&g.source)
+                )?;
+            }
         }
     } else {
         for c in &checks {
@@ -425,14 +436,24 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
     }
 }
 
+/// Whether the checks leave a set that store@ would load: none failed and the set itself passed.
+fn set_loads(checks: &[config::offline::Check]) -> bool {
+    checks.iter().all(|c| c.result != "fail")
+        && checks.iter().any(|c| c.name == "set" && c.result == "ok")
+}
+
 /// The settings of the bootstrap file and of the accepted documents, in that order.
 fn explained(
     b: &Bootstrap,
     docs: &[config::snapshot::Document],
-) -> anyhow::Result<Vec<config::explain::Field>> {
-    let mut fields = config::explain::bootstrap_fields(b, sluis_version::VERSION);
+) -> anyhow::Result<Vec<config::explain::Group>> {
+    let mut groups = config::explain::bootstrap_groups(b, sluis_version::VERSION);
     for d in docs {
-        fields.extend(config::explain::document_fields(d, b).map_err(anyhow::Error::msg)?);
+        let g = config::explain::document_group(d, b).map_err(anyhow::Error::msg)?;
+        // A document that sets nothing (an `ExchangeTrust` that trusts no issuer) has nothing to explain.
+        if !g.settings.is_empty() {
+            groups.push(g);
+        }
     }
-    Ok(fields)
+    Ok(groups)
 }

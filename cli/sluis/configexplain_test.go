@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,13 +13,13 @@ import (
 )
 
 const (
-	explainFields = `[` +
-		`{"path":"durable.driver","value":"rqlite","class":"-","layer":"bootstrap","version":"","source":"bootstrap","checks":["bootstrap","installation"]},` +
-		`{"path":"TokenLifetime.default.access_token","value":"10m","class":"config","layer":"config","version":"3","source":"TokenLifetime:3:0123456789abcdef0123456789abcdef","checks":["document","set"]},` +
-		`{"path":"Upstream.workforce.secret","value":"upstream-workforce","class":"config","layer":"config","version":"3","source":"Upstream:3:0123456789abcdef0123456789abcdef","secret":true,"checks":["document","set"]}]`
-	explainPass = `{"checks":[{"name":"bootstrap","result":"ok","path":""},{"name":"set","result":"ok","path":""}],"fields":` + explainFields + `}`
-	explainFail = `{"checks":[{"name":"bootstrap","result":"ok","path":""},{"name":"document","result":"fail","path":"TokenLifetime","rule":"step 6: default.access_token: above the built-in cap of one hour"},{"name":"set","result":"not-run","path":""}],"fields":[]}`
-	explainNone = `{"checks":[{"name":"bootstrap","result":"ok","path":""}],"fields":[]}`
+	explainGroups = `[` +
+		`{"class":"-","layer":"bootstrap","version":"","source":"bootstrap","checks":["bootstrap","installation"],"settings":[{"path":"durable.driver","value":"rqlite"}]},` +
+		`{"class":"config","layer":"config","version":"3","source":"TokenLifetime:3:0123456789abcdef0123456789abcdef","checks":["document","set"],"settings":[{"path":"TokenLifetime.default.access_token","value":"10m"}]},` +
+		`{"class":"config","layer":"config","version":"3","source":"Upstream:3:0123456789abcdef0123456789abcdef","checks":["document","set"],"settings":[{"path":"Upstream.workforce.secret","value":"upstream-workforce","secret":true},{"path":"Upstream.workforce.client_id","value":"sha384:00","digest":true}]}]`
+	explainPass = `{"checks":[{"name":"bootstrap","result":"ok","path":""},{"name":"set","result":"ok","path":""}],"groups":` + explainGroups + `}`
+	explainFail = `{"checks":[{"name":"bootstrap","result":"ok","path":""},{"name":"document","result":"fail","path":"TokenLifetime","rule":"step 6: default.access_token: above the built-in cap of one hour"},{"name":"set","result":"not-run","path":""}],"groups":[]}`
+	explainNone = `{"checks":[{"name":"bootstrap","result":"ok","path":""}],"groups":[]}`
 )
 
 func TestConfigExplainMapsTheHelperToExitCodes(t *testing.T) {
@@ -49,7 +50,7 @@ func TestConfigExplainMapsTheHelperToExitCodes(t *testing.T) {
 			o := ta.object(t)
 			switch c.want {
 			case cli.ExitOK:
-				if len(o["fields"].([]any)) != 3 || len(o["checks"].([]any)) != 2 {
+				if len(o["fields"].([]any)) != 4 || len(o["checks"].([]any)) != 2 {
 					t.Errorf("object = %v", o)
 				}
 			case cli.ExitRefused:
@@ -71,7 +72,7 @@ func TestConfigExplainPrintsOneLineForEachSetting(t *testing.T) {
 		t.Fatalf("exit %d: %s", got, ta.err)
 	}
 	lines := strings.Split(strings.TrimSpace(ta.out.String()), "\n")
-	if len(lines) != 4 {
+	if len(lines) != 5 {
 		t.Fatalf("stdout = %q", ta.out)
 	}
 	for i, want := range [][]string{
@@ -79,6 +80,7 @@ func TestConfigExplainPrintsOneLineForEachSetting(t *testing.T) {
 		{"durable.driver", "rqlite", "-", "bootstrap", "-", "bootstrap"},
 		{"TokenLifetime.default.access_token", "10m", "config", "config", "3", "TokenLifetime:3:0123456789ab"},
 		{"Upstream.workforce.secret", "upstream-workforce", "(secret", "reference,", "not", "resolved)"},
+		{"Upstream.workforce.client_id", "sha384:00", "config", "config", "3", "Upstream:3:0123456789ab"},
 	} {
 		got := strings.Fields(lines[i])
 		if len(got) < len(want) || strings.Join(got[:len(want)], " ") != strings.Join(want, " ") {
@@ -96,14 +98,52 @@ func TestConfigExplainPrintsOneLineForEachSetting(t *testing.T) {
 	}
 }
 
+// A helper that prints more than the CLI reads is an error that says so and how to print less, never a truncated
+// answer that reads as "printed no checks".
+func TestConfigExplainAndCheckSayWhenTheHelperPrintsMoreThanTheyRead(t *testing.T) {
+	big := func(n int) string {
+		p := filepath.Join(t.TempDir(), "store")
+		script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo '{\"name\":\"store\",\"version\":\"" + version.Version + "\"}'; exit 0; fi\n" +
+			"head -c " + strconv.Itoa(n) + " /dev/zero | tr '\\0' ' '\n"
+		if err := os.WriteFile(p, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+			t.Fatal(err)
+		}
+		return p
+	}
+	ta := newTestApp(t)
+	ta.os = "linux"
+	if got := ta.do("config", "explain", t.TempDir(), "--bootstrap", "b.yaml", "--helper", big(explainOutputMax+1)); got != cli.ExitFailed {
+		t.Fatalf("explain: exit %d", got)
+	}
+	for _, want := range []string{"printed more than 32 MiB", "config explain cannot read", "--field PATH"} {
+		if !strings.Contains(ta.err.String(), want) {
+			t.Errorf("stderr %q does not say %q", ta.err, want)
+		}
+	}
+	if strings.Contains(ta.err.String(), "printed no checks") {
+		t.Errorf("a truncated answer was read as no checks: %s", ta.err)
+	}
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", big(helperOutputMax+1)); got != cli.ExitFailed {
+		t.Fatalf("check: exit %d", got)
+	}
+	if !strings.Contains(ta.err.String(), "printed more than 1 MiB") || strings.Contains(ta.err.String(), "--field") {
+		t.Errorf("stderr = %q", ta.err)
+	}
+	// What fits is read: exactly the limit is not an overflow.
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", big(helperOutputMax)); got != cli.ExitFailed ||
+		strings.Contains(ta.err.String(), "printed more than") {
+		t.Errorf("at the limit: exit %d: %s", got, ta.err)
+	}
+}
+
 func TestConfigExplainShowsNoControlCharacter(t *testing.T) {
-	out := `{"checks":[{"name":"set","result":"ok","path":""}],"fields":[{"path":"a","value":"x\u001b[31mred","class":"config","layer":"config","version":"1","source":"K:1:ab"}]}`
+	out := `{"checks":[{"name":"set","result":"ok","path":""}],"groups":[{"class":"config","layer":"config","version":"1","source":"K:1:ab","checks":[],"settings":[{"path":"a","value":"x\u001b[31mred\u202e\u2028\u200b"}]}]}`
 	ta := newTestApp(t)
 	ta.os = "linux"
 	if got := ta.do("config", "explain", t.TempDir(), "--bootstrap", "b.yaml", "--helper", fakeHelper(t, out, 0)); got != cli.ExitOK {
 		t.Fatalf("exit %d: %s", got, ta.err)
 	}
-	if strings.ContainsRune(ta.out.String(), 0x1b) || !strings.Contains(ta.out.String(), "x?[31mred") {
+	if strings.ContainsAny(ta.out.String(), "\x1b\u202e\u2028\u200b") || !strings.Contains(ta.out.String(), "x?[31mred???") {
 		t.Errorf("stdout = %q", ta.out)
 	}
 }
@@ -212,6 +252,12 @@ func TestConfigExplainRunsTheStoreHelper(t *testing.T) {
 	if f := by["Upstream.workforce.secret"]; !f.Secret || f.Value != "upstream-workforce" {
 		t.Errorf("Upstream.workforce.secret = %+v", f)
 	}
+	if f := by["Policy.default.cedar"]; !f.Digest || !strings.HasPrefix(f.Value, "sha384:") {
+		t.Errorf("Policy.default.cedar = %+v", f)
+	}
+	if f := by["Boundary.default.environment"]; f.Digest {
+		t.Errorf("a value that is shown is marked as a digest: %+v", f)
+	}
 	if len(o.Fields) < 50 {
 		t.Errorf("%d settings: a sweep over nothing proves nothing", len(o.Fields))
 	}
@@ -244,9 +290,31 @@ func TestConfigExplainRunsTheStoreHelper(t *testing.T) {
 		t.Errorf("exit %d: %s %s", got, ta.out, ta.err)
 	}
 
-	// A set that is refused is not explained, and no value is printed.
+	// A query is not printed, and user information in a URL is refused by the check.
 	const marker = "zq-marker-7f3a"
 	src := copyLocal(t)
+	replaceIn(t, filepath.Join(src, "installation-client.yaml"), "https://app.local.test/callback", "https://app.local.test/callback?token="+marker)
+	docs, bootstrap = signLocal(t, src)
+	ta = newTestApp(t)
+	if got := ta.do("config", "explain", docs, "--bootstrap", bootstrap, "--helper", helper, "--field", "InstallationClient.example-app.redirects"); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.out.String(), "https://app.local.test/callback?<elided>") || strings.Contains(ta.out.String(), marker) {
+		t.Errorf("stdout = %s", ta.out)
+	}
+	src = copyLocal(t)
+	replaceIn(t, filepath.Join(src, "upstream.yaml"), "http://127.0.0.1:8180", "https://u:"+marker+"@h.example.com/?token="+marker)
+	docs, bootstrap = signLocal(t, src)
+	ta = newTestApp(t)
+	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper); got != cli.ExitRefused {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.err.String(), "workforce.issuer: must not hold user information before the host") || strings.Contains(ta.err.String(), marker) {
+		t.Errorf("stderr = %s", ta.err)
+	}
+
+	// A set that is refused is not explained, and no value is printed.
+	src = copyLocal(t)
 	replaceIn(t, filepath.Join(src, "token-lifetime.yaml"), "access_token: 10m", "access_token: ["+marker+"]")
 	docs, bootstrap = signLocal(t, src)
 	for _, output := range []string{"json", "text"} {
