@@ -33,16 +33,16 @@ cat >"$work/bin/systemd-creds" <<'F'
 [ "$1" = encrypt ] && [ "$2" = --with-key=host ] && [[ "$3" == --name=* ]] || exit 2
 printf 'blob name=%s key=host\n' "${3#--name=}" >"$5"
 F
-# getent group NAME|GID and getent passwd NAME|UID: the groups of $FAKE_GROUPS and the users of $FAKE_USERS, space-separated
-# lists of name:number. FAKE_GETENT_RC makes every lookup exit with that status (3: the database cannot be read).
+# getent group NAME|GID and getent passwd NAME|UID: the groups of $FAKE_GROUPS (name:gid) and the users of $FAKE_USERS
+# (name:uid, or name:uid:gid for a primary group of another number), space-separated lists. FAKE_GETENT_RC makes every lookup exit with that status (3: the database cannot be read).
 cat >"$work/bin/getent" <<'F'
 #!/bin/bash
 [ -z "${FAKE_GETENT_RC:-}" ] || exit "$FAKE_GETENT_RC"
 case "$1" in group) list=${FAKE_GROUPS:-} ;; passwd) list=${FAKE_USERS:-} ;; *) exit 1 ;; esac
 for e in $list; do
-	n=${e%%:*} id=${e#*:}
+	IFS=: read -r n id gid <<<"$e"
 	[ "$n" = "$2" ] || [ "$id" = "$2" ] || continue
-	if [ "$1" = group ]; then printf '%s:x:%s:\n' "$n" "$id"; else printf '%s:x:%s:%s::/:/usr/sbin/nologin\n' "$n" "$id" "$id"; fi
+	if [ "$1" = group ]; then printf '%s:x:%s:\n' "$n" "$id"; else printf '%s:x:%s:%s::/:/usr/sbin/nologin\n' "$n" "$id" "${gid:-$id}"; fi
 	exit 0
 done
 exit 2
@@ -145,6 +145,7 @@ printf 'u sluis-key-dev 61014 "sluis key (dev)" - /usr/sbin/nologin\n' >"$work/k
 printf 'u sluis-signer-b1 62004 "sluis signer (block 1)" - /usr/sbin/nologin\n' >"$work/b1.sysusers"
 printf 'u sluis-signer-b1 62004:62004 "sluis signer (block 1)" - /usr/sbin/nologin\n' >"$work/strict.sysusers"
 made="sluis-signer-dev:61004 sluis-key-dev:61014"
+madeg="sluis-signer-dev:61004 sluis-key-dev:61014" # the users' own groups, which systemd-sysusers makes with them
 export FAKE_USERS="" FAKE_GROUPS=""
 # verifies: a group of key@'s caller directories with its pinned gid
 FAKE_GROUPS="" accept "before: a pinned group that does not exist yet, with its number free, may be made" run check_pinned_ids before "$work/signer.sysusers" "$work/key.sysusers"
@@ -152,7 +153,7 @@ FAKE_GROUPS="sluis-keyc-004-dev:61704" accept "before: a pinned group that has i
 FAKE_GROUPS="systemd-dyn:61704" refuse "before: a pinned number that another group has is refused, naming it" '61704, the number of sluis-keyc-004-dev, is already the group systemd-dyn' run check_pinned_ids before "$work/signer.sysusers"
 FAKE_GROUPS="sluis-keyc-004-dev:61999" refuse "before: a group of the name with another number is refused" 'sluis-keyc-004-dev has the number 61999, not 61704' run check_pinned_ids before "$work/signer.sysusers"
 FAKE_USERS="systemd-dyn:61704" refuse "before: a pinned gid that a user of another name has as its uid is refused, naming it" '61704, the number of sluis-keyc-004-dev, is already the uid of the user systemd-dyn' run check_pinned_ids before "$work/signer.sysusers"
-FAKE_USERS="$made" FAKE_GROUPS="sluis-keyc-004-dev:61704" accept "after: the users and the group have their pinned numbers" run check_pinned_ids after "$work/signer.sysusers" "$work/key.sysusers"
+FAKE_USERS="$made" FAKE_GROUPS="$madeg sluis-keyc-004-dev:61704" accept "after: the users and the group have their pinned numbers" run check_pinned_ids after "$work/signer.sysusers" "$work/key.sysusers"
 FAKE_USERS="$made" FAKE_GROUPS="sluis-keyc-004-dev:61999" refuse "after: systemd-sysusers gave the group another number: refused" 'sluis-keyc-004-dev has the number 61999, not 61704' run check_pinned_ids after "$work/signer.sysusers"
 FAKE_USERS="$made" FAKE_GROUPS="" refuse "after: a pinned group that was not made is refused" 'sluis-keyc-004-dev does not exist' run check_pinned_ids after "$work/signer.sysusers"
 # verifies: a user of the uid plan with its pinned uid
@@ -165,7 +166,25 @@ FAKE_USERS="systemd-dyn:62004" refuse "before: the strict form still refuses a u
 FAKE_USERS="sluis-signer-dev:61999" refuse "before: a user of the name with another uid is refused" 'the user sluis-signer-dev has the uid 61999, not 61004' run check_pinned_ids before "$work/signer.sysusers"
 FAKE_USERS="sluis-signer-b1:63999" refuse "after: systemd-sysusers gave the user another uid: refused" 'the user sluis-signer-b1 has the uid 63999, not 62004' run check_pinned_ids after "$work/b1.sysusers"
 FAKE_USERS="" refuse "after: a pinned user that was not made is refused" 'the user sluis-signer-b1 does not exist' run check_pinned_ids after "$work/b1.sysusers"
-FAKE_USERS="sluis-signer-b1:62004" accept "after: the user has its pinned uid" run check_pinned_ids after "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004" FAKE_GROUPS="sluis-signer-b1:62004" accept "after: the user has its pinned uid and its own group" run check_pinned_ids after "$work/b1.sysusers"
+# verifies: a user's own group, its primary group, has the user's pinned number
+FAKE_GROUPS="sluis-signer-b1:63000" refuse "before: a group of the user's name with another number is refused (systemd-sysusers would put the user in it)" 'the group sluis-signer-b1 of the user sluis-signer-b1 has the number 63000, not 62004' run check_pinned_ids before "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004:63000" FAKE_GROUPS="sluis-signer-b1:62004" refuse "before: a user of the uid whose primary group is another number is refused" 'the user sluis-signer-b1 has the primary group number 63000, not 62004' run check_pinned_ids before "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004:63000" FAKE_GROUPS="sluis-signer-b1:62004" refuse "after: the user's primary group is another number: refused" 'the user sluis-signer-b1 has the primary group number 63000, not 62004' run check_pinned_ids after "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004" FAKE_GROUPS="sluis-signer-b1:63000" refuse "after: the user's own group has another number: refused" 'the group sluis-signer-b1 of the user sluis-signer-b1 has the number 63000, not 62004' run check_pinned_ids after "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004" FAKE_GROUPS="" refuse "after: the user's own group was not made: refused" 'the group sluis-signer-b1 of the user sluis-signer-b1 does not exist' run check_pinned_ids after "$work/b1.sysusers"
+FAKE_USERS="sluis-signer-b1:62004" FAKE_GROUPS="" accept "after: the strict uid:gid form needs no group of the user's name" run check_pinned_ids after "$work/strict.sysusers"
+FAKE_USERS="sluis-signer-b1:62004:63000" refuse "after: in the strict form the primary group must be the GID" 'the user sluis-signer-b1 has the primary group number 63000, not 62004' run check_pinned_ids after "$work/strict.sysusers"
+# verifies: a line of an unknown kind, and a sweep with nothing to check, are refusals
+printf '# a comment\n\nu sluis-signer-b1 62004 "sluis signer (block 1)" - /usr/sbin/nologin\nm sluis-signer-b1 sluis-keyc-004-dev\nr - 62000-62999\n' >"$work/kinds.sysusers"
+accept "before: comments, blank lines and the m and r kinds are known" run check_pinned_ids before "$work/kinds.sysusers"
+printf 'u! sluis-signer-b1 62004 "sluis signer (block 1)" - /usr/sbin/nologin\n' >"$work/locked.sysusers"
+refuse "before: a line of a kind the check does not know (u!) is refused, naming it" "does not know \\(locked\\.sysusers: u!\\)" run check_pinned_ids before "$work/b1.sysusers" "$work/locked.sysusers"
+refuse "after: the same" "does not know" run check_pinned_ids after "$work/locked.sysusers"
+refuse "before: no sysusers file is a refusal, not a pass" 'no sysusers line with a pinned uid or gid was found in 0 file' run check_pinned_ids before
+printf '# nothing pinned\ng sluis-key-drv-dev -\n' >"$work/unpinned.sysusers"
+refuse "before: files with no pinned number are a refusal, not a pass" 'no sysusers line with a pinned uid or gid was found in 1 file' run check_pinned_ids before "$work/unpinned.sysusers"
+refuse "after: the same" 'no sysusers line with a pinned uid or gid' run check_pinned_ids after "$work/unpinned.sysusers"
 # verifies: the check fails closed when the lookup cannot be made
 FAKE_GETENT_RC=3 refuse "before: a getent that cannot read the databases is a refusal, not a free number" 'getent cannot read the user sluis-signer-dev' run check_pinned_ids before "$work/signer.sysusers"
 FAKE_GETENT_RC=3 refuse "after: the same" 'getent cannot read' run check_pinned_ids after "$work/signer.sysusers"
