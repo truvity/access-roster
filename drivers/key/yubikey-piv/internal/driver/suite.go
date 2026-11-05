@@ -67,7 +67,7 @@ func Suite() []Case {
 		{"capabilities", caseCapabilities},
 		{"ensure, sign and verify (token-signing, ES384)", caseSign384},
 		{"ensure, sign and verify (audit-log, ES256)", caseSign256},
-		{"the PIN release key signs without the PIN", casePinRelease},
+		{"the PIN release key signs no digest of the caller's", casePinRelease},
 		{"public key", casePublicKey},
 		{"ecdh against a reference", caseEcdh},
 		{"unknown purpose is refused", caseUnknownPurpose},
@@ -133,9 +133,18 @@ func caseSign256(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceC
 	return signAndVerify(ctx, c, "audit-log", ES256, d[:])
 }
 
+// casePinRelease: the PIN release key signs only the texts the driver writes itself (BeginPinRelease, SealPin), never
+// a digest of the caller's, because it signs without the PIN.
 func casePinRelease(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
+	if _, err := ensure(ctx, c, "pin-release", ES384); err != nil {
+		return err
+	}
 	d := sha512.Sum384([]byte("sluis key-store suite"))
-	return signAndVerify(ctx, c, "pin-release", ES384, d[:])
+	_, err := c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "pin-release", Digest: d[:], Algorithm: ES384}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		return fmt.Errorf("Sign with the pin-release key: want invalid_argument, got %s", connect.CodeOf(err))
+	}
+	return nil
 }
 
 func casePublicKey(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {

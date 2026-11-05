@@ -15,6 +15,7 @@ import (
 	"github.com/truvity/sluis/v2/drivers/key/yubikey-piv/internal/card"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/pinrelease"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // The PIN release between boards (ADR 0006, "Touch and PIN"; decided 2026-11-04). The PIN never leaves this process:
@@ -25,8 +26,11 @@ import (
 // key@ makes every check on the request and the answer, and the store writes; the driver makes the checks that a
 // compromised key@ must not be able to skip, with its own crypto (#914). It verifies the signed KeyPlan (keyplan.go),
 // and seals only to a request signed by the pin-release key that the slot map lists for a peer of this boundary, and
-// opens only an answer signed likewise for the request it began itself. So key@ can neither have the boundary PIN
-// sealed to a key of its own nor spend the card's PIN tries with an answer no listed peer card signed. What stays
+// opens only an answer signed likewise for the request it began itself. The pin-release key, slot 87, signs without
+// the PIN, so the driver signs with it only the texts it writes itself, from its own configuration: the request in
+// BeginPinRelease and the answer in SealPin; Sign refuses its purpose. So key@ can neither have the boundary PIN
+// sealed to a key of its own nor spend the card's PIN tries with an answer no listed peer card's driver wrote, and a
+// released PIN that the card refused stops the release until a person unlocks the board (refused.go). What stays
 // key@'s alone: revocation (the driver cannot read the store), the freshness and the reuse of a request id, and the
 // attestation of the slot map, which the driver reads for key@ (VerifyAttestation) because piv-go and the pinned Yubico
 // anchors live in the driver only.
@@ -43,6 +47,7 @@ const (
 	reasonUnlisted    = "peer"         // the other node is this one, or the slot map lists no pin-release key for it
 	reasonSignature   = "signature"    // the signature does not verify with the peer's pin-release key
 	reasonAnswer      = "answer_text"  // the answer is not of the format, or not for the request in flight
+	reasonRefused     = "pin_refused"  // the card refused a released PIN before: a person unlocks the board
 )
 
 // oneTime is the one-time key of the request in flight and the text the driver wrote for it. The caller holds mu.
@@ -149,15 +154,38 @@ func (s *Service) BeginPinRelease(ctx context.Context, req *connect.Request[keys
 	if err != nil {
 		return nil, refuse(ctx, "BeginPinRelease", connect.CodeFailedPrecondition, reasonRequest, "")
 	}
+	sig, cerr := s.signPinText(ctx, "BeginPinRelease", text)
+	if cerr != nil {
+		return nil, cerr
+	}
 	s.oneTime = &oneTime{key: k, id: id, text: text}
-	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text}), nil
+	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes(), RequestText: text, RequestSignatureDer: sig}), nil
+}
+
+// signPinText signs a text the driver wrote with the pin-release key, slot 87, which needs no PIN. The caller holds mu.
+func (s *Service) signPinText(ctx context.Context, method string, text []byte) ([]byte, *connect.Error) {
+	k, ok := s.keys[pinrelease.PurposePinRelease]
+	if !ok {
+		return nil, refuse(ctx, method, connect.CodeNotFound, reasonAbsent, "")
+	}
+	digest := pinrelease.Digest(text)
+	sig, err := s.card.Sign(k.slot, k.pub, k.spec.PIN, s.pinSource, digest)
+	if err != nil {
+		return nil, s.failed(ctx, method, err)
+	}
+	if !ecdsa.VerifyASN1(k.pub, digest, sig) {
+		slog.Error("the card's pin-release signature does not verify with its public key")
+		return nil, internalRefusal(ctx, method)
+	}
+	return sig, nil
 }
 
 // SealPin seals the PIN this driver holds to the ephemeral key of a request, after it verified the request itself: the
 // KeyPlan's publisher signature and seq, a request of this boundary from another node, and its signature with the
 // pin-release key that the verified slot map lists for that node. The text it verifies is the one it seals to, byte
-// for byte, and the ephemeral key is the one inside it. D20a: a boundary has one PIN, so the PIN of this card is the
-// PIN of the requesting card.
+// for byte, and the ephemeral key is the one inside it. It writes the answer itself, as this node of this boundary,
+// and signs it with the pin-release key. D20a: a boundary has one PIN, so the PIN of this card, which its card took,
+// is the PIN of the requesting card.
 func (s *Service) SealPin(ctx context.Context, req *connect.Request[keystorev2alpha1.SealPinRequest]) (*connect.Response[keystorev2alpha1.SealPinResponse], error) {
 	const method = "SealPin"
 	text := req.Msg.GetRequestText()
@@ -185,8 +213,19 @@ func (s *Service) SealPin(ctx context.Context, req *connect.Request[keystorev2al
 	if err != nil {
 		return nil, internalRefusal(ctx, method)
 	}
+	at, err := pinrelease.AnswerText(pinrelease.Answer{
+		Boundary: s.boundary, Releaser: s.node, Requester: r.Node, ID: r.ID, RequestSHA384: pinrelease.Digest(text),
+		Ephemeral: pub, Sealed: sealed,
+	})
+	if err != nil {
+		return nil, internalRefusal(ctx, method)
+	}
+	sig, cerr := s.signPinText(ctx, method, at)
+	if cerr != nil {
+		return nil, cerr
+	}
 	slog.Info("sealed the PIN to a verified request of a peer", "node", r.Node, "request", r.ID)
-	return connect.NewResponse(&keystorev2alpha1.SealPinResponse{ReleaserPublic: pub, Sealed: sealed}), nil
+	return connect.NewResponse(&keystorev2alpha1.SealPinResponse{AnswerText: at, AnswerSignatureDer: sig}), nil
 }
 
 // FinishPinRelease takes a signed answer to the request this driver began, verifies it, opens it with the one-time key
@@ -206,6 +245,10 @@ func (s *Service) FinishPinRelease(ctx context.Context, req *connect.Request[key
 		s.mu.Unlock()
 		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonUnlocked, "")
 	}
+	if s.refused.set {
+		s.mu.Unlock()
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonRefused, "")
+	}
 	ot := s.oneTime
 	s.mu.Unlock()
 	if ot == nil {
@@ -222,6 +265,9 @@ func (s *Service) FinishPinRelease(ctx context.Context, req *connect.Request[key
 	if s.pin.held() {
 		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonUnlocked, "")
 	}
+	if s.refused.set {
+		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonRefused, "")
+	}
 	if s.oneTime != ot {
 		// A new request replaced this one while the answer was verified: the answer is for a key that is gone.
 		return nil, refuse(ctx, method, connect.CodeFailedPrecondition, reasonOneTimeKey, "")
@@ -236,6 +282,11 @@ func (s *Service) FinishPinRelease(ctx context.Context, req *connect.Request[key
 	}
 	defer clear(pin)
 	if cerr := s.unlockHeld(ctx, method, pin); cerr != nil {
+		// The card refused the PIN, or is blocked: no released PIN is tried again, after a restart neither, until a
+		// person unlocks the board.
+		if reason, _ := refusal.Reason(cerr); (reason == reasonPIN && cerr.Code() == connect.CodePermissionDenied) || reason == reasonBlocked {
+			s.refused.mark()
+		}
 		return nil, cerr
 	}
 	slog.Info("unlocked by a peer's PIN release: the driver holds the PIN in locked memory", "releaser", a.Releaser, "request", a.ID)

@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"os"
@@ -114,25 +115,14 @@ func signPlanWith(t *testing.T, key *ecdsa.PrivateKey, seq uint64, kind string, 
 	return doc
 }
 
-// begin makes the locked driver's one-time key and the request text, as key@ asks for them.
-func begin(t *testing.T, r running) []byte {
+// begin makes the locked driver's one-time key and its signed request, as key@ asks for them.
+func begin(t *testing.T, r running) (text, sig []byte) {
 	t.Helper()
 	res, err := r.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: newID(t)}))
 	if err != nil {
 		t.Fatalf("BeginPinRelease: %v", err)
 	}
-	return res.Msg.GetRequestText()
-}
-
-// signPin signs a text with a driver's pin-release key, slot 87, as key@ does; it signs whether or not the driver is
-// locked.
-func signPin(t *testing.T, r running, text []byte) []byte {
-	t.Helper()
-	res, err := sign(r.key, "pin-release", "ES384", pinrelease.Digest(text))
-	if err != nil {
-		t.Fatalf("Sign: %v", err)
-	}
-	return res.GetSignatureDer()
+	return res.Msg.GetRequestText(), res.Msg.GetRequestSignatureDer()
 }
 
 // signSoft signs a text with a key that is no card's: key@'s own, as a compromised key@ could make one.
@@ -157,30 +147,14 @@ func sealPin(r running, text, sig, plan []byte) (*keystorev2alpha1.SealPinRespon
 	return res.Msg, nil
 }
 
-func seal(t *testing.T, b *boundary, text []byte) *keystorev2alpha1.SealPinResponse {
+// seal is the releaser's signed answer to a signed request.
+func seal(t *testing.T, b *boundary, text, sig []byte) *keystorev2alpha1.SealPinResponse {
 	t.Helper()
-	res, err := sealPin(b.releaser, text, signPin(t, b.locked, text), b.plan)
+	res, err := sealPin(b.releaser, text, sig, b.plan)
 	if err != nil {
 		t.Fatalf("SealPin: %v", err)
 	}
 	return res
-}
-
-// answerText is the answer of a releaser to a request, unsigned.
-func answerText(t *testing.T, releaser string, text []byte, s *keystorev2alpha1.SealPinResponse) []byte {
-	t.Helper()
-	r, err := pinrelease.ParseRequest(text)
-	if err != nil {
-		t.Fatal(err)
-	}
-	at, err := pinrelease.AnswerText(pinrelease.Answer{
-		Boundary: r.Boundary, Releaser: releaser, Requester: r.Node, ID: r.ID, RequestSHA384: pinrelease.Digest(text),
-		Ephemeral: s.GetReleaserPublic(), Sealed: s.GetSealed(),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return at
 }
 
 func finish(r running, at, sig, plan []byte) error {
@@ -190,15 +164,28 @@ func finish(r running, at, sig, plan []byte) error {
 	return err
 }
 
+func newEphemeral(t *testing.T) []byte {
+	t.Helper()
+	eph, err := ecdh.P384().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return eph.PublicKey().Bytes()
+}
+
 // verifies: REQ-KEYS-059, REQ-KEYS-115
-// The happy path at the drivers: the unlocked driver verifies the KeyPlan and the request and seals the PIN it holds
-// to the locked driver's one-time key; the locked driver verifies the KeyPlan and the answer, opens it and gives it to
-// its card once. Then it signs with a PIN-once key.
+// The happy path at the drivers: the locked driver writes and signs its request; the unlocked driver verifies the
+// KeyPlan and the request, seals the PIN it holds to the locked driver's one-time key and signs the answer; the locked
+// driver verifies the KeyPlan and the answer, opens it and gives it to its card once. Then it signs with a PIN-once key.
 func TestALockedDriverIsUnlockedByAPeersRelease(t *testing.T) {
 	b := newBoundary(t)
-	text := begin(t, b.locked)
-	at := answerText(t, releaserNode, text, seal(t, b, text))
-	if err := finish(b.locked, at, signPin(t, b.releaser, at), b.plan); err != nil {
+	text, sig := begin(t, b.locked)
+	a := seal(t, b, text, sig)
+	ans, err := pinrelease.ParseAnswer(a.GetAnswerText())
+	if err != nil || ans.Releaser != releaserNode || ans.Requester != lockedNode || ans.Boundary != testBoundary {
+		t.Fatalf("answer %+v, %v", ans, err)
+	}
+	if err := finish(b.locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), b.plan); err != nil {
 		t.Fatalf("FinishPinRelease: %v", err)
 	}
 	if b.locked.card.LoginAttempts != 1 {
@@ -209,74 +196,99 @@ func TestALockedDriverIsUnlockedByAPeersRelease(t *testing.T) {
 		t.Fatalf("the unlocked driver does not sign: %v", err)
 	}
 	// Unlocked now: a second request has nothing to release to.
-	_, err := b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: newID(t)}))
+	_, err = b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: newID(t)}))
 	wantRefused(t, err, connect.CodeFailedPrecondition, "unlocked")
 }
 
 // verifies: REQ-KEYS-115
+// The pin-release key signs without the PIN, so the driver signs with it only the texts it writes itself: Sign refuses
+// the purpose, locked or unlocked, and the request text names the driver's own boundary and node, whatever key@ asks.
+// So a compromised key@ cannot have its card sign a request with an ephemeral key of its own.
+func TestThePinReleaseKeySignsOnlyTheDriversOwnTexts(t *testing.T) {
+	b := newBoundary(t)
+	for _, r := range []running{b.locked, b.releaser} {
+		_, err := sign(r.key, "pin-release", "ES384", digest384())
+		wantRefused(t, err, connect.CodeInvalidArgument, "purpose")
+	}
+	text, sig := begin(t, b.locked)
+	r, err := pinrelease.ParseRequest(text)
+	if err != nil || r.Boundary != testBoundary || r.Node != lockedNode {
+		t.Fatalf("request %+v, %v", r, err)
+	}
+	pub, err := x509.ParsePKIXPublicKey(ensure(t, b.locked.key, "pin-release", "ES384").GetSpkiDer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ecdsa.VerifyASN1(pub.(*ecdsa.PublicKey), pinrelease.Digest(text), sig) {
+		t.Fatal("the request is not signed by the driver's pin-release key")
+	}
+	_, err = b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: "not-a-uuid"}))
+	wantRefused(t, err, connect.CodeInvalidArgument, "request_text")
+}
+
+// verifies: REQ-KEYS-115
 // A compromised key@ of the unlocked board cannot have the PIN sealed to a key of its own: a request it signs with a
-// key of its own, or with its own card's pin-release key, for the peer or in its own node's name, is refused.
+// key of its own, unsigned, signed by its own card (an answer's signature), or made in its own node's name, is
+// refused; so is a genuine signature over another text.
 func TestARequestNoListedPeerCardSignedIsNotSealed(t *testing.T) {
 	b := newBoundary(t)
-	text := begin(t, b.locked)
+	text, sig := begin(t, b.locked)
 
 	_, err := sealPin(b.releaser, text, signSoft(t, text), b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "signature")
 	_, err = sealPin(b.releaser, text, nil, b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "signature")
-	// The releaser's own card signs anything key@ asks, but it is not the requesting node's key.
-	_, err = sealPin(b.releaser, text, signPin(t, b.releaser, text), b.plan)
+	// The releaser's own card signs only answers: an answer's signature is no request's.
+	a := seal(t, b, text, sig)
+	_, err = sealPin(b.releaser, text, a.GetAnswerSignatureDer(), b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "signature")
 
-	// A request of key@'s own: its own ephemeral key, in the releasing node's own name, signed by its own card.
-	eph, err := ecdh.P384().GenerateKey(rand.Reader)
+	// A request in the releasing node's own name, with key@'s own ephemeral key.
+	own, err := pinrelease.RequestText(pinrelease.Request{Boundary: testBoundary, Node: releaserNode, ID: newID(t), Ephemeral: newEphemeral(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	own, err := pinrelease.RequestText(pinrelease.Request{Boundary: testBoundary, Node: releaserNode, ID: newID(t), Ephemeral: eph.PublicKey().Bytes()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = sealPin(b.releaser, own, signPin(t, b.releaser, own), b.plan)
+	_, err = sealPin(b.releaser, own, signSoft(t, own), b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "peer")
 
-	// The text that is verified is the text that is sealed to: a valid signature over another text does not carry.
-	forged, err := pinrelease.RequestText(pinrelease.Request{Boundary: testBoundary, Node: lockedNode, ID: newID(t), Ephemeral: eph.PublicKey().Bytes()})
+	// The text that is verified is the text that is sealed to: a genuine signature over another text does not carry.
+	forged, err := pinrelease.RequestText(pinrelease.Request{Boundary: testBoundary, Node: lockedNode, ID: newID(t), Ephemeral: newEphemeral(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = sealPin(b.releaser, forged, signPin(t, b.locked, text), b.plan)
+	_, err = sealPin(b.releaser, forged, sig, b.plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "signature")
 }
 
 // verifies: REQ-KEYS-115
-// A request from a node that the verified slot map does not list is refused, even signed by a genuine card of the
-// boundary.
+// A request from a node that the verified slot map does not list is refused, though a genuine card of the boundary
+// signed it.
 func TestARequestFromANodeNotInTheSlotMapIsRefused(t *testing.T) {
 	b := newBoundary(t)
-	text := begin(t, b.locked)
+	text, sig := begin(t, b.locked)
 	only := b.signPlan(t, 2, b.entry(t, releaserNode, b.releaser))
-	_, err := sealPin(b.releaser, text, signPin(t, b.locked, text), only)
+	_, err := sealPin(b.releaser, text, sig, only)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "peer")
 
 	empty := b.signPlan(t, 3)
-	_, err = sealPin(b.releaser, text, signPin(t, b.locked, text), empty)
+	_, err = sealPin(b.releaser, text, sig, empty)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "peer")
 }
 
 // verifies: REQ-KEYS-115
-// A request of another boundary is refused, signed by a listed peer's card or not.
+// A request of another boundary is refused, though the card that signed it is listed: a driver configured for another
+// boundary writes that boundary into its request.
 func TestARequestOfAnotherBoundaryIsRefused(t *testing.T) {
 	b := newBoundary(t)
-	eph, err := ecdh.P384().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	c := cardtest.New()
+	c.PKI = b.releaser.card
+	other := startOpts(t, c, driver.Development, "key", self(), driver.Options{Node: "node-o", Boundary: "other", Publishers: b.publishers})
+	plan := b.signPlan(t, 2, b.entry(t, releaserNode, b.releaser), b.entry(t, "node-o", other))
+	text, sig := begin(t, other)
+	if r, err := pinrelease.ParseRequest(text); err != nil || r.Boundary != "other" {
+		t.Fatalf("request %+v, %v", r, err)
 	}
-	text, err := pinrelease.RequestText(pinrelease.Request{Boundary: "other", Node: lockedNode, ID: newID(t), Ephemeral: eph.PublicKey().Bytes()})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = sealPin(b.releaser, text, signPin(t, b.locked, text), b.plan)
+	_, err := sealPin(b.releaser, text, sig, plan)
 	wantRefused(t, err, connect.CodeFailedPrecondition, "boundary")
 }
 
@@ -286,8 +298,7 @@ func TestARequestOfAnotherBoundaryIsRefused(t *testing.T) {
 func TestTheDriverVerifiesTheKeyPlanAndItsSeq(t *testing.T) {
 	b := newBoundary(t)
 	both := []entry{b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, b.locked)}
-	text := begin(t, b.locked)
-	sig := signPin(t, b.locked, text)
+	text, sig := begin(t, b.locked)
 
 	stranger, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
@@ -342,15 +353,33 @@ func wantRefusedReason(t *testing.T, name string, err error, reason string) {
 
 // verifies: REQ-KEYS-114, REQ-KEYS-115
 // A compromised key@ of the locked board cannot spend the card's PIN tries: an answer that is unsigned, signed by a key
-// of its own, by its own card, in its own name, for another request or under an older KeyPlan is refused before
-// anything is opened, and the card is sent no PIN. The one-time key stays, so the true answer still unlocks it.
+// of its own or by its own card (its request's signature), tampered with, in its own name, for another request, from
+// a releaser the KeyPlan does not list, or under an older KeyPlan is refused before anything is opened, and the card
+// is sent no PIN. The one-time key stays, so the true answer still unlocks it.
 func TestAnAnswerNoListedPeerCardSignedIsNoPINAttempt(t *testing.T) {
 	b := newBoundary(t)
-	old := begin(t, b.locked)
-	oldAnswer := answerText(t, releaserNode, old, seal(t, b, old))
-	text := begin(t, b.locked) // a new request replaces the one-time key of the old one
-	sealed := seal(t, b, text)
-	at := answerText(t, releaserNode, text, sealed)
+	old, oldSig := begin(t, b.locked)
+	oldAnswer := seal(t, b, old, oldSig)
+	text, sig := begin(t, b.locked) // a new request replaces the one-time key of the old one
+	a := seal(t, b, text, sig)
+	at, asig := a.GetAnswerText(), a.GetAnswerSignatureDer()
+	ans, err := pinrelease.ParseAnswer(at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamperedAnswer := ans
+	tamperedAnswer.Sealed = append([]byte(nil), ans.Sealed...)
+	tamperedAnswer.Sealed[len(tamperedAnswer.Sealed)-1] ^= 1
+	tampered, err := pinrelease.AnswerText(tamperedAnswer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selfAnswer := ans
+	selfAnswer.Releaser = lockedNode
+	inOwnName, err := pinrelease.AnswerText(selfAnswer)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name   string
@@ -361,11 +390,12 @@ func TestAnAnswerNoListedPeerCardSignedIsNoPINAttempt(t *testing.T) {
 	}{
 		{"unsigned", at, nil, b.plan, "signature"},
 		{"signed by key@'s own key", at, signSoft(t, at), b.plan, "signature"},
-		{"signed by the requester's own card", at, signPin(t, b.locked, at), b.plan, "signature"},
-		{"in the requester's own name", answerText(t, lockedNode, text, sealed), signPin(t, b.locked, answerText(t, lockedNode, text, sealed)), b.plan, "peer"},
-		{"for the old request", oldAnswer, signPin(t, b.releaser, oldAnswer), b.plan, "answer_text"},
-		{"under a releaser the KeyPlan does not list", at, signPin(t, b.releaser, at), b.signPlan(t, 2, b.entry(t, lockedNode, b.locked)), "peer"},
-		{"under an older KeyPlan", at, signPin(t, b.releaser, at), b.plan, "key_plan"},
+		{"signed by the requester's own card", at, sig, b.plan, "signature"},
+		{"tampered with", tampered, asig, b.plan, "signature"},
+		{"in the requester's own name", inOwnName, signSoft(t, inOwnName), b.plan, "peer"},
+		{"for the old request", oldAnswer.GetAnswerText(), oldAnswer.GetAnswerSignatureDer(), b.plan, "answer_text"},
+		{"from a releaser the KeyPlan does not list", at, asig, b.signPlan(t, 2, b.entry(t, lockedNode, b.locked)), "peer"},
+		{"under an older KeyPlan", at, asig, b.plan, "key_plan"},
 	}
 	for _, c := range cases {
 		err := finish(b.locked, c.at, c.sig, c.plan)
@@ -374,8 +404,8 @@ func TestAnAnswerNoListedPeerCardSignedIsNoPINAttempt(t *testing.T) {
 			t.Fatalf("%s: %d PIN attempts, want 0", c.name, b.locked.card.LoginAttempts)
 		}
 	}
-	plan2 := b.signPlan(t, 3, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, b.locked))
-	if err := finish(b.locked, at, signPin(t, b.releaser, at), plan2); err != nil {
+	plan3 := b.signPlan(t, 3, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, b.locked))
+	if err := finish(b.locked, at, asig, plan3); err != nil {
 		t.Fatalf("FinishPinRelease: %v", err)
 	}
 	if b.locked.card.LoginAttempts != 1 {
@@ -384,54 +414,78 @@ func TestAnAnswerNoListedPeerCardSignedIsNoPINAttempt(t *testing.T) {
 }
 
 // verifies: REQ-KEYS-059
-// A signed answer whose sealed PIN does not open (a releaser that signs what it should not) is no PIN attempt, and
-// uses the one-time key: a second try finds none.
-func TestASignedAnswerThatDoesNotOpenIsNoPINAttempt(t *testing.T) {
+// A released PIN that the card refuses stops the PIN release in the driver, durably: the next answer, after a restart
+// of the driver too, is sent to no card, until a person unlocks the board on the admin socket.
+func TestARefusedReleasedPINStopsTheReleaseAcrossARestart(t *testing.T) {
 	b := newBoundary(t)
-	text := begin(t, b.locked)
-	s := seal(t, b, text)
-	s.Sealed[len(s.Sealed)-1] ^= 1
-	at := answerText(t, releaserNode, text, s)
-	err := finish(b.locked, at, signPin(t, b.releaser, at), b.plan)
-	wantRefused(t, err, connect.CodeFailedPrecondition, "sealed")
-	err = finish(b.locked, at, signPin(t, b.releaser, at), b.plan)
-	wantRefused(t, err, connect.CodeFailedPrecondition, "one_time_key")
-	if b.locked.card.LoginAttempts != 0 {
-		t.Fatal("a release that does not open reached the card")
-	}
-}
+	// The locked card takes another PIN than the boundary's, as a card set up apart would.
+	c := cardtest.New()
+	c.SerialNo = 11223344
+	c.PKI = b.releaser.card
+	c.PIN = "654321"
+	state := stateDir(t)
+	opts := driver.Options{Node: lockedNode, Publishers: b.publishers, StateDir: state}
+	locked := startOpts(t, c, driver.Development, "key", self(), opts)
+	plan := b.signPlan(t, 2, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, locked))
 
-func TestALockedDriverSealsNothingAndBeginNeedsAnID(t *testing.T) {
-	b := newBoundary(t)
-	text := begin(t, b.locked)
-	_, err := sealPin(b.locked, text, signPin(t, b.releaser, text), b.plan)
-	wantRefused(t, err, connect.CodeFailedPrecondition, "locked")
-	_, err = sealPin(b.releaser, []byte("x"), nil, b.plan)
-	wantRefused(t, err, connect.CodeInvalidArgument, "request_text")
-	_, err = b.locked.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: "not-a-uuid"}))
-	wantRefused(t, err, connect.CodeInvalidArgument, "request_text")
-	// The text is the driver's: its own boundary and node.
-	r, err := pinrelease.ParseRequest(text)
-	if err != nil || r.Boundary != testBoundary || r.Node != lockedNode {
-		t.Fatalf("request %+v, %v", r, err)
+	release := func(r running) error {
+		t.Helper()
+		text, sig := begin(t, r)
+		a, err := sealPin(b.releaser, text, sig, plan)
+		if err != nil {
+			t.Fatalf("SealPin: %v", err)
+		}
+		return finish(r, a.GetAnswerText(), a.GetAnswerSignatureDer(), plan)
 	}
-	// No request in flight: an answer finds no one-time key.
-	idle := startOpts(t, cardtest.New(), driver.Development, "key", self(), driver.Options{Node: lockedNode, Publishers: b.publishers})
-	at := answerText(t, releaserNode, text, seal(t, b, text))
-	wantRefused(t, finish(idle, at, signPin(t, b.releaser, at), b.plan), connect.CodeFailedPrecondition, "one_time_key")
+	wantRefused(t, release(locked), connect.CodePermissionDenied, "pin")
+	if c.LoginAttempts != 1 {
+		t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
+	}
+	wantRefused(t, release(locked), connect.CodeFailedPrecondition, "pin_refused")
+	if _, err := os.Stat(filepath.Join(state, "pin-release.refused")); err != nil {
+		t.Fatalf("the stop is not in the state directory: %v", err)
+	}
+
+	// A restart: a new driver on the same state directory tries no released PIN either.
+	c2 := cardtest.New()
+	c2.SerialNo = 55667788
+	c2.PKI = b.releaser.card
+	again := startOpts(t, c2, driver.Development, "key", self(), opts)
+	plan = b.signPlan(t, 3, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, again))
+	wantRefused(t, release(again), connect.CodeFailedPrecondition, "pin_refused")
+	if c.LoginAttempts+c2.LoginAttempts != 1 {
+		t.Fatalf("%d PIN attempts in all, want 1", c.LoginAttempts+c2.LoginAttempts)
+	}
+	// A person unlocks the board: the stop is gone.
+	again.unlock(t, "123456")
+	if _, err := os.Stat(filepath.Join(state, "pin-release.refused")); !os.IsNotExist(err) {
+		t.Fatalf("the stop outlived the unlock: %v", err)
+	}
 }
 
 // The released PIN reaches the card through the same floor as an unlock: a card with one attempt left is not sent it.
 func TestAReleaseIsNotTriedOnACardWithOneAttemptLeft(t *testing.T) {
 	b := newBoundary(t)
-	locked := b.locked
-	locked.card.Retries = 1
-	text := begin(t, locked)
-	at := answerText(t, releaserNode, text, seal(t, b, text))
-	wantRefused(t, finish(locked, at, signPin(t, b.releaser, at), b.plan), connect.CodeFailedPrecondition, "pin_retries")
-	if locked.card.LoginAttempts != 0 {
+	b.locked.card.Retries = 1
+	text, sig := begin(t, b.locked)
+	a := seal(t, b, text, sig)
+	wantRefused(t, finish(b.locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), b.plan), connect.CodeFailedPrecondition, "pin_retries")
+	if b.locked.card.LoginAttempts != 0 {
 		t.Fatal("a PIN was sent to a card with one attempt left")
 	}
+}
+
+func TestALockedDriverSealsNothingAndAnIdleOneFinishesNothing(t *testing.T) {
+	b := newBoundary(t)
+	text, sig := begin(t, b.locked)
+	_, err := sealPin(b.locked, text, sig, b.plan)
+	wantRefused(t, err, connect.CodeFailedPrecondition, "locked")
+	_, err = sealPin(b.releaser, []byte("x"), nil, b.plan)
+	wantRefused(t, err, connect.CodeInvalidArgument, "request_text")
+	// No request in flight: an answer finds no one-time key.
+	idle := startOpts(t, cardtest.New(), driver.Development, "key", self(), driver.Options{Node: lockedNode, Publishers: b.publishers})
+	a := seal(t, b, text, sig)
+	wantRefused(t, finish(idle, a.GetAnswerText(), a.GetAnswerSignatureDer(), b.plan), connect.CodeFailedPrecondition, "one_time_key")
 }
 
 // The attestation of a peer's slot 87 is read through the driver: the key, the slot and the policies the card states.

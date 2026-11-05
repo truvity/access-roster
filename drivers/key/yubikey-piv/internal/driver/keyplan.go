@@ -160,43 +160,12 @@ func parseMark(b []byte) (uint64, [48]byte, error) {
 	return seq, d, nil
 }
 
-// write saves the mark durably: a temporary file, synced, renamed over the mark, and the directory synced. The caller
-// holds mu.
+// write saves the mark durably, before the KeyPlan is used (writeSynced). The caller holds mu.
 func (p *planState) write(v *signedconfig.Verified) error {
 	if p.dir == "" {
 		return nil
 	}
-	f, err := os.CreateTemp(p.dir, planMarkFile+".*")
-	if err != nil {
-		return err
-	}
-	tmp := f.Name()
-	defer func() { _ = os.Remove(tmp) }()
-	text := fmt.Sprintf("kind %s\nseq %d\nsha384 %s\n", keyPlanKind, v.Seq, hex.EncodeToString(v.Digest[:]))
-	if _, err := f.WriteString(text); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Chmod(0o600); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filepath.Join(p.dir, planMarkFile)); err != nil {
-		return err
-	}
-	d, err := os.Open(p.dir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = d.Close() }()
-	return d.Sync()
+	return writeSynced(p.dir, planMarkFile, fmt.Sprintf("kind %s\nseq %d\nsha384 %s\n", keyPlanKind, v.Seq, hex.EncodeToString(v.Digest[:])))
 }
 
 // ownedBy reports whether the file belongs to the driver's user.

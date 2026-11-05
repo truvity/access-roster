@@ -209,6 +209,8 @@ key@ keeps the highest `seq` it verified of the `KeyPlan` and of the `Boundary` 
 
 The card driver keeps a `keyplan.mark` of its own, in `/var/lib/sluis-state/<boundary>/drv-key-yubikey-piv`: it verifies the `KeyPlan` of a PIN release itself ([Touch and PIN](/decisions/0006-keys-and-sealing/#touch-and-pin)). A `KeyPlan` below that mark does not stop the driver; it refuses the PIN release with the reason `key_plan`, and key@ audits the refusal. The ways out are the same: a higher `seq`, or that mark removed on purpose and the driver restarted.
 
+When the card refuses a released PIN, the driver writes `pin-release.refused` in the same directory and tries no released PIN again, after a restart neither. `sluis node unlock` removes it.
+
 ## Board capacity
 
 Measured on 2026-10-31 on one single-board computer (arm64, 4 cores, 2 GB RAM, eMMC, with a YubiKey 5 Nano on firmware 5.8.0), and again on 2026-11-02 on three identical boards on one gigabit switch with real replication between them (4 x Cortex-A55, 1978 MiB usable RAM, 32 GB eMMC, kernel 5.10.160). Each row says which. The language choice that follows from it is [0012](/decisions/0012-the-language-follows-the-executable/).

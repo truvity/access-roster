@@ -91,6 +91,8 @@ func (a admin) Unlock(ctx context.Context, req *connect.Request[keystorev2alpha1
 	if err := a.s.unlockHeld(ctx, "Unlock", pin); err != nil {
 		return nil, err
 	}
+	// A person unlocked the board: a released PIN that the card refused before no longer stops the PIN release.
+	a.s.refused.clear()
 	slog.Info("unlocked: the driver holds the PIN in locked memory")
 	return connect.NewResponse(&keystorev2alpha1.UnlockResponse{}), nil
 }
