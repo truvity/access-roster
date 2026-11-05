@@ -286,7 +286,9 @@ pub fn actors() -> &'static [Actor] {
 mod tests {
     use super::*;
 
-    /// The last uid block that gives every pinned name a uid is the one before the top of the uid space (REQ-ISO-073).
+    /// The last uid block that gives every pinned name a uid is the one before the top of the uid space.
+    ///
+    /// verifies: REQ-ISO-073
     #[test]
     fn the_uid_block_range_ends_where_the_last_name_runs_out_of_uids() {
         let last = u32::try_from(UID_NAMES.len() - 1).unwrap();

@@ -237,7 +237,9 @@ fn a_uid_block_past_the_uid_space_is_refused_with_its_path_and_never_its_value()
             assert_eq!(code, Some(3), "block {block}: {all}");
             assert_eq!(
                 failures(&checks),
-                ["document Boundary: step 6: default.uid_block: no pinned uid fits in this block"],
+                [
+                    "document Boundary: step 6: default.uid_block: the block gives a pinned name no uid"
+                ],
                 "block {block}"
             );
             assert!(

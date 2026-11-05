@@ -425,7 +425,7 @@ func TestConfigCheckRefusesAUidBlockPastTheUidSpace(t *testing.T) {
 	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper); got != cli.ExitRefused {
 		t.Fatalf("exit %d: %s", got, ta.err)
 	}
-	if !strings.Contains(ta.err.String(), "fail document Boundary: step 6: default.uid_block: no pinned uid fits in this block") {
+	if !strings.Contains(ta.err.String(), "fail document Boundary: step 6: default.uid_block: the block gives a pinned name no uid") {
 		t.Errorf("stderr = %s", ta.err)
 	}
 	if strings.Contains(ta.err.String(), "4294967295") {
@@ -457,6 +457,13 @@ func TestConfigCheckPassesTheRuntimeToTheHelperAndRefusesAnUnknownOne(t *testing
 	}
 	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p, "--runtime", "edge"); got != cli.ExitUsage {
 		t.Errorf("an unknown runtime: exit %d", got)
+	}
+	// An unset variable in --runtime "$RUNTIME" must not turn the check off.
+	for _, args := range [][]string{{"--runtime", ""}, {"--runtime="}} {
+		all := append([]string{"config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p}, args...)
+		if got := ta.do(all...); got != cli.ExitUsage {
+			t.Errorf("%v: exit %d, want a usage error", args, got)
+		}
 	}
 	// No runtime: the helper is not asked for one.
 	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p); got != cli.ExitOK {

@@ -1145,7 +1145,7 @@ requirements:
       - {kind: integration-test, ref: "a conditional update of one hot item on each driver reaches the rate recorded in the load test"}
   - id: REQ-DATA-072
     area: DATA
-    statement: "`sluis config check` MUST refuse a driver that does not fit the runtime of the installation."
+    statement: "`sluis config check` MUST refuse a driver of store@ that does not fit the runtime of the installation."
     rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005)."
     level: MUST
     source: design-decision
@@ -1157,6 +1157,20 @@ requirements:
     tests: [actors/store/tests/validate.rs, cli/sluis/configcheck_test.go]
     verification:
       - {kind: integration-test, ref: "config check negative test: rqlite on serverless is refused"}
+  - id: REQ-DATA-107
+    area: DATA
+    split_from: REQ-DATA-072
+    statement: "`sluis config check` MUST refuse a driver of key@ or of an audit piece that does not fit the runtime of the installation."
+    rationale: "A driver that needs a disk or a node cannot work on a runtime that has none (ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [864, 1419]
+    verification:
+      - {kind: integration-test, ref: "config check negative test: the fs blob driver on serverless is refused"}
   - id: REQ-DATA-073
     area: DATA
     statement: "A boundary at level L3 or above MUST have an engine of its own."

@@ -64,7 +64,7 @@ pub fn extra(c: Command) -> Command {
             ))
             .help(
                 "check --validate only: the runtime of the installation, bare-metal, serverless or kubernetes; \
-                 the drivers of the bootstrap file are checked against it",
+                 the drivers of the bootstrap file are checked against it; other commands ignore it",
             ),
     )
     .arg(

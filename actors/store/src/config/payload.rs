@@ -374,7 +374,7 @@ fn boundary(mut o: Obj) -> R<pb::Boundary> {
     let uid_block = o.uint32("uid_block")?;
     // The pinned uids of the block must exist (REQ-ISO-073): a block past the end of the uid space gives no actor a uid.
     if !sluis_registry::uid_block_in_range(uid_block) {
-        return err(&o.at("uid_block"), "no pinned uid fits in this block");
+        return err(&o.at("uid_block"), "the block gives a pinned name no uid");
     }
     let declared_kinds = o.strings("declared_kinds")?;
     for (i, k) in declared_kinds.iter().enumerate() {

@@ -33,7 +33,7 @@ type Boundary struct {
 	Level         string                 `protobuf:"bytes,3,opt,name=level,proto3" json:"level,omitempty"`                                      // the boundary's level
 	Environment   string                 `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`                          // "development", "staging" or "production"
 	Issuer        string                 `protobuf:"bytes,5,opt,name=issuer,proto3" json:"issuer,omitempty"`                                    // the issuer URL of the boundary
-	UidBlock      uint32                 `protobuf:"varint,6,opt,name=uid_block,json=uidBlock,proto3" json:"uid_block,omitempty"`               // the first uid of the boundary's block of actor uids
+	UidBlock      uint32                 `protobuf:"varint,6,opt,name=uid_block,json=uidBlock,proto3" json:"uid_block,omitempty"`               // the index of the boundary's block of actor uids: the uid of an actor is 61000 + its ordinal + 1000 x the block (REQ-ISO-072)
 	DeclaredKinds []string               `protobuf:"bytes,7,rep,name=declared_kinds,json=declaredKinds,proto3" json:"declared_kinds,omitempty"` // the kinds the boundary declares
 	DefaultTenant string                 `protobuf:"bytes,8,opt,name=default_tenant,json=defaultTenant,proto3" json:"default_tenant,omitempty"` // decision D-4: the one tenant of the skeleton until Tenant items exist
 	unknownFields protoimpl.UnknownFields
