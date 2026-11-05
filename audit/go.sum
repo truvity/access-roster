@@ -126,10 +126,14 @@ github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWD
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 github.com/truvity/cnpg/v2 v2.38.0 h1:wVxGv1bydWnSo1UTkkPiQRGyuZzUMDOlJv437zUziRE=
 github.com/truvity/cnpg/v2 v2.38.0/go.mod h1:KmO51qyx3zzlcjiqtCe6GbPmq7PsGhQpqrcrxnSFXig=
+github.com/truvity/cnpg/v2 v2.39.0 h1:m3zKl/asl0MdvSTGHfWlJVQlF2XUX2ZWv0MQmNV9xJM=
+github.com/truvity/cnpg/v2 v2.39.0/go.mod h1:+VJjPsr7YMA1dwIy9+Uz4LQJhKbhVTa/R4RHbzenKd4=
 github.com/truvity/gateway-auth v0.7.1 h1:jSoeB+u9aergNMeNHW3c7g291RxdCED6TaOflwJNSak=
 github.com/truvity/gateway-auth v0.7.1/go.mod h1:5ZrYGw0qmVo+Xgpa/Au5BiDVkxSKcz+ZUil4JlQo+eU=
 github.com/truvity/gemaal v0.26.6 h1:Am8l8NvHK1pRTeC6wFbuFhQV0K8xMNgdxsOu4gOdIIE=
 github.com/truvity/gemaal v0.26.6/go.mod h1:ds0H/cZ9B1/OjapTDeb93IzfboCU9bLBQjlZlGGtRQM=
+github.com/truvity/gemaal v0.26.7 h1:X6PF6P11peTEgl7IUbcIREwmcuX5FV1rj37Hdf2Ne7s=
+github.com/truvity/gemaal v0.26.7/go.mod h1:ds0H/cZ9B1/OjapTDeb93IzfboCU9bLBQjlZlGGtRQM=
 github.com/truvity/ocictl v0.12.0 h1:KMxN/XRISWr8dbl2wxuGN8g3yghmxZZseJQlYih8XqM=
 github.com/truvity/ocictl v0.12.0/go.mod h1:r+ttqNz8WOpqNJ8XJGDrD73cEYakOOnaRO8bWoTyx2o=
 github.com/truvity/policy v1.55.1 h1:xjRiHmA4g05eT5ypFOiqxd2/gRjm1ttlUJPS+icr9WU=
