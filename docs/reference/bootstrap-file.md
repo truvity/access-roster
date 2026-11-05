@@ -110,7 +110,7 @@ Each port has one driver until a second real installation needs another ([0005](
 | `secret_source` | `credential` | `ssm`, with the serverless and Kubernetes installations |
 | `durable`, `temp` | `rqlite` | `dynamodb`, with the serverless and Kubernetes installations |
 
-`sluis config check` refuses a driver that does not fit the runtime, such as `rqlite` on serverless ([0005](/decisions/0005-the-store/#drivers)). An in-memory engine exists for tests only and is not a value of this file in a release.
+`sluis config check --runtime serverless` refuses a driver that does not fit the runtime, such as `rqlite` ([0005](/decisions/0005-the-store/#drivers)). An in-memory engine exists for tests only and is not a value of this file in a release.
 
 ### Publishers
 
@@ -131,7 +131,7 @@ A publisher key is a public key that may sign config documents. The list is the 
 Beyond the schema and protovalidate, `sluis config check` runs these on the file ([Commands](/reference/cli/#sluis-config-check-and-explain)). store@ makes the same checks at start and does not start on a failure.
 
 - no two destinations share a socket path;
-- every `driver` fits the runtime and the node count;
+- every `driver` fits the runtime that `--runtime` names ([The installation](/reference/cli/#sluis-config-check-and-explain)); the node count joins when a driver first depends on it;
 - every `public_key` parses as an EC P-384 key, and its `spki_sha384` matches it;
 - every `kid` is unique, and every kind in a `co_signs` is a config kind of the kind registry ([Kinds](/reference/kinds/));
 - the file's mode allows no write by group or others, as in [Where it lives](#where-it-lives).

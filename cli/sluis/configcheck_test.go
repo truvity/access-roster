@@ -303,9 +303,13 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 		t.Fatalf("the local set: exit %d: %s %s", got, ta.out, ta.err)
 	}
 	checks := ta.object(t)["checks"].([]any)
-	// The bootstrap file, the Boundary document, the nine kinds it declares and the set.
-	if len(checks) != 12 {
+	// The bootstrap file, the installation check that did not run for want of a runtime, the Boundary document, the
+	// nine kinds it declares and the set.
+	if len(checks) != 13 {
 		t.Fatalf("checks = %v", checks)
+	}
+	if c := checks[1].(map[string]any); c["name"] != "installation" || c["result"] != "not-run" {
+		t.Fatalf("the installation check = %v", c)
 	}
 
 	// A broken payload, a broken set rule and values that must not be printed.
@@ -345,6 +349,122 @@ func TestConfigCheckRunsTheStoreHelper(t *testing.T) {
 	}
 	if !strings.Contains(ta.err.String(), "fail set: Boundary: declared_kinds: must declare GrantVocabulary") {
 		t.Errorf("stderr = %s", ta.err)
+	}
+}
+
+// TestConfigCheckChecksTheDriversAgainstTheRuntime runs the CLI with the real store executable on the signed local
+// set: its drivers fit bare metal, and serverless and Kubernetes refuse the three that need a disk or systemd, each by
+// the field and never by the driver's name. Without --runtime the check does not run and says so.
+//
+// verifies: REQ-DATA-072, REQ-OPS-009
+func TestConfigCheckChecksTheDriversAgainstTheRuntime(t *testing.T) {
+	if testing.Short() {
+		t.Skip("SKIP: -short: the test builds the store executable")
+	}
+	helper := storeHelper(t)
+	docs, bootstrap := signLocal(t, copyLocal(t))
+
+	ta := newTestApp(t)
+	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper, "--runtime", "bare-metal", "--output", "json"); got != cli.ExitOK {
+		t.Fatalf("bare-metal: exit %d: %s %s", got, ta.out, ta.err)
+	}
+	var installation int
+	for _, c := range ta.object(t)["checks"].([]any) {
+		if m := c.(map[string]any); m["name"] == "installation" {
+			installation++
+			if m["result"] != "ok" {
+				t.Errorf("bare-metal: %v", m)
+			}
+		}
+	}
+	if installation != 4 {
+		t.Errorf("bare-metal: %d installation checks, want one for each of the four ports", installation)
+	}
+
+	for _, runtimeKind := range []string{"serverless", "kubernetes"} {
+		for _, output := range []string{"json", "text"} {
+			ta = newTestApp(t)
+			got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper, "--runtime", runtimeKind, "--output", output)
+			all := ta.out.String() + ta.err.String()
+			if got != cli.ExitRefused {
+				t.Fatalf("%s %s: exit %d: %s", runtimeKind, output, got, all)
+			}
+			for _, field := range []string{"secret_source.driver", "durable.driver", "temp.driver"} {
+				// Text prints "fail installation FIELD: RULE"; JSON holds the path and the rule apart.
+				if want := "the driver does not fit the " + runtimeKind + " runtime"; !strings.Contains(all, field) || !strings.Contains(all, want) {
+					t.Errorf("%s %s: %s is not refused: %s", runtimeKind, output, field, all)
+				}
+			}
+			if strings.Contains(all, `{"name":"installation","result":"fail","path":"config_source.driver"`) ||
+				strings.Contains(all, "fail installation config_source.driver") {
+				t.Errorf("%s %s: the file driver fits every runtime: %s", runtimeKind, output, all)
+			}
+			for _, name := range []string{"rqlite", "credential"} {
+				if strings.Contains(all, name) {
+					t.Errorf("%s %s: the output names a driver: %s", runtimeKind, output, all)
+				}
+			}
+		}
+	}
+}
+
+// TestConfigCheckRefusesAUidBlockPastTheUidSpace runs the CLI with the real store executable on the signed local set
+// with a Boundary whose uid block gives no actor a uid: it is refused with the field path, and the number is not
+// printed.
+//
+// verifies: REQ-ISO-073
+func TestConfigCheckRefusesAUidBlockPastTheUidSpace(t *testing.T) {
+	if testing.Short() {
+		t.Skip("SKIP: -short: the test builds the store executable")
+	}
+	helper := storeHelper(t)
+	src := copyLocal(t)
+	replaceIn(t, filepath.Join(src, "boundary.yaml"), "uid_block: 0\n", "uid_block: 4294967295\n")
+	docs, bootstrap := signLocal(t, src)
+	ta := newTestApp(t)
+	if got := ta.do("config", "check", docs, "--bootstrap", bootstrap, "--helper", helper); got != cli.ExitRefused {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	if !strings.Contains(ta.err.String(), "fail document Boundary: step 6: default.uid_block: no pinned uid fits in this block") {
+		t.Errorf("stderr = %s", ta.err)
+	}
+	if strings.Contains(ta.err.String(), "4294967295") {
+		t.Errorf("the value was printed: %s", ta.err)
+	}
+}
+
+// TestConfigCheckPassesTheRuntimeToTheHelperAndRefusesAnUnknownOne checks the CLI alone, with a helper that records
+// its arguments.
+func TestConfigCheckPassesTheRuntimeToTheHelperAndRefusesAnUnknownOne(t *testing.T) {
+	record := filepath.Join(t.TempDir(), "args")
+	p := filepath.Join(t.TempDir(), "store")
+	script := "#!/bin/sh\nif [ \"$1\" = version ]; then echo '{\"name\":\"store\",\"version\":\"" + version.Version + "\"}'; exit 0; fi\n" +
+		"echo \"$@\" > " + record + "\ncat <<'EOF'\n" + helperPass + "\nEOF\n"
+	if err := os.WriteFile(p, []byte(script), 0o700); err != nil { //nolint:gosec // an executable test fixture
+		t.Fatal(err)
+	}
+	ta := newTestApp(t)
+	ta.os = "linux"
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p, "--runtime", "serverless"); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	args, err := os.ReadFile(record) //nolint:gosec // test fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(args), "--runtime serverless") {
+		t.Errorf("the helper was run with %q", args)
+	}
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p, "--runtime", "edge"); got != cli.ExitUsage {
+		t.Errorf("an unknown runtime: exit %d", got)
+	}
+	// No runtime: the helper is not asked for one.
+	if got := ta.do("config", "check", t.TempDir(), "--bootstrap", "b.yaml", "--helper", p); got != cli.ExitOK {
+		t.Fatalf("exit %d: %s", got, ta.err)
+	}
+	args, _ = os.ReadFile(record) //nolint:gosec // test fixture
+	if strings.Contains(string(args), "--runtime") {
+		t.Errorf("the helper was run with %q", args)
 	}
 }
 

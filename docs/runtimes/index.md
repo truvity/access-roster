@@ -57,7 +57,7 @@ An actor that must run once at a time, such as the audit writer, is fenced by th
 
 ## Which drivers fit which runtime
 
-This table is derived from what each driver requires and from [what each runtime provides](#what-each-runtime-provides), narrowed on Kubernetes by [0011](/decisions/0011-runtimes-and-installations/#kubernetes). A tick means the driver fits, a cross means `sluis config check` refuses it, and a note is the condition.
+This table is derived from what each driver requires and from [what each runtime provides](#what-each-runtime-provides), narrowed on Kubernetes by [0011](/decisions/0011-runtimes-and-installations/#kubernetes). A tick means the driver fits, a cross means `sluis config check` refuses it, and a note is the condition. The rows of store@'s four ports are also in code (`actors/store/src/install.rs`), which `sluis config check --runtime` reads; the other ports join as a file names their drivers.
 
 | Port | Driver | Bare-metal, 1 node | Bare-metal, cluster | Serverless | Kubernetes |
 |---|---|---|---|---|---|
