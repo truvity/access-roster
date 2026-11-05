@@ -468,7 +468,8 @@ fn key_plan(mut o: Obj) -> R<pb::KeyPlan> {
 const NODE_MAX: usize = 64;
 
 /// The slot map of the KeyPlan (D20b), read for its shape as key@ reads it (plan.go `decodeSlotMap`): a node is an
-/// address part listed once, a slot is two lower-case hex digits listed once per node, a purpose is named, the byte
+/// address part listed once, a slot is two lower-case hex digits listed once per node, a purpose is named and listed
+/// once per node, the byte
 /// fields are base64url without padding, and an attestation comes with its signer. What a key or an attestation says
 /// is key@'s check where it uses the entry.
 fn slot_map(o: &mut Obj) -> R<Vec<pb::NodeSlotMap>> {
@@ -494,6 +495,9 @@ fn slot_map(o: &mut Obj) -> R<Vec<pb::NodeSlotMap>> {
                 return err(&k.at("slot"), "listed twice");
             }
             let purpose = k.required("purpose")?;
+            if slots.iter().any(|x| x.purpose == purpose) {
+                return err(&k.at("purpose"), "listed twice in the node");
+            }
             let public_key = k.base64url("public_key", true)?;
             let attestation = k.base64url("attestation", false)?;
             let attestation_signer = k.base64url("attestation_signer", false)?;
