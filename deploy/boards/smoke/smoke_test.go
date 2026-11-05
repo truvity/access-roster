@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,5 +35,23 @@ func TestActiveAt(t *testing.T) {
 	// A retiring key is not waiting either.
 	if _, ok := activeAt([]string{"kidR ES384 retiring node=n since=" + since}, "kidR"); ok {
 		t.Error("a retiring key was said to wait")
+	}
+}
+
+// The group of an actor's own directory of key@ is joined by its name, never by the number of the uid plan, which
+// systemd-sysusers does not keep when it is taken.
+func TestAsActorJoinsTheKeyDirectoryGroupByName(t *testing.T) {
+	cmd, err := (&board{}).asActor("signer", []string{ownKeyDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(cmd, "--groups sluis-keyc-004-dev ") {
+		t.Errorf("the group is not joined by name: %s", cmd)
+	}
+	if strings.Contains(cmd, "61704") {
+		t.Errorf("the group is joined by number: %s", cmd)
+	}
+	if _, err := (&board{}).asActor("harness-forwarder", []string{ownKeyDir}); err == nil {
+		t.Error("an actor that is not a caller of key@ joined a key@ directory group")
 	}
 }

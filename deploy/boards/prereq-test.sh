@@ -33,6 +33,15 @@ cat >"$work/bin/systemd-creds" <<'F'
 [ "$1" = encrypt ] && [ "$2" = --with-key=host ] && [[ "$3" == --name=* ]] || exit 2
 printf 'blob name=%s key=host\n' "${3#--name=}" >"$5"
 F
+# getent group NAME|GID: the groups of $FAKE_GROUPS, a space-separated list of name:gid.
+cat >"$work/bin/getent" <<'F'
+#!/bin/bash
+[ "$1" = group ] || exit 2
+for g in $FAKE_GROUPS; do
+	if [ "${g%%:*}" = "$2" ] || [ "${g#*:}" = "$2" ]; then printf '%s:x:%s:\n' "${g%%:*}" "${g#*:}"; exit 0; fi
+done
+exit 2
+F
 cat >"$work/bin/selinuxenabled" <<'F'
 #!/bin/bash
 [ "${FAKE_SELINUX:-}" = 1 ]
@@ -123,6 +132,18 @@ if [ "$(stat -c %a "$work/cred/client-dev")" = 400 ]; then echo "ok   and it is 
 rm "$work/cred/client-dev"
 FAKE_CREDS_FAIL=1 refuse "a failed encryption is refused and leaves no file" 'could not encrypt the credential client-dev' run encrypt_credential client-dev "$work/plain" "$work/cred/client-dev"
 if [ -z "$(ls -A "$work/cred")" ]; then echo "ok   nothing is left in the credentials directory"; else echo "FAIL left: $(ls -A "$work/cred")"; fail=1; fi
+
+# check_pinned_groups
+printf 'u sluis-signer-dev 61004 "sluis signer (dev)" - /usr/sbin/nologin\ng sluis-keyc-004-dev 61704\n' >"$work/signer.sysusers"
+printf 'u sluis-key-dev 61014 "sluis key (dev)" - /usr/sbin/nologin\n' >"$work/key.sysusers"
+FAKE_GROUPS="" accept "before: a pinned group that does not exist yet, with its number free, may be made" run check_pinned_groups before "$work/signer.sysusers" "$work/key.sysusers"
+FAKE_GROUPS="sluis-keyc-004-dev:61704" accept "before: a pinned group that has its number already" run check_pinned_groups before "$work/signer.sysusers"
+FAKE_GROUPS="systemd-dyn:61704" refuse "before: a pinned number that another group has is refused, naming it" '61704, the number of sluis-keyc-004-dev, is already the group systemd-dyn' run check_pinned_groups before "$work/signer.sysusers"
+FAKE_GROUPS="sluis-keyc-004-dev:61999" refuse "before: a group of the name with another number is refused" 'sluis-keyc-004-dev has the number 61999, not 61704' run check_pinned_groups before "$work/signer.sysusers"
+FAKE_GROUPS="sluis-keyc-004-dev:61704" accept "after: the group has its pinned number" run check_pinned_groups after "$work/signer.sysusers" "$work/key.sysusers"
+FAKE_GROUPS="sluis-keyc-004-dev:61999" refuse "after: systemd-sysusers gave the group another number: refused" 'sluis-keyc-004-dev has the number 61999, not 61704' run check_pinned_groups after "$work/signer.sysusers"
+FAKE_GROUPS="" refuse "after: a pinned group that was not made is refused" 'sluis-keyc-004-dev does not exist' run check_pinned_groups after "$work/signer.sysusers"
+if grep -q 'check_pinned_groups before' "$here/remote.sh" && grep -A1 -E '^[[:space:]]+systemd-sysusers ' "$here/remote.sh" | grep -q 'check_pinned_groups after'; then echo "ok   remote.sh checks the pinned groups before it writes and right after systemd-sysusers"; else echo "FAIL remote.sh does not call check_pinned_groups before and after systemd-sysusers"; fail=1; fi
 
 # relabel
 export RESTORECON_LOG="$work/restorecon.log"

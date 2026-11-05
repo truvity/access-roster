@@ -21,7 +21,7 @@ card_pcscd_tmpfiles=/etc/tmpfiles.d/sluis-pcscd-"$boundary".conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 
-# The checks of the board's operating system (os_family, check_card_prerequisites, relabel) are in remote-lib.sh, which travels
+# The checks of the board's operating system (os_family, check_card_prerequisites, check_pinned_groups, relabel) are in remote-lib.sh, which travels
 # in the stage beside this file; they read $card_polkit_policy and $state_root.
 # shellcheck source=/dev/null
 . "$(dirname "$0")/remote-lib.sh"
@@ -75,6 +75,11 @@ deploy)
 	if [ -d "$stage/files/etc/credentials" ] || grep -qsE '^LoadCredentialEncrypted=' "$stage"/files/systemd/*; then
 		require_credential_encryption || exit 1
 	fi
+	# A pinned group number that is taken would make systemd-sysusers pick another one (check_pinned_groups).
+	shopt -s nullglob
+	staged_sysusers=("$stage"/files/sysusers/*)
+	shopt -u nullglob
+	check_pinned_groups before "${staged_sysusers[@]}" || exit 1
 	# /etc/sysusers.d does not exist on every image; both directories are listed if deploy has to make them.
 	for d in /etc/sluis /etc/sysusers.d; do
 		if [ ! -d "$d" ]; then
@@ -125,6 +130,7 @@ deploy)
 		sysusers+=("$dest")
 	done
 	systemd-sysusers "${sysusers[@]}"
+	check_pinned_groups after "${sysusers[@]}" || exit 1
 	tmpfiles=()
 	for f in "$stage"/files/tmpfiles/*; do
 		dest=/etc/tmpfiles.d/$(basename "$f")

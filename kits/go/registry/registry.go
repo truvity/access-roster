@@ -11,6 +11,7 @@
 package registry
 
 import (
+	"fmt"
 	"slices"
 	"time"
 )
@@ -190,6 +191,18 @@ func KeyCallerGID(caller string, uidBlock uint32) (uint32, bool) {
 		return 0, false
 	}
 	return uid + keyCallerGIDOffset, true
+}
+
+// KeyCallerGroup returns the name of that group on a host (systemd units): sluis-keyc-<ordinal>-<boundary>, with the
+// caller's ordinal in tools/gen/registry/uids.yaml. The caller's name does not fit: sluis-adapter-upstream-oidc-dev is
+// already the 31 characters of a user name, so the ordinal stands for it, as it does in the group's number. A host
+// joins the group by this name, never by the number: systemd-sysusers picks another number when the pinned one is
+// taken. It is false for a name that is not a caller of key@.
+func KeyCallerGroup(caller, boundary string) (string, bool) {
+	if !slices.Contains(callers["key"], caller) {
+		return "", false
+	}
+	return fmt.Sprintf("sluis-keyc-%03d-%s", slices.Index(uidNames, caller), boundary), true
 }
 
 // NameForUID is the reverse of UID.
