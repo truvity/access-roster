@@ -63,6 +63,8 @@ struct Fake {
     revoked: Mutex<Vec<String>>,
     revocations_fail: Mutex<bool>,
     store_gets: Mutex<usize>,
+    /// A key that the ring lists in addition, once a test has written it.
+    extra_kid: Mutex<Option<String>>,
     emitted: Mutex<Vec<Value>>,
 }
 
@@ -200,8 +202,8 @@ impl StoreService for FakeStore {
                 ..Boundary::default()
             }
             .encode_to_vec(),
-            "signing-ring" => SigningRing {
-                keys: vec![
+            "signing-ring" => {
+                let mut keys = vec![
                     SigningKey {
                         key_id: "kid-1".into(),
                         algorithm: "ES384".into(),
@@ -216,10 +218,22 @@ impl StoreService for FakeStore {
                         spki_der: spki(),
                         ..SigningKey::default()
                     },
-                ],
-                ..SigningRing::default()
+                ];
+                if let Some(kid) = self.0.extra_kid.lock().unwrap().clone() {
+                    keys.push(SigningKey {
+                        key_id: kid,
+                        algorithm: "ES384".into(),
+                        state: "active".into(),
+                        spki_der: spki(),
+                        ..SigningKey::default()
+                    });
+                }
+                SigningRing {
+                    keys,
+                    ..SigningRing::default()
+                }
+                .encode_to_vec()
             }
-            .encode_to_vec(),
             _ => return Err(refusal(ErrorCode::NotFound, "absent", "")),
         };
         Response::ok(GetResponse {
@@ -1209,6 +1223,38 @@ async fn a_revoked_kid_is_not_in_the_published_key_set() {
     assert_eq!(set, serde_json::json!({ "keys": [] }));
     let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
     assert_eq!(d.status, 200);
+}
+
+/// verifies: REQ-KEYS-089
+#[tokio::test]
+async fn a_key_written_to_the_ring_is_in_the_key_set_within_the_shared_cache_time() {
+    // `signer` holds back the first token of a key that skipped the lead time for this long (plus a
+    // margin), because `entry` serves the key set it built for this long.
+    let up = up().await;
+    let kids = |body: &[u8]| -> Vec<String> {
+        let v: Value = serde_json::from_slice(body).unwrap();
+        v["keys"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|k| k["kid"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert_eq!(
+        kids(&http(&up, "GET", "/jwks", &[], b"").await.body),
+        ["kid-1"]
+    );
+    *up.fake.extra_kid.lock().unwrap() = Some("kid-new".into());
+    assert_eq!(
+        kids(&http(&up, "GET", "/jwks", &[], b"").await.body),
+        ["kid-1"],
+        "the built set is kept, so the key is not listed yet"
+    );
+    tokio::time::sleep(sluis_store::KEY_SET_CACHE + Duration::from_millis(200)).await;
+    assert_eq!(
+        kids(&http(&up, "GET", "/jwks", &[], b"").await.body),
+        ["kid-1", "kid-new"]
+    );
 }
 
 /// verifies: REQ-KEYS-107

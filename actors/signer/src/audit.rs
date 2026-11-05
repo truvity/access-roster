@@ -6,7 +6,8 @@
 //!   key. key@ makes its own durable fact for the signature (`key.sign`, D-24); this one says which
 //!   token it was for.
 //! - `signer.ring.add`, `signer.ring.change` and `signer.ring.drop`: a change of the published key
-//!   set. The key is public material, so the fact holds its id and the state.
+//!   set. The key is public material, so the fact holds its id and the state, and the reason
+//!   `no_active_key` when the change skipped the lead time because no key of the issuer signed.
 //!
 //! Nothing here names a person: `signer` has no pseudonym rule, and the actors that ask for a token
 //! audit the person's action themselves. The facts of the calls use the non-blocking emit; the
@@ -104,6 +105,10 @@ impl Auditor {
         sluis.insert("key_id".into(), text(&c.key_id));
         sluis.insert("state".into(), text(state));
         sluis.insert("algorithm".into(), text(crate::keys::ALGORITHM));
+        // Why the lead time was skipped, when it was (REQ-KEYS-089).
+        if let Some(reason) = c.reason {
+            sluis.insert("reason".into(), text(reason));
+        }
         let ev = Event {
             action: Action {
                 name: name.into(),

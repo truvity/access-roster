@@ -1553,12 +1553,36 @@ async fn the_replacement_of_a_revoked_only_key_signs_at_once_with_its_key_set_pu
         (ErrorCode::Unavailable, "key_revoked")
     );
 
-    // key@ moves to a new key. Within the ring's look every ten seconds, and with no lead time, it
-    // signs, and the key set that the same call's verifier fetches already holds it.
+    // key@ moves to a new key. Within the ring's look every ten seconds the ring lists it, active and
+    // with no lead time. It signs nothing yet: `entry` keeps its built key set for a few seconds, and
+    // no token is signed before that key set can list the key.
     let new = material();
     let new_kid = new.kid.clone();
     *w.key.current.lock().unwrap() = new;
     w.clock.advance(11);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "key_set"),
+        "held until entry's key set can list the key"
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(
+        ring.keys
+            .iter()
+            .any(|k| k.key_id == new_kid && k.state == "active"),
+        "in the ring, active, before its first token"
+    );
+    let hold = signer::ring::KEY_SET_HOLD;
+    assert_eq!(hold, sluis_store::KEY_SET_CACHE + Duration::from_secs(1));
+    w.clock.advance(hold.as_secs() - 1);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set", "short of the hold");
+    w.clock.advance(1);
     let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
         .await
         .unwrap();
@@ -1588,7 +1612,13 @@ async fn the_replacement_of_a_revoked_only_key_signs_at_once_with_its_key_set_pu
             .map(|k| k.state.clone())
     };
     assert_eq!(state(&new_kid).as_deref(), Some("active"));
-    assert_eq!(w.spool.records("signer.ring.add").len(), 2);
+    // The audit fact says why the lead time was skipped; the first key of the deploy says nothing.
+    let adds = w.spool.records("signer.ring.add");
+    assert_eq!(adds.len(), 2);
+    assert!(adds[0]["unmapped"]["sluis"].get("reason").is_none());
+    assert_eq!(adds[1]["unmapped"]["sluis"]["key_id"], new_kid);
+    assert_eq!(adds[1]["unmapped"]["sluis"]["state"], "active");
+    assert_eq!(adds[1]["unmapped"]["sluis"]["reason"], "no_active_key");
 }
 
 /// verifies: REQ-KEYS-089, REQ-KEYS-076
@@ -1632,6 +1662,97 @@ async fn a_revoked_spare_and_a_normal_rotation_still_wait_for_the_window() {
         .await
         .unwrap();
     assert_eq!(got.key_id, new_kid);
+    let changes = w.spool.records("signer.ring.change");
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0]["unmapped"]["sluis"]["state"], "active");
+    assert_eq!(changes[0]["unmapped"]["sluis"]["reason"], "no_active_key");
+}
+
+/// verifies: REQ-KEYS-089, REQ-KEYS-106
+#[tokio::test]
+async fn an_unreadable_revocation_or_ring_never_lets_an_unfamiliar_key_in_or_sign() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    let (version, _) = w.store.ring().unwrap();
+    let writes = w.store.writes.lock().unwrap().len();
+
+    // key@ has moved to a key the ring does not know, and the snapshot is stale. Whatever the shortcut
+    // would decide, it is not decided on a revocation list or a ring that could not be read.
+    let new = material();
+    *w.key.current.lock().unwrap() = new;
+    let calls = w.key.calls.load(Ordering::SeqCst);
+    for fault in ["revocations", "ring"] {
+        w.clock.advance(11);
+        match fault {
+            "revocations" => w.store.revocations_down.store(true, Ordering::SeqCst),
+            _ => w.store.down.store(true, Ordering::SeqCst),
+        }
+        let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            (e.code, reason(&e).as_str()),
+            (ErrorCode::Unavailable, "store"),
+            "{fault}"
+        );
+        w.store.revocations_down.store(false, Ordering::SeqCst);
+        w.store.down.store(false, Ordering::SeqCst);
+        assert_eq!(w.store.ring().unwrap().0, version, "{fault}: unchanged");
+        assert_eq!(w.store.writes.lock().unwrap().len(), writes, "{fault}");
+        assert_eq!(w.key.calls.load(Ordering::SeqCst), calls, "{fault}");
+    }
+}
+
+/// verifies: REQ-KEYS-089, REQ-KEYS-077
+#[tokio::test]
+async fn two_nodes_with_every_key_revoked_end_with_one_active_replacement() {
+    let w = World::new().await;
+    let (key_b, socket_b) = w.another_key("key-b").await;
+    let a = w
+        .signer_on("one", "exchange", 0, "node-a", &w.cfg.sockets.key.clone())
+        .await;
+    let b = w.signer_on("two", "exchange", 0, "node-b", &socket_b).await;
+    let kid_a = w.key.current.lock().unwrap().kid.clone();
+    let kid_b = key_b.current.lock().unwrap().kid.clone();
+    w.clock.advance(3 * 3600);
+
+    // Both boards' keys are revoked, and both key@s move on. Both signers look at the same moment;
+    // the store's version guard lets one write first, and the other plans again on the ring it wrote.
+    w.store.revoke(&kid_a);
+    w.store.revoke(&kid_b);
+    let (new_a, new_b) = (material(), material());
+    let (kid_a2, kid_b2) = (new_a.kid.clone(), new_b.kid.clone());
+    *w.key.current.lock().unwrap() = new_a;
+    *key_b.current.lock().unwrap() = new_b;
+    w.clock.advance(11);
+    let _ = tokio::join!(
+        sign(&a, "JWT", w.claims("JWT", "sluis-cli", 600)),
+        sign(&b, "JWT", w.claims("JWT", "sluis-cli", 600)),
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    let state = |id: &str| {
+        ring.keys
+            .iter()
+            .find(|k| k.key_id == id)
+            .map(|k| k.state.clone())
+            .unwrap()
+    };
+    let mut got = [state(&kid_a2), state(&kid_b2)];
+    got.sort();
+    assert_eq!(
+        got,
+        ["active", "pre-published"],
+        "exactly one skips the window"
+    );
+    let adds = w.spool.records("signer.ring.add");
+    let skipped = adds
+        .iter()
+        .filter(|f| f["unmapped"]["sluis"]["reason"] == "no_active_key")
+        .count();
+    assert_eq!(skipped, 1, "the audit names one");
 }
 
 /// verifies: REQ-KEYS-106, REQ-KEYS-107
