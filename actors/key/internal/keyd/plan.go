@@ -1,7 +1,6 @@
 package keyd
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/pinrelease"
 	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
@@ -202,121 +202,11 @@ func decodeKeyPlan(payload []byte) (*configv2alpha1.KeyPlan, error) {
 	return plan, nil
 }
 
-// decodeSlotMap reads the slot map of the KeyPlan (D20b): a list of nodes, each a list of slots. It checks the shape,
-// as store@ does (payload.rs `slot_map`): a node is an address part and listed once, a slot is two lower-case hex
-// digits and listed once per node, a purpose is named and listed once per node, the byte fields are base64url without padding, and an
-// attestation comes with its signer. Whether a key parses, and what an attestation says, is checked where the entry
-// is used (pinrelease.go), so that one bad entry refuses the release of its node and not the whole KeyPlan. A KeyPlan
-// without a slot map is valid and lists no node, so no PIN is released (the peers refuse with "unlisted").
+// decodeSlotMap reads the slot map of the KeyPlan (D20b) with the one reader that the card driver uses too
+// (pinrelease.DecodeSlotMap), so that key@ and the driver cannot read one signed slot map two ways. Whether a key parses,
+// and what an attestation says, is checked where the entry is used (pinrelease.go), so that one bad entry refuses the
+// release of its node and not the whole KeyPlan. A KeyPlan without a slot map is valid and lists no node, so no PIN is
+// released (the peers refuse with "unlisted").
 func decodeSlotMap(n *yaml.Node, path string) ([]*configv2alpha1.NodeSlotMap, error) {
-	if n.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("%s: must be a list", path)
-	}
-	var out []*configv2alpha1.NodeSlotMap
-	seen := map[string]bool{}
-	for i, item := range n.Content {
-		m, err := asMapping(item, fmt.Sprintf("%s[%d]", path, i))
-		if err != nil {
-			return nil, err
-		}
-		var nm configv2alpha1.NodeSlotMap
-		if nm.Node, err = m.required("node"); err != nil {
-			return nil, err
-		}
-		if !validNode(nm.Node) {
-			return nil, fmt.Errorf("%s: not a node name", m.at("node"))
-		}
-		if seen[nm.Node] {
-			return nil, fmt.Errorf("%s: listed twice", m.at("node"))
-		}
-		seen[nm.Node] = true
-		slots := m.take("slots")
-		if isNull(slots) || slots.Kind != yaml.SequenceNode {
-			return nil, fmt.Errorf("%s: must be a list", m.at("slots"))
-		}
-		used, purposes := map[string]bool{}, map[string]bool{}
-		for j, si := range slots.Content {
-			sm, err := asMapping(si, fmt.Sprintf("%s[%d]", m.at("slots"), j))
-			if err != nil {
-				return nil, err
-			}
-			var k configv2alpha1.SlotKey
-			if k.Slot, err = sm.required("slot"); err != nil {
-				return nil, err
-			}
-			if !validSlot(k.Slot) {
-				return nil, fmt.Errorf("%s: not a slot of two lower-case hex digits", sm.at("slot"))
-			}
-			if used[k.Slot] {
-				return nil, fmt.Errorf("%s: listed twice", sm.at("slot"))
-			}
-			used[k.Slot] = true
-			if k.Purpose, err = sm.required("purpose"); err != nil {
-				return nil, err
-			}
-			if purposes[k.Purpose] {
-				return nil, fmt.Errorf("%s: listed twice in the node", sm.at("purpose"))
-			}
-			purposes[k.Purpose] = true
-			if k.PublicKey, err = sm.base64url("public_key", true); err != nil {
-				return nil, err
-			}
-			if k.Attestation, err = sm.base64url("attestation", false); err != nil {
-				return nil, err
-			}
-			if k.AttestationSigner, err = sm.base64url("attestation_signer", false); err != nil {
-				return nil, err
-			}
-			if (len(k.Attestation) == 0) != (len(k.AttestationSigner) == 0) {
-				return nil, fmt.Errorf("%s: an attestation comes with its signer", sm.at("attestation_signer"))
-			}
-			if err := sm.done(); err != nil {
-				return nil, err
-			}
-			nm.Slots = append(nm.Slots, &k)
-		}
-		if err := m.done(); err != nil {
-			return nil, err
-		}
-		out = append(out, &nm)
-	}
-	return out, nil
-}
-
-// validSlot is a PIV key reference written as two lower-case hex digits.
-func validSlot(s string) bool {
-	if len(s) != 2 {
-		return false
-	}
-	for _, c := range s {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
-}
-
-// base64url reads base64url without padding (RFC 4648, section 5), strictly: only the alphabet, no padding, no line
-// breaks, and no stray bits in the last character. An absent or null key is empty; required refuses that.
-func (o *mapping) base64url(k string, required bool) ([]byte, error) {
-	s, err := o.str(k)
-	if err != nil {
-		return nil, err
-	}
-	if s == "" {
-		if required {
-			return nil, fmt.Errorf("%s: required", o.at(k))
-		}
-		return nil, nil
-	}
-	for _, c := range s {
-		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
-			return nil, fmt.Errorf("%s: not base64url without padding", o.at(k))
-		}
-	}
-	b, err := base64.RawURLEncoding.Strict().DecodeString(s)
-	if err != nil {
-		return nil, fmt.Errorf("%s: not base64url without padding", o.at(k))
-	}
-	return b, nil
+	return pinrelease.DecodeSlotMap(n, path)
 }

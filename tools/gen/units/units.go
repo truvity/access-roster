@@ -116,17 +116,20 @@ var drivers = map[string]driverSpec{
 			Args: []string{"--state-dir", "%STATE%", "--environment", "development"},
 		}},
 	},
-	// drivers/key/yubikey-piv: serve --socket --admin-socket --node --environment --serial [--socket-gid]. The card driver of
-	// a board (ADR 0006), the alternative to the software driver: same socket, same owner. It needs the card service; its
-	// admin socket, the only way the PIN reaches it, is in a directory of its own that only it and root enter. The unit
-	// passes --serial from a file the deploy writes (EnvironmentFile below): the driver is bound to the board's card.
+	// drivers/key/yubikey-piv: serve --socket --admin-socket --node --environment --bootstrap --state-dir --serial
+	// [--socket-gid]. The card driver of a board (ADR 0006), the alternative to the software driver: same socket, same
+	// owner. It needs the card service; its admin socket, the only way the PIN reaches it, is in a directory of its own
+	// that only it and root enter. The unit passes --serial from a file the deploy writes (EnvironmentFile below): the
+	// driver is bound to the board's card. It verifies the KeyPlan of a PIN release itself, with the publisher keys of
+	// the bootstrap file that key@ reads too, and keeps the highest seq in a state directory of its own.
 	"driver-key-yubikey-piv": {
 		Language: "Go", Instead: "driver-key-software",
 		Units: []driverProc{{
-			Socket: keyDriverSocket,
+			Socket: keyDriverSocket, State: true,
 			Args: []string{
 				"--environment", "development", "--node", "%H",
 				"--admin-socket", "/run/sluis-drv-key-yubikey-piv-%i/admin.sock",
+				"--bootstrap", "/etc/sluis/bootstrap.d/%i.yaml", "--state-dir", "%STATE%",
 				"--serial", "${SLUIS_CARD_SERIAL}",
 			},
 			// The serial of the board's card binds the driver to it; the deploy writes it from the environment of the run

@@ -703,6 +703,9 @@ func TestCardDriver(t *testing.T) {
 		"Requires=pcscd.socket", "After=pcscd.socket",
 		"User=sluis-drv-key-yubikey-piv-%i", "RuntimeDirectory=sluis-drv-key-yubikey-piv-%i", "RuntimeDirectoryMode=0700",
 		"--admin-socket /run/sluis-drv-key-yubikey-piv-%i/admin.sock", "--node %H", "--environment development",
+		// The driver verifies the KeyPlan of a PIN release with key@'s pinned publisher keys, and keeps its mark.
+		"--bootstrap /etc/sluis/bootstrap.d/%i.yaml", "--state-dir /var/lib/sluis-state/%i/drv-key-yubikey-piv",
+		"StateDirectory=sluis-state/%i/drv-key-yubikey-piv", "StateDirectoryMode=0700",
 		"PrivateNetwork=yes", "RestrictAddressFamilies=AF_UNIX", "MemoryDenyWriteExecute=yes", "NoNewPrivileges=yes",
 	} {
 		if !strings.Contains(card, want) {

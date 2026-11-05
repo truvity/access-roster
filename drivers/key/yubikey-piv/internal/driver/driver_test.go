@@ -59,6 +59,14 @@ type running struct {
 // test process has for the driver's peers.
 func startWith(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool) running {
 	t.Helper()
+	return startOpts(t, c, environment, caller, allowAdmin, driver.Options{Node: "node-a"})
+}
+
+// startOpts is startWith with the options of the PIN release: the node, the publisher keys and the state directory.
+// The environment, the serial and the card are the test's.
+func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool, opts driver.Options) running {
+	t.Helper()
+	opts.Environment, opts.Serial, opts.Open = environment, c.SerialNo, c.Opener()
 	base := shortDir(t)
 	r := running{socket: filepath.Join(base, "d.sock"), adm: filepath.Join(base, "a.sock"), card: c}
 	cfg := rpc.ServerConfig{
@@ -70,7 +78,7 @@ func startWith(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- driver.Run(ctx, driver.Options{Environment: environment, Node: "node-a", Serial: c.SerialNo, Open: c.Opener()}, cfg, admin)
+		done <- driver.Run(ctx, opts, cfg, admin)
 	}()
 	t.Cleanup(func() {
 		cancel()

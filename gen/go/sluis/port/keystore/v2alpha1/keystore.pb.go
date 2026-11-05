@@ -762,9 +762,10 @@ func (x *VerifyAttestationResponse) GetSerial() uint32 {
 	return 0
 }
 
-// BeginPinReleaseRequest asks a locked driver for a one-time key.
+// BeginPinReleaseRequest asks a locked driver for a one-time key and the text of the request that carries it.
 type BeginPinReleaseRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"` // the UUIDv7 of the request, which key@ makes (RFC 9562); the driver keeps it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -799,11 +800,20 @@ func (*BeginPinReleaseRequest) Descriptor() ([]byte, []int) {
 	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{14}
 }
 
-// BeginPinReleaseResponse carries the public half of the one-time key. Its private half stays in the driver until
-// FinishPinRelease, or the next BeginPinRelease, wipes it.
+func (x *BeginPinReleaseRequest) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+// BeginPinReleaseResponse carries the public half of the one-time key and the request text. The driver writes the text
+// (its own boundary and node, the id, the key) and keeps it with the private half until FinishPinRelease opens a
+// release with it, or the next BeginPinRelease replaces both: an answer is taken for this text only.
 type BeginPinReleaseResponse struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	EphemeralPublic []byte                 `protobuf:"bytes,1,opt,name=ephemeral_public,json=ephemeralPublic,proto3" json:"ephemeral_public,omitempty"` // SEC1 uncompressed P-384
+	RequestText     []byte                 `protobuf:"bytes,2,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`             // the text of the PinReleaseRequest, which key@ signs with the pin-release key
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -845,12 +855,23 @@ func (x *BeginPinReleaseResponse) GetEphemeralPublic() []byte {
 	return nil
 }
 
-// SealPinRequest asks an unlocked driver to seal its PIN to a request that key@ has verified.
+func (x *BeginPinReleaseResponse) GetRequestText() []byte {
+	if x != nil {
+		return x.RequestText
+	}
+	return nil
+}
+
+// SealPinRequest asks an unlocked driver to seal its PIN to a request. The driver verifies the KeyPlan's publisher
+// signature and seq, and the request's signature with the pin-release key that the slot map lists for the requesting
+// node, a peer of this boundary and not this node, before it seals.
 type SealPinRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestText   []byte                 `protobuf:"bytes,1,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"` // the signed text of the PinReleaseRequest; the driver reads the ephemeral key from it
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	RequestText         []byte                 `protobuf:"bytes,1,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`                           // the signed text of the PinReleaseRequest; the driver reads the ephemeral key from it
+	RequestSignatureDer []byte                 `protobuf:"bytes,2,opt,name=request_signature_der,json=requestSignatureDer,proto3" json:"request_signature_der,omitempty"` // ES384 over SHA-384 of request_text, ASN.1 DER
+	KeyPlan             []byte                 `protobuf:"bytes,3,opt,name=key_plan,json=keyPlan,proto3" json:"key_plan,omitempty"`                                       // the signed KeyPlan document (signed-config.md), whose slot map holds the key
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *SealPinRequest) Reset() {
@@ -886,6 +907,20 @@ func (*SealPinRequest) Descriptor() ([]byte, []int) {
 func (x *SealPinRequest) GetRequestText() []byte {
 	if x != nil {
 		return x.RequestText
+	}
+	return nil
+}
+
+func (x *SealPinRequest) GetRequestSignatureDer() []byte {
+	if x != nil {
+		return x.RequestSignatureDer
+	}
+	return nil
+}
+
+func (x *SealPinRequest) GetKeyPlan() []byte {
+	if x != nil {
+		return x.KeyPlan
 	}
 	return nil
 }
@@ -944,14 +979,16 @@ func (x *SealPinResponse) GetSealed() []byte {
 	return nil
 }
 
-// FinishPinReleaseRequest gives a locked driver a release that key@ has verified.
+// FinishPinReleaseRequest gives a locked driver a signed answer. The driver verifies the KeyPlan, the answer's
+// signature with the pin-release key that the slot map lists for the releasing peer, and that the answer is for the
+// request it began, before it opens the sealed PIN; an answer that fails is never a PIN attempt.
 type FinishPinReleaseRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	RequestText    []byte                 `protobuf:"bytes,1,opt,name=request_text,json=requestText,proto3" json:"request_text,omitempty"`          // the text of this driver's own request; its ephemeral key must be the driver's one-time key
-	ReleaserPublic []byte                 `protobuf:"bytes,2,opt,name=releaser_public,json=releaserPublic,proto3" json:"releaser_public,omitempty"` // from the answer
-	Sealed         []byte                 `protobuf:"bytes,3,opt,name=sealed,proto3" json:"sealed,omitempty"`                                       // from the answer
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	AnswerText         []byte                 `protobuf:"bytes,4,opt,name=answer_text,json=answerText,proto3" json:"answer_text,omitempty"`                           // the signed text of the PinRelease, which carries the releaser's key and the sealed PIN
+	AnswerSignatureDer []byte                 `protobuf:"bytes,5,opt,name=answer_signature_der,json=answerSignatureDer,proto3" json:"answer_signature_der,omitempty"` // ES384 over SHA-384 of answer_text, ASN.1 DER
+	KeyPlan            []byte                 `protobuf:"bytes,6,opt,name=key_plan,json=keyPlan,proto3" json:"key_plan,omitempty"`                                    // the signed KeyPlan document (signed-config.md), whose slot map holds the key
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *FinishPinReleaseRequest) Reset() {
@@ -984,23 +1021,23 @@ func (*FinishPinReleaseRequest) Descriptor() ([]byte, []int) {
 	return file_sluis_port_keystore_v2alpha1_keystore_proto_rawDescGZIP(), []int{18}
 }
 
-func (x *FinishPinReleaseRequest) GetRequestText() []byte {
+func (x *FinishPinReleaseRequest) GetAnswerText() []byte {
 	if x != nil {
-		return x.RequestText
+		return x.AnswerText
 	}
 	return nil
 }
 
-func (x *FinishPinReleaseRequest) GetReleaserPublic() []byte {
+func (x *FinishPinReleaseRequest) GetAnswerSignatureDer() []byte {
 	if x != nil {
-		return x.ReleaserPublic
+		return x.AnswerSignatureDer
 	}
 	return nil
 }
 
-func (x *FinishPinReleaseRequest) GetSealed() []byte {
+func (x *FinishPinReleaseRequest) GetKeyPlan() []byte {
 	if x != nil {
-		return x.Sealed
+		return x.KeyPlan
 	}
 	return nil
 }
@@ -1092,19 +1129,25 @@ const file_sluis_port_keystore_v2alpha1_keystore_proto_rawDesc = "" +
 	"\n" +
 	"pin_policy\x18\x03 \x01(\tR\tpinPolicy\x12!\n" +
 	"\ftouch_policy\x18\x04 \x01(\tR\vtouchPolicy\x12\x16\n" +
-	"\x06serial\x18\x05 \x01(\rR\x06serial\"\x18\n" +
-	"\x16BeginPinReleaseRequest\"D\n" +
+	"\x06serial\x18\x05 \x01(\rR\x06serial\"7\n" +
+	"\x16BeginPinReleaseRequest\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\"g\n" +
 	"\x17BeginPinReleaseResponse\x12)\n" +
-	"\x10ephemeral_public\x18\x01 \x01(\fR\x0fephemeralPublic\"3\n" +
+	"\x10ephemeral_public\x18\x01 \x01(\fR\x0fephemeralPublic\x12!\n" +
+	"\frequest_text\x18\x02 \x01(\fR\vrequestText\"\x82\x01\n" +
 	"\x0eSealPinRequest\x12!\n" +
-	"\frequest_text\x18\x01 \x01(\fR\vrequestText\"R\n" +
+	"\frequest_text\x18\x01 \x01(\fR\vrequestText\x122\n" +
+	"\x15request_signature_der\x18\x02 \x01(\fR\x13requestSignatureDer\x12\x19\n" +
+	"\bkey_plan\x18\x03 \x01(\fR\akeyPlan\"R\n" +
 	"\x0fSealPinResponse\x12'\n" +
 	"\x0freleaser_public\x18\x01 \x01(\fR\x0ereleaserPublic\x12\x16\n" +
-	"\x06sealed\x18\x02 \x01(\fR\x06sealed\"}\n" +
-	"\x17FinishPinReleaseRequest\x12!\n" +
-	"\frequest_text\x18\x01 \x01(\fR\vrequestText\x12'\n" +
-	"\x0freleaser_public\x18\x02 \x01(\fR\x0ereleaserPublic\x12\x16\n" +
-	"\x06sealed\x18\x03 \x01(\fR\x06sealed\"\x1a\n" +
+	"\x06sealed\x18\x02 \x01(\fR\x06sealed\"\xb4\x01\n" +
+	"\x17FinishPinReleaseRequest\x12\x1f\n" +
+	"\vanswer_text\x18\x04 \x01(\fR\n" +
+	"answerText\x120\n" +
+	"\x14answer_signature_der\x18\x05 \x01(\fR\x12answerSignatureDer\x12\x19\n" +
+	"\bkey_plan\x18\x06 \x01(\fR\akeyPlanJ\x04\b\x01\x10\x04R\frequest_textR\x0freleaser_publicR\x06sealed\"\x1a\n" +
 	"\x18FinishPinReleaseResponse2\x91\t\n" +
 	"\x0fKeyStoreService\x12u\n" +
 	"\fCapabilities\x121.sluis.port.keystore.v2alpha1.CapabilitiesRequest\x1a2.sluis.port.keystore.v2alpha1.CapabilitiesResponse\x12c\n" +

@@ -30,6 +30,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 	"github.com/truvity/sluis/v2/kits/go/rpc"
+	"github.com/truvity/sluis/v2/kits/go/signedconfig"
 )
 
 // Name is the registry name of the driver's user; its owner is key.
@@ -67,7 +68,16 @@ func Owner() string {
 type Options struct {
 	Environment string
 	// Node is the node whose card this is; the admin socket reports it so that an unlock for another node is caught.
+	// The PIN release names it too: the driver writes it into its own request and seals to no request of its own.
 	Node string
+	// Boundary is the boundary of the node, which the PIN release names; Run takes it from the server configuration.
+	Boundary string
+	// Publishers are the publisher keys of the bootstrap file, the same pinned anchor key@ verifies the KeyPlan with.
+	// The driver verifies the KeyPlan of a PIN release with them itself (keyplan.go). None refuses every PIN release.
+	Publishers []signedconfig.Publisher
+	// StateDir is the driver's own durable state: the highest KeyPlan seq it verified (keyplan.mark), so that a
+	// restart does not take an older KeyPlan. Empty keeps the mark in memory only (the check command).
+	StateDir string
 	// Serial binds the driver to one card. Outside development it is required: without it any genuine YubiKey whose
 	// attestations match the slot map would be adopted. In development, 0 means the only card.
 	Serial uint32
@@ -91,6 +101,11 @@ type Service struct {
 	env     string
 	node    string
 	mgmtKey []byte
+
+	// The KeyPlan check of the PIN release (keyplan.go).
+	boundary   string
+	publishers []signedconfig.Publisher
+	plan       planState
 
 	mu      sync.Mutex // one conversation with the card at a time
 	card    card.Card
@@ -123,7 +138,12 @@ func New(opts Options) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{})}
+	s := &Service{env: opts.Environment, node: opts.Node, mgmtKey: opts.ManagementKey, card: c, keys: map[string]*slotKey{}, dead: make(chan struct{}),
+		boundary: opts.Boundary, publishers: opts.Publishers, plan: planState{dir: opts.StateDir}}
+	if err := s.plan.restore(); err != nil {
+		_ = c.Close()
+		return nil, err
+	}
 	if s.mgmtKey == nil {
 		s.mgmtKey = card.DefaultManagementKey
 	}
@@ -480,6 +500,7 @@ func Run(ctx context.Context, opts Options, cfg rpc.ServerConfig, admin AdminCon
 	if err := hardenProcess(); err != nil {
 		return err
 	}
+	opts.Boundary = cfg.Boundary
 	svc, err := New(opts)
 	if err != nil {
 		var pe *Problems

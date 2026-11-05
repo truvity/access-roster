@@ -25,10 +25,6 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
-// planned: #914 — the card driver verifies the KeyPlan's publisher signature itself and seals only to a request whose
-// ephemeral key a peer card slot of the slot map signed, and opens only an answer signed likewise, so that a compromised
-// key@ can neither read the boundary PIN nor spend the card's tries (ADR 0006, "Touch and PIN").
-//
 // The PIN release between boards (ADR 0006, "Touch and PIN"; the wire format of kits/go/pinrelease). A locked key@
 // asks its peers for the card PIN through the store; an unlocked peer that can verify the request answers with the PIN
 // sealed to the request's one-time key. The PIN never reaches key@: the card drivers seal and open it. What key@ does
@@ -45,6 +41,13 @@ import (
 //
 // A request or an answer that fails a check is refused and is an audit fact, and a forged answer never reaches the
 // card: the driver is given only an answer whose signature verified, so a compromised store@ cannot burn PIN tries.
+//
+// The card driver checks again, itself, what a compromised key@ must not be able to skip (#914): it verifies the
+// signed KeyPlan that key@ hands it (the document key@ verified), and seals only to a request, or opens only an answer
+// for the request it began, that the pin-release key of a peer the slot map lists signed. So a compromised key@ cannot
+// obtain the PIN or spend the card's tries without a request or an answer that a listed peer card signed. The checks
+// that need the store stay here: revocation, the freshness and the reuse of a request id. A compromised key@ can
+// still use a peer key that is revoked but still listed, until a re-signed KeyPlan drops it.
 
 // The kinds of the PIN release.
 const (
@@ -244,6 +247,7 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 		token = next
 	}
 	var plan *configv2alpha1.KeyPlan
+	var planDoc []byte
 	for _, it := range items {
 		text, sig := it.Value.GetText(), it.Value.GetSignatureDer()
 		r, perr := pinrelease.ParseRequest(text)
@@ -275,7 +279,7 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 		}
 		if plan == nil {
 			var err error
-			if plan, err = fetchVerified(ctx, s, s.plan); err != nil {
+			if plan, planDoc, err = fetchVerifiedDoc(ctx, s, s.plan); err != nil {
 				return len(items), err
 			}
 		}
@@ -294,9 +298,15 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 			s.refusePin(ctx, "request", r.Node, r.ID, text, "signature")
 			continue
 		}
-		if err := s.answer(ctx, it.ID, r, text); err != nil {
+		if err := s.answer(ctx, it.ID, r, text, sig, planDoc); err != nil {
 			if errors.Is(err, errNoPIN) {
 				return len(items), nil // locked here as well: a peer answers
+			}
+			if errors.As(err, &pr) {
+				// The card driver refused what key@ verified: the two disagree, so the request gets no PIN here.
+				s.markSeen(r, text)
+				s.refusePin(ctx, "request", r.Node, r.ID, text, pr.why)
+				continue
 			}
 			return len(items), err
 		}
@@ -308,12 +318,29 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 
 var errNoPIN = errors.New("this node's driver holds no PIN")
 
+// driverChecks are the reasons with which the card driver refuses a request or an answer that it verified itself
+// (the driver's pinrelease.go): its verdict on what key@ gave it, not a failure to try again.
+var driverChecks = []string{"key_plan", "boundary", "peer", "signature", "request_text", "answer_text"}
+
+// driverRefusal is a refusal of the card driver's own check, as a refusal of the request or answer; nil otherwise.
+func driverRefusal(err error) error {
+	reason, _ := refusal.Reason(err)
+	if c := connect.CodeOf(err); (c == connect.CodeFailedPrecondition || c == connect.CodeInvalidArgument) && slices.Contains(driverChecks, reason) {
+		return refused("driver-" + reason)
+	}
+	return nil
+}
+
 // answer seals this node's PIN to a verified request, signs the answer and writes it, after its audit fact is durable.
-func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, text []byte) error {
-	sealed, err := s.driver.SealPin(ctx, connect.NewRequest(&keystorev2alpha1.SealPinRequest{RequestText: text}))
+// The driver is given the request's signature and the KeyPlan document key@ verified, and verifies both itself.
+func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, text, sig, planDoc []byte) error {
+	sealed, err := s.driver.SealPin(ctx, connect.NewRequest(&keystorev2alpha1.SealPinRequest{RequestText: text, RequestSignatureDer: sig, KeyPlan: planDoc}))
 	if err != nil {
 		if reason, _ := refusal.Reason(err); connect.CodeOf(err) == connect.CodeFailedPrecondition && (reason == "locked" || reason == "no_pin") {
 			return errNoPIN
+		}
+		if rerr := driverRefusal(err); rerr != nil {
+			return rerr
 		}
 		return fmt.Errorf("key-store driver seal: %w", err)
 	}
@@ -324,7 +351,7 @@ func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, te
 	if err != nil {
 		return err
 	}
-	sig, err := s.signPinText(ctx, at)
+	answerSig, err := s.signPinText(ctx, at)
 	if err != nil {
 		return err
 	}
@@ -333,7 +360,7 @@ func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, te
 	if err := s.auditBlocking(ctx, Event{Action: ActionPinRelease, Fields: map[string]any{"node": r.Node, "request": r.ID}}); err != nil {
 		return err
 	}
-	_, err = s.pinRels.Create(ctx, "", id, &keyv2alpha1.PinRelease{Text: at, SignatureDer: sig})
+	_, err = s.pinRels.Create(ctx, "", id, &keyv2alpha1.PinRelease{Text: at, SignatureDer: answerSig})
 	switch {
 	case errors.Is(err, store.ErrExists):
 		return nil // another peer answered first
@@ -410,25 +437,26 @@ var (
 	errNoAnswer = errors.New("no valid answer to the PIN release request")
 )
 
-// RequestPin is one PIN release request of a locked node: a one-time key from its driver, a signed request, and a wait
-// for the answer of a peer, which is verified before the driver is given it.
+// RequestPin is one PIN release request of a locked node: a one-time key and the request text from its driver, a signed
+// request, and a wait for the answer of a peer, which is verified before the driver is given it.
 func (s *Server) RequestPin(ctx context.Context) error {
-	begin, err := s.driver.BeginPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{}))
+	now := s.now()
+	rid, err := pinrelease.NewID(now)
+	if err != nil {
+		return err
+	}
+	begin, err := s.driver.BeginPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: rid}))
 	if err != nil {
 		if reason, _ := refusal.Reason(err); connect.CodeOf(err) == connect.CodeFailedPrecondition && reason == "unlocked" {
 			return ErrUnlocked
 		}
 		return fmt.Errorf("key-store driver begin: %w", err)
 	}
-	now := s.now()
-	rid, err := pinrelease.NewID(now)
-	if err != nil {
-		return err
-	}
-	r := pinrelease.Request{Boundary: s.cfg.Boundary, Node: s.cfg.Node, ID: rid, Ephemeral: begin.Msg.GetEphemeralPublic()}
-	text, err := pinrelease.RequestText(r)
-	if err != nil {
-		return err
+	// The driver writes the text, which it keeps for the answer: key@ signs it only if it is the request it asked for.
+	text := begin.Msg.GetRequestText()
+	r, err := pinrelease.ParseRequest(text)
+	if err != nil || r.Boundary != s.cfg.Boundary || r.Node != s.cfg.Node || r.ID != rid || !bytes.Equal(r.Ephemeral, begin.Msg.GetEphemeralPublic()) {
+		return errors.New("key-store driver begin: the request text is not this node's request")
 	}
 	sig, err := s.signPinText(ctx, text)
 	if err != nil {
@@ -476,7 +504,7 @@ func (s *Server) takeAnswer(ctx context.Context, r pinrelease.Request, text []by
 		s.refusePin(ctx, "answer", a.Releaser, r.ID, at, "not-this-request")
 		return errNoAnswer
 	}
-	plan, err := fetchVerified(ctx, s, s.plan)
+	plan, planDoc, err := fetchVerifiedDoc(ctx, s, s.plan)
 	if err != nil {
 		return err
 	}
@@ -494,7 +522,7 @@ func (s *Server) takeAnswer(ctx context.Context, r pinrelease.Request, text []by
 		return errNoAnswer
 	}
 	_, err = s.driver.FinishPinRelease(ctx, connect.NewRequest(&keystorev2alpha1.FinishPinReleaseRequest{
-		RequestText: text, ReleaserPublic: a.Ephemeral, Sealed: a.Sealed,
+		AnswerText: at, AnswerSignatureDer: sig, KeyPlan: planDoc,
 	}))
 	if err != nil {
 		reason, _ := refusal.Reason(err)

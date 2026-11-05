@@ -71,7 +71,9 @@ type KeyStoreServiceClient interface {
 	Ecdh(context.Context, *connect.Request[v2alpha1.EcdhRequest]) (*connect.Response[v2alpha1.EcdhResponse], error)
 	// The PIN release between boards (0006 "Touch and PIN"). The PIN never leaves the card driver: the driver seals the
 	// PIN it holds, and opens a released one with a one-time key of its own and gives it to its card. key@ makes the
-	// checks and the store writes. A store that has no PIN (software) refuses them with "unlocked" or "no_pin".
+	// checks and the store writes; the card driver verifies the signed KeyPlan and the peer's signature itself before it
+	// seals or opens, so key@'s word alone releases nothing. A store that has no PIN (software) refuses them with
+	// "unlocked" or "no_pin".
 	Attest(context.Context, *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error)
 	VerifyAttestation(context.Context, *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error)
 	BeginPinRelease(context.Context, *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error)
@@ -227,7 +229,9 @@ type KeyStoreServiceHandler interface {
 	Ecdh(context.Context, *connect.Request[v2alpha1.EcdhRequest]) (*connect.Response[v2alpha1.EcdhResponse], error)
 	// The PIN release between boards (0006 "Touch and PIN"). The PIN never leaves the card driver: the driver seals the
 	// PIN it holds, and opens a released one with a one-time key of its own and gives it to its card. key@ makes the
-	// checks and the store writes. A store that has no PIN (software) refuses them with "unlocked" or "no_pin".
+	// checks and the store writes; the card driver verifies the signed KeyPlan and the peer's signature itself before it
+	// seals or opens, so key@'s word alone releases nothing. A store that has no PIN (software) refuses them with
+	// "unlocked" or "no_pin".
 	Attest(context.Context, *connect.Request[v2alpha1.AttestRequest]) (*connect.Response[v2alpha1.AttestResponse], error)
 	VerifyAttestation(context.Context, *connect.Request[v2alpha1.VerifyAttestationRequest]) (*connect.Response[v2alpha1.VerifyAttestationResponse], error)
 	BeginPinRelease(context.Context, *connect.Request[v2alpha1.BeginPinReleaseRequest]) (*connect.Response[v2alpha1.BeginPinReleaseResponse], error)

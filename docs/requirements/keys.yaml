@@ -1224,8 +1224,8 @@ requirements:
       - {kind: integration-test, ref: "a tampered answer, one signed by an unlisted key, one under a listed name with another key, and one in the requester's own name are refused before the driver is called; the card is sent no PIN"}
   - id: REQ-KEYS-115
     area: KEYS
-    statement: "A card PIN MUST NOT leave the card driver of key@ in clear: the driver seals it only to a request that key@ approved, and opens a released one itself."
-    rationale: "A PIN outside the driver's locked memory could be copied from key@ or swapped to disk; a compromised key@ can still have the boundary PIN sealed to a key of its own, which is of no use without the card, until the driver checks the request itself (ADR 0006, Touch and PIN)."
+    statement: "A card PIN MUST NOT leave the card driver of key@ in clear: the driver seals it only to a request, and opens only an answer, whose signature it verified itself with the pin-release key that its own verification of the signed KeyPlan lists for a peer node of the boundary."
+    rationale: "A compromised key@ must not obtain the PIN or spend tries without a request or answer signed by a listed peer card; revocation stays key@'s check, as the driver cannot read the store, so a revoked peer key still listed works until a re-signed KeyPlan drops it (ADR 0006, Touch and PIN)."
     level: MUST
     source: design-decision
     status: done
@@ -1235,7 +1235,9 @@ requirements:
     standards: []
     issues: [914]
     verification:
-      - {kind: integration-test, ref: "two card drivers on test cards release a PIN through the port: the sealed PIN opens with the locked driver's one-time key only, and no answer of the key-store port carries a PIN"}
+      - {kind: integration-test, ref: "two card drivers on test cards: a forged or unlisted request, another boundary and a lower KeyPlan seq are refused; a wrongly signed answer is no PIN attempt; the true release unlocks"}
+      - {kind: integration-test, ref: "no answer of the key-store port carries a PIN"}
+      - {kind: test-vectors, ref: "the driver and key@ read the slot map with one reader, which reads the shared KeyPlan payload vectors as store@ does"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
