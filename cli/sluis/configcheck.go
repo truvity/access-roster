@@ -47,8 +47,14 @@ func (o *optionalString) Set(v string) error {
 // helperEnv names the store helper when --helper does not.
 const helperEnv = "SLUIS_STORE_HELPER"
 
-// helperOutputMax bounds what is read from the helper: a list of a few dozen checks.
-const helperOutputMax = 1 << 20
+// helperOutputMax bounds what is read from the helper of `config check`: a list of a few dozen checks.
+// explainOutputMax bounds that of `config explain`, which prints a line for each setting of every document: the
+// documents are at most 256 KiB of YAML each (the strict profile's bound), so a set of a dozen of them stays far under
+// it. A helper that prints more is an error that says so, never a truncated answer.
+const (
+	helperOutputMax  = 1 << 20
+	explainOutputMax = 32 << 20
+)
 
 // configCheckCommand is `sluis config check DIR` (cli.md "sluis config check and explain"; ADR 0012, "The
 // configuration check runs store@'s own rules"). It validates the bootstrap file and the signed config documents in
@@ -99,7 +105,7 @@ func (a *app) bootstrapFile(flagValue string) (string, error) {
 // runStore runs `store check --output json --bootstrap FILE --validate DIR` with more flags, as the helper of
 // `config check` and of `config explain` (ADR 0012). It returns what the helper printed on standard output and its
 // exit code, which is 0 (every check passed) or 3 (one failed); anything else is an error.
-func (a *app) runStore(ctx context.Context, name, dir, bootstrap, helper string, more ...string) (stdout []byte, code int, path string, err error) {
+func (a *app) runStore(ctx context.Context, name, dir, bootstrap, helper string, limit int, narrow string, more ...string) (stdout []byte, code int, path string, err error) {
 	if a.goos() != "linux" {
 		return nil, 0, "", fmt.Errorf("%s runs store@'s own validation, and the store executable is built for Linux only", name)
 	}
@@ -113,10 +119,15 @@ func (a *app) runStore(ctx context.Context, name, dir, bootstrap, helper string,
 	var out, stderr bytes.Buffer
 	args := append([]string{"check", "--output", "json", "--log-level", "error", "--bootstrap", bootstrap, "--validate", dir}, more...)
 	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // the store executable the operator named or installed beside sluis
-	cmd.Stdout = &limited{w: &out, n: helperOutputMax}
+	lim := &limited{w: &out, n: limit}
+	cmd.Stdout = lim
 	cmd.Stderr = &limited{w: &stderr, n: helperOutputMax}
 	cmd.Env = []string{} // the helper reads nothing from the environment
 	runErr := cmd.Run()
+	// What was cut off is not an answer: a half of a JSON object would read as "printed no checks".
+	if lim.over {
+		return nil, 0, path, fmt.Errorf("the store helper printed more than %d MiB, which %s cannot read%s", limit>>20, name, narrow)
+	}
 	if runErr != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(runErr, &exitErr) {
@@ -135,7 +146,7 @@ func (a *app) configCheck(ctx context.Context, dir, bootstrap, helper, runtimeKi
 	if runtimeKind != "" {
 		more = []string{"--runtime", runtimeKind}
 	}
-	stdout, code, path, err := a.runStore(ctx, "config check", dir, bootstrap, helper, more...)
+	stdout, code, path, err := a.runStore(ctx, "config check", dir, bootstrap, helper, helperOutputMax, "", more...)
 	if err != nil {
 		return err
 	}
@@ -276,13 +287,17 @@ func lastLine(s string) string {
 	return l
 }
 
-// limited writes at most n bytes to w and drops the rest.
+// limited writes at most n bytes to w and drops the rest; over says that it dropped some.
 type limited struct {
-	w io.Writer
-	n int
+	w    io.Writer
+	n    int
+	over bool
 }
 
 func (l *limited) Write(p []byte) (int, error) {
+	if len(p) > l.n {
+		l.over = true
+	}
 	if l.n <= 0 {
 		return len(p), nil
 	}

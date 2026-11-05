@@ -20,14 +20,44 @@ import (
 // the bootstrap file, which is not a kind; Version is empty for it, which has none. Checks names the checks of
 // `config check` that cover the setting.
 type configField struct {
-	Path    string   `json:"path"`
-	Value   string   `json:"value"`
-	Class   string   `json:"class"`
-	Layer   string   `json:"layer"`
-	Version string   `json:"version"`
-	Source  string   `json:"source"`
-	Secret  bool     `json:"secret,omitempty"`
-	Checks  []string `json:"checks,omitempty"`
+	Path    string `json:"path"`
+	Value   string `json:"value"`
+	Class   string `json:"class"`
+	Layer   string `json:"layer"`
+	Version string `json:"version"`
+	Source  string `json:"source"`
+	Secret  bool   `json:"secret,omitempty"`
+	// Digest says that Value is `sha384:` and the digest of what the file holds, not the value.
+	Digest bool     `json:"digest,omitempty"`
+	Checks []string `json:"checks,omitempty"`
+}
+
+// explainGroup is what the helper prints: settings that share one provenance, so that the class, layer, version,
+// source and checks are written once for a document and not on each of its settings. The CLI writes one field for each
+// setting (cli.md "JSON output").
+type explainGroup struct {
+	Class    string   `json:"class"`
+	Layer    string   `json:"layer"`
+	Version  string   `json:"version"`
+	Source   string   `json:"source"`
+	Checks   []string `json:"checks"`
+	Settings []struct {
+		Path   string `json:"path"`
+		Value  string `json:"value"`
+		Secret bool   `json:"secret"`
+		Digest bool   `json:"digest"`
+	} `json:"settings"`
+}
+
+func (g explainGroup) fields() []configField {
+	out := make([]configField, 0, len(g.Settings))
+	for _, s := range g.Settings {
+		out = append(out, configField{
+			Path: s.Path, Value: s.Value, Class: g.Class, Layer: g.Layer, Version: g.Version, Source: g.Source,
+			Secret: s.Secret, Digest: s.Digest, Checks: g.Checks,
+		})
+	}
+	return out
 }
 
 // sourceDigestShown is how many hex digits of a document's digest the text output shows; the JSON output has all.
@@ -71,13 +101,14 @@ func (a *app) configExplain(ctx context.Context, dir, bootstrap, helper, field s
 	if field != "" {
 		more = append(more, "--field", field)
 	}
-	stdout, code, path, err := a.runStore(ctx, "config explain", dir, bootstrap, helper, more...)
+	stdout, code, path, err := a.runStore(ctx, "config explain", dir, bootstrap, helper, explainOutputMax,
+		"; name fewer settings with --field PATH", more...)
 	if err != nil {
 		return err
 	}
 	var out struct {
-		Checks []configCheck `json:"checks"`
-		Fields []configField `json:"fields"`
+		Checks []configCheck  `json:"checks"`
+		Groups []explainGroup `json:"groups"`
 	}
 	if err := json.Unmarshal(stdout, &out); err != nil || len(out.Checks) == 0 {
 		return fmt.Errorf("the store helper %s printed no checks: is it the store executable of this release?", path)
@@ -87,30 +118,35 @@ func (a *app) configExplain(ctx context.Context, dir, bootstrap, helper, field s
 		return err
 	}
 	res.Text = ""
-	if len(out.Fields) == 0 {
+	var fields []configField
+	for _, g := range out.Groups {
+		fields = append(fields, g.fields()...)
+	}
+	if len(fields) == 0 {
 		if field != "" {
-			return cli.Usage(fmt.Errorf("--field %s: no setting is at that path", field))
+			return cli.Usage(fmt.Errorf("--field %s: no setting is at that path (a setting that a file leaves out has no entry: "+
+				"the built-in layer of the documents is not built yet)", field))
 		}
 		return fmt.Errorf("the store helper %s printed no settings: is it the store executable of this release?", path)
 	}
-	res.Fields = out.Fields
-	res.Text = explainText(out.Fields)
+	res.Fields = fields
+	res.Text = explainText(fields)
 	return nil
 }
 
 // explainText is the table a person reads. It is one line for each setting, with the columns of the JSON members. A
-// control character in a field is shown as ?, so that no document can write an escape sequence to a terminal; the
+// unsafe character in a field (see clean) is shown as ?, so that no document can write an escape sequence to a terminal; the
 // helper already replaces such a value by its digest, and this holds if a helper does not.
 func explainText(fields []configField) string {
 	var b bytes.Buffer
 	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "PATH\tVALUE\tCLASS\tLAYER\tVERSION\tSOURCE")
 	for _, f := range fields {
-		value := f.Value
+		value := clean(f.Value)
 		if f.Secret {
 			value += " (secret reference, not resolved)"
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", clean(f.Path), clean(value), dash(clean(f.Class)),
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", clean(f.Path), value, dash(clean(f.Class)),
 			dash(clean(f.Layer)), dash(clean(f.Version)), dash(shortSource(clean(f.Source))))
 	}
 	_ = w.Flush()
@@ -133,9 +169,11 @@ func dash(s string) string {
 	return s
 }
 
+// clean replaces each control character (Cc), invisible format character (Cf: bidirectional controls, zero-width
+// characters, tags) and line or paragraph separator (Zl, Zp) by ?.
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return '?'
 		}
 		return r

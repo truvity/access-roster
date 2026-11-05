@@ -47,6 +47,18 @@ impl std::fmt::Display for Refused {
 
 impl std::error::Error for Refused {}
 
+/// A command that was given input it cannot act on, such as a path that names nothing: [`main`] exits 2 instead of 1.
+#[derive(Debug)]
+pub struct Usage(pub String);
+
+impl std::fmt::Display for Usage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Usage {}
+
 /// What an executable does under each command. `serve` should end when [`shutdown_signal`]
 /// resolves.
 // The trait is used with a concrete type by `main`, never as a trait object, and `main` needs no
@@ -243,6 +255,10 @@ fn run(
             let _ = writeln!(err, "{name} {sub}: refused: {e}");
             EXIT_REFUSED
         }
+        (_, Some(Err(e))) if e.downcast_ref::<Usage>().is_some() => {
+            let _ = writeln!(err, "{name} {sub}: {e}");
+            EXIT_USAGE
+        }
         (_, Some(Err(e))) => {
             let _ = writeln!(err, "{name} {sub}: {e:#}");
             EXIT_FAILURE
@@ -363,6 +379,22 @@ mod tests {
         assert_eq!(go(Plain, &["serve"]).0, EXIT_OK);
         assert_eq!(go(Refusing, &["serve"]).0, EXIT_FAILURE);
         assert_eq!(go(Refusing, &["check"]).0, EXIT_REFUSED);
+    }
+
+    #[test]
+    fn a_usage_error_of_a_command_exits_2() {
+        struct Unusable;
+        impl Commands for Unusable {
+            async fn serve(&self, _f: Flags) -> anyhow::Result<()> {
+                Ok(())
+            }
+            async fn check(&self, _f: Flags) -> Option<anyhow::Result<()>> {
+                Some(Err(Usage("a path that names nothing".into()).into()))
+            }
+        }
+        let (code, _, err) = go(Unusable, &["check"]);
+        assert_eq!(code, EXIT_USAGE);
+        assert!(err.contains("a path that names nothing"), "{err}");
     }
 
     #[test]

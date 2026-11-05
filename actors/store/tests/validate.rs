@@ -484,7 +484,24 @@ fn explain_with(bootstrap: &str, docs: &Path, extra: &[&str]) -> (Option<i32>, V
     let o = validate(bootstrap, docs, &args);
     let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
     let all = format!("{stdout}{}", String::from_utf8_lossy(&o.stderr));
-    let v: Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {all}"));
+    let mut v: Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {all}"));
+    // The helper prints the settings in groups of one provenance; the tests read them one by one, as the CLI writes
+    // them (cli.md "JSON output").
+    let mut fields = Vec::new();
+    for g in v["groups"].as_array().unwrap_or(&Vec::new()) {
+        assert!(
+            !g["settings"].as_array().unwrap().is_empty(),
+            "an empty group: {all}"
+        );
+        for s in g["settings"].as_array().unwrap() {
+            let mut f = s.clone();
+            for k in ["class", "layer", "version", "source", "checks"] {
+                f[k] = g[k].clone();
+            }
+            fields.push(f);
+        }
+    }
+    v["fields"] = Value::Array(fields);
     (o.status.code(), v, all)
 }
 
@@ -748,6 +765,303 @@ fn explain_takes_no_runtime_and_field_needs_explain() {
     assert_eq!(o.status.code(), Some(2));
     let o = validate(&e.bootstrap(), e.docs.path(), &["--field", "boundary"]);
     assert_eq!(o.status.code(), Some(2));
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_document_duration_is_shown_in_its_largest_whole_unit() {
+    let e = env();
+    assert!(source("token-lifetime").contains("id_token: 10m"));
+    e.sign(
+        "token-lifetime",
+        &source("token-lifetime").replace("id_token: 10m", "id_token: 600s"),
+    );
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    assert_eq!(field(&v, "TokenLifetime.default.id_token")["value"], "10m");
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_url_is_shown_without_its_query_and_fragment() {
+    let marker = "zq-marker-7f3a";
+    let e = env();
+    let clients = source("installation-client");
+    assert!(clients.contains("https://app.local.test/callback"));
+    e.sign(
+        "installation-client",
+        &clients.replace(
+            "https://app.local.test/callback",
+            &format!("https://app.local.test/callback?token={marker}#{marker}"),
+        ),
+    );
+    let up = source("upstream");
+    e.sign(
+        "upstream",
+        &up.replace(
+            "realms/sluis-test",
+            &format!("realms/sluis-test?key={marker}"),
+        ),
+    );
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    assert_eq!(
+        field(&v, "InstallationClient.example-app.redirects[0]")["value"],
+        "https://app.local.test/callback?<elided>"
+    );
+    assert_eq!(
+        field(&v, "Upstream.workforce.issuer")["value"],
+        "http://127.0.0.1:8180/realms/sluis-test?<elided>"
+    );
+    assert!(!all.contains(marker), "a query was printed: {all}");
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_url_with_user_information_is_refused_by_check_and_never_printed() {
+    let marker = "zq-marker-7f3a";
+    let e = env();
+    let up = source("upstream");
+    e.sign(
+        "upstream",
+        &up.replace(
+            "http://127.0.0.1:8180",
+            &format!("https://{marker}:{marker}@h.example.com/?token={marker}"),
+        ),
+    );
+    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(3), "{all}");
+    assert_eq!(
+        failures(&checks),
+        [
+            "document Upstream: step 6: workforce.issuer: must not hold user information before the host"
+        ]
+    );
+    assert!(!all.contains(marker), "a value was printed: {all}");
+    // And explain explains nothing of it.
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(3), "{all}");
+    assert!(v["fields"].as_array().unwrap().is_empty());
+    assert!(!all.contains(marker), "a value was printed: {all}");
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn an_invisible_format_character_makes_a_value_its_digest_and_it_says_so() {
+    let e = env();
+    let up = source("upstream");
+    // A right-to-left override and a line separator, which a terminal shows as text that is not there.
+    for bad in ["a\u{202e}b", "a\u{2028}b", "a\u{200b}b"] {
+        e.sign(
+            "upstream",
+            &up.replace("client_id: sluis-local", &format!("client_id: \"{bad}\"")),
+        );
+        let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+        assert_eq!(code, Some(0), "{all}");
+        let f = field(&v, "Upstream.workforce.client_id");
+        assert!(f["value"].as_str().unwrap().starts_with("sha384:"), "{f}");
+        assert_eq!(f["digest"], true);
+        assert!(
+            !all.chars()
+                .any(|c| matches!(c, '\u{202e}' | '\u{2028}' | '\u{200b}')),
+            "an invisible character was printed"
+        );
+    }
+    // A value that is shown says nothing of a digest.
+    let (_, v, _) = explain_with(
+        &e.bootstrap(),
+        e.docs.path(),
+        &["--field", "Upstream.workforce.kind"],
+    );
+    assert!(field(&v, "Upstream.workforce.kind").get("digest").is_none());
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_public_key_of_the_slot_map_is_its_pin_and_an_attestation_is_a_digest() {
+    let e = env();
+    let plan = source("key-plan");
+    assert!(plan.contains("  slot_map: []\n"));
+    e.sign(
+        "key-plan",
+        &plan.replace(
+            "  slot_map: []\n",
+            "  slot_map:\n    - node: n1\n      slots:\n        - slot: \"9a\"\n          purpose: token-signing\n          public_key: AAECAwQ\n          attestation: QUJD\n          attestation_signer: REVG\n",
+        ),
+    );
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    let at = |key: &str| format!("KeyPlan.default.slot_map[0].slots[0].{key}");
+    assert_eq!(field(&v, &at("slot"))["value"], "9a");
+    let pin = |bytes: &[u8]| {
+        format!(
+            "sha384:{}",
+            store::config::document::hex(
+                aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, bytes).as_ref()
+            )
+        )
+    };
+    assert_eq!(field(&v, &at("public_key"))["value"], pin(&[0, 1, 2, 3, 4]));
+    assert_eq!(field(&v, &at("attestation"))["value"], pin(b"QUJD"));
+    for key in ["public_key", "attestation", "attestation_signer"] {
+        assert_eq!(field(&v, &at(key))["digest"], true, "{key}");
+    }
+    assert!(
+        !all.contains("AAECAwQ") && !all.contains("QUJD") && !all.contains("REVG"),
+        "{all}"
+    );
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn an_unmatched_field_exits_2_in_text_and_gives_an_empty_list_in_json() {
+    let e = env();
+    let o = Command::new(env!("CARGO_BIN_EXE_store"))
+        .args([
+            "check",
+            "--explain",
+            "--field",
+            "Up",
+            "--bootstrap",
+            &e.bootstrap(),
+            "--validate",
+        ])
+        .arg(e.docs.path())
+        .output()
+        .unwrap();
+    assert_eq!(
+        o.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert!(o.stdout.is_empty());
+    // A matched one prints its line.
+    let o = Command::new(env!("CARGO_BIN_EXE_store"))
+        .args([
+            "check",
+            "--explain",
+            "--field",
+            "Upstream.workforce.kind",
+            "--bootstrap",
+            &e.bootstrap(),
+            "--validate",
+        ])
+        .arg(e.docs.path())
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0));
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        text.starts_with("Upstream.workforce.kind = oidc (config config 1 Upstream:1:"),
+        "{text}"
+    );
+    let (code, v, _) = explain_with(&e.bootstrap(), e.docs.path(), &["--field", "Up"]);
+    assert_eq!((code, v["groups"].as_array().unwrap().len()), (Some(0), 0));
+}
+
+/// What the explain walk reads out of each fixture document is what the payload decodes into: every text the walk
+/// finds is in the decoded message, and every text in the decoded message is one the walk found. The two read the
+/// same YAML in two ways, so this is what keeps them from drifting apart (a field one of them reads and the other does
+/// not).
+///
+/// verifies: REQ-OPS-023
+#[test]
+fn explain_and_the_payload_decoder_read_the_same_texts_from_every_fixture() {
+    use buffa::Message as _;
+    use sluis_proto::sluis::config::v2alpha1 as pb;
+    // The quoted strings of a Debug print, unescaped as Debug escapes them.
+    fn quoted(debug: &str) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        let mut it = debug.chars();
+        while let Some(c) = it.next() {
+            if c != '"' {
+                continue;
+            }
+            let mut s = String::new();
+            while let Some(c) = it.next() {
+                match c {
+                    '"' => break,
+                    '\\' => s.push(it.next().unwrap_or('\\')),
+                    c => s.push(c),
+                }
+            }
+            // A field the file leaves out is the empty string in the message.
+            if !s.is_empty() {
+                out.insert(s);
+            }
+        }
+        out
+    }
+    let mut swept = 0;
+    for (segment, text) in LOCAL {
+        let kind = sluis_registry::kind_by_segment(segment).unwrap();
+        if !store::config::payload::readable(kind)
+            || matches!(kind.name, "Policy" | "GrantVocabulary")
+        {
+            continue;
+        }
+        let leaves = store::config::explain::leaves(kind, text).unwrap();
+        // The texts the walk read, except the ones the message does not hold as a string: a duration is a number of
+        // seconds there, and the fields that are bytes.
+        let walked: std::collections::BTreeSet<String> = leaves
+            .iter()
+            .filter(|l| l.text)
+            .filter(|l| {
+                use store::config::explain::Treatment::{Digest, Duration, Pin};
+                !matches!(
+                    store::config::explain::treatment(kind.name, &l.rel),
+                    Duration | Pin | Digest
+                )
+            })
+            .map(|l| l.value.clone())
+            .collect();
+        let items = store::config::payload::decode(kind, text.as_bytes()).unwrap();
+        let mut decoded = std::collections::BTreeSet::new();
+        for (_, bytes) in &items {
+            let debug = match kind.name {
+                "Boundary" => format!("{:?}", pb::Boundary::decode_from_slice(bytes).unwrap()),
+                "KeyPlan" => format!("{:?}", pb::KeyPlan::decode_from_slice(bytes).unwrap()),
+                "TokenLifetime" => {
+                    format!("{:?}", pb::TokenLifetime::decode_from_slice(bytes).unwrap())
+                }
+                "AuditLog" => format!("{:?}", pb::AuditLog::decode_from_slice(bytes).unwrap()),
+                "AuditCatalogue" => format!(
+                    "{:?}",
+                    pb::AuditCatalogue::decode_from_slice(bytes).unwrap()
+                ),
+                "ExchangeTrust" => {
+                    format!("{:?}", pb::ExchangeTrust::decode_from_slice(bytes).unwrap())
+                }
+                "Upstream" => format!("{:?}", pb::Upstream::decode_from_slice(bytes).unwrap()),
+                "InstallationClient" => format!(
+                    "{:?}",
+                    pb::InstallationClient::decode_from_slice(bytes).unwrap()
+                ),
+                other => panic!("no decoder in this test for {other}"),
+            };
+            decoded.extend(quoted(&debug));
+        }
+        // The message of a keyed kind holds the id of its item as a string too (its name or id), which the file may
+        // leave out.
+        let walked: std::collections::BTreeSet<String> =
+            if matches!(kind.name, "Upstream" | "InstallationClient") {
+                let ids = items.iter().map(|(id, _)| id.clone());
+                walked.iter().cloned().chain(ids).collect()
+            } else {
+                walked
+            };
+        assert_eq!(
+            walked, decoded,
+            "{}: the walk and the decoder read different texts",
+            kind.name
+        );
+        swept += walked.len();
+    }
+    assert!(
+        swept >= 60,
+        "the sweep covered {swept} texts: a sweep over nothing proves nothing"
+    );
 }
 
 /// The verdict of the loader on a set: None when it loads, else the kind and the rule of the refusal.

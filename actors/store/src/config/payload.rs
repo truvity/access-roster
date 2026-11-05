@@ -324,10 +324,23 @@ fn check_url(s: &str, path: &str) -> R<()> {
         .or_else(|| s.strip_prefix("http://"));
     match rest {
         Some(r) if !r.is_empty() && !s.chars().any(|c| c.is_whitespace() || c.is_control()) => {
+            // User information in the authority (`user:password@host`) is a credential in a document that is
+            // printed, logged and reviewed as text; no issuer, key set or redirect needs it.
+            if has_userinfo(r) {
+                return err(path, "must not hold user information before the host");
+            }
             Ok(())
         }
         _ => err(path, "must be an http or https URL"),
     }
+}
+
+/// Whether the authority of a URL (what follows `scheme://` up to the first `/`, `?` or `#`) holds an `@`.
+pub(crate) fn has_userinfo(after_scheme: &str) -> bool {
+    let end = after_scheme
+        .find(['/', '?', '#'])
+        .unwrap_or(after_scheme.len());
+    after_scheme[..end].contains('@')
 }
 
 /// A client's redirect URI (REQ-AUTHN-004): `https`, or `http` on a loopback IP literal, `127.0.0.1` or `[::1]`, with
