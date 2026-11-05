@@ -39,18 +39,60 @@ check-requirements: site-install
 # the job for 20 minutes until its timeout), and `--no-progress` left nothing to say on
 # which link. Each try is bounded to 4 minutes (a normal run takes well under one), is
 # verbose so that the log names the link it stopped at, and a try that hit the bound is
-# repeated, twice. A run that ends in lychee's own failure (a dead link) is not repeated.
+# repeated, twice. A run that ends in lychee's own verdict (a dead link) is not repeated.
+#
+# lychee writes a JSON report and site/scripts/links-report.mjs judges it. lychee sends one
+# request for a 5xx (its max_retries covers network errors and timeouts only), so the 5xx
+# links are checked again here, after 15 s and then 45 s. What is still a 5xx then: from
+# github.com or raw.githubusercontent.com a warning (those hosts answered 504 to CI runners
+# on 2026-11-05 for pages that loaded a moment later), from any other host a failure. A 4xx
+# and a timeout fail.
 site-links:
     #!/usr/bin/env bash
     set -euo pipefail
+    dir="$(mktemp -d)"
+    trap 'rm -rf "$dir"' EXIT
+    check() { # check <timeout s> <report> <input or option>...: lychee's exit status, 124 when it hit the bound
+      local bound="$1" report="$2" rc=0
+      shift 2
+      timeout --foreground "$bound" lychee --config lychee.toml --root-dir "$PWD/site/dist" --no-progress -v --format json --output "$report" "$@" || rc=$?
+      return "$rc"
+    }
     for attempt in 1 2 3; do
       rc=0
-      timeout --foreground 240 lychee --config lychee.toml --root-dir "$PWD/site/dist" --no-progress -v 'site/dist/**/*.html' || rc=$?
-      [ "$rc" -eq 124 ] || exit "$rc"
-      echo "site-links: lychee did not finish in 240 s (try $attempt of 3)" >&2
+      check 240 "$dir/r1.json" 'site/dist/**/*.html' || rc=$?
+      if [ "$rc" -eq 124 ]; then
+        echo "site-links: lychee did not finish in 240 s (try $attempt of 3)" >&2
+        continue
+      fi
+      args=("$dir/r1.json" "$rc")
+      last="$dir/r1.json"
+      for round in 2 3; do
+        site/scripts/links-report.mjs retry-urls "$last" > "$dir/urls$round.txt"
+        [ -s "$dir/urls$round.txt" ] || break
+        echo "site-links: checking $(wc -l < "$dir/urls$round.txt") links again after a server error (round $round of 3)" >&2
+        sleep $((round == 2 ? 15 : 45))
+        rrc=0
+        check 120 "$dir/r$round.json" --cache=false "$dir/urls$round.txt" || rrc=$?
+        if [ "$rrc" -eq 124 ]; then
+          echo "site-links: the repeated check did not finish in 120 s" >&2
+          exit 1
+        fi
+        args+=("$dir/r$round.json" "$rrc")
+        # the next round repeats what is still a 5xx after the merge so far
+        site/scripts/links-report.mjs merge "${args[@]}" > "$dir/m$round.json"
+        last="$dir/m$round.json"
+      done
+      exec site/scripts/links-report.mjs judge "${args[@]}"
     done
     echo "site-links: lychee did not finish in 3 tries" >&2
     exit 1
+
+# The self-test of the link check's judgement (site/scripts/links-report.test.mjs): a 404 on
+# github.com fails, a 504 on github.com warns, a 504 on another host fails. Fake reports, no
+# network, no lychee.
+site-test-links:
+    node --test site/scripts/links-report.test.mjs
 
 # Open the built site in headless Chrome and assert that every Mermaid diagram is
 # drawn (an <svg> in each pre.mermaid), the explorers' script ran and the console
@@ -61,7 +103,7 @@ site-render dist='site/dist' shots='':
     site/scripts/check-render.mjs {{ dist }} {{ shots }}
 
 # What a pull request must pass.
-site-check: site-lint site-build site-render site-links
+site-check: site-lint site-test-links site-build site-render site-links
 
 # Refresh v1-src from the newest stable v1 release tag (or the tag given) and build
 # the v1 documentation into site/dist/v1. The Site workflow picks the tag by the
