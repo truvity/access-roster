@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# The part of boards.sh that runs on a board, as root: `remote.sh deploy|undeploy|status STAGE`.
+# The part of boards.sh that runs on a board, as root: `remote.sh deploy|preflight|undeploy|status STAGE`.
 # It is shipped to the board inside the stage and is never installed. It changes only what the manifest lists,
 # and it refuses to touch anything outside the paths and names that deploy makes (sluis-rqlite, the user "sluis",
 # /opt/sluis/bin/rqlited and /var/lib/sluis are never in that set).
 set -euo pipefail
 
-mode=${1:?usage: remote.sh deploy|undeploy|status STAGE}
-stage=${2:?usage: remote.sh deploy|undeploy|status STAGE}
+mode=${1:?usage: remote.sh deploy|preflight|undeploy|status STAGE}
+stage=${2:?usage: remote.sh deploy|preflight|undeploy|status STAGE}
 boundary=dev
 bin_dir=/opt/sluis/bin
 manifest=/etc/sluis/deployed-$boundary.manifest
@@ -21,7 +21,7 @@ card_pcscd_tmpfiles=/etc/tmpfiles.d/sluis-pcscd-"$boundary".conf
 card_polkit_rules=/etc/polkit-1/rules.d/49-sluis-pcsc.rules
 card_polkit_policy=/usr/share/polkit-1/actions/org.debian.pcsc-lite.policy
 
-# The checks of the board's operating system (os_family, check_card_prerequisites, check_pinned_groups, relabel) are in remote-lib.sh, which travels
+# The checks of the board's operating system (os_family, check_card_prerequisites, check_pinned_ids, relabel) are in remote-lib.sh, which travels
 # in the stage beside this file; they read $card_polkit_policy and $state_root.
 # shellcheck source=/dev/null
 . "$(dirname "$0")/remote-lib.sh"
@@ -61,25 +61,36 @@ sort_manifest() {
 	sort -u -o "$manifest" "$manifest"
 }
 
-case "$mode" in
-deploy)
-	[ -d "$stage/files" ] && [ -f "$stage/plan.tsv" ] || { echo "remote: no stage in $stage" >&2; exit 1; }
-	[ -s "$stage/plan.tsv" ] || { echo "remote: the plan is empty" >&2; exit 1; }
-	# What the board's image must carry is checked before the first file is written: a deploy that stops half way leaves a unit
-	# that boards.sh reads as a switch that stopped half way, and refuses to go on from.
+# preflight checks, before the first file is written, what the board must be for this stage: a deploy that stops half way
+# leaves a unit that boards.sh reads as a switch that stopped half way, and refuses to go on from. It writes nothing, so
+# boards.sh runs it alone (`remote.sh preflight`) on a board that switches its key driver before it marks the board pending.
+preflight() {
+	local -a staged_sysusers
+	# What the board's image must carry.
 	if [ -d "$stage/files/card" ]; then
-		check_card_prerequisites || exit 1
+		check_card_prerequisites || return 1
 	fi
 	# The units read their credentials with LoadCredentialEncrypted=, which a systemd older than 252 does not know: any unit that
 	# has the line needs the floor, whether or not this deploy stages a credential file.
 	if [ -d "$stage/files/etc/credentials" ] || grep -qsE '^LoadCredentialEncrypted=' "$stage"/files/systemd/*; then
-		require_credential_encryption || exit 1
+		require_credential_encryption || return 1
 	fi
-	# A pinned group number that is taken would make systemd-sysusers pick another one (check_pinned_groups).
+	# A pinned uid or gid that is taken would make systemd-sysusers pick another one (check_pinned_ids).
 	shopt -s nullglob
 	staged_sysusers=("$stage"/files/sysusers/*)
 	shopt -u nullglob
-	check_pinned_groups before "${staged_sysusers[@]}" || exit 1
+	check_pinned_ids before "${staged_sysusers[@]}" || return 1
+}
+
+case "$mode" in
+preflight)
+	[ -d "$stage/files" ] || { echo "remote: no stage in $stage" >&2; exit 1; }
+	preflight || exit 1
+	;;
+deploy)
+	[ -d "$stage/files" ] && [ -f "$stage/plan.tsv" ] || { echo "remote: no stage in $stage" >&2; exit 1; }
+	[ -s "$stage/plan.tsv" ] || { echo "remote: the plan is empty" >&2; exit 1; }
+	preflight || exit 1
 	# /etc/sysusers.d does not exist on every image; both directories are listed if deploy has to make them.
 	for d in /etc/sluis /etc/sysusers.d; do
 		if [ ! -d "$d" ]; then
@@ -130,7 +141,7 @@ deploy)
 		sysusers+=("$dest")
 	done
 	systemd-sysusers "${sysusers[@]}"
-	check_pinned_groups after "${sysusers[@]}" || exit 1
+	check_pinned_ids after "${sysusers[@]}" || exit 1
 	tmpfiles=()
 	for f in "$stage"/files/tmpfiles/*; do
 		dest=/etc/tmpfiles.d/$(basename "$f")

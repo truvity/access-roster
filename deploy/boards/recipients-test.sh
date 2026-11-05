@@ -65,6 +65,7 @@ ssh_var="SSHFAIL_$key"
 
 mark="$STUB_LOG/$board.marker"
 case "$cmd" in
+*"remote.sh' preflight "*) fail_var="PREFLIGHTFAIL_$key"; [ -z "${!fail_var:-}" ] || exit 1 ;;
 *remote.sh*) fail_var="DEPLOYFAIL_$key"; [ -z "${!fail_var:-}" ] || exit 1 ;;
 *"date -u"*switch-pending*) mkdir -p "$STUB_LOG"; date -u +%FT%TZ >"$mark" ;;
 *"rm -f"*switch-pending*) rm -f "$mark" ;;
@@ -201,6 +202,20 @@ rm -rf "$work/log" "$work/state/switch-pending"
 export DRV_a_test=software SLUIS_BOARDS="a.test"
 DEPLOYFAIL_a_test=1 refuses "a deploy that fails after the switch exits non-zero" ./deploy/boards/boards.sh deploy
 [ -s "$work/log/a.test.marker" ] && [ "$(cat "$work/state/switch-pending")" = a.test ] || { echo "FAIL a failed deploy left no mark"; fail=1; }
+
+# verifies: a switching board is checked (remote.sh preflight) before it is marked, and a board that fails the check is not
+# marked and gets no deploy.
+rm -rf "$work/log" "$work/state/switch-pending"
+export DRV_a_test=software SLUIS_BOARDS="a.test"
+PREFLIGHTFAIL_a_test=1 STUB_TRACE="$work/trace" refuses "a switching board that fails the checks before its switch is refused" ./deploy/boards/boards.sh deploy
+grep -q "failed the checks before its switch; it is not marked pending" "$work/out" || { echo "FAIL the refusal does not say why: $(cat "$work/out")"; fail=1; }
+if [ -e "$work/log/a.test.marker" ] || [ -s "$work/state/switch-pending" ]; then echo "FAIL a board that failed its checks was marked pending"; fail=1; else echo "ok   and it is not marked, on the board or in the cache"; fi
+if grep -q "remote.sh' deploy " "$work/trace"; then echo "FAIL a board that failed its checks was deployed"; fail=1; else echo "ok   and nothing is deployed to it"; fi
+rm -f "$work/trace"
+STUB_TRACE="$work/trace" check "a switching board that passes the checks is marked, then deployed" ./deploy/boards/boards.sh deploy
+order=$(grep -n -e "remote.sh' preflight " -e 'date -u' -e "remote.sh' deploy " "$work/trace" | sed -E "s/^([0-9]+):.*(preflight|date -u|deploy ).*/\2/" | tr '\n' ' ')
+if [ "$order" = "preflight date -u deploy  " ]; then echo "ok   in the order: checks, mark, deploy"; else echo "FAIL the order is: $order"; fail=1; fi
+rm -f "$work/trace"
 
 # A board in a state the script does not know is refused, whatever the run names, and nothing is sent to it.
 for st in masked error broken; do
