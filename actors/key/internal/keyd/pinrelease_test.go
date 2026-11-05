@@ -538,12 +538,18 @@ func waitRequest(t *testing.T, e *testEnv, node string) (string, []byte) {
 // changes the text after it was signed.
 func answerWith(t *testing.T, e *testEnv, releaser string, d *fakeDriver, id string, text []byte, tamper bool) {
 	t.Helper()
+	answerFor(t, e, testBoundary, releaser, d, id, text, tamper)
+}
+
+// answerFor is answerWith for a boundary.
+func answerFor(t *testing.T, e *testEnv, boundary, releaser string, d *fakeDriver, id string, text []byte, tamper bool) {
+	t.Helper()
 	r, _ := pinrelease.ParseRequest(text)
 	pub, sealed, err := pinrelease.Seal([]byte("123456"), text)
 	if err != nil {
 		t.Fatal(err)
 	}
-	at, err := pinrelease.AnswerText(pinrelease.Answer{Boundary: testBoundary, Releaser: releaser, Requester: r.Node, ID: r.ID,
+	at, err := pinrelease.AnswerText(pinrelease.Answer{Boundary: boundary, Releaser: releaser, Requester: r.Node, ID: r.ID,
 		RequestSHA384: pinrelease.Digest(text), Ephemeral: pub, Sealed: sealed})
 	if err != nil {
 		t.Fatal(err)
@@ -659,4 +665,66 @@ func TestTheCheckPrintsTheSlotMapEntry(t *testing.T) {
 	if err != nil || len(plan.GetSlotMap()) != 1 {
 		t.Fatalf("the printed entry does not read back: %v", err)
 	}
+}
+
+// verifies: REQ-KEYS-114
+// The answer side checks the releaser as the releasing side checks the requester: an answer for another boundary, and
+// one from a releaser whose pin-release key is revoked, are refused before the driver is called.
+func TestAnAnswerOfAnotherBoundaryOrARevokedReleaserIsRefused(t *testing.T) {
+	for _, c := range []struct{ name, why string }{{"another boundary", "not-this-request"}, {"revoked releaser", "revoked"}} {
+		t.Run(c.name, func(t *testing.T) {
+			e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+			boundary := testBoundary
+			if c.name == "another boundary" {
+				boundary = "staging"
+			} else {
+				pub, _ := parseP384(ensureKey(t, bs[0].d, "pin-release", "ES384"))
+				kid, _ := thumbprint(pub)
+				e.store.put("key-revocation", "", revocationID(targetKid, kid), &keyv2alpha1.KeyRevocation{
+					TargetKind: "kid", Target: kid, ReasonCode: "lost-board", RevokedAt: timestamppb.New(e.clock.now()),
+				})
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			done := make(chan error, 1)
+			go func() { done <- bs[1].n.srv.RequestPin(ctx) }()
+			id, text := waitRequest(t, e, "board-b")
+			answerFor(t, e, boundary, "board-a", bs[0].d, id, text, false)
+			if err := <-done; !errors.Is(err, errNoAnswer) {
+				t.Fatalf("RequestPin: %v, want no answer", err)
+			}
+			if bs[1].d.finishCalls.Load() != 0 {
+				t.Fatal("a refused answer reached the driver")
+			}
+			wantWhy(t, bs[1].n, c.why)
+		})
+	}
+}
+
+// One node's request id never stands for another's: two boards that send the same id are each answered once.
+func TestTheSameIdFromTwoNodesIsAnsweredForEach(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
+	_, text := request(t, e, bs[1], testBoundary, e.clock.now())
+	r, _ := pinrelease.ParseRequest(text)
+	eph, _ := ecdh.P384().GenerateKey(rand.Reader)
+	other, err := pinrelease.RequestText(pinrelease.Request{Boundary: testBoundary, Node: "board-c", ID: r.ID, Ephemeral: eph.PublicKey().Bytes()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.store.put("pin-release-request", "", "board-c/"+r.ID, &keyv2alpha1.PinReleaseRequest{Text: other, SignatureDer: signWith(t, bs[2].d, other)})
+	release(t, bs[0])
+	if !answered(e, "board-b/"+r.ID) || !answered(e, "board-c/"+r.ID) {
+		t.Fatalf("not both answered; refusals %v", refusedWhy(bs[0].n))
+	}
+}
+
+// A KeyPlan without a slot map is valid and releases nothing: every request is refused as unlisted.
+func TestAKeyPlanWithoutASlotMapReleasesNothing(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b"}, func(p *configv2alpha1.KeyPlan) { p.SlotMap = nil })
+	id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+	release(t, bs[0])
+	if answered(e, id) {
+		t.Fatal("a KeyPlan without a slot map released a PIN")
+	}
+	wantWhy(t, bs[0].n, "unlisted")
 }

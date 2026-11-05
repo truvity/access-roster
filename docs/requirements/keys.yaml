@@ -925,7 +925,8 @@ requirements:
     rationale: "The PIN then crosses only the Raft port inside the store's replication and adds no listener (ADR 0006)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: no-proving-test
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
@@ -1223,8 +1224,8 @@ requirements:
       - {kind: integration-test, ref: "a tampered answer, one signed by an unlisted key, one under a listed name with another key, and one in the requester's own name are refused before the driver is called; the card is sent no PIN"}
   - id: REQ-KEYS-115
     area: KEYS
-    statement: "A card PIN MUST NOT leave the card driver of key@: the driver seals it for a peer and opens a released one itself."
-    rationale: "A PIN outside the driver's locked memory could be copied from key@ or swapped to disk (ADR 0006, Touch and PIN)."
+    statement: "A card PIN MUST NOT leave the card driver of key@ in clear: the driver seals it only to a request that key@ approved, and opens a released one itself."
+    rationale: "A PIN outside the driver's locked memory could be copied from key@ or swapped to disk; a compromised key@ can still have the boundary PIN sealed to a key of its own, which is of no use without the card, until the driver checks the request itself (ADR 0006, Touch and PIN)."
     level: MUST
     source: design-decision
     status: done

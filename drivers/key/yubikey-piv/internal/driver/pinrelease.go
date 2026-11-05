@@ -127,7 +127,10 @@ func (s *Service) BeginPinRelease(ctx context.Context, _ *connect.Request[keysto
 	return connect.NewResponse(&keystorev2alpha1.BeginPinReleaseResponse{EphemeralPublic: k.PublicKey().Bytes()}), nil
 }
 
-// SealPin seals the PIN this driver holds to the ephemeral key of a request that key@ verified. D20a: a boundary has
+// SealPin seals the PIN this driver holds to the ephemeral key of a request that key@ verified.
+//
+// planned: #914 — verify the KeyPlan's signature and the peer's slot 87 signature over the request here, so that a
+// compromised key@ cannot have the PIN sealed to a key of its own (ADR 0006, "Touch and PIN"). D20a: a boundary has
 // one PIN, so the PIN of this card is the PIN of the requesting card.
 func (s *Service) SealPin(ctx context.Context, req *connect.Request[keystorev2alpha1.SealPinRequest]) (*connect.Response[keystorev2alpha1.SealPinResponse], error) {
 	text := req.Msg.GetRequestText()

@@ -204,9 +204,10 @@ func decodeKeyPlan(payload []byte) (*configv2alpha1.KeyPlan, error) {
 
 // decodeSlotMap reads the slot map of the KeyPlan (D20b): a list of nodes, each a list of slots. It checks the shape,
 // as store@ does (payload.rs `slot_map`): a node is an address part and listed once, a slot is two lower-case hex
-// digits and listed once per node, a purpose is named, the byte fields are base64url without padding, and an
+// digits and listed once per node, a purpose is named and listed once per node, the byte fields are base64url without padding, and an
 // attestation comes with its signer. Whether a key parses, and what an attestation says, is checked where the entry
-// is used (pinrelease.go), so that one bad entry refuses the release of its node and not the whole KeyPlan.
+// is used (pinrelease.go), so that one bad entry refuses the release of its node and not the whole KeyPlan. A KeyPlan
+// without a slot map is valid and lists no node, so no PIN is released (the peers refuse with "unlisted").
 func decodeSlotMap(n *yaml.Node, path string) ([]*configv2alpha1.NodeSlotMap, error) {
 	if n.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("%s: must be a list", path)
@@ -233,7 +234,7 @@ func decodeSlotMap(n *yaml.Node, path string) ([]*configv2alpha1.NodeSlotMap, er
 		if isNull(slots) || slots.Kind != yaml.SequenceNode {
 			return nil, fmt.Errorf("%s: must be a list", m.at("slots"))
 		}
-		used := map[string]bool{}
+		used, purposes := map[string]bool{}, map[string]bool{}
 		for j, si := range slots.Content {
 			sm, err := asMapping(si, fmt.Sprintf("%s[%d]", m.at("slots"), j))
 			if err != nil {
@@ -253,6 +254,10 @@ func decodeSlotMap(n *yaml.Node, path string) ([]*configv2alpha1.NodeSlotMap, er
 			if k.Purpose, err = sm.required("purpose"); err != nil {
 				return nil, err
 			}
+			if purposes[k.Purpose] {
+				return nil, fmt.Errorf("%s: listed twice in the node", sm.at("purpose"))
+			}
+			purposes[k.Purpose] = true
 			if k.PublicKey, err = sm.base64url("public_key", true); err != nil {
 				return nil, err
 			}

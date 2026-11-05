@@ -25,6 +25,10 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
+// planned: #914 — the card driver verifies the KeyPlan's publisher signature itself and seals only to a request whose
+// ephemeral key a peer card slot of the slot map signed, and opens only an answer signed likewise, so that a compromised
+// key@ can neither read the boundary PIN nor spend the card's tries (ADR 0006, "Touch and PIN").
+//
 // The PIN release between boards (ADR 0006, "Touch and PIN"; the wire format of kits/go/pinrelease). A locked key@
 // asks its peers for the card PIN through the store; an unlocked peer that can verify the request answers with the PIN
 // sealed to the request's one-time key. The PIN never reaches key@: the card drivers seal and open it. What key@ does
@@ -79,8 +83,12 @@ const pinClockSkew = 5 * time.Minute
 // answered once and a second text under a used id is refused.
 type pinState struct {
 	mu   sync.Mutex
-	seen map[string]seenRequest // by request id
+	seen map[string]seenRequest // by node and request id (seenKey)
 }
+
+// seenKey is the key of a request among those decided: its node and its id, so that one node's id never stands for
+// another's.
+func seenKey(r pinrelease.Request) string { return r.Node + "/" + r.ID }
 
 type seenRequest struct {
 	digest []byte
@@ -221,9 +229,19 @@ func (s *Server) refusePin(ctx context.Context, op, node, id string, text []byte
 // driver holds no PIN releases nothing (SealPin refuses) and leaves the requests to its peers. It returns how many
 // requests it saw.
 func (s *Server) ReleasePins(ctx context.Context) (int, error) {
-	items, _, err := s.pinReqs.List(ctx, "", store.PageSize(200))
-	if err != nil {
-		return 0, unavailable(reasonStore)
+	// Every page: a flood of requests (a compromised store@ can write them) must not hide a real one behind it. A
+	// request already decided costs a map lookup; the kind's short life bounds the rest.
+	var items []store.Item[*keyv2alpha1.PinReleaseRequest]
+	for token := ""; ; {
+		page, next, err := s.pinReqs.List(ctx, "", store.PageSize(200), store.PageToken(token))
+		if err != nil {
+			return 0, unavailable(reasonStore)
+		}
+		items = append(items, page...)
+		if next == "" {
+			break
+		}
+		token = next
 	}
 	var plan *configv2alpha1.KeyPlan
 	for _, it := range items {
@@ -256,6 +274,7 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 			return len(items), unavailable(reasonStore)
 		}
 		if plan == nil {
+			var err error
 			if plan, err = fetchVerified(ctx, s, s.plan); err != nil {
 				return len(items), err
 			}
@@ -341,11 +360,11 @@ func (s *Server) fresh(r pinrelease.Request) string {
 	return ""
 }
 
-// handled says whether this process has decided on the request id already. The same text again is skipped; another
+// handled says whether this process has decided on the request id of this node already. The same text again is skipped; another
 // text under a used id is a replay, refused and audited.
 func (s *Server) handled(ctx context.Context, r pinrelease.Request, text []byte) bool {
 	s.pins.mu.Lock()
-	prev, ok := s.pins.seen[r.ID]
+	prev, ok := s.pins.seen[seenKey(r)]
 	s.pins.mu.Unlock()
 	if !ok {
 		return false
@@ -363,8 +382,8 @@ func (s *Server) markSeen(r pinrelease.Request, text []byte) {
 	if s.pins.seen == nil {
 		s.pins.seen = map[string]seenRequest{}
 	}
-	if _, ok := s.pins.seen[r.ID]; !ok {
-		s.pins.seen[r.ID] = seenRequest{digest: pinrelease.Digest(text), at: at}
+	if _, ok := s.pins.seen[seenKey(r)]; !ok {
+		s.pins.seen[seenKey(r)] = seenRequest{digest: pinrelease.Digest(text), at: at}
 	}
 }
 
@@ -551,6 +570,8 @@ func (s *Server) pinLoops(ctx context.Context) {
 			case errors.Is(err, ErrUnlocked):
 				wait = s.pinEvery(pinUnlockedRecheck)
 			case errors.Is(err, ErrPINRefused):
+				// The stop is in memory and a restart asks again; that is acceptable because the driver never sends a PIN
+				// to a card with one attempt left, so repeated refusals cannot block the card.
 				slog.Error("the card did not take a released PIN: no more PIN release requests; unlock the board with sluis node unlock")
 				return
 			default:

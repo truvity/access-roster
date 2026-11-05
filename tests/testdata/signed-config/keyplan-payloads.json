@@ -668,6 +668,11 @@
    "name": "an unknown key of a slot",
    "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: 9d, purpose: wrapping, public_key: AQID, pin: \"123456\" }] }\n",
    "refused_path": "slot_map[0].slots[0]"
+  },
+  {
+   "name": "a purpose in two slots of one node",
+   "payload": "default:\n  cache_ttl: 15m\n  slot_map:\n    - { node: board-a, slots: [{ slot: \"87\", purpose: pin-release, public_key: AQID }, { slot: \"88\", purpose: pin-release, public_key: BAUG }] }\n",
+   "refused_path": "slot_map[0].slots[1].purpose"
   }
  ]
 }
