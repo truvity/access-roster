@@ -60,6 +60,16 @@
    "target_kind": "generation",
    "target": "data/3",
    "id": "generation/data/3"
+  },
+  {
+   "target_kind": "kid",
+   "target": "skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA",
+   "id": "kid/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa"
+  },
+  {
+   "target_kind": "recipient",
+   "target": "skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA",
+   "id": "recipient/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa"
   }
  ],
  "refused": [

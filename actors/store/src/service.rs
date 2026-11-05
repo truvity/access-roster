@@ -990,7 +990,8 @@ impl<E: ItemEngine, G: GrantOpener, A: AuditSink> Service<E, G, A> {
                 if !messages::envelope_ok(&op.value) {
                     return Err(schema());
                 }
-            } else if messages::decodes(t.kind.segment, &t.id, &op.value) == Some(false) {
+            } else if messages::decodes(t.kind.segment, &t.tenant, &t.id, &op.value) == Some(false)
+            {
                 return Err(schema());
             }
 

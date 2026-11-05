@@ -22,42 +22,11 @@ fn decodes_as<M: buffa::Message>(bytes: &[u8]) -> bool {
 /// The reasons of a `KeyRevocation` (key.proto): a closed list.
 const REVOCATION_REASONS: [&str; 4] = ["compromise", "suspicion", "lost-board", "drill"];
 
-/// The lower-case base32 of a thumbprint's 32 bytes, without padding (RFC 4648 section 6): 52 characters, the label
-/// that names a kid or a recipient in an address, which does not allow upper case. key@ derives it the same way
-/// (`recipientLabel`), and tests/testdata/keyrevocation/ids.json holds both to the encoding.
-#[must_use]
-pub fn thumbprint_label(thumbprint: &str) -> Option<String> {
-    use base64::Engine as _;
-    if thumbprint.len() != 43 {
-        return None;
-    }
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .decode(thumbprint)
-        .ok()?;
-    if raw.len() != 32 {
-        return None;
-    }
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let (mut out, mut buf, mut bits) = (String::new(), 0u32, 0u32);
-    for b in raw {
-        buf = (buf << 8) | u32::from(b);
-        bits += 8;
-        while bits >= 5 {
-            bits -= 5;
-            out.push(char::from(ALPHABET[((buf >> bits) & 31) as usize]));
-        }
-        buf &= (1 << bits) - 1;
-    }
-    if bits > 0 {
-        out.push(char::from(ALPHABET[((buf << (5 - bits)) & 31) as usize]));
-    }
-    Some(out)
-}
-
 /// A `KeyRevocation` item is valid when its message decodes, names one of the four target kinds, a target of that
-/// kind's form, a reason of the closed list and a time, and when its id is the one that names the target. The kind is
+/// kind's form, a reason of the closed list and a time, when its id is the one that names the target, and when its
+/// tenant is empty for a kid, a recipient and a purpose and set for a generation. The kind is
 /// create only (ADR 0041), so an item that is wrong cannot be corrected later: it is refused at the write.
-fn key_revocation_ok(id: &str, bytes: &[u8]) -> bool {
+fn key_revocation_ok(tenant: &str, id: &str, bytes: &[u8]) -> bool {
     use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
     let Ok(m) = <KeyRevocation as buffa::Message>::decode_from_slice(bytes) else {
         return false;
@@ -66,9 +35,8 @@ fn key_revocation_ok(id: &str, bytes: &[u8]) -> bool {
         return false;
     }
     let want = match m.target_kind.as_str() {
-        "kid" | "recipient" => {
-            thumbprint_label(&m.target).map(|l| format!("{}/{l}", m.target_kind))
-        }
+        "kid" | "recipient" => sluis_store::revocation::thumbprint_label(&m.target)
+            .map(|l| format!("{}/{l}", m.target_kind)),
         "purpose" => crate::address::valid_part(&m.target).then(|| format!("purpose/{}", m.target)),
         "generation" => m
             .target
@@ -82,24 +50,27 @@ fn key_revocation_ok(id: &str, bytes: &[u8]) -> bool {
             .then(|| format!("generation/{}", m.target)),
         _ => None,
     };
-    want.is_some_and(|w| w == id)
+    // A revocation of a boundary's key, purpose or recipient has no tenant (the address carries `-`); only a data key
+    // generation is a tenant's, and it needs one. A wrong place would be a revocation that no reader finds.
+    let tenant_ok = tenant.is_empty() != (m.target_kind == "generation");
+    tenant_ok && want.is_some_and(|w| w == id)
 }
 
 /// The kinds whose Protobuf message is in `sluis-proto`, by segment.
 //
 // planned: every other durable and temp kind that is plain or hashed is passed as bytes today, because
 // `sluis-proto` holds no message for it yet (its writer's contract adds it).
-type Check = fn(&str, &[u8]) -> bool;
+type Check = fn(&str, &str, &[u8]) -> bool;
 const MAPPED: &[(&str, Check)] = &[("key-revocation", key_revocation_ok)];
 
-/// Whether the bytes are the kind's message (and, for a kind that has rules of its own, a valid one for the id). None
+/// Whether the bytes are the kind's message (and, for a kind that has rules of its own, a valid one for the tenant and the id). None
 /// when the contracts have no message for the kind yet: the bytes are then passed on as they are.
 #[must_use]
-pub fn decodes(segment: &str, id: &str, bytes: &[u8]) -> Option<bool> {
+pub fn decodes(segment: &str, tenant: &str, id: &str, bytes: &[u8]) -> Option<bool> {
     MAPPED
         .iter()
         .find(|(s, _)| *s == segment)
-        .map(|(_, check)| check(id, bytes))
+        .map(|(_, check)| check(tenant, id, bytes))
 }
 
 #[cfg(test)]
@@ -151,28 +122,46 @@ mod tests {
                 c["id"].as_str().unwrap(),
             );
             let bytes = item(kind, target, "compromise", true);
+            let tenant = if kind == "generation" { "t1" } else { "" };
             assert_eq!(
-                decodes("key-revocation", id, &bytes),
+                decodes("key-revocation", tenant, id, &bytes),
                 Some(true),
                 "{kind} {target}"
             );
             // Another id, and a reason outside the list, and no time, are refused: the item cannot be corrected later.
             assert_eq!(
-                decodes("key-revocation", "kid/other", &bytes),
+                decodes("key-revocation", tenant, "kid/other", &bytes),
                 Some(false),
                 "{id}"
             );
             assert_eq!(
-                decodes("key-revocation", id, &item(kind, target, "because", true)),
+                decodes(
+                    "key-revocation",
+                    tenant,
+                    id,
+                    &item(kind, target, "because", true)
+                ),
                 Some(false)
             );
             assert_eq!(
-                decodes("key-revocation", id, &item(kind, target, "drill", false)),
+                decodes(
+                    "key-revocation",
+                    tenant,
+                    id,
+                    &item(kind, target, "drill", false)
+                ),
                 Some(false)
+            );
+            // The tenant is the other way round: a generation with none, and any other target in a tenant, are refused.
+            let other = if kind == "generation" { "" } else { "t1" };
+            assert_eq!(
+                decodes("key-revocation", other, id, &bytes),
+                Some(false),
+                "{kind} {target} in tenant {other:?}"
             );
             if kind == "kid" || kind == "recipient" {
                 assert_eq!(
-                    thumbprint_label(target).as_deref(),
+                    sluis_store::revocation::thumbprint_label(target).as_deref(),
                     id.split_once('/').map(|x| x.1)
                 );
             }
@@ -186,6 +175,7 @@ mod tests {
                 assert_eq!(
                     decodes(
                         "key-revocation",
+                        "",
                         &id,
                         &item(kind, target, "compromise", true)
                     ),
@@ -196,13 +186,14 @@ mod tests {
             }
         }
         assert_eq!(
-            decodes("key-revocation", "kid/x", &[0xff, 0xff]),
+            decodes("key-revocation", "", "kid/x", &[0xff, 0xff]),
             Some(false)
         );
         for reason in ["compromise", "suspicion", "lost-board", "drill"] {
             assert_eq!(
                 decodes(
                     "key-revocation",
+                    "",
                     "purpose/mac",
                     &item("purpose", "mac", reason, true)
                 ),
@@ -235,6 +226,6 @@ mod tests {
         .encode_to_vec();
         assert!(decodes_as::<Refusal>(&m));
         assert!(!decodes_as::<Refusal>(&[0xff, 0xff, 0xff]));
-        assert_eq!(decodes("person", "x", &m), None);
+        assert_eq!(decodes("person", "", "x", &m), None);
     }
 }

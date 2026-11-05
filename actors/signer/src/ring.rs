@@ -54,7 +54,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use buffa_types::google::protobuf::Timestamp;
 use sluis_kit::Client;
 use sluis_proto::sluis::signer::v2alpha1::{SigningKey, SigningRing};
-use sluis_store::revocation::KeyRevocations;
+use sluis_store::revocation::{KeyRevocations, without_revoked};
 use sluis_store::{Error as StoreError, Kind, Store, WriteOpts};
 use tokio::sync::Mutex;
 
@@ -281,7 +281,10 @@ pub enum RingError {
 struct Snapshot {
     at: SystemTime,
     current: Current,
+    /// The key is an active key of the ring.
     active: bool,
+    /// `KeyRevocation` listed the key when the snapshot was made.
+    revoked: bool,
 }
 
 /// The manager of the ring: reads it, plans, writes with the version guard, and says which key may
@@ -331,28 +334,36 @@ impl RingKeeper {
     ///
     /// [`RingError`]; `signer` signs nothing then.
     pub async fn signing_key(&self) -> Result<Current, RingError> {
-        let mut guard = self.snapshot.lock().await;
-        let now = (self.clock)();
-        let fresh = guard
-            .as_ref()
-            .filter(|s| now.duration_since(s.at).is_ok_and(|age| age < REFRESH));
-        let snap = match fresh {
-            Some(s) => s.clone(),
-            None => {
-                let s = self.reconcile_locked().await?;
-                *guard = Some(s.clone());
-                s
+        // The guard is held only to read or to refresh the snapshot, never across the store call below: a slow
+        // `KeyRevocation` must not queue every other caller behind it.
+        let snap = {
+            let mut guard = self.snapshot.lock().await;
+            let now = (self.clock)();
+            let fresh = guard
+                .as_ref()
+                .filter(|s| now.duration_since(s.at).is_ok_and(|age| age < REFRESH));
+            match fresh {
+                Some(s) => s.clone(),
+                None => {
+                    let s = self.reconcile_locked().await?;
+                    *guard = Some(s.clone());
+                    s
+                }
             }
         };
+        // A key that `KeyRevocation` lists is revoked, whatever else is true of it.
+        if snap.revoked {
+            return Err(RingError::Revoked);
+        }
         if !snap.active {
             return Err(RingError::NotActive);
         }
-        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: look
-        // at the key's own item at every call, and refuse when it cannot be read (fail closed).
-        match self.revocations.is_revoked(&snap.current.key_id).await {
-            Ok(false) => Ok(snap.current),
-            Ok(true) => Err(RingError::Revoked),
-            Err(_) => Err(RingError::Store),
+        // The snapshot is up to ten seconds old, and a revocation must stop a signature at once: look at the key's
+        // own item at every call, and refuse when it cannot be read in time (fail closed).
+        match tokio::time::timeout(CALL, self.revocations.is_revoked(&snap.current.key_id)).await {
+            Ok(Ok(false)) => Ok(snap.current),
+            Ok(Ok(true)) => Err(RingError::Revoked),
+            _ => Err(RingError::Store),
         }
     }
 
@@ -434,27 +445,22 @@ impl RingKeeper {
     }
 }
 
-/// The ring without the keys that `KeyRevocation` lists.
-fn without_revoked(mut ring: SigningRing, revoked: &HashSet<String>) -> SigningRing {
-    ring.keys.retain(|k| !revoked.contains(&k.key_id));
-    ring
-}
-
 fn snapshot(
     ring: &SigningRing,
     current: Current,
     at: SystemTime,
     revoked: &HashSet<String>,
 ) -> Snapshot {
-    let active = !revoked.contains(&current.key_id)
-        && ring
-            .keys
-            .iter()
-            .any(|k| k.key_id == current.key_id && k.state == ACTIVE);
+    let active = ring
+        .keys
+        .iter()
+        .any(|k| k.key_id == current.key_id && k.state == ACTIVE);
+    let revoked = revoked.contains(&current.key_id);
     Snapshot {
         at,
         current,
         active,
+        revoked,
     }
 }
 
@@ -543,28 +549,6 @@ mod tests {
         let (r2, ch) = plan(&r, &cur("a"), A, at(2000 + WINDOW), &T, &revoked(&["a"]));
         assert!(ch.is_empty());
         assert_eq!(r2, r);
-    }
-
-    /// verifies: REQ-KEYS-107
-    #[test]
-    fn the_ring_of_the_key_set_lacks_a_revoked_kid_in_every_state() {
-        let key = |id: &str, state: &str| SigningKey {
-            key_id: id.into(),
-            state: state.into(),
-            ..SigningKey::default()
-        };
-        let ring = SigningRing {
-            keys: vec![
-                key("a", ACTIVE),
-                key("b", PRE_PUBLISHED),
-                key("c", RETIRING),
-                key("d", ACTIVE),
-            ],
-            ..SigningRing::default()
-        };
-        let out = without_revoked(ring.clone(), &revoked(&["a", "b", "c"]));
-        assert_eq!(states(&out), [("d", ACTIVE)]);
-        assert_eq!(without_revoked(ring.clone(), &revoked(&[])), ring);
     }
 
     #[test]
