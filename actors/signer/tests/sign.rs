@@ -1528,6 +1528,112 @@ async fn the_owner_node_of_a_revoked_key_cannot_make_it_active_or_sign_with_it()
     assert_eq!(kids, [first], "the new key is revoked and not published");
 }
 
+/// verifies: REQ-KEYS-089, REQ-KEYS-106, REQ-KEYS-107
+#[tokio::test]
+async fn the_replacement_of_a_revoked_only_key_signs_at_once_with_its_key_set_published() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let first = w.key.current.lock().unwrap().kid.clone();
+    // Long after the first deploy: no shortcut of a young ring helps the replacement.
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.clock.advance(3 * 3600);
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+
+    // The only key is revoked: nothing signs.
+    w.store.revoke(&first);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "key_revoked")
+    );
+
+    // key@ moves to a new key. Within the ring's look every ten seconds, and with no lead time, it
+    // signs, and the key set that the same call's verifier fetches already holds it.
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    w.clock.advance(11);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, new_kid);
+    let jwks = key_set(&c).await;
+    let v: Value = serde_json::from_slice(&jwks).unwrap();
+    let kids: Vec<_> = v["keys"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|k| k["kid"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        kids,
+        std::slice::from_ref(&new_kid),
+        "the revoked kid is not published"
+    );
+    assert_eq!(
+        verify(&w, &jwks, &got.token, "example-app", "at+jwt").unwrap(),
+        new_kid
+    );
+    let (_, ring) = w.store.ring().unwrap();
+    let state = |id: &str| {
+        ring.keys
+            .iter()
+            .find(|k| k.key_id == id)
+            .map(|k| k.state.clone())
+    };
+    assert_eq!(state(&new_kid).as_deref(), Some("active"));
+    assert_eq!(w.spool.records("signer.ring.add").len(), 2);
+}
+
+/// verifies: REQ-KEYS-089, REQ-KEYS-076
+#[tokio::test]
+async fn a_revoked_spare_and_a_normal_rotation_still_wait_for_the_window() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    let first = w.key.current.lock().unwrap().kid.clone();
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.clock.advance(3 * 3600);
+
+    // A normal rotation: the old key is active and not revoked, so the new key is only published.
+    let new = material();
+    let new_kid = new.kid.clone();
+    *w.key.current.lock().unwrap() = new;
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set", "published, not yet signing");
+    let (_, ring) = w.store.ring().unwrap();
+    assert!(
+        ring.keys
+            .iter()
+            .any(|k| k.key_id == new_kid && k.state == "pre-published")
+    );
+
+    // An unrelated revocation changes nothing: the key that signs is still not revoked.
+    w.store.revoke(&material().kid);
+    w.clock.advance(11);
+    let e = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap_err();
+    assert_eq!(reason(&e), "key_set");
+
+    // Once the old key is revoked, the key that waited signs at once, without the rest of the window.
+    w.store.revoke(&first);
+    w.clock.advance(11);
+    let got = sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    assert_eq!(got.key_id, new_kid);
+}
+
 /// verifies: REQ-KEYS-106, REQ-KEYS-107
 #[tokio::test]
 async fn it_fails_closed_when_key_revocation_cannot_be_read() {

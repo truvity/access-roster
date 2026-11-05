@@ -1418,9 +1418,10 @@ requirements:
     rationale: "Waiting for the lead time would stop every sign-in of a single-key installation, and a verifier that does not fetch the key set again on an unfamiliar kid is broken against the standard (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
-    issues: [1361]
+    issues: [1361, 1362]
     runtimes: all
     standards: []
     features: ["design"]
