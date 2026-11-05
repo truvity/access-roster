@@ -1383,7 +1383,7 @@ requirements:
       - {kind: integration-test, ref: "two log kinds test"}
   - id: REQ-AUDIT-094
     area: AUDIT
-    statement: "The writer MUST register the sealed batches of the audit log and of the usage log, the removed duplicate ids and its transport cursor in one conditional write of its state in the project's bucket."
+    statement: "The writer MUST register the sealed batches of the audit log, the removed duplicate ids and its transport cursor in one conditional write of its state in the project's bucket."
     rationale: "A crash leaves all of it or none of it, and the writer's state never lives in the store (ADR 0029)."
     level: MUST
     source: design-decision
@@ -1395,8 +1395,24 @@ requirements:
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [1121, 837]
+    tests: [actors/writer/internal/writerd/writer_test.go]
     verification:
       - {kind: integration-test, ref: "crash between seals test"}
+  - id: REQ-AUDIT-166
+    area: AUDIT
+    split_from: REQ-AUDIT-094
+    statement: "The writer MUST register the sealed batches of the usage log in the same conditional write of its state as those of the audit log."
+    rationale: "A crash leaves both logs or neither, so the two logs never disagree about which messages were written (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: quota
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [837, 915]
+    verification:
+      - {kind: integration-test, ref: "crash between seals test with both log kinds"}
   - id: REQ-AUDIT-095
     area: AUDIT
     statement: "A usage event MUST be a CloudEvents 1.0 event in the structured JSON format, in RFC 8785 canonical form."
@@ -1825,12 +1841,27 @@ requirements:
       - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
   - id: REQ-AUDIT-125
     area: AUDIT
-    statement: "One log key per writer instance MUST sign the checkpoints of its project's audit log and usage log."
+    statement: "One log key per writer instance MUST sign the checkpoints of its project's audit log."
+    rationale: "A writer's log has one audience and one lifetime, so a second key would add a policy and a slot for nothing (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [914]
+    verification:
+      - {kind: integration-test, ref: "the checkpoints of the audit log of one writer verify against one public key, and those of two writers against two"}
+  - id: REQ-AUDIT-167
+    area: AUDIT
+    split_from: REQ-AUDIT-125
+    statement: "The log key of a writer instance MUST sign the checkpoints of its project's usage log as well as those of its audit log."
     rationale: "Both logs of a writer have one audience and one lifetime, so a second key would add a policy and a slot for nothing (ADR 0029)."
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: quota
     runtimes: all
     standards: []
     issues: [914, 915]
@@ -2170,12 +2201,12 @@ requirements:
       - {kind: integration-test, ref: "an audit piece starts with a changed AuditLog and receives it from store@ on the snapshot swap"}
   - id: REQ-AUDIT-150
     area: AUDIT
-    statement: "The writer MUST have key@ seal every audit and usage entry under the tenant's evidence key and never under its data key."
+    statement: "The writer MUST have key@ seal every audit entry under the tenant's evidence key and never under its data key."
     rationale: "Evidence never shares a key with personal data and outlives it, so an exit deletes everything personal and keeps the evidence (ADR 0029)."
     level: MUST
     source: design-decision
     status: partial
-    gap: partly-built
+    gap: no-proving-test
     milestone: first-version
     runtimes: all
     actors: [writer]
@@ -2184,6 +2215,22 @@ requirements:
     verification:
       - {kind: integration-test, ref: "the data key of the tenant does not open an entry; the evidence key does"}
       - {kind: integration-test, ref: "after the tenant's exit the entries still open under the evidence key until the evidence retention ends"}
+  - id: REQ-AUDIT-168
+    area: AUDIT
+    split_from: REQ-AUDIT-150
+    statement: "The writer MUST have key@ seal every usage entry under the tenant's evidence key and never under its data key."
+    rationale: "Evidence never shares a key with personal data and outlives it, so an exit deletes everything personal and keeps the evidence (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: quota
+    runtimes: all
+    actors: [writer]
+    standards: []
+    issues: [837, 915]
+    verification:
+      - {kind: integration-test, ref: "the data key of the tenant does not open a usage entry; the evidence key does"}
+      - {kind: integration-test, ref: "after the tenant's exit the usage entries still open under the evidence key until the evidence retention ends"}
   - id: REQ-AUDIT-159
     area: AUDIT
     statement: "The writer MUST ask `policy` for a grant for each batch of one tenant's records before key@ seals the batch."

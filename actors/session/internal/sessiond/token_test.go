@@ -83,7 +83,7 @@ func (e *env) redeemed() (map[string]any, authorizeParams) {
 	return body(e.t, r), p
 }
 
-// verifies: REQ-AUTHN-033, REQ-TOKEN-023, REQ-TOKEN-010, REQ-TOKEN-027, REQ-TOKEN-013, REQ-TOKEN-030, REQ-TOKEN-016
+// verifies: REQ-SESS-017, REQ-AUTHN-033, REQ-TOKEN-023, REQ-TOKEN-010, REQ-TOKEN-027, REQ-TOKEN-013, REQ-TOKEN-030, REQ-TOKEN-016
 func TestTokenCodeGrantIssuesTheTokens(t *testing.T) {
 	e := newEnv(t, nil)
 	code, p := e.signIn()

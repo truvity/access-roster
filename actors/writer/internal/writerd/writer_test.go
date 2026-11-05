@@ -669,6 +669,7 @@ func crashOnce(match func(op, p string) bool) func(op, p string) error {
 	}
 }
 
+// verifies: REQ-AUDIT-094
 func TestACrashBetweenTheBundlesAndTheStateIsAdopted(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -704,6 +705,7 @@ func TestACrashBetweenTheBundlesAndTheStateIsAdopted(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-094
 func TestACrashBetweenTheStateAndTheCheckpointIsFinished(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)

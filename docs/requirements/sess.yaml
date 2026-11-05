@@ -86,19 +86,34 @@ requirements:
       - {kind: integration-test, ref: "idle and absolute limit tests"}
   - id: REQ-SESS-003
     area: SESS
-    statement: "A refresh MUST re-check that the grant and the client are still allowed and that the directory person is not disabled."
-    rationale: "Refresh must not upgrade or hide a state change, so a person whom the directory has disabled gets no new tokens once sluis knows of it."
+    statement: "A refresh MUST re-check that the grant and the client are still allowed."
+    rationale: "Refresh must not upgrade or hide a state change, so a grant that policy has since tightened gets no new tokens."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
     issues: [777]
+    tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
       - {kind: integration-test, ref: "refresh re-check tests"}
+  - id: REQ-SESS-052
+    area: SESS
+    split_from: REQ-SESS-003
+    statement: "A refresh MUST re-check that the directory person is not disabled."
+    rationale: "Refresh must not hide a state change, so a person whom the directory has disabled gets no new tokens once sluis knows of it."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-01, section: "6", depth: Full}
+    issues: [777]
+    verification:
+      - {kind: integration-test, ref: "disabled person refresh test"}
   - id: REQ-SESS-016
     area: SESS
     split_from: REQ-SESS-003
@@ -136,20 +151,34 @@ requirements:
   - id: REQ-SESS-017
     area: SESS
     split_from: REQ-SESS-004
-    statement: "The sid MUST appear in ID tokens, access tokens and logout tokens."
+    statement: "The sid MUST appear in ID tokens and access tokens."
     rationale: "The sid links tokens to a session for revocation."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "2", depth: Full}
+    issues: [793]
+    tests: [actors/session/internal/sessiond/token_test.go]
+    verification:
+      - {kind: integration-test, ref: "sid presence test"}
+  - id: REQ-SESS-053
+    area: SESS
+    split_from: REQ-SESS-004
+    statement: "The sid MUST appear in logout tokens."
+    rationale: "The sid links tokens to a session for revocation."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
       - {id: ST-31, section: "2.4", depth: Full}
     issues: [793]
     verification:
-      - {kind: integration-test, ref: "sid presence test"}
+      - {kind: integration-test, ref: "sid presence test in logout tokens"}
   - id: REQ-SESS-005
     area: SESS
     statement: "Session records MUST NOT contain e-mail addresses or names."
