@@ -15,11 +15,12 @@
 # still on the key they have, because only a node that holds an old wrapping key can wrap the data keys for the new one:
 #   1. SLUIS_BOARDS=<board> SLUIS_BOARDS_KEY_DRIVER=yubikey-piv SLUIS_BOARD_CARD_SERIALS=<board>=<serial> just boards-deploy
 #      then `sluis node unlock` on that board. Its key@ makes a new wrapping key; it cannot open a data key yet, and the
-#      other boards keep serving. The deploy marks the board as pending verification BEFORE it changes anything on it, and the
-#      mark stays whatever the deploy does (a card board starts locked, so the wait for its units may end non-zero). The mark is
-#      a file on the board itself, /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so a lost checkout cannot fail
-#      the guard open; $SLUIS_BOARDS_STATE/switch-pending is a cache of it for the boards a run does not name. Name every board
-#      of the fleet when in doubt: the guard reads the mark of each board the run names.
+#      other boards keep serving. The deploy first runs the board's checks, which write nothing (remote.sh preflight), then
+#      marks the board as pending verification BEFORE it changes anything on it, and the mark stays whatever the deploy does
+#      (a card board starts locked, so the wait for its units may end non-zero). The mark is a file on the board itself,
+#      /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so a lost checkout cannot fail the guard open;
+#      $SLUIS_BOARDS_STATE/switch-pending is a cache of it for the boards a run does not name. Name every board of the fleet
+#      when in doubt: the guard reads the mark of each board the run names.
 #   2. SLUIS_BOARDS=<board> SLUIS_BOARDS_RECIPIENTS_SWITCHED=1 just boards-recipients
 #      reads the new id and replaces that board's old id, and only that one, in $SLUIS_BOARDS_STATE/recipients.
 #   3. just boards-prepare, then just boards-deploy for every board, with SLUIS_BOARDS_KEY_DRIVER UNSET: each board keeps the
@@ -288,9 +289,10 @@ board_data_keys() { # board
 
 # The mark that a board switched its key driver and has not been verified. The board's own file is the truth:
 # /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so that a lost checkout of the operator cannot make the guard fail
-# open. $state/switch-pending is a cache of it for the boards a run does not name. The mark is made BEFORE the deploy of the
-# board and stays whatever the deploy does (a card board starts locked, so a deploy that waits for the units may end non-zero
-# with the new driver enabled); only `check` clears it.
+# open. $state/switch-pending is a cache of it for the boards a run does not name. The mark is made after the board passed the
+# checks of remote.sh preflight, which write nothing, and BEFORE the deploy of the board, and it stays whatever the deploy does
+# (a card board starts locked, so a deploy that waits for the units may end non-zero with the new driver enabled); only `check`
+# clears it.
 pending_file=$state/switch-pending
 marker=/var/lib/sluis-state/dev/switch-pending
 board_marker_set() { # board
@@ -418,8 +420,13 @@ deploy)
 	first=$tmp/stage-${drv[${boards[0]}]}
 	echo "plan: $(wc -l <"$first/plan.tsv") units, in this order:"
 	sed 's/^/  /' "$first/plan.tsv" | cut -f1
-	# A switching board is marked pending before anything is changed on it, on the board and in the cache. If the mark cannot be
-	# made, nothing is deployed.
+	# A switching board is first checked (remote.sh preflight: what its image must carry, and that its pinned uids and gids are
+	# free or already its own), which writes nothing, so a board the deploy would refuse is never left marked. Then it is marked
+	# pending before anything is changed on it, on the board and in the cache. If the check fails or the mark cannot be made,
+	# nothing is deployed.
+	for b in "${switching[@]}"; do
+		run_on "$b" preflight "$tmp/stage-${drv[$b]}" || { echo "boards: the board '$b' failed the checks before its switch; it is not marked pending and nothing was deployed" >&2; exit 1; }
+	done
 	for b in "${switching[@]}"; do
 		board_marker_set "$b" || { echo "boards: cannot mark the board '$b' as pending; nothing was deployed" >&2; exit 1; }
 		mkdir -p "$state"

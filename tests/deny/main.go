@@ -233,12 +233,17 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	}
 	since := time.Now().UTC().Add(-2 * time.Second).Format(time.RFC3339Nano)
 	var vs []spec.Verdict
+	// The probes of the rows run one after the other, so the time each one ran tells its refusals from another row's in a
+	// callee's log, even where two rows show the guard the same registry name (a borrower and its caller).
+	windows := map[string]window{}
 	for _, row := range rs {
 		c := row.Label
+		from := time.Now()
 		res, err := runProbe(ctx, image, project, by[c], ms, ts)
 		if err != nil {
 			return false, fmt.Errorf("probe as %s: %w", c, err)
 		}
+		windows[c] = window{from: from, to: time.Now()}
 		if len(res) != len(ts) {
 			return false, fmt.Errorf("probe as %s answered %d of %d targets", c, len(res), len(ts))
 		}
@@ -267,7 +272,7 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	if allowed := spec.AllowedPairs(rs, ts); !slices.Equal(allowed, golden) {
 		return false, fmt.Errorf("the registry allows %d pairs and %s lists %d: update the golden file on purpose", len(allowed), sw.golden, len(golden))
 	}
-	logs, err := checkLogs(ctx, vs, serving, since)
+	logs, err := checkLogs(ctx, vs, serving, since, windows)
 	if err != nil {
 		return false, err
 	}
@@ -289,7 +294,7 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 }
 
 // logCheck is the second half of "the refusal is logged where the kit logs it": a pair refused by the guard leaves a line
-// in the callee's log that names the caller. The kit logs a refusal (Go: "call refused"; Rust: "refused: call graph"); it
+// in the callee's log that names the caller, stamped while that row's own probe ran (refusalIn). The kit logs a refusal (Go: "call refused"; Rust: "refused: call graph"); it
 // does not yet emit an audit record for it, which is a gap of the kit and not of this matrix.
 type logCheck struct {
 	Checked int
@@ -297,9 +302,55 @@ type logCheck struct {
 	Skipped []string // refused by a listener that audits the refusal and logs nothing (entry)
 }
 
-func checkLogs(ctx context.Context, vs []spec.Verdict, serving map[string]unit, since string) (logCheck, error) {
+// window is the time one row's probe ran: from just before `docker run` to just after it returned.
+type window struct{ from, to time.Time }
+
+// logLine is a line of a container's log with the time docker stamped on it (`docker logs --timestamps`).
+type logLine struct {
+	at   time.Time
+	text string
+}
+
+// parseLogs reads the output of `docker logs --timestamps`: every line starts with an RFC 3339 time and a space. A line
+// without one is kept with a zero time, which no window holds.
+func parseLogs(b []byte) []logLine {
+	var out []logLine
+	for l := range strings.SplitSeq(string(b), "\n") {
+		if l == "" {
+			continue
+		}
+		ts, rest, _ := strings.Cut(l, " ")
+		at, err := time.Parse(time.RFC3339Nano, ts)
+		if err != nil {
+			out = append(out, logLine{text: l})
+			continue
+		}
+		out = append(out, logLine{at: at, text: rest})
+	}
+	return out
+}
+
+// refusalIn says whether a line of the log, stamped while the row's probe ran, is a refusal that names the caller. The
+// guard logs the registry name of the peer's uid, so a borrower's refusal and its caller's carry the same name: the window
+// is what tells them apart. The callee writes the line before it answers, and the probe's container starts after `from`
+// and is gone before `to`, so the line of a row's own call falls inside its window and the line of another row's call
+// outside it. Docker stamps the line with the host's clock, which is the clock of `from` and `to` (the CI runner, or a
+// workstation whose daemon is local).
+func refusalIn(lines []logLine, name string, w window) bool {
+	// The name stands alone: not a part of a longer registry name ("ca" in "ssh-ca"), which \b would let through.
+	n := `(?:^|[^\w-])` + regexp.QuoteMeta(name) + `(?:[^\w-]|$)`
+	re := regexp.MustCompile(`(?i)refus\w*.*` + n + `|` + n + `.*refus\w*`)
+	for _, l := range lines {
+		if !l.at.Before(w.from) && !l.at.After(w.to) && re.MatchString(l.text) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkLogs(ctx context.Context, vs []spec.Verdict, serving map[string]unit, since string, windows map[string]window) (logCheck, error) {
 	var lc logCheck
-	text := map[string]string{}
+	logs := map[string][]logLine{}
 	for _, v := range vs {
 		if v.Result.Outcome != spec.Guard || v.Violated {
 			continue
@@ -310,19 +361,20 @@ func checkLogs(ctx context.Context, vs []spec.Verdict, serving map[string]unit, 
 			lc.Skipped = append(lc.Skipped, v.Caller+" -> "+v.Target.ID)
 			continue
 		}
-		if _, ok := text[svc]; !ok {
+		if _, ok := logs[svc]; !ok {
 			// The log of a container is its stdout and its stderr: docker prints the second on its own stderr.
-			b, err := exec.CommandContext(ctx, "docker", "logs", "--since", since, serving[svc].ID).CombinedOutput() // #nosec G204 -- an id from inspect
+			b, err := exec.CommandContext(ctx, "docker", "logs", "--timestamps", "--since", since, serving[svc].ID).CombinedOutput() // #nosec G204 -- an id from inspect
 			if err != nil {
 				return lc, fmt.Errorf("docker logs %s: %w", svc, err)
 			}
-			text[svc] = string(b)
+			logs[svc] = parseLogs(b)
+		}
+		w, ok := windows[v.Caller]
+		if !ok {
+			return lc, fmt.Errorf("the row %s has no time window of its probe", v.Caller)
 		}
 		lc.Checked++
-		// The guard logs the registry name of the peer's uid: a borrower's refusal is logged as its caller's, and the
-		// line cannot tell the two apart.
-		re := regexp.MustCompile(`(?i)refus\w*.*\b` + regexp.QuoteMeta(v.Name) + `\b|\b` + regexp.QuoteMeta(v.Name) + `\b.*refus\w*`)
-		if !re.MatchString(text[svc]) {
+		if !refusalIn(logs[svc], v.Name, w) {
 			lc.Missing = append(lc.Missing, v.Caller+" -> "+v.Target.ID)
 		}
 	}
