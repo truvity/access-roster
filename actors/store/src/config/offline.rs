@@ -85,13 +85,14 @@ impl Check {
 /// documents of the kinds it declares, then the set.
 #[must_use]
 pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
-    load_dir(dir, b).0
+    load_dir(dir, b, false).0
 }
 
-/// [`check_dir`], and the documents that passed their own checks, in order: the Boundary document, then the kinds it
-/// declares. When no check failed, they are the set store@ would load, which `sluis config explain` describes.
+/// [`check_dir`], and with `keep` the documents of a set that passed every check, in order: the Boundary document, then
+/// the kinds it declares. That set is what store@ would load, which `sluis config explain` describes; a caller that
+/// only checks passes `false` and no document is copied.
 #[must_use]
-pub fn load_dir(dir: &Path, b: &Bootstrap) -> (Vec<Check>, Vec<Document>) {
+pub fn load_dir(dir: &Path, b: &Bootstrap, keep: bool) -> (Vec<Check>, Vec<Document>) {
     let mut out = Vec::new();
     let Ok(dir) = sluis_file::Dir::open(dir) else {
         out.push(Check::fail(
@@ -143,9 +144,12 @@ pub fn load_dir(dir: &Path, b: &Bootstrap) -> (Vec<Check>, Vec<Document>) {
         out.push(Check::not_run("set", ""));
         return (out, Vec::new());
     }
-    let mut accepted = Vec::with_capacity(docs.len() + 1);
-    accepted.push(boundary.clone());
-    accepted.extend(docs.iter().cloned());
+    let mut accepted = Vec::new();
+    if keep {
+        accepted.reserve(docs.len() + 1);
+        accepted.push(boundary.clone());
+        accepted.extend(docs.iter().cloned());
+    }
     match snapshot::assemble(&b.boundary, boundary, docs) {
         Ok(_) => {
             out.push(Check::ok("set", ""));

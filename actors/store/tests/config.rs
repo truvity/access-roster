@@ -211,12 +211,64 @@ fn a_plain_http_redirect_off_loopback_is_refused_for_every_client_kind() {
             let e = refused("InstallationClient", &client(ck, bad));
             assert!(
                 e.contains("app.redirects[1]: must be https, or http on a loopback IP literal")
-                    || e.contains("app.redirects[1]: must be an http or https URL"),
+                    || e.contains("app.redirects[1]: must be an http or https URL")
+                    || e.contains(
+                        "app.redirects[1]: must not hold user information before the host"
+                    ),
                 "{ck}: {bad}: {e}"
             );
             assert!(!e.contains(bad), "an error never shows a value: {e}");
         }
     }
+}
+
+/// A URL with user information is refused wherever the payload takes one, with the path and never the value.
+#[test]
+fn a_url_with_user_information_is_refused_with_its_path_and_never_its_value() {
+    let bad = "https://zq-user:zq-pass@h.example.com/?token=zq-token";
+    let cases = [
+        (
+            "Upstream",
+            format!(
+                "w:\n  kind: oidc\n  issuer: \"{bad}\"\n  client_id: c\n  subject_claim: sub\n"
+            ),
+            "w.issuer",
+        ),
+        (
+            "ExchangeTrust",
+            format!(
+                "default:\n  issuers:\n    - issuer: https://i.example.com\n      proof_kind: jwt\n      jwks_uri: \"{bad}\"\n"
+            ),
+            "issuers[0].jwks_uri",
+        ),
+        (
+            "ExchangeTrust",
+            format!("default:\n  issuers:\n    - issuer: \"{bad}\"\n      proof_kind: jwt\n"),
+            "issuers[0].issuer",
+        ),
+        (
+            "InstallationClient",
+            format!(
+                "app:\n  kind: public\n  redirects: [\"{bad}\"]\n  requires: [\"dev:app:user\"]\n"
+            ),
+            "app.redirects[0]",
+        ),
+    ];
+    for (kind_name, text, path) in cases {
+        let e = refused(kind_name, &text);
+        assert!(
+            e.contains(&format!(
+                "{path}: must not hold user information before the host"
+            )),
+            "{kind_name}: {e}"
+        );
+        for secret in ["zq-user", "zq-pass", "zq-token"] {
+            assert!(!e.contains(secret), "an error never shows a value: {e}");
+        }
+    }
+    // An `@` after the authority is a path, not user information.
+    let ok = "w:\n  kind: oidc\n  issuer: https://h.example.com/@realm?a=b@c\n  client_id: c\n  subject_claim: sub\n";
+    assert!(payload::decode(kind("Upstream"), ok.as_bytes()).is_ok());
 }
 
 /// verifies: REQ-AUTHN-004
