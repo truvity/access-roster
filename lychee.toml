@@ -4,8 +4,15 @@
 
 cache = true
 max_cache_age = "1d"
+# max_retries repeats a request that failed on the network or timed out, the wait doubling
+# from retry_wait_time. It does not repeat a 5xx (one request, measured with lychee 0.24.2):
+# `just site-links` checks those links again and site/scripts/links-report.mjs decides, so a
+# 5xx from github.com that persists is a warning there; a 4xx, and a 5xx from any other host, fail.
 max_retries = 3
 retry_wait_time = 5
+# A server error is not a fact about the link, so it is not kept in the cache (max_cache_age
+# is a day, and a cached 504 failed the next run without a request: "[504] ... (cached)").
+cache_exclude_status = "500..=599"
 timeout = 30
 # A redirect loop must end in a few hops, not in ten hops of 30 s each, three times over.
 max_redirects = 5
