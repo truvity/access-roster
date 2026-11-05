@@ -56,7 +56,31 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 
 With `--against OLD`, `check` compares the bootstrap file with the previous version and prints one `warn` line for each changed path, with the path and never the value, because a changed bootstrap file is a restart of store@ ([A change needs a restart](/reference/bootstrap-file/#a-change-needs-a-restart)). A signed config document needs no such line: every config change reloads as a whole snapshot. A pipeline that must not publish a bootstrap change reads the `warn` lines in the JSON output.
 
-`explain` prints each field's effective value with its provenance: the storage class, the layer that set it and the version. A secret is shown as its reference, never resolved. `--field PATH` limits the output to one subtree. With `--live` both read the durable kinds through the console API with the operator's own token, and `check` lists held changes ([Configuration](/concepts/data/#configuration)).
+With `--live`, `check` and `explain` read the durable kinds through the console API with the operator's own token, and `check` lists held changes ([Configuration](/concepts/data/#configuration)).
+
+`explain` prints what each setting of the bootstrap file and of the signed config documents in `DIR` resolves to, and where the value comes from. It runs the same helper as `check`, with `--explain`, so the values are those store@ would run with and the CLI reads no document itself ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). It explains a set that passes every check of `check` and nothing else: an effective value exists only for a set store@ would load, so a set that fails is not explained, the failed lines are printed as `check` prints them, and the command exits 3. It names no runtime and judges no driver, so it takes no `--runtime`. Each setting has:
+
+| Member | Meaning |
+|---|---|
+| `path` | Where the setting is. In the bootstrap file it is the path `check` names (`durable.driver`, `publishers[0].kid`). In a document it is `Kind.item.path` (`Upstream.workforce.issuer`, `TokenLifetime.default.access_token`); a kind with one item has the item `default`, and a list element is `[0]`. A `check` line and a path of `explain` name the same place, so one can be pasted into `--field`. |
+| `value` | The effective value, as text. Durations are shown in their largest whole unit (`60s` is `1m`). |
+| `class` | The storage class of the kind, `config`. A setting of the bootstrap file, which is not a kind, and a built-in have `-`. |
+| `layer` | The layer that set the value: `bootstrap` (the bootstrap file), `config` (a signed document) or `built-in` (what the binary carries; the one built-in today is the default `start_timeout` of 30 seconds when the file leaves it out) ([0004](/decisions/0004-the-data-model/#layers-and-the-direction-rule)). |
+| `version` | The `seq` of the document, or the release for a built-in; empty for the bootstrap file, which has none. |
+| `source` | `bootstrap` for the file, `store@` for a built-in, or the document as the audit fact of a start names it, `Kind:seq:sha384` ([0005](/decisions/0005-the-store/#configuration-loading)). The text output shows the first twelve digits of the digest. |
+| `checks` | JSON only: the checks of `check` that cover the setting, `bootstrap` and `installation` for a driver, `document` and `set` for a document setting. |
+| `secret` | JSON only, and only when `true`: the value is the name of a credential in the secret source. |
+
+`--field PATH` limits the output to the setting at `PATH` and the ones under it, at a boundary of the path: `durable` holds `durable.driver`, and `Up` holds nothing. A path that names no setting is a usage error (exit 2), and so is an empty one, so that an unset variable in `--field "$FIELD"` cannot explain everything. The text output is a table, a line for each setting; `--output json` prints the `fields` and the `checks` that ran. The offline form is built; `--live`, which adds the operator and tenant layers, and the built-in layer of the documents, which the actor that reads a kind applies today, come with the first command or actor that needs them ([REQ-OPS-023](/requirements/ops/#REQ-OPS-023)).
+
+**What `explain` prints, and what it never prints.** The bootstrap file and a config document are written by hand, reviewed in git and hold no credential by construction ([The bootstrap file](/reference/bootstrap-file/), [0004](/decisions/0004-the-data-model/#storage-classes)), which is why a config value is printed where an error prints only a path. Even so:
+
+- **A credential is its reference.** The `secret` of an `Upstream` or an `InstallationClient` is the name of a credential, and that name is printed and marked. The command opens no socket, so it cannot resolve one, and the value of a secret is never in a file it reads.
+- **A value that is longer than 256 bytes or holds a line break or any control character is its digest,** `sha384:` and the SHA-384 of its bytes. A line stays a line, a document cannot write an escape sequence to a terminal, and a Cedar text or a grant vocabulary, which store@ does not interpret, is one setting identified by the digest that `sha384sum` of the reviewed file gives.
+- **A publisher key is its pin.** The key is not repeated; its SHA-384 identifies it.
+- **A refusal names a path and a rule, never a value,** as in `check`.
+
+The roads not taken are a walk over every field of the Protobuf messages (it needs a reflection that the Rust messages do not have, and the YAML of the verified payload says the same), and a value shown with the secret masked in place (a mask hides which credential a client uses, which is what an operator asks).
 
 ### `sluis doctor`
 
@@ -137,8 +161,8 @@ And these where they apply:
 | Member | Commands | Meaning |
 |---|---|---|
 | `version`, `commit` | `version` | The release version and the commit. |
-| `checks` | `config check`, `doctor` | A list of `{ "name", "result", "path" }`; `result` is `ok`, `warn`, `fail` or `not-run`, and `path` names the field a check is about. |
-| `fields` | `config explain` | A list of `{ "path", "value", "class", "layer", "version", "source" }`; `source` names the document or the item the value came from. A secret's `value` is its reference. |
+| `checks` | `config check`, `config explain`, `doctor` | A list of `{ "name", "result", "path" }`; `result` is `ok`, `warn`, `fail` or `not-run`, and `path` names the field a check is about. |
+| `fields` | `config explain` | A list of `{ "path", "value", "class", "layer", "version", "source", "checks" }`, with `"secret": true` when the value is a credential's reference; `source` names the document the value came from ([`explain`](#sluis-config-check-and-explain)). A secret's `value` is its reference. |
 | `keys` | `key request`, `key status` | A list of `{ "purpose", "boundary", "store", "slot", "fingerprint", "not_after", "days_left", "level" }`; `level` is `none`, `notice`, `alert` or `critical`. |
 | `requests` | `key request` | A list of `{ "stem", "kind", "files": [{ "path", "sha256" }] }`. |
 | `installed` | `key install` | A list of `{ "stem", "outcome", "reasons" }`. |

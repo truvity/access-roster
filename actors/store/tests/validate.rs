@@ -477,6 +477,279 @@ fn no_value_of_a_document_is_printed() {
     assert!(!text.contains(marker), "a value was printed: {text}");
 }
 
+/// `store check --validate --explain`: the exit code, the whole JSON object, and everything printed.
+fn explain_with(bootstrap: &str, docs: &Path, extra: &[&str]) -> (Option<i32>, Value, String) {
+    let mut args = vec!["--explain"];
+    args.extend_from_slice(extra);
+    let o = validate(bootstrap, docs, &args);
+    let stdout = String::from_utf8_lossy(&o.stdout).into_owned();
+    let all = format!("{stdout}{}", String::from_utf8_lossy(&o.stderr));
+    let v: Value = serde_json::from_str(stdout.trim()).unwrap_or_else(|e| panic!("{e}: {all}"));
+    (o.status.code(), v, all)
+}
+
+fn field<'a>(v: &'a Value, path: &str) -> &'a Value {
+    v["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["path"] == path)
+        .unwrap_or_else(|| panic!("no field {path}"))
+}
+
+fn paths(v: &Value) -> Vec<&str> {
+    v["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect()
+}
+
+fn sha384(text: &str) -> String {
+    let d = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, text.as_bytes());
+    store::config::document::hex(d.as_ref())
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn explain_gives_each_setting_its_layer_its_version_and_its_source() {
+    let e = env();
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    // The same checks run, so the set is one store@ would load; no installation line, as no runtime was named.
+    assert!(
+        v["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["result"] == "ok" && c["name"] != "installation"),
+        "{all}"
+    );
+
+    // A setting of the bootstrap file: no class, no version, the file is the source.
+    let f = field(&v, "durable.driver");
+    assert_eq!(
+        (
+            f["value"].as_str(),
+            f["layer"].as_str(),
+            f["class"].as_str()
+        ),
+        (Some("rqlite"), Some("bootstrap"), Some("-"))
+    );
+    assert_eq!(
+        (f["version"].as_str(), f["source"].as_str()),
+        (Some(""), Some("bootstrap"))
+    );
+    assert_eq!(
+        f["checks"],
+        serde_json::json!(["bootstrap", "installation"])
+    );
+    assert_eq!(field(&v, "start_timeout")["value"], "30s");
+    assert_eq!(field(&v, "start_timeout")["layer"], "bootstrap");
+    assert_eq!(field(&v, "publishers[0].kid")["value"], "publisher-1");
+
+    // A setting of a signed document: the config class and layer, the seq of the document, and the document as the
+    // audit fact of a start names it, with the digest of the payload.
+    let f = field(&v, "Boundary.default.environment");
+    assert_eq!(f["value"], "development");
+    assert_eq!(
+        (f["class"].as_str(), f["layer"].as_str()),
+        (Some("config"), Some("config"))
+    );
+    assert_eq!(f["version"], "1");
+    assert_eq!(
+        f["source"].as_str().unwrap(),
+        format!("Boundary:1:{}", sha384(source("boundary")))
+    );
+    assert_eq!(f["checks"], serde_json::json!(["document", "set"]));
+    assert_eq!(
+        field(&v, "TokenLifetime.default.access_token")["value"],
+        "10m"
+    );
+    assert_eq!(field(&v, "KeyPlan.default.cache_ttl")["value"], "15m");
+    assert_eq!(
+        field(&v, "InstallationClient.sluis-cli.redirects[0]")["value"],
+        "http://127.0.0.1/callback"
+    );
+
+    // A sweep over nothing would prove nothing: the Boundary and every kind it declares that sets something is there
+    // (the local ExchangeTrust trusts no issuer, so it sets nothing).
+    let kinds: std::collections::BTreeSet<_> = paths(&v)
+        .iter()
+        .filter(|p| p.chars().next().unwrap().is_ascii_uppercase())
+        .map(|p| p.split('.').next().unwrap())
+        .collect();
+    assert_eq!(
+        kinds.into_iter().collect::<Vec<_>>(),
+        [
+            "AuditCatalogue",
+            "AuditLog",
+            "Boundary",
+            "GrantVocabulary",
+            "InstallationClient",
+            "KeyPlan",
+            "Policy",
+            "TokenLifetime",
+            "Upstream",
+        ]
+    );
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_start_timeout_the_file_leaves_out_is_a_built_in() {
+    let e = env();
+    let text = std::fs::read_to_string(e.bootstrap()).unwrap();
+    assert!(text.contains("start_timeout: 30s\n"));
+    let file = e.run.path().join("default.yaml");
+    std::fs::write(&file, text.replace("start_timeout: 30s\n", "")).unwrap();
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let (code, v, all) = explain_with(
+        file.to_str().unwrap(),
+        e.docs.path(),
+        &["--field", "start_timeout"],
+    );
+    assert_eq!(code, Some(0), "{all}");
+    let f = field(&v, "start_timeout");
+    assert_eq!(f["value"], "30s");
+    assert_eq!(f["layer"], "built-in");
+    assert_eq!(f["source"], "store@");
+    assert_eq!(f["version"], sluis_version::VERSION);
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_credential_is_shown_as_its_reference_and_marked() {
+    let e = env();
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    for path in [
+        "InstallationClient.example-app.secret",
+        "Upstream.workforce.secret",
+    ] {
+        assert_eq!(field(&v, path)["secret"], true, "{path}");
+    }
+    assert_eq!(
+        field(&v, "Upstream.workforce.secret")["value"],
+        "upstream-workforce"
+    );
+    // Only a reference is marked: no other setting is.
+    let marked: Vec<_> = v["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f.get("secret").is_some())
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        marked,
+        [
+            "Upstream.workforce.secret",
+            "InstallationClient.example-app.secret"
+        ]
+    );
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_text_or_a_long_value_is_shown_as_its_digest_and_a_public_key_is_not_repeated() {
+    let e = env();
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    // Cedar text and the vocabulary are not interpreted by store@: one setting each, identified by the digest of the
+    // payload, which `sha384sum` of the reviewed file gives.
+    assert_eq!(
+        field(&v, "Policy.default.cedar")["value"].as_str().unwrap(),
+        format!("sha384:{}", sha384(source("policy")))
+    );
+    assert_eq!(
+        field(&v, "GrantVocabulary.default.document")["value"]
+            .as_str()
+            .unwrap(),
+        format!("sha384:{}", sha384(source("grant-vocabulary")))
+    );
+    assert!(!all.contains("permit"), "Cedar text was printed");
+    // A pin identifies the publisher; the key itself is not printed.
+    assert!(!all.contains("BEGIN PUBLIC KEY"));
+    assert!(v["fields"].as_array().unwrap().iter().all(|f| {
+        let s = f["value"].as_str().unwrap();
+        s.len() <= 256 && !s.chars().any(char::is_control)
+    }));
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn field_limits_the_output_to_a_subtree_at_a_boundary_of_the_path() {
+    let e = env();
+    let b = e.bootstrap();
+    let only = |scope: &str| {
+        let (code, v, all) = explain_with(&b, e.docs.path(), &["--field", scope]);
+        assert_eq!(code, Some(0), "{scope}: {all}");
+        paths(&v).into_iter().map(str::to_owned).collect::<Vec<_>>()
+    };
+    assert_eq!(only("durable"), ["durable.driver", "durable.socket"]);
+    assert_eq!(only("durable.driver"), ["durable.driver"]);
+    assert_eq!(only("publishers[0]").len(), 2);
+    assert_eq!(
+        only("TokenLifetime.default.access_token"),
+        ["TokenLifetime.default.access_token"]
+    );
+    assert_eq!(
+        only("Upstream.workforce.scopes"),
+        [
+            "Upstream.workforce.scopes[0]",
+            "Upstream.workforce.scopes[1]",
+            "Upstream.workforce.scopes[2]"
+        ]
+    );
+    // `Upstream` is one kind and `Up` is none; a path that names nothing gives no field, which the CLI reports.
+    assert!(only("Up").is_empty());
+    assert!(only("durabl").is_empty());
+    // The checks still ran and are all there.
+    let (_, v, _) = explain_with(&b, e.docs.path(), &["--field", "Up"]);
+    assert!(!v["checks"].as_array().unwrap().is_empty());
+}
+
+/// verifies: REQ-OPS-023
+#[test]
+fn a_set_that_is_refused_is_not_explained_and_no_value_is_printed() {
+    let marker = "zq-marker-7f3a";
+    let e = env();
+    e.sign(
+        "token-lifetime",
+        &source("token-lifetime")
+            .replace("access_token: 10m", &format!("access_token: [{marker}]")),
+    );
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(3), "{all}");
+    assert!(v["fields"].as_array().unwrap().is_empty(), "{all}");
+    assert_eq!(
+        failures(v["checks"].as_array().unwrap()),
+        ["document TokenLifetime: step 6: default.access_token: not a duration string"]
+    );
+    assert!(!all.contains(marker), "a value was printed: {all}");
+
+    // A refused bootstrap file explains nothing either.
+    let file = write_bootstrap(e.run.path(), &e.p, 0o620);
+    let (code, v, all) = explain_with(&file, e.docs.path(), &[]);
+    assert_eq!(code, Some(3), "{all}");
+    assert!(v["fields"].as_array().unwrap().is_empty(), "{all}");
+}
+
+#[test]
+fn explain_takes_no_runtime_and_field_needs_explain() {
+    let e = env();
+    let o = validate(
+        &e.bootstrap(),
+        e.docs.path(),
+        &["--explain", "--runtime", "bare-metal"],
+    );
+    assert_eq!(o.status.code(), Some(2));
+    let o = validate(&e.bootstrap(), e.docs.path(), &["--field", "boundary"]);
+    assert_eq!(o.status.code(), Some(2));
+}
+
 /// The verdict of the loader on a set: None when it loads, else the kind and the rule of the refusal.
 async fn loader_verdict(e: &Env) -> Option<String> {
     let sock = e.run.path().join("config-source.sock");

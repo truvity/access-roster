@@ -42,6 +42,14 @@ pub struct Document {
     items: Items,
 }
 
+impl Document {
+    /// The document as the source gave it, for the offline `explain`, which reads the verified payload of the bytes
+    /// again (signed-config.md "Verifying a document").
+    pub(super) fn signed_bytes(&self) -> &[u8] {
+        &self.signed
+    }
+}
+
 /// What the audit fact of a start or a reload names for a document (0005 "The snapshot").
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Summary {

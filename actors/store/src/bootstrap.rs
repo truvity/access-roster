@@ -54,6 +54,9 @@ pub struct Publisher {
 pub struct Bootstrap {
     pub boundary: String,
     pub start_timeout: Duration,
+    /// Whether the file sets `start_timeout`; when it does not, the value is the built-in default
+    /// (`sluis config explain` says which).
+    pub start_timeout_set: bool,
     pub config_source: Destination,
     pub secret_source: Destination,
     pub durable: Destination,
@@ -175,6 +178,7 @@ impl Bootstrap {
             }
         }
         let boundary = name(m.require("boundary")?, "boundary")?;
+        let start_timeout_set = m.entries.iter().any(|(k, _)| k == "start_timeout");
         let start_timeout = match m.take("start_timeout") {
             Some(v) => duration(v, "start_timeout")?,
             None => START_TIMEOUT_DEFAULT,
@@ -188,6 +192,7 @@ impl Bootstrap {
         let b = Bootstrap {
             boundary,
             start_timeout,
+            start_timeout_set,
             config_source,
             secret_source,
             durable,

@@ -170,9 +170,6 @@ func TestConfigCheckRunsOnLinuxOnlyAndNeedsItsArguments(t *testing.T) {
 	if got := ta.do("config", "check", t.TempDir()); got != cli.ExitUsage {
 		t.Errorf("no bootstrap file and no boundary: exit %d", got)
 	}
-	if got := ta.do("config", "explain"); got != cli.ExitUsage {
-		t.Errorf("config explain is not in this build: exit %d", got)
-	}
 }
 
 // repoRoot is the root of the repository, two levels above this package.
