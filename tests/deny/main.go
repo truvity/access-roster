@@ -1,6 +1,6 @@
 // Command deny runs the deny matrix of the local installation (WP-29; ADR 0002, "Enforcement is tested").
 //
-// For every caller that runs in the installation and every socket it serves, it asks: does the registry allow this
+// For every identity that runs in the installation (a uid with the groups of one unit) and every socket it serves, it asks: does the registry allow this
 // call, and what happens when the caller tries? A probe container runs as the caller's uid with the groups of the
 // caller's own unit and with every socket directory mounted, so that the modes and groups of the directories and sockets
 // are what is tested, not the choice of what the caller was given to mount. An allowed pair must get past the guard of
@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -56,10 +55,10 @@ func main() {
 
 // unit is a running container of the project.
 type unit struct {
-	ID, Service, Name string // Name is the registry name of its uid, "" if the uid is not one
-	User              string
-	Groups            []string
-	Mounts            []mount
+	ID, Service string
+	User        string
+	Groups      []string
+	Mounts      []mount
 }
 
 type mount struct{ Volume, Dest string }
@@ -102,9 +101,6 @@ func discover(ctx context.Context, project string) ([]unit, error) {
 	var us []unit
 	for _, in := range ins {
 		u := unit{ID: in.ID, Service: in.Config.Labels["com.docker.compose.service"], User: in.Config.User, Groups: in.HostConfig.GroupAdd}
-		if uid, perr := strconv.ParseUint(strings.SplitN(in.Config.User, ":", 2)[0], 10, 32); perr == nil {
-			u.Name, _ = spec.CallerName(uint32(uid))
-		}
 		for _, m := range in.Mounts {
 			if m.Type == "volume" && strings.HasPrefix(m.Destination, "/run/sluis/") {
 				u.Mounts = append(u.Mounts, mount{m.Name, m.Destination})
@@ -116,30 +112,29 @@ func discover(ctx context.Context, project string) ([]unit, error) {
 	return us, nil
 }
 
-// callers are the registry names that run, each with the unit that stands for it: the first service by name that runs as
-// its uid, except the sidecar that borrows the adapter's uid and has none of its groups.
-func callers(us []unit) ([]string, map[string]unit, error) {
-	by := map[string]unit{}
-	var names []string
+// rows are the identities that run, each with the unit that stands for it: every distinct (uid, groups) of the running
+// containers (spec.Rows), so that a second unit of a uid with other groups (entry's audit front) is probed with its own.
+func rows(us []unit) ([]spec.Row, map[string]unit, error) {
+	var sus []spec.Unit
+	byService := map[string]unit{}
 	for _, u := range us {
-		if u.Name == "" {
-			uid, err := strconv.ParseUint(strings.SplitN(u.User, ":", 2)[0], 10, 32)
-			if err == nil && spec.NotCaller(uint32(uid)) {
-				continue
-			}
-			// A running process whose uid the registry does not name would drop out of the sweep unseen.
-			return nil, nil, fmt.Errorf("the container of %s runs as %q, which maps to no registry name", u.Service, u.User)
+		uid, err := spec.ParseUser(u.User)
+		if err != nil {
+			return nil, nil, fmt.Errorf("the container of %s: %w", u.Service, err)
 		}
-		if u.Service == "idp-loopback" {
-			continue
-		}
-		if _, dup := by[u.Name]; !dup {
-			by[u.Name] = u
-			names = append(names, u.Name)
-		}
+		// A running process whose uid the registry does not name would drop out of the sweep unseen: Rows refuses it.
+		sus = append(sus, spec.Unit{Service: u.Service, UID: uid, Groups: u.Groups})
+		byService[u.Service] = u
 	}
-	sort.Strings(names)
-	return names, by, nil
+	rs, err := spec.Rows(sus)
+	if err != nil {
+		return nil, nil, err
+	}
+	by := map[string]unit{}
+	for _, r := range rs {
+		by[r.Label] = byService[r.Service]
+	}
+	return rs, by, nil
 }
 
 // mounts are every socket directory of the project, once by path, for the probe to mount read-only.
@@ -200,7 +195,7 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	expected, err := spec.ExpectedCallers(cb)
+	expectedRows, err := spec.ExpectedRows(cb)
 	if err != nil {
 		return false, err
 	}
@@ -217,13 +212,14 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	names, by, err := callers(us)
+	rs, by, err := rows(us)
 	if err != nil {
 		return false, err
 	}
-	// An empty or a partial sweep is no evidence: every caller the project file runs must be probed.
+	names, expected := spec.Labels(rs), spec.Labels(expectedRows)
+	// An empty or a partial sweep is no evidence: every identity the project file runs must be probed.
 	if !slices.Equal(names, expected) {
-		return false, fmt.Errorf("the running callers %v are not the %d the project file runs, %v", names, len(expected), expected)
+		return false, fmt.Errorf("the running rows %v are not the %d the project file runs, %v", names, len(expected), expected)
 	}
 	ts := spec.Targets(boundary)
 	serving := map[string]unit{}
@@ -237,23 +233,24 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	}
 	since := time.Now().UTC().Add(-2 * time.Second).Format(time.RFC3339Nano)
 	var vs []spec.Verdict
-	for _, c := range names {
-		rs, err := runProbe(ctx, image, project, by[c], ms, ts)
+	for _, row := range rs {
+		c := row.Label
+		res, err := runProbe(ctx, image, project, by[c], ms, ts)
 		if err != nil {
 			return false, fmt.Errorf("probe as %s: %w", c, err)
 		}
-		if len(rs) != len(ts) {
-			return false, fmt.Errorf("probe as %s answered %d of %d targets", c, len(rs), len(ts))
+		if len(res) != len(ts) {
+			return false, fmt.Errorf("probe as %s answered %d of %d targets", c, len(res), len(ts))
 		}
 		for i, t := range ts {
-			if rs[i].ID != t.ID {
-				return false, fmt.Errorf("probe as %s answered %q where %q was asked", c, rs[i].ID, t.ID)
+			if res[i].ID != t.ID {
+				return false, fmt.Errorf("probe as %s answered %q where %q was asked", c, res[i].ID, t.ID)
 			}
-			vs = append(vs, spec.Judge(c, t, rs[i]))
+			vs = append(vs, spec.Judge(row, t, res[i]))
 		}
 	}
 	if want := len(expected) * len(ts); len(vs) != want || want == 0 {
-		return false, fmt.Errorf("the sweep judged %d pairs, not %d (%d callers x %d sockets)", len(vs), want, len(expected), len(ts))
+		return false, fmt.Errorf("the sweep judged %d pairs, not %d (%d rows x %d sockets)", len(vs), want, len(expected), len(ts))
 	}
 	// The oracle that is not the guard's own function: the pairs that reached their callee are the golden ones, and the
 	// registry's allowed set is the golden one too.
@@ -267,7 +264,7 @@ func run(ctx context.Context, sw sweep) (bool, error) {
 	if !slices.Equal(reached, golden) {
 		return false, fmt.Errorf("the pairs that reached their callee differ from %s: reached %d, golden %d", sw.golden, len(reached), len(golden))
 	}
-	if allowed := spec.AllowedPairs(names, ts); !slices.Equal(allowed, golden) {
+	if allowed := spec.AllowedPairs(rs, ts); !slices.Equal(allowed, golden) {
 		return false, fmt.Errorf("the registry allows %d pairs and %s lists %d: update the golden file on purpose", len(allowed), sw.golden, len(golden))
 	}
 	logs, err := checkLogs(ctx, vs, serving, since)
@@ -322,7 +319,9 @@ func checkLogs(ctx context.Context, vs []spec.Verdict, serving map[string]unit, 
 			text[svc] = string(b)
 		}
 		lc.Checked++
-		re := regexp.MustCompile(`(?i)refus\w*.*\b` + regexp.QuoteMeta(v.Caller) + `\b|\b` + regexp.QuoteMeta(v.Caller) + `\b.*refus\w*`)
+		// The guard logs the registry name of the peer's uid: a borrower's refusal is logged as its caller's, and the
+		// line cannot tell the two apart.
+		re := regexp.MustCompile(`(?i)refus\w*.*\b` + regexp.QuoteMeta(v.Name) + `\b|\b` + regexp.QuoteMeta(v.Name) + `\b.*refus\w*`)
 		if !re.MatchString(text[svc]) {
 			lc.Missing = append(lc.Missing, v.Caller+" -> "+v.Target.ID)
 		}
@@ -338,9 +337,9 @@ func render(project string, names []string, ts []spec.Target, vs []spec.Verdict,
 	for _, v := range vs {
 		idx[v.Caller+"|"+v.Target.ID] = v
 	}
-	fmt.Fprintf(&b, "Deny matrix of project %s: %d callers x %d sockets = %d pairs\n\n", project, len(names), len(ts), len(vs))
+	fmt.Fprintf(&b, "Deny matrix of project %s: %d rows x %d sockets = %d pairs\n\n", project, len(names), len(ts), len(vs))
 	b.WriteString("Cell: A allowed and past the guard | s denied at the socket (EACCES) | g denied by the guard | ! violation | ? could not tell\n")
-	b.WriteString("Rows are callers (registry names); columns are the sockets, numbered below.\n\n")
+	b.WriteString("Rows are the identities (a caller's registry name, or the service of a unit that borrows a caller's uid); columns are the sockets, numbered below.\n\n")
 	w := 0
 	for _, n := range names {
 		w = max(w, len(n))

@@ -111,7 +111,7 @@ func TestJudge(t *testing.T) {
 		{"denied for an unknown uid is a setup fault", "signer", Result{Outcome: Guard, Detail: "caller"}, true},
 		{"a missing socket proves nothing", "signer", Result{Outcome: Broken, Detail: "ENOENT"}, true},
 	} {
-		if got := Judge(c.caller, tg, c.r).Violated; got != c.violated {
+		if got := Judge(Row{Label: c.caller, Caller: c.caller}, tg, c.r).Violated; got != c.violated {
 			t.Errorf("%s: violated = %v, want %v", c.name, got, c.violated)
 		}
 	}
@@ -131,7 +131,7 @@ func TestJudgeADriverSocketNeedsARefusalAtTheSocket(t *testing.T) {
 		{"another actor opens it and the guard refuses", "session", Result{Outcome: Guard, Detail: "call_graph"}, true},
 		{"the driver itself opens its own socket", "driver-store-file", Result{Outcome: Guard, Detail: "call_graph"}, false},
 	} {
-		if got := Judge(c.caller, tg, c.r).Violated; got != c.violated {
+		if got := Judge(Row{Label: c.caller, Caller: c.caller}, tg, c.r).Violated; got != c.violated {
 			t.Errorf("%s: violated = %v, want %v", c.name, got, c.violated)
 		}
 	}
@@ -165,49 +165,115 @@ func TestJudgeAKeySocketNeedsARefusalAtTheDirectory(t *testing.T) {
 		{"a caller of store opens it and the guard refuses", "entry", Result{Outcome: Guard, Detail: "call_graph"}, true},
 		{"key@ opens its own directory", "key", Result{Outcome: Guard, Detail: "call_graph"}, false},
 	} {
-		if got := Judge(c.caller, tg, c.r).Violated; got != c.violated {
+		if got := Judge(Row{Label: c.caller, Caller: c.caller}, tg, c.r).Violated; got != c.violated {
 			t.Errorf("%s: violated = %v, want %v", c.name, got, c.violated)
 		}
 	}
 }
 
-// The oracle the sweep is checked against is a committed list, not the guard's function: the registry's allowed pairs
-// among the callers of the Compose project must equal tests/deny/testdata/allowed-pairs.txt, so a change of the call
-// graph must change the list on purpose.
+// The oracle the sweep is checked against is a committed list, not the guard's function: the pairs the rows of the
+// Compose project must reach (the registry's, narrowed for a borrower) must equal tests/deny/testdata/allowed-pairs.txt,
+// so a change of the call graph must change the list on purpose.
 func TestTheGoldenAllowedPairsAreTheRegistrys(t *testing.T) {
 	cb, err := os.ReadFile("../../../../deploy/local/compose.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
-	callers, err := ExpectedCallers(cb)
+	rows, err := ExpectedRows(cb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(callers) < 2 {
-		t.Fatalf("the project runs %d callers", len(callers))
+	if len(rows) < 2 {
+		t.Fatalf("the project runs %d rows", len(rows))
 	}
 	gb, err := os.ReadFile("../../testdata/allowed-pairs.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
 	golden := ParseGolden(gb)
-	got := AllowedPairs(callers, Targets("dev"))
+	got := AllowedPairs(rows, Targets("dev"))
 	if !slices.Equal(got, golden) {
-		t.Fatalf("the registry allows %d pairs, the golden file lists %d; update tests/deny/testdata/allowed-pairs.txt on purpose:\n%s",
+		t.Fatalf("the rows must reach %d pairs, the golden file lists %d; update tests/deny/testdata/allowed-pairs.txt on purpose:\n%s",
 			len(got), len(golden), strings.Join(got, "\n"))
+	}
+	// Every borrower of the project is a row of its own, and the audit front is probed against key/entry.
+	labels := Labels(rows)
+	for svc := range borrowers {
+		if !slices.Contains(labels, svc) {
+			t.Errorf("the borrower %s is not a row of the project: %v", svc, labels)
+		}
 	}
 }
 
 // A uid of the project that the registry does not name fails, so a new service cannot drop out of the sweep.
-func TestExpectedCallersRefusesAnUnnamedUID(t *testing.T) {
-	if _, err := ExpectedCallers([]byte("services:\n  a: {user: \"61000:61000\"}\n  b: {user: \"59999:59999\"}\n")); err == nil {
+func TestExpectedRowsRefusesAnUnnamedUID(t *testing.T) {
+	if _, err := ExpectedRows([]byte("services:\n  a: {user: \"61000:61000\"}\n  b: {user: \"59999:59999\"}\n")); err == nil {
 		t.Error("an unnamed uid was taken")
 	}
-	if _, err := ExpectedCallers([]byte("services: {}\n")); err == nil {
+	if _, err := ExpectedRows([]byte("services: {}\n")); err == nil {
 		t.Error("an empty project was taken")
 	}
-	cs, err := ExpectedCallers([]byte("services:\n  a: {user: \"61000:61000\"}\n  e: {user: \"61000:61000\"}\n  r: {user: \"60999:60999\"}\n  i: {image: x}\n"))
-	if err != nil || len(cs) != 1 {
-		t.Errorf("callers = %v, %v; want one", cs, err)
+	rs, err := ExpectedRows([]byte("services:\n  a: {user: \"61000:61000\"}\n  e: {user: \"61000:61000\"}\n  r: {user: \"60999:60999\"}\n  i: {image: x}\n"))
+	if err != nil || len(rs) != 1 {
+		t.Errorf("rows = %v, %v; want one", rs, err)
+	}
+}
+
+// Two units of one uid are one row when they have the same groups (two ports of a driver), two rows when the second is
+// a borrower, and an error otherwise: a unit of a caller's uid with other groups must not hide behind the first.
+func TestRowsProbeEveryDistinctUIDAndGroups(t *testing.T) {
+	entry := Unit{Service: "entry", UID: 61000, Groups: []string{"61700", "61012"}}
+	rs, err := Rows([]Unit{
+		entry,
+		{Service: "entry-audit", UID: 61000, Groups: []string{"61024"}},
+		{Service: "drv-a", UID: 61020, Groups: []string{"61512"}},
+		{Service: "drv-b", UID: 61020, Groups: []string{"61512"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Labels(rs); !slices.Equal(got, []string{"driver-store-rqlite", "entry", "entry-audit"}) {
+		t.Fatalf("rows = %v", got)
+	}
+	if rs[2].Caller != "entry" || rs[2].Service != "entry-audit" {
+		t.Errorf("the audit front's row = %+v", rs[2])
+	}
+	if _, err := Rows([]Unit{entry, {Service: "entry-other", UID: 61000}}); err == nil || !strings.Contains(err.Error(), "borrowers") {
+		t.Errorf("a second unit of entry's uid with other groups was taken: %v", err)
+	}
+	if _, err := Rows([]Unit{{Service: "entry-audit", UID: 61001}}); err == nil {
+		t.Error("a borrower that runs as another uid than it borrows was taken")
+	}
+}
+
+// A borrower must reach only what it is listed with, and only what the registry lets its caller reach; the audit front
+// must not reach entry's key@ socket (ADR 0028: it holds no key), which the registry alone would allow it.
+func TestABorrowerIsHeldToItsOwnTargets(t *testing.T) {
+	ts := byID(t)
+	for svc, b := range borrowers {
+		for _, id := range b.reaches {
+			tg, ok := ts[id]
+			if !ok {
+				t.Errorf("%s reaches %s, which is no target", svc, id)
+				continue
+			}
+			if !tg.Allowed(b.of) {
+				t.Errorf("%s reaches %s, which the registry does not let %s call", svc, id, b.of)
+			}
+		}
+	}
+	front := Row{Label: "entry-audit", Caller: "entry", borrowed: true, reaches: borrowers["entry-audit"].reaches}
+	if !ts["key/entry"].Allowed("entry") || front.Allowed(ts["key/entry"]) {
+		t.Error("key/entry: entry must reach it and its audit front must not")
+	}
+	v := Judge(front, ts["key/entry"], Result{Outcome: Reached, Detail: "ok"})
+	if !v.Violated || v.Caller != "entry-audit" || v.Name != "entry" {
+		t.Errorf("the audit front that reaches key/entry is not a violation: %+v", v)
+	}
+	if v := Judge(front, ts["key/entry"], Result{Outcome: Socket, Detail: "EACCES"}); v.Violated {
+		t.Errorf("the audit front refused at key/entry's directory is a violation: %s", v.Why)
+	}
+	if v := Judge(front, ts["spool-emit"], Result{Outcome: Reached, Detail: "ok"}); v.Violated {
+		t.Errorf("the audit front reaching the spool is a violation: %s", v.Why)
 	}
 }
