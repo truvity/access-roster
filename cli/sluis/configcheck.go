@@ -31,6 +31,19 @@ type configCheck struct {
 // runtimes are the kinds of runtime of an installation (ADR 0011, "Runtime kinds"); the helper takes the same names.
 var runtimes = []string{"bare-metal", "serverless", "kubernetes"}
 
+// optionalString is a string flag that knows whether it was given, so that an empty value is not "no flag".
+type optionalString struct {
+	value string
+	set   bool
+}
+
+func (o *optionalString) String() string { return o.value }
+
+func (o *optionalString) Set(v string) error {
+	o.value, o.set = v, true
+	return nil
+}
+
 // helperEnv names the store helper when --helper does not.
 const helperEnv = "SLUIS_STORE_HELPER"
 
@@ -43,12 +56,13 @@ const helperOutputMax = 1 << 20
 // check and store@ cannot disagree, and maps the helper's checks to the exit codes of cli.md: 0 when every check
 // passes, 3 when one fails, 1 when the helper cannot run.
 func (a *app) configCheckCommand() command {
-	var bootstrap, helper, runtimeKind string
+	var bootstrap, helper string
+	var runtimeKind optionalString
 	return command{
 		name: "config check",
 		flags: func(fs *flag.FlagSet) {
 			fs.StringVar(&bootstrap, "bootstrap", "", "the bootstrap file; by default /etc/sluis/bootstrap.d/<boundary>.yaml")
-			fs.StringVar(&runtimeKind, "runtime", "", "the runtime of the installation, "+strings.Join(runtimes, ", ")+
+			fs.Var(&runtimeKind, "runtime", "the runtime of the installation, "+strings.Join(runtimes, ", ")+
 				"; the drivers of the bootstrap file are checked against it, and without it that check does not run")
 			fs.StringVar(&helper, "helper", "", "the store executable that runs the checks; by default $"+helperEnv+
 				", then store beside this executable, then ../libexec/sluis/actors/store beside it")
@@ -57,7 +71,8 @@ func (a *app) configCheckCommand() command {
 			if len(positional) != 1 {
 				return cli.Usage(errors.New("config check takes one argument, the directory of the signed config documents"))
 			}
-			if runtimeKind != "" && !slices.Contains(runtimes, runtimeKind) {
+			// A flag that is given and empty is an unset variable in `--runtime "$RUNTIME"`: it must not turn the check off.
+			if runtimeKind.set && !slices.Contains(runtimes, runtimeKind.value) {
 				return cli.Usage(errors.New("--runtime is one of " + strings.Join(runtimes, ", ")))
 			}
 			if bootstrap == "" {
@@ -66,7 +81,7 @@ func (a *app) configCheckCommand() command {
 				}
 				bootstrap = filepath.Join("/etc/sluis/bootstrap.d", a.boundary+".yaml")
 			}
-			return a.configCheck(ctx, positional[0], bootstrap, helper, runtimeKind, res)
+			return a.configCheck(ctx, positional[0], bootstrap, helper, runtimeKind.value, res)
 		},
 	}
 }

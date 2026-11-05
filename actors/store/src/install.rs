@@ -126,3 +126,55 @@ pub fn not_run() -> Check {
         "name the runtime with --runtime to check the drivers against it",
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXAMPLE: &str = include_str!("../../../tests/installations/local/bootstrap.yaml");
+
+    /// Each port accepts exactly the drivers the table declares for it, and no driver of another port: the bootstrap
+    /// file reads the same table.
+    #[test]
+    fn each_port_accepts_exactly_the_drivers_declared_for_it() {
+        let accepted = |port: &str, driver: &str| declared(port, driver).is_some();
+        for port in ["config_source", "secret_source", "durable", "temp"] {
+            for driver in ["file", "credential", "rqlite", "dynamodb", ""] {
+                let want = matches!(
+                    (port, driver),
+                    ("config_source", "file")
+                        | ("secret_source", "credential")
+                        | ("durable" | "temp", "rqlite")
+                );
+                assert_eq!(accepted(port, driver), want, "{port}: {driver}");
+            }
+        }
+        assert!(Bootstrap::parse(EXAMPLE).is_ok());
+        for (from, to, path) in [
+            (
+                "config_source: { driver: file,",
+                "config_source: { driver: rqlite,",
+                "config_source.driver",
+            ),
+            (
+                "durable: { driver: rqlite,",
+                "durable: { driver: file,",
+                "durable.driver",
+            ),
+            (
+                "temp: { driver: rqlite,",
+                "temp: { driver: credential,",
+                "temp.driver",
+            ),
+            (
+                "secret_source: { driver: credential,",
+                "secret_source: { driver: file,",
+                "secret_source.driver",
+            ),
+        ] {
+            assert!(EXAMPLE.contains(from), "{from}");
+            let e = Bootstrap::parse(&EXAMPLE.replacen(from, to, 1)).unwrap_err();
+            assert!(e.0.starts_with(&format!("{path}: ")), "{e}");
+        }
+    }
+}

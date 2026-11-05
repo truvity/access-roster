@@ -128,13 +128,14 @@ A publisher key is a public key that may sign config documents. The list is the 
 
 ## What `sluis config check` checks
 
-Beyond the schema and protovalidate, `sluis config check` runs these on the file ([Commands](/reference/cli/#sluis-config-check-and-explain)). store@ makes the same checks at start and does not start on a failure.
+Beyond the schema and protovalidate, `sluis config check` runs these on the file ([Commands](/reference/cli/#sluis-config-check-and-explain)). store@ makes the same checks at start, except the one on the drivers below, and does not start on a failure.
 
 - no two destinations share a socket path;
-- every `driver` fits the runtime that `--runtime` names ([The installation](/reference/cli/#sluis-config-check-and-explain)); the node count joins when a driver first depends on it;
 - every `public_key` parses as an EC P-384 key, and its `spki_sha384` matches it;
 - every `kid` is unique, and every kind in a `co_signs` is a config kind of the kind registry ([Kinds](/reference/kinds/));
 - the file's mode allows no write by group or others, as in [Where it lives](#where-it-lives).
+
+`sluis config check` also checks every `driver` against the runtime that the caller names with `--runtime` ([The installation](/reference/cli/#sluis-config-check-and-explain)). store@ does not know the runtime and does not make this check at start. That is the safe direction: the check is stricter than store@, so it can refuse a set that store@ would load, and it cannot pass a set that store@ refuses ([REQ-DATA-090](/requirements/data/#REQ-DATA-090), [0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The node count joins when a driver first depends on it.
 
 `sluis config check` does not check the file's owner. It often runs on a CI runner or a workstation, where the file belongs to whoever checked it out, so the owner is a check of the installation, not of the file ([#1419](https://github.com/truvity/sluis/issues/1419)). store@ still refuses, at start, a file whose owner is neither root nor its own uid.
 
