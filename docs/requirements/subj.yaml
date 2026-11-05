@@ -623,15 +623,14 @@ requirements:
     rationale: "Those claims change for a person, and an identity must not."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1106]
-    tests: [actors/store/tests/config.rs]
+    tests: [actors/store/tests/config.rs, cli/sluis/configcheck_test.go]
     verification:
-      - {kind: integration-test, ref: "each of the four claims is refused with the path of the field"}
+      - {kind: integration-test, ref: "TestConfigCheckRefusesASubjectClaimThatChangesForAPerson: sluis config check, with the store executable, refuses each of the four claims with the kind and the path of the field"}
   - id: REQ-SUBJ-045
     area: SUBJ
     statement: "sluis MUST mark a directory person as left only after the person is absent from the configured number of consecutive successful full snapshots."
