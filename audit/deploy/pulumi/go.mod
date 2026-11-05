@@ -8,9 +8,9 @@ require (
 	github.com/pulumi/pulumi-aws/sdk/v7 v7.51.1
 	github.com/pulumi/pulumi/sdk/v3 v3.270.0
 	github.com/sigstore/sigstore-go v1.4.0
-	github.com/truvity/policy v1.55.0
+	github.com/truvity/policy v1.55.1
 	github.com/truvity/sluis/audit v1.80.4
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	sigs.k8s.io/yaml v1.6.0
 )
 
