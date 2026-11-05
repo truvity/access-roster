@@ -3,6 +3,9 @@
 # pair of the sweep must be refused. A change of the actor registry or of the Compose project that changes the call
 # graph changes this list, and the pull request that makes it updates the list on purpose, where a reviewer sees it.
 # The socket names are the ids of tests/deny/internal/spec (the numbered list of the report).
+# A row is a uid with the groups of one unit: a caller's registry name, or the service of a unit that borrows a caller's
+# uid with fewer groups (the borrowers of tests/deny/internal/spec). entry-audit, entry's audit front, reaches the spool
+# alone; idp-loopback, which runs as the adapter's uid, reaches nothing and has no line.
 adapter-upstream-oidc -> key/adapter-upstream-oidc
 adapter-upstream-oidc -> policy
 adapter-upstream-oidc -> spool-emit
@@ -11,6 +14,7 @@ entry -> adapter
 entry -> key/entry
 entry -> spool-emit
 entry -> store
+entry-audit -> spool-emit
 exchange -> adapter
 exchange -> key/exchange
 exchange -> policy

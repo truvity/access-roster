@@ -13,6 +13,7 @@ package spec
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -167,7 +168,8 @@ type Result struct {
 
 // Verdict is the judgment of one pair.
 type Verdict struct {
-	Caller   string
+	Caller   string // the label of the row (Row.Label)
+	Name     string // the registry name the callee's guard sees (Row.Caller)
 	Target   Target
 	Allowed  bool // what the registry says
 	Result   Result
@@ -178,8 +180,9 @@ type Verdict struct {
 // Judge compares what the registry says with what the probe saw. An allowed pair must reach the callee past the guard.
 // A denied pair must be refused at the socket or at the guard, and the guard's reason must be call_graph (a reason
 // "caller" would mean the probe's uid is not known, which is a fault of the setup, not a refusal of the pair).
-func Judge(caller string, t Target, r Result) Verdict {
-	v := Verdict{Caller: caller, Target: t, Allowed: t.Allowed(caller), Result: r}
+func Judge(row Row, t Target, r Result) Verdict {
+	caller := row.Caller
+	v := Verdict{Caller: row.Label, Name: caller, Target: t, Allowed: row.Allowed(t), Result: r}
 	switch {
 	case r.Outcome == Broken:
 		v.Violated, v.Why = true, "the probe could not tell: "+r.Detail
@@ -201,14 +204,15 @@ var notCallers = map[uint32]string{
 	60999: "rqlite, the engine's own process, which serves no socket of sluis and calls none",
 }
 
-// ExpectedCallers are the callers the matrix must probe: the registry name of every uid that a service of the Compose
-// project runs as (deploy/local/compose.yaml, which tools/gen/compose generates from the registries), sorted, once
-// each. A service with no user (the one-shot init) is not a caller; a uid that maps to no name and is not one of
-// notCallers is an error, so a new service cannot drop out of the sweep unseen.
-func ExpectedCallers(compose []byte) ([]string, error) {
+// ExpectedRows are the rows the matrix must probe: every distinct (uid, groups) of the services of the Compose project
+// (deploy/local/compose.yaml, which tools/gen/compose generates from the registries), as Rows makes them. A service
+// with no user (the one-shot init) is no row; a uid that maps to no name and is not one of notCallers is an error, so a
+// new service cannot drop out of the sweep unseen.
+func ExpectedRows(compose []byte) ([]Row, error) {
 	var doc struct {
 		Services map[string]struct {
-			User string `yaml:"user"`
+			User     string   `yaml:"user"`
+			GroupAdd []string `yaml:"group_add"`
 		} `yaml:"services"`
 	}
 	if err := yaml.Unmarshal(compose, &doc); err != nil {
@@ -217,43 +221,133 @@ func ExpectedCallers(compose []byte) ([]string, error) {
 	if len(doc.Services) == 0 {
 		return nil, errors.New("the Compose project has no service")
 	}
-	var names []string
+	var us []Unit
 	for svc, s := range doc.Services {
 		if s.User == "" {
 			continue
 		}
-		uid, err := strconv.ParseUint(strings.SplitN(s.User, ":", 2)[0], 10, 32)
+		uid, err := ParseUser(s.User)
 		if err != nil {
-			return nil, fmt.Errorf("service %s: user %q is not a uid", svc, s.User)
+			return nil, fmt.Errorf("service %s: %w", svc, err)
 		}
-		if _, skip := notCallers[uint32(uid)]; skip {
-			continue
-		}
-		n, ok := CallerName(uint32(uid))
-		if !ok {
-			return nil, fmt.Errorf("service %s runs as uid %d, which maps to no registry name", svc, uid)
-		}
-		names = append(names, n)
+		us = append(us, Unit{Service: svc, UID: uid, Groups: s.GroupAdd})
 	}
-	return Callers(names), nil
+	return Rows(us)
 }
 
-// NotCaller says whether a running uid is a known process that is not a caller.
-func NotCaller(uid uint32) bool {
-	_, ok := notCallers[uid]
-	return ok
+// ParseUser reads the uid of a Compose or Docker user "uid:gid".
+func ParseUser(user string) (uint32, error) {
+	uid, err := strconv.ParseUint(strings.SplitN(user, ":", 2)[0], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("user %q is not a uid", user)
+	}
+	return uint32(uid), nil
+}
+
+// Unit is a service of the installation as the matrix sees it: its uid and the supplementary groups of its container.
+type Unit struct {
+	Service string
+	UID     uint32
+	Groups  []string
+}
+
+// Row is one identity the matrix probes: a uid with the groups of one unit. Label names it in the report and in the
+// golden file: the registry name of the uid, or, for a unit that borrows a caller's uid (borrowers), its service.
+// Caller is the registry name that the callee's guard sees.
+type Row struct {
+	Label, Caller string
+	Service       string   // the first service, by name, that the row stands for
+	Groups        []string // sorted
+	borrowed      bool
+	reaches       []string // for a borrower, the targets it must reach
+}
+
+// Allowed says whether the row must reach the target: what the registry lets its caller call, and, for a borrower,
+// only the targets the borrower is listed with.
+func (r Row) Allowed(t Target) bool {
+	if r.borrowed && !slices.Contains(r.reaches, t.ID) {
+		return false
+	}
+	return t.Allowed(r.Caller)
+}
+
+// A borrower is a unit that runs as the uid of a caller with fewer groups than the caller's own unit. The callees'
+// guards see the caller, so the registry alone would let it make every call of the caller: the modes and groups of the
+// sockets are all that hold it to less, and the matrix probes it as a row of its own, held to the targets listed here.
+// Every other target must refuse it.
+type borrower struct {
+	of      string   // the registry name whose uid it runs as
+	reaches []string // the ids of the targets it must reach
+}
+
+var borrowers = map[string]borrower{
+	// The audit front (ADR 0028, "The audit front"): entry's executable with entry's uid, which holds no key and calls
+	// the reader alone (not a target here); it emits its audit records into the spool. key/entry must refuse it.
+	"entry-audit": {of: "entry", reaches: []string{"spool-emit"}},
+	// The loopback of the upstream (tools/gen/compose): socat in the adapter's network, with the adapter's uid and none
+	// of its groups. It is no sluis process and must reach nothing.
+	"idp-loopback": {of: "adapter-upstream-oidc"},
+}
+
+// Rows are the identities to probe among the units, sorted by label. Units of one uid with the same groups are one row
+// (two ports of a driver); a unit of a caller's uid with other groups must be a borrower, or Rows fails: a second unit
+// that the matrix does not hold to its own groups is a gap, not a duplicate.
+func Rows(us []Unit) ([]Row, error) {
+	us = slices.Clone(us)
+	slices.SortFunc(us, func(a, b Unit) int { return strings.Compare(a.Service, b.Service) })
+	by := map[string]Row{}
+	for _, u := range us {
+		if _, skip := notCallers[u.UID]; skip {
+			continue
+		}
+		name, ok := CallerName(u.UID)
+		if !ok {
+			return nil, fmt.Errorf("service %s runs as uid %d, which maps to no registry name", u.Service, u.UID)
+		}
+		groups := slices.Clone(u.Groups)
+		slices.Sort(groups)
+		r := Row{Label: name, Caller: name, Service: u.Service, Groups: groups}
+		if b, ok := borrowers[u.Service]; ok {
+			if b.of != name {
+				return nil, fmt.Errorf("service %s runs as %s, not as %s, whose uid it is listed to borrow", u.Service, name, b.of)
+			}
+			r.Label, r.borrowed, r.reaches = u.Service, true, b.reaches
+		}
+		if prev, dup := by[r.Label]; dup {
+			if !slices.Equal(prev.Groups, groups) {
+				return nil, fmt.Errorf("services %s and %s run as %s with other groups: list the second in the borrowers of tests/deny/internal/spec", prev.Service, u.Service, name)
+			}
+			continue
+		}
+		by[r.Label] = r
+	}
+	out := make([]Row, 0, len(by))
+	for _, r := range by {
+		out = append(out, r)
+	}
+	slices.SortFunc(out, func(a, b Row) int { return strings.Compare(a.Label, b.Label) })
+	return out, nil
+}
+
+// Labels are the labels of the rows, in order.
+func Labels(rows []Row) []string {
+	out := make([]string, len(rows))
+	for i, r := range rows {
+		out[i] = r.Label
+	}
+	return out
 }
 
 // Pair is one (caller, socket) pair, as the golden file of the allowed pairs writes it.
 func Pair(caller, target string) string { return caller + " -> " + target }
 
-// AllowedPairs are the pairs the registry allows among the callers and the targets, sorted.
-func AllowedPairs(callers []string, ts []Target) []string {
+// AllowedPairs are the pairs the rows must reach among the targets, sorted.
+func AllowedPairs(rows []Row, ts []Target) []string {
 	var out []string
-	for _, c := range callers {
+	for _, r := range rows {
 		for _, t := range ts {
-			if t.Allowed(c) {
-				out = append(out, Pair(c, t.ID))
+			if r.Allowed(t) {
+				out = append(out, Pair(r.Label, t.ID))
 			}
 		}
 	}
@@ -270,20 +364,6 @@ func ParseGolden(b []byte) []string {
 		}
 		if l = strings.TrimSpace(l); l != "" {
 			out = append(out, l)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-// Callers returns the names of the callers sorted, without duplicates.
-func Callers(names []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, n := range names {
-		if !seen[n] {
-			seen[n] = true
-			out = append(out, n)
 		}
 	}
 	sort.Strings(out)
