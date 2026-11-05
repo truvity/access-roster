@@ -33,7 +33,9 @@ import (
 //   - the other node is a peer of this boundary: the text names this boundary, and the signed KeyPlan's slot map
 //     lists the node, with a wrapping key that the KeyPlan's recipients list (the node is "listed");
 //   - nothing of it is revoked (ADR 0041, "Boards"): neither its pin-release key nor its wrapping key (by kid), nor its
-//     recipient, read from KeyRevocation at each check and failing closed;
+//     recipient, read from KeyRevocation at each check and failing closed; and the same of this node, whose answer
+//     its peers would refuse: a releasing node whose own keys are revoked refuses the request ("self-revoked") before
+//     its driver is called, and seals, signs and audits no release;
 //   - its pin-release slot is 87, and the attestation of the slot map, verified by this node's own card driver
 //     (piv-go and the pinned Yubico anchors live there), shows that key, PIN never and touch never;
 //   - the text is signed (ES384) by that key; a request is fresh (the time of its UUIDv7 id, within the kind's
@@ -196,6 +198,26 @@ func (s *Server) peerRevoked(ctx context.Context, kid, recipientID string) (stri
 	return "", nil
 }
 
+// selfRevoked says why this node releases no PIN: "self-revoked" when KeyRevocation lists its own pin-release key or
+// wrapping key by kid, or its recipient, the three that stop a peer (peerRevoked), and "self-keys" when it holds no
+// pin-release or wrapping key to check. An unreadable store@ is an error, as for a peer.
+func (s *Server) selfRevoked(ctx context.Context) (string, error) {
+	rel, okRel := s.keys[pinReleasePurpose]
+	wrap, okWrap := s.keys[wrappingPurpose]
+	if !okRel || !okWrap {
+		return "self-keys", nil
+	}
+	why, err := s.peerRevoked(ctx, rel.keyID, wrap.keyID)
+	if err != nil {
+		return "", err
+	}
+	if why != "" {
+		slog.Warn("this node's own key is revoked: it releases no PIN", "revocation", why)
+		return "self-revoked", nil
+	}
+	return "", nil
+}
+
 // verifySigned checks an ES384 signature over SHA-384 of a text.
 func verifySigned(pub *ecdsa.PublicKey, text, sig []byte) bool {
 	return ecdsa.VerifyASN1(pub, pinrelease.Digest(text), sig)
@@ -241,6 +263,8 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 	}
 	var plan *configv2alpha1.KeyPlan
 	var planDoc []byte
+	var selfWhy string
+	selfChecked := false
 	for _, it := range items {
 		text, sig := it.Value.GetText(), it.Value.GetSignatureDer()
 		r, perr := pinrelease.ParseRequest(text)
@@ -269,6 +293,21 @@ func (s *Server) ReleasePins(ctx context.Context) (int, error) {
 			continue
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return len(items), unavailable(reasonStore)
+		}
+		// A revoked board releases nothing (ADR 0041, "Boards"): this node's own keys are checked as a peer's are, once a
+		// pass, before the KeyPlan, the peer's checks or any call of the driver. Its requesters would refuse the answer,
+		// but the release would be sealed, signed and audited as key.pin.release all the same.
+		if !selfChecked {
+			why, err := s.selfRevoked(ctx)
+			if err != nil {
+				return len(items), err
+			}
+			selfWhy, selfChecked = why, true
+		}
+		if selfWhy != "" {
+			s.markSeen(r, text)
+			s.refusePin(ctx, "request", r.Node, r.ID, text, selfWhy)
+			continue
 		}
 		if plan == nil {
 			var err error

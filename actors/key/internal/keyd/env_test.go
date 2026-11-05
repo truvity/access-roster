@@ -291,6 +291,8 @@ type fakeDriver struct {
 	// driver whose verification disagrees with key@'s does.
 	refuseCheck string
 	finishCalls atomic.Int64
+	sealCalls   atomic.Int64
+	verifyCalls atomic.Int64 // VerifyAttestation
 	pinTries    atomic.Int64
 	// attestLie makes the attestation of the pin-release key state PIN once.
 	attestLie bool

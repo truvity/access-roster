@@ -70,6 +70,7 @@ func (d *fakeDriver) Attest(_ context.Context, req *connect.Request[keystorev2al
 }
 
 func (d *fakeDriver) VerifyAttestation(_ context.Context, req *connect.Request[keystorev2alpha1.VerifyAttestationRequest]) (*connect.Response[keystorev2alpha1.VerifyAttestationResponse], error) {
+	d.verifyCalls.Add(1)
 	var a fakeAttestation
 	if string(req.Msg.GetAttestationSigner()) != fakeSigner || json.Unmarshal(req.Msg.GetAttestation(), &a) != nil {
 		return nil, refusal.New(connect.CodeFailedPrecondition, "attestation", "attestation")
@@ -121,6 +122,7 @@ func (d *fakeDriver) checked(sig, keyPlan []byte) error {
 }
 
 func (d *fakeDriver) SealPin(_ context.Context, req *connect.Request[keystorev2alpha1.SealPinRequest]) (*connect.Response[keystorev2alpha1.SealPinResponse], error) {
+	d.sealCalls.Add(1)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.locked || d.held == nil {
@@ -459,6 +461,72 @@ func TestARevokedBoardGetsNoPIN(t *testing.T) {
 		release(t, bs[0])
 		if !answered(e, id) {
 			t.Fatal("the request was not answered once KeyRevocation could be read")
+		}
+	})
+}
+
+// verifies: REQ-KEYS-109
+// A releasing board whose own pin-release key, wrapping key or recipient is revoked releases no PIN: the request is
+// refused with a reason of its own ("self-revoked"), audited as refused and never as key.pin.release, and the driver is
+// not called (no attestation check, no seal). A revocation of this node that cannot be read releases nothing and is
+// tried again.
+func TestARevokedReleaserReleasesNoPIN(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		id   func(b *board) string
+	}{
+		{"pin-release kid", func(b *board) string {
+			pub, _ := parseP384(ensureKey(t, b.d, "pin-release", "ES384"))
+			kid, _ := thumbprint(pub)
+			return revocationID(targetKid, kid)
+		}},
+		{"wrapping kid", func(b *board) string { return revocationID(targetKid, b.d.wrappingID()) }},
+		{"recipient", func(b *board) string { return "recipient/" + recipientLabel(b.d.wrappingID()) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+			kind := "kid"
+			if c.name == "recipient" {
+				kind = "recipient"
+			}
+			e.store.put("key-revocation", "", c.id(bs[0]), &keyv2alpha1.KeyRevocation{
+				TargetKind: kind, Target: "x", ReasonCode: "lost-board", RevokedAt: timestamppb.New(e.clock.now()),
+			})
+			id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+			release(t, bs[0])
+			release(t, bs[0])
+			if answered(e, id) {
+				t.Fatal("a revoked releaser answered a request")
+			}
+			wantWhy(t, bs[0].n, "self-revoked")
+			if n := len(refusedWhy(bs[0].n)); n != 1 {
+				t.Fatalf("%d refusals audited, want 1: %v", n, refusedWhy(bs[0].n))
+			}
+			if bs[0].n.audit.count(ActionPinRelease) != 0 {
+				t.Fatal("a release was audited")
+			}
+			if s, v := bs[0].d.sealCalls.Load(), bs[0].d.verifyCalls.Load(); s != 0 || v != 0 {
+				t.Fatalf("the driver was called: %d seals, %d attestation checks", s, v)
+			}
+		})
+	}
+	t.Run("unreadable", func(t *testing.T) {
+		e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+		e.store.failKind = "key-revocation"
+		id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+		if _, err := bs[0].n.srv.ReleasePins(context.Background()); err == nil {
+			t.Fatal("a pass with KeyRevocation unreadable reported no error")
+		}
+		if answered(e, id) || bs[0].d.sealCalls.Load() != 0 {
+			t.Fatal("a PIN was sealed while this node's revocation could not be read")
+		}
+		if len(refusedWhy(bs[0].n)) != 0 {
+			t.Fatalf("an unreadable revocation was audited as a refusal: %v", refusedWhy(bs[0].n))
+		}
+		e.store.failKind = ""
+		release(t, bs[0])
+		if !answered(e, id) {
+			t.Fatalf("the request was not answered once KeyRevocation could be read; refusals %v", refusedWhy(bs[0].n))
 		}
 	})
 }
