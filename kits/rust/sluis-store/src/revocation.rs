@@ -14,6 +14,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use sluis_kit::Client;
 use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
+use sluis_proto::sluis::signer::v2alpha1::SigningRing;
 
 use crate::{Error, Kind, Store};
 
@@ -33,38 +34,49 @@ impl Kind for KeyRevocationKind {
     const NAME: &'static str = "KeyRevocation";
 }
 
-/// The RFC 4648 section 6 alphabet, lower case.
-const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-
-/// Lower-case base32 without padding.
-fn base32_lower(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity((bytes.len() * 8).div_ceil(5));
-    let mut acc: u32 = 0;
-    let mut bits = 0u32;
-    for &b in bytes {
-        acc = (acc << 8) | u32::from(b);
+/// The lower-case base32 of a thumbprint's 32 bytes, without padding (RFC 4648 section 6): 52 characters, the label
+/// that names a kid or a recipient in an address, which does not allow upper case. `None` for anything that is not an
+/// RFC 7638 SHA-256 thumbprint (43 base64url characters, 32 bytes). store@ holds a `KeyRevocation` item to the id
+/// this gives, the readers derive the id with it, and `key@` derives the same label in Go (`recipientLabel`);
+/// `tests/testdata/keyrevocation/ids.json` holds all of them to the encoding.
+#[must_use]
+pub fn thumbprint_label(thumbprint: &str) -> Option<String> {
+    if thumbprint.len() != 43 {
+        return None;
+    }
+    let raw = URL_SAFE_NO_PAD.decode(thumbprint).ok()?;
+    if raw.len() != 32 {
+        return None;
+    }
+    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+    let (mut out, mut buf, mut bits) = (String::new(), 0u32, 0u32);
+    for b in raw {
+        buf = (buf << 8) | u32::from(b);
         bits += 8;
         while bits >= 5 {
             bits -= 5;
-            out.push(char::from(ALPHABET[((acc >> bits) & 31) as usize]));
+            out.push(char::from(ALPHABET[((buf >> bits) & 31) as usize]));
         }
-        acc &= (1 << bits) - 1;
+        buf &= (1 << bits) - 1;
     }
     if bits > 0 {
-        out.push(char::from(ALPHABET[((acc << (5 - bits)) & 31) as usize]));
+        out.push(char::from(ALPHABET[((buf << (5 - bits)) & 31) as usize]));
     }
-    out
+    Some(out)
 }
 
-/// The id of the item that revokes the key `kid` (a base64url thumbprint), or `None` for a kid that is not
-/// base64url.
+/// The id of the item that revokes the key `kid` (an RFC 7638 thumbprint), or `None` for a kid that is not one.
 #[must_use]
 pub fn kid_item_id(kid: &str) -> Option<String> {
-    let bytes = URL_SAFE_NO_PAD.decode(kid).ok()?;
-    if bytes.is_empty() {
-        return None;
-    }
-    Some(format!("{TARGET_KID}/{}", base32_lower(&bytes)))
+    thumbprint_label(kid).map(|l| format!("{TARGET_KID}/{l}"))
+}
+
+/// The ring without the keys that `KeyRevocation` lists, in every state: the ring that a published key set is
+/// built from (REQ-KEYS-107).
+#[must_use]
+pub fn without_revoked(mut ring: SigningRing, revoked: &HashSet<String>) -> SigningRing {
+    ring.keys.retain(|k| !revoked.contains(&k.key_id));
+    ring
 }
 
 /// A reader of the revocations of the boundary's token-signing keys.
@@ -119,7 +131,9 @@ impl KeyRevocations {
                 None => return Ok(kids),
             }
         }
-        Err(Error::Decode)
+        Err(Error::Address(format!(
+            "list: more than {MAX_PAGES} pages of KeyRevocation"
+        )))
     }
 }
 
@@ -127,22 +141,72 @@ impl KeyRevocations {
 mod tests {
     use super::*;
 
+    fn vectors() -> serde_json::Value {
+        serde_json::from_str(include_str!(
+            "../../../../tests/testdata/keyrevocation/ids.json"
+        ))
+        .unwrap()
+    }
+
+    /// The shared vectors that `key@` in Go and store@ hold to: a kid names the item `kid/<label>`.
     #[test]
-    fn the_item_id_of_a_kid_is_its_lower_case_base32() {
-        // RFC 4648 section 10 vectors, lower-cased and unpadded.
-        assert_eq!(base32_lower(b""), "");
-        assert_eq!(base32_lower(b"f"), "my");
-        assert_eq!(base32_lower(b"fo"), "mzxq");
-        assert_eq!(base32_lower(b"foo"), "mzxw6");
-        assert_eq!(base32_lower(b"foob"), "mzxw6yq");
-        assert_eq!(base32_lower(b"fooba"), "mzxw6ytb");
-        assert_eq!(base32_lower(b"foobar"), "mzxw6ytboi");
-        // A 32-byte thumbprint is 52 characters, as key@'s label is.
-        let kid = URL_SAFE_NO_PAD.encode([0xffu8; 32]);
-        let id = kid_item_id(&kid).unwrap();
-        assert_eq!(id, format!("kid/{}", "7".repeat(51) + "q"));
-        assert_eq!(id.len(), 4 + 52);
-        assert_eq!(kid_item_id("not base64url!"), None);
+    fn the_item_id_of_a_kid_follows_the_shared_vectors() {
+        let v = vectors();
+        let rows = v["ids"].as_array().unwrap();
+        assert!(rows.len() >= 10, "a sweep over nothing proves nothing");
+        let mut kids = 0;
+        for r in rows {
+            let (kind, target, id) = (
+                r["target_kind"].as_str().unwrap(),
+                r["target"].as_str().unwrap(),
+                r["id"].as_str().unwrap(),
+            );
+            if kind == "kid" {
+                assert_eq!(kid_item_id(target).as_deref(), Some(id), "{target}");
+                kids += 1;
+            }
+            if kind == "kid" || kind == "recipient" {
+                assert_eq!(
+                    thumbprint_label(target).as_deref(),
+                    id.split_once('/').map(|(_, l)| l),
+                    "{target}"
+                );
+            }
+        }
+        assert!(kids >= 3, "{kids} kid rows");
+    }
+
+    #[test]
+    fn only_a_thumbprint_names_an_item() {
         assert_eq!(kid_item_id(""), None);
+        assert_eq!(kid_item_id("not base64url!"), None);
+        // Base64url of the wrong length: 31 bytes (42 characters) and 33 bytes (44 characters).
+        assert_eq!(kid_item_id(&URL_SAFE_NO_PAD.encode([1u8; 31])), None);
+        assert_eq!(kid_item_id(&URL_SAFE_NO_PAD.encode([1u8; 33])), None);
+        assert!(kid_item_id(&URL_SAFE_NO_PAD.encode([1u8; 32])).is_some());
+    }
+
+    #[test]
+    fn the_ring_without_revoked_lacks_a_revoked_kid_in_every_state() {
+        use sluis_proto::sluis::signer::v2alpha1::SigningKey;
+        let key = |id: &str, state: &str| SigningKey {
+            key_id: id.into(),
+            state: state.into(),
+            ..SigningKey::default()
+        };
+        let ring = SigningRing {
+            keys: vec![
+                key("a", "active"),
+                key("b", "pre-published"),
+                key("c", "retiring"),
+                key("d", "active"),
+            ],
+            ..SigningRing::default()
+        };
+        let revoked: HashSet<String> = ["a", "b", "c", "unknown"].map(String::from).into();
+        let out = without_revoked(ring.clone(), &revoked);
+        let ids: Vec<_> = out.keys.iter().map(|k| k.key_id.as_str()).collect();
+        assert_eq!(ids, ["d"]);
+        assert_eq!(without_revoked(ring.clone(), &HashSet::new()), ring);
     }
 }

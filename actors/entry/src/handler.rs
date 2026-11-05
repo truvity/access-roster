@@ -443,7 +443,12 @@ async fn public_document(
         .map_err(bad)?;
     let docs = state.docs.get().await?;
     Ok(Done::Json {
-        body: if jwks { docs.jwks } else { docs.discovery },
+        body: if jwks {
+            // KeyRevocation was unreadable when the pair was built: no key set that might list a revoked key.
+            docs.jwks.ok_or(Refuse::new(503, "key_revocation"))?
+        } else {
+            docs.discovery
+        },
         public: true,
     })
 }

@@ -193,12 +193,13 @@ impl<K: Kind> Store<K> {
     /// As [`Store::new`], for a tenant-scoped kind whose boundary's own items have no tenant: the tenant
     /// may then be empty (on the wire it is empty, as for a kind with none; its text form is `-`). It is for
     /// `KeyRevocation`, whose revocations of a boundary's key have no tenant (ADR 0041), as the Go client's
-    /// `OptionalTenant` is.
+    /// `OptionalTenant` is. It is private to this crate: the only reader that needs it is
+    /// [`revocation::KeyRevocations`], so no other kind can be opened up by accident.
     ///
     /// # Errors
     ///
     /// [`Error::UnknownKind`] when the name is not in the registry.
-    pub fn new_optional_tenant(client: Client) -> Result<Self, Error> {
+    pub(crate) fn new_optional_tenant(client: Client) -> Result<Self, Error> {
         let mut s = Self::new(client)?;
         s.optional_tenant = true;
         Ok(s)
@@ -397,5 +398,59 @@ impl<K: Kind> Store<K> {
         self.write(Verb::DELETE, tenant, id, None, if_version.unwrap_or(0), w)
             .await
             .map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
+
+    /// `KeyRevocation` is tenant-scoped in the registry; a test needs no connection, as the client dials lazily.
+    struct Revocation;
+    impl Kind for Revocation {
+        type Id = String;
+        type Value = KeyRevocation;
+        const NAME: &'static str = "KeyRevocation";
+    }
+    /// Another tenant-scoped kind: the relaxed client is only for the one that needs it, and `Store::new` is for the rest.
+    struct Person;
+    impl Kind for Person {
+        type Id = String;
+        type Value = KeyRevocation;
+        const NAME: &'static str = "Person";
+    }
+
+    fn client() -> Client {
+        sluis_kit::dial(std::path::Path::new("/nonexistent/store.sock"))
+    }
+
+    #[test]
+    fn a_tenant_scoped_kind_still_refuses_an_empty_tenant() {
+        let s = Store::<Revocation>::new(client()).unwrap();
+        assert!(matches!(s.address("", "kid/x"), Err(Error::Address(f)) if f == "tenant"));
+        assert_eq!(s.address("t1", "kid/x").unwrap().tenant, "t1");
+    }
+
+    #[test]
+    fn the_relaxed_client_accepts_an_empty_tenant_for_key_revocation_only_and_never_a_dash() {
+        let s = Store::<Revocation>::new_optional_tenant(client()).unwrap();
+        let a = s.address("", "kid/x").unwrap();
+        assert_eq!((a.kind.as_str(), a.tenant.as_str()), ("key-revocation", ""));
+        assert!(matches!(s.address("-", "kid/x"), Err(Error::Address(f)) if f == "tenant"));
+        assert_eq!(s.address("t1", "generation/data/1").unwrap().tenant, "t1");
+        // The ordinary client of the same kind, and the kind of a person, still refuse it.
+        assert!(
+            Store::<Revocation>::new(client())
+                .unwrap()
+                .address("", "x")
+                .is_err()
+        );
+        assert!(
+            Store::<Person>::new(client())
+                .unwrap()
+                .address("", "x")
+                .is_err()
+        );
     }
 }

@@ -1216,11 +1216,12 @@ async fn a_revoked_kid_is_not_in_the_published_key_set() {
 async fn a_key_revocation_that_cannot_be_read_fails_the_key_set_closed() {
     let up = up().await;
     *up.fake.revocations_fail.lock().unwrap() = true;
-    for p in ["/jwks", "/.well-known/openid-configuration"] {
-        let r = http(&up, "GET", p, &[], b"").await;
-        assert_eq!(r.status, 503, "{p}");
-        assert!(r.h("cache-control") != Some("public, max-age=300"), "{p}");
-    }
+    let r = http(&up, "GET", "/jwks", &[], b"").await;
+    assert_eq!(r.status, 503);
+    assert!(r.h("cache-control") != Some("public, max-age=300"));
+    // The discovery document names no key, so it is served.
+    let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+    assert_eq!(d.status, 200);
 }
 
 #[tokio::test]

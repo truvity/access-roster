@@ -2300,6 +2300,7 @@ dependencies = [
  "sluis-kit",
  "sluis-proto",
  "sluis-registry",
+ "sluis-store",
  "sluis-version",
  "tempfile",
  "tokio",

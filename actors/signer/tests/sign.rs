@@ -70,6 +70,8 @@ struct FakeStore {
     down: AtomicBool,
     /// Refuse every read of `KeyRevocation` with `unavailable`.
     revocations_down: AtomicBool,
+    /// Never answer a `Get` of `KeyRevocation`.
+    revocation_get_hangs: AtomicBool,
 }
 
 impl FakeStore {
@@ -136,6 +138,9 @@ impl StoreService for StoreSvc {
         let (kind, id) = (r.address.kind.to_string(), r.address.id.to_string());
         if kind == "key-revocation" && self.0.revocations_down.load(Ordering::SeqCst) {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
+        if kind == "key-revocation" && self.0.revocation_get_hangs.load(Ordering::SeqCst) {
+            tokio::time::sleep(Duration::from_secs(3600)).await;
         }
         let items = self.0.items.lock().unwrap();
         match items.get(&(kind.clone(), id.clone())) {
@@ -1500,8 +1505,8 @@ async fn the_owner_node_of_a_revoked_key_cannot_make_it_active_or_sign_with_it()
         .unwrap_err();
     assert_eq!(
         (e.code, reason(&e).as_str()),
-        (ErrorCode::Unavailable, "key_set"),
-        "not active, so not asked of key@"
+        (ErrorCode::Unavailable, "key_revoked"),
+        "revoked, so not asked of key@"
     );
     let (_, ring) = w.store.ring().unwrap();
     let state = |id: &str| {
@@ -1548,4 +1553,118 @@ async fn it_fails_closed_when_key_revocation_cannot_be_read() {
     sign(&c, "JWT", w.claims("JWT", "sluis-cli", 600))
         .await
         .unwrap();
+}
+
+/// verifies: REQ-KEYS-106
+/// The id is the one of the shared vectors (`tests/testdata/keyrevocation/ids.json`), written out here and not derived:
+/// a reader that derived another id would not find the item that `key@` writes. The kid is the thumbprint of the public
+/// key below (a key made for the vectors; only its public half is here). The stand-in for key@ names it as its key and
+/// signs nothing, which the test shows before the item exists.
+#[tokio::test]
+async fn a_revocation_under_the_id_of_the_shared_vectors_stops_the_key() {
+    const KID: &str = "skxjhT7RqwZwTBg1_6Z4ktQKu73fjoKvrNHjlHn9ToA";
+    const ID: &str = "kid/wjgghbj62gvqm4cmda277jtyslkavo5536hifl5m2hrzi6p5j2aa";
+    const SPKI_HEX: &str = "3076301006072a8648ce3d020106052b81040022036200049a7eeb5771cd7e01b4796199b19a265536aec25d597f925bda74cff1d5bd59985d9ef53cbb7a83311fced8d6f013bf1f7959d68415909a39af3f99e8d48eb76357245c55c4507b26f4082d33d343bd149f7cc73231da8ab59a5fe1c9b8f1a144";
+    let vectors: Value = serde_json::from_str(include_str!(
+        "../../../tests/testdata/keyrevocation/ids.json"
+    ))
+    .unwrap();
+    assert!(
+        vectors["ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["target_kind"] == "kid" && r["target"] == KID && r["id"] == ID),
+        "the literals are a row of the shared vectors"
+    );
+    let spki: Vec<u8> = (0..SPKI_HEX.len() / 2)
+        .map(|i| u8::from_str_radix(&SPKI_HEX[2 * i..2 * i + 2], 16).unwrap())
+        .collect();
+    assert_eq!(
+        signer::jwks::thumbprint(&spki).as_deref(),
+        Some(KID),
+        "the public key is the one the row names"
+    );
+    let w = World::new().await;
+    // The pair is another key's: nothing is signed with it, because key@ is never asked to sign.
+    *w.key.current.lock().unwrap() = Arc::new(Material {
+        pair: EcdsaKeyPair::generate(&ECDSA_P384_SHA384_FIXED_SIGNING).unwrap(),
+        spki,
+        kid: KID.into(),
+    });
+    let c = w.signer().await;
+    let claims = || w.claims("at+jwt", "example-app", 600);
+    // Not revoked yet: key@ is asked, and its signature does not verify under the key it names.
+    let e = sign(&c, "at+jwt", claims()).await.unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Internal, "signature")
+    );
+    let calls = w.key.calls.load(Ordering::SeqCst);
+    assert_eq!(calls, 1);
+    w.store.put(
+        "key-revocation",
+        ID,
+        KeyRevocation {
+            target_kind: "kid".into(),
+            target: KID.into(),
+            reason_code: "compromise".into(),
+            ..KeyRevocation::default()
+        }
+        .encode_to_vec(),
+    );
+    let e = sign(&c, "at+jwt", claims()).await.unwrap_err();
+    assert_eq!(
+        (e.code, reason(&e).as_str()),
+        (ErrorCode::Unavailable, "key_revoked")
+    );
+    assert_eq!(
+        w.key.calls.load(Ordering::SeqCst),
+        calls,
+        "key@ was not asked"
+    );
+    let v: Value = serde_json::from_slice(&key_set(&c).await).unwrap();
+    assert!(v["keys"].as_array().unwrap().is_empty());
+}
+
+/// verifies: REQ-KEYS-106
+/// A `Get` of `KeyRevocation` that never answers refuses the sign after the call's time, and queues nobody: two signs
+/// at once finish together, and the key set is served meanwhile.
+#[tokio::test]
+async fn a_hung_key_revocation_read_refuses_the_sign_and_blocks_no_one() {
+    let w = World::new().await;
+    let c = w.signer().await;
+    sign(&c, "at+jwt", w.claims("at+jwt", "example-app", 600))
+        .await
+        .unwrap();
+    w.store.revocation_get_hangs.store(true, Ordering::SeqCst);
+    let claims = w.claims("at+jwt", "example-app", 600);
+    let started = std::time::Instant::now();
+    let (a, b, set) = tokio::join!(
+        sign(&c, "at+jwt", claims.clone()),
+        sign(&c, "at+jwt", claims),
+        async {
+            let t = std::time::Instant::now();
+            let r = c.key_set(KeySetRequest::default()).await;
+            (r.is_ok(), t.elapsed())
+        },
+    );
+    for e in [a.unwrap_err(), b.unwrap_err()] {
+        assert_eq!(
+            (e.code, reason(&e).as_str()),
+            (ErrorCode::Unavailable, "store")
+        );
+    }
+    assert!(set.0, "the key set is served");
+    assert!(
+        set.1 < Duration::from_secs(2),
+        "and not held back: {:?}",
+        set.1
+    );
+    // One wait of the call's time, not two behind each other.
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "{:?}",
+        started.elapsed()
+    );
 }

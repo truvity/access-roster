@@ -2113,6 +2113,26 @@ async fn req_keys_091_a_key_revocation_only_grows_for_every_actor() {
             "schema",
         );
     }
+    // The tenant is part of the id: a revocation of a purpose has none and a data key generation has one, so a reader
+    // that looks in the other place would never find it.
+    for (tenant, id, v) in [
+        (
+            "acme",
+            "purpose/other",
+            revocation("purpose", "other", "drill"),
+        ),
+        (
+            "",
+            "generation/data/4",
+            revocation("generation", "data/4", "drill"),
+        ),
+    ] {
+        refused(
+            f.write(vec![create(tenant, id, &v)], &[]).await,
+            ErrorCode::InvalidArgument,
+            "schema",
+        );
+    }
     // An apply is refused on a free address as well: the kind has no apply (the rule table gives key@ create, get and list).
     refused(
         f.write(

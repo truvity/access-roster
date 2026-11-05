@@ -9,10 +9,9 @@
 //! The key set leaves out every kid that `KeyRevocation` lists (ADR 0041, REQ-KEYS-107). That is a
 //! filter at publication, so it does not depend on `signer` or on the node that owns the key, and the
 //! kind is read each time the pair is built (at most every few seconds): a revocation reaches the
-//! served set within that time. A `KeyRevocation` that cannot be read is a store failure: a set that
-//! might list a revoked key is not served.
+//! served set within that time. A `KeyRevocation` that cannot be read refuses the key set only: a set that
+//! might list a revoked key is not served, while the discovery document names no key and is unaffected.
 
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
@@ -22,7 +21,7 @@ use serde_json::{Value, json};
 use sluis_kit::{Client, dial};
 use sluis_proto::sluis::config::v2alpha1::Boundary;
 use sluis_proto::sluis::signer::v2alpha1::SigningRing;
-use sluis_store::revocation::KeyRevocations;
+use sluis_store::revocation::{KeyRevocations, without_revoked};
 use sluis_store::{Kind, Store};
 use tokio::sync::Mutex;
 
@@ -54,7 +53,8 @@ impl Kind for RingKind {
 #[derive(Clone)]
 pub(crate) struct Documents {
     pub discovery: Bytes,
-    pub jwks: Bytes,
+    /// `None` when `KeyRevocation` could not be read: the key set is then refused (503), the discovery document is not.
+    pub jwks: Option<Bytes>,
 }
 
 pub(crate) struct Source {
@@ -95,19 +95,14 @@ impl Source {
         );
         let b = b.map_err(|_| unavailable)?.map_err(|_| unavailable)?;
         let r = r.map_err(|_| unavailable)?.map_err(|_| unavailable)?;
-        let revoked = revoked.map_err(|_| unavailable)?.map_err(|_| unavailable)?;
+        // An unreadable KeyRevocation is no revocation to apply, and not "none revoked": the key set is withheld.
+        let revoked = revoked.ok().and_then(Result::ok);
         let discovery = discovery(&b.value).ok_or(Refuse::new(503, "boundary_issuer"))?;
         Ok(Documents {
             discovery: Bytes::from(discovery),
-            jwks: Bytes::from(jwks(&without_revoked(r.value, &revoked))),
+            jwks: revoked.map(|kids| Bytes::from(jwks(&without_revoked(r.value, &kids)))),
         })
     }
-}
-
-/// The ring without the keys that `KeyRevocation` lists, in every state.
-pub(crate) fn without_revoked(mut ring: SigningRing, revoked: &HashSet<String>) -> SigningRing {
-    ring.keys.retain(|k| !revoked.contains(&k.key_id));
-    ring
 }
 
 /// The issuer must be an `https` URL with no query, fragment or trailing slash (OpenID Connect
@@ -284,35 +279,6 @@ mod tests {
             .map(|k| k["kid"].as_str().unwrap())
             .collect();
         assert_eq!(kids, ["k0", "k1", "k2"]);
-    }
-
-    /// verifies: REQ-KEYS-107
-    #[test]
-    fn a_revoked_kid_is_in_no_published_state() {
-        let with = |id: &str, state: &str| SigningKey {
-            state: state.into(),
-            ..key(id, "ES384", spki(1, 2))
-        };
-        let ring = SigningRing {
-            keys: vec![
-                with("a", "pre-published"),
-                with("b", "active"),
-                with("c", "retiring"),
-                with("d", "active"),
-            ],
-            ..SigningRing::default()
-        };
-        let revoked: HashSet<String> = ["a", "b", "c", "unknown"].map(String::from).into();
-        let v: Value =
-            serde_json::from_slice(&jwks(&without_revoked(ring.clone(), &revoked))).unwrap();
-        let kids: Vec<&str> = v["keys"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|k| k["kid"].as_str().unwrap())
-            .collect();
-        assert_eq!(kids, ["d"]);
-        assert_eq!(without_revoked(ring.clone(), &HashSet::new()), ring);
     }
 
     #[test]
