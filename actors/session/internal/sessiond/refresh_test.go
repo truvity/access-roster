@@ -238,6 +238,7 @@ func TestRefreshScopeMayNarrowNotWiden(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SESS-003
 func TestRefreshPolicyDecidesEveryTime(t *testing.T) {
 	e := newEnv(t, nil)
 	first, _ := e.redeemed()
