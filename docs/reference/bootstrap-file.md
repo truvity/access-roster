@@ -134,7 +134,9 @@ Beyond the schema and protovalidate, `sluis config check` runs these on the file
 - every `driver` fits the runtime and the node count;
 - every `public_key` parses as an EC P-384 key, and its `spki_sha384` matches it;
 - every `kid` is unique, and every kind in a `co_signs` is a config kind of the kind registry ([Kinds](/reference/kinds/));
-- on a host, the file's owner and mode pass the rule of [Where it lives](#where-it-lives).
+- the file's mode allows no write by group or others, as in [Where it lives](#where-it-lives).
+
+`sluis config check` does not check the file's owner. It often runs on a CI runner or a workstation, where the file belongs to whoever checked it out, so the owner is a check of the installation, not of the file ([#1419](https://github.com/truvity/sluis/issues/1419)). store@ still refuses, at start, a file whose owner is neither root nor its own uid.
 
 ## A change needs a restart
 

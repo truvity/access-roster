@@ -546,20 +546,31 @@ async fn the_offline_check_and_the_loader_give_the_same_verdict_on_every_set() {
             }),
         ),
     ];
+    // The one place where the words differ: a document the file driver refuses. The loader gets that refusal over the
+    // wire as a source that did not answer, without the kind it asked for or the driver's reason; the check reads the
+    // directory with the driver's own Dir::read, so it names both. The loader's words are still all there, in place.
+    let driver_refusals = [
+        ("a link that leaves the directory", "KeyPlan"),
+        ("a document that is not a regular file", "AuditLog"),
+    ];
     let mut refused = 0;
     for (name, break_it) in cases {
         let e = env();
         break_it(&e);
         let (live, offline) = (loader_verdict(&e).await, offline_verdict(&e));
-        match (&live, &offline) {
-            (None, None) => {}
-            // The check may say more than the loader (which refusal of the driver it was), never something else.
-            (Some(l), Some(o)) => assert!(
-                o.contains(l.as_str()),
-                "{name}: the loader says {l}, the check {o}"
-            ),
-            _ => panic!("{name}: the loader says {live:?}, the check {offline:?}"),
-        }
+        let want = match driver_refusals.iter().find(|(n, _)| *n == name) {
+            Some((_, kind)) => {
+                assert_eq!(
+                    live.as_deref(),
+                    Some("the config source did not answer"),
+                    "{name}"
+                );
+                live.as_ref()
+                    .map(|l| format!("{kind}: {l}: the file driver refuses the document (bound)"))
+            }
+            None => live.clone(),
+        };
+        assert_eq!(offline, want, "{name}: the loader says {live:?}");
         refused += usize::from(live.is_some());
     }
     assert_eq!(
