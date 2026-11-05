@@ -146,6 +146,10 @@ func (s *Service) BeginPinRelease(ctx context.Context, req *connect.Request[keys
 	if s.pin.held() {
 		return nil, refuse(ctx, "BeginPinRelease", connect.CodeFailedPrecondition, reasonUnlocked, "")
 	}
+	// A released PIN was refused: no answer would be tried, so no request is made for a peer to seal one to.
+	if s.refused.set {
+		return nil, refuse(ctx, "BeginPinRelease", connect.CodeFailedPrecondition, reasonRefused, "")
+	}
 	k, err := ecdh.P384().GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, internalRefusal(ctx, "BeginPinRelease")
@@ -285,7 +289,12 @@ func (s *Service) FinishPinRelease(ctx context.Context, req *connect.Request[key
 		// The card refused the PIN, or is blocked: no released PIN is tried again, after a restart neither, until a
 		// person unlocks the board.
 		if reason, _ := refusal.Reason(cerr); (reason == reasonPIN && cerr.Code() == connect.CodePermissionDenied) || reason == reasonBlocked {
-			s.refused.mark()
+			if err := s.refused.mark(); err != nil {
+				// Fail closed: the stop holds in this process, and the driver exits rather than go on with a stop that a
+				// restart would forget.
+				slog.Error("the PIN release stop cannot be saved: the driver exits", "error", err.Error())
+				s.exit(err)
+			}
 		}
 		return nil, cerr
 	}

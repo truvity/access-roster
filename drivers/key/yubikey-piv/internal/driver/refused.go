@@ -21,8 +21,12 @@ type refusedMark struct {
 	set bool
 }
 
+// probeFile is written and removed at start, to show that the state directory takes the stop.
+const probeFile = "write.probe"
+
 // restore reads the mark at start. Any file under the name is a stop: the mark fails closed, and a person who knows
-// why removes it by unlocking the board.
+// why removes it by unlocking the board. A state directory that cannot be written stops the start: a stop that could
+// not be saved would be forgotten by the next restart.
 func (m *refusedMark) restore() error {
 	if m.dir == "" {
 		return nil
@@ -35,19 +39,27 @@ func (m *refusedMark) restore() error {
 	case !errors.Is(err, os.ErrNotExist):
 		return fmt.Errorf("the PIN release stop cannot be read: %w", err)
 	}
+	if err := writeSynced(m.dir, probeFile, "probe\n"); err != nil {
+		return fmt.Errorf("the state directory %s cannot be written: %w", m.dir, err)
+	}
+	if err := os.Remove(filepath.Join(m.dir, probeFile)); err != nil {
+		return fmt.Errorf("the state directory %s cannot be written: %w", m.dir, err)
+	}
 	return nil
 }
 
-// mark sets the stop, durably when the driver has a state directory. A mark that cannot be saved still holds in this
-// process.
-func (m *refusedMark) mark() {
+// mark sets the stop, durably when the driver has a state directory. A stop that cannot be saved still holds in this
+// process, and the error says so: the caller ends the driver, which a restart cannot start on a state directory it
+// cannot write (restore).
+func (m *refusedMark) mark() error {
 	m.set = true
 	if m.dir == "" {
-		return
+		return nil
 	}
 	if err := writeSynced(m.dir, refusedMarkFile, "a released PIN was refused by the card; unlock the board to clear\n"); err != nil {
-		slog.Error("the PIN release stop cannot be saved: a restart may try a released PIN again", "error", err.Error())
+		return fmt.Errorf("the PIN release stop cannot be saved: %w", err)
 	}
+	return nil
 }
 
 // clear removes the stop after a person unlocked the board.

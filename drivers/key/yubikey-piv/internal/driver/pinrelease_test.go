@@ -414,8 +414,8 @@ func TestAnAnswerNoListedPeerCardSignedIsNoPINAttempt(t *testing.T) {
 }
 
 // verifies: REQ-KEYS-059
-// A released PIN that the card refuses stops the PIN release in the driver, durably: the next answer, after a restart
-// of the driver too, is sent to no card, until a person unlocks the board on the admin socket.
+// A released PIN that the card refuses stops the PIN release in the driver, durably: no request is made and no answer
+// is sent to the card, after a restart of the driver too, until a person unlocks the board on the admin socket.
 func TestARefusedReleasedPINStopsTheReleaseAcrossARestart(t *testing.T) {
 	b := newBoundary(t)
 	// The locked card takes another PIN than the boundary's, as a card set up apart would.
@@ -428,31 +428,32 @@ func TestARefusedReleasedPINStopsTheReleaseAcrossARestart(t *testing.T) {
 	locked := startOpts(t, c, driver.Development, "key", self(), opts)
 	plan := b.signPlan(t, 2, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, locked))
 
-	release := func(r running) error {
-		t.Helper()
-		text, sig := begin(t, r)
-		a, err := sealPin(b.releaser, text, sig, plan)
-		if err != nil {
-			t.Fatalf("SealPin: %v", err)
-		}
-		return finish(r, a.GetAnswerText(), a.GetAnswerSignatureDer(), plan)
+	text, sig := begin(t, locked)
+	a, err := sealPin(b.releaser, text, sig, plan)
+	if err != nil {
+		t.Fatalf("SealPin: %v", err)
 	}
-	wantRefused(t, release(locked), connect.CodePermissionDenied, "pin")
+	wantRefused(t, finish(locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), plan), connect.CodePermissionDenied, "pin")
 	if c.LoginAttempts != 1 {
 		t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
 	}
-	wantRefused(t, release(locked), connect.CodeFailedPrecondition, "pin_refused")
+	wantStopped := func(r running) {
+		t.Helper()
+		_, err := r.key.BeginPinRelease(context.Background(), connect.NewRequest(&keystorev2alpha1.BeginPinReleaseRequest{RequestId: newID(t)}))
+		wantRefused(t, err, connect.CodeFailedPrecondition, "pin_refused")
+		wantRefused(t, finish(r, a.GetAnswerText(), a.GetAnswerSignatureDer(), plan), connect.CodeFailedPrecondition, "pin_refused")
+	}
+	wantStopped(locked)
 	if _, err := os.Stat(filepath.Join(state, "pin-release.refused")); err != nil {
 		t.Fatalf("the stop is not in the state directory: %v", err)
 	}
 
-	// A restart: a new driver on the same state directory tries no released PIN either.
+	// A restart: a new driver on the same state directory makes no request and tries no released PIN either.
 	c2 := cardtest.New()
 	c2.SerialNo = 55667788
 	c2.PKI = b.releaser.card
 	again := startOpts(t, c2, driver.Development, "key", self(), opts)
-	plan = b.signPlan(t, 3, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, again))
-	wantRefused(t, release(again), connect.CodeFailedPrecondition, "pin_refused")
+	wantStopped(again)
 	if c.LoginAttempts+c2.LoginAttempts != 1 {
 		t.Fatalf("%d PIN attempts in all, want 1", c.LoginAttempts+c2.LoginAttempts)
 	}
@@ -460,6 +461,63 @@ func TestARefusedReleasedPINStopsTheReleaseAcrossARestart(t *testing.T) {
 	again.unlock(t, "123456")
 	if _, err := os.Stat(filepath.Join(state, "pin-release.refused")); !os.IsNotExist(err) {
 		t.Fatalf("the stop outlived the unlock: %v", err)
+	}
+}
+
+// verifies: REQ-KEYS-059
+// A stop that cannot be saved fails closed: the driver exits non-zero, to be started again by systemd, and a driver
+// cannot start on a state directory it cannot write, so no restart forgets the stop.
+func TestAStopThatCannotBeSavedEndsTheDriver(t *testing.T) {
+	b := newBoundary(t)
+	c := cardtest.New()
+	c.SerialNo = 11223344
+	c.PKI = b.releaser.card
+	c.PIN = "654321"
+	state := stateDir(t)
+	locked, res := startRun(t, c, driver.Development, "key", self(), driver.Options{Node: lockedNode, Publishers: b.publishers, StateDir: state}, false)
+	plan := b.signPlan(t, 2, b.entry(t, releaserNode, b.releaser), b.entry(t, lockedNode, locked))
+	text, sig := begin(t, locked)
+	a, err := sealPin(b.releaser, text, sig, plan)
+	if err != nil {
+		t.Fatalf("SealPin: %v", err)
+	}
+	// The driver takes the KeyPlan first (an unsigned answer is refused after the KeyPlan is verified and marked), so
+	// that the only write left is the stop.
+	wantRefused(t, finish(locked, a.GetAnswerText(), nil, plan), connect.CodeFailedPrecondition, "signature")
+	// The state directory goes away under the driver: a file stands at its path, which no user can write into.
+	if err := os.Rename(state, state+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(state, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantRefused(t, finish(locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), plan), connect.CodePermissionDenied, "pin")
+	select {
+	case <-res.finished:
+		if res.err == nil || !strings.Contains(res.err.Error(), "stop cannot be saved") {
+			t.Fatalf("Run ended with %v", res.err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the driver did not exit")
+	}
+	if c.LoginAttempts != 1 {
+		t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
+	}
+}
+
+func TestADriverDoesNotStartOnAStateDirectoryItCannotWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("SKIP: root writes into a directory of mode 0500; TestAStopThatCannotBeSavedEndsTheDriver covers the exit")
+	}
+	state := stateDir(t)
+	if err := os.Chmod(state, 0o500); err != nil { //nolint:gosec // a directory, read and search only
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(state, 0o700) }) //nolint:gosec // a directory, back to the mode of a state directory
+	c := cardtest.New()
+	if _, err := driver.New(driver.Options{Environment: driver.Development, Node: lockedNode, StateDir: state, Serial: c.SerialNo, Open: c.Opener()}); err == nil ||
+		!strings.Contains(err.Error(), "cannot be written") {
+		t.Fatalf("New on an unwritable state directory: %v", err)
 	}
 }
 

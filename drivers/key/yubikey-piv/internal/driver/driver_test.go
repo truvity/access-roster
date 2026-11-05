@@ -66,6 +66,20 @@ func startWith(t *testing.T, c *cardtest.Card, environment, caller string, allow
 // The environment, the serial and the card are the test's.
 func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool, opts driver.Options) running {
 	t.Helper()
+	r, _ := startRun(t, c, environment, caller, allowAdmin, opts, true)
+	return r
+}
+
+// runResult is how Run ended: finished is closed once err is set.
+type runResult struct {
+	finished chan struct{}
+	err      error
+}
+
+// startRun serves the driver and returns how Run ends. strict makes an error of Run a failure of the test at its end;
+// a test that expects the driver to exit passes false and reads the result itself.
+func startRun(t *testing.T, c *cardtest.Card, environment, caller string, allowAdmin func(uint32) bool, opts driver.Options, strict bool) (running, *runResult) {
+	t.Helper()
 	opts.Environment, opts.Serial, opts.Open = environment, c.SerialNo, c.Opener()
 	base := shortDir(t)
 	r := running{socket: filepath.Join(base, "d.sock"), adm: filepath.Join(base, "a.sock"), card: c}
@@ -80,16 +94,17 @@ func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	cfg = rpc.WithNameResolver(cfg, asSelf(caller))
 	admin := driver.AdminConfig{Socket: r.adm, Allow: allowAdmin}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
+	res := &runResult{finished: make(chan struct{})}
 	go func() {
-		done <- driver.Run(ctx, opts, cfg, admin)
+		res.err = driver.Run(ctx, opts, cfg, admin)
+		close(res.finished)
 	}()
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case err := <-done:
-			if err != nil {
-				t.Errorf("Run: %v", err)
+		case <-res.finished:
+			if strict && res.err != nil {
+				t.Errorf("Run: %v", res.err)
 			}
 		case <-time.After(10 * time.Second):
 			t.Error("Run did not return")
@@ -102,8 +117,8 @@ func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	for _, p := range []string{r.socket, r.adm} {
 		for {
 			select {
-			case err := <-done:
-				t.Fatalf("Run returned early: %v", err)
+			case <-res.finished:
+				t.Fatalf("Run returned early: %v", res.err)
 			default:
 			}
 			if fi, err := os.Lstat(p); err == nil && fi.Mode()&os.ModeSocket != 0 {
@@ -119,7 +134,7 @@ func startOpts(t *testing.T, c *cardtest.Card, environment, caller string, allow
 	r.key = keystorev2alpha1connect.NewKeyStoreServiceClient(hc, url, rpc.ClientOptions()...)
 	ahc, aurl := rpc.Dial(r.adm)
 	r.admin = keystorev2alpha1connect.NewUnlockServiceClient(ahc, aurl, rpc.ClientOptions()...)
-	return r
+	return r, res
 }
 
 func self() func(uint32) bool {

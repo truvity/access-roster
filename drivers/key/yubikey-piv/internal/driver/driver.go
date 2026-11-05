@@ -121,8 +121,9 @@ type Service struct {
 	// oneTime is the one-time key of this driver's PIN release request in flight, if any (pinrelease.go).
 	oneTime *oneTime
 
-	dead     chan struct{} // closed when the card is gone: the driver must exit
+	dead     chan struct{} // closed when the card is gone, or a stop cannot be saved: the driver must exit
 	deadOnce sync.Once
+	deadWhy  error // why the driver exits, set before dead is closed
 }
 
 // New opens the card, checks its firmware, and verifies the attestation of every key it already holds. It
@@ -427,7 +428,15 @@ func (s *Service) failed(ctx context.Context, method string, err error) *connect
 func (s *Service) cardGone(method string) {
 	s.pin.wipe()
 	slog.Error("the card is gone: the PIN is wiped and the driver exits", "method", method)
-	s.deadOnce.Do(func() { close(s.dead) })
+	s.exit(errors.New("the card is gone (removed, reset or powered off): exiting to be started again locked"))
+}
+
+// exit tells Run to end the driver non-zero with why; systemd starts it again. The first reason is kept.
+func (s *Service) exit(why error) {
+	s.deadOnce.Do(func() {
+		s.deadWhy = why
+		close(s.dead)
+	})
 }
 
 // Sign signs a digest with the key of a purpose, on the card.
@@ -547,7 +556,7 @@ func Run(ctx context.Context, opts Options, cfg rpc.ServerConfig, admin AdminCon
 		}
 	}
 	if gone {
-		return errors.New("the card is gone (removed, reset or powered off): exiting to be started again locked")
+		return svc.deadWhy
 	}
 	return first
 }
