@@ -85,6 +85,13 @@ impl Check {
 /// documents of the kinds it declares, then the set.
 #[must_use]
 pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
+    load_dir(dir, b).0
+}
+
+/// [`check_dir`], and the documents that passed their own checks, in order: the Boundary document, then the kinds it
+/// declares. When no check failed, they are the set store@ would load, which `sluis config explain` describes.
+#[must_use]
+pub fn load_dir(dir: &Path, b: &Bootstrap) -> (Vec<Check>, Vec<Document>) {
     let mut out = Vec::new();
     let Ok(dir) = sluis_file::Dir::open(dir) else {
         out.push(Check::fail(
@@ -93,7 +100,7 @@ pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
             "the directory of the documents cannot be opened as a directory",
         ));
         out.push(Check::not_run("set", ""));
-        return out;
+        return (out, Vec::new());
     };
     let dir = &dir;
     let boundary_kind = snapshot::kind("Boundary");
@@ -105,7 +112,7 @@ pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
         Err(e) => {
             out.push(Check::fail("document", boundary_kind.name, e.reason));
             out.push(Check::not_run("set", ""));
-            return out;
+            return (out, Vec::new());
         }
     };
     let declared = match snapshot::declared_kinds(&boundary) {
@@ -115,7 +122,7 @@ pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
             out.pop();
             out.push(Check::fail("document", boundary_kind.name, e.reason));
             out.push(Check::not_run("set", ""));
-            return out;
+            return (out, Vec::new());
         }
     };
     let mut docs = Vec::with_capacity(declared.len());
@@ -134,20 +141,28 @@ pub fn check_dir(dir: &Path, b: &Bootstrap) -> Vec<Check> {
     }
     if !all_read {
         out.push(Check::not_run("set", ""));
-        return out;
+        return (out, Vec::new());
     }
+    let mut accepted = Vec::with_capacity(docs.len() + 1);
+    accepted.push(boundary.clone());
+    accepted.extend(docs.iter().cloned());
     match snapshot::assemble(&b.boundary, boundary, docs) {
-        Ok(_) => out.push(Check::ok("set", "")),
-        Err(e) => out.push(Check::fail(
-            "set",
-            "",
-            match e.kind {
-                Some(k) => format!("{k}: {}", e.reason),
-                None => e.reason,
-            },
-        )),
+        Ok(_) => {
+            out.push(Check::ok("set", ""));
+            (out, accepted)
+        }
+        Err(e) => {
+            out.push(Check::fail(
+                "set",
+                "",
+                match e.kind {
+                    Some(k) => format!("{k}: {}", e.reason),
+                    None => e.reason,
+                },
+            ));
+            (out, Vec::new())
+        }
     }
-    out
 }
 
 fn read_and_accept(

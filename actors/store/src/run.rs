@@ -55,6 +55,26 @@ pub fn extra(c: Command) -> Command {
             ),
     )
     .arg(
+        Arg::new("explain")
+            .long("explain")
+            .global(true)
+            .action(clap::ArgAction::SetTrue)
+            .requires("validate")
+            .conflicts_with("runtime")
+            .help(
+                "check --validate only: also print what each setting resolves to and where it comes from, \
+                 for a set that passes (what `sluis config explain` runs)",
+            ),
+    )
+    .arg(
+        Arg::new("field")
+            .long("field")
+            .global(true)
+            .value_name("PATH")
+            .requires("explain")
+            .help("check --validate --explain only: print the settings under PATH"),
+    )
+    .arg(
         Arg::new("runtime")
             .long("runtime")
             .global(true)
@@ -297,7 +317,9 @@ impl Store {
 /// one line per check, or with `--output json` one object `{"checks": [...]}` on standard output; a failed check is a
 /// refusal (exit 3). Nothing is printed but kinds, paths and rules: never a value of a document.
 fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
+    let explain = f.matches.get_flag("explain");
     // The owner of the file is the host's to check (#1419); its mode and content are the file's.
+    let mut fields = Vec::new();
     let checks = match load_as(f, None) {
         Ok(b) => {
             let mut c = vec![config::offline::Check {
@@ -306,19 +328,27 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
                 path: String::new(),
                 rule: String::new(),
             }];
-            // The runtime is the caller's to name: no file carries it (ADR 0011, "Runtime kinds").
-            match f
-                .matches
-                .get_one::<String>("runtime")
-                .and_then(|r| crate::install::Runtime::parse(r))
-            {
-                Some(runtime) => c.extend(crate::install::check_drivers(
-                    &b,
-                    crate::install::Installation { runtime },
-                )),
-                None => c.push(crate::install::not_run()),
+            // The runtime is the caller's to name: no file carries it (ADR 0011, "Runtime kinds"). `explain` judges
+            // no driver, so it runs no `installation` check and says nothing of one.
+            if !explain {
+                match f
+                    .matches
+                    .get_one::<String>("runtime")
+                    .and_then(|r| crate::install::Runtime::parse(r))
+                {
+                    Some(runtime) => c.extend(crate::install::check_drivers(
+                        &b,
+                        crate::install::Installation { runtime },
+                    )),
+                    None => c.push(crate::install::not_run()),
+                }
             }
-            c.extend(config::offline::check_dir(dir, &b));
+            let (set, docs) = config::offline::load_dir(dir, &b);
+            c.extend(set);
+            // Only a set that passes every check is one store@ would load, and only that has effective values.
+            if explain && c.iter().all(|c| c.result == "ok") {
+                fields = explained(&b, &docs)?;
+            }
             c
         }
         Err(e) => {
@@ -343,9 +373,25 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
             ]
         }
     };
+    let field = f.matches.get_one::<String>("field");
+    if let Some(scope) = field {
+        fields.retain(|x| config::explain::within(&x.path, scope));
+    }
     let mut out = std::io::stdout().lock();
     if f.json {
-        writeln!(out, "{}", config::offline::to_json(&checks))?;
+        let mut o = config::offline::to_json(&checks);
+        if explain {
+            o["fields"] = config::explain::to_json(&fields);
+        }
+        writeln!(out, "{o}")?;
+    } else if explain && checks.iter().all(|c| c.result == "ok") {
+        for x in &fields {
+            writeln!(
+                out,
+                "{} = {} ({} {} {} {})",
+                x.path, x.value, x.class, x.layer, x.version, x.source
+            )?;
+        }
     } else {
         for c in &checks {
             let at = if c.path.is_empty() {
@@ -377,4 +423,16 @@ fn validate(f: &Flags, dir: &Path) -> anyhow::Result<()> {
     } else {
         Err(Refused(failed.join("; ")).into())
     }
+}
+
+/// The settings of the bootstrap file and of the accepted documents, in that order.
+fn explained(
+    b: &Bootstrap,
+    docs: &[config::snapshot::Document],
+) -> anyhow::Result<Vec<config::explain::Field>> {
+    let mut fields = config::explain::bootstrap_fields(b, sluis_version::VERSION);
+    for d in docs {
+        fields.extend(config::explain::document_fields(d, b).map_err(anyhow::Error::msg)?);
+    }
+    Ok(fields)
 }
