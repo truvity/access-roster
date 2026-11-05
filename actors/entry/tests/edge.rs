@@ -18,6 +18,7 @@ use sluis_proto::sluis::config::v2alpha1::Boundary;
 use sluis_proto::sluis::exchange::v2alpha1::{
     ExchangeService, ExchangeServiceExt, TokenExchangeRequest,
 };
+use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
 use sluis_proto::sluis::port::transport::v2alpha1::{
     AckRequest, AckResponse, EmitRequest, EmitResponse, ReceiveRequest, ReceiveResponse,
     TransportService, TransportServiceExt,
@@ -58,6 +59,9 @@ struct Fake {
     /// The error of the next call.
     error: Mutex<Option<(ErrorCode, &'static str)>>,
     store_fails: Mutex<bool>,
+    /// The kids `KeyRevocation` lists, and whether reading the kind fails.
+    revoked: Mutex<Vec<String>>,
+    revocations_fail: Mutex<bool>,
     store_gets: Mutex<usize>,
     emitted: Mutex<Vec<Value>>,
 }
@@ -237,9 +241,43 @@ impl StoreService for FakeStore {
     async fn list(
         &self,
         _: RequestContext,
-        _: ServiceRequest<'_, ListRequest>,
+        r: ServiceRequest<'_, ListRequest>,
     ) -> ServiceResult<ListResponse> {
-        Err(refusal(ErrorCode::Unimplemented, "unsupported", ""))
+        if r.kind != "key-revocation" {
+            return Err(refusal(ErrorCode::Unimplemented, "unsupported", ""));
+        }
+        if *self.0.store_fails.lock().unwrap() || *self.0.revocations_fail.lock().unwrap() {
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
+        let items = self
+            .0
+            .revoked
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, kid)| Item {
+                address: Some(Address {
+                    kind: "key-revocation".into(),
+                    id: format!("kid/{i}"),
+                    ..Address::default()
+                })
+                .into(),
+                version: 1,
+                value: KeyRevocation {
+                    target_kind: "kid".into(),
+                    target: kid.clone(),
+                    reason_code: "compromise".into(),
+                    ..KeyRevocation::default()
+                }
+                .encode_to_vec(),
+                ..Item::default()
+            })
+            .collect();
+        Response::ok(ListResponse {
+            items,
+            ..ListResponse::default()
+        })
     }
     async fn write(
         &self,
@@ -1156,6 +1194,33 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
         2,
         "one Boundary and one SigningRing read"
     );
+}
+
+/// verifies: REQ-KEYS-107
+#[tokio::test]
+async fn a_revoked_kid_is_not_in_the_published_key_set() {
+    let up = up().await;
+    // The ring lists `kid-1` as active; a person has revoked it. The set that is served lacks it, and the
+    // discovery document is unchanged.
+    up.fake.revoked.lock().unwrap().push("kid-1".into());
+    let k = http(&up, "GET", "/jwks", &[], b"").await;
+    assert_eq!(k.status, 200);
+    let set: Value = serde_json::from_slice(&k.body).unwrap();
+    assert_eq!(set, serde_json::json!({ "keys": [] }));
+    let d = http(&up, "GET", "/.well-known/openid-configuration", &[], b"").await;
+    assert_eq!(d.status, 200);
+}
+
+/// verifies: REQ-KEYS-107
+#[tokio::test]
+async fn a_key_revocation_that_cannot_be_read_fails_the_key_set_closed() {
+    let up = up().await;
+    *up.fake.revocations_fail.lock().unwrap() = true;
+    for p in ["/jwks", "/.well-known/openid-configuration"] {
+        let r = http(&up, "GET", p, &[], b"").await;
+        assert_eq!(r.status, 503, "{p}");
+        assert!(r.h("cache-control") != Some("public, max-age=300"), "{p}");
+    }
 }
 
 #[tokio::test]
