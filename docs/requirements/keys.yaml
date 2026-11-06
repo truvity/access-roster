@@ -1731,3 +1731,291 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; another key of the purpose signs; an unreadable KeyRevocation refuses the Sign"}
+
+  # ---- a person binds their own keys to their identity (decision 0043)
+  - id: REQ-KEYS-122
+    area: KEYS
+    statement: "sluis MUST accept a key binding only with a proof of possession, a signature by the presented key over a challenge that sluis issued for that person, boundary and key."
+    rationale: "A key that cannot sign the challenge is not held by the person who presents it, and a copied public key would otherwise bind (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a bind with a signature by another key, a signature over a different challenge and no signature is refused; a bind with a correct signature succeeds"}
+  - id: REQ-KEYS-123
+    area: KEYS
+    statement: "sluis MUST refuse a key binding unless the person has a hardware-attested sign-in within the age that policy sets, verified by the boundary that holds the binding."
+    rationale: "Binding a key is a privileged act, and an upstream claim or a synced passkey must not meet it (ADR 0043, PK1 A)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a bind after a synced-passkey sign-in, after an upstream sign-in only, and after a hardware-attested sign-in older than the age is refused; a fresh hardware-attested sign-in is accepted"}
+  - id: REQ-KEYS-124
+    area: KEYS
+    statement: "sluis MUST record each accepted key binding with the person, the key, the kind, the class, the attestation as received, the time created, the expiry and the state."
+    rationale: "Everything sluis does with a key follows from the binding, so the record must hold what the later checks need (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "after a bind the stored KeyBinding item holds each field, is ciphertext at rest, and is erased with the person"}
+  - id: REQ-KEYS-125
+    area: KEYS
+    statement: "sluis MUST refuse a key binding whose attestation does not verify to a vendor root that config pins."
+    rationale: "A forged statement is an incident and must not be downgraded to an unattested key (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a statement with a broken chain, a chain to an unpinned root and a statement for another public key are each refused and audited"}
+  - id: REQ-KEYS-126
+    area: KEYS
+    statement: "sluis MUST give a key whose attestation verified but whose card model or firmware is not on the allowlist the class hardware and not hardware-attested."
+    rationale: "Only the models the installation vouches for may sign for the company (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a verified statement for a model off the list, a firmware below the list and a listed model yield hardware, hardware and hardware-attested in turn"}
+  - id: REQ-KEYS-127
+    area: KEYS
+    statement: "sluis MUST give a key that came with no attestation the class software."
+    rationale: "A key that sluis cannot show to be on a card must never count as a card key (ADR 0043, BK2 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a bind with no attestation is recorded with class software and is refused by every action that demands hardware-attested"}
+  - id: REQ-KEYS-128
+    area: KEYS
+    statement: "sluis MUST decide what a key binding may be used for by a policy rule on the class of the binding."
+    rationale: "Each class differs in what it proves, and an installation decides what that is worth (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a policy that permits an action to one class only: the action succeeds for that class and is refused for the other two"}
+  - id: REQ-KEYS-129
+    area: KEYS
+    statement: "sluis MUST refuse to certify a key, to put it into the staff keyring or to hand it to a key sync unless the class of its binding is hardware-attested."
+    rationale: "Staff company signing accepts card-born keys only, with no software or unattested fallback (ADR 0043, BK2 A, G1 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "bindings of class hardware and software are recorded and none is certified, listed in the keyring or returned to the key sync; a hardware-attested binding is all three"}
+  - id: REQ-KEYS-130
+    area: KEYS
+    statement: "sluis MUST certify a bound OpenPGP key only with an intermediate key that holds a trust signature from the company root limited to the company domain."
+    rationale: "The root stays offline, and a verifier that holds only the root must accept bound keys and nothing else under the domain (ADR 0043, ADR 0024)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "test vectors checked with gpgv and sqv: a key certified by the intermediate verifies from the root alone, and a key certified by another key or for another domain does not"}
+  - id: REQ-KEYS-131
+    area: KEYS
+    statement: "sluis MUST certify only user IDs whose address is a verified address of the bound person in the directory and lies in the domain of the trust signature."
+    rationale: "A certification of another person's address would let a key sign in that person's name (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a key with a user ID for another person's address, for an unverified address or for a foreign domain is certified for none of them"}
+  - id: REQ-KEYS-132
+    area: KEYS
+    statement: "sluis MUST set the expiry of a certification no later than the expiry of its binding and no later than 13 months after it is made."
+    rationale: "A certification outlives a lost or ended key only until it expires (ADR 0043, ADR 0024)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a certification made at the maximum has an expiry of at most 13 months, and one for a binding that expires sooner expires with it"}
+  - id: REQ-KEYS-133
+    area: KEYS
+    statement: "sluis MUST require a fresh proof from an active hardware-attested binding of the person, signed by the bound key, before it adds any further binding of that person."
+    rationale: "Attestation shows that a card is genuine and not whose it is, so a stolen session must not be able to add a key of its own (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a person with a hardware-attested binding adds a key with no proof, a stale proof and a proof by another person's key (each refused) and then with a fresh proof (accepted)"}
+  - id: REQ-KEYS-134
+    area: KEYS
+    statement: "sluis MUST require an approval that policy names before it records the first hardware-attested binding of a person."
+    rationale: "The first key of a person has no earlier key to vouch for it (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a first bind with no approval, or approved by the person alone, is refused; approval by an operator with a fresh hardware-attested assertion, or by the directory fact policy names, is accepted"}
+  - id: REQ-KEYS-135
+    area: KEYS
+    statement: "sluis MUST write an audit record for every key bind, refusal and end."
+    rationale: "A binding is the root of a person's signing identity, so every change to it must be findable (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a successful bind, a refusal for each reason and an end each leave one audit record with the fingerprint, the class and the outcome"}
+  - id: REQ-KEYS-136
+    area: KEYS
+    statement: "sluis MUST alert the operators and notify the person at a verified address of theirs, with the fingerprint, when a hardware-attested binding is recorded."
+    rationale: "A rogue key is only caught if the person and the operators see that a new key was bound (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a new binding raises one operator alert and sends one notice to the person's verified address that holds the fingerprint"}
+  - id: REQ-KEYS-137
+    area: KEYS
+    statement: "sluis MUST build the staff keyring only from the certified keys of active hardware-attested bindings."
+    rationale: "The keyring is a view of the bindings, so no key is in it that sluis did not bind and certify (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "the keyring holds exactly the keys of active hardware-attested bindings; a binding that is ended, revoked, of another class or not yet certified is absent"}
+  - id: REQ-KEYS-138
+    area: KEYS
+    statement: "sluis MUST re-certify the key of an active binding before its certification expires, with no person present, while the person is live in the directory and the key is not revoked."
+    rationale: "The yearly renewal of every person's key must not be work for a person (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "with a clock moved to month 12 an active binding gets a new certification with a later expiry; one whose person is marked left or whose key is revoked does not"}
+  - id: REQ-KEYS-139
+    area: KEYS
+    statement: "sluis MUST leave every other active binding of a person unchanged when it ends one of that person's bindings."
+    rationale: "A second card is a separate binding, and a lost card must not end the person's work (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a person with two bindings has one ended: the other stays active, certified and in the keyring"}
+  - id: REQ-KEYS-140
+    area: KEYS
+    statement: "sluis MUST set a binding to revoked, revoke its own certification of the key and put the key on the withdrawn list of the next keyring when a person declares the key compromised."
+    rationale: "A compromised key must leave at once, and only a person declares (ADR 0043, ADR 0041)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a declaration revokes the binding, publishes a revocation of the certification and lists the key as withdrawn in the next keyring"}
+  - id: REQ-KEYS-141
+    area: KEYS
+    statement: "sluis MUST end every binding of a person whom the directory marks left."
+    rationale: "A leaver's keys stop being renewed, leave the keyring and are removed by the sync (ADR 0043, G5 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a person marked left with two bindings has both ended, neither is renewed, and neither is in the next keyring"}
+  - id: REQ-KEYS-142
+    area: KEYS
+    statement: "sluis MUST refuse a key binding for a key that is already bound to any person."
+    rationale: "One key stands for one person, or a signature would not say who signed (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "the same key bound by its owner twice, and by a second person, is refused the second time"}
+  - id: REQ-KEYS-143
+    area: KEYS
+    statement: "sluis MUST refuse a key binding request that carries private key material."
+    rationale: "The company must never hold the private part of a bound key (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a request that holds a secret key packet, or an SSH private key, is refused and the material is not stored or logged"}
