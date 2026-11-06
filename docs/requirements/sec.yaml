@@ -236,6 +236,7 @@ requirements:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [1039]
     verification:
+      - {kind: test-vectors, ref: "RFC 8785 corpus of the RFC's author, identical bytes in Go and Rust"}
       - {kind: manual, ref: "dependency lint"}
       - {kind: integration-test, ref: "TestCheckpointsVerifyWithTheTransparencyDevVerifier: audit-log checkpoints open with the transparency-dev reference; fuzz targets in cli/sluis and writerd"}
       - {kind: test-vectors, ref: "official vectors for each external standard it implements"}

@@ -299,6 +299,11 @@ go-test:
     go test -race -count=1 -v -tags sluis_test ./... 2>&1 \
       | awk '!/^=== (RUN|PAUSE|CONT|NAME)/ && !/^[[:space:]]*--- PASS/ && !/^PASS$/'
 
+# Run the Go fuzz target of the audit canonicaliser for a bounded time (default 30 s). `just go-test` already
+# runs its seeds, the vector files and the RFC 8785 corpus on every run; this explores beyond them.
+go-fuzz time="30s":
+    go test ./kits/go/audit -run '^$' -fuzz '^FuzzCanonical$' -fuzztime {{time}}
+
 # Lint the Go module.
 go-lint:
     golangci-lint run ./...
