@@ -347,7 +347,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["parity"]
@@ -368,7 +368,7 @@ requirements:
       - {kind: integration-test, ref: "a port call that ends in conflict or not-found raises the outcome count and not the failure count; a call that ends in an error raises both"}
   - id: REQ-OBS-027
     area: OBS
-    statement: "A periodic job MUST have a critical alert that fires when its samples keep arriving and no successful completion has happened for four of its intervals."
+    statement: "A periodic job MUST have a critical alert that fires when its samples keep arriving and no successful completion has happened for four of its own intervals, whatever the interval."
     rationale: "A job that runs and never succeeds is the case a stopped-series alert cannot see (ADR 0016)."
     level: MUST
     source: v1-parity
@@ -378,7 +378,7 @@ requirements:
     standards: []
     features: ["parity"]
     verification:
-      - {kind: test-vectors, ref: "rule tests for a live series with ok completions (no alert), a live series whose completions all fail (alert), and a live series that never had an ok completion (alert)"}
+      - {kind: test-vectors, ref: "rule tests: live with ok passes (quiet); live, all fail (alert); live, never ok (alert); hourly job on time (quiet)"}
   - id: REQ-OBS-028
     area: OBS
     statement: "A periodic job MUST have a warning alert that fires when its series was seen within the last two hours and has sent no sample for the live window, and that clears by itself when the two hours have passed."
@@ -484,3 +484,16 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: test-vectors, ref: "the bucket bounds of the request duration histogram of an endpoint that waits for a vendor exceed that vendor's declared timeout"}
+  - id: REQ-OBS-036
+    area: OBS
+    statement: "A periodic job MUST add to the counter sluis.job.ticks for each pass, with the attributes job and outcome, where outcome is ok or failed."
+    rationale: "The age of a job is read from the counter of its successful passes, and counters from many instances add up where gauges overwrite each other (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "in the Go kit and the Rust kit, a pass that succeeds adds 1 to sluis.job.ticks{outcome=ok} and a pass that fails adds 1 to outcome=failed; the job attribute is bounded"}

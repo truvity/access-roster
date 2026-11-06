@@ -314,7 +314,7 @@ requirements:
   - id: REQ-POLICY-023
     area: POLICY
     statement: "`sluis config check` SHOULD warn about an internal group that is declared and that no grant, binding or requires clause names."
-    rationale: "A group that nothing uses is a leftover, and v1 logged it on every invocation until it was moved to the check (ADR 0020)."
+    rationale: "A group that nothing uses is a leftover, and v1 logged it on every invocation until it was moved to the check."
     level: SHOULD
     source: v1-parity
     status: planned

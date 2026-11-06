@@ -36,6 +36,8 @@ The log itself, its projects and buckets, sealing, witnesses, lock modes, encryp
 - **The audit pieces read their documents through the data port.** `AuditLog`, `AuditWitnesses` and `AuditCatalogue` are config kinds that store@ loads and verifies like every other config ([0005](/decisions/0005-the-store/#configuration-loading)). The blob, the transport and the index are audit's own ports, and the audit pieces write nothing through the store.
 - **The search index is derived data,** rebuilt from the log and never evidence.
 
+- **Every blob request of a piece has a bounded duration and a bounded number of attempts,** so that the worst case of an operation is known and a start-up on a platform with an initialisation limit completes or fails inside it ([REQ-AUDIT-169](/requirements/audit/#REQ-AUDIT-169)). The writer logs each phase of its start-up with its duration ([REQ-AUDIT-170](/requirements/audit/#REQ-AUDIT-170)). When the store refuses a request with 401 or 403 the driver reads its credential again without a cache and retries once ([REQ-AUDIT-174](/requirements/audit/#REQ-AUDIT-174)), comparing the whole credential ([REQ-AUDIT-177](/requirements/audit/#REQ-AUDIT-177)); concurrent refusals share one read and the log never holds the credential ([REQ-AUDIT-175](/requirements/audit/#REQ-AUDIT-175), [REQ-AUDIT-176](/requirements/audit/#REQ-AUDIT-176)).
+
 ### Transport
 
 - **The transport joins the emitter to the writer.** It has four drivers in two modes:
