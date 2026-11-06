@@ -3,8 +3,7 @@
 [Unit]
 Description=sluis witness (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
-StartLimitIntervalSec=120
-StartLimitBurst=40
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
