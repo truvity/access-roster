@@ -48,7 +48,7 @@ The owner's reason for BD1 B is the size of the loss: sluis manages the identiti
 ### What a binding is
 
 - **A binding is a record that a person's card holds the subkeys it names.** One card is one binding. It holds the person; the **key identity**; the kind; the class; the bound set; the attestation as received; the time created; the expiry; and a state: `active`, `ended` or `revoked`. It is the durable kind `KeyBinding`, personal and sealed under the tenant's data key, written only by `exchange`, and erased with the person ([0004](/decisions/0004-the-data-model/)). Both kinds, `PersonPrimary` and `KeyBinding`, are added to the registry with the first build.
-- **The key identity is the SHA-256 hash of the public key material of the card's signing subkey,** the algorithm, the curve and the public point, and nothing else. It is not the version 4 fingerprint, because the fingerprint covers the creation time, which the holder chooses: the same card key could be given two creation times and bound twice. No subkey of one binding may be the key material of another ([REQ-KEYS-142](/requirements/keys/#REQ-KEYS-142)).
+- **The key identity is the SHA-256 hash of the public key material of a subkey, over exact bytes.** For an OpenPGP ECDSA key on P-384 the bytes are the algorithm octet `0x13` (19), the curve OID length octet `0x05`, the OID `2b 81 04 00 22` (1.3.132.0.34), and the MPI of the public point exactly as the key packet carries it: a two-octet bit count (`03 03`, 771, for a 97-octet point whose first octet is `04`) and the 97 octets of the uncompressed point. These are the public key fields of the key packet (RFC 9580 section 5.5.5.4: a one-octet OID length, the OID, an MPI of the point) with the algorithm octet in front, and without the version and the creation time. The hash is 64 hex digits, lower case. A worked vector is in [Test vectors](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#test-vectors). The key identity of a binding is that of its signing subkey. It is not the version 4 fingerprint, because the fingerprint covers the creation time, which the holder chooses: the same card key could be given two creation times and bound twice. No subkey of one binding may be the key material of another ([REQ-KEYS-142](/requirements/keys/#REQ-KEYS-142)).
 - **sluis never holds the private part of a card's subkey.** The request carries public keys and proofs, and the card keeps the rest ([REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143)).
 - **The kinds are OpenPGP and `sk-ssh` for staff, and JWK for customers (CU4 A).** X.509 and PIV keys, and OpenPGP keys for customers, come later. Each kind has its own proof format and its own action; the binding, the classes and the gate are the same for all.
 
@@ -71,10 +71,12 @@ An attestation that is present and does not verify is refused, not downgraded: a
 ### The flow
 
 1. **The person has a primary.** It is made when the person joins and the first binding is approved. The helper reads its public key with `sluis key bind --primary`.
-2. **The person generates the subkeys on the card first.** The ritueel helper makes the signing subkey (and, if wanted, the encryption and authentication subkeys) on the card, sets the PINs, and makes the card sign the **back-signature** (type 0x19) over the person's primary and the signing subkey, as OpenPGP requires of a signing subkey ([REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171)). It writes the **bundle v1**: `<name>.subkey.pgp` (the public subkeys, and the back-signature), `<name>.proof.json` (the attestation statement and chain of each subkey) and, in step 4, `<name>.possession.sig`. The formats are standard; ritueel and sluis share test vectors for the bundle and no code ([REQ-KEYS-151](/requirements/keys/#REQ-KEYS-151)).
+2. **The person generates the subkeys on the card first.** The ritueel helper makes the signing subkey and, if wanted, an authentication subkey on the card, sets the PINs, and makes the card sign the **back-signature** (type 0x19) over the person's primary and the signing subkey, as OpenPGP requires of a signing subkey ([REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171)). **Staff keys have no encryption subkey in this design,** and a bound set refuses one ([REQ-KEYS-192](/requirements/keys/#REQ-KEYS-192)): a lost card would lose the mail it decrypted, which is the reason ritueel's ADR 0012 gives, and an encryption subkey bound under the primary would put a key that the company cannot replace into the company's keyring. It writes the **bundle v1**: `<name>.subkey.pgp` (the public subkeys, and the back-signature), `<name>.proof.json` (below) and, in step 4, `<name>.possession.sig`. The formats are standard; ritueel and sluis share test vectors for the bundle and no code ([REQ-KEYS-151](/requirements/keys/#REQ-KEYS-151)).
+
+   `proof.json` is a JSON object with these members, shared by both repositories ([REQ-KEYS-194](/requirements/keys/#REQ-KEYS-194)): `bundle` (the number 1); `subkey_sha256` (the SHA-256 of the bytes of `<name>.subkey.pgp`, 64 hex digits, so the proof cannot be moved to another file); `primary` (the version 4 fingerprint of the person's primary, 40 hex digits); `key` (the key identity of the signing subkey, 64 hex digits); and `subkeys`, an array with one object per subkey: `slot` (`sig` or `aut`), `key` (that subkey's key identity), `statement` (the attestation certificate, PEM) and `chain` (the intermediate certificates, an array of PEM).
 3. **The person signs in with a fresh hardware step-up that sluis verified itself.** It is a `hardware-attested` assertion checked by the boundary that holds the binding, within the age policy sets; an upstream claim never counts (PK1 A, [REQ-KEYS-123](/requirements/keys/#REQ-KEYS-123)). `sluis key bind` then asks sluis for a challenge that names the person, the boundary and the signing subkey. Each card gets its own challenge ([The challenge](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#the-challenge)).
-4. **The helper signs the challenge with the signing subkey on the card** and writes `<name>.possession.sig`. The card needs its PIN and, by the touch policy decided per key (G4 A), a touch.
-5. **`sluis key bind` sends the bundle.** sluis verifies on the server: the possession signature; the back-signature against the person's primary; the attestation chain of every subkey against the pinned root; the firmware and form factor against the allowlist; and that every subkey is attested ([REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122), [REQ-KEYS-125](/requirements/keys/#REQ-KEYS-125), [REQ-KEYS-160](/requirements/keys/#REQ-KEYS-160)). The class follows from the result.
+4. **The helper signs the challenge with every subkey on the card,** the signing subkey and the authentication subkey if there is one, and writes one signature per subkey into `<name>.possession.sig`. The card needs its PIN and, by the touch policy decided per key (G4 A), a touch.
+5. **`sluis key bind` sends the bundle.** sluis verifies on the server: the possession signature of every subkey; the back-signature against the person's primary; the attestation chain of every subkey against the pinned root; the firmware and form factor against the allowlist; and that every subkey is attested ([REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122), [REQ-KEYS-125](/requirements/keys/#REQ-KEYS-125), [REQ-KEYS-160](/requirements/keys/#REQ-KEYS-160)). The class follows from the result.
 6. **It records the binding** ([REQ-KEYS-124](/requirements/keys/#REQ-KEYS-124)) and **acts on it, per kind:**
 
 | Kind | What sluis does, for a `hardware-attested` binding |
@@ -84,7 +86,9 @@ An attestation that is present and does not verify is refused, not downgraded: a
 | OpenPGP | The GitHub key sync uploads the certificate to the person's account ([pull request #1485](https://github.com/truvity/sluis/pull/1485)) |
 | `sk-ssh` | Later: issues SSH certificates for the key, by the rules of [0023](/decisions/0023-certificate-authorities/#ssh) (P10 A) |
 
-**How the two proofs fit.** The back-signature and the challenge signature are both made by the card's signing subkey, and they prove different things. The back-signature says that this subkey agrees to be a subkey of this primary; OpenPGP requires it so that nobody can claim another's signing key. It is made by the card with the signer's own choice of creation time and carries no server nonce, so it could be replayed from an old bundle. The challenge signature has the server's nonce, the person, the boundary and the time, so it proves that the card is present now, for this request. sluis requires both: the back-signature for the OpenPGP packet, the challenge for freshness.
+**How the proofs fit.** The back-signature and the challenge signature are both made by the card's signing subkey, and they prove different things. The back-signature says that this subkey agrees to be a subkey of this primary; OpenPGP requires it so that nobody can claim another's signing key. It is made by the card with the signer's own choice of creation time and carries no server nonce, so it could be replayed from an old bundle. The challenge signature has the server's nonce, the person, the boundary and the time, so it proves that the card is present now, for this request. sluis requires both: the back-signature for the OpenPGP packet, the challenge for freshness.
+
+**Every subkey proves possession, not only the signing subkey.** RFC 9580 section 5.2.1.8 requires the embedded back-signature only of a signing subkey ("a signature that binds a signing subkey MUST have an Embedded Signature subpacket"); it says nothing that requires or forbids one for an authentication subkey, whose flag (0x20) is defined in section 5.2.3.29. An attestation certificate is public, so for an authentication subkey with no proof of its own someone could present another person's certificate and have a key of theirs bound. sluis therefore requires a challenge signature (type 0x02) from every subkey: the authentication slot signs the same challenge text, and the signature proves that the card holding that slot is present now. A back-signature is not asked of an authentication subkey. Whether the card's authentication slot can make such a signature, through the helper's library and with the touch and PIN policy of the slot, is UNVERIFIED and is part of the conformance test; if it cannot, an authentication subkey is not bound, the bound set is the signing subkey alone, and this record is amended before anything is built ([REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122)).
 
 ### The challenge
 
@@ -105,7 +109,7 @@ expires: <RFC 3339 UTC time, to the second, ending in Z>
 
 - **`action` is `bind`, `add`, `end` or `change`.** For a first bind `key` and `target` are the same key. For `add`, `end` and `change` ([The gate](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#the-gate), [The subkey's own expiry](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#the-subkeys-own-expiry)), `key` is the existing key that vouches and `target` the key the action is about. A signature for one action cannot be used for another.
 - **It lives 600 seconds, long enough for a PIN and a touch, and is used once,** and only by the session that asked for it, the session of the fresh hardware sign-in ([REQ-KEYS-148](/requirements/keys/#REQ-KEYS-148), [REQ-KEYS-149](/requirements/keys/#REQ-KEYS-149)).
-- **The signature is an OpenPGP version 4 standalone signature, type 0x02,** made by the signing subkey itself. The challenge is the value of a **critical** hashed Notation Data subpacket named `bind-challenge@sluis.id`, flagged human-readable ([REQ-KEYS-150](/requirements/keys/#REQ-KEYS-150)). A type 0x02 signature signs only its own subpacket contents and no document, so it cannot pass as a signature over a file, a commit or a checksum list; a type 0x00 signature over a text would be hashed together with the data it follows, and formats such as a `sha256sum -c` list tolerate extra lines, so a label inside such a text separates nothing. A verifier that does not know a critical notation must reject the signature, which is the separation from every other use.
+- **The signature is an OpenPGP version 4 standalone signature, type 0x02,** made by the signing subkey itself. The challenge is the value of a **critical** hashed Notation Data subpacket named `bind-challenge@sluis.id`, flagged human-readable ([REQ-KEYS-150](/requirements/keys/#REQ-KEYS-150)). A type 0x02 signature is "calculated identically to a signature over a zero-length binary document" (RFC 9580 section 5.2.1.3), and its trailer carries its own signature type, so it signs no document and cannot pass as a signature over a file, a commit or a checksum list; a type 0x00 signature over a text would be hashed together with the data it follows, and formats such as a `sha256sum -c` list tolerate extra lines, so a label inside such a text separates nothing. A verifier that does not know a critical notation must reject the signature, which is the separation from every other use.
 - **What the label does not protect.** The card signs the digest it is handed and does not see the text. So the protection is on the host: the helper refuses any challenge that lacks the label, has other lines or has a time in the past, shows the challenge before it asks for the PIN, and builds the type 0x02 packet itself. A hostile host or a hostile helper can ask the card to sign any digest at all; nothing in the format stops that, and the PIN and the touch are what stand between a card and an unwanted signature. The label separates this signature from the others that an honest helper produces; it does not make a compromised host safe.
 - **The same format is the "fresh proof"** of [The gate](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#the-gate): a challenge with `action: add`, `end` or `change`, signed by an existing signing subkey of the person.
 
@@ -118,6 +122,55 @@ expires: <RFC 3339 UTC time, to the second, ending in Z>
 - **Lifetimes, in days.** A certification lasts 395 days (13 months) and no longer than the primary's own expiry, which sluis renews with it ([REQ-KEYS-132](/requirements/keys/#REQ-KEYS-132)). Renewal begins 60 days before it ends ([REQ-KEYS-138](/requirements/keys/#REQ-KEYS-138)).
 - **What a verifier can check.** A verifier with a web of trust (`gpg` with the root trusted, or `sq-wot`) validates a person's primary through the root's trust signature and the company key's certification, and rejects an address outside the domain ([REQ-KEYS-130](/requirements/keys/#REQ-KEYS-130)). `gpgv`, `sqv`, apt and rpm do no web of trust. They accept a signature if the signing subkey is in the keyring they are given, bound to a primary that has not expired or been revoked there; the certification and its 13 months play no part for them. What they rely on is the keyring ([The staff keyring](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#the-staff-keyring)) and the expiry of the primary and of the subkey.
 
+### Test vectors
+
+These vectors are shared with ritueel. The key is a throwaway P-384 test key whose private part is not published; the signature was made with it and checked with a P-384 ECDSA verifier, and `gpg --list-packets` parses both packets (checked 2026-11-06).
+
+**Key identity.** The public point (97 octets, uncompressed):
+
+```text
+049b91e4d4706f0a8c105d7cca4f1371006eafa23919a1cfe698ff46a53fe977e363ff20ab6ec244dd2aae67627561f3bcd9813a44bb1c5095ba13ee912f0da7781dea4ec5342e40066f7d38c72659a5f8cd8c5457683c2aa73f7629085453b3b8
+```
+
+The bytes that are hashed (algorithm octet `13`, OID length `05`, the OID, the MPI with the bit count `0303`, the point):
+
+```text
+13052b810400220303049b91e4d4706f0a8c105d7cca4f1371006eafa23919a1cfe698ff46a53fe977e363ff20ab6ec244dd2aae67627561f3bcd9813a44bb1c5095ba13ee912f0da7781dea4ec5342e40066f7d38c72659a5f8cd8c5457683c2aa73f7629085453b3b8
+```
+
+The SHA-256 of those bytes, the key identity:
+
+```text
+5f9e0d2357f673c22b134e5e3c1215f2766a7b25b33c7a643248481463a6ab38
+```
+
+For the key packet below (version 4, creation time 1767225600, that is 2026-01-01T00:00:00Z), the version 4 fingerprint is `50ca09b0e838c2bd699a7059ed0ef4f82b80a3fc`. The same key with another creation time has another fingerprint and the same key identity.
+
+```text
+c66f046955b90013052b810400220303049b91e4d4706f0a8c105d7cca4f1371006eafa23919a1cfe698ff46a53fe977e363ff20ab6ec244dd2aae67627561f3bcd9813a44bb1c5095ba13ee912f0da7781dea4ec5342e40066f7d38c72659a5f8cd8c5457683c2aa73f7629085453b3b8
+```
+
+**Challenge signature.** The challenge (eight lines, a line feed after each; `key` and `target` are the key identity above, and the test key signs as its own signing subkey):
+
+```text
+sluis-key-bind-v1
+action: bind
+person: mfrggzdfmz2gq2lnmvzxi4tbnz
+boundary: boundary-a
+key: 5f9e0d2357f673c22b134e5e3c1215f2766a7b25b33c7a643248481463a6ab38
+target: 5f9e0d2357f673c22b134e5e3c1215f2766a7b25b33c7a643248481463a6ab38
+nonce: 1068dec4cb82d5db66e999952feae29641921c4ef9bc2bee66d2f0cf21546914
+expires: 2026-01-01T00:10:00Z
+```
+
+The signature packet, a version 4 signature of type 0x02 with the challenge in a critical hashed notation `bind-challenge@sluis.id`, ECDSA on P-384 with SHA-384, made by the test key:
+
+```text
+c2c1420402130a018b05026955b93c16210450ca09b0e838c2bd699a7059ed0ef4f82b80a3fcc0ac94800000000017014c62696e642d6368616c6c656e676540736c7569732e6964736c7569732d6b65792d62696e642d76310a616374696f6e3a2062696e640a706572736f6e3a206d667267677a64666d7a326771326c6e6d767a78693474626e7a0a626f756e646172793a20626f756e646172792d610a6b65793a20356639653064323335376636373363323262313334653565336331323135663237363661376232356233336337613634333234383438313436336136616233380a7461726765743a20356639653064323335376636373363323262313334653565336331323135663237363661376232356233336337613634333234383438313436336136616233380a6e6f6e63653a20313036386465633463623832643564623636653939393935326665616532393634313932316334656639626332626565363664326630636632313534363931340a657870697265733a20323032362d30312d30315430303a31303a30305a0a000a0910ed0ef4f82b80a3fcf3af0180cc4623be0606a17178f9151a9f95b9cf5847aa8972660a081ce8bcaa459f4ac857525261d6abf409b538d3a587087d900177789fcdab1bfe5ccb43783b8e83b9277f19b20fc093f8e684c185b0dbc138cd1154a2601bc1f0baaabdefb099d71607
+```
+
+In this signature the MPI of `s` is 375 bits, so its first octet is zero in the 48-octet value and the packet carries 47 octets; a verifier must pad `r` and `s` back to 48 octets before it checks them ([REQ-KEYS-195](/requirements/keys/#REQ-KEYS-195)). The shared vectors must keep at least one signature whose `r` or `s` has a leading zero octet, and one whose neither has.
+
 ### The bound set
 
 A person's certificate has exactly these packets, and sluis stores, lists in the keyring and syncs to GitHub nothing outside them ([REQ-KEYS-161](/requirements/keys/#REQ-KEYS-161)):
@@ -126,7 +179,7 @@ A person's certificate has exactly these packets, and sluis stores, lists in the
 - the one user ID, with the primary's self-signature and the company key's certification;
 - each subkey that was attested at bind time, with the primary's binding signature (with the card's back-signature embedded) and any revocation of it.
 
-Every other packet is refused or dropped. **A card whose bundle carries a subkey with no verified attestation of its own is refused** ([REQ-KEYS-160](/requirements/keys/#REQ-KEYS-160)): there is no such thing as a software subkey that sluis binds. Subkeys exist by design now, so the question is no longer which subkeys a primary may carry but which ones sluis has bound: only the ones it bound, each attested.
+Every other packet is refused or dropped. **There is no encryption subkey in a staff certificate,** and a bundle that carries one is refused. **A card whose bundle carries a subkey with no verified attestation of its own is refused** ([REQ-KEYS-160](/requirements/keys/#REQ-KEYS-160)): there is no such thing as a software subkey that sluis binds. Subkeys exist by design now, so the question is no longer which subkeys a primary may carry but which ones sluis has bound: only the ones it bound, each attested.
 
 ### The staff keyring
 
@@ -202,7 +255,7 @@ BD2 B: a customer may bind a key inside the company's tenant, for that company o
 
 The first question was whether the OpenPGP applet's attestation covers a card-born primary that certifies and signs. Under BD1 B the card holds no primary, so the question becomes narrower: does it cover the card's signing subkey, and can the card make the back-signature a signing subkey needs? Read on 2026-11-06 from [Yubico's OpenPGP attestation page](https://developers.yubico.com/PGP/Attestation.html) and [the `ykman openpgp keys attest` reference](https://docs.yubico.com/software/yubikey/tools/ykman/OpenPGP_Commands.html):
 
-- READ: the signature, decryption and authentication keys can be attested, on firmware 5.2 and later, and only a key generated on the device can be ("imported" is not permitted). Firmware 5.7.4 and later is signed under Yubico's new root. So the three card slots, which are now the signing, encryption and authentication subkeys, are covered.
+- READ: the signature, decryption and authentication keys can be attested, on firmware 5.2 and later, and only a key generated on the device can be ("imported" is not permitted). Firmware 5.7.4 and later is signed under Yubico's new root. So the two slots that staff keys use, the signing and the authentication subkey, are covered; the decryption slot is not used.
 - READ: the statement carries the key's fingerprint and generation date, and Yubico says not to trust them, because the Admin PIN can overwrite them. The page says to always verify the public key.
 - **UNVERIFIED:** that a card can make the type 0x19 back-signature and the type 0x02 challenge signature with the signature-slot key through the helper's library and through `gpg`; that `gpg`, `sqv` and GitHub accept a certificate whose signing subkey was bound this way; and that GitHub accepts a P-384 certificate with third-party certifications.
 
@@ -210,15 +263,16 @@ So the design checks the public key of each statement against the public key of 
 
 **Conformance test, run on a YubiKey 5 with firmware 5.7.4 or later, and on one older to see it refused:**
 
-1. Generate the signature, decryption and authentication keys on the card with `gpg` and with the ritueel helper; export the attestation of each slot; verify each chain to Yubico Attestation Root 1; compare each public key with the subkey presented.
+1. Generate the signature and authentication keys on the card with `gpg` and with the ritueel helper; export the attestation of each slot; verify each chain to Yubico Attestation Root 1; compare each public key with the subkey presented.
 2. A key imported into a slot has no attestation, and a statement whose public key differs from the subkey presented is refused. A card with firmware below 5.7.4 is refused.
 3. The fingerprint and date in the statement are overwritten with the Admin PIN: sluis's result does not change.
 4. Read a real statement and list its fields. Confirm that it has no model name, that the firmware, the form factor and the FIPS flag are the fields the allowlist can use, and that the root's name is the one sluis pins.
 5. The card makes the back-signature (type 0x19) over a test primary and the signing subkey; a primary binds the subkey with it embedded; `gpg --list-packets`, `sq packet dump`, `gpg --check-sigs` and `sq inspect` accept the result.
-6. The challenge signature (type 0x02, critical notation): parse it with `gpg --list-packets` and `sq packet dump`; check that `gpg --verify` and `sqv` reject it as a signature over any file (the expectation, UNVERIFIED, is that both refuse it); check that the helper refuses a challenge with a missing label or an extra line.
-7. The card signs a commit and a checksum file as the signing subkey; `gpgv`, `sqv` and `git verify-commit` accept them, using a certificate whose subkey the test primary bound.
-8. Certify the test primary with the company key under the root's trust signature with the anchored expression: `gpg` with the root trusted and `sq-wot` accept an address in the domain and reject one outside it and one at a subdomain.
-9. The certificate, with the certification, the root's trust signature and the bound subkey, is uploaded to a GitHub account (`POST /user/gpg_keys`) and a commit signed on the card shows Verified. This also tests whether GitHub accepts a P-384 certificate with third-party certifications and a subkey that carries an embedded back-signature.
+6. The authentication slot makes a type 0x02 challenge signature, through the helper's library and with the slot's PIN and touch policy; the signing slot makes the type 0x19 back-signature and a type 0x02 signature. A bundle with a statement copied from another card, and no matching challenge signature for its subkey, is refused.
+7. The challenge signature (type 0x02, critical notation): parse it with `gpg --list-packets` and `sq packet dump`; check that `gpg --verify` and `sqv` reject it as a signature over any file (the expectation, UNVERIFIED, is that both refuse it); check that the helper refuses a challenge with a missing label or an extra line.
+8. The card signs a commit and a checksum file as the signing subkey; `gpgv`, `sqv` and `git verify-commit` accept them, using a certificate whose subkey the test primary bound.
+9. Certify the test primary with the company key under the root's trust signature with the anchored expression: `gpg` with the root trusted and `sq-wot` accept an address in the domain and reject one outside it and one at a subdomain.
+10. The certificate, with the certification, the root's trust signature and the bound subkey, is uploaded to a GitHub account (`POST /user/gpg_keys`) and a commit signed on the card shows Verified. This also tests whether GitHub accepts a P-384 certificate with third-party certifications and a subkey that carries an embedded back-signature.
 
 ## Consequences
 
@@ -228,7 +282,7 @@ So the design checks the public key of each statement against the public key of 
 - A card that sluis cannot attest, or that is not on the allowlist, cannot sign for the company. An installation that wants to accept another form factor extends the allowlist; cards older than firmware 5.7.4 are not accepted.
 - The staff keyring is a file that sluis produces, signs with a key of its own and publishes. The sync of [pull request #1485](https://github.com/truvity/sluis/pull/1485) reads the bindings, not the file, and the CI check of G3 C and the `gpgv` check of G6 read the file.
 - The tenant gains a sixth data key purpose, `person-key` (EX1 A), and a company that issues staff keys gains a certification key and a keyring-signing key. 0006 is amended when they are built.
-- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) to [REQ-KEYS-168](/requirements/keys/#REQ-KEYS-168) and [REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171) to [REQ-KEYS-191](/requirements/keys/#REQ-KEYS-191).
+- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) to [REQ-KEYS-168](/requirements/keys/#REQ-KEYS-168) and [REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171) to [REQ-KEYS-195](/requirements/keys/#REQ-KEYS-195).
 
 ## Roads not taken
 
@@ -250,10 +304,10 @@ So the design checks the public key of each statement against the public key of 
 
 ## Follow-ups
 
-- Build `sluis key bind`, the kinds `PersonPrimary` and `KeyBinding`, the `person-key` data key, the certification and keyring-signing purposes, and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) to [REQ-KEYS-168](/requirements/keys/#REQ-KEYS-168) and [REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171) to [REQ-KEYS-191](/requirements/keys/#REQ-KEYS-191) ([#1496](https://github.com/truvity/sluis/issues/1496)), gated on the conformance test above.
+- Build `sluis key bind`, the kinds `PersonPrimary` and `KeyBinding`, the `person-key` data key, the certification and keyring-signing purposes, and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) to [REQ-KEYS-168](/requirements/keys/#REQ-KEYS-168) and [REQ-KEYS-171](/requirements/keys/#REQ-KEYS-171) to [REQ-KEYS-195](/requirements/keys/#REQ-KEYS-195) ([#1496](https://github.com/truvity/sluis/issues/1496)), gated on the conformance test above.
 - Run the conformance test and date the result ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Amend [0006](/decisions/0006-keys-and-sealing/) when this is built (EX1 A): the named exception for the sealed primary, the sixth tenant data key `person-key` ([REQ-KEYS-190](/requirements/keys/#REQ-KEYS-190)), and the certification and keyring-signing purposes in its key plan ([#1496](https://github.com/truvity/sluis/issues/1496)).
-- Write bundle v1 (`.subkey.pgp`, `.proof.json`, `.possession.sig`) and the challenge as test vectors shared with ritueel ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Write bundle v1 (`.subkey.pgp`, `.proof.json` with the members `bundle`, `subkey_sha256`, `primary`, `key` and `subkeys`, and `.possession.sig`) and the challenge as test vectors shared with ritueel, including the vectors of [Test vectors](/decisions/0043-a-person-binds-their-own-keys-to-their-identity-in-sluis/#test-vectors) ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Bring the wording of the GitHub key sync into line with this record when both merge: one certificate per person, replaced when a subkey, the user ID or an expiry changes ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Sealed software keys for non-human identities such as bots and agents (BK3 A): a later feature with its own record when it is designed ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Enforcement of commit signing on GitHub (G3 C) stays a later CI check against the staff keyring ([#1496](https://github.com/truvity/sluis/issues/1496)).
