@@ -173,7 +173,18 @@ func scanGo(dir, tags string) ([]finding, int, error) {
 	if tags != "" {
 		args = append(args, "-tags", tags)
 	}
-	out, _, err := run(dir, "govulncheck", append(args, "./...")...)
+	var env []string
+	if tags != "" {
+		// devbox's environment sets CC to a compiler that does not search /usr/include, where libpcsclite-dev installs
+		// winscard.h. CI names the host's compiler and pkg-config in these variables; unset, the environment is left alone.
+		if cc := os.Getenv("SLUIS_ADVISORIES_CC"); cc != "" {
+			env = append(env, "CC="+cc)
+		}
+		if pc := os.Getenv("SLUIS_ADVISORIES_PKG_CONFIG"); pc != "" {
+			env = append(env, "PKG_CONFIG="+pc)
+		}
+	}
+	out, _, err := runEnv(dir, env, "govulncheck", append(args, "./...")...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w (with tags %q; the card build needs gcc, pkg-config and libpcsclite-dev on the host, and -skip-card skips that scan locally)", err, tags)
 	}
@@ -227,6 +238,11 @@ func toolFailed(err error, out []byte) bool {
 
 // run runs a tool in dir and returns its standard output and error. A tool that is missing is an error, not a pass.
 func run(dir, name string, args ...string) (stdout, stderr []byte, err error) {
+	return runEnv(dir, nil, name, args...)
+}
+
+// runEnv is run with extra environment variables, which win over the inherited ones.
+func runEnv(dir string, env []string, name string, args ...string) (stdout, stderr []byte, err error) {
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s is not on PATH (run inside devbox): %w", name, err)
@@ -234,6 +250,9 @@ func run(dir, name string, args ...string) (stdout, stderr []byte, err error) {
 	var out, errOut bytes.Buffer
 	cmd := exec.Command(path, args...) //nolint:gosec // a pinned tool of devbox.json, with arguments built here
 	cmd.Dir, cmd.Stdout, cmd.Stderr = dir, &out, &errOut
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	if err := cmd.Run(); err != nil {
 		fmt.Fprint(os.Stderr, errOut.String())
 		return out.Bytes(), errOut.Bytes(), fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
