@@ -105,6 +105,7 @@ The console's single-page application runs as its own Deployment and image, behi
 
 - **One OCI image per process and one Helm chart,** `oci://ghcr.io/truvity/sluis/charts/sluis`, with every image pinned by digest and the chart's version equal to the release version ([0013](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime)). The same images run the [local](/runtimes/#local) installation.
 - **One chart with presets** `install`, `audit-install`, `quota-install` and `kubernetes-dev`, and no subcharts, so a writer and a reader always come from one release. The cert-manager issuer has a chart of its own.
+- **The images and the chart declare their runtime dependencies in one matrix,** [Runtime dependencies](/distribution/dependencies/): no card, pcscd or rqlite on Kubernetes, and the cluster prerequisites the chart checks.
 - **The values schema is generated from Protobuf,** so the chart, `sluis config check` and the process validate against one source ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)).
 - **The baseline:** native sidecars, the `restricted` Pod Security level, projected service-account tokens and a CNI that enforces NetworkPolicy. Cilium is optional, for egress by host name. OpenShift and sandboxed runtimes such as gVisor and Kata are not in the first cut. A cluster must meet the baseline before the chart installs.
 

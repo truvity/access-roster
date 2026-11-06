@@ -77,8 +77,10 @@ Examples of driver packages:
 
 | Package | Dependencies and contents |
 |---|---|
-| `sluis-driver-yubikey-piv` | Depends on pcscd and pcsc-lite. On a node the card service serves key@ only ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)) |
+| `sluis-driver-yubikey-piv` | Depends on pcscd, a CCID driver (`libccid`, `pcsc-lite-ccid`), libpcsclite (`libpcsclite1`, `pcsc-lite-libs`) and polkit (`polkitd`, `polkit`); Suggests `yubikey-manager`. On a node the card service serves key@ only ([0006](/decisions/0006-keys-and-sealing/#exclusive-card-access)) |
 | `sluis-driver-rqlite` | Ships `rqlited` under `vendor/` |
+
+Every dependency of every form, with the package names per family, is in the [runtime dependency matrix](/distribution/dependencies/).
 
 - **A driver package depends on the package of its owner** and installs no service for an operator to start: the owner's unit starts the driver, and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units)).
 - **A module package depends on the foundation packages and on no other module,** and no package depends on a driver package it does not use. A host that runs the foundation with the audit module only installs no work actor of the identity module and no driver it does not run, and a KMS-only host installs no card driver and no pcscd.
@@ -146,13 +148,13 @@ The zips are under `lambda/<version>/` for `arm64`, the default, and `x86_64`, n
 - `layers/`: at most three sluis layers: the edge layer (with the vendored adapter, for `entry` only), the drivers layer and the configuration layer, so at least two of Lambda's five stay free for the operator.
 - `extensions/`: the drivers of a holder's function. One Rust extension implements the AWS ports the holder needs: for store@ the AppConfig, SSM and DynamoDB ports, for key@ the KMS port.
 
-An installation verifies the zips and publishes the layers into its own account; sluis publishes no public layer ARNs. The YubiKey driver, `sluis-node`, rqlite and every driver that needs a disk or a long-running process are not published for Lambda ([Serverless](/runtimes/serverless/)).
+What a layer or an extension bundles is in the [runtime dependency matrix](/distribution/dependencies/). An installation verifies the zips and publishes the layers into its own account; sluis publishes no public layer ARNs. The YubiKey driver, `sluis-node`, rqlite and every driver that needs a disk or a long-running process are not published for Lambda ([Serverless](/runtimes/serverless/)).
 
 ## OCI images
 
 One image per process, so a container can run its one executable only. Multi-arch images are on GHCR as `ghcr.io/truvity/sluis/<kind>-<name>`, for example `ghcr.io/truvity/sluis/actor-entry`, from the first working version. No image is named `sluis`: that name belongs to v1. The tag is the release version, with no `latest`; pull by digest, and find every digest of a release in its `release-images.txt`.
 
-- The base is distroless `static`, or distroless with glibc and a pinned `pcsc-lite` for a cgo executable.
+- The base is distroless `static`, or distroless with glibc and a pinned `pcsc-lite` for a cgo executable. What an image installs, and what stays on the host (pcscd, the CCID driver, polkit), is in the [runtime dependency matrix](/distribution/dependencies/).
 - The executable sits at the package's path, byte for byte, and a label names its source package. A release test compares the images' binaries with the packages' files by hash.
 - One image set serves the local installation and Kubernetes.
 
