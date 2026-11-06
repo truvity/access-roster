@@ -1,0 +1,48 @@
+rungs:
+  dev:
+    groups: [team-web@acme.example]
+    users: [ana@acme.example]
+projects:
+  web:
+    scopes: [dev]
+    deployers: [team-web@acme.example]
+    approvers: [leads@acme.example]
+    viewers: [readers@acme.example]
+    viewer_users: [bob@acme.example]
+applications:
+  "stage:web:deployer":
+    groups: [team-web@acme.example]
+github:
+  acme:
+    members: [team-web@acme.example]
+    teams:
+      web:
+        members: [team-web@acme.example]
+        maintainers: [leads@acme.example]
+    ignore: [release-bot]
+slack:
+  acme-chat:
+    channels:
+      web:
+        private: true
+        mode: strict
+        members: [team-web@acme.example]
+jobs:
+  "acme:shop-ci:job":
+    repository: acme/shop
+    ref: refs/heads/main
+    events: [push]
+    workflows:
+      - caller: .github/workflows/ci.yaml
+workloads:
+  "dev:agent:workload":
+    cluster: acme-dev
+    namespace: web
+    name: agent
+    why: reports
+  "dev:agent:aws":
+    why: uploads
+    aws:
+      account: "111122223333"
+      role: uploader
+      path: /

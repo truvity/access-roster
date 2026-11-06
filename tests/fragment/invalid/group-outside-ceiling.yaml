@@ -1,0 +1,4 @@
+# owner-name: an installation-wide group
+applications:
+  "all:sluis:viewer":
+    groups: [team-web@acme.example]

@@ -1,0 +1,4 @@
+# schema and decoder: the scopes matrix cannot be written in a fragment
+scopes:
+  dev:
+    dev: admin

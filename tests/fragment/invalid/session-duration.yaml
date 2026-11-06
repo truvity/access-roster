@@ -1,0 +1,5 @@
+# schema and decoder: a rung takes people, not a session length
+rungs:
+  dev:
+    groups: [team-web@acme.example]
+    session_duration: PT24H
