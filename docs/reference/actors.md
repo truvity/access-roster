@@ -63,7 +63,7 @@ Parses each request, validates it against closed parameter lists generated from 
 - **Egress:** none.
 - **Key purposes:** `mac` (mac), `pseudonym` (mac).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0003](/decisions/0003-units-transports-and-fusion/), [ADR 0008](/decisions/0008-boundaries-and-tenants/), [ADR 0011](/decisions/0011-runtimes-and-installations/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/), [ADR 0017](/decisions/0017-identity-and-sign-in/).
-- **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/), [QUOTA](/requirements/quota/).
+- **Requirement areas:** [SEC](/requirements/sec/), [ISO](/requirements/iso/), [QUOTA](/requirements/quota/), [KEYS](/requirements/keys/).
 - **Standards:** NC-05 HTTP security headers and cookies: HSTS (RFC 6797), CSP, cookie prefixes; ST-97 ConnectRPC / gRPC / Protobuf.
 - **Issues:** [#958](https://github.com/truvity/sluis/issues/958), [#941](https://github.com/truvity/sluis/issues/941), [#796](https://github.com/truvity/sluis/issues/796); label `actor:entry`.
 

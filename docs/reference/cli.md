@@ -117,15 +117,15 @@ An operator revokes keys in two steps, with the publisher's signature between th
 2. **The publisher signs it** as a `KeyRevocationDeclaration`, with the key that signs the `KeyPlan` ([Declarations](/reference/signed-config/#declarations)). On the boards it is the harness: `go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration FILE -declaration-out FILE.jws`.
 3. **`sluis key revoke --boundary B --declaration FILE.jws`** runs on any node of the boundary, as root, and delivers the signed declaration to key@'s admin socket, `/run/sluis/key/BOUNDARY/admin.sock` (`--socket PATH` names another). It prints each key with `revoked` or `already revoked`. A refusal of key@ exits 3 with its reason and path: `declaration`, `seq`, `schema`, `other-boundary`, `wrapping-key` or `unknown-kid`. A key@ that cannot be reached, or an audit fact that key@ could not make durable, exits 1; in the second case the keys are revoked. A declaration that key@ took in part, because store@ failed, exits 1 and prints each key as `revoked` or `not yet revoked`: deliver the same declaration again to complete it.
 
-After the delivery the command checks that the keys have left every key set a verifier can be given, and prints `confirmed` or `not confirmed` ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088), [Confirmation](/decisions/0009-export/#confirmation)). It fetches two addresses and needs the kid absent from both:
-
-- **The public `jwks_uri` of the issuer,** named with `--issuer URL`, fetched through the edge as a verifier fetches it: no credential and no cache-buster.
-- **The live key set of `entry`,** from `entry`'s own listener, which is what the edge falls back to. On bare-metal it is `entry`'s socket, `/run/sluis/entry/BOUNDARY.sock` or the path of `--entry-socket PATH`. The other runtimes reach it as they are built ([#1014](https://github.com/truvity/sluis/issues/1014)).
-
-The command polls for up to `--wait DURATION` (default 2 minutes, to cover the purge target of 60 seconds) and then prints which address still lists which kid and exits 5. A check that cannot run, such as an issuer that was not named, prints `not confirmed` with the reason and exits 5: it is never reported as passed. When `exporter@` could not read `KeyRevocation`, the published set stays as it was and the command says `not confirmed` ([REQ-EXPORT-024](/requirements/export/#REQ-EXPORT-024)).
-
 :::note[Proposed]
-This build does not check yet: it prints `not confirmed` on standard error whatever the key sets hold ([#1362](https://github.com/truvity/sluis/issues/1362)).
+After the delivery the command is to check that the keys have left every key set a verifier can be given, and to print `confirmed` or `not confirmed` ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088), [Confirmation](/decisions/0009-export/#confirmation), [#1362](https://github.com/truvity/sluis/issues/1362)). It fetches two addresses and needs the kid absent from both:
+
+- **The public `jwks_uri` of the issuer,** fetched through the edge as a verifier fetches it: no credential and no cache-buster. The issuer is the boundary's configured issuer; `--issuer URL` overrides it.
+- **The live key set of `entry`,** from `entry`'s own listener, which is what the edge falls back to. On bare-metal it is `entry`'s socket, `/run/sluis/entry/BOUNDARY.sock` or the path of `--entry-socket PATH`. A socket is reached only on a node that runs `entry`, so the command runs there. The other runtimes reach `entry` as they are built ([#1014](https://github.com/truvity/sluis/issues/1014)).
+
+The command polls for up to `--wait DURATION` (default 2 minutes, to cover the purge target of 60 seconds) and then prints which address still lists which kid and exits 5. A check that cannot run, such as an issuer that is not configured, prints `not confirmed` with the reason and exits 5: it is never reported as passed. When `exporter@` could not read `KeyRevocation`, the published set stays as it was and the command says `not confirmed` ([REQ-EXPORT-024](/requirements/export/#REQ-EXPORT-024)).
+
+The flags, the default wait and exit code 5 are not decided yet. This build does not check: it prints `not confirmed` on standard error whatever the key sets hold.
 :::
 
 ### `sluis login` and `sluis token`

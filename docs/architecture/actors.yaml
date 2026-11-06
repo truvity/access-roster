@@ -121,7 +121,7 @@ actors:
       - { purpose: mac, ops: [mac] }
       - { purpose: pseudonym, ops: [mac] }
     adrs: ['0002', '0003', '0008', '0011', '0012', '0017']
-    requirement_areas: [SEC, ISO, QUOTA]
+    requirement_areas: [SEC, ISO, QUOTA, KEYS]
     standards: [NC-05, ST-97]
     label: actor:entry
     issues: [958, 941, 796]

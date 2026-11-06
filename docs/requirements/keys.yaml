@@ -1684,13 +1684,14 @@ requirements:
     issues: [1361, 1362]
     runtimes: all
     standards: []
+    actors: [entry, signer]
     verification:
       - {kind: integration-test, ref: "revoke a key: the next live key set lacks its kid, and a token it signed fails against the set"}
   - id: REQ-KEYS-116
     area: KEYS
     split_from: REQ-KEYS-085
-    statement: "signer MUST NOT make a token-signing key active while the report of exporter@ for the key set is not published or is not fresh."
-    rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it (ADR 0009)."
+    statement: "signer MUST NOT make a token-signing key active unless the ExportReport of every published key set has the state published, lists the kid of the key and has a read back at most 26 hours old."
+    rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it; 26 hours is a day of the reconcile and a margin, and a destination that cannot read back is not counted (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
@@ -1700,7 +1701,7 @@ requirements:
     actors: [signer]
     standards: []
     verification:
-      - {kind: integration-test, ref: "the ExportReport of the key set is unverified, absent or older than the stated age: a pre-published key stays pre-published; it is published again: the key becomes active once the lead time has passed"}
+      - {kind: integration-test, ref: "a report that is unverified, absent, without the kid or older than 26 hours keeps a pre-published key pre-published; a published report with the kid lets it become active after the lead time"}
   - id: REQ-KEYS-108
     area: KEYS
     statement: "key@ MUST write a KeyRevocation item only on a key revocation declaration for its boundary that a publisher key of its bootstrap file signed."

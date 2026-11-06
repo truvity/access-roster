@@ -294,8 +294,8 @@ requirements:
       - {kind: integration-test, ref: "revoke a key: the next key set written to a directory and to a bucket lacks its kid, and a token it signed fails against the document"}
   - id: REQ-EXPORT-021
     area: EXPORT
-    statement: "After a change of KeyRevocation or SigningRing, exporter@ MUST write the document, purge its public address and read it back, in this order, within 60 seconds of seeing the change."
-    rationale: "A revoked key must leave the edge at once, and the purge must come after the write or the edge fills again with the old document (ADR 0009)."
+    statement: "After a change of KeyRevocation or SigningRing, exporter@ MUST write the document, purge its public address, read it back and write its report, in this order."
+    rationale: "The purge must come after the write or the edge fills again with the old document, and the report must come after the read back; the behaviour is UNVERIFIED on a real edge until the first measurement (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
@@ -305,10 +305,10 @@ requirements:
     standards: []
     issues: [962, 1362]
     verification:
-      - {kind: integration-test, ref: "a destination driver with a recorded call log: the log shows write, purge and read back in this order within 60 seconds of the revocation"}
+      - {kind: integration-test, ref: "a destination driver with a recorded call log: the log shows write, purge, read back and the report in this order after the revocation"}
   - id: REQ-EXPORT-022
     area: EXPORT
-    statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the read back returned the written digest."
+    statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the read back returned the written digest and the state written when the destination cannot read back."
     rationale: "A reader that waits for a key to be published needs what a verifier would see, and not what exporter@ intended (ADR 0009)."
     level: MUST
     source: design-decision
@@ -323,7 +323,7 @@ requirements:
   - id: REQ-EXPORT-023
     area: EXPORT
     statement: "The edge in front of the key set MUST NOT serve a cached copy more than 65 minutes after it expired."
-    rationale: "Beyond the access-token cap plus the clock skew a stale key set serves no live token, and a revoked key would stay (ADR 0009)."
+    rationale: "Beyond the access-token cap plus the clock skew a stale key set serves no live token and a revoked key would stay, the edge settings are delivered by infrastructure code, and the behaviour is UNVERIFIED on a real edge until the first measurement (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
@@ -351,7 +351,7 @@ requirements:
   - id: REQ-EXPORT-025
     area: EXPORT
     statement: "Where a bucket destination serves the key set, the edge MUST fall back to the live key set of entry when the bucket cannot be read."
-    rationale: "The key set then survives a failure of the bucket, and the live set filters revoked kids as the static one does (ADR 0009)."
+    rationale: "The key set then survives a failure of the bucket and the live set filters revoked kids as the static one does, and the fallback is an edge setting delivered by infrastructure code (ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
@@ -390,3 +390,18 @@ requirements:
     issues: [962, 1014]
     verification:
       - {kind: integration-test, ref: "the conformance suite runs against the directory driver, the in-memory driver and the bucket driver; a driver without a public address answers unsupported to Purge and ReadBack"}
+  - id: REQ-EXPORT-028
+    area: EXPORT
+    split_from: REQ-EXPORT-021
+    statement: "exporter@ MUST complete the write, the purge and the read back of a key set within 60 seconds of seeing a change of KeyRevocation."
+    rationale: "A revoked key must leave the edge at once; 60 seconds is a target and not a measurement, and the first drill replaces it with the measured figure (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962, 1362]
+    verification:
+      - {kind: integration-test, ref: "a revocation is written: the write, the purge and the read back of the test installation's edge are done within 60 seconds"}
