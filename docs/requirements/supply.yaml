@@ -414,7 +414,7 @@ requirements:
   # ---- licences (approved libraries)
   - id: REQ-SUPPLY-045
     area: SUPPLY
-    statement: "A Go module, Rust crate or TypeScript package that is linked into a sluis artifact MUST be under a permissive licence (MIT, BSD or Apache-2.0)."
+    statement: "A Go module, Rust crate or TypeScript package that is linked into a sluis artifact MUST be under a permissive licence (MIT, BSD, Apache-2.0, ISC, Zlib, Unicode-3.0 or Apache-2.0 with the LLVM exception)."
     rationale: "Copyleft is allowed only for external tools that CI runs, such as gpgv and sq, because their licence does not reach a sluis binary."
     level: MUST
     source: design-decision

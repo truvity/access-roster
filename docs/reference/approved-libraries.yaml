@@ -64,7 +64,7 @@ typescript:
 refused:
   - { name: "yubikey (Rust crate)", reason: "Its own notice says it is unaudited and experimental (R7)", needed_by: "ADR 0012" }
   - { name: "ykcs11 through cryptoki, for key@", reason: "It resets the card for every client when a second one appears and keeps a PIN copy that cannot be wiped", needed_by: "ADR 0012" }
-  - { name: "gpg on a node", reason: "sluis builds the OpenPGP packets itself and the card signs; no gpg on a board", needed_by: "ADR 0024" }
+  - { name: "gpg on a node", reason: "an approved library writes the OpenPGP packets and the card signs; the gpg tool is never used, and none runs on a board", needed_by: "ADR 0024" }
   - { name: "A Go plugin (.so) or WebAssembly module in an actor", reason: "Plugins run out of process, always", needed_by: "ADR 0003" }
   - { name: "lestrrat-go/jwx, golang-jwt/jwt (Go)", reason: "A second JOSE library beside go-jose, which the OpenID Connect provider already needs", needed_by: "docs/reference/approved-libraries.md" }
   - { name: "josekit (Rust)", reason: "Built on OpenSSL, not aws-lc-rs, and not released since 2025-05-20", needed_by: "docs/reference/approved-libraries.md" }
