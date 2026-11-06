@@ -27,6 +27,9 @@ import (
 // KindOwn is the Kind of a Subject that this boundary's own issuer signed.
 const KindOwn = "own"
 
+// KindGitHubOIDC is the proof kind of a GitHub Actions identity token (ADR 0022).
+const KindGitHubOIDC = "github-oidc"
+
 const (
 	// maxToken bounds a subject token. An access token of the first version is under 2 KiB.
 	maxToken = 16 << 10
@@ -70,6 +73,9 @@ type Subject struct {
 	AMRPresent  bool
 	AuthTime    *int64
 	Issued, Exp time.Time
+
+	// Workload holds the verified claims of a GitHub Actions job, set only when Kind is KindGitHubOIDC.
+	Workload *Workload
 }
 
 // Verifier checks subject tokens (RFC 8693 section 2.1, subject_token; ADR 0022, "Proofs and the exchange"). It holds
@@ -223,6 +229,14 @@ func (v *Verifier) verifyTrusted(ctx context.Context, tok *jose.JSONWebSignature
 		return nil, err
 	}
 	s.Kind = ti.GetProofKind()
+	if s.Kind == KindGitHubOIDC {
+		// The claims of the job are read from the verified payload and nowhere else.
+		w, ok := githubWorkload(payload)
+		if !ok {
+			return nil, invalidRequest(reasonClaims)
+		}
+		s.Workload = w
+	}
 	if !contains(ti.GetAudiences(), s.Audience) && !audienceIn(payload, ti.GetAudiences()) {
 		return nil, invalidRequest(reasonClaims)
 	}

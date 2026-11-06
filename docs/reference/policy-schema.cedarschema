@@ -51,6 +51,8 @@ entity Workload = {
   ref?: String,
   workflow?: String,
   environment?: String,
+  event?: String,
+  ref_type?: String,
 };
 
 // A signing key of a boundary, named by its purpose, such as `release-signing`.
