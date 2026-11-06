@@ -594,6 +594,48 @@ func TestTenantKeyCallsRefuseWithoutAMatchingGrant(t *testing.T) {
 			sealKeep := sealG(u.sealer, []string{"acme"}, []string{"seal"}, time.Minute)
 			openKeep := sealG(u.opener, []string{"acme"}, []string{"open"}, time.Minute)
 			before, calls := refusals(), 0
+
+			// key@ answers a refused call from the grant alone, before any lookup in the store. The tenant here has
+			// no key yet and no wrap: were the grant checked after the key is loaded, a refused call would read the
+			// store (and a Seal would make the key). The store counts every Get, List and Write on items. The Open
+			// carries the envelope of acme, which the grant check never reads.
+			const cold = "initech"
+			coldSeal := func(grant []byte) ([]byte, error) {
+				return seal1(n.client(u.sealer), u.purpose, u.kind, cold, vecID, []byte("secret"), grant)
+			}
+			coldOpen := func(grant []byte) ([]byte, error) {
+				return open1(n.client(u.opener), u.purpose, u.kind, cold, vecID, good, grant)
+			}
+			coldSealShort := sealG(u.sealer, []string{cold}, []string{"seal"}, 10*time.Second)
+			coldOpenShort := sealG(u.opener, []string{cold}, []string{"open"}, 10*time.Second)
+			lookups, wraps := e.store.itemCallCount(), e.store.wrapCount()
+			for name, g := range map[string][]byte{
+				"cold seal, no grant":                   nil,
+				"cold seal, a grant for another tenant": sealG(u.sealer, []string{"acme"}, []string{"seal"}, time.Minute),
+				"cold seal, a grant for open only":      sealG(u.sealer, []string{cold}, []string{"open"}, time.Minute),
+				"cold seal, a grant made for another":   sealG(u.opener+"x", []string{cold}, []string{"seal"}, time.Minute),
+			} {
+				_, err := coldSeal(g)
+				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
+				calls++
+			}
+			for name, g := range map[string][]byte{
+				"cold open, no grant":                   nil,
+				"cold open, a grant for another tenant": sealG(u.opener, []string{"acme"}, []string{"open"}, time.Minute),
+				"cold open, a grant for seal only":      sealG(u.opener, []string{cold}, []string{"seal"}, time.Minute),
+				"cold open, a grant made for another":   sealG(u.sealer+"x", []string{cold}, []string{"open"}, time.Minute),
+			} {
+				_, err := coldOpen(g)
+				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
+				calls++
+			}
+			if got := e.store.itemCallCount(); got != lookups {
+				t.Errorf("%d store calls were made while key@ refused calls on the grant", got-lookups)
+			}
+			if got := e.store.wrapCount(); got != wraps {
+				t.Errorf("a refused Seal made %d wraps", got-wraps)
+			}
+
 			sealCases := map[string][]byte{
 				"seal, no grant":                   nil,
 				"seal, a grant for another tenant": sealG(u.sealer, []string{"globex"}, []string{"seal"}, time.Minute),
@@ -607,19 +649,13 @@ func TestTenantKeyCallsRefuseWithoutAMatchingGrant(t *testing.T) {
 				"open, a grant made for another":   sealG(u.sealer+"x", []string{"acme"}, []string{"open"}, time.Minute),
 			}
 			for name, g := range sealCases {
-				env, err := seal(g)
+				_, err := seal(g)
 				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
-				if env != nil {
-					t.Errorf("%s: an envelope came back with the refusal", name)
-				}
 				calls++
 			}
 			for name, g := range openCases {
-				pt, err := open(good, g)
+				_, err := open(good, g)
 				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
-				if pt != nil {
-					t.Errorf("%s: plaintext came back with the refusal", name)
-				}
 				calls++
 			}
 			// The grant is checked per item: one item of another tenant fails the whole batch, though the
@@ -629,16 +665,13 @@ func TestTenantKeyCallsRefuseWithoutAMatchingGrant(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := n.client(u.opener).Open(context.Background(), connect.NewRequest(&keyv2alpha1.OpenRequest{
+			_, err = n.client(u.opener).Open(context.Background(), connect.NewRequest(&keyv2alpha1.OpenRequest{
 				Items: []*keyv2alpha1.OpenItem{
 					{Purpose: u.purpose, Address: addr(u.kind, "acme", vecID), Envelope: good},
 					{Purpose: u.purpose, Address: addr(u.kind, "globex", vecID), Envelope: other},
 				}, Grant: openKeep,
 			}))
 			wantRefusalNamed(t, "open, a batch with an item of another tenant", err, connect.CodePermissionDenied, "grant")
-			if res != nil {
-				t.Error("a refused batch returned plaintexts")
-			}
 			calls++
 
 			// An expired grant: good until its second of expiry, and refused from it (not after it).
@@ -649,23 +682,34 @@ func TestTenantKeyCallsRefuseWithoutAMatchingGrant(t *testing.T) {
 				t.Fatalf("a fresh grant was refused: %v", err)
 			}
 			e.clock.advance(10 * time.Second)
-			if env, err := seal(sealShort); env != nil {
-				t.Error("an expired grant sealed")
-			} else {
-				wantRefusalNamed(t, "seal, an expired grant", err, connect.CodePermissionDenied, "grant")
+			_, err = seal(sealShort)
+			wantRefusalNamed(t, "seal, an expired grant", err, connect.CodePermissionDenied, "grant")
+			_, err = open(good, openShort)
+			wantRefusalNamed(t, "open, an expired grant", err, connect.CodePermissionDenied, "grant")
+			lookups = e.store.itemCallCount()
+			_, err = coldSeal(coldSealShort)
+			wantRefusalNamed(t, "cold seal, an expired grant", err, connect.CodePermissionDenied, "grant")
+			_, err = coldOpen(coldOpenShort)
+			wantRefusalNamed(t, "cold open, an expired grant", err, connect.CodePermissionDenied, "grant")
+			if got := e.store.itemCallCount(); got != lookups {
+				t.Errorf("%d store calls were made while key@ refused an expired grant", got-lookups)
 			}
-			if pt, err := open(good, openShort); pt != nil {
-				t.Error("an expired grant opened")
-			} else {
-				wantRefusalNamed(t, "open, an expired grant", err, connect.CodePermissionDenied, "grant")
-			}
-			calls += 2
+			calls += 4
 			// The grants that were not expired still work, so each refusal above is the grant's fault alone.
 			if _, err := seal(sealKeep); err != nil {
 				t.Errorf("a grant that had not expired was refused: %v", err)
 			}
 			if _, err := open(good, openKeep); err != nil {
 				t.Errorf("a grant that had not expired was refused: %v", err)
+			}
+			// The counter does see a lookup when the grant is good: the same cold Seal with a good grant reads the
+			// store and makes the key.
+			afterRefused, wrapsBefore := e.store.itemCallCount(), e.store.wrapCount()
+			if _, err := coldSeal(sealG(u.sealer, []string{cold}, []string{"seal"}, time.Minute)); err != nil {
+				t.Fatalf("a good grant on the cold tenant was refused: %v", err)
+			}
+			if e.store.itemCallCount() <= afterRefused || e.store.wrapCount() <= wrapsBefore {
+				t.Error("a good Seal of a cold tenant made no store call or no wrap: the count proves nothing")
 			}
 			if got := refusals() - before; got != calls {
 				t.Errorf("%d refusals audited for %d refused calls", got, calls)

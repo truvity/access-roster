@@ -124,6 +124,16 @@ type fakeStore struct {
 	// compromised serves whatever is here, so a test puts a forged document here.
 	signed      map[string][]byte
 	signedCalls int
+	// itemCalls counts the Get, List and Write calls on items, which is every lookup of a data-key wrap: a test that
+	// says key@ looked nothing up compares it before and after.
+	itemCalls int
+}
+
+// itemCallCount is the number of Get, List and Write calls on items so far.
+func (f *fakeStore) itemCallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.itemCalls
 }
 
 func newFakeStore() *fakeStore {
@@ -148,6 +158,7 @@ func (f *fakeStore) put(kind, tenant, id string, v proto.Message) {
 func (f *fakeStore) Get(_ context.Context, req *connect.Request[storev2alpha1.GetRequest]) (*connect.Response[storev2alpha1.GetResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.itemCalls++
 	if f.failKind != "" && req.Msg.GetAddress().GetKind() == f.failKind {
 		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
 	}
@@ -172,6 +183,7 @@ func (f *fakeStore) GetSignedConfig(_ context.Context, req *connect.Request[stor
 func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.ListRequest]) (*connect.Response[storev2alpha1.ListResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.itemCalls++
 	var all []*storev2alpha1.Item
 	for _, it := range f.items {
 		a := it.GetAddress()
@@ -200,6 +212,7 @@ func (f *fakeStore) List(_ context.Context, req *connect.Request[storev2alpha1.L
 func (f *fakeStore) Write(_ context.Context, req *connect.Request[storev2alpha1.WriteRequest]) (*connect.Response[storev2alpha1.WriteResponse], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.itemCalls++
 	if f.failWrites {
 		return nil, refusal.New(connect.CodeUnavailable, "engine", "")
 	}

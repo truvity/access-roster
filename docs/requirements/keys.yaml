@@ -509,7 +509,7 @@ requirements:
     tests: [actors/key/internal/keyd/seal_test.go]
     verification:
       - {kind: integration-test, ref: "Seal and Open of data and evidence with no grant, an expired grant, a grant for another tenant, another operation or another holder; each refused with the reason grant"}
-      - {kind: integration-test, ref: "key@ alone, with no store rule in the call: the grant check alone refuses each of them, and the same calls pass with a good grant"}
+      - {kind: integration-test, ref: "the grant check runs before any store lookup: on a tenant with no key, each refused call leaves the store call count and the wraps unchanged, while a good Seal reads the store and makes the key"}
   - id: REQ-KEYS-031
     area: KEYS
     statement: "key@ MUST record every refusal as an audit fact."
