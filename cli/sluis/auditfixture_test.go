@@ -46,7 +46,7 @@ func sha256Of(msg []byte) []byte {
 	return d[:]
 }
 
-func newFixtureKey(t *testing.T) *fixtureKey {
+func newFixtureKey(t testing.TB) *fixtureKey {
 	t.Helper()
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -68,7 +68,7 @@ func newFixtureKey(t *testing.T) *fixtureKey {
 }
 
 // sign returns the signed note: the text, a blank line and one signature line.
-func (k *fixtureKey) sign(t *testing.T, text string) []byte {
+func (k *fixtureKey) sign(t testing.TB, text string) []byte {
 	t.Helper()
 	sig, err := ecdsa.SignASN1(rand.Reader, k.priv, k.digest([]byte(text)))
 	if err != nil {
@@ -93,7 +93,7 @@ func (l *fixtureLog) ReadHashes(idx []int64) ([]tlog.Hash, error) {
 	return out, nil
 }
 
-func (l *fixtureLog) write(t *testing.T, rel string, b []byte) {
+func (l *fixtureLog) write(t testing.TB, rel string, b []byte) {
 	t.Helper()
 	p := filepath.Join(l.dir, rel)
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil { //nolint:gosec // test fixture
@@ -105,13 +105,13 @@ func (l *fixtureLog) write(t *testing.T, rel string, b []byte) {
 }
 
 // checkpoint signs a checkpoint of the given size and root hash.
-func (l *fixtureLog) checkpoint(t *testing.T, key *fixtureKey, size int64, hash tlog.Hash) []byte {
+func (l *fixtureLog) checkpoint(t testing.TB, key *fixtureKey, size int64, hash tlog.Hash) []byte {
 	t.Helper()
 	text := fmt.Sprintf("%s\n%d\n%s\n", fixtureOrigin, size, base64.StdEncoding.EncodeToString(hash[:]))
 	return key.sign(t, text)
 }
 
-func (l *fixtureLog) rootAt(t *testing.T, size int64) tlog.Hash {
+func (l *fixtureLog) rootAt(t testing.TB, size int64) tlog.Hash {
 	t.Helper()
 	h, err := tlog.TreeHash(size, l)
 	if err != nil {
@@ -122,7 +122,7 @@ func (l *fixtureLog) rootAt(t *testing.T, size int64) tlog.Hash {
 
 // newFixtureLog writes a log of n entries, the checkpoint of its head, and one checkpoint in checkpoints/ for each
 // size in history.
-func newFixtureLog(t *testing.T, key *fixtureKey, n int, history ...int64) *fixtureLog {
+func newFixtureLog(t testing.TB, key *fixtureKey, n int, history ...int64) *fixtureLog {
 	t.Helper()
 	l := &fixtureLog{dir: t.TempDir(), key: key}
 	for i := range n {
@@ -170,7 +170,7 @@ func emptyRoot() [32]byte {
 }
 
 // flip changes one byte of a file of the log.
-func (l *fixtureLog) flip(t *testing.T, rel string, at int) {
+func (l *fixtureLog) flip(t testing.TB, rel string, at int) {
 	t.Helper()
 	p := filepath.Join(l.dir, rel)
 	b, err := os.ReadFile(p) //nolint:gosec // test fixture

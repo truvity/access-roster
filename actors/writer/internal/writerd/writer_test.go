@@ -189,7 +189,7 @@ func (e *env) mustVerify(t *testing.T) string {
 
 // ---- tests
 
-// verifies: REQ-AUDIT-020, REQ-AUDIT-055, REQ-AUDIT-087, REQ-AUDIT-152
+// verifies: REQ-SEC-018, REQ-AUDIT-020, REQ-AUDIT-055, REQ-AUDIT-087, REQ-AUDIT-152
 func TestWriterWritesALogTheCLIVerifies(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -315,6 +315,7 @@ func TestBatchClosesAfterTheWindow(t *testing.T) {
 	e.mustVerify(t)
 }
 
+// verifies: REQ-SEC-018
 func TestManyBatchesCrossBundleAndTileBoundaries(t *testing.T) {
 	e := newEnv(t)
 	e.cfg.BatchMax = 100
@@ -397,7 +398,7 @@ func TestWriteOrderAndAckAfterDurability(t *testing.T) {
 	}
 }
 
-// verifies: REQ-AUDIT-014
+// verifies: REQ-SEC-018, REQ-AUDIT-014
 func TestNothingIsAcknowledgedWhenTheCheckpointFails(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -708,7 +709,7 @@ func TestACrashBetweenTheBundlesAndTheStateIsAdopted(t *testing.T) {
 	}
 }
 
-// verifies: REQ-AUDIT-094
+// verifies: REQ-SEC-018, REQ-AUDIT-094
 func TestACrashBetweenTheStateAndTheCheckpointIsFinished(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -749,6 +750,7 @@ func TestStartRefusesWithoutItsDocuments(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestACheckpointOfAnotherKeyIsRefusedAtStart(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
@@ -770,6 +772,7 @@ func TestACheckpointOfAnotherKeyIsRefusedAtStart(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAMovedPointerStopsTheWriter(t *testing.T) {
 	e := newEnv(t)
 	em := emitterOf(t, e)
