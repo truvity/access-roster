@@ -140,6 +140,9 @@ pub enum Error {
     /// The store said something the protocol does not allow, such as a change with no sequence.
     #[error("protocol: {0}")]
     Protocol(&'static str),
+    /// A [`Watch`] whose failures went on for [`WatchOpts::give_up_after`].
+    #[error("the watch gave up: the store stayed unreachable")]
+    GaveUp,
     /// A [`Watch`] that ended with an error is used again.
     #[error("the watch has ended")]
     Closed,

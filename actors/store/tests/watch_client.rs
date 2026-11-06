@@ -56,6 +56,7 @@ async fn the_revocation_watch_lists_then_follows_and_a_restart_resumes() {
     let opts = WatchOpts {
         from: None,
         backoff: FAST,
+        ..WatchOpts::default()
     };
     let mut w = revocations.watch_with(opts).unwrap();
     let start = match ev(&mut w).await {
@@ -94,6 +95,7 @@ async fn the_revocation_watch_lists_then_follows_and_a_restart_resumes() {
         .watch_with(WatchOpts {
             from: Some(seq),
             backoff: FAST,
+            ..WatchOpts::default()
         })
         .unwrap();
     match ev(&mut w).await {
@@ -119,6 +121,7 @@ async fn a_point_the_log_no_longer_holds_is_a_resync_with_the_whole_kind() {
         .watch_with(WatchOpts {
             from: Some(1),
             backoff: FAST,
+            ..WatchOpts::default()
         })
         .unwrap();
     match ev(&mut w).await {
@@ -156,6 +159,7 @@ async fn a_delete_and_an_expiry_reach_the_watcher_and_an_idle_stream_says_its_po
             WatchOpts {
                 from: None,
                 backoff: FAST,
+                ..WatchOpts::default()
             },
         )
         .unwrap();
@@ -209,4 +213,64 @@ async fn a_delete_and_an_expiry_reach_the_watcher_and_an_idle_stream_says_its_po
             e => panic!("{e:?}"),
         }
     }
+}
+
+/// verifies: REQ-DATA-108
+/// A kind of more than one page (store@'s default is 100 items) is listed over all its pages through the client:
+/// one resync with every item, at one position, and the watch follows from it.
+#[tokio::test]
+async fn a_listing_of_several_pages_is_one_resync() {
+    let f = F::new().await;
+    f.as_("key");
+    let pins = Store::<Pin>::new(f.kit.clone()).unwrap();
+    let v = Provenance {
+        field_path: "x".into(),
+        ..Provenance::default()
+    };
+    for i in 0..150 {
+        pins.create(
+            "",
+            &format!("node-a/r{i:03}"),
+            &v,
+            WriteOpts {
+                ttl: Some(Duration::from_secs(600)),
+                ..WriteOpts::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+    let mut w = pins
+        .watch_with(
+            "",
+            WatchOpts {
+                backoff: FAST,
+                ..WatchOpts::default()
+            },
+        )
+        .unwrap();
+    match ev(&mut w).await {
+        Event::Resync {
+            cause,
+            items,
+            resume_point,
+        } => {
+            assert_eq!(cause, ResyncCause::Start);
+            assert_eq!(items.len(), 150, "two pages");
+            assert!(resume_point >= 150);
+        }
+        e => panic!("not a resync: {e:?}"),
+    }
+    pins.create(
+        "",
+        "node-a/r150",
+        &v,
+        WriteOpts {
+            ttl: Some(Duration::from_secs(600)),
+            ..WriteOpts::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Put { item, .. } if item.id == "node-a/r150"));
 }
