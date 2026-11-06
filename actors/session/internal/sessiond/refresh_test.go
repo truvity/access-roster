@@ -3,8 +3,13 @@
 package sessiond_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -13,8 +18,10 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
 	policyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/policy/v2alpha1"
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 func refreshRequest(rt string) *sessionv2alpha1.TokenRequest {
@@ -313,5 +320,184 @@ func TestRefreshTokenIsNotStored(t *testing.T) {
 		if strings.Contains(string(it.value), secret) || strings.Contains(k, secret) {
 			t.Errorf("the refresh secret is stored in %q", strings.ReplaceAll(k, "\x00", "/"))
 		}
+	}
+}
+
+// verifies: REQ-SESS-044
+func TestSessionChainIsATempKindThatHoldsOnlyHashes(t *testing.T) {
+	// The kind: temp, so a lost class costs a sign-in (ADR 0018), and hashed, so a copy of the store yields no token.
+	kind, ok := registry.KindByName("SessionChain")
+	if !ok {
+		t.Fatal("no SessionChain kind in the registry")
+	}
+	if kind.Class != "temp" || kind.Treatment != "hashed" || kind.Writer != "session" || kind.TTLDefault <= 0 || kind.TTLMax < kind.TTLDefault {
+		t.Fatalf("SessionChain = %+v", kind)
+	}
+
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	rt1 := first["refresh_token"].(string)
+	sid, secret1, _ := strings.Cut(rt1, ".")
+	start := e.clk.now()
+
+	// What session wrote: one chain under the kind's segment, holding the SHA-384 of the secret and no spent marker yet.
+	if ids := e.store.ids(kind.Segment, testTenant); len(ids) != 1 || ids[0] != sid {
+		t.Fatalf("chains %v, want [%s]", ids, sid)
+	}
+	chainRaw, version, _ := e.store.raw(kind.Segment, testTenant, sid)
+	chain := protoOf(t, chainRaw, &sessionv2alpha1.SessionChain{})
+	if want := sha384Of(secret1); !bytes.Equal(chain.GetRefreshHash(), want) || len(chain.GetSpentHashes()) != 0 || version != 1 {
+		t.Errorf("refresh_hash %x, spent %d, version %d; want %x, 0, 1", chain.GetRefreshHash(), len(chain.GetSpentHashes()), version, want)
+	}
+	// A temp kind has a lifetime: the chain is written with a ttl of the human session's absolute limit.
+	ttlOf := func() time.Duration {
+		e.store.mu.Lock()
+		defer e.store.mu.Unlock()
+		return e.store.ttls[key(kind.Segment, testTenant, sid)]
+	}
+	absolute := 12 * time.Hour
+	if got := ttlOf(); got != absolute || got > kind.TTLMax {
+		t.Errorf("chain ttl = %s, want %s (kind maximum %s)", got, absolute, kind.TTLMax)
+	}
+
+	// A refresh rotates: the new hash replaces the current one and the old one becomes a spent marker. Still hashes only,
+	// and the ttl counts down to the same absolute end, so a rotation does not extend the chain.
+	e.clk.advance(time.Hour)
+	second := body(t, e.token(refreshRequest(rt1)))
+	rt2 := second["refresh_token"].(string)
+	_, secret2, _ := strings.Cut(rt2, ".")
+	chainRaw, version, _ = e.store.raw(kind.Segment, testTenant, sid)
+	chain = protoOf(t, chainRaw, &sessionv2alpha1.SessionChain{})
+	if version != 2 || !bytes.Equal(chain.GetRefreshHash(), sha384Of(secret2)) ||
+		len(chain.GetSpentHashes()) != 1 || !bytes.Equal(chain.GetSpentHashes()[0], sha384Of(secret1)) {
+		t.Errorf("after a refresh: version %d, refresh_hash %x, spent %x", version, chain.GetRefreshHash(), chain.GetSpentHashes())
+	}
+	if got, want := ttlOf(), absolute-time.Hour; got != want {
+		t.Errorf("chain ttl after a refresh = %s, want %s", got, want)
+	}
+	if end := start.Add(absolute); !chain.GetEndsAt().AsTime().Equal(end) {
+		t.Errorf("ends_at = %s, want %s", chain.GetEndsAt().AsTime(), end)
+	}
+
+	// The scan: no value and no key of any item holds a refresh token, in whole or its secret, as the client got it or in
+	// the usual encodings of the bytes: the current one, the spent one, or one of either ever shown to the client.
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	if len(e.store.items) == 0 {
+		t.Fatal("the scan saw no items")
+	}
+	for _, tok := range []string{rt1, rt2, secret1, secret2} {
+		needles := map[string][]byte{
+			"as issued": []byte(tok), "base64": []byte(base64.StdEncoding.EncodeToString([]byte(tok))),
+			"base64url": []byte(base64.RawURLEncoding.EncodeToString([]byte(tok))), "hex": []byte(hex.EncodeToString([]byte(tok))),
+		}
+		for k, it := range e.store.items {
+			for how, n := range needles {
+				if bytes.Contains(it.value, n) || strings.Contains(k, string(n)) {
+					t.Errorf("a refresh token (%s) is stored in %q", how, strings.ReplaceAll(k, "\x00", "/"))
+				}
+			}
+		}
+	}
+	// And the writes session made, which are what a copy of the store's log would hold.
+	for _, ops := range e.store.writes {
+		for _, op := range ops {
+			for _, tok := range []string{secret1, secret2} {
+				if bytes.Contains(op.GetValue(), []byte(tok)) {
+					t.Errorf("a write of %s/%s carries a refresh secret", op.GetAddress().GetKind(), verbName[op.GetVerb()])
+				}
+			}
+		}
+	}
+}
+
+func sha384Of(s string) []byte {
+	sum := sha512.Sum384([]byte(s))
+	return sum[:]
+}
+
+// verifies: REQ-SESS-016
+func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
+	acr := "urn:example:acr:mfa"
+	cases := map[string]*integrationv2alpha1.Assertion{
+		"acr, amr and auth_time": {
+			Acr: &acr, Amr: []string{"pwd", "hwk", "mfa"}, AmrPresent: true,
+		},
+		// An absent value stays absent: a refresh does not make an acr or an auth_time up (0020, 0031).
+		"no acr": {Amr: []string{"pwd", "otp"}, AmrPresent: true},
+		"acr, no amr": {
+			Acr: &acr,
+		},
+	}
+	for name, a := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, nil)
+			authTime := e.clk.now().Add(-90 * time.Second)
+			a.Issuer, a.SubjectClaim, a.Subject = "https://idp.example.test/realms/test", "preferred_username", "alice"
+			a.AuthTime = timestampOf(authTime)
+			e.upstream.assertion = a
+
+			first, _ := e.redeemed()
+			rt := first["refresh_token"].(string)
+			sid, _, _ := strings.Cut(rt, ".")
+			_, id0 := tokenClaims(t, first["id_token"].(string))
+			_, at0 := tokenClaims(t, first["access_token"].(string))
+			// The sign-in itself carries what the upstream said; the refreshes are compared with it.
+			if num(id0, "auth_time") != authTime.Unix() || id0["sid"] != sid {
+				t.Fatalf("the sign-in ID token = %v", id0)
+			}
+			if (a.Acr != nil) != (id0["acr"] != nil) || (a.Acr != nil && id0["acr"] != acr) {
+				t.Fatalf("the sign-in acr = %v", id0["acr"])
+			}
+			chainBefore, _, _ := e.store.raw("session-chain", testTenant, sid)
+
+			// Two refreshes, an hour apart, so a refresh that took "now" for the authentication would show.
+			for i := 1; i <= 2; i++ {
+				e.clk.advance(time.Hour)
+				r := e.token(refreshRequest(rt))
+				if r.GetStatus() != http.StatusOK {
+					t.Fatalf("refresh %d: %d %s", i, r.GetStatus(), r.GetBody())
+				}
+				out := body(t, r)
+				rt = out["refresh_token"].(string)
+				_, id := tokenClaims(t, out["id_token"].(string))
+				_, at := tokenClaims(t, out["access_token"].(string))
+				if num(id, "iat") != e.clk.now().Unix() {
+					t.Fatalf("refresh %d: iat = %v, the refresh did not happen now", i, id["iat"])
+				}
+				for _, c := range []struct {
+					name string
+					m    map[string]any
+					ref  map[string]any
+				}{{"ID token", id, id0}, {"access token", at, at0}} {
+					for _, claim := range []string{"acr", "amr", "auth_time", "sid"} {
+						if !reflect.DeepEqual(c.m[claim], c.ref[claim]) {
+							t.Errorf("refresh %d: %s %s = %v, was %v at sign-in", i, c.name, claim, c.m[claim], c.ref[claim])
+						}
+					}
+				}
+				if got, _, _ := strings.Cut(rt, "."); got != sid {
+					t.Errorf("refresh %d: the session id changed to %s", i, got)
+				}
+				// Policy decides at every refresh on the same assurance, so a refresh cannot lift or hide it there either.
+				reqs := e.policy.requests()
+				ctx := reqs[len(reqs)-1].GetContext()
+				if ctx.GetAcr() != a.GetAcr() || (ctx.Acr != nil) != (a.Acr != nil) || !reflect.DeepEqual(ctx.GetAmr(), a.GetAmr()) ||
+					ctx.GetAmrPresent() != a.GetAmrPresent() {
+					t.Errorf("refresh %d: policy was told %v", i, ctx)
+				}
+				if want := int64(authTime.Unix()); ctx.AuthAge == nil || *ctx.AuthAge != e.clk.now().Unix()-want {
+					t.Errorf("refresh %d: auth age = %v, want the age of the sign-in's auth_time", i, ctx.AuthAge)
+				}
+			}
+			// The chain itself, which is what carries them, still holds the same facts.
+			chainAfter, _, _ := e.store.raw("session-chain", testTenant, sid)
+			before := protoOf(t, chainBefore, &sessionv2alpha1.SessionChain{})
+			after := protoOf(t, chainAfter, &sessionv2alpha1.SessionChain{})
+			if !reflect.DeepEqual(before.Acr, after.Acr) || !reflect.DeepEqual(before.GetAmr(), after.GetAmr()) ||
+				before.GetAmrPresent() != after.GetAmrPresent() || !before.GetAuthTime().AsTime().Equal(after.GetAuthTime().AsTime()) {
+				t.Errorf("the chain changed: %v then %v", before, after)
+			}
+		})
 	}
 }

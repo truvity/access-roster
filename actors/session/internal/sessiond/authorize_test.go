@@ -166,6 +166,59 @@ func TestAuthorizeRefusesWhatTheRFCsRefuse(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUTHN-025
+func TestAuthorizeAnswersImplicitAndHybridResponseTypesWithUnsupportedResponseType(t *testing.T) {
+	// Every response type of OAuth 2.0 Multiple Response Type Encoding Practices other than "code": the implicit
+	// ones (token, id_token, id_token token), the hybrid ones (code token, code id_token, code id_token token), the
+	// "none" type, and the same words in another order or case. Each is refused as a whole, with the code that tells
+	// the client the flow is not served.
+	for _, rt := range []string{
+		"token", "id_token", "id_token token", "token id_token",
+		"code token", "code id_token", "code id_token token", "id_token code", "token code",
+		"none", "CODE", "code ", " code",
+	} {
+		t.Run(rt, func(t *testing.T) {
+			e := newEnv(t, nil)
+			p := newAuthorize()
+			p.req.ResponseType = rt
+			r := e.authorize(p.req)
+
+			u := location(t, r)
+			if got := u.Scheme + "://" + u.Host + u.Path; got != testRedirect {
+				t.Fatalf("redirected to %s", got)
+			}
+			q := u.Query()
+			if q.Get("error") != "unsupported_response_type" {
+				t.Errorf("error = %q, want unsupported_response_type", q.Get("error"))
+			}
+			if q.Get("iss") != testIssuer || q.Get("state") != p.req.GetState() {
+				t.Errorf("iss %q state %q", q.Get("iss"), q.Get("state"))
+			}
+			// Nothing of the refused flow is issued: no code, no token in the query or the fragment, no cookie, no sign-in.
+			for _, leaked := range []string{"code", "access_token", "id_token", "token"} {
+				if q.Has(leaked) {
+					t.Errorf("a refused response type carries %s", leaked)
+				}
+			}
+			if u.Fragment != "" {
+				t.Errorf("fragment %q", u.Fragment)
+			}
+			if len(headerOf(r, "Set-Cookie")) != 0 || len(e.upstream.begins) != 0 {
+				t.Error("a refused response type started a sign-in")
+			}
+			recs := e.records()
+			if len(recs) != 1 || recs[0]["status_code"] != "request" {
+				t.Errorf("records = %v, want one with status_code request", recs)
+			}
+		})
+	}
+	// The one response type that is served still works, so the refusal above is about the type and nothing else.
+	e := newEnv(t, nil)
+	if up := location(t, e.authorize(newAuthorize().req)); up.Host != "idp.example.test" {
+		t.Errorf("response_type=code went to %s", up.Host)
+	}
+}
+
 // verifies: REQ-CLIENT-022
 func TestAuthorizeRefusesAnUnknownScopeInsteadOfDroppingIt(t *testing.T) {
 	for _, scope := range []string{"openid offline_access", "openid profile admin", "admin openid", "openid OPENID"} {

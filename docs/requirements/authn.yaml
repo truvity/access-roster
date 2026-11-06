@@ -27,8 +27,7 @@ requirements:
     rationale: "A refused flow must be reported with a code that a client can act on."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -36,8 +35,9 @@ requirements:
       - {id: ST-14, section: "2.1.2", depth: Full}
       - {id: ST-28, section: "3.1", depth: Partial}
     issues: [775]
+    tests: [actors/session/internal/sessiond/authorize_test.go]
     verification:
-      - {kind: integration-test, ref: "negative test for each refused response type"}
+      - {kind: integration-test, ref: "negative test for each refused response type (implicit, hybrid, none): unsupported_response_type, no code, token or cookie"}
   - id: REQ-AUTHN-002
     area: AUTHN
     statement: "sluis MUST require PKCE with the S256 method on every authorization code request."
