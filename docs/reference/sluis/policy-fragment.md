@@ -54,6 +54,8 @@ Each has the owner, a code, a path and a sentence.
 
 The second decides: joining a rung brings the rung's cells, and only the derived roster shows them. An owner with any violation is left out whole; the others merge unchanged, in any order.
 
+The command takes no `--base` yet: that waits for a file format for the installation model.
+
 ## The command
 
 ```sh
