@@ -184,6 +184,8 @@ jobs:
         run: devbox run -- deploy/boards/recipients-test.sh
       - name: The operating-system checks of the board script, against fakes of the package manager
         run: devbox run -- deploy/boards/prereq-test.sh
+      - name: The workstation side of the scripts (rqlite pins, unlock, ssh options, profile), against a fake ssh
+        run: devbox run -- deploy/boards/boards-test.sh
       - name: Deploy, staged only
         env:
           SLUIS_BOARDS: board.example.test

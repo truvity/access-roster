@@ -438,28 +438,50 @@ units-gen:
 boards-prepare:
     deploy/boards/prepare.sh
 
+# Install rqlite on every board of SLUIS_BOARDS from the upstream release package (v10.6.6), pinned by sha256 in
+# deploy/boards/rqlite.pins: apt-get install on Ubuntu, dnf install on Rocky. A drop-in of rqlited.service sets the node id, the
+# board's HTTP and Raft addresses and, on every node but SLUIS_RQLITE_BOOTSTRAP, -join; then it waits until the node is a ready
+# voter. The first step on a fresh board, before boards-deploy. No TLS and no authentication: see deploy/boards/rqlite.sh.
+# SLUIS_BOARDS_DRY_RUN=1 prints the plan.
+boards-rqlite:
+    deploy/boards/rqlite.sh
+
 # Copy the executables that exist in dist/arm64, with their units, to every board; verify; start in order. It refuses
 # a seed that was signed before the header named the kind ("re-sign: just boards-prepare"); it does not sign by itself.
-# Idempotent. SLUIS_BOARDS_DRY_RUN=1 stages and prints the plan without touching a board.
+# Idempotent. SLUIS_BOARDS_DRY_RUN=1 stages and prints the plan without touching a board. SLUIS_BOARDS_PROFILE=m1 deploys the
+# twelve units of the M1 spine. It ends with boards-avc.
 boards-deploy:
     deploy/boards/boards.sh deploy
 
-# Remove what boards-deploy added, as the board's manifest lists it. Never sluis-rqlite, the user sluis,
-# /opt/sluis/bin/rqlited or /var/lib/sluis. The state of the units stays unless SLUIS_PURGE_STATE=1.
+# Remove what boards-deploy added, as the board's manifest lists it, then stop and disable rqlited. The package, the drop-in and
+# /var/lib/rqlite stay, and so does the state of the units, unless SLUIS_PURGE_STATE=1.
 boards-undeploy:
     deploy/boards/boards.sh undeploy
+
+# Give the PIN of the card to the card driver of ONE board: `SLUIS_BOARDS=<board> just boards-unlock` on a terminal asks for the PIN
+# without echo; from a script, pipe it in from where it is kept. Either way the PIN is read from standard input and reaches `sudo
+# /opt/sluis/bin/cli/sluis node unlock <host> --boundary dev` on the board through ssh's standard input; it is never an argument
+# and never printed.
+boards-unlock:
+    deploy/boards/boards.sh unlock
+
+# Read only: on a board where SELinux is enforcing, the AVC and USER_AVC records since boot; it fails when one names a sluis or
+# rqlite path or domain. boards-deploy and boards-smoke run it at their end.
+boards-avc:
+    deploy/boards/boards.sh avc
 
 # The M1 proof on every board of SLUIS_BOARDS in turn, over SSH (deploy/boards/smoke): a client under the uid of exchange asks
 # policy for a token.exchange decision and signer for a token; the token is checked against /jwks of entry, the records of
 # the run are found in the audit log, `sluis audit verify` checks the log, and SigningRing and DataKeyWrap are read through
 # store@. From the second board on it must find the earlier boards' items, which shows the shared store. Run `just
-# build-arm64` and `just boards-deploy` first. Exits non-zero on any failure. CI builds it and does not run it.
+# build-arm64` and `just boards-deploy` first. Exits non-zero on any failure, and when the AVC check that follows it (boards-avc)
+# fails. CI builds it and does not run it.
 boards-smoke:
     CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -o dist/arm64/smoke/spine ./tests/e2e/spine
     CGO_ENABLED=0 go build -trimpath -o dist/boardsmoke ./deploy/boards/smoke
-    dist/boardsmoke
+    dist/boardsmoke && smoke=0 || smoke=$?; deploy/boards/boards.sh avc || smoke=1; exit "$smoke"
 
-# Read only: the units of boards-deploy on every board, and whether they are active.
+# Read only: the units of boards-deploy on every board, whether they are active, and rqlite (its unit, and whether its node is a ready voter).
 boards-status:
     deploy/boards/boards.sh status
 

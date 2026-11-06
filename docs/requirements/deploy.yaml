@@ -431,7 +431,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "os-container-test.sh in a systemd container of each distribution; SELinux enforcing runs nightly in os-vm-test.sh, which has not run in CI yet; no card"}
+      - {kind: integration-test, ref: "os-container-test.sh in a systemd container of each distribution; SELinux enforcing is os-vm-test.sh, which CI has never run (a schedule runs from the default branch only) and is run by hand; no card"}
   - id: REQ-DEPLOY-032
     area: DEPLOY
     statement: "The card driver MUST NOT ask for a glibc symbol newer than GLIBC_2.34."
@@ -456,4 +456,52 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "a nightly job on a Rocky 10 virtual machine with SELinux enforcing: ausearch -m AVC is empty after a deploy and a smoke"}
+      - {kind: integration-test, ref: "boards.sh avc (run by boards-deploy and boards-smoke): no AVC since boot names a sluis or rqlite path or domain; prereq-test.sh checks the verdict on fakes, a real board or os-vm-test.sh the proof"}
+  - id: REQ-DEPLOY-034
+    area: DEPLOY
+    statement: "The boards deploy MUST refuse an rqlite package, cached or downloaded, whose sha256 differs from the digest pinned in the repository."
+    rationale: "Upstream publishes no checksum file and no signature for its packages, so the pin in the repository is the only trust in what a board's package manager installs as root (docs/runtimes/bare-metal.md, rqlite on the boards)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "boards-test.sh: a package with another digest is refused after a download and from the cache, a cached file that does not verify is replaced, a name without a pin is refused before any download"}
+  - id: REQ-DEPLOY-035
+    area: DEPLOY
+    statement: "The boards unlock command MUST NOT put the PIN of the card in an argument of any command, in the environment or in its output."
+    rationale: "A process list shows arguments to every user of the board and of the workstation, and a log keeps output, so the PIN must cross only inside the ssh session (docs/reference/cli.md, sluis node unlock)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "boards-test.sh: with a fake ssh, the PIN is on the standard input of the command on the board and in no argument of any ssh and in no output"}
+  - id: REQ-DEPLOY-036
+    area: DEPLOY
+    statement: "The boards scripts and the smoke program MUST pass the options of SLUIS_BOARD_SSH_OPTIONS to every ssh they run."
+    rationale: "A reinstalled board has a new host key, and a run must trust it through its own known-hosts file without editing the operator's (docs/runtimes/bare-metal.md, Deploy and prove on three boards)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "boards-test.sh: the options are on the ssh command line of boards.sh, after the defaults, and no script calls ssh but through board_ssh; the smoke program reads the same variable"}
+  - id: REQ-DEPLOY-037
+    area: DEPLOY
+    statement: "The boards deploy MUST refuse a board that has no tar before it sends anything to it."
+    rationale: "The stage reaches the board as a tar stream, and the Rocky 10 image of the boards is built without tar, so the failure would otherwise be an opaque ssh error half way through a deploy."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "boards-test.sh: a fake board without tar is refused with the install command, nothing is sent to it, and an unreachable board is not reported as a missing tar"}

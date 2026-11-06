@@ -1,0 +1,12 @@
+# The rqlite packages that `just boards-rqlite` installs on the boards, by sha256 (deploy/boards/rqlite.sh).
+# Upstream (github.com/rqlite/rqlite/releases, v10.6.6) publishes no checksum file and no signature, so this file is the
+# trust: a package whose sha256 differs is refused, and a version without a line here is refused. The digests were computed
+# by downloading the assets on 2026-11-06 and match the digest that GitHub shows for each asset.
+# To move to another release: set rqlite_version in rqlite-lib.sh, download the four assets, put their sha256 here and say
+# in the pull request how they were checked.
+#
+# sha256                                                            file
+e5ed9349a76ce9929d93dee1fb042d64a0bc82eba80cec3095145b744204a004  rqlite-10.6.6-1.aarch64.rpm
+071cd99e7d0301bfd8f49635e3e4aa4e9500ff8e1dbeb9253b907e49ed321c9a  rqlite-10.6.6-1.x86_64.rpm
+b3464a745d8b255ea059bb659ba195ee48da18abdbc51bb1611acf4cf357f8c5  rqlite_10.6.6_arm64.deb
+dc2b3ff198f4ea1d6d5ed3cf443f0bfc500ee92c9a2f83cf07056ce630a81bef  rqlite_10.6.6_amd64.deb

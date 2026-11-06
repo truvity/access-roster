@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Put the skeleton on the boards, take it off again, or look at it: `boards.sh deploy|undeploy|status|recipients|check`.
-# The recipes are `just boards-deploy`, `boards-undeploy`, `boards-status`, `boards-recipients` and `boards-key-check`.
+# Put the skeleton on the boards, take it off again, or look at it: `boards.sh deploy|undeploy|status|recipients|check|unlock|avc`.
+# The recipes are `just boards-deploy`, `boards-undeploy`, `boards-status`, `boards-recipients`, `boards-key-check`,
+# `boards-unlock` and `boards-avc`. rqlite, which the units need, is installed by `just boards-rqlite` (rqlite.sh) before the
+# first deploy; undeploy and status look after it too.
 #
 # The KeyPlan lists the wrapping keys that may receive a wrap of a data key (ADR 0006, "Who may receive a wrap"), and a
 # board's software key is made at its first start, so the first deploy is two-phase, as `local.sh up` is:
@@ -42,10 +44,17 @@
 #   SLUIS_BOARD_SSH_USER        the SSH user, with passwordless sudo (required)
 #   SLUIS_BOARD_SSH_AUTH_SOCK   the agent socket for ssh; SSH_AUTH_SOCK is the fallback. It is set for the ssh
 #                               commands only, never exported for the whole script.
+#   SLUIS_BOARD_SSH_OPTIONS     extra ssh arguments, split at white space, for every ssh of boards.sh, rqlite.sh and the smoke
+#                               program, for example "-o UserKnownHostsFile=/path/to/known_hosts -o StrictHostKeyChecking=yes".
+#                               A board that was reinstalled has a new host key; this is how a run trusts the new one without
+#                               touching ~/.ssh/known_hosts. See ssh-lib.sh.
 #   SLUIS_BOARD_BIN_DIR         must be /opt/sluis/bin if set: the units are generated for it
 #   SLUIS_BOARDS_ONLY           space-separated executables to deploy, as they sit in dist/arm64 (actors/store
 #                               drivers/key/software ...); default: every executable that was built. The users of
 #                               the groups a unit joins come along.
+#   SLUIS_BOARDS_PROFILE        a named set of executables in place of SLUIS_BOARDS_ONLY (not both): `m1` is the twelve of the
+#                               M1 spine on the boards, with the key driver of the run (software or yubikey-piv). cli/sluis, which
+#                               boards-unlock runs on the board, is staged whatever the set says, when it was built.
 #   SLUIS_BOARDS_SEED           the directory `just boards-prepare` made (default .cache/boards/seed): the signed
 #                               config, the bootstrap file and the credentials. deploy installs them under
 #                               /etc/sluis, and writes /etc/sluis/rqlite-dev.env with the board's own rqlite address.
@@ -81,14 +90,23 @@
 # deploy copies only the executables that `just build-arm64` made, with the units, users and directories that go
 # with them, then verifies the units and starts them in order. It is idempotent: a second run changes nothing but
 # restarts the units. undeploy removes what the board's manifest lists (/etc/sluis/deployed-dev.manifest) and
-# nothing else; sluis-rqlite, the user sluis, /opt/sluis/bin/rqlited and /var/lib/sluis are never in it.
+# nothing else; rqlite is not in it: undeploy then stops and disables rqlited.service, and removes the package, the
+# drop-in and /var/lib/rqlite only with SLUIS_PURGE_STATE=1 and only where rqlite.sh installed it (remote.sh rqlite-undeploy).
+#
+# deploy ends with `avc`, and `just boards-smoke` runs it after the smoke: on a board where SELinux is enforcing it prints the AVC
+# and USER_AVC records since boot (ausearch -m AVC,USER_AVC -ts boot) and fails when one names a sluis or rqlite path or domain.
+#
+# unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
+# input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /opt/sluis/bin/cli/sluis node unlock <host> --boundary
+# dev` on the board through the ssh session's standard input. It is never an argument of any command, an environment variable or
+# a line of output.
 set -euo pipefail
 
-mode=${1:?usage: boards.sh deploy|undeploy|status|recipients|check}
+mode=${1:?usage: boards.sh deploy|undeploy|status|recipients|check|unlock|avc}
 cd "$(git rev-parse --show-toplevel)"
 here=deploy/boards
 units=$here/units
-dist=dist/arm64
+dist=${SLUIS_BOARDS_DIST:-dist/arm64} # a test points it at a tree of stand-ins
 
 : "${SLUIS_BOARDS:?SLUIS_BOARDS is not set (source the run.env of the build)}"
 : "${SLUIS_BOARD_SSH_USER:?SLUIS_BOARD_SSH_USER is not set}"
@@ -97,10 +115,16 @@ if [ "${SLUIS_BOARD_BIN_DIR:-/opt/sluis/bin}" != /opt/sluis/bin ]; then
 	exit 2
 fi
 agent=${SLUIS_BOARD_SSH_AUTH_SOCK:-${SSH_AUTH_SOCK:-}}
+# shellcheck source=deploy/boards/ssh-lib.sh
+. "$here/ssh-lib.sh"
+# shellcheck source=deploy/boards/rqlite-lib.sh
+. "$here/rqlite-lib.sh"
 dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
 only=${SLUIS_BOARDS_ONLY:-}
+profile=${SLUIS_BOARDS_PROFILE:-}
+boundary=dev
 keydrv_set=${SLUIS_BOARDS_KEY_DRIVER:-} # unset: every board keeps the key driver it runs now (none yet: software)
 keydrv=${keydrv_set:-software}
 state=${SLUIS_BOARDS_STATE:-.cache/boards}
@@ -108,6 +132,23 @@ case "$keydrv" in
 software | yubikey-piv) ;;
 *) echo "boards: SLUIS_BOARDS_KEY_DRIVER must be software or yubikey-piv, not '$keydrv'" >&2; exit 2 ;;
 esac
+case "$profile" in
+'' | m1) ;;
+*) echo "boards: SLUIS_BOARDS_PROFILE must be m1, not '$profile'" >&2; exit 2 ;;
+esac
+if [ -n "$profile" ] && [ -n "$only" ]; then
+	echo "boards: SLUIS_BOARDS_PROFILE and SLUIS_BOARDS_ONLY are both set; name one of them" >&2
+	exit 2
+fi
+
+# profile_only prints the executables of a profile, for the key driver of the stage that is being made. m1 is the spine of the first
+# milestone as the boards run it: store, key, policy, signer, writer and entry, the three store drivers the config needs (the
+# credential and file sources, rqlite), the key driver, and the two writer drivers.
+profile_only() { # profile
+	case "$1" in
+	m1) echo "actors/store actors/key actors/policy actors/signer actors/writer actors/entry drivers/store/credential drivers/store/file drivers/store/rqlite drivers/key/$keydrv drivers/writer/fs drivers/writer/spool" ;;
+	esac
+}
 
 # shellcheck disable=SC2206 # the boards are a space-separated list
 boards=($SLUIS_BOARDS)
@@ -129,12 +170,6 @@ card_serial() { # board
 	return 1
 }
 
-board_ssh() { # board command...
-	local b=$1
-	shift
-	SSH_AUTH_SOCK=$agent ssh -o BatchMode=yes -o ConnectTimeout=10 "$SLUIS_BOARD_SSH_USER@$b" "$@"
-}
-
 # seed_has_kind refuses a seed whose documents were signed before the protected header named the kind (signed-config.md,
 # "The document"): store@ refuses such a document, so a deploy of these binaries with that seed would leave every board
 # without config. It only reads the files of the seed on this machine; nothing runs on a board.
@@ -154,7 +189,8 @@ seed_has_kind() {
 # stage builds the tree the board receives, from dist/arm64 and deploy/boards/units. Only executables that exist
 # are staged, and so only their units; the users of the groups a unit joins come along without their units.
 stage() { # dir
-	local s=$1 instance template binary user needs stem n
+	local s=$1 instance template binary user needs stem n sel=$only
+	[ -z "$profile" ] || sel=$(profile_only "$profile")
 	mkdir -p "$s/files/bin" "$s/files/systemd" "$s/files/sysusers" "$s/files/tmpfiles"
 	: >"$s/plan.tsv"
 	local -A want=()
@@ -167,8 +203,8 @@ stage() { # dir
 		drivers/key/yubikey-piv) [ "$keydrv" = yubikey-piv ] || continue ;;
 		esac
 		[ -f "$dist/$binary" ] || continue
-		if [ -n "$only" ]; then
-			case " $only " in *" $binary "*) ;; *) continue ;; esac
+		if [ -n "$sel" ]; then
+			case " $sel " in *" $binary "*) ;; *) continue ;; esac
 		fi
 		mkdir -p "$s/files/bin/$(dirname "$binary")"
 		install -m 0755 "$dist/$binary" "$s/files/bin/$binary"
@@ -181,6 +217,13 @@ stage() { # dir
 		fi
 	done <"$units/index.tsv"
 	[ -s "$s/plan.tsv" ] || { echo "boards: no executable in $dist has a unit: run 'just build-arm64' first" >&2; return 1; }
+	# The CLI has no unit. It is staged for boards-unlock, which runs it on the board, whatever SLUIS_BOARDS_ONLY says.
+	if [ -f "$dist/cli/sluis" ]; then
+		mkdir -p "$s/files/bin/cli"
+		install -m 0755 "$dist/cli/sluis" "$s/files/bin/cli/sluis"
+	else
+		echo "boards: warning: no $dist/cli/sluis, so boards-unlock has nothing to run on the boards: run 'just build-arm64'" >&2
+	fi
 	if [ "$keydrv" = yubikey-piv ]; then
 		[ -f "$s/files/systemd/sluis-key@.service" ] || { echo "boards: the card driver needs key@ in the plan (SLUIS_BOARDS_ONLY leaves out actors/key)" >&2; return 1; }
 		[ -f "$dist/drivers/key/yubikey-piv" ] || { echo "boards: no $dist/drivers/key/yubikey-piv: run 'just build-arm64-native' and 'just build-arm64' first" >&2; return 1; }
@@ -211,9 +254,32 @@ stage() { # dir
 	fi
 }
 
+# board_has_tar refuses, with the fix, a board that has no tar: the stage reaches the board as a tar stream over ssh, and the Rocky
+# image of the boards is built without it (docs/runtimes/bare-metal.md, "Rocky 10: what the image lacks"). A board that cannot be
+# reached is told apart from one that has no tar.
+board_has_tar() { # board
+	local rc=0
+	board_ssh "$1" 'command -v tar >/dev/null 2>&1' </dev/null || rc=$?
+	case "$rc" in
+	0) return 0 ;;
+	1) echo "boards: the board '$1' has no tar, which the deploy uses to unpack what it sends. Install it there (dnf install tar, or apt-get install tar) and run again; the Rocky 10 image of the boards lacks tar, audit and policycoreutils-python-utils." >&2 ;;
+	*) echo "boards: cannot reach the board '$1' over ssh (status $rc); if it was reinstalled, its host key changed: see SLUIS_BOARD_SSH_OPTIONS" >&2 ;;
+	esac
+	return 1
+}
+
+# bare_stage makes a stage with remote.sh and nothing to deploy, for the modes that only look: status, undeploy, avc, rqlite-*.
+bare_stage() { # dir
+	mkdir -p "$1/files"
+	: >"$1/plan.tsv"
+	install -m 0755 "$here/remote.sh" "$1/remote.sh"
+	install -m 0644 "$here/remote-lib.sh" "$1/remote-lib.sh"
+}
+
 # run_on copies the stage to the board, runs remote.sh as root there and removes the stage.
 run_on() { # board mode stage
 	local b=$1 m=$2 s=$3 d rc=0
+	board_has_tar "$b" || return 1
 	d=$(board_ssh "$b" mktemp -d)
 	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
 		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).
@@ -440,6 +506,40 @@ deploy)
 		*" $b "*) echo "board $b: switched to ${drv[$b]} (pending verification, whatever the deploy said); now: unlock it if needed, 'boards-recipients' with SLUIS_BOARDS_RECIPIENTS_SWITCHED=1, re-sign, deploy, then 'boards-key-check'" ;;
 		esac
 	done
+	# The denials of the policy since boot, on a board where SELinux is enforcing: a sluis or rqlite path or domain in one fails the run.
+	bare_stage "$tmp/stage-avc"
+	for b in "${boards[@]}"; do
+		echo "== board $b: AVC since boot"
+		run_on "$b" avc "$tmp/stage-avc" || { echo "board $b: the AVC check FAILED" >&2; rc=1; }
+	done
+	exit "$rc"
+	;;
+unlock)
+	# The PIN of the card goes from standard input of this script to standard input of `sluis node unlock` on the board, through the
+	# ssh session, and nowhere else: not an argument (a process list shows arguments), not an environment variable, not a line of
+	# output. A terminal is asked without echo.
+	if [ "${#boards[@]}" -ne 1 ]; then
+		echo "unlock: SLUIS_BOARDS must name exactly one board" >&2
+		exit 2
+	fi
+	b=${boards[0]}
+	if [ -n "$dry" ]; then
+		echo "dry run: would give a PIN read from standard input to the card driver of $b"
+		exit 0
+	fi
+	node=$(board_ssh "$b" uname -n </dev/null) || { echo "unlock: cannot reach the board '$b'" >&2; exit 1; }
+	[[ "$node" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "unlock: the board '$b' gave an unusable host name" >&2; exit 1; }
+	board_ssh "$b" "sudo -n test -x /opt/sluis/bin/cli/sluis" </dev/null || { echo "unlock: $b has no /opt/sluis/bin/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
+	unlock_cmd="sudo -n /opt/sluis/bin/cli/sluis node unlock $node --boundary $boundary"
+	rc=0
+	if [ -t 0 ]; then
+		IFS= read -rsp "PIN of the card of $node: " pin
+		echo >&2
+		printf '%s\n' "$pin" | board_ssh "$b" "$unlock_cmd" || rc=$?
+		pin=""
+	else
+		board_ssh "$b" "$unlock_cmd" || rc=$?
+	fi
 	exit "$rc"
 	;;
 recipients | check)
@@ -571,11 +671,8 @@ recipients | check)
 	cp "$tmp/slot-map.new" "$state/slot-map"
 	echo "recipients: $(wc -l <"$tmp/ids.new") ids in $state/recipients and $(grep -c '^{' "$state/slot-map") slot map entries in $state/slot-map; run 'just boards-prepare' and 'just boards-deploy' to list them"
 	;;
-undeploy | status)
-	: >"$tmp/plan.tsv"
-	mkdir -p "$tmp/files"
-	install -m 0755 "$here/remote.sh" "$tmp/remote.sh"
-	install -m 0644 "$here/remote-lib.sh" "$tmp/remote-lib.sh"
+undeploy | status | avc)
+	bare_stage "$tmp"
 	if [ -n "$dry" ]; then
 		echo "dry run: would run remote.sh $mode on ${boards[*]}"
 		exit 0
@@ -584,11 +681,30 @@ undeploy | status)
 	for b in "${boards[@]}"; do
 		echo "== board $b: $mode"
 		run_on "$b" "$mode" "$tmp" || { echo "board $b: $mode FAILED" >&2; rc=1; }
+		# rqlite is the engine the units use and is installed by rqlite.sh, not by deploy: it follows the units, in both directions.
+		case "$mode" in
+		undeploy) run_on "$b" rqlite-undeploy "$tmp" || { echo "board $b: rqlite-undeploy FAILED" >&2; rc=1; } ;;
+		status)
+			if run_on "$b" rqlite-status "$tmp"; then
+				if rqlite_valid_ipv4 "$b" && node=$(board_ssh "$b" uname -n </dev/null); then
+					if why=$(rqlite_node_ready "$b" "$b" "$rqlite_port" "$node" 2>&1); then
+						echo "rqlite: ready; $(rqlite_cluster_line "$b" "$b" "$rqlite_port" || echo 'cluster unknown')"
+					else
+						echo "rqlite: NOT ready: $why" >&2
+						rc=1
+					fi
+				fi
+			else
+				echo "board $b: rqlite is not running" >&2
+				rc=1
+			fi
+			;;
+		esac
 	done
 	exit "$rc"
 	;;
 *)
-	echo "usage: boards.sh deploy|undeploy|status|recipients|check" >&2
+	echo "usage: boards.sh deploy|undeploy|status|recipients|check|unlock|avc" >&2
 	exit 2
 	;;
 esac
