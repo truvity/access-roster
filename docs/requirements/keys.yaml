@@ -1392,8 +1392,7 @@ requirements:
     rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them (ADR 0041)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     issues: [1361, 1362]
     runtimes: all
@@ -1408,7 +1407,8 @@ requirements:
     rationale: "A check that cannot run is reported as not run, a stale edge copy must not look like a finished revocation, and the edge falls back to the live key set (ADR 0041, ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1361, 1362, 1454]
     runtimes: all
@@ -1417,6 +1417,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "the edge serves a stale key set after a revocation: the command prints not confirmed, and confirmed once the set lacks the kid"}
       - {kind: integration-test, ref: "the public address lacks the kid and the live key set of entry still lists it: the command prints not confirmed"}
+      - {kind: integration-test, ref: "an address that is unreachable, slow, or answers something that is not a key set: the command prints could not tell and not confirmed, and exits 5"}
   - id: REQ-KEYS-089
     area: KEYS
     statement: "A replacement for a revoked token-signing key MUST sign at once when no other key of the issuer is active, with its key set published and purged at the edge before its first token."

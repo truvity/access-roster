@@ -16,7 +16,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 - **Long flags only,** written `--flag value` or `--flag=value`. Positional arguments are used only where this page shows one.
 - **Results go to standard output, everything a person reads goes to standard error:** prompts, progress, warnings. A script reads standard output and the exit code.
 - **A PIN, a passphrase or a secret is never a flag or an environment variable.** It is typed at the terminal, or read from a file descriptor the caller names (`--secret-fd N`). A command that needs one and has no terminal and no descriptor exits 2.
-- **Offline by default.** Only `--live`, `sluis login` and `sluis token` talk to a running sluis; `config check`, `config explain`, `doctor` and the key commands read the host.
+- **Offline by default.** Only `--live`, `sluis login`, `sluis token` and the confirmation of `sluis key revoke --declaration` talk to a running sluis; `config check`, `config explain`, `doctor` and the key commands read the host.
 - **Colour** is off when standard output is not a terminal, with `--no-color`, or when `NO_COLOR` is set.
 - **Errors name a path, never a value** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)): `clients.example-app.redirects[0]: not an https URL`, not the URL.
 
@@ -46,7 +46,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
 | `sluis node unlock NODE [--socket PATH] [--secret-fd N]` | The PIN, from standard input or the descriptor; the card driver's status | The PIN into the locked card driver of the node it runs on | 0, 1, 2, 3 |
 | `sluis key revoke --kid KID --reason REASON [--out FILE]` | Nothing | A key revocation declaration, to `FILE` or standard output | 0, 2 |
-| `sluis key revoke --declaration FILE [--socket PATH]` | The signed declaration | The revocations, through key@ on the node it runs on | 0, 1, 2, 3 |
+| `sluis key revoke --declaration FILE [--socket PATH] [--issuer URL] [--entry-socket PATH] [--wait DURATION]` | The signed declaration; the issuer's discovery document and key set, and `entry`'s | The revocations, through key@ on the node it runs on, and whether the keys left the key sets | 0, 1, 2, 3, 5 |
 
 ### `sluis config check` and `explain`
 
@@ -111,21 +111,45 @@ A board starts locked: the card driver has no PIN ([0006](/decisions/0006-keys-a
 
 ### `sluis key revoke`
 
-An operator revokes keys in two steps, with the publisher's signature between them, because the publisher key lives where the config is signed and never on a node ([0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)). Neither step needs the token keys or sign-in.
+An operator revokes keys in two steps and a check, with the publisher's signature between them, because the publisher key lives where the config is signed and never on a node ([0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-declaration)). Neither step needs the token keys or sign-in.
 
 1. **`sluis key revoke --boundary B --kid KID --reason REASON [--out FILE]`** writes the declaration for the keys: `--kid` is an RFC 7638 thumbprint and is repeated for each key, and `REASON` is `compromise`, `suspicion`, `lost-board` or `drill`. It names keys, never a purpose. A key id that is not a thumbprint, a key named twice or another reason exits 2. `--allow-unknown` lets key@ revoke keys it does not know, such as a lost board's own keys; without it such a key refuses the declaration.
 2. **The publisher signs it** as a `KeyRevocationDeclaration`, with the key that signs the `KeyPlan` ([Declarations](/reference/signed-config/#declarations)). On the boards it is the harness: `go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration FILE -declaration-out FILE.jws`.
 3. **`sluis key revoke --boundary B --declaration FILE.jws`** runs on any node of the boundary, as root, and delivers the signed declaration to key@'s admin socket, `/run/sluis/key/BOUNDARY/admin.sock` (`--socket PATH` names another). It prints each key with `revoked` or `already revoked`. A refusal of key@ exits 3 with its reason and path: `declaration`, `seq`, `schema`, `other-boundary`, `wrapping-key` or `unknown-kid`. A key@ that cannot be reached, or an audit fact that key@ could not make durable, exits 1; in the second case the keys are revoked. A declaration that key@ took in part, because store@ failed, exits 1 and prints each key as `revoked` or `not yet revoked`: deliver the same declaration again to complete it.
 
+**The confirmation.** After the delivery the command checks that the keys have left every key set a verifier can be given ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088), [Confirmation](/decisions/0009-export/#confirmation), [#1362](https://github.com/truvity/sluis/issues/1362)). It does not trust a report: it fetches two addresses, the way a relying party does, and needs every revoked `kid` absent from both:
+
+- **The public key set.** The `jwks_uri` that the issuer's OpenID discovery document names, found at `ISSUER/.well-known/openid-configuration` and never at a path the command knows. It is fetched over the network with no credential. Where a bucket destination exists this is the static document behind the edge; where none exists it is `entry`'s key set behind the forwarder ([Publishing public material](/decisions/0009-export/#the-edge)). The command cannot tell which from outside, and reads what a verifier is given either way. `--issuer URL` names the issuer; by default it is the issuer that `entry` reports in its own discovery document on its socket, which is the issuer of the boundary's `Boundary` document, checked by store@. The issuer is `https`, or `http` on `127.0.0.1` or `[::1]` for development.
+- **The live key set of `entry`,** read from `entry`'s socket, which is what the edge falls back to. On bare-metal it is `/run/sluis/entry/BOUNDARY.sock`, and `--entry-socket PATH` names another. A socket is reached only on a node that runs `entry`, so the command runs there.
+
+Both are checked by default, because each alone leaves a hole: the public address alone cannot see that `entry` still lists the key, which the edge serves the moment the static document or its copy fails; the socket alone cannot see a stale copy at the edge, which is what relying parties read. Neither request is a cache-buster: a plain `GET` with no query and no `Cache-Control`, `Pragma` or conditional header, so a cache that has not yet dropped the key answers as it answers a verifier (and `entry` refuses a query on these documents). A redirect is not followed.
+
+The command reads both addresses again every 2 seconds, for up to `--wait DURATION` (default 2 minutes, which covers the purge target of 60 seconds; `0` checks once; at most 30 minutes), and stops as soon as one round finds every kid absent from both. It prints one line for each address with one of three results, then the verdict:
+
+- `confirmed absent`: the answer was a key set and none of the revoked kids is in it;
+- `still listed: KID`: the key set lists the kid; a copy that carries an `Age` header shows it (`the copy is 1200 s old`), which points at a stale edge;
+- `could not tell: REASON`: the address is unreachable, answered other than 200, was too slow (`timed out`), was not a JSON key set, or its discovery document has no `jwks_uri` or names another issuer; with no issuer to discover, the public address is `could not tell` as well. The command never reads a check that did not run as passed ([principle 4](/principles/#4-verify-never-trust-a-claim)).
+
+The last line is `confirmed` and the exit code 0 when every address is `confirmed absent`, otherwise `not confirmed` and exit code 5. The result is the last round, so an address that is `confirmed absent` in an earlier round and `could not tell` in the last one is `could not tell`. When `exporter@` could not read `KeyRevocation`, the published set stays as it was and the command says `not confirmed` ([REQ-EXPORT-024](/requirements/export/#REQ-EXPORT-024)). An audit fact that key@ could not make durable exits 1 and takes the place of exit 5, with the lines on standard error. The command knows keys, not purposes: a key that was never published, such as a card or audit key, is `confirmed absent`, which is true and says nothing about the purpose.
+
+```text
+AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 revoked
+public key set (https://sluis.example.com/jwks): confirmed absent
+entry's live key set (/run/sluis/entry/dev.sock): confirmed absent
+confirmed
+```
+
+```text
+AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 revoked
+public key set (https://sluis.example.com/jwks): still listed: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8 (the copy is 1200 s old)
+entry's live key set (/run/sluis/entry/dev.sock): could not tell: timed out
+not confirmed
+```
+
+The second ends with exit code 5 and the line `sluis key revoke: the keys are revoked in key@, but are not confirmed gone from every key set a verifier can be given` on standard error. With `--output json` the `revoke` object has a `confirmation` member ([JSON output](#json-output)). The flags `--issuer`, `--entry-socket` and `--wait` belong to `--declaration`; with `--kid` they are a usage error.
+
 :::note[Proposed]
-After the delivery the command is to check that the keys have left every key set a verifier can be given, and to print `confirmed` or `not confirmed` ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088), [Confirmation](/decisions/0009-export/#confirmation), [#1362](https://github.com/truvity/sluis/issues/1362)). It fetches two addresses and needs the kid absent from both:
-
-- **The public `jwks_uri` of the issuer,** fetched through the edge as a verifier fetches it: no credential and no cache-buster. The issuer is the boundary's configured issuer; `--issuer URL` overrides it.
-- **The live key set of `entry`,** from `entry`'s own listener, which is what the edge falls back to. On bare-metal it is `entry`'s socket, `/run/sluis/entry/BOUNDARY.sock` or the path of `--entry-socket PATH`. A socket is reached only on a node that runs `entry`, so the command runs there. The other runtimes reach `entry` as they are built ([#1014](https://github.com/truvity/sluis/issues/1014)).
-
-The command polls for up to `--wait DURATION` (default 2 minutes, to cover the purge target of 60 seconds) and then prints which address still lists which kid and exits 5. A check that cannot run, such as an issuer that is not configured, prints `not confirmed` with the reason and exits 5: it is never reported as passed. When `exporter@` could not read `KeyRevocation`, the published set stays as it was and the command says `not confirmed` ([REQ-EXPORT-024](/requirements/export/#REQ-EXPORT-024)).
-
-The flags, the default wait and exit code 5 are not decided yet. This build does not check: it prints `not confirmed` on standard error whatever the key sets hold.
+Two points are open. On the serverless and Kubernetes runtimes `entry` has no socket on the node, and the command reaches its live key set as those runtimes are built ([#1014](https://github.com/truvity/sluis/issues/1014)); until then `--entry-socket` is the only way and the address is `could not tell` without it. Where `exporter@` publishes the static document, the command is to name that address apart from `entry`'s key set behind the forwarder, and to read the purge from the report ([#1453](https://github.com/truvity/sluis/issues/1453), [#1454](https://github.com/truvity/sluis/issues/1454)).
 :::
 
 ### `sluis login` and `sluis token`
@@ -150,7 +174,7 @@ It verifies the signature of the checkpoint and of every checkpoint in `checkpoi
 | 2 | Usage error: an unknown command or flag, a missing argument, or a secret with no terminal and no descriptor. |
 | 3 | Refused by a check or by policy: a schema error, a failed `doctor` or `config check` line, a hand-off answer that fails the requester's checks, a refused sign-in or token. |
 | 4 | Refused by key@ or the card: a card that is locked or blocked, a PIN not delivered, a store that refuses the key's policy. |
-| 5 | Not confirmed: `sluis key revoke` delivered the declaration, and a key set a verifier can be given still lists a revoked key or could not be checked. Reserved until [#1362](https://github.com/truvity/sluis/issues/1362) builds the check. |
+| 5 | Not confirmed: `sluis key revoke` delivered the declaration, and a key set a verifier can be given still lists a revoked key or could not be checked. The `outcome` is `failed`. |
 | 10, 11, 12 | `key status` and `doctor` only: notice, alert and critical. The highest finding wins. |
 
 ## JSON output
@@ -164,7 +188,7 @@ Every object has these members:
 | `output` | The version of this format, `1`. |
 | `command` | The command, such as `key install`. |
 | `exit_code` | The exit code the command returns. |
-| `outcome` | `done`, `refused`, `usage` or `failed`, matching the exit code; `done` for 10 to 12. |
+| `outcome` | `done`, `refused`, `usage` or `failed`, matching the exit code; `done` for 10 to 12, and `failed` for 5. |
 | `reasons` | When refused: the codes, such as the hand-off contract's or a schema path. |
 | `error` | When failed or a usage error: a message for a person. Its wording is not part of the format. |
 
@@ -182,6 +206,7 @@ And these where they apply:
 | `login` | `login` | `{ "issuer", "client_id", "subject", "expires_at" }`; no token. |
 | `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 | `node` | `node unlock` | `{ "node", "locked" }`; no PIN. |
+| `revoke` | `key revoke` | `{ "written" }` for the declaration; for the delivery `{ "seq", "keys": [{ "kid", "already" }], "audited", "confirmation" }`, where `confirmation` is `{ "confirmed", "rounds", "addresses": [{ "name", "address", "state", "listed", "age", "reason" }] }`; `name` is `public` or `entry`, `state` is `absent`, `listed` or `unknown`, and `reason` is a short word, never a value. |
 
 Members are lower-case words with underscores; times are RFC 3339 in UTC; the object is not in canonical form. A new member is not a new version, so a reader ignores a member it does not know; a member renamed, removed or changed in meaning is version 2.
 

@@ -84,6 +84,7 @@ func (n *node) refusedAdmin(t *testing.T, err error, code connect.Code, reason, 
 	}
 }
 
+// verifies: REQ-KEYS-087
 // verifies: REQ-KEYS-108
 // verifies: REQ-SEC-034
 // A declaration signed with the publisher key revokes exactly the keys it names: one KeyRevocation item each, with
