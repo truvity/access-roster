@@ -1235,7 +1235,7 @@ requirements:
   # ---- company-issued OpenPGP keys on staff GitHub accounts (decision 0042)
   - id: REQ-OPS-099
     area: OPS
-    statement: "adapter-github MUST put each company key of a person from the verified staff keyring on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a binding, subkey or expiry of the keyring."
+    statement: "adapter-github MUST put each certificate of a person's active bindings on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, binding signature or expiry of the binding."
     rationale: "GitHub does not follow a key's renewal, so a key uploaded once goes stale and the person's commits turn Unverified (ADR 0042)."
     level: MUST
     source: design-decision
@@ -1263,8 +1263,8 @@ requirements:
       - {kind: integration-test, ref: "an account with a personal key whose user ID carries a company address keeps that key through an add, an update, a removal and a leaver's pass"}
   - id: REQ-OPS-101
     area: OPS
-    statement: "adapter-github MUST add a key to a GitHub account only from a staff keyring whose signature it has verified against the publisher key that config pins."
-    rationale: "The write permission on a person's keys would let a forged keyring sign commits as that person (ADR 0042)."
+    statement: "adapter-github MUST add a key to a GitHub account only from the certificate of an active binding of the person whose account it is."
+    rationale: "The write permission on a person's keys would let a wrong binding put a key on an account and sign commits as that person (ADR 0042)."
     level: MUST
     source: security-review
     status: planned
@@ -1274,11 +1274,11 @@ requirements:
     features: [design]
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a keyring with a bad signature, a signature by another key or a lower sequence than the one held causes no call to the account"}
+      - {kind: integration-test, ref: "a certificate whose binding has ended, one that is held by no binding and one that belongs to another person's binding cause no call that adds a key to the account"}
   - id: REQ-OPS-102
     area: OPS
-    statement: "adapter-github MUST NOT remove a key from a GitHub account because the staff keyring is missing, unverified or older than its time to live."
-    rationale: "An unreadable keyring must never look like an empty one (ADR 0042, ADR 0026)."
+    statement: "adapter-github MUST NOT remove a key from a GitHub account because its binding records are unreadable or older than their time to live."
+    rationale: "Unreadable binding records must never look like no bindings (ADR 0042, ADR 0026)."
     level: MUST
     source: design-decision
     status: planned
@@ -1288,10 +1288,10 @@ requirements:
     features: [design]
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "with a missing, an unsigned and an expired keyring a pass removes no key and reports the keyring as unreadable"}
+      - {kind: integration-test, ref: "with unreadable and expired binding records a pass removes no key and reports them as unreadable"}
   - id: REQ-OPS-103
     area: OPS
-    statement: "adapter-github MUST remove the company keys of a person from the person's GitHub account when the staff keyring no longer holds them or the directory marks the person as left, before it deletes the person's tokens."
+    statement: "adapter-github MUST remove the company keys of a person from the person's GitHub account when the person's binding has ended or the directory marks the person as left, before it deletes the person's tokens."
     rationale: "A leaver's company key must not stay on the account, and the tokens that remove it must outlive the removal (ADR 0042, G5 A)."
     level: MUST
     source: design-decision
@@ -1302,7 +1302,7 @@ requirements:
     features: [design]
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a person dropped from the keyring and a person marked left both lose their company keys, the outcome is audited, and only then are the tokens deleted"}
+      - {kind: integration-test, ref: "a person whose binding ended and a person marked left both lose their company keys, the outcome is audited, and only then are the tokens deleted"}
   - id: REQ-OPS-104
     area: OPS
     statement: "adapter-github MUST mark a person's key authorisation revoked, delete the stored tokens and raise an alert only after a call to GitHub with the person's current token has confirmed that the authorisation is gone."
@@ -1413,8 +1413,8 @@ requirements:
       - {kind: integration-test, ref: "a person marked left with a single company key loses it in one pass with the breaker armed"}
   - id: REQ-OPS-112
     area: OPS
-    statement: "adapter-github MUST treat a fingerprint on the keyring's withdrawn list as a company key only when adapter-github added it or an earlier verified keyring held it."
-    rationale: "A keyring must not be able to delete a personal key by listing its fingerprint (ADR 0042, GH1 A)."
+    statement: "adapter-github MUST remove only a key that it added or that a binding it held has ended."
+    rationale: "A wrong binding record must not be able to delete a personal key by naming its fingerprint (ADR 0042, GH1 A)."
     level: MUST
     source: security-review
     status: planned
@@ -1423,11 +1423,11 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a keyring that lists the fingerprint of a personal key as withdrawn causes no delete, and a fingerprint that sluis added and the keyring then withdraws is deleted"}
+      - {kind: integration-test, ref: "a binding record that names the fingerprint of a personal key causes no delete, and a key that sluis added and whose binding then ends is deleted"}
   - id: REQ-OPS-113
     area: OPS
-    statement: "adapter-github MUST add a certificate only to the account that is pinned for the person whose verified directory address is a user ID of that certificate."
-    rationale: "A signed keyring must not put an attacker's certificate on a victim's account, where commits signed as the victim would show Verified (ADR 0042)."
+    statement: "adapter-github MUST add a certificate only to the pinned account of the person whose active binding holds that certificate."
+    rationale: "A wrong or tampered binding of one person must not put a certificate on another person's account, where commits signed as that person would show Verified (ADR 0042)."
     level: MUST
     source: security-review
     status: planned
@@ -1436,7 +1436,7 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a certificate whose user ID is another person's address, or an address the directory does not hold for this person, is not added to the person's account"}
+      - {kind: integration-test, ref: "a certificate held by another person's binding, or by no binding, is not added to the person's account"}
   - id: REQ-OPS-114
     area: OPS
     statement: "adapter-github MUST refuse a pass that exceeds the limits of the target for company keys per person, size of a certificate and changes to one account."
