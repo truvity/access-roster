@@ -95,6 +95,7 @@ func (i *idp) token(t *testing.T, kid string, over map[string]any) string {
 	m := map[string]any{
 		"iss": i.srv.URL, "sub": "repo:acme/app:ref:refs/tags/v1", "aud": "sluis-dev", "jti": "gh-job-1",
 		"iat": t0.Add(-time.Minute).Unix(), "exp": t0.Add(9 * time.Minute).Unix(), "repository": "acme/app",
+		"ref": "refs/tags/v1", "ref_type": "tag", "event_name": "push",
 	}
 	for k, v := range over {
 		if v == nil {
@@ -370,5 +371,51 @@ func TestAVerifiedProofOfATrustedIssuerIsNotATokenForAPerson(t *testing.T) {
 	}
 	if n := len(e.policy.requests()) + len(e.signer.requests()) + len(e.dir.seen); n != 0 {
 		t.Errorf("a workload proof reached policy, signer or the directory %d times", n)
+	}
+}
+
+// verifies: REQ-WORKLOAD-007
+func TestAGitHubProofCarriesTheClaimsPolicyDecidesOn(t *testing.T) {
+	i := newIDP(t)
+	e := newEnv(t, envOptions{trust: i.trust()})
+	v := e.verifier()
+	cases := []struct {
+		name  string
+		over  map[string]any
+		want  map[string]string
+		refus bool
+	}{
+		{"REQ-WORKLOAD-007/push_to_a_tag", map[string]any{"jti": "a"},
+			map[string]string{"repository": "acme/app", "ref": "refs/tags/v1", "ref_type": "tag", "event": "push"}, false},
+		{"REQ-WORKLOAD-007/push_to_a_branch_in_an_environment", map[string]any{
+			"jti": "b", "ref": "refs/heads/main", "ref_type": "branch", "environment": "release"},
+			map[string]string{"repository": "acme/app", "ref": "refs/heads/main", "ref_type": "branch", "event": "push", "environment": "release"}, false},
+		{"REQ-WORKLOAD-007/pull_request_is_verified_and_says_so", map[string]any{
+			"jti": "c", "ref": "refs/pull/7/merge", "ref_type": nil, "event_name": "pull_request"},
+			map[string]string{"repository": "acme/app", "ref": "refs/pull/7/merge", "event": "pull_request"}, false},
+		{"REQ-WORKLOAD-007/no_event_name_is_refused", map[string]any{"jti": "d", "event_name": nil}, nil, true},
+		{"REQ-WORKLOAD-007/empty_event_name_is_refused", map[string]any{"jti": "e", "event_name": ""}, nil, true},
+		{"REQ-WORKLOAD-007/event_name_that_is_not_text_is_refused", map[string]any{"jti": "f", "event_name": 7}, nil, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s, err := v.Verify(context.Background(), i.token(t, "k1", c.over), devBoundary())
+			if c.refus {
+				refusedReason(t, err, "claims")
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := s.Workload.Attributes()
+			if len(got) != len(c.want) {
+				t.Fatalf("attributes = %v, want %v", got, c.want)
+			}
+			for k, w := range c.want {
+				if got[k] != w {
+					t.Errorf("%s = %q, want %q (all: %v)", k, got[k], w, got)
+				}
+			}
+		})
 	}
 }

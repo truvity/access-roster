@@ -72,6 +72,8 @@ entity Workload = {
   ref?: String,
   workflow?: String,
   environment?: String,
+  event?: String,
+  ref_type?: String,
 };
 
 // A signing key of a boundary, named by its purpose, such as `release-signing`.
@@ -152,7 +154,8 @@ The types follow the [actor registry](/reference/actors/) and the [kinds](/refer
 - **`org` is the tenant the person belongs to,** the tenant of the client the person signs in to ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to), [0019](/decisions/0019-person-and-upstream-link/#the-records)). The broker's organisation id is not copied into `org`: the asker reads `org` from the person's item, and no policy document sets it. `Account.org` is, in the same way, the tenant of the sign-in that linked the account; a config `Upstream` names no tenant.
 - **`state` is `live` or `held` in the first version.** An operator's `PersonHold` is a tightening that takes effect at once; `session` computes the state and sends it, and the first `forbid` of the example refuses a person who is not live. Lifting a hold gives back only what the policy grants. The states `suspended` and `left` join with the directory at parity ([0019](/decisions/0019-person-and-upstream-link/#states)).
 - **A client's id carries its boundary.** Client ids are unique per issuer, not across issuers ([0017](/decisions/0017-identity-and-sign-in/#audiences)), and a Cedar entity id must be unique, so `dev/example-app` and `prod/example-app` are two entities. A `Client` is `in` its `Boundary`, so a policy can say "any client of `dev`". `Client.requires` is the client's declared `requires`, a set of `Grant`.
-- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref, the workflow and the environment ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)); a name the proof does not carry is absent, and a policy tests `has` before it reads.
+- **`Workload` attributes are the verified claims of the proof.** For a GitHub Actions job they are the repository, the ref (`ref`), the kind of ref (`ref_type`, `branch` or `tag`), the workflow, the environment and the event that started the job (`event`, GitHub's `event_name`), such as `push`, `pull_request` or `pull_request_target` ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)); a name the proof does not carry is absent, never an empty string, and a policy tests `has` before it reads. GitHub puts `event_name` in every token, so `exchange` refuses a `github-oidc` proof without one.
+- **A pull request cannot sign, whatever the policy says.** The built-in layer has a `forbid` of `artifact.sign` (`builtin-workload-pull-request-no-sign`) that no operator policy can lift. It refuses a workload whose `ref` begins `refs/pull/`, whose `event` begins `pull_request` (`pull_request`, `pull_request_review`, `pull_request_review_comment` and `pull_request_target`), or that comes from the `github-oidc` verifier with no `event`. A pull request runs the files it proposes, so a rule that names only the repository would let its author sign (REQ-WORKLOAD-007). `pull_request_target` runs in the base repository with its secrets and its ref is the base branch, but it checks out and runs what the author controls, so it is refused too. A workload that another verifier proves, with neither a `ref` nor an `event`, is not caught: its permit is the operator's.
 
 ### What comes with parity
 

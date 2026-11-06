@@ -94,3 +94,22 @@ requirements:
     issues: [1222]
     verification:
       - {kind: integration-test, ref: "exchange holds no enrolment private key; an enrolment request opens through key@"}
+
+  # ---- pull requests (decision 0024)
+  - id: REQ-WORKLOAD-007
+    area: WORKLOAD
+    statement: "A workload identity from a pull request MUST NOT be able to sign, whatever the operator's policy permits."
+    rationale: "A pull request runs the files it proposes, so its author controls the workflow, and a rule that names only the repository would let that author sign (the guard is a built-in forbid that no operator policy can lift)."
+    level: MUST
+    source: security-review
+    status: partial
+    milestone: first-version
+    gap: partly-built
+    runtimes: all
+    standards: []
+    issues: [890]
+    verification:
+      - {kind: test-vectors, ref: "a workload of event pull_request or pull_request_target, or of a ref under refs/pull/, is refused artifact.sign although the policy permits its repository; a push is decided by the policy"}
+    tests:
+      - actors/policy/tests/workload_guard.rs
+      - actors/exchange/internal/exchanged/trusted_test.go

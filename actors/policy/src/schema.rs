@@ -63,6 +63,26 @@ permit (principal == Actor::"indexer", action == Action::"audit.index", resource
 @id("builtin-person-not-live")
 forbid (principal is Person, action, resource)
 when { principal.state != "live" };
+
+// A pull request runs the files it proposes, so its author controls the workflow that asks for a
+// signature, and a rule that names only the repository would let that author sign (REQ-WORKLOAD-007).
+// No operator policy can undo this forbid. It refuses `artifact.sign` for a workload that:
+//  - has a ref under `refs/pull/` (the merge ref of a pull request, whatever the event),
+//  - has an event that begins `pull_request`: `pull_request`, `pull_request_review`,
+//    `pull_request_review_comment` and `pull_request_target`. The last runs in the context of the
+//    base repository, with its secrets, but it checks out and runs what the author influences and
+//    its ref is the base branch, so the ref test alone would pass it; it is refused too, because
+//    refusing is the safe default and a release signature has no use for it,
+//  - or comes from the `github-oidc` verifier with no event at all: GitHub sends `event_name` in
+//    every token, so a token without it is not one to take for a push. A workload of another
+//    verifier that carries neither a ref nor an event is not a pull request and is not caught.
+@id("builtin-workload-pull-request-no-sign")
+forbid (principal is Workload, action == Action::"artifact.sign", resource)
+when {
+  (principal has ref && principal.ref like "refs/pull/*") ||
+  (principal has event && principal.event like "pull_request*") ||
+  (principal.verifier == "github-oidc" && !(principal has event))
+};
 "#;
 
 /// The text of the schema that is embedded, for the digest.
