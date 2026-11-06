@@ -828,7 +828,7 @@ requirements:
     issues: [885]
     verification:
       - {kind: integration-test, ref: "step-up round trip with fakes: a stale authentication is challenged with insufficient_user_authentication; after a retry with max_age the token carries the new acr and auth_time"}
-  - id: REQ-AUTHN-091
+  - id: REQ-AUTHN-101
     area: AUTHN
     split_from: REQ-AUTHN-021
     statement: "When an authorization request carries acr_values, session MUST either authenticate the person to one of them or refuse with unmet_authentication_requirements."
