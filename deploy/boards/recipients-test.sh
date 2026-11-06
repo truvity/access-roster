@@ -14,6 +14,26 @@ cp -r "$root/deploy/boards" "$work/repo/deploy/boards"
 git -C "$work/repo" init -q
 cd "$work/repo"
 
+# The fake of `timeout 15 bash -s -- IP PORT PATH`, the board side of rqlite_get: it keeps the path as the shell of the board gave it
+# and answers like the node of that board. KEYSFAIL_<board> makes the answer a 503.
+cat >"$work/bin/timeout" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = 15 ] && [ "$2" = bash ] && [ "$3" = -s ] && [ "$4" = -- ] && [ "$#" = 7 ] || { echo "timeout: unexpected arguments: $*" >&2; exit 2; }
+board=$5
+key=${board//./_}
+mkdir -p "$STUB_LOG"
+printf '%s\n' "$7" >"$STUB_LOG/query.path"
+n_var="KEYS_$key"
+fail_var="KEYSFAIL_$key"
+status="200 OK"
+[ -z "${!fail_var:-}" ] || status="503 Service Unavailable"
+body="{\"results\":[{\"columns\":[\"count(*)\"],\"types\":[\"integer\"],\"values\":[[${!n_var:-0}]]}]}"
+[ "${KEYS_NOTABLE:-}" != "$board" ] || body='{"results":[{"error":"no such table: durable_items"}]}'
+[ "${KEYS_GARBAGE:-}" != "$board" ] || body='{"results":[{}]}'
+printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "$status" "$body"
+STUB
+chmod +x "$work/bin/timeout"
+
 # The stand-in ssh. The last argument is the command (or "sudo -n bash -s" with the script on standard input). It answers like a
 # board with systemd 249 (Ubuntu 22.04): in particular `systemctl is-enabled A B` stops at the first unit that does not exist
 # and prints nothing for the rest, which is why boards.sh asks for each unit on its own.
@@ -61,6 +81,9 @@ systemctl() {
 	esac
 }
 
+# What ssh does: the shell of the board parses the command. A command that does not parse is status 2 there, as here.
+bash -n -c "$cmd" 2>/dev/null || { echo "bash: syntax error in the command: $cmd" >&2; exit 2; }
+
 ssh_var="SSHFAIL_$key"
 [ -z "${!ssh_var:-}" ] || exit 255
 
@@ -81,15 +104,9 @@ case "$cmd" in
 	;;
 *systemctl*) eval "$cmd" ;;
 *db/query*)
-	# The count is read by rqlite_get (bash and /dev/tcp on the board): the answer is an HTTP response. KEYSFAIL_<board> makes it a 503.
-	n_var="KEYS_$key"
-	fail_var="KEYSFAIL_$key"
-	status="200 OK"
-	[ -z "${!fail_var:-}" ] || status="503 Service Unavailable"
-	body="{\"results\":[{\"columns\":[\"count(*)\"],\"types\":[\"integer\"],\"values\":[[${!n_var:-0}]]}]}"
-	[ "${KEYS_NOTABLE:-}" != "$board" ] || body='{"results":[{"error":"no such table: durable_items"}]}'
-	[ "${KEYS_GARBAGE:-}" != "$board" ] || body='{"results":[{}]}'
-	printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "$status" "$body"
+	# The count is read by rqlite_get (bash and /dev/tcp on the board): the shell of the board runs the joined command, and the
+	# fake timeout (above) answers with an HTTP response.
+	bash -c "$cmd" </dev/null
 	;;
 tar\ -xf*) mkdir -p "$STUB_LOG"; tar -tf - >>"$STUB_LOG/$board.files" ;;
 *) exit 0 ;;
@@ -180,6 +197,8 @@ check "the first-deploy override passes when no store holds a data key" env SLUI
 : >"$work/trace"
 STUB_TRACE="$work/trace" SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_b_test=3 refuses "the count is read" ./deploy/boards/boards.sh deploy
 check "the count is read by the /dev/tcp reader, never by curl" bash -c 'grep -q "/db/query?q=SELECT%20count" "$1" && ! grep -q curl "$1"' _ "$work/trace"
+# The path has count(*) and % in it: it reaches the shell of the board in one piece (the stand-in ssh parses the command like a shell).
+check "the query path with count(*) and % arrives on the board as it is" test "$(cat "$STUB_LOG/query.path")" = '/db/query?q=SELECT%20count(*)%20FROM%20durable_items%20WHERE%20key%20LIKE%20%27%25/data-key-wrap/%25%27'
 SLUIS_BOARDS_NO_DATA_KEYS=1 KEYSFAIL_b_test=1 refuses "an answer that is not a 200 refuses the override" ./deploy/boards/boards.sh deploy
 grep -q "cannot read the data keys of the board 'b.test'" "$work/out" || { echo "FAIL the refusal for an unreadable count does not say so: $(cat "$work/out")"; fail=1; }
 SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_GARBAGE=b.test refuses "an answer without a count refuses the override" ./deploy/boards/boards.sh deploy

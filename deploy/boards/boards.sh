@@ -533,7 +533,9 @@ unlock)
 	# Tracing is turned off before anything touches the PIN: `bash -x`, or SHELLOPTS=xtrace in the environment, would print the
 	# command that carries it (set +x also drops xtrace from SHELLOPTS, which is read-only and cannot be unset). The trace itself
 	# is not shown (the redirection of the braces), and the file descriptor a trace may go to is dropped.
+	# set +a: SHELLOPTS=allexport would otherwise export the variable the PIN is read into.
 	{ set +x; } 2>/dev/null
+	set +a
 	unset BASH_XTRACEFD
 	if [ "${#boards[@]}" -ne 1 ]; then
 		echo "unlock: SLUIS_BOARDS must name exactly one board" >&2

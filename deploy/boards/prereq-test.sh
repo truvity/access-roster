@@ -329,6 +329,8 @@ FAKE_AUSEARCH_OUT='ausearch: cannot open /var/log/audit/audit.log' FAKE_AUSEARCH
 FAKE_AUDITD=inactive refuse "avc: auditd not running is refused, with the reason" 'denials before auditd started are not visible' run avc_check
 FAKE_AUDITD=inactive FAKE_AUSEARCH_OUT="$other" FAKE_AUSEARCH_RC=0 refuse "avc: and not even a record makes it pass" 'auditd is not recording' run avc_check
 FAKE_AUDIT_ENABLED=0 refuse "avc: auditd running with the kernel's audit disabled (auditctl -s: enabled 0) is refused" 'denials before auditd started are not visible' run avc_check
+FAKE_AUDIT_ENABLED=2 accept "avc: an immutable audit configuration (auditctl -s: enabled 2) records, and passes" run avc_check
+FAKE_AUDIT_ENABLED=3 refuse "avc: and enabled 3 is not a value that auditctl prints: refused" 'denials before auditd started are not visible' run avc_check
 mv "$work/bin/auditctl" "$work/auditctl.off"
 refuse "avc: no auditctl is refused too: the state of audit is unknown" 'audit enabled=.unknown' run avc_check
 mv "$work/auditctl.off" "$work/bin/auditctl"
@@ -459,6 +461,20 @@ rqx rqlite-undeploy SLUIS_PURGE_STATE=1 >"$work/out" 2>&1
 if ! grep -q 'disable\|apt-get\|userdel' "$RQ_LOG" && [ -d "$rq/root/var/lib/rqlite/data" ] && [ -e "$RQ_BIN" ]; then echo "ok   rqlite-undeploy: and not purged either: no package removal, the data and the binary stay"; else echo "FAIL foreign rqlited purged: $(cat "$RQ_LOG")"; fail=1; fi
 rqx rqlite-undeploy RQ_UNIT=no >"$work/out" 2>&1
 grep -q 'not installed' "$work/out" && echo "ok   rqlite-undeploy: no unit at all is 'not installed'" || { echo "FAIL: $(cat "$work/out")"; fail=1; }
+# a purge that stopped half way: the package is gone, so is the unit file, the drop-in and the data are left. The drop-in decides, not
+# the unit: the next run finishes the purge instead of calling the board "not installed".
+mkdir -p "$(dirname "$RQ_DROPIN")" "$rq/root/var/lib/rqlite/data"
+printf '[Service]\n' >"$RQ_DROPIN"
+: >"$RQ_LOG"
+rqx rqlite-undeploy RQ_UNIT=no SLUIS_PURGE_STATE=1 >"$work/out" 2>&1 || { echo "FAIL half purge, finished: $(cat "$work/out")"; fail=1; }
+if ! grep -q 'not installed' "$work/out" && grep -q '^apt-get remove -y rqlite' "$RQ_LOG" && [ ! -e "$RQ_DROPIN" ] && [ ! -d "$rq/root/var/lib/rqlite" ] && grep -q '^userdel rqlite' "$RQ_LOG" && grep -q '^groupdel rqlite' "$RQ_LOG" && grep -q 'rqlite: removed' "$work/out"; then echo "ok   rqlite-undeploy: a half-finished purge (drop-in and data left, no unit file) is finished by the next run, not called 'not installed'"; else echo "FAIL half purge: $(cat "$RQ_LOG") $(cat "$work/out")"; fail=1; fi
+mkdir -p "$rq/root/var/lib/rqlite/data"
+mkdir -p "$(dirname "$RQ_DROPIN")"
+printf '[Service]\n' >"$RQ_DROPIN"
+: >"$RQ_LOG"
+rqx rqlite-undeploy RQ_UNIT=no >"$work/out" 2>&1 || true
+if ! grep -q 'not installed' "$work/out" && [ -e "$RQ_DROPIN" ] && [ -d "$rq/root/var/lib/rqlite/data" ] && ! grep -q 'apt-get' "$RQ_LOG"; then echo "ok   rqlite-undeploy: and without the purge a drop-in with no unit is not called 'not installed' either; nothing is removed"; else echo "FAIL drop-in without unit: $(cat "$RQ_LOG") $(cat "$work/out")"; fail=1; fi
+rm -rf "$(dirname "$RQ_DROPIN")"
 # with the drop-in, without the purge
 mkdir -p "$(dirname "$RQ_DROPIN")"
 printf '[Service]\n' >"$RQ_DROPIN"
