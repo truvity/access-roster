@@ -1,9 +1,9 @@
 # 0042 — sluis syncs company-issued OpenPGP keys to staff GitHub accounts
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-11-06
 
-Proposal: [issue #874](https://github.com/truvity/sluis/issues/874). The sync has no issue of its own yet; this link is the OpenPGP foundation it grows from.
+Proposal: [issue #1488](https://github.com/truvity/sluis/issues/1488).
 
 ## Context
 
@@ -106,7 +106,7 @@ Vigilant mode is a per-user setting that marks unsigned commits Unverified. Only
 - A person who revokes the authorisation, or whose account sluis cannot reach, is not managed. The cost is an alert and a manual step, not a hidden gap.
 - The sync depends on ritueel's staff keyring and on its format. That contract is ritueel's to write, and the sluis side passes its test vectors when they exist.
 - Requirements: [REQ-OPS-099](/requirements/ops/#REQ-OPS-099) to [REQ-OPS-107](/requirements/ops/#REQ-OPS-107) for the sync, [REQ-SUPPLY-043](/requirements/supply/#REQ-SUPPLY-043) for the two-part verification of a release (G8 A) and [REQ-SUPPLY-044](/requirements/supply/#REQ-SUPPLY-044) for the workflow lint (C3 A). Pages: [GitHub](/integrations/github/) and [Release signing](/distribution/release-signing/), changed with this record.
-- Not decided here and tracked as follow-ups: the form of the staff keyring document, the CI check, the measurements below, and an App for Enterprise Managed Users.
+- Later work, tracked under Follow-ups: the form of the staff keyring document, the CI check of G3 C, the measurements before the build, and an App for Enterprise Managed Users.
 
 ## Roads not taken
 
@@ -124,6 +124,6 @@ Vigilant mode is a per-user setting that marks unsigned commits Unverified. Only
 
 - Build the key App, the kind `GitHubKeyAuthorization`, the sync and the audit records: [REQ-OPS-099](/requirements/ops/#REQ-OPS-099) to [REQ-OPS-107](/requirements/ops/#REQ-OPS-107) ([#874](https://github.com/truvity/sluis/issues/874)).
 - Measure against GitHub before the build, dated: whether a second upload of a held primary is accepted; what a key with an address the account has not verified shows; the answer of a revoked token, of a refresh with a revoked grant, and of the refresh token on its sixth month; the name of the permission in the manifest; rate limits for a full pass of the staff ([#874](https://github.com/truvity/sluis/issues/874)).
-- Write the format of the signed staff keyring and its list of withdrawn keys as an addition to ritueel's hand-off contract, with test vectors. This is a ritueel issue to be opened by the maintainer.
-- The CI check of G3 C: a required status check of commit signers against the staff keyring. Its home and its design are a record of their own when it is built; this one only names it.
-- Enterprise Managed Users as a later step of GH2 A: a record of its own when the company moves its accounts.
+- Write the format of the signed staff keyring and its list of withdrawn keys as an addition to ritueel's hand-off contract, with test vectors. Tracked in [#1488](https://github.com/truvity/sluis/issues/1488) until ritueel has an issue of its own.
+- The CI check of G3 C: a required status check of commit signers against the staff keyring. It is built later and is designed in its own record then; this one only names it ([#1488](https://github.com/truvity/sluis/issues/1488)).
+- Enterprise Managed Users as a later step of GH2 A: designed in its own record when the company moves its accounts ([#1488](https://github.com/truvity/sluis/issues/1488)).
