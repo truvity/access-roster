@@ -114,6 +114,7 @@ A host enrols with the same mechanism and receives a host X.509-SVID from `ca` u
 - **Web PKI as the trust at enrolment.** Any public CA that issues for the sluis host name could stand in for sluis.
 - **The trust bundle signed by a root.** A root would have to be online for every bundle change.
 - **The trust bundle signed by an online bundle-signing key.** A bundle of certificates already verifies itself against the root-signed root list, so the signature adds no trust, and the key would be one more purpose, slot and policy.
+- **A company binds its own CI workloads to grants through a delegated template.** A company could then state its CI bindings without a platform review, but the binding would have to prove that the repository belongs to the company, and a host belongs to a boundary and to no tenant. Workload bindings stay reviewed boundary config; the choice is revisited at the parity milestone (decided 2026-11-06).
 - **`sluis-node` signing with a card key of its own.** `key@` has exclusive access to the card, and a second holder of the card would undo that.
 
 ## Follow-ups

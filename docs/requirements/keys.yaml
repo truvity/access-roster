@@ -3090,3 +3090,17 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "`sluis config check` refuses a lead time below the sum of max-age, edge time to live, refetch allowance and skew; the signer honours a larger value"}
+  - id: REQ-KEYS-121
+    area: KEYS
+    statement: "key@ MUST refuse to start when the ARN that DescribeKey returns for a KMS key differs from the ARN that the signed KeyPlan names for it."
+    rationale: "A retargeted alias would otherwise send new writes to a key of an attacker's choice, and the check does not depend on the key policy being right (principle 4, ADR 0006)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: ["serverless", "kubernetes"]
+    actors: [key]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake KMS whose DescribeKey returns another ARN for the alias makes key@ refuse to start and name the key; the matching ARN starts"}
