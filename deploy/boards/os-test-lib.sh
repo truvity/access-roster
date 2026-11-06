@@ -49,6 +49,12 @@ os_prepare_repo() {
 		} >"$work/repo/dist/arm64/$b"
 		chmod 0755 "$work/repo/dist/arm64/$b"
 	done
+	# The CLI of the board, which the deploy asks for the lock of the card (sluis node status). The stand-in of the card driver holds
+	# no PIN and has no admin socket, so this one says what a board with a card that is unlocked says: no card is read here, and what
+	# the real CLI makes of the real driver is the Go test of cli/sluis. Without it the deploy cannot say "ok" and ends "failed".
+	mkdir -p "$work/repo/dist/arm64/cli"
+	printf '#!/bin/sh\n[ "$1 $2" = "node status" ] && echo "node $3 is unlocked"\n' >"$work/repo/dist/arm64/cli/sluis"
+	chmod 0755 "$work/repo/dist/arm64/cli/sluis"
 	# The real credential driver, where the system sets up credentials for a unit at all: the stand-in only cats the files, which any
 	# directory lets through, so it cannot see how systemd hands the directory over (root:root with a POSIX ACL where the filesystem
 	# has ACLs, the service user's own where it has not). OS_CREDENTIAL_DRIVER is a static build for this machine's architecture.

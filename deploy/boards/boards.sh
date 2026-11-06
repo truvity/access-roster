@@ -249,7 +249,7 @@ stage() { # dir
 		mkdir -p "$s/files/bin/cli"
 		install -m 0755 "$dist/cli/sluis" "$s/files/bin/cli/sluis"
 	else
-		echo "boards: warning: no $dist/cli/sluis, so boards-unlock has nothing to run on the boards: run 'just build-arm64'" >&2
+		echo "boards: warning: no $dist/cli/sluis, so boards-unlock has nothing to run on the boards, and the lock of a card board cannot be read, so its deploy ends failed: run 'just build-arm64'" >&2
 	fi
 	if [ "$keydrv" = yubikey-piv ]; then
 		[ -f "$s/files/systemd/sluis-key@.service" ] || { echo "boards: the card driver needs key@ in the plan (SLUIS_BOARDS_ONLY leaves out actors/key)" >&2; return 1; }
