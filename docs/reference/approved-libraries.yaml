@@ -33,6 +33,7 @@ go:
   - { name: "filippo.io/torchwood", for: "C2SP checkpoints, cosignatures and tiles, and the tile client, in writer and witness, and the checkpoint and tile code of the CLI that verifies a log", needed_by: "ADR 0029", evaluated: "v0.10.0, 2026-09-24 (before 1.0)" }
   - { name: "github.com/transparency-dev/formats", for: "The reference verifier of C2SP signed-note type 0x02 and the reference checkpoint parser, as the independent oracle of the checkpoint tests of writer and the CLI", scope: "tests only; linked into no executable", needed_by: "ADR 0029", evaluated: "v0.1.1, 2026-06-02 (before 1.0); Apache-2.0" }
   - { name: "filippo.io/sunlight", for: "C2SP static-ct-api entries and checkpoints, in the issuance log of ca", needed_by: "ADR 0023", evaluated: "v0.10.2, 2026-10-26" }
+  - { name: "github.com/gowebpki/jcs", for: "RFC 8785 canonical JSON of the audit records: the order of members, the escapes and the text of numbers; the sluis profile (integers within +-(2^53-1), no floats, nesting depth, valid UTF-8) is checked before it, in kits/go/audit", needed_by: "ADR 0030", evaluated: "v1.0.2, 2026-09-21; floor v1.0.2 (a conformance fix for surrogate pairs and invalid UTF-8 of 2026-09-20 is in it)" }
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
 rust:
@@ -52,6 +53,7 @@ rust:
   - { name: "hyper", for: "The HTTP/1.1 and HTTP/2 server of entry and of the Rust kit: it parses the request head and frames the body", needed_by: "ADR 0012", evaluated: "1.9.0, locked 2026-11-04" }
   - { name: "hyper-util", for: "The connection builder, the graceful shutdown and the Tokio glue of hyper's server", needed_by: "ADR 0012", evaluated: "0.1.20, locked 2026-11-04" }
   - { name: "serde_json", for: "Reading and writing JSON: the audit records of the emitter and the indexer, and the error bodies of entry", needed_by: "ADR 0030", evaluated: "1.0.154, locked 2026-11-04" }
+  - { name: "serde_json_canonicalizer", for: "RFC 8785 canonical JSON of the audit records in kits/rust/sluis-audit: the order of members, the escapes and the text of numbers; the sluis profile is checked before it", needed_by: "ADR 0030", evaluated: "0.4.1, 2026-10-13" }
   - { name: "ssh-key", for: "OpenSSH keys and certificates in ssh-ca, with a signing key that signs through the keys port", needed_by: "ADR 0023", evaluated: "0.6.7, 2024-10-15 (last stable); 0.7.0-rc.11, 2026-06-29. Condition: a stable 0.7, or 0.6.7 with the certificate interop tests, or ssh-ca in Go (rule R11)" }
   - { name: "aws-sdk-* (the AWS SDK for Rust)", for: "Calls to AWS services from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module", needed_by: "ADR 0012" }
 

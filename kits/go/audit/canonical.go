@@ -2,12 +2,14 @@ package audit
 
 import (
 	"bytes"
-	"sort"
+	"encoding/json"
+	"maps"
+	"slices"
 	"strconv"
-	"unicode/utf16"
 	"unicode/utf8"
 
 	"connectrpc.com/connect"
+	"github.com/gowebpki/jcs"
 
 	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
@@ -21,19 +23,32 @@ const maxDepth = 16
 
 // Canonical returns v as RFC 8785 (JCS) canonical JSON.
 //
+// The canonical form itself (member order by UTF-16 code units, string escapes, number text, no insignificant
+// whitespace, and the refusal of a duplicate member name) comes from github.com/gowebpki/jcs, which takes JSON
+// text. What this function adds is the sluis profile, checked while the value is written as plain JSON text for
+// the library (REQ-SEC-018: no home-made code for an external standard).
+//
 // The allowed types are nil, bool, string, int, int64, []string, []any and map[string]any. A float or any other
-// type is refused, and so is an integer outside +-(2^53-1) and a string that is not valid UTF-8: sluis records
-// carry no floating point (0030 "Canonical rules"), so the number formatting of RFC 8785 section 3.2.2.3 reduces
-// to the decimal digits of an integer.
+// type is refused, and so is an integer outside +-(2^53-1), a string or member name that is not valid UTF-8, and
+// a value nested deeper than maxDepth: sluis records carry no floating point (0030 "Canonical rules"), so the
+// library never sees a number other than an integer. A nil slice or map is the empty array or object.
 func Canonical(v any) ([]byte, error) {
 	var b bytes.Buffer
-	if err := canon(&b, v, "", 0); err != nil {
+	if err := profileJSON(&b, v, "", 0); err != nil {
 		return nil, err
 	}
-	return b.Bytes(), nil
+	out, err := jcs.Transform(b.Bytes())
+	if err != nil {
+		// The profile check leaves the library nothing it can refuse; if it does, the value has no canonical form.
+		return nil, refusal.New(connect.CodeInvalidArgument, "schema", "")
+	}
+	return out, nil
 }
 
-func canon(b *bytes.Buffer, v any, path string, depth int) error {
+// profileJSON checks v against the sluis profile and writes it as JSON text, in no particular member order and
+// with no particular escapes: the library canonicalises both. Members are visited in byte order of their names so
+// that the first refusal does not depend on the map's iteration order.
+func profileJSON(b *bytes.Buffer, v any, path string, depth int) error {
 	if depth > maxDepth {
 		return refusal.New(connect.CodeInvalidArgument, "bound", path)
 	}
@@ -43,7 +58,7 @@ func canon(b *bytes.Buffer, v any, path string, depth int) error {
 	case bool:
 		b.WriteString(strconv.FormatBool(x))
 	case string:
-		return writeString(b, x, path)
+		return writeText(b, x, path)
 	case int:
 		return writeInt(b, int64(x), path)
 	case int64:
@@ -54,7 +69,7 @@ func canon(b *bytes.Buffer, v any, path string, depth int) error {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			if err := writeString(b, s, path+"["+strconv.Itoa(i)+"]"); err != nil {
+			if err := writeText(b, s, path+"["+strconv.Itoa(i)+"]"); err != nil {
 				return err
 			}
 		}
@@ -65,13 +80,33 @@ func canon(b *bytes.Buffer, v any, path string, depth int) error {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			if err := canon(b, e, path+"["+strconv.Itoa(i)+"]", depth+1); err != nil {
+			if err := profileJSON(b, e, path+"["+strconv.Itoa(i)+"]", depth+1); err != nil {
 				return err
 			}
 		}
 		b.WriteByte(']')
 	case map[string]any:
-		return writeObject(b, x, path, depth)
+		b.WriteByte('{')
+		for i, k := range slices.Sorted(maps.Keys(x)) {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			p := path + "." + k
+			if path == "" {
+				p = k
+			}
+			if !utf8.ValidString(k) {
+				return refusal.New(connect.CodeInvalidArgument, "schema", path)
+			}
+			if err := writeText(b, k, p); err != nil {
+				return err
+			}
+			b.WriteByte(':')
+			if err := profileJSON(b, x[k], p, depth+1); err != nil {
+				return err
+			}
+		}
+		b.WriteByte('}')
 	default:
 		// A float, a map of another type, a struct: none has a canonical form in a sluis record.
 		return refusal.New(connect.CodeInvalidArgument, "schema", path)
@@ -87,87 +122,16 @@ func writeInt(b *bytes.Buffer, n int64, path string) error {
 	return nil
 }
 
-// writeObject writes the members sorted by the UTF-16 code units of their names (RFC 8785 section 3.2.3).
-func writeObject(b *bytes.Buffer, m map[string]any, path string, depth int) error {
-	type member struct {
-		name string
-		u16  []uint16
-	}
-	ms := make([]member, 0, len(m))
-	for k := range m {
-		if !utf8.ValidString(k) {
-			return refusal.New(connect.CodeInvalidArgument, "schema", path)
-		}
-		ms = append(ms, member{k, utf16.Encode([]rune(k))})
-	}
-	sort.Slice(ms, func(i, j int) bool { return lessUTF16(ms[i].u16, ms[j].u16) })
-	b.WriteByte('{')
-	for i, mb := range ms {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		p := path + "." + mb.name
-		if path == "" {
-			p = mb.name
-		}
-		if err := writeString(b, mb.name, p); err != nil {
-			return err
-		}
-		b.WriteByte(':')
-		if err := canon(b, m[mb.name], p, depth+1); err != nil {
-			return err
-		}
-	}
-	b.WriteByte('}')
-	return nil
-}
-
-func lessUTF16(a, b []uint16) bool {
-	for i := 0; i < len(a) && i < len(b); i++ {
-		if a[i] != b[i] {
-			return a[i] < b[i]
-		}
-	}
-	return len(a) < len(b)
-}
-
-const hexDigits = "0123456789abcdef"
-
-// writeString writes s as a JSON string by RFC 8785 section 3.2.2.2 (which is ECMAScript JSON.stringify): the
-// short escapes for backspace, tab, line feed, form feed and carriage return, \" and \\, \u00xx in lower case for
-// the other control characters, and every other character as itself in UTF-8.
-func writeString(b *bytes.Buffer, s, path string) error {
+// writeText writes s as a JSON string. A string that is not valid UTF-8 is refused: encoding/json would replace
+// the bad bytes with U+FFFD, and two different records would then share one canonical form.
+func writeText(b *bytes.Buffer, s, path string) error {
 	if !utf8.ValidString(s) {
 		return refusal.New(connect.CodeInvalidArgument, "schema", path)
 	}
-	b.WriteByte('"')
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch c {
-		case '"':
-			b.WriteString(`\"`)
-		case '\\':
-			b.WriteString(`\\`)
-		case '\b':
-			b.WriteString(`\b`)
-		case '\t':
-			b.WriteString(`\t`)
-		case '\n':
-			b.WriteString(`\n`)
-		case '\f':
-			b.WriteString(`\f`)
-		case '\r':
-			b.WriteString(`\r`)
-		default:
-			if c < 0x20 {
-				b.WriteString(`\u00`)
-				b.WriteByte(hexDigits[c>>4])
-				b.WriteByte(hexDigits[c&0xf])
-			} else {
-				b.WriteByte(c)
-			}
-		}
+	raw, err := json.Marshal(s)
+	if err != nil {
+		return refusal.New(connect.CodeInvalidArgument, "schema", path)
 	}
-	b.WriteByte('"')
+	b.Write(raw)
 	return nil
 }
