@@ -16,9 +16,11 @@ Releases before the roots exist carry checksums, SBOMs, GitHub build-provenance 
 | The first release | GitHub build provenance attestations for every artifact and image digest, and SBOM attestations bound to them | `gh attestation verify` |
 | The first release | An SPDX JSON SBOM per archive and per image, made by syft | Any SPDX reader |
 | The first release | A keyless cosign signature on each image digest | `cosign verify` |
+| The first release | A git tag for the release, signed with the maintainer's own OpenPGP key until the signing API signs tags | `git verify-tag` |
 | The roots exist | `SHA256SUMS.asc`, a detached ASCII-armoured OpenPGP signature over `SHA256SUMS` | `gpgv` or `sqv` with the release keyring |
 | The parity milestone | Signed apt metadata (`InRelease`, `Release.gpg`) and dnf metadata (`repomd.xml.asc`) ([#1074](https://github.com/truvity/sluis/issues/1074)) | apt with `signed-by`, dnf with `repo_gpgcheck=1` |
 | Later | A header signature on each rpm package | dnf with `gpgcheck=1` |
+| Later | The release tag signed by the release subkey, through a stand-in for `gpg` that git calls ([#1075](https://github.com/truvity/sluis/issues/1075)) | `git verify-tag` with the release keyring |
 
 R2 serves the files and GitHub Releases is the immutable record; when they differ, the release is right. A provenance attestation says which workflow built a file. It is GitHub's statement, not a signature by a sluis key.
 
@@ -78,6 +80,26 @@ gh attestation verify oci://ghcr.io/truvity/sluis/actor-entry@sha256:<digest> --
 
 A Helm chart pins its images by digest, so verifying the chart and installing it gives the images released with it.
 
+## How a release is verified
+
+A verifier that accepts a sluis release requires both of these, and either one alone is not enough ([0042](/decisions/0042-sluis-syncs-company-issued-openpgp-keys-to-staff-github-accounts/)):
+
+1. **The signed release tag.** `git verify-tag` passes against the signer's key. A tag says who vouches for the release.
+2. **The build provenance that names the tag's commit.** `gh attestation verify` passes for the artifact, and the commit it names is the commit the tag points to (`git rev-parse <tag>^{commit}`). The provenance says which workflow built the file from that commit.
+
+| What is checked | What it closes | What it leaves open on its own |
+|---|---|---|
+| The signed tag | A tag made by someone who is not the signer | A build of a different commit under the tag's name |
+| The provenance that names the tag's commit | A file built by another workflow or from another commit | Who vouches for the commit: a build of an unsigned commit has valid provenance |
+
+- **Tags are signed by the release subkey once the signing API signs them.** That is the stand-in for `gpg` that git calls, the later stage of [0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api) ([#1075](https://github.com/truvity/sluis/issues/1075)). Until it exists, the maintainer signs the tag with their own key, so the tag does not yet carry the trust of the release subkey. That is why the provenance is required beside it, and why a tag signed with the maintainer's key is replaced by one signed by the subkey when the gate exists.
+- **The signature of the tag and the signature of the files are different.** The tag covers the commit. The files are covered by `SHA256SUMS` and its signature once the roots exist ([A release, once it is signed](#a-release-once-it-is-signed)).
+- **A pull request cannot make either.** The signing API refuses to sign for a workload that comes from a pull request, and a workflow lint refuses `id-token: write` in a signing job that a pull request can run ([REQ-SUPPLY-041](/requirements/supply/#REQ-SUPPLY-041)).
+
+:::note[Proposed]
+The exact command that compares the commit in the attestation with the tag's commit is written with the verification script ([#874](https://github.com/truvity/sluis/issues/874)); the rule above holds without it.
+:::
+
 ## The OpenPGP release key
 
 The OpenPGP key is a dedicated sluis release identity, not anyone's personal key.
@@ -114,6 +136,7 @@ Only the workflow identity that the policy names can obtain the token, so a fork
 ## What a check does not prove
 
 - A checksum taken from the same place as the file proves only that the download is whole. Take `SHA256SUMS` from the GitHub release, a second place.
+- A signed tag alone does not show that the files come from its commit, and provenance alone does not show who vouches for that commit. Check both ([How a release is verified](#how-a-release-is-verified)).
 - A signature shows who published the file and that it wasn't changed. It doesn't show that the code is free of bugs.
 - The release subkey signs without a person present. If the signing API is compromised during the subkey's validity, a bad file can be signed. The primaries limit that to the subkey's life, and revoking the subkey ends it. The provenance attestation and the immutable release are independent checks that don't depend on the subkey.
 - A new install trusts the keyring it first sees. Compare the fingerprints on a second channel.
