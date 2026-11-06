@@ -3104,7 +3104,7 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "a fake KMS whose DescribeKey returns another ARN for the alias makes key@ refuse to start and name the key; the matching ARN starts"}
-  - id: REQ-KEYS-146
+  - id: REQ-KEYS-169
     area: KEYS
     statement: "`sluis config check` MUST refuse a pre-publication lead time below the sum of the key set's max-age, the edge cache time to live, the refetch allowance and the clock skew."
     rationale: "A lead time under the cache budget lets a token carry a key that a cache does not hold yet (ADR 0006)."
@@ -3118,7 +3118,7 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "config check refuses a lead time of 24 minutes for the default budget and accepts 25 and 30"}
-  - id: REQ-KEYS-147
+  - id: REQ-KEYS-170
     area: KEYS
     statement: "key@ MUST call KMS by the key ARN that the signed KeyPlan names and never by the alias."
     rationale: "An alias can be retargeted, and a call by ARN reaches only the key that the reviewed plan named (ADR 0006)."
