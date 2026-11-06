@@ -31,9 +31,13 @@ jobs:
       # PUBLIC_CONTENT_DENYLIST is a repository secret: the private names that must never appear
       # here. The requirements lint checks the catalogue against it; a pull request from a fork
       # gets no secrets, and the lint then skips that part and says so.
+      # SLUIS_LINKS_MODE: a pull request and the merge queue warn on an external host that stays
+      # down (a 5xx, a network error, a timeout) and fail on a 404, a 410 and any internal link;
+      # the run on main fails on those hosts too, so that a link that rots is noticed.
       - run: devbox run -- just site-check
         env:
           PUBLIC_CONTENT_DENYLIST: ${{ secrets.PUBLIC_CONTENT_DENYLIST }}
+          SLUIS_LINKS_MODE: ${{ github.event_name == 'push' && 'strict' || 'lenient' }}
 
   v1:
     name: v1 under /v1/

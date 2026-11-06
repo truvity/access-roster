@@ -42,11 +42,18 @@ check-requirements: site-install
 # repeated, twice. A run that ends in lychee's own verdict (a dead link) is not repeated.
 #
 # lychee writes a JSON report and site/scripts/links-report.mjs judges it. lychee sends one
-# request for a 5xx (its max_retries covers network errors and timeouts only), so the 5xx
-# links are checked again here, after 15 s and then 45 s. What is still a 5xx then: from
-# github.com or raw.githubusercontent.com a warning (those hosts answered 504 to CI runners
-# on 2026-11-05 for pages that loaded a moment later), from any other host a failure. A 4xx
-# and a timeout fail.
+# request for a 5xx (its max_retries covers network errors and timeouts only, with a growing
+# wait), so the links of an external host that failed on a 5xx, a network error or a timeout
+# are checked again here, after 15 s and then 45 s. What still fails then depends on
+# SLUIS_LINKS_MODE (strict when unset; the Checks workflow sets lenient for a pull request and
+# the merge queue, strict for main):
+#   lenient: a 5xx, a network error or a timeout from an external host is a warning, reported
+#            and not failing (kubernetes.io failed four pull requests on 2026-11-06 and passed
+#            on a rerun);
+#   strict:  a 5xx from github.com or raw.githubusercontent.com is a warning (those hosts
+#            answered 504 to CI runners on 2026-11-05 for pages that loaded a moment later);
+#            a 5xx from another host, a network error and a timeout fail.
+# In both: a 4xx (a 404, a 410) and every internal link fail.
 site-links:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -70,12 +77,14 @@ site-links:
       for round in 2 3; do
         site/scripts/links-report.mjs retry-urls "$last" > "$dir/urls$round.txt"
         [ -s "$dir/urls$round.txt" ] || break
-        echo "site-links: checking $(wc -l < "$dir/urls$round.txt") links again after a server error (round $round of 3)" >&2
+        echo "site-links: checking $(wc -l < "$dir/urls$round.txt") links again after a server error, network error or timeout (round $round of 3)" >&2
         sleep $((round == 2 ? 15 : 45))
         rrc=0
-        check 120 "$dir/r$round.json" --cache=false "$dir/urls$round.txt" || rrc=$?
+        check 240 "$dir/r$round.json" --cache=false "$dir/urls$round.txt" || rrc=$?
         if [ "$rrc" -eq 124 ]; then
-          echo "site-links: the repeated check did not finish in 120 s" >&2
+          echo "site-links: the repeated check did not finish in 240 s" >&2
+          # a pull request judges what the rounds so far found; main does not let it pass
+          [ "${SLUIS_LINKS_MODE:-strict}" = lenient ] && break
           exit 1
         fi
         args+=("$dir/r$round.json" "$rrc")
@@ -89,8 +98,9 @@ site-links:
     exit 1
 
 # The self-test of the link check's judgement (site/scripts/links-report.test.mjs): a 404 on
-# github.com fails, a 504 on github.com warns, a 504 on another host fails. Fake reports, no
-# network, no lychee.
+# any host fails, a 504 on github.com warns, a 504 on another host fails in strict mode and
+# warns in lenient mode, as do a network error and a timeout; an internal link always fails.
+# Fake reports, no network, no lychee.
 site-test-links:
     node --test site/scripts/links-report.test.mjs
 

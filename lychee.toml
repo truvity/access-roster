@@ -6,8 +6,9 @@ cache = true
 max_cache_age = "1d"
 # max_retries repeats a request that failed on the network or timed out, the wait doubling
 # from retry_wait_time. It does not repeat a 5xx (one request, measured with lychee 0.24.2):
-# `just site-links` checks those links again and site/scripts/links-report.mjs decides, so a
-# 5xx from github.com that persists is a warning there; a 4xx, and a 5xx from any other host, fail.
+# `just site-links` checks those links again and site/scripts/links-report.mjs decides: a 4xx and
+# an internal link fail; a 5xx, a network error or a timeout that persists is a warning on a pull
+# request (SLUIS_LINKS_MODE=lenient) and, on main, a failure except for a 5xx from github.com.
 max_retries = 3
 retry_wait_time = 5
 # A server error is not a fact about the link, so it is not kept in the cache (max_cache_age
