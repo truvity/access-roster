@@ -1,5 +1,3 @@
-//go:build sluis_test
-
 package registry
 
 import (
@@ -422,27 +420,28 @@ func TestAdapterCallsPolicyOnly(t *testing.T) {
 	if len(adapters) < 3 {
 		t.Fatalf("found %d adapters (%v), want at least the upstream-oidc, github and slack adapters", len(adapters), adapters)
 	}
-	// The work actors are the callees the requirement is about. store, key and the audit transport are the ports
-	// every actor reaches (data, keys, audit-emit), so they are not work actors and stay open to an adapter.
-	ports := map[string]bool{"store": true, "key": true, "transport": true}
-	callees := map[string]bool{}
+	// The statement is about work actors: an adapter may call no actor of the work family except policy. The
+	// ports (store, key, the exporter and the audit family) are no work actors, and "transport" is not an actor
+	// at all but the pseudo-callee of the audit spool, so none of them is judged here.
 	var work int
 	for _, a := range Actors() {
-		callees[a.Name] = true
-		if a.Family == "work" {
-			work++
+		if a.Family != "work" {
+			continue
+		}
+		work++
+		for _, adapter := range adapters {
+			if got, want := MayCall(adapter, a.Name), a.Name == "policy"; got != want {
+				t.Errorf("MayCall(%s, %s) = %t, want %t", adapter, a.Name, got, want)
+			}
 		}
 	}
 	if work < 10 {
 		t.Fatalf("found %d work actors, want the nine core actors and the adapters", work)
 	}
-	callees["transport"] = true
-	callees["adapter-<vendor>"] = true // the wildcard of the registry file is not a callee
 	for _, adapter := range adapters {
-		for callee := range callees {
-			if got, want := MayCall(adapter, callee), callee == "policy" || ports[callee]; got != want {
-				t.Errorf("MayCall(%s, %s) = %t, want %t", adapter, callee, got, want)
-			}
+		// the wildcard of the registry file is not a callee
+		if MayCall(adapter, "adapter-<vendor>") {
+			t.Errorf("MayCall(%s, adapter-<vendor>) is true", adapter)
 		}
 		// the declared calls of the registry say the same as the compiled graph
 		a, _ := ActorByName(adapter)
@@ -455,13 +454,23 @@ func TestAdapterCallsPolicyOnly(t *testing.T) {
 // verifies: REQ-AUDIT-042
 func TestNoNotaryActor(t *testing.T) {
 	audit := map[string]bool{}
+	var actors int
 	for _, a := range Actors() {
+		actors++
 		if strings.Contains(strings.ToLower(a.Name), "notary") {
 			t.Errorf("actor %s: sluis runs no separate notary", a.Name)
 		}
 		if a.Family == "audit" {
 			audit[a.Name] = true
 		}
+		// Every checkpoint is signed through the rules of key@, with the audit-log key, by the writer and by
+		// nobody else: a second signer of checkpoints, under any name, is a notary.
+		if got, want := KeyAllows(a.Name, ScopeBoundary, "audit-log", "sign"), a.Name == "writer"; got != want {
+			t.Errorf("KeyAllows(%s, boundary, audit-log, sign) = %t, want %t", a.Name, got, want)
+		}
+	}
+	if actors == 0 {
+		t.Fatal("the actor registry is empty")
 	}
 	var got []string
 	for n := range audit {
@@ -475,12 +484,5 @@ func TestNoNotaryActor(t *testing.T) {
 		if strings.Contains(strings.ToLower(n), "notary") {
 			t.Errorf("uid name %s: no program of sluis is a notary", n)
 		}
-	}
-	if _, ok := ActorByName("notary"); ok {
-		t.Error("the actor registry has a notary")
-	}
-	// The checkpoints are signed by the rules of key@: the writer holds the audit-log signing right.
-	if !KeyAllows("writer", ScopeBoundary, "audit-log", "sign") {
-		t.Error("the writer may not sign with the audit-log key, so nothing signs a checkpoint")
 	}
 }

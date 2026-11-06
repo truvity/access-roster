@@ -1,5 +1,3 @@
-//go:build sluis_test
-
 package registry
 
 import (
@@ -87,14 +85,37 @@ func TestItemPortSeesItemsOnly(t *testing.T) {
 		slices.Sort(out)
 		return out
 	}
-	item := file.Messages().ByName("DriverItem")
-	if item == nil {
-		t.Fatal("DriverItem is missing")
+	// Every message of the file is pinned exactly, so a leak under another name (a tenant, a purpose, a schema, a
+	// type url) fails here and not only a field named for a kind.
+	want := map[string][]string{
+		"DriverItem":       {"expires_at", "indexes", "key", "value", "version"},
+		"ItemGetRequest":   {"key", "linearizable"},
+		"ItemGetResponse":  {"item"},
+		"QueryRequest":     {"index", "index_value", "page_size", "page_token", "prefix"},
+		"QueryResponse":    {"items", "log_head", "next_page_token"},
+		"TransactRequest":  {"conditions", "deletes", "puts"},
+		"Condition":        {"absent", "key", "version"},
+		"Put":              {"expires_at", "indexes", "key", "log", "value"},
+		"Delete":           {"key", "log"},
+		"TransactResponse": {"items"},
+		"TailLogRequest":   {"from_sequence"},
+		"TailLogResponse":  {"deleted", "key", "sequence", "version"},
 	}
-	if got, want := names(item), []string{"expires_at", "indexes", "key", "value", "version"}; !slices.Equal(got, want) {
-		t.Errorf("DriverItem fields = %v, want %v", got, want)
+	if got := file.Messages().Len(); got != len(want) {
+		t.Errorf("the item port declares %d messages, want the %d pinned here", got, len(want))
 	}
-	entry := item.Fields().ByName("indexes").Message()
+	for name, fields := range want {
+		m := file.Messages().ByName(protoreflect.Name(name))
+		if m == nil {
+			t.Errorf("message %s is missing", name)
+			continue
+		}
+		if got := names(m); !slices.Equal(got, fields) {
+			t.Errorf("%s fields = %v, want %v", name, got, fields)
+		}
+	}
+	// The index entry is the one message from another file a driver sees.
+	entry := file.Messages().ByName("DriverItem").Fields().ByName("indexes").Message()
 	if got, want := names(entry), []string{"name", "value"}; !slices.Equal(got, want) {
 		t.Errorf("an index entry's fields = %v, want %v", got, want)
 	}
