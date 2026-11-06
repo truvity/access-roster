@@ -33,3 +33,6 @@
 docs/reference/generated/** linguist-generated=true
 **/*.pb.go                  linguist-generated=true
 **/gen/**                   linguist-generated=true
+
+# Binary tiles of a stored log fixture: byte-exact, never normalised.
+tests/testdata/audit-log/** -text

@@ -30,7 +30,8 @@ go:
   - { name: "golang.org/x/oauth2", for: "The OAuth 2.0 client under the relying party of the oidc upstream", needed_by: "ADR 0017", evaluated: "v0.37.0, 2026-08-25" }
   - { name: "golang.org/x/mod/sumdb/note", for: "C2SP signed notes in writer and witness, and in the CLI that verifies a log; the signer goes through the keys port", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
   - { name: "golang.org/x/mod/sumdb/tlog", for: "Hashes and tiles of a tiled log in writer and witness, and in the CLI that verifies a log", needed_by: "ADR 0029", evaluated: "golang.org/x/mod v0.42.0, 2026-10-09" }
-  - { name: "filippo.io/torchwood", for: "C2SP checkpoints, cosignatures and tiles, and the tile client, in writer and witness", needed_by: "ADR 0029", evaluated: "v0.10.0, 2026-09-24 (before 1.0)" }
+  - { name: "filippo.io/torchwood", for: "C2SP checkpoints, cosignatures and tiles, and the tile client, in writer and witness, and the checkpoint and tile code of the CLI that verifies a log", needed_by: "ADR 0029", evaluated: "v0.10.0, 2026-09-24 (before 1.0)" }
+  - { name: "github.com/transparency-dev/formats", for: "The reference verifier of C2SP signed-note type 0x02 and the reference checkpoint parser, as the independent oracle of the checkpoint tests of writer and the CLI", scope: "tests only; linked into no executable", needed_by: "ADR 0029", evaluated: "v0.1.1, 2026-06-02 (before 1.0); Apache-2.0" }
   - { name: "filippo.io/sunlight", for: "C2SP static-ct-api entries and checkpoints, in the issuance log of ca", needed_by: "ADR 0023", evaluated: "v0.10.2, 2026-10-26" }
   - { name: "go.yaml.in/yaml/v3", for: "Reading the bootstrap file and the YAML config documents behind the strict profile of docs/reference/bootstrap-file.md", needed_by: "ADR 0004", evaluated: "v3.0.6, 2026-10-13" }
 
