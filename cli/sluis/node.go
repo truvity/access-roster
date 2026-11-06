@@ -20,7 +20,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
-// nodeOut is the `node` member of the JSON object of `sluis node unlock`. It holds no PIN.
+// nodeOut is the `node` member of the JSON object of `sluis node unlock` and `sluis node status`. It holds no PIN.
 type nodeOut struct {
 	Node   string `json:"node"`
 	Locked bool   `json:"locked"`
@@ -55,12 +55,67 @@ func (a *app) unlockCommand() command {
 	}
 }
 
+// statusCommand is `sluis node status <node>`: whether the card driver of the node it runs on holds the PIN. It is the
+// read-only half of `node unlock`, for the deploy and for a person who wants to know before asking for a PIN. It asks the
+// driver's admin socket for the same Status call that unlock makes first, reads no PIN, sends none and prints none; the
+// answer is the node's name and one word, "locked" or "unlocked". A driver that cannot be reached is a failure (exit 1),
+// never "locked" or "unlocked": a caller that cannot ask does not know.
+func (a *app) statusCommand() command {
+	var socket string
+	return command{
+		name: "node status",
+		flags: func(fs *flag.FlagSet) {
+			fs.StringVar(&socket, "socket", "", "the admin socket of the card driver; by default "+adminSocketPrefix+"-<boundary>/admin.sock")
+		},
+		run: func(ctx context.Context, positional []string, res *result) error {
+			if len(positional) != 1 {
+				return cli.Usage(errors.New("node status takes one argument, the node"))
+			}
+			return a.status(ctx, positional[0], socket, res)
+		},
+	}
+}
+
+// adminSocket is the admin socket the flags name: --socket, or the one of the boundary.
+func (a *app) adminSocket(socket string) (string, error) {
+	if socket != "" {
+		return socket, nil
+	}
+	if a.boundary == "" || strings.ContainsAny(a.boundary, "/.") {
+		return "", cli.Usage(errors.New("name the admin socket with --socket, or the boundary with --boundary"))
+	}
+	return filepath.Join(adminSocketPrefix+"-"+a.boundary, "admin.sock"), nil
+}
+
+func (a *app) status(ctx context.Context, node, socket string, res *result) error {
+	socket, err := a.adminSocket(socket)
+	if err != nil {
+		return err
+	}
+	hc, url := rpc.Dial(socket)
+	c := keystorev2alpha1connect.NewUnlockServiceClient(hc, url, rpc.ClientOptions()...)
+	st, err := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{}))
+	if err != nil {
+		return dialError("status", err)
+	}
+	// The socket is the node's own; a name that is not this node's means the command was sent to the wrong place.
+	if st.Msg.GetNode() != node {
+		return refused("node")
+	}
+	locked := st.Msg.GetLocked()
+	res.Node = &nodeOut{Node: node, Locked: locked}
+	if locked {
+		res.Text = fmt.Sprintf("node %s is locked", node)
+	} else {
+		res.Text = fmt.Sprintf("node %s is unlocked", node)
+	}
+	return nil
+}
+
 func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res *result) error {
-	if socket == "" {
-		if a.boundary == "" || strings.ContainsAny(a.boundary, "/.") {
-			return cli.Usage(errors.New("name the admin socket with --socket, or the boundary with --boundary"))
-		}
-		socket = filepath.Join(adminSocketPrefix+"-"+a.boundary, "admin.sock")
+	socket, err := a.adminSocket(socket)
+	if err != nil {
+		return err
 	}
 	pin, err := a.readPIN(secretFd)
 	if err != nil {

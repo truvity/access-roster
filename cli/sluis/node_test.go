@@ -238,3 +238,81 @@ func TestNodeUnlockReadsALineWithCRLFAndNoNewline(t *testing.T) {
 		t.Fatalf("a PIN of 70 octets: exit %d, want 2", code)
 	}
 }
+
+// `node status` asks the driver the same Status call that `node unlock` makes first, and nothing else.
+//
+// verifies: REQ-DEPLOY-043
+func TestNodeStatusSaysLockedAndUnlocked(t *testing.T) {
+	for _, tc := range []struct {
+		locked bool
+		text   string
+	}{
+		{true, "node node-a is locked\n"},
+		{false, "node node-a is unlocked\n"},
+	} {
+		f := &fakeDriver{node: "node-a", pin: "123456", locked: tc.locked, retries: 3}
+		sock := serveDriver(t, f)
+		ta := newTestApp(t)
+		if code := ta.do("node", "status", "node-a", "--socket", sock); code != 0 {
+			t.Fatalf("locked=%v: exit %d; %s", tc.locked, code, ta.err.String())
+		}
+		if ta.out.String() != tc.text {
+			t.Fatalf("locked=%v: out %q, want %q", tc.locked, ta.out.String(), tc.text)
+		}
+		if f.attempts != 0 {
+			t.Fatalf("locked=%v: status sent a PIN", tc.locked)
+		}
+	}
+}
+
+func TestNodeStatusJSONHasTheLockAndNoPIN(t *testing.T) {
+	f := &fakeDriver{node: "node-a", pin: "123456", locked: true, retries: 3}
+	sock := serveDriver(t, f)
+	ta := newTestApp(t)
+	if code := ta.do("node", "status", "node-a", "--socket", sock, "--output", "json"); code != 0 {
+		t.Fatalf("exit %d; %s", code, ta.err.String())
+	}
+	o := ta.object(t)
+	n, _ := o["node"].(map[string]any)
+	if o["command"] != "node status" || n["node"] != "node-a" || n["locked"] != true {
+		t.Fatalf("object = %v", o)
+	}
+	if strings.Contains(ta.out.String(), "123456") || strings.Contains(ta.out.String(), "retries") {
+		t.Fatalf("the output holds more than the lock: %s", ta.out.String())
+	}
+}
+
+func TestNodeStatusForAnotherNodeIsRefused(t *testing.T) {
+	f := &fakeDriver{node: "node-a", locked: true, retries: 3}
+	sock := serveDriver(t, f)
+	ta := newTestApp(t)
+	if code := ta.do("node", "status", "node-b", "--socket", sock); code != 3 {
+		t.Fatalf("exit %d, want 3; %s", code, ta.err.String())
+	}
+	if strings.Contains(ta.out.String(), "locked") {
+		t.Fatalf("a refusal still said a state: %q", ta.out.String())
+	}
+}
+
+// A driver that cannot be asked is a failure, never "locked" or "unlocked": the deploy must not guess.
+func TestNodeStatusDriverNotRunningIsAFailure(t *testing.T) {
+	ta := newTestApp(t)
+	code := ta.do("node", "status", "node-a", "--socket", filepath.Join(t.TempDir(), "none.sock"))
+	if code != 1 || !strings.Contains(ta.err.String(), "cannot be reached") || ta.out.Len() != 0 {
+		t.Fatalf("exit %d; out %q; err %s", code, ta.out.String(), ta.err.String())
+	}
+}
+
+func TestNodeStatusUsage(t *testing.T) {
+	ta := newTestApp(t)
+	for name, args := range map[string][]string{
+		"no node":            {"--socket", "/x"},
+		"two nodes":          {"a", "b", "--socket", "/x"},
+		"no socket or bound": {"a"},
+		"a boundary path":    {"a", "--boundary", "../x"},
+	} {
+		if code := ta.do(append([]string{"node", "status"}, args...)...); code != 2 {
+			t.Errorf("%s: exit %d, want 2; %s", name, code, ta.err.String())
+		}
+	}
+}
