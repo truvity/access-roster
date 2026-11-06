@@ -1035,7 +1035,11 @@ func TestActorsAreRestartedWithoutAStartLimit(t *testing.T) {
 				t.Errorf("%s names a burst, which has no meaning without a limit", name)
 			}
 			if !strings.Contains(body, "\nRestart=on-failure\n") || !strings.Contains(body, "\nRestartSec=2s\n") {
-				t.Errorf("%s is not restarted every two seconds on failure", name)
+				t.Errorf("%s is not restarted on failure, from 2 s", name)
+			}
+			// The delay grows to 30 s, below the deploy's wait (60 s), so a loop does not fill the journal.
+			if !strings.Contains(body, "\nRestartSteps=5\n") || !strings.Contains(body, "\nRestartMaxDelaySec=30\n") {
+				t.Errorf("%s has no restart backoff", name)
 			}
 		}
 	}

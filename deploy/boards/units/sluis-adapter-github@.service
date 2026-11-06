@@ -13,6 +13,8 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis
 ExecStart=/opt/sluis/bin/actors/adapter-github serve --boundary %i --socket /run/sluis/adapter-github/%i.sock
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)

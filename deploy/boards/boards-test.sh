@@ -65,7 +65,8 @@ case "$cmd" in
 "mktemp -d") echo /tmp/fake-stage ;;
 "sudo -n test -x /opt/sluis/bin/cli/sluis") exit "${FAKE_CLI_RC:-0}" ;;
 "sudo -n /opt/sluis/bin/cli/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
-"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; exit "$exit_rc" ;;
+"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || { [ -z "${FAKE_LOGLINE:-}" ] || echo "$FAKE_LOGLINE"; echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; }; exit "$exit_rc" ;;
+*"remote.sh' settle "*) echo "unit sluis-writer@dev.service ${FAKE_SETTLE_LINE:-active}"; echo "SLUIS-BOARD-STATE: ${FAKE_SETTLE:-ok}"; case "${FAKE_SETTLE:-ok}" in ok) exit 0 ;; locked) exit 10 ;; *) exit 1 ;; esac ;;
 *"list-units --failed"*) printf '%s' "${FAKE_FAILED:-}" ;;
 "timeout 15 bash -s -- "*) bash -c "$cmd" </dev/null ;;
 esac
@@ -103,6 +104,13 @@ check "unlock: the board answers that the node is unlocked" grep -q 'node board-
 # After the unlock, the lock state comes from the card driver again (sluis node status), not from the word of the unlock command.
 check "unlock: and the lock state is read back from the driver, one line for the board" grep -qx 'board 192.0.2.12: unlocked' <<<"$out"
 check "unlock: by the status command, as root, with the node and the boundary" grep -qx "arg: sudo -n /opt/sluis/bin/cli/sluis node status board-b --boundary dev" "$FAKE_SSH_LOG"
+check "unlock: and every unit is waited for again after it, as the deploy does (remote.sh settle)" grep -qx 'board 192.0.2.12: every unit is up' <<<"$out"
+# A log line before the answer of the CLI does not make the check fail (the deploy takes the last line, too).
+check "unlock: a log line before the answer of 'node status' is ignored" bash -c 'printf "%s\n" "$1" | FAKE_LOGLINE="{\"level\":\"INFO\",\"msg\":\"x\"}" SLUIS_BOARDS=192.0.2.12 "$2" unlock 2>&1 | grep -qx "board 192.0.2.12: unlocked"' _ "$pin" "$here/boards.sh"
+# Unlocked, but a unit still loops: it never reaches "failed", so the unlock must fail on the wait, not on systemd's state.
+if printf '%s\n' "$pin" | FAKE_SETTLE=failed FAKE_SETTLE_LINE='FAILED: not settled after 90 s: activating (auto-restart), restarted 9 times' SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a unit that keeps restarting after the unlock fails it"; else check "unlock: a unit that keeps restarting after the unlock fails it, and says why" grep -q 'the units did not settle after the unlock (state .failed.)' "$work/out"; fi
+check "unlock: and the unit line is shown" grep -q 'restarted 9 times' "$work/out"
+if printf '%s\n' "$pin" | FAKE_SETTLE=locked SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a board that is locked on the second look fails it"; else ok "unlock: a board that is locked on the second look fails it"; fi
 # A PIN the card took but a driver that still says locked is not a success; a unit that systemd gave up on is named, with the way back.
 if printf '%s\n' "$pin" | FAKE_LOCK=locked SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a driver that still says locked after the unlock fails"; else check "unlock: a driver that still says locked after the unlock fails, and says so" grep -q 'still LOCKED after the unlock' "$work/out"; fi
 if printf '%s\n' "$pin" | FAKE_STATUS_RC=1 SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a driver that cannot be asked after the unlock fails"; else check "unlock: a driver that cannot be asked after the unlock fails, and says so" grep -q 'could not be asked for its lock state' "$work/out"; fi

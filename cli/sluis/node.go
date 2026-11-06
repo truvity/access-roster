@@ -96,7 +96,7 @@ func (a *app) status(ctx context.Context, node, socket string, res *result) erro
 	c := keystorev2alpha1connect.NewUnlockServiceClient(hc, url, rpc.ClientOptions()...)
 	st, err := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{}))
 	if err != nil {
-		return dialError("status", err)
+		return dialError("node status", "status", err)
 	}
 	// The socket is the node's own; a name that is not this node's means the command was sent to the wrong place.
 	if st.Msg.GetNode() != node {
@@ -127,7 +127,7 @@ func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res
 	c := keystorev2alpha1connect.NewUnlockServiceClient(hc, url, rpc.ClientOptions()...)
 	st, err := c.Status(ctx, connect.NewRequest(&keystorev2alpha1.StatusRequest{}))
 	if err != nil {
-		return dialError("status", err)
+		return dialError("node unlock", "status", err)
 	}
 	// The socket is the node's own; a name that is not this node's means the command was sent to the wrong place.
 	if st.Msg.GetNode() != node {
@@ -153,7 +153,7 @@ func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res
 				_, _ = fmt.Fprintf(a.stderr, "the card did not accept the PIN; it allows %d more attempts\n", st2.Msg.GetPinRetries())
 			}
 		}
-		return dialError("unlock", err)
+		return dialError("node unlock", "unlock", err)
 	}
 	res.Node = &nodeOut{Node: node}
 	res.Text = fmt.Sprintf("node %s is unlocked", node)
@@ -162,7 +162,7 @@ func (a *app) unlock(ctx context.Context, node, socket string, secretFd int, res
 
 // dialError maps an error of the admin socket to the end of the command. A refusal of the driver is a refused
 // result with its reason; anything else (no socket, no permission) is a failure. No message holds the PIN.
-func dialError(step string, err error) error {
+func dialError(cmd, step string, err error) error {
 	if reason, ok := krefusal.Reason(err); ok {
 		return refused(reason)
 	}
@@ -170,9 +170,9 @@ func dialError(step string, err error) error {
 	case connect.CodePermissionDenied:
 		return refused("caller")
 	case connect.CodeUnavailable:
-		return fmt.Errorf("node unlock: %s: the admin socket cannot be reached (is the driver running, and are you root?)", step)
+		return fmt.Errorf("%s: %s: the admin socket cannot be reached (is the driver running, and are you root?)", cmd, step)
 	}
-	return fmt.Errorf("node unlock: %s: %s", step, connect.CodeOf(err))
+	return fmt.Errorf("%s: %s: %s", cmd, step, connect.CodeOf(err))
 }
 
 // readPIN reads one line from the descriptor, or from standard input, into a buffer that the caller wipes. A terminal is

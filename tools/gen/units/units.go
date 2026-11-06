@@ -638,9 +638,11 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	// themselves, so it may fail a few times while a peer comes up. And on a card board an actor that signs or opens a
 	// key when it starts fails for as long as the board is locked, which is until a person (or a peer) gives the PIN:
 	// minutes, or a night. Any limit would put such an actor out for good ("start-limit-hit", state failed), and
-	// nothing starts it again after the unlock. So an actor has no start limit: Restart=on-failure with RestartSec=2s
-	// is one start every two seconds, and it is the deploy's wait (settle_units) and `boards-status` that say a unit
-	// that does not stay up, not systemd giving up on it.
+	// nothing starts it again after the unlock. So an actor has no start limit, and it is the deploy's wait
+	// (settle_units) and `boards-status` that say a unit that does not stay up, not systemd giving up on it. A flat
+	// restart every two seconds would write about 200 MB of journal a day for a unit that loops all night and push
+	// out the lines an operator reads, so the delay grows from 2 s to 30 s in 5 steps (RestartSteps= and
+	// RestartMaxDelaySec= are systemd 254's; the deploy drops them on an older board, where they are only a flat 2 s).
 	b.line("StartLimitIntervalSec=0")
 	b.blank()
 	b.line("[Service]")
@@ -679,6 +681,8 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	b.line("ExecStart=%s", exec)
 	b.line("Restart=on-failure")
 	b.line("RestartSec=2s")
+	b.line("RestartSteps=5")
+	b.line("RestartMaxDelaySec=30")
 	if a.Language == "Go" {
 		b.line("Environment=GOMEMLIMIT=24MiB")
 	}

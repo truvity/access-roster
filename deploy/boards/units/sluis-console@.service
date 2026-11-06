@@ -13,6 +13,8 @@ SupplementaryGroups=sluis-adapter-github-%i sluis-adapter-slack-%i sluis-adapter
 ExecStart=/opt/sluis/bin/actors/console serve --boundary %i --socket /run/sluis/console/%i.sock
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

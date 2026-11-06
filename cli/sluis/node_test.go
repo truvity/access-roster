@@ -298,7 +298,7 @@ func TestNodeStatusForAnotherNodeIsRefused(t *testing.T) {
 func TestNodeStatusDriverNotRunningIsAFailure(t *testing.T) {
 	ta := newTestApp(t)
 	code := ta.do("node", "status", "node-a", "--socket", filepath.Join(t.TempDir(), "none.sock"))
-	if code != 1 || !strings.Contains(ta.err.String(), "cannot be reached") || ta.out.Len() != 0 {
+	if code != 1 || !strings.Contains(ta.err.String(), "node status: status: the admin socket cannot be reached") || ta.out.Len() != 0 {
 		t.Fatalf("exit %d; out %q; err %s", code, ta.out.String(), ta.err.String())
 	}
 }
