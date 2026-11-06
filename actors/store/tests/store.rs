@@ -2365,10 +2365,14 @@ async fn an_actor_that_is_not_the_writer_of_a_kind_is_refused_every_write() {
     assert!(writers_passed > 30, "{writers_passed} writers tried");
 
     // A self-scoped kind has every actor as a writer, each under its own id and no other: the actor named in the id.
+    // Every write verb the caller holds a rule for is refused with `writer` on another actor's id, and on an id that
+    // names no actor; a lease's delete and apply are refused by the rule for everyone.
+    let (mut self_scoped_kinds, mut by_writer) = (0, 0);
     for kind in sluis_registry::kinds()
         .iter()
         .filter(|k| matches!(k.class, Class::Durable | Class::Temp) && k.self_scoped)
     {
+        self_scoped_kinds += 1;
         let mut tried = 0;
         for &caller in callers
             .iter()
@@ -2379,17 +2383,38 @@ async fn an_actor_that_is_not_the_writer_of_a_kind_is_refused_every_write() {
             let (tenant, _) = address_for(kind, caller);
             let grant = f.grant(caller, &["acme"], &WRITES, 60);
             for id in [format!("{other}/x"), "x".to_owned()] {
-                let o = with_ttl(op(Verb::CREATE, kind.segment, tenant, &id, b"h"), 30);
-                refused(
-                    f.write(vec![o], &grant).await,
-                    ErrorCode::PermissionDenied,
-                    "writer",
-                );
+                for (verb, name) in [
+                    (Verb::CREATE, "create"),
+                    (Verb::UPDATE, "update"),
+                    (Verb::DELETE, "delete"),
+                    (Verb::APPLY, "apply"),
+                ] {
+                    if !sluis_registry::store_allows(caller, kind.segment, name) {
+                        continue;
+                    }
+                    let mut o = with_version(op(verb, kind.segment, tenant, &id, b"h"), 1);
+                    if verb != Verb::DELETE {
+                        o = with_ttl(o, 30);
+                    }
+                    let why = if kind.name == "Lease" && matches!(name, "delete" | "apply") {
+                        "rule"
+                    } else {
+                        by_writer += 1;
+                        "writer"
+                    };
+                    refused(
+                        f.write(vec![o], &grant).await,
+                        ErrorCode::PermissionDenied,
+                        why,
+                    );
+                }
             }
             tried += 1;
         }
         assert!(tried > 0, "no caller creates {}", kind.name);
     }
+    assert!(self_scoped_kinds > 0, "no self-scoped kind was swept");
+    assert!(by_writer > 20, "{by_writer} refusals by the writer check");
 }
 
 /// The names of the kinds that kinds.yaml gives the profile `Fixed` (the generated registry carries no profile).
@@ -2506,33 +2531,53 @@ async fn a_write_to_a_fixed_kind_is_refused_for_every_caller() {
 /// The boundary of a call is the one store@ was started with, and the caller is the peer of the transport: no request
 /// message has a field for either, a tenant, a grant or an id that names another boundary or another actor reaches
 /// nothing of it, and every key lands under the boundary of the service.
+///
+/// Not proved here: that `store serve` builds the service with the boundary of its bootstrap file (`run.rs`, one field
+/// copied into `Deps`). Under a test `serve` stops at the kit's own start, before any call can be made (see
+/// `serve_config.rs`), so no key can be written through it; the row stays partial for that copy.
 #[tokio::test]
 async fn the_boundary_and_the_caller_never_come_from_a_field_of_the_request() {
-    // No request message of the store service has a field that could name a boundary or a caller.
-    const PROTO: &str = include_str!("../../../proto/sluis/store/v2alpha1/store.proto");
-    let (mut requests, mut inside) = (0, false);
-    for line in PROTO.lines() {
-        let line = line.trim();
-        if line.starts_with("message ") {
-            inside = line.contains("Request") || line.contains("Operation");
-            requests += usize::from(inside);
-        } else if line.starts_with("enum ") || line.starts_with("service ") {
-            inside = false;
-        } else if inside && line.contains(" = ") && line.contains(';') {
-            let field = line
-                .split(" = ")
-                .next()
-                .unwrap()
-                .split_whitespace()
-                .last()
-                .unwrap();
-            assert!(
-                !["boundary", "caller", "actor", "holder", "peer", "uid"].contains(&field),
-                "a request field names the boundary or the caller: {line}"
-            );
+    // No field of any request message of the store service, nor of the address it carries, could name a boundary or a
+    // caller.
+    const STORE: &str = include_str!("../../../proto/sluis/store/v2alpha1/store.proto");
+    const TYPES: &str = include_str!("../../../proto/sluis/type/v2alpha1/type.proto");
+    let (mut messages, mut fields) = (0, 0);
+    for (proto, wanted) in [
+        (
+            STORE,
+            (|m: &str| m.ends_with("Request") || m == "Operation") as fn(&str) -> bool,
+        ),
+        (TYPES, |m: &str| m == "Address"),
+    ] {
+        let mut inside = false;
+        for line in proto.lines().map(str::trim) {
+            if let Some(rest) = line.strip_prefix("message ") {
+                let name = rest.split([' ', '{']).next().unwrap();
+                inside = wanted(name);
+                messages += usize::from(inside);
+            } else if line.starts_with("enum ") || line.starts_with("service ") {
+                inside = false;
+            } else if inside && line.contains(" = ") && line.contains(';') {
+                let field = line
+                    .split(" = ")
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .last()
+                    .unwrap()
+                    .to_ascii_lowercase();
+                fields += 1;
+                for word in ["boundary", "caller", "actor", "holder", "peer"] {
+                    assert!(
+                        !field.contains(word),
+                        "a request field could name the boundary or the caller: {line}"
+                    );
+                }
+            }
         }
     }
-    assert!(requests >= 6, "the scan saw {requests} request messages");
+    assert!(messages >= 7, "the scan saw {messages} messages");
+    assert!(fields > 10, "the scan saw {fields} fields");
 
     let f = F::new().await;
     f.as_("session");
@@ -2634,12 +2679,24 @@ async fn a_change_of_a_watched_kind_asks_for_its_log_row_in_the_same_transaction
         .iter()
         .filter(|k| matches!(k.class, Class::Durable | Class::Temp))
     {
-        let want = kind.watched || kind.exportable;
+        // The oracle is the rule table, not the service's own expression: a kind is watched when some caller of store@ may
+        // watch it. (The service asks for the row when `watched || exportable`; the two must agree.)
+        let want = sluis_registry::callers_of("store")
+            .iter()
+            .any(|c| sluis_registry::store_allows(c, kind.segment, "watch"));
+        assert_eq!(
+            want,
+            kind.watched || kind.exportable,
+            "{}: the registry flag against the watch rules",
+            kind.name
+        );
         let Some(caller) = sluis_registry::callers_of("store")
             .iter()
             .copied()
-            .find(|c| sluis_registry::store_allows(c, kind.segment, "create"))
-            .filter(|c| writers_of(kind).contains(c) || kind.self_scoped)
+            .find(|c| {
+                sluis_registry::store_allows(c, kind.segment, "create")
+                    && (writers_of(kind).contains(c) || kind.self_scoped)
+            })
         else {
             continue;
         };
