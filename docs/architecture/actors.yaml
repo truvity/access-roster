@@ -395,7 +395,7 @@ actors:
   - name: exporter
     family: data
     holder: true
-    holds: ["the credentials of its export destinations", "a write-only credential for the backup bucket"]
+    holds: ["the credentials of its export destinations, with a narrow edge-purge credential for the public addresses it publishes", "a write-only credential for the backup bucket"]
     purpose: "Publishes the kinds marked exportable to destinations outside sluis and runs the backup job; it never writes to a secret source."
     language: Rust
     language_rule: R11
@@ -408,7 +408,7 @@ actors:
       - { purpose: data, ops: [open] }
       - { purpose: backup-archive, ops: [wrap] }
     adrs: ['0002', '0009', '0010', '0012']
-    requirement_areas: [EXPORT, BACKUP]
+    requirement_areas: [EXPORT, BACKUP, KEYS]
     standards: []
     label: actor:exporter
     issues: [1014]

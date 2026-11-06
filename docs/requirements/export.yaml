@@ -278,3 +278,115 @@ requirements:
     issues: [1217]
     verification:
       - {kind: integration-test, ref: "registry check: no exportable kind holds a vendor secret that a minter can mint"}
+  - id: REQ-EXPORT-020
+    area: EXPORT
+    statement: "exporter@ MUST omit every kid that KeyRevocation lists from every key set it publishes."
+    rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key; the live half is REQ-KEYS-107 (ADR 0041, ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962, 1362]
+    verification:
+      - {kind: integration-test, ref: "revoke a key: the next key set written to a directory and to a bucket lacks its kid, and a token it signed fails against the document"}
+  - id: REQ-EXPORT-021
+    area: EXPORT
+    statement: "After a change of KeyRevocation or SigningRing, exporter@ MUST write the document, purge its public address and read it back, in this order, within 60 seconds of seeing the change."
+    rationale: "A revoked key must leave the edge at once, and the purge must come after the write or the edge fills again with the old document (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962, 1362]
+    verification:
+      - {kind: integration-test, ref: "a destination driver with a recorded call log: the log shows write, purge and read back in this order within 60 seconds of the revocation"}
+  - id: REQ-EXPORT-022
+    area: EXPORT
+    statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the read back returned the written digest."
+    rationale: "A reader that waits for a key to be published needs what a verifier would see, and not what exporter@ intended (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962]
+    verification:
+      - {kind: integration-test, ref: "a read back that returns another digest: the report says purge-pending; one that returns the written digest: published"}
+  - id: REQ-EXPORT-023
+    area: EXPORT
+    statement: "The edge in front of the key set MUST NOT serve a cached copy more than 65 minutes after it expired."
+    rationale: "Beyond the access-token cap plus the clock skew a stale key set serves no live token, and a revoked key would stay (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962]
+    verification:
+      - {kind: integration-test, ref: "the edge configuration of a test installation is read: the stale window is at most 65 minutes, and a purge evicts the stale copy"}
+  - id: REQ-EXPORT-024
+    area: EXPORT
+    statement: "When exporter@ cannot read KeyRevocation or SigningRing, it MUST leave the published document unchanged, raise an alarm and report unverified."
+    rationale: "Deleting the document for a blip of store@ would stop verification for every relying party, and exporter@ cannot learn of a revocation it cannot read (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962, 1362]
+    verification:
+      - {kind: integration-test, ref: "store@ refuses the read of KeyRevocation: the document is byte-for-byte as before, an alarm is raised and the report says unverified"}
+  - id: REQ-EXPORT-025
+    area: EXPORT
+    statement: "Where a bucket destination serves the key set, the edge MUST fall back to the live key set of entry when the bucket cannot be read."
+    rationale: "The key set then survives a failure of the bucket, and the live set filters revoked kids as the static one does (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962]
+    verification:
+      - {kind: integration-test, ref: "the bucket is stopped: the public address still answers with the live key set, and the revoked kid is absent"}
+  - id: REQ-EXPORT-026
+    area: EXPORT
+    statement: "The purge credential of exporter@ MUST allow purging only the public addresses of the documents of its destinations."
+    rationale: "A purge credential that could evict anything would let a compromised exporter@ take the edge cache of other services (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962]
+    verification:
+      - {kind: integration-test, ref: "with the credential: a purge of a named address succeeds and a purge of another address is refused by the edge"}
+  - id: REQ-EXPORT-027
+    area: EXPORT
+    statement: "A destination driver MUST implement the calls Put, Delete, List, Purge and ReadBack of the destination port and pass the port's conformance suite."
+    rationale: "One contract lets exporter@ publish to any destination and lets a new driver be proven the same way (ADR 0009, ADR 0005)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    issues: [962, 1014]
+    verification:
+      - {kind: integration-test, ref: "the conformance suite runs against the directory driver, the in-memory driver and the bucket driver; a driver without a public address answers unsupported to Purge and ReadBack"}

@@ -1628,3 +1628,16 @@ kinds:
     backed_up: no
     ttl: {default: 5m, max: 15m}
     notes: "The one answer to a PinReleaseRequest, same id: the boundary's PIN sealed by an unlocked peer's card driver to the ephemeral public key of the request (ECDH P-384, HKDF-SHA384, AES-256-GCM, the request text as info and additional data), in a signed answer text that binds the request id, the request's digest and the ciphertext, ES384 by the releaser's pin-release key. The locked key@ verifies the signature before its driver opens it, so a forged answer is never a PIN attempt. Already ciphertext, so plain. The PIN crosses only the Raft port, through the store. Default 5 min, at most 15 min."
+
+  - name: ExportReport
+    serves: data
+    scope: boundary
+    class: temp
+    treatment: plain
+    profile: "-"
+    writer: exporter@
+    readers: [exporter@, signer, console]
+    exportable: no
+    backed_up: no
+    ttl: {default: 48h, max: 7d}
+    notes: "What exporter@ published and saw, one item per destination and document (ADR 0009, \"Publishing public material\"): the state (published, purge-pending, unverified), the digest of the body, for a key set the kids it lists, and the times of the write, the purge and the read back from the public address. signer makes a token key active only after the report shows the key in every published key set (REQ-KEYS-085); the console shows the state. Rewritten by every publication and by the daily reconcile, so an item that expires is a publisher that has gone quiet, which a reader treats as not seen. Plain: it holds public addresses, digests and kids."

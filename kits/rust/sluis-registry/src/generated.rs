@@ -1808,6 +1808,22 @@ pub(crate) static KINDS: &[Kind] = &[
         ttl_max: Duration::from_secs(900),
         indexes: &[],
     },
+    Kind {
+        name: "ExportReport",
+        segment: "export-report",
+        class: Class::Temp,
+        scope: Scope::Boundary,
+        treatment: "plain",
+        writer: "exporter",
+        self_scoped: false,
+        personal: false,
+        exportable: false,
+        backed_up: false,
+        watched: false,
+        ttl_default: Duration::from_secs(172800),
+        ttl_max: Duration::from_secs(604800),
+        indexes: &[],
+    },
 ];
 
 pub(crate) static KIND_BY_NAME: &[(&str, usize)] = &[
@@ -1843,6 +1859,7 @@ pub(crate) static KIND_BY_NAME: &[(&str, usize)] = &[
     ("ExchangeTrust", 29),
     ("ExportCursor", 109),
     ("ExportDestination", 32),
+    ("ExportReport", 112),
     ("FirstAdmin", 25),
     ("FrontHost", 5),
     ("GitHubAccountLink", 73),
@@ -1958,6 +1975,7 @@ pub(crate) static KIND_BY_SEGMENT: &[(&str, usize)] = &[
     ("exchange-trust", 29),
     ("export-cursor", 109),
     ("export-destination", 32),
+    ("export-report", 112),
     ("first-admin", 25),
     ("front-host", 5),
     ("git-hub-account-link", 73),
@@ -2157,6 +2175,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("console", "client-template", 0x0043), // get list watch
     ("console", "console-channel", 0x0003), // get list
     ("console", "erasure-hold", 0x0003), // get list
+    ("console", "export-report", 0x0003), // get list
     ("console", "first-admin", 0x0043), // get list watch
     ("console", "front-host", 0x0043), // get list watch
     ("console", "grant-vocabulary", 0x0043), // get list watch
@@ -2261,6 +2280,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("exporter", "erasure-hold", 0x0003), // get list
     ("exporter", "export-cursor", 0x003f), // get list create update delete apply
     ("exporter", "export-destination", 0x0043), // get list watch
+    ("exporter", "export-report", 0x003f), // get list create update delete apply
     ("exporter", "git-hub-account-link", 0x0003), // get list
     ("exporter", "git-hub-app", 0x0003), // get list
     ("exporter", "git-hub-installation", 0x0003), // get list
@@ -2443,6 +2463,7 @@ pub(crate) static STORE_RULES: &[(&str, &str, u16)] = &[
     ("session", "usage-emitter", 0x0043), // get list watch
     ("session", "web-authn-challenge", 0x003f), // get list create update delete apply
     ("signer", "boundary", 0x0043), // get list watch
+    ("signer", "export-report", 0x0003), // get list
     ("signer", "front-host", 0x0043), // get list watch
     ("signer", "grant-vocabulary", 0x0043), // get list watch
     ("signer", "installation-client", 0x0043), // get list watch

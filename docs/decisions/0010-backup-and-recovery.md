@@ -65,7 +65,7 @@ The forces:
 ### A regional outage
 
 - **A regional outage stops signing in that region, and this is accepted.** KMS is regional and a software key fallback is refused in production ([floors in code](/decisions/0006-keys-and-sealing/#floors-in-code)). There is no standby region and no failover in the first installation: new sign-ins and signing wait for the region.
-- **Public key material outlives the outage.** The discovery document and the key set are public static documents served through a content delivery network with a stale-if-error window ([0009](/decisions/0009-export/#destinations)), so tokens already issued keep verifying while the region is down. They stay valid until they expire. Public material has no residency.
+- **Public key material outlives the outage.** The discovery document and the key set are public static documents served through a content delivery network ([0009](/decisions/0009-export/#the-edge)). If the bucket fails the edge falls back to the live key set of `entry`, and if that fails too it may serve its cached copy for at most 65 minutes after it expired, so tokens already issued keep verifying while the region is down. They stay valid until they expire. Public material has no residency.
 - **A rebuild in a second region needs new intermediates** through the hand-off ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off)), so the time to rebuild is not a figure until a drill has measured it.
 
 ### The drill

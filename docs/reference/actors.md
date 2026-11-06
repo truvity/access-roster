@@ -266,7 +266,7 @@ The only holder of storage credentials: one generic store service over four port
 
 Publishes the kinds marked exportable to destinations outside sluis and runs the backup job; it never writes to a secret source.
 
-- **Family:** data; a credential holder: the credentials of its export destinations; a write-only credential for the backup bucket.
+- **Family:** data; a credential holder: the credentials of its export destinations, with a narrow edge-purge credential for the public addresses it publishes; a write-only credential for the backup bucket.
 - **Language:** Rust, rule R11 of the [language record](/decisions/0012-the-language-follows-the-executable/). Rust on the smallest board tier unless a serious trade-off is named; the row for exporter in the language record is set with that record's edit.
 - **Placement:** one per boundary; any number of instances; on bare-metal, serverless, kubernetes. The backup job takes a lease, so one runs at a time.
 - **Ports:** `data`, `keys`, `audit-emit`, `destination`.
@@ -274,7 +274,7 @@ Publishes the kinds marked exportable to destinations outside sluis and runs the
 - **Egress:** `export-destinations`.
 - **Key purposes:** `data` (open), `backup-archive` (wrap).
 - **Decisions:** [ADR 0002](/decisions/0002-families-of-actors/), [ADR 0009](/decisions/0009-export/), [ADR 0010](/decisions/0010-backup-and-recovery/), [ADR 0012](/decisions/0012-the-language-follows-the-executable/).
-- **Requirement areas:** [EXPORT](/requirements/export/), [BACKUP](/requirements/backup/).
+- **Requirement areas:** [EXPORT](/requirements/export/), [BACKUP](/requirements/backup/), [KEYS](/requirements/keys/).
 - **Standards:** none.
 - **Issues:** [#1014](https://github.com/truvity/sluis/issues/1014); label `actor:exporter`.
 
