@@ -94,7 +94,7 @@ A verifier that accepts a sluis release requires both of these, and either one a
 
 - **Tags are signed by the release subkey once the signing API signs them.** That is the stand-in for `gpg` that git calls, the later stage of [0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api) ([#1075](https://github.com/truvity/sluis/issues/1075)). Until it exists, the maintainer signs the tag with their own key, so the tag does not yet carry the trust of the release subkey. That is why the provenance is required beside it, and why a tag signed with the maintainer's key is replaced by one signed by the subkey when the gate exists.
 - **The signature of the tag and the signature of the files are different.** The tag covers the commit. The files are covered by `SHA256SUMS` and its signature once the roots exist ([A release, once it is signed](#a-release-once-it-is-signed)).
-- **A pull request cannot make either.** The signing API refuses to sign for a workload that comes from a pull request, and a workflow lint refuses `id-token: write` in a signing job that a pull request can run ([REQ-SUPPLY-044](/requirements/supply/#REQ-SUPPLY-044)).
+- **A pull request cannot make either.** The signing API refuses to sign for a workload that comes from a pull request, and a workflow lint refuses `id-token: write` in any job that a pull-request trigger reaches, also through `workflow_call` ([REQ-SUPPLY-044](/requirements/supply/#REQ-SUPPLY-044)).
 
 :::note[Proposed]
 The exact command that compares the commit in the attestation with the tag's commit is written with the verification script ([#874](https://github.com/truvity/sluis/issues/874)); the rule above holds without it.
