@@ -2517,3 +2517,81 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a customer bind after an old upstream sign-in is refused with a step-up request; a bind after a fresh re-authentication proceeds to approval"}
+  - id: REQ-KEYS-186
+    area: KEYS
+    statement: "sluis MUST accept data that a customer signs for a tenant only as a JWS, RFC 7515, made by a key bound by that customer in that tenant."
+    rationale: "One signature format keeps verification in sluis simple, and tokens are JOSE already (ADR 0043, CU1 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a JWS by the bound key verifies; an OpenPGP signature, a JWS by an unbound key and a JWS by a key bound in another tenant are refused"}
+  - id: REQ-KEYS-187
+    area: KEYS
+    statement: "sluis MUST verify a customer's JWS against the customer's active binding in the tenant and write an audit record of the outcome."
+    rationale: "The binding state lives in sluis, so sluis must be the verifier and the keeper of the evidence (ADR 0043, CU2 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a JWS by an active binding verifies and is audited with the tenant, the key identity and the outcome; one by an ended, revoked or expired binding is refused and audited"}
+  - id: REQ-KEYS-188
+    area: KEYS
+    statement: "sluis MUST NOT let a tenant's policy waive the approval of a customer's first key binding."
+    rationale: "The approval is what ties a key to the customer (ADR 0043, CU3 A)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a tenant policy that sets a waiver is refused by config check, and a first customer bind with no approval is refused whatever the policy"}
+  - id: REQ-KEYS-189
+    area: KEYS
+    statement: "sluis MUST accept a customer's key binding only for a JWK in the first version."
+    rationale: "The first version supports one format for customers (ADR 0043, CU4 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a customer bind with a JWK proceeds; a customer bind with an OpenPGP key is refused with a reason"}
+  - id: REQ-KEYS-190
+    area: KEYS
+    statement: "key@ MUST make a person-key data key for each tenant that issues staff keys, separate from the tenant's other data keys."
+    rationale: "The sealed primaries of one company must open only with that company's own key (ADR 0043, EX1 A)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a tenant that issues staff keys has a person-key data key; no other data key of the tenant, and no person-key of another tenant, opens a PersonPrimary"}
+  - id: REQ-KEYS-191
+    area: KEYS
+    statement: "sluis MUST take the key identity of a customer's JWK from its RFC 7638 thumbprint and accept its possession proof only as a JWS over the challenge lines, signed by the key being bound."
+    rationale: "The customer's proof has the same freshness as a staff proof, in the customer's format (ADR 0043, CU1 A)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a bind with a JWS over the challenge by the JWK succeeds; a JWS over other bytes, an expired challenge and a JWS by another key are refused"}
