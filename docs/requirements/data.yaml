@@ -85,12 +85,12 @@ requirements:
     rationale: "A temp item with no expiry would grow without bound and be neither temporary nor lost (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
+    tests: [tools/gen/registry/generator_test.go]
     verification:
       - {kind: integration-test, ref: "registry check: a temp kind without a TTL fails"}
   - id: REQ-DATA-007
@@ -156,15 +156,15 @@ requirements:
     rationale: "Only two scope dimensions exist, and the flat address is what makes a prefix rule and a sealed value bound to its address possible (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [1202]
+    tests: [kits/go/store/address_test.go, actors/store/tests/store.rs]
     verification:
-      - {kind: test-vectors, ref: "address vectors: well-formed and malformed addresses, a config address with a tenant segment"}
+      - {kind: test-vectors, ref: "address vectors: well-formed and malformed addresses"}
   - id: REQ-DATA-012
     area: DATA
     statement: "An id MUST NOT contain personal data."

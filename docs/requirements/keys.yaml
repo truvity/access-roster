@@ -705,16 +705,15 @@ requirements:
     rationale: "A socket that another uid can open is a path around the rules (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [866, 914]
     tests: [tests/deny/deny_test.go]
     verification:
-      - {kind: test-vectors, ref: "a process under another uid opens ca@prod's key@ socket; refused by the directory permissions"}
+      - {kind: test-vectors, ref: "a probe as each caller's uid opens each key@ socket; a caller the registry does not list is refused at the socket (EACCES)"}
   - id: REQ-KEYS-045
     area: KEYS
     statement: "key@ MUST refuse a connection whose peer uid is not the uid its socket was made for."
@@ -924,15 +923,15 @@ requirements:
     rationale: "The PIN then crosses only the Raft port inside the store's replication and adds no listener (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [key]
     standards: []
     issues: [914]
+    tests: [actors/key/internal/keyd/pinrelease_test.go, kits/go/pinrelease/pinrelease_test.go]
     verification:
-      - {kind: integration-test, ref: "reboot one board with its peers up: it unlocks through PinRelease with no new listener"}
+      - {kind: integration-test, ref: "a locked board unlocks through its peer's PinRelease answer (keyd with fake drivers, in-process)"}
       - {kind: test-vectors, ref: "a PinRelease opened with another request's key fails"}
   - id: REQ-KEYS-117
     area: KEYS

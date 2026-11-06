@@ -1572,13 +1572,13 @@ requirements:
     rationale: "A record that is not canonical would hash differently in another implementation."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
     issues: [1121]
+    tests: [kits/go/audit/vectors_test.go, actors/writer/internal/writerd/record_test.go]
     verification:
       - {kind: test-vectors, ref: "RFC 8785 test data and non-canonical records"}
   - id: REQ-AUDIT-107
