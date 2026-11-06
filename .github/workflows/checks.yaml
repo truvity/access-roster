@@ -378,12 +378,12 @@ jobs:
           key: advisory-db-${{ runner.os }}-${{ steps.week.outputs.week }}
           restore-keys: |
             advisory-db-${{ runner.os }}-
-      # The card build is cgo. The compiler of devbox's environment (if there is one) does not search /usr/include, where
-      # libpcsclite-dev puts winscard.h, so the host's compiler and pkg-config are named.
+      # The card build is cgo. devbox sets CC to a compiler that does not search /usr/include, where libpcsclite-dev puts
+      # winscard.h, so the gate is told the host's compiler and pkg-config for that one scan (tools/advisories).
       - run: devbox run -- just check-advisories
         env:
-          CC: /usr/bin/gcc
-          PKG_CONFIG: /usr/bin/pkg-config
+          SLUIS_ADVISORIES_CC: /usr/bin/gcc
+          SLUIS_ADVISORIES_PKG_CONFIG: /usr/bin/pkg-config
 
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
