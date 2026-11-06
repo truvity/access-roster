@@ -22,6 +22,9 @@ use sluis_proto::sluis::r#type::v2alpha1::{Address, IndexEntry};
 use sluis_registry::Scope;
 
 pub mod revocation;
+pub mod watch;
+
+pub use watch::{Backoff, Event, ResyncCause, Watch, WatchOpts};
 
 /// How long `entry` keeps the key set it built from the ring and `KeyRevocation`: a key written to the
 /// ring is in the key set `entry` serves at most this long after. `signer` waits this long (and a margin)
@@ -39,7 +42,6 @@ pub trait Kind {
 }
 
 /// An item as the store returned it.
-#[derive(Clone, Debug, PartialEq)]
 pub struct Item<K: Kind> {
     /// The tenant; empty for a kind with none.
     pub tenant: String,
@@ -51,6 +53,53 @@ pub struct Item<K: Kind> {
     pub value: K::Value,
     /// When the item expires, for a kind with a TTL.
     pub expires_at: Option<SystemTime>,
+}
+
+// Written out, so that an item is `Clone`, `Debug` and `PartialEq` when its message is, whatever the marker type
+// `K` derives.
+impl<K: Kind> Clone for Item<K>
+where
+    K::Value: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            tenant: self.tenant.clone(),
+            id: self.id.clone(),
+            version: self.version,
+            value: self.value.clone(),
+            expires_at: self.expires_at,
+        }
+    }
+}
+
+impl<K: Kind> std::fmt::Debug for Item<K>
+where
+    K::Value: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Item")
+            .field("tenant", &self.tenant)
+            .field("id", &self.id)
+            .field("version", &self.version)
+            .field("value", &self.value)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+impl<K: Kind> PartialEq for Item<K>
+where
+    K::Value: PartialEq,
+{
+    fn eq(&self, o: &Self) -> bool {
+        (
+            &self.tenant,
+            &self.id,
+            self.version,
+            &self.value,
+            self.expires_at,
+        ) == (&o.tenant, &o.id, o.version, &o.value, o.expires_at)
+    }
 }
 
 /// What a write may carry.
@@ -85,6 +134,15 @@ pub enum Error {
     /// The store returned bytes that are not the kind's message.
     #[error("the stored value is not the kind's message")]
     Decode,
+    /// The kind has no change log to follow: a config kind, or a kind that no rule lets this caller watch.
+    #[error("the kind cannot be watched")]
+    NotWatchable,
+    /// The store said something the protocol does not allow, such as a change with no sequence.
+    #[error("protocol: {0}")]
+    Protocol(&'static str),
+    /// A [`Watch`] that ended with an error is used again.
+    #[error("the watch has ended")]
+    Closed,
     /// Any other refusal or transport failure, with the reason of its `Refusal` detail if any.
     #[error("{} ({})", .0.code.as_str(), .1.as_deref().unwrap_or("-"))]
     Rpc(ConnectError, Option<String>),
@@ -168,6 +226,13 @@ pub fn validate_address(address: &str) -> Result<(), Error> {
     validate_id(it.next().ok_or_else(|| Error::Address("id".into()))?)
 }
 
+/// One page of a listing, with the position a watch may start from.
+pub(crate) struct Page<K: Kind> {
+    pub(crate) items: Vec<Item<K>>,
+    pub(crate) next: Option<String>,
+    pub(crate) resume_point: u64,
+}
+
 /// The typed client of one kind.
 pub struct Store<K: Kind> {
     client: StoreServiceClient<Transport>,
@@ -176,6 +241,18 @@ pub struct Store<K: Kind> {
     /// Whether a tenant-scoped kind may also be addressed with no tenant (see [`Store::new_optional_tenant`]).
     optional_tenant: bool,
     _kind: std::marker::PhantomData<fn() -> K>,
+}
+
+impl<K: Kind> Clone for Store<K> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            segment: self.segment,
+            scope: self.scope,
+            optional_tenant: self.optional_tenant,
+            _kind: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<K: Kind> Store<K> {
@@ -274,6 +351,16 @@ impl<K: Kind> Store<K> {
         tenant: &str,
         page: Option<String>,
     ) -> Result<(Vec<Item<K>>, Option<String>), Error> {
+        let p = self.list_page(tenant, page).await?;
+        Ok((p.items, p.next))
+    }
+
+    /// A page with the `resume_point` of the listing (the same on every page of one listing).
+    pub(crate) async fn list_page(
+        &self,
+        tenant: &str,
+        page: Option<String>,
+    ) -> Result<Page<K>, Error> {
         let req = ListRequest {
             kind: self.segment.to_owned(),
             tenant: self.wire_tenant(tenant)?,
@@ -287,7 +374,11 @@ impl<K: Kind> Store<K> {
             .map(|i| self.item(i))
             .collect::<Result<Vec<_>, _>>()?;
         let next = (!resp.next_page_token.is_empty()).then_some(resp.next_page_token);
-        Ok((items, next))
+        Ok(Page {
+            items,
+            next,
+            resume_point: resp.resume_point,
+        })
     }
 
     async fn write(

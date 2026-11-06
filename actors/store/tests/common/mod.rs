@@ -482,6 +482,8 @@ pub struct F {
     pub secrets: Arc<Secrets>,
     pub clock: Arc<AtomicU64>,
     client: StoreServiceClient<sluis_kit::Transport>,
+    /// The kit's client of the same socket, for the typed client (`sluis_store::Store`).
+    pub kit: sluis_kit::Client,
     next_grant: AtomicUsize,
 }
 
@@ -580,6 +582,7 @@ impl F {
             secrets,
             clock,
             client: StoreServiceClient::new(cl.transport(), cl.config()),
+            kit: cl,
             next_grant: AtomicUsize::new(0),
         }
     }
