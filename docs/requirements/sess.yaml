@@ -725,15 +725,14 @@ requirements:
     rationale: "An unauthenticated request must create no stored state, and no grant for a tenant's keys exists before a person is decided (ADR 0025)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [793]
     verification:
-      - {kind: integration-test, ref: "a sign-in start writes no item of any kind but its rate bucket"}
+      - {kind: integration-test, ref: "a sign-in start sets the sealed sign-in cookie and writes no item of any kind"}
   - id: REQ-SESS-048
     area: SESS
     statement: "session MUST seal the sign-in cookie under the boundary's cookie data key and bind it to the request that began the sign-in."
@@ -769,15 +768,14 @@ requirements:
     rationale: "A cookie over the browser's limit is dropped silently and would break the sign-in (ADR 0025)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [793]
     verification:
-      - {kind: integration-test, ref: "an authorize request whose state would exceed 4 KiB is refused"}
+      - {kind: integration-test, ref: "the largest accepted authorize request sets a cookie within 4 KiB and one past a field bound is refused; the guard above 4 KiB is defence in depth"}
   - id: REQ-SESS-051
     area: SESS
     statement: "Dropping a generation of a tenant's chain data key MUST end the session chains sealed under it."

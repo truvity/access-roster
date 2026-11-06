@@ -78,6 +78,28 @@ func TestAuthorizeSendsThePersonToTheUpstream(t *testing.T) {
 	}
 }
 
+// A pending sign-in lives in the sealed sign-in cookie alone: before a person is known the start writes no item of any
+// kind, not even a counter, and the cookie is the one the state is in.
+//
+// verifies: REQ-SESS-047
+func TestAuthorizeStoresNothingBeforeAPersonIsKnown(t *testing.T) {
+	e := newEnv(t, nil)
+	e.store.mu.Lock()
+	seeded := len(e.store.items) // the config the test seeds
+	e.store.mu.Unlock()
+	r := e.authorize(newAuthorize().req)
+	set := headerOf(r, "Set-Cookie")
+	if len(set) != 1 || !strings.HasPrefix(set[0], sessiond.SigninCookie+"=") || !strings.HasPrefix(sessiond.SigninCookie, "__Host-") {
+		t.Fatalf("Set-Cookie = %v", set)
+	}
+	e.store.mu.Lock()
+	writes, items := len(e.store.writes), len(e.store.items)
+	e.store.mu.Unlock()
+	if writes != 0 || items != seeded {
+		t.Errorf("the sign-in start wrote %d batches and left %d items, seeded %d", writes, items, seeded)
+	}
+}
+
 func TestAuthorizeIsAudited(t *testing.T) {
 	e := newEnv(t, nil)
 	e.authorize(newAuthorize().req)
@@ -490,6 +512,10 @@ func TestAuthorizeNeedsATenant(t *testing.T) {
 	}
 }
 
+// The field bounds keep every accepted request inside the 4 KiB the sign-in cookie may have, and one past a bound is
+// refused rather than set as a cookie the browser would drop.
+//
+// verifies: REQ-SESS-050
 func TestAuthorizeTheLargestRequestFitsTheCookie(t *testing.T) {
 	// Everything a client supplies at its bound, with the longest redirect_uri: the sealed cookie stays under what
 	// entry passes on (4096), and a request one past a bound is refused rather than set as a cookie entry would drop.

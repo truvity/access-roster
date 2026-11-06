@@ -284,3 +284,44 @@ func TestMac(t *testing.T) {
 		wantRefusalNamed(t, name, err, c.code, c.reason)
 	}
 }
+
+// The subject MAC keys never leave key@: the only operation on the boundary's mac key and on a tenant's pairwise key is
+// Mac, which returns a keyed hash. Seal, Open, Sign and PublicKey on either purpose are refused, even for session, the
+// actor that holds the Mac rule for both, and nothing was signed.
+//
+// verifies: REQ-SUBJ-008
+func TestMacKeysAreNeverExtracted(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	ctx := context.Background()
+	c := n.client("session")
+	// The control: Mac works for both, so the refusals below are about the other operations.
+	for _, p := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {
+		if _, err := c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p.purpose, Tenant: p.tenant, Label: "l", Input: []byte("x")})); err != nil {
+			t.Fatalf("Mac under %s: %v", p.purpose, err)
+		}
+	}
+	refused := func(op string, err error) {
+		t.Helper()
+		if code := connect.CodeOf(err); err == nil || (code != connect.CodePermissionDenied && code != connect.CodeInvalidArgument) {
+			t.Errorf("%s: err = %v, want a refusal", op, err)
+		}
+	}
+	for _, purpose := range []string{"mac", "pairwise"} {
+		tenant := ""
+		if purpose == "pairwise" {
+			tenant = "acme"
+		}
+		_, err := seal1(c, purpose, "person", tenant, vecID, []byte("x"), nil)
+		refused("Seal "+purpose, err)
+		_, err = open1(c, purpose, "person", tenant, vecID, []byte("not-an-envelope"), nil)
+		refused("Open "+purpose, err)
+		_, err = c.Sign(ctx, signReq(purpose, []byte("x")))
+		refused("Sign "+purpose, err)
+		_, err = c.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: purpose}))
+		refused("PublicKey "+purpose, err)
+	}
+	if n.driver.signs.Load() != 0 {
+		t.Fatal("the driver was asked to sign")
+	}
+}

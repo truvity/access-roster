@@ -106,12 +106,11 @@ requirements:
       - {kind: conformance-suite, ref: "OIDF Basic OP with pairwise subject"}
   - id: REQ-SUBJ-008
     area: SUBJ
-    statement: "The subject MAC key MUST be the boundary's mac data key, which never leaves key@."
+    statement: "The subject MAC key MUST be the tenant's pairwise data key, which never leaves key@."
     rationale: "A key that cannot be read cannot be brute-forced offline."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -119,7 +118,7 @@ requirements:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "key extraction negative test"}
+      - {kind: integration-test, ref: "key extraction negative test: Seal, Open, Sign and PublicKey on the mac and pairwise purposes are refused and only Mac answers"}
   - id: REQ-SUBJ-009
     area: SUBJ
     statement: "A pairwise subject MUST be the unpadded base64url encoding of a 256-bit MAC."
@@ -796,15 +795,14 @@ requirements:
     rationale: "An id never contains personal data, and a natural key is hashed before it is stored (ADR 0019)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [1221]
     verification:
-      - {kind: integration-test, ref: "a link id is a Mac output with the label link; the upstream subject is not in the id"}
+      - {kind: integration-test, ref: "a link id is a Mac output under the link-id label, which is versioned; the upstream subject is not in the id"}
   - id: REQ-SUBJ-058
     area: SUBJ
     statement: "The reason of a PersonHold MUST be sealed."
