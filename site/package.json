@@ -28,6 +28,7 @@
     "yaml": "2.9.1"
   },
   "resolutions": {
-    "@cloudflare/vite-plugin": "1.64.0"
+    "@cloudflare/vite-plugin": "1.64.0",
+    "undici@npm:7.29.1": "7.30.1"
   }
 }
