@@ -129,7 +129,7 @@ requirements:
     issues: [777]
     tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
-      - {kind: integration-test, ref: "claim-preservation test: two refreshes an hour apart keep acr, amr, auth_time and sid of the sign-in in the ID token, the access token, the chain and the policy request; an absent acr, amr or auth_time stays absent"}
+      - {kind: integration-test, ref: "claim-preservation test: two refreshes keep acr, amr, auth_time and sid in both tokens, the chain and the policy request; absent ones stay absent"}
   - id: REQ-SESS-004
     area: SESS
     statement: "Each client session MUST have a sid that is unique per installation, client and single sign-on session."
@@ -690,7 +690,7 @@ requirements:
     issues: [1221]
     tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
-      - {kind: integration-test, ref: "a SessionChain is temp and hashed, written with a ttl; it holds the SHA-384 of the current secret and of the spent ones; a scan of the store, its writes and the audit records finds no refresh token value, before or after a refresh"}
+      - {kind: integration-test, ref: "a SessionChain is temp and hashed, with a ttl, and holds SHA-384 hashes only; a scan of the store, its writes and the audit records finds no refresh token"}
   - id: REQ-SESS-045
     area: SESS
     statement: "The session cookie MUST be sealed and opened at key@ on every request under the boundary's cookie data key."
