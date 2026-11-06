@@ -20,9 +20,14 @@ func kernelClock() clockObservation {
 	if err != nil {
 		return clockObservation{}
 	}
-	off := tx.Offset
-	if tx.Status&staNano != 0 {
-		off /= 1000
+	return observeTimex(tx.Offset, tx.Status, state)
+}
+
+// observeTimex turns what adjtimex answered into the observation: the offset in microseconds (the kernel counts
+// nanoseconds when STA_NANO is set), and synchronised when neither STA_UNSYNC nor the TIME_ERROR state says not.
+func observeTimex(offset int64, status int32, state int) clockObservation {
+	if status&staNano != 0 {
+		offset /= 1000
 	}
-	return clockObservation{Observed: true, Synced: tx.Status&staUnsync == 0 && state != timeError, OffsetMicros: off}
+	return clockObservation{Observed: true, Synced: status&staUnsync == 0 && state != timeError, OffsetMicros: offset}
 }

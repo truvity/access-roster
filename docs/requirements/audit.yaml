@@ -515,9 +515,9 @@ requirements:
     standards:
       - {id: ST-80, section: "5905", depth: Full}
     issues: [838, 867]
-    tests: [actors/writer/internal/writerd/seal_entry_test.go]
+    tests: [actors/writer/internal/writerd/seal_entry_test.go, actors/writer/internal/writerd/clock_linux_test.go]
     verification:
-      - {kind: integration-test, ref: "a seal entry holds the clock offset observed for its batch, and observed false when the kernel was not asked (TestASealRecordsTheClockOffsetObservedForItsBatch)"}
+      - {kind: integration-test, ref: "seal offset per batch or observed false; kernel reading, unit and sync flags (TestASealRecordsTheClockOffsetObservedForItsBatch, TestTheKernelClockObservationReadsUnitAndSyncFlags)"}
   - id: REQ-AUDIT-018
     area: AUDIT
     statement: "A subject erasure request MUST be satisfied by destroying a per-subject key."
@@ -724,7 +724,7 @@ requirements:
     issues: [838]
     tests: [actors/writer/internal/writerd/seal_entry_test.go, actors/writer/internal/writerd/writer_test.go]
     verification:
-      - {kind: integration-test, ref: "defaults of 256 records and 5 s, closing at either bound, and no empty batch (TestWithTheDefaultsABatchClosesAtTwoHundredFiftySixOrAfterFiveSeconds, TestABatchOfRepeatsAndRefusalsIsNotSealed)"}
+      - {kind: integration-test, ref: "defaults of 256 records and 5 s, closing at either bound, and no empty batch (TestWithTheDefaultBatchMaxABatchClosesAtTwoHundredFiftySix, TestABatchOfRepeatsAndRefusalsIsNotSealed)"}
   - id: REQ-AUDIT-048
     area: AUDIT
     statement: "Each sealed batch MUST end with a seal entry, inside the tree, that records its record count, the writer instance and the observed clock offset."
@@ -1852,7 +1852,7 @@ requirements:
     issues: [914]
     tests: [actors/writer/internal/writerd/log_content_test.go]
     verification:
-      - {kind: integration-test, ref: "the checkpoints of one writer all verify with its one log key and not with the key of another writer (TestEachWriterInstanceSignsItsCheckpointsWithItsOwnLogKey)"}
+      - {kind: integration-test, ref: "every checkpoint is signed with the one audit-log key of key@ (TestEachWriterInstanceSignsItsCheckpointsWithItsOwnLogKey); one key per instance is key@ and has no test yet"}
   - id: REQ-AUDIT-167
     area: AUDIT
     split_from: REQ-AUDIT-125
