@@ -45,6 +45,7 @@ The exit codes and the JSON output follow ritueel's [commands](https://ritueel.i
 | `sluis token --audience CLIENT_ID` | The user's cache; the token endpoint | A refreshed or exchanged token in the cache; the access token on standard output | 0, 1, 2, 3 |
 | `sluis audit verify DIR --key VKEY` | The files of a tiled audit log in `DIR`: the checkpoints, the hash tiles and the entry bundles | Nothing | 0, 1, 2, 3 |
 | `sluis node unlock NODE [--socket PATH] [--secret-fd N]` | The PIN, from standard input or the descriptor; the card driver's status | The PIN into the locked card driver of the node it runs on | 0, 1, 2, 3 |
+| `sluis node status NODE [--socket PATH]` | The card driver's status: whether it holds the PIN | Nothing | 0, 1, 2, 3 |
 | `sluis key revoke --kid KID --reason REASON [--out FILE]` | Nothing | A key revocation declaration, to `FILE` or standard output | 0, 2 |
 | `sluis key revoke --declaration FILE [--socket PATH] [--issuer URL] [--entry-socket PATH] [--wait DURATION]` | The signed declaration; the issuer's discovery document and key set, and `entry`'s | The revocations, through key@ on the node it runs on, and whether the keys left the key sets | 0, 1, 2, 3, 5 |
 | `sluis key revoke --check (--declaration FILE \| --kid KID ...) [--issuer URL] [--entry-socket PATH] [--wait DURATION]` | The declaration file or the keys; the issuer's discovery document and key set, and `entry`'s | Whether the keys left the key sets; nothing is delivered | 0, 1, 2, 5 |
@@ -109,6 +110,14 @@ A board starts locked: the card driver has no PIN ([0006](/decisions/0006-keys-a
 - **A wrong PIN is tried once.** The driver never retries it, because the card blocks after three wrong attempts. The command exits 3 with the reason `pin` and prints how many attempts the card still allows. With one attempt left the PIN is not sent at all: the command exits 3 with the reason `pin_retries`, because one more wrong PIN would block the card and the PUK procedure is the owners'. A blocked card exits 3 with `pin_blocked`; the PUK is a ceremony of the owners and not a command.
 - **`--socket PATH`** names the admin socket; by default it is `/run/sluis-drv-key-yubikey-piv-BOUNDARY/admin.sock`, from `--boundary`.
 - **The driver keeps the PIN in locked memory** and nowhere else; a restart of the driver locks it again.
+
+### `sluis node status`
+
+`sluis node status NODE` says whether the card driver of the node it runs on holds the PIN. It is the read-only half of `sluis node unlock`: it asks the same status call on the driver's admin socket, reads no PIN and sends none, and prints the name of the node and one word, `node NODE is locked` or `node NODE is unlocked`, or `{ "node", "locked" }` with `--output json`. It prints nothing else of the card, not even how many PIN attempts are left. It runs on the node, as root, for the reason `unlock` does.
+
+- **`NODE` must be the node the driver serves.** A different name exits 3 with the reason `node` and prints no state.
+- **A driver that cannot be asked is a failure** (exit 1), never `locked` or `unlocked`: a caller that cannot ask does not know. `just boards-status`, `just boards-unlock` and the end of `just boards-deploy` run it on the boards and read the answer ([the end of a deploy](/runtimes/bare-metal/#the-end-of-a-deploy)).
+- **`--socket PATH`** names the admin socket, as for `unlock`.
 
 ### `sluis key revoke`
 
@@ -216,7 +225,7 @@ And these where they apply:
 | `token` | `token` | `{ "access_token", "expires_at", "audience", "issuer" }`. |
 | `login` | `login` | `{ "issuer", "client_id", "subject", "expires_at" }`; no token. |
 | `audit` | `audit verify` | `{ "origin", "size", "root_hash", "checkpoints", "entries" }`. | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
-| `node` | `node unlock` | `{ "node", "locked" }`; no PIN. |
+| `node` | `node unlock`, `node status` | `{ "node", "locked" }`; no PIN. `node unlock` prints it after the PIN was taken, so `locked` is `false`; `node status` prints what the driver says. |
 | `revoke` | `key revoke` | `{ "written" }` for the declaration; for the delivery `{ "seq", "keys": [{ "kid", "already" }], "audited", "confirmation" }`. `confirmation`, which `--check` prints alone, is `{ "confirmed", "rounds", "kids", "warnings", "addresses": [{ "name", "address", "state", "issuer", "issuer_source", "keys", "listed", "found_by_key", "age", "reason" }] }`: `name` is `public` or `entry`, `state` is `absent`, `listed` or `unknown`, `issuer_source` is `entry` or `flag`, `keys` is the number of keys the set listed, and `reason` is a short sentence about what went wrong (`timed out`, `it answered 503`, `the answer has no "keys" member, so it is not a key set`), never a value of the answer. |
 
 Members are lower-case words with underscores; times are RFC 3339 in UTC; the object is not in canonical form. A new member is not a new version, so a reader ignores a member it does not know; a member renamed, removed or changed in meaning is version 2.

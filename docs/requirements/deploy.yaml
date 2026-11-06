@@ -432,7 +432,7 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "os-container-test.sh in a systemd container of each distribution; SELinux enforcing is os-vm-test.sh, which CI has never run (a schedule runs from the default branch only) and is run by hand; no card"}
-      - {kind: integration-test, ref: "prereq-test.sh, recipients-test.sh: a unit that restarts or is not active within 60 s fails the deploy with its journal; a locked card board ends 'locked' with exit 0"}
+      - {kind: integration-test, ref: "prereq-test.sh, recipients-test.sh: a unit that restarts or is not active within 60 s fails the deploy with its journal; a locked card board ends 'locked' with exit 0; an unreadable lock is failed"}
   - id: REQ-DEPLOY-032
     area: DEPLOY
     statement: "The card driver MUST NOT ask for a glibc symbol newer than GLIBC_2.34."
@@ -523,6 +523,31 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "boards-test.sh: a fake board without tar is refused with the install command, nothing is sent to it, and an unreachable board is not reported as a missing tar"}
+  - id: REQ-DEPLOY-043
+    area: DEPLOY
+    statement: "The boards deploy MUST NOT report a card board as ok unless its card driver says that it holds the PIN."
+    rationale: "A locked board keeps key@ and most units running, so the units cannot tell it from an unlocked one, and a board reported ok that cannot sign sends the operator to look in the wrong place (docs/runtimes/bare-metal.md, The end of a deploy)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "prereq-test.sh: unlocked is ok; locked is locked (exit 10) only if every unsettled unit waits for key@; a unit fault, an unreadable lock, no CLI are failed; boards-test.sh: lock per board"}
+      - {kind: integration-test, ref: "cli/sluis node_test.go: sluis node status says locked or unlocked from the driver, sends no PIN, refuses another node, and fails when the driver is out of reach"}
+  - id: REQ-DEPLOY-044
+    area: DEPLOY
+    statement: "The generated unit of an actor MUST NOT have a start limit."
+    rationale: "An actor that waits for a locked card driver exits and restarts until the PIN is given, which may take longer than any count of starts, and a unit that systemd has given up on is not started again by the unlock (docs/runtimes/bare-metal.md, The end of a deploy)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units: every actor unit has StartLimitIntervalSec=0 and Restart=on-failure with RestartSec=2s, and the committed units equal the generator's output"}
   - id: REQ-DEPLOY-042
     area: DEPLOY
     statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."
