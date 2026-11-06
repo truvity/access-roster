@@ -589,6 +589,203 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-DATA-087
+    #[test]
+    fn the_file_holds_the_boundary_a_destination_for_each_class_the_sockets_and_the_pins() {
+        // One destination for each of the four storage classes, in the order of the file. The match has no wildcard,
+        // so a fifth class does not compile until this test names its port.
+        let port = |c: Class| match c {
+            Class::Config => "config_source",
+            Class::Secret => "secret_source",
+            Class::Durable => "durable",
+            Class::Temp => "temp",
+        };
+        let b = Bootstrap::parse(LOCAL).unwrap();
+        let ports: Vec<_> = b.destinations().iter().map(|(p, _)| *p).collect();
+        assert_eq!(
+            ports,
+            [
+                port(Class::Config),
+                port(Class::Secret),
+                port(Class::Durable),
+                port(Class::Temp)
+            ]
+        );
+        // Each destination is a driver and the socket where store@ reaches it, and no two share a socket.
+        for (name, d) in b.destinations() {
+            assert!(!d.driver.is_empty(), "{name}");
+            assert!(d.socket.is_absolute(), "{name}");
+        }
+        let sockets: HashSet<_> = b.destinations().iter().map(|(_, d)| &d.socket).collect();
+        assert_eq!(sockets.len(), 4);
+        // The boundary and the pinned publisher keys: the pin is the SHA-384 of the key the file holds.
+        assert_eq!(b.boundary, "dev");
+        assert!(!b.publishers.is_empty());
+        for p in &b.publishers {
+            let pin = hex(digest::digest(&digest::SHA384, &p.spki_der).as_ref());
+            assert_eq!(p.spki_sha384, pin, "{}", p.kid);
+        }
+
+        // A file that lacks any one of them is refused, by the path of what is missing.
+        let line = |key: &str| {
+            LOCAL
+                .lines()
+                .find(|l| l.starts_with(&format!("{key}:")))
+                .map(|l| format!("{l}\n"))
+                .unwrap()
+        };
+        let without_publishers = LOCAL[..LOCAL.find("publishers:").unwrap()].to_owned();
+        let vectors = [
+            (line("boundary"), "boundary: required"),
+            (line("config_source"), "config_source: required"),
+            (line("secret_source"), "secret_source: required"),
+            (line("durable"), "durable: required"),
+            (line("temp"), "temp: required"),
+        ];
+        for (gone, want) in vectors {
+            assert_eq!(refusal(&local(&[(&gone, "")])), want);
+        }
+        assert_eq!(refusal(&without_publishers), "publishers: required");
+        assert_eq!(
+            refusal(&format!("{without_publishers}publishers: []\n")),
+            "publishers: must hold at least one publisher"
+        );
+        // A destination lacks its driver or its socket; a publisher lacks its pin or its key.
+        assert_eq!(
+            refusal(&local(&[(
+                "driver: rqlite, socket: /run/sluis/store/dev/durable.sock",
+                "socket: /run/sluis/store/dev/durable.sock"
+            )])),
+            "durable.driver: required"
+        );
+        assert_eq!(
+            refusal(&local(&[(
+                "durable: { driver: rqlite, socket: /run/sluis/store/dev/durable.sock }",
+                "durable: { driver: rqlite }"
+            )])),
+            "durable.socket: required"
+        );
+        let pin_line = LOCAL.lines().find(|l| l.contains("spki_sha384:")).unwrap();
+        assert_eq!(
+            refusal(&local(&[(&format!("{pin_line}\n"), "")])),
+            "publishers[0].spki_sha384: required"
+        );
+        let key_start = LOCAL.find("    public_key: |").unwrap();
+        let key_end = LOCAL.find(pin_line).unwrap();
+        assert_eq!(
+            refusal(&format!("{}{}", &LOCAL[..key_start], &LOCAL[key_end..])),
+            "publishers[0].public_key: required"
+        );
+        // One destination for a class: a list of two, or the class named twice, is refused.
+        let two = local(&[(
+            "durable: { driver: rqlite, socket: /run/sluis/store/dev/durable.sock }",
+            "durable: [{ driver: rqlite, socket: /a.sock }, { driver: rqlite, socket: /b.sock }]",
+        )]);
+        assert_eq!(refusal(&two), "durable: must be a mapping");
+        let twice = local(&[(
+            "temp: {",
+            "durable: { driver: rqlite, socket: /a.sock }\ntemp: {",
+        )]);
+        assert!(
+            refusal(&twice).starts_with("bootstrap:"),
+            "{}",
+            refusal(&twice)
+        );
+    }
+
+    /// verifies: REQ-DATA-088
+    #[test]
+    fn a_field_that_carries_a_secret_is_refused_by_place_and_its_value_is_never_shown() {
+        // The file holds no credential because its keys are a closed list that has no place for one, not because a
+        // scan finds secrets: a key of any other name is refused, wherever it stands, and the error names the place.
+        let value = "sentinel-credential-value-7f3a";
+        let names = [
+            "password",
+            "token",
+            "secret",
+            "client_secret",
+            "access_key_id",
+            "secret_access_key",
+            "api_key",
+            "private_key",
+            "credentials",
+            "bearer",
+            "rqlite_password",
+        ];
+        for name in names {
+            let top = local(&[(
+                "start_timeout: 30s\n",
+                &format!("start_timeout: 30s\n{name}: {value}\n"),
+            )]);
+            let in_destination = local(&[(
+                "socket: /run/sluis/store/dev/durable.sock }",
+                &format!("socket: /run/sluis/store/dev/durable.sock, {name}: {value} }}"),
+            )]);
+            let in_publisher = local(&[(
+                "    spki_sha384:",
+                &format!("    {name}: {value}\n    spki_sha384:"),
+            )]);
+            for (text, want) in [
+                (top, "<key>: unknown key"),
+                (in_destination, "durable.<key>: unknown key"),
+                (in_publisher, "publishers[0].<key>: unknown key"),
+            ] {
+                let e = refusal(&text);
+                assert_eq!(e, want, "{name}");
+                assert!(!e.contains(value) && !e.contains(name), "{name}: {e}");
+            }
+        }
+
+        // The keys the file does have take a shape that no credential has, and the error shows no value.
+        let secret_shaped = "AKIAIOSFODNN7EXAMPLEsecret/value+with=chars";
+        for (from, to, path) in [
+            (
+                "boundary: dev",
+                format!("boundary: {secret_shaped}"),
+                "boundary",
+            ),
+            (
+                "driver: rqlite, socket: /run/sluis/store/dev/durable.sock",
+                format!("driver: {secret_shaped}, socket: /a.sock"),
+                "durable.driver",
+            ),
+            (
+                "socket: /run/sluis/store/dev/temp.sock",
+                format!("socket: {secret_shaped}"),
+                "temp.socket",
+            ),
+            (
+                "kid: publisher-1",
+                format!("kid: {secret_shaped}"),
+                "publishers[0].kid",
+            ),
+            (
+                "start_timeout: 30s",
+                format!("start_timeout: {secret_shaped}"),
+                "start_timeout",
+            ),
+        ] {
+            let e = refusal(&local(&[(from, &to)]));
+            assert!(e.starts_with(&format!("{path}:")), "{path}: {e}");
+            assert!(
+                !e.contains(secret_shaped) && !e.contains("AKIA"),
+                "{path}: {e}"
+            );
+        }
+        // A publisher key is a public key: a PEM block of a private key is refused, and none of it is echoed.
+        let private = format!("-----BEGIN {} KEY-----", "PRIVATE");
+        let private_end = format!("-----END {} KEY-----", "PRIVATE");
+        let e = refusal(&local(&[
+            ("-----BEGIN PUBLIC KEY-----", &private),
+            ("-----END PUBLIC KEY-----", &private_end),
+        ]));
+        assert_eq!(
+            e,
+            "publishers[0].public_key: must be one PEM PUBLIC KEY block"
+        );
+        assert!(!e.contains("PRIVATE"), "{e}");
+    }
+
     /// verifies: REQ-DATA-089
     #[test]
     fn a_file_that_another_uid_can_write_is_refused() {

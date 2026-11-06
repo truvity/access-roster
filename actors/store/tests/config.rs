@@ -386,6 +386,69 @@ fn the_secret_an_upstream_names_is_a_credential_name() {
     }
 }
 
+/// verifies: REQ-CLIENT-005
+#[test]
+fn a_client_is_of_exactly_one_type_from_the_closed_set() {
+    let client = |kind_line: &str| {
+        format!(
+            "app:\n{kind_line}  redirects: [\"https://app.example.com/cb\"]\n  requires: [\"dev:app:user\"]\n"
+        )
+    };
+    let decoded = |kind_line: &str| {
+        let items =
+            payload::decode(kind("InstallationClient"), client(kind_line).as_bytes()).unwrap();
+        assert_eq!(items.len(), 1);
+        pb::InstallationClient::decode_from_slice(&items[0].1).unwrap()
+    };
+    // Each type of the set is read, and is the one type of its client.
+    for ty in ["public", "confidential", "exchange"] {
+        assert_eq!(decoded(&format!("  kind: {ty}\n")).kind, ty);
+    }
+    // Anything outside the set is refused by the place of `kind`, and its value is never shown: another name, another
+    // spelling, a type of another model, an empty value, a number, none at all.
+    for (line, want) in [
+        (
+            "  kind: service\n",
+            "app.kind: not one of the values of the schema",
+        ),
+        (
+            "  kind: machine\n",
+            "app.kind: not one of the values of the schema",
+        ),
+        (
+            "  kind: Public\n",
+            "app.kind: not one of the values of the schema",
+        ),
+        (
+            "  kind: \"public \"\n",
+            "app.kind: not one of the values of the schema",
+        ),
+        ("  kind: \"\"\n", "app.kind: required"),
+        ("  kind: 1\n", "app.kind: must be a string"),
+        ("", "app.kind: required"),
+        // More than one type: a list, or the key written twice.
+        (
+            "  kind: [public, confidential]\n",
+            "app.kind: must be a string",
+        ),
+        ("  kind: {public: true}\n", "app.kind: must be a string"),
+    ] {
+        let e = refused("InstallationClient", &client(line));
+        assert_eq!(e, want, "{line:?}");
+    }
+    let twice = refused(
+        "InstallationClient",
+        &client("  kind: public\n  kind: exchange\n"),
+    );
+    assert!(!twice.is_empty());
+    assert!(
+        !twice.contains("exchange"),
+        "an error never shows a value: {twice}"
+    );
+    let e = refused("InstallationClient", &client("  kind: surprise-type-9\n"));
+    assert!(!e.contains("surprise-type-9"), "{e}");
+}
+
 /// verifies: REQ-OPS-010
 #[test]
 fn a_payload_is_refused_by_place_and_an_error_shows_no_value() {
@@ -720,13 +783,92 @@ async fn a_cold_start_waits_for_a_source_and_then_gives_up_unreachable() {
     assert!(err.unreachable, "{err}");
 }
 
+/// The files of a directory with their bytes, by name: what a run left there.
+fn tree(dir: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|f| {
+            let f = f.unwrap();
+            // A socket has a name and no bytes.
+            let bytes = if f.file_type().unwrap().is_file() {
+                std::fs::read(f.path()).unwrap()
+            } else {
+                Vec::new()
+            };
+            (f.file_name().to_string_lossy().into_owned(), bytes)
+        })
+        .collect()
+}
+
+/// verifies: REQ-DATA-081
 #[tokio::test]
 async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     let e = env().await;
+    // A first run: the set at seq 9, then a newer token lifetime at seq 12, which the running store takes.
+    write_local(e.docs.path(), &e.pipeline, 9);
+    let first = e.start().await.unwrap();
+    e.sign(
+        "token-lifetime",
+        &source("token-lifetime").replace("10m", "20m"),
+        12,
+    );
+    assert!(matches!(first.reload().await, Reloaded::Applied(_)));
+    assert_eq!(first.version("token-lifetime"), Some(12));
+    // The run ends. The publisher goes back: the whole set, validly signed again, at lower seqs than that run held
+    // (1 for most kinds, 3 for the one that was at 12).
+    drop(first);
     write_local(e.docs.path(), &e.pipeline, 1);
-    // A lower seq than one published before: nothing is in force to compare with.
-    e.sign("token-lifetime", source("token-lifetime"), 1);
-    assert!(e.start().await.is_ok());
+    e.sign("token-lifetime", source("token-lifetime"), 3);
+
+    // A cold start has nothing in force to compare with: it starts, and it runs the documents as the source holds them.
+    let second = e
+        .start()
+        .await
+        .expect("a lower seq than a previous run starts");
+    assert_eq!(second.version("token-lifetime"), Some(3));
+    assert_eq!(second.version("boundary"), Some(1));
+    let t = pb::TokenLifetime::decode_from_slice(&second.get("token-lifetime", "default").unwrap())
+        .unwrap();
+    assert_eq!(
+        t.id_token.seconds, 600,
+        "it runs the older payload, not the one of the previous run"
+    );
+    // The audit fact of the start names those seqs.
+    let summaries = second.snapshot().summaries();
+    assert_eq!(summaries.len(), 10);
+    assert_eq!(
+        summaries
+            .iter()
+            .find(|s| s.kind == "TokenLifetime")
+            .unwrap()
+            .seq,
+        3
+    );
+
+    // From then on the running store takes a growing seq only: the seq in force is the one mark, and it is in memory.
+    e.sign("token-lifetime", source("token-lifetime"), 2);
+    let staged = (
+        tree(e.docs.path()),
+        tree(e._sock.path()).keys().cloned().collect::<Vec<_>>(),
+    );
+    let (err, _) = refused_reload(second.reload().await);
+    assert!(err.to_string().contains("step 5: a lower seq"), "{err}");
+
+    // No file holds a sequence mark after the runs: the directory of documents and the directory of sockets are as
+    // the publisher left them (the starts and reloads read; they did not write), and the loader has no engine to
+    // write an item to.
+    assert_eq!(
+        (
+            tree(e.docs.path()),
+            tree(e._sock.path()).keys().cloned().collect::<Vec<_>>()
+        ),
+        (staged.0.clone(), staged.1),
+    );
+    assert!(
+        staged.0.keys().all(|n| n.ends_with(".jws")),
+        "only the signed documents: {:?}",
+        staged.0.keys().collect::<Vec<_>>()
+    );
 }
 
 /// The local Boundary document without the kind ExchangeTrust in its declaration.
