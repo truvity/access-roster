@@ -1865,7 +1865,7 @@ requirements:
       - {kind: integration-test, ref: "a key with a user ID for another person's address, for an unverified address or for a foreign domain is certified for none of them"}
   - id: REQ-KEYS-132
     area: KEYS
-    statement: "sluis MUST set the expiry of a certification no later than the expiry of its binding and no later than 13 months after it is made."
+    statement: "sluis MUST set the expiry of a certification no later than the expiry of the key it certifies and no later than 13 months after it is made."
     rationale: "A certification outlives a lost or ended key only until it expires (ADR 0043, ADR 0024)."
     level: MUST
     source: design-decision
@@ -1875,7 +1875,7 @@ requirements:
     standards: []
     features: [design]
     verification:
-      - {kind: integration-test, ref: "a certification made at the maximum has an expiry of at most 13 months, and one for a binding that expires sooner expires with it"}
+      - {kind: integration-test, ref: "a certification made at the maximum has an expiry of at most 13 months, and one for a key that expires sooner expires with the key"}
   - id: REQ-KEYS-133
     area: KEYS
     statement: "sluis MUST require a fresh proof from an active hardware-attested binding of the person, signed by the bound key, before it adds any further binding of that person."
@@ -2019,3 +2019,29 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a request that holds a secret key packet, or an SSH private key, is refused and the material is not stored or logged"}
+  - id: REQ-KEYS-144
+    area: KEYS
+    statement: "sluis MUST refuse to bind an OpenPGP key that has no expiry or whose expiry is later than the bound that policy sets."
+    rationale: "A key that expires in about 3 years and is extended at the card stays in step with the card, and a lost card cannot leave a key valid for ever (ADR 0043, PX1)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a key with no expiry and one beyond the bound are refused; a key within it is bound and the binding carries the key's expiry as its own"}
+  - id: REQ-KEYS-145
+    area: KEYS
+    statement: "sluis MUST accept an extension of a bound OpenPGP key only as the same key with a later expiry, after a fresh hardware step-up and a proof of possession."
+    rationale: "Extending at the card must not add or swap a key, so the binding, its class and its place in the keyring and on GitHub are kept (ADR 0043, PX1)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "an extended copy of the bound key updates the expiry and keeps the binding; a different key, an earlier expiry and a missing proof are refused"}

@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-11-06
 
-Proposal: [issue #1494](https://github.com/truvity/sluis/issues/1494), owner decisions SK1 E, BK1 A, BK2 A, BK3 A, 2026-11-06.
+Proposal: [issue #1496](https://github.com/truvity/sluis/issues/1496), owner decisions SK1 E, BK1 A, BK2 A, BK3 A, 2026-11-06.
 
 ## Context
 
@@ -21,6 +21,7 @@ sluis already knows who a person is, signs the person in with a hardware key, an
 | G4 A | Staff cards are generated on the card, the PIN and Admin PIN are changed at issue, each person gets a second card, and the attestation is recorded in ritueel's ledger. |
 | G5 A | A leaver is removed from the organisation and the GitHub account, the certification lapses, the key leaves the keyring, and a revocation is for compromise only. Old commits stay Verified, by design. |
 | P10 A | An `sk-ssh` key gets an SSH certificate, later. |
+| PX1 | "the card primary expires after about 3 years and is extended at the card." The GitHub App re-uploads the extended key. |
 | PK1 A | A privileged action needs an assertion that the boundary itself verified ([0017](/decisions/0017-identity-and-sign-in/); the classes and the enrolment rule are in [pull request #1484](https://github.com/truvity/sluis/pull/1484)). |
 
 This record replaces the per-person design that G2a, G2b and SK2 to SK5 described. It is the producer of the keys that the GitHub key sync consumes ([pull request #1485](https://github.com/truvity/sluis/pull/1485)).
@@ -29,7 +30,7 @@ This record replaces the per-person design that G2a, G2b and SK2 to SK5 describe
 
 ### What a binding is
 
-- **A binding is a record that a person owns a public key.** It holds the person, the key (for OpenPGP its full version 4 fingerprint and the public key), the kind, the class, the attestation as received, the time created, the expiry, and a state: `active`, `ended` or `revoked`. It is the durable kind `KeyBinding`, personal and sealed under the tenant's data key, written only by `exchange`, and erased with the person ([0004](/decisions/0004-the-data-model/)). It is added to the registry with the first build.
+- **A binding is a record that a person owns a public key.** It holds the person, the key (for OpenPGP its full version 4 fingerprint and the public key), the kind, the class, the attestation as received, the time created, the expiry (the key's own, see below), and a state: `active`, `ended` or `revoked`. It is the durable kind `KeyBinding`, personal and sealed under the tenant's data key, written only by `exchange`, and erased with the person ([0004](/decisions/0004-the-data-model/)). It is added to the registry with the first build.
 - **sluis never holds the private part of a bound key.** The request carries a public key and proofs, and the card keeps the rest ([REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143)).
 - **A key is bound to one person.** The same key twice, or the key of another person, is refused ([REQ-KEYS-142](/requirements/keys/#REQ-KEYS-142)).
 - **The kinds are OpenPGP and `sk-ssh`.** X.509 and PIV keys come later. Each kind has its own proof format and its own action; the binding, the classes and the gate are the same for all.
@@ -65,7 +66,16 @@ An attestation that is present and does not verify is refused, not downgraded: a
 - **The chain has three links.** The ritueel root makes a trust signature, limited to the company's domain, over one sluis certification key, at a ceremony, as [0024](/decisions/0024-root-custody-and-the-signing-api/#company-openpgp-certification) says. That intermediate certifies the person's key. The person's card signs the key's own user ID. A verifier that holds only the root's fingerprint accepts a bound key and nothing else under the domain ([REQ-KEYS-130](/requirements/keys/#REQ-KEYS-130)).
 - **One intermediate does it, behind key@.** It is a purpose enabled on use ([Key purposes](/decisions/0006-keys-and-sealing/#key-purposes)): a key of the cloud key service (AWS KMS) on a cloud installation and a YubiKey on a board. `signer` makes the certification for a grant that `policy` sealed, in place, and the key is never shown.
 - **It certifies only addresses of the person.** The user IDs it certifies are verified addresses of the person in the directory, in the root's domain ([REQ-KEYS-131](/requirements/keys/#REQ-KEYS-131)).
-- **The certification ends with the binding.** Its expiry is the binding's, at most 13 months ([REQ-KEYS-132](/requirements/keys/#REQ-KEYS-132)).
+- **The certification ends with the binding.** Its expiry is no later than the key's own expiry and at most 13 months away ([REQ-KEYS-132](/requirements/keys/#REQ-KEYS-132)).
+
+### The key's own expiry
+
+Two clocks run, and they are not the same. The **certification** is sluis's and lasts about 13 months; sluis renews it. The **key** is the person's: the card primary expires after about 3 years (PX1), and only the card can extend it.
+
+- **A key with no expiry is refused,** and so is one that expires beyond the bound policy sets, by default 3 years. The binding's expiry is the key's own expiry ([REQ-KEYS-144](/requirements/keys/#REQ-KEYS-144)).
+- **The person extends the key at the card,** with the ritueel helper or `gpg`, which makes a new self-signature on the same key. They present the extended public key to `sluis key bind`; sluis accepts it only as the same key with a later expiry, after a fresh hardware step-up and a proof of possession, and keeps the binding ([REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145)). It is not a new binding, so the enrolment gate below does not apply to it; it adds no key.
+- **A key that is not extended lapses with its binding.** sluis warns the person and the operators before the key's expiry, as [0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning) does for certifications. When the key expires, sluis stops renewing the certification, the key leaves the keyring and the GitHub sync removes it.
+- **The GitHub sync re-uploads the extended key.** GitHub's copy of a key changes only when it is uploaded again, so the sync adds the new copy and removes the old one, by the update rule of [pull request #1485](https://github.com/truvity/sluis/pull/1485) ([REQ-OPS-099](https://github.com/truvity/sluis/pull/1485) there).
 
 ### The gate
 
@@ -123,7 +133,7 @@ So the design checks the public key of the attestation against the public key of
 - sluis certifies on its own authority, under a trust signature from the root. The root stays offline, and the weight moves to policy, the hardware sign-in and detection. That is a stronger position than a ceremony role that binds software, and a weaker one than a ceremony with a person present; the design chooses automation and says what it costs.
 - A card that sluis cannot attest is class `hardware` or `software`, and cannot sign for the company. An installation that wants to accept a new model extends the allowlist.
 - The staff keyring is produced by sluis from the bindings. The sync of [pull request #1485](https://github.com/truvity/sluis/pull/1485) was written when ritueel produced it; that source is now sluis, and its two controls (the person-to-certificate rule and sluis's own certification) hold, the second now with its certification in place. The wording of both records is brought in line when they merge.
-- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143).
+- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145).
 
 ## Roads not taken
 
@@ -134,14 +144,15 @@ So the design checks the public key of the attestation against the public key of
 - **Trust an attestation alone.** Anyone can attest a key on a card they bought, so the attestation says what a key is and not whose it is.
 - **Directory approval for every further binding.** A directory change needs no hardware proof, so it would let a changed directory entry add a key to a person who has one.
 - **An SSH-signing fallback for staff (G1 A).** It cannot be tied to a card the same way, and GitHub treats it as a different key.
+- **A key that never expires.** A lost card would leave a key valid for ever, and the yearly certification would be the only limit; an expiry the card extends keeps a person's key in step with their card.
 - **A new attestation at every renewal.** It brings a person back to the card once a year for a check that the lost-card rule already covers.
 
 ## Follow-ups
 
-- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143) ([#1494](https://github.com/truvity/sluis/issues/1494)), gated on the conformance test above.
-- Run the conformance test and date the result ([#1494](https://github.com/truvity/sluis/issues/1494)).
-- Add the certification purpose to the table of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) and to the key plan when it is built ([#1494](https://github.com/truvity/sluis/issues/1494)).
-- Write the form of the staff keyring, its signature and its list of withdrawn keys, now that sluis produces it, with test vectors shared with ritueel ([#1494](https://github.com/truvity/sluis/issues/1494)).
-- Bring the wording of the GitHub key sync into line with sluis as the source of the keyring ([#1494](https://github.com/truvity/sluis/issues/1494)).
-- Sealed software keys for non-human identities such as bots and agents (BK3 A): a later feature with its own record when it is designed ([#1494](https://github.com/truvity/sluis/issues/1494)).
-- Enforcement of commit signing on GitHub (G3 C) stays a later CI check against the staff keyring ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145) ([#1496](https://github.com/truvity/sluis/issues/1496)), gated on the conformance test above.
+- Run the conformance test and date the result ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Add the certification purpose to the table of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) and to the key plan when it is built ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Write the form of the staff keyring, its signature and its list of withdrawn keys, now that sluis produces it, with test vectors shared with ritueel ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Bring the wording of the GitHub key sync into line with sluis as the source of the keyring ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Sealed software keys for non-human identities such as bots and agents (BK3 A): a later feature with its own record when it is designed ([#1496](https://github.com/truvity/sluis/issues/1496)).
+- Enforcement of commit signing on GitHub (G3 C) stays a later CI check against the staff keyring ([#1496](https://github.com/truvity/sluis/issues/1496)).
