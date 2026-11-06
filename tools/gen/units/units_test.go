@@ -154,6 +154,114 @@ func TestHardeningAndNetwork(t *testing.T) {
 	}
 }
 
+var (
+	socketBindDeny = regexp.MustCompile(`(?m)^SocketBindDeny=any$`)
+	noExecPaths    = regexp.MustCompile(`(?m)^NoExecPaths=(.*)$`)
+	execStart      = regexp.MustCompile(`(?m)^ExecStart=(\S+)`)
+)
+
+// No unit of a board may bind a TCP or UDP port: SocketBindDeny=any is in every actor and every driver unit, and it
+// leaves the Unix sockets and the connections out (the address families) alone. A port scan of a board needs a board;
+// this holds the directive that makes the scan come out empty.
+//
+// verifies: REQ-ISO-095
+func TestNoUnitMayBindAPort(t *testing.T) {
+	units := 0
+	for name, body := range generate(t) {
+		if !strings.HasSuffix(name, "@.service") {
+			continue
+		}
+		units++
+		if !socketBindDeny.MatchString(body) {
+			t.Errorf("%s lacks SocketBindDeny=any", name)
+		}
+		// Only the directive for TCP and UDP binds is claimed: a unit with egress still has the inet families to connect out.
+		if strings.Contains(body, "SocketBindAllow=") {
+			t.Errorf("%s allows a bind", name)
+		}
+	}
+	if units < 15 {
+		t.Fatalf("only %d units checked", units)
+	}
+}
+
+// An actor may not execute a driver: its unit makes the drivers' tree and every place it can write noexec, and its own
+// executable is under neither. The platform starts each driver as a unit of its own, which names no noexec path, so that
+// its own executable runs.
+//
+// verifies: REQ-ISO-104
+func TestNoActorMayExecADriver(t *testing.T) {
+	files := generate(t)
+	actors, drivers := 0, 0
+	required := map[string]bool{} // the units that an actor's unit Requires=, so that the platform starts them with it
+	for _, body := range files {
+		if m := regexp.MustCompile(`(?m)^Requires=(.*)$`).FindStringSubmatch(body); m != nil {
+			for _, u := range strings.Fields(m[1]) {
+				required[u] = true
+			}
+		}
+	}
+	for name, body := range files {
+		if !strings.HasSuffix(name, "@.service") {
+			continue
+		}
+		if strings.HasPrefix(name, "sluis-drv-") && !required[strings.TrimSuffix(name, "@.service")+"@%i.service"] {
+			t.Errorf("no unit requires %s: the platform starts every driver beside its owner", name)
+		}
+		exec := execStart.FindStringSubmatch(body)
+		if exec == nil {
+			t.Errorf("%s has no ExecStart", name)
+			continue
+		}
+		m := noExecPaths.FindStringSubmatch(body)
+		isDriver := strings.HasPrefix(name, "sluis-drv-")
+		if isDriver {
+			drivers++
+			if !strings.HasPrefix(exec[1], DriversDir+"/") {
+				t.Errorf("%s: a driver runs %s, not from %s", name, exec[1], DriversDir)
+			}
+			if m != nil {
+				t.Errorf("%s names noexec paths %q: the platform starts it from them", name, m[1])
+			}
+			continue
+		}
+		actors++
+		if strings.HasPrefix(exec[1], DriversDir+"/") {
+			t.Errorf("%s runs a driver executable %s", name, exec[1])
+		}
+		if m == nil {
+			t.Errorf("%s lacks NoExecPaths", name)
+			continue
+		}
+		paths := strings.Fields(m[1])
+		for _, want := range []string{"-" + DriversDir, "-/tmp", "-/var/tmp"} {
+			if !slices.Contains(paths, want) {
+				t.Errorf("%s: NoExecPaths %q lacks %s", name, m[1], want)
+			}
+		}
+		// The actor's own executable and its run directory: the executable is not under a noexec path, and the run
+		// directory, which it may write to, is.
+		rw := regexp.MustCompile(`(?m)^ReadWritePaths=(\S+)`).FindStringSubmatch(body)
+		if rw == nil || !slices.Contains(paths, "-"+rw[1]) {
+			t.Errorf("%s: its writable directory is not in NoExecPaths %q", name, m[1])
+		}
+		for _, p := range paths {
+			if strings.HasPrefix(exec[1], strings.TrimPrefix(p, "-")+"/") {
+				t.Errorf("%s: its executable %s is under the noexec path %s", name, exec[1], p)
+			}
+		}
+		if strings.Contains(body, "\nStateDirectory=") {
+			sd := regexp.MustCompile(`(?m)^StateDirectory=(\S+)`).FindStringSubmatch(body)
+			if sd == nil || !slices.Contains(paths, "-/var/lib/"+sd[1]) {
+				t.Errorf("%s: its state directory is not in NoExecPaths %q", name, m[1])
+			}
+		}
+	}
+	if actors < 15 || drivers < 7 {
+		t.Fatalf("only %d actor and %d driver units checked", actors, drivers)
+	}
+}
+
 // A caller joins the group of every callee of the registry, and no other.
 func TestCallGraphBecomesGroups(t *testing.T) {
 	files := generate(t)

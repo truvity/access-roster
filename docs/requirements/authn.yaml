@@ -161,7 +161,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: no-proving-test
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -171,7 +171,7 @@ requirements:
     issues: [774]
     verification:
       - {kind: conformance-suite, ref: "OIDF Config OP"}
-      - {kind: test-vectors, ref: "own golden for authorization server metadata"}
+      - {kind: test-vectors, ref: "own golden for authorization server metadata (actors/entry/tests/testdata/discovery.json); request_uri_parameter_supported is false because /authorize takes no request_uri"}
   - id: REQ-AUTHN-029
     area: AUTHN
     split_from: REQ-AUTHN-006

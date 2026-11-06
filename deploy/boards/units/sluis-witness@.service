@@ -42,6 +42,8 @@ SystemCallFilter=@system-service
 SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/witness -/tmp -/var/tmp
 ReadWritePaths=/run/sluis/witness
 
 [Install]

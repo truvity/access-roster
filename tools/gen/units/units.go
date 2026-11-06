@@ -20,6 +20,10 @@ const (
 	// LoadRoot is where the deploy puts the files that LoadCredentialEncrypted= reads (systemd credentials, encrypted on the board
 	// with its own host key, so that a reflash, which makes a new key, is followed by a deploy that encrypts them again).
 	LoadRoot = "/etc/sluis/credentials"
+	// DriversDir holds every driver's executable. The platform starts a driver (its own unit, beside its owner); an
+	// actor's unit makes this tree noexec, and every place the actor can write, so no actor can start a driver or a
+	// copy of one (REQ-ISO-104).
+	DriversDir = BinDir + "/drivers"
 
 	// maxName is the longest user name that systemd-sysusers accepts (31 characters).
 	maxName = 31
@@ -683,7 +687,13 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("StateDirectoryMode=0700")
 	}
 	b.blank()
-	b.harden(len(a.Egress) == 0)
+	// What an actor may not execute: the drivers' tree, and every place it can write (its run directory, its state
+	// directory, the private /tmp and /var/tmp), so that a copy of a driver cannot run either.
+	noExec := []string{DriversDir, "/run/sluis/" + a.Name, "/tmp", "/var/tmp"}
+	if spec.State {
+		noExec = append(noExec, fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name))
+	}
+	b.harden(len(a.Egress) == 0, noExec)
 	b.line("ReadWritePaths=/run/sluis/%s", a.Name)
 	b.blank()
 	b.line("[Install]")
@@ -871,7 +881,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("LoadCredentialEncrypted=%s:%s/%%i/%s/%s", c, LoadRoot, stem, c)
 	}
 	b.blank()
-	b.harden(!spec.Network)
+	b.harden(!spec.Network, nil)
 	b.line("ReadWritePaths=%s", socketDir)
 	b.blank()
 	b.line("[Install]")
@@ -885,7 +895,12 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 }
 
 // harden is the hardening of PLAN.md section 6 and ADR 0003. Without egress a unit has no network at all.
-func (b *unitText) harden(noNetwork bool) {
+//
+// Every unit has SocketBindDeny=any: no unit may bind a TCP or UDP port (REQ-ISO-095). The Unix sockets of the
+// platform are not affected, and neither is a connection out, so an adapter with egress still connects. noExec are the
+// paths the unit may not execute anything from (REQ-ISO-104). The leading "-" makes a path that does not exist on a
+// board no error. A driver's own unit names none: it is the one the platform starts.
+func (b *unitText) harden(noNetwork bool, noExec []string) {
 	b.line("# Hardening (ADR 0003)")
 	b.line("NoNewPrivileges=yes")
 	b.line("CapabilityBoundingSet=")
@@ -916,6 +931,10 @@ func (b *unitText) harden(noNetwork bool) {
 		b.line("RestrictAddressFamilies=AF_UNIX")
 	} else {
 		b.line("RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6")
+	}
+	b.line("SocketBindDeny=any")
+	if len(noExec) > 0 {
+		b.line("NoExecPaths=-%s", strings.Join(noExec, " -"))
 	}
 }
 

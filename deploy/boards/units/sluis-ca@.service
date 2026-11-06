@@ -43,6 +43,8 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
+SocketBindDeny=any
+NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/ca -/tmp -/var/tmp
 ReadWritePaths=/run/sluis/ca
 
 [Install]

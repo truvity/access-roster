@@ -142,6 +142,11 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // The union over the grants of /token (RFC 8414 has no list per grant): `none` for sign-in and
         // refresh, the two secret methods for token exchange. The list is the handler's.
         "token_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
+        // The field defaults to true (OpenID Connect Discovery 1.0 section 3) and `/authorize` takes no `request_uri`
+        // (its closed list is `routes::AUTHORIZE`), so the document says false. `request_parameter_supported` and
+        // `claims_parameter_supported` default to false and stay out. `authorization_response_iss_parameter_supported`
+        // (RFC 9207) defaults to false too, which is true: the callback sends no `iss`.
+        "request_uri_parameter_supported": false,
     });
     serde_json::to_vec(&doc).ok()
 }
@@ -285,6 +290,31 @@ mod tests {
     #[test]
     fn an_empty_ring_is_an_empty_key_set() {
         assert_eq!(jwks(&SigningRing::default()), br#"{"keys":[]}"#);
+    }
+
+    /// The document for one issuer equals the golden file (`tests/testdata/discovery.json`) as JSON, so a field
+    /// added, dropped or changed is a reviewed change to the golden.
+    ///
+    /// verifies: REQ-AUTHN-006
+    #[test]
+    fn the_discovery_document_equals_its_golden() {
+        let b = Boundary {
+            issuer: "https://sluis.example.test".into(),
+            ..Boundary::default()
+        };
+        let got: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
+        let golden: Value =
+            serde_json::from_str(include_str!("../tests/testdata/discovery.json")).unwrap();
+        assert_eq!(got, golden);
+        assert_eq!(got["request_uri_parameter_supported"], false);
+        // The claim is true: `/authorize` has no `request` or `request_uri` parameter, and its list is closed.
+        for name in ["request", "request_uri"] {
+            assert!(!crate::routes::AUTHORIZE.contains(&name), "{name}");
+        }
+        assert!(
+            got.get("authorization_response_iss_parameter_supported")
+                .is_none()
+        );
     }
 
     #[test]
