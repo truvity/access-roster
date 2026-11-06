@@ -1008,3 +1008,46 @@ func TestCardDriverIsBoundToTheBoardsCard(t *testing.T) {
 		t.Error("the serial file is optional: a driver without it would adopt any card")
 	}
 }
+
+// verifies: REQ-DEPLOY-044
+// A card board is locked until a person or a peer gives the PIN, and an actor that signs or opens a key when it starts
+// fails and restarts until then. A start limit would put it out for good ("start-limit-hit", state failed) and nothing
+// would start it after the unlock, so no actor has one; and every actor is restarted, or it would stay down at its first
+// failure. The drivers are not actors and keep systemd's default.
+func TestActorsAreRestartedWithoutAStartLimit(t *testing.T) {
+	files := generate(t)
+	actors := 0
+	for _, a := range registry.Actors() {
+		if a.Family == "platform" {
+			continue
+		}
+		for _, name := range []string{"sluis-" + a.Name + "@.service"} {
+			body, ok := files[name]
+			if !ok {
+				t.Errorf("no unit %s", name)
+				continue
+			}
+			actors++
+			if !regexp.MustCompile(`(?m)^StartLimitIntervalSec=0$`).MatchString(body) {
+				t.Errorf("%s has a start limit: a locked board would end it failed for good", name)
+			}
+			if strings.Contains(body, "StartLimitBurst=") {
+				t.Errorf("%s names a burst, which has no meaning without a limit", name)
+			}
+			if !strings.Contains(body, "\nRestart=on-failure\n") || !strings.Contains(body, "\nRestartSec=2s\n") {
+				t.Errorf("%s is not restarted every two seconds on failure", name)
+			}
+		}
+	}
+	if actors < 15 {
+		t.Fatalf("only %d actor units checked", actors)
+	}
+	if !strings.Contains(files["sluis-entry-audit@.service"], "StartLimitIntervalSec=0") {
+		t.Error("the audit front of entry has a start limit")
+	}
+	for name, body := range files {
+		if strings.HasPrefix(name, "sluis-drv-") && strings.HasSuffix(name, "@.service") && strings.Contains(body, "StartLimit") {
+			t.Errorf("%s: a driver names a start limit; this change is about the actors", name)
+		}
+	}
+}
