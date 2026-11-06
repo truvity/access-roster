@@ -130,3 +130,44 @@ fn a_workload_of_another_verifier_without_the_claims_is_not_taken_for_a_pull_req
     assert!(allow);
     assert_eq!(by, ["sign-anything-of-the-repository"]);
 }
+
+/// verifies: REQ-WORKLOAD-007
+#[test]
+fn the_verifier_name_of_the_guard_is_the_proof_kind_exchange_sets() {
+    // `Workload.verifier` is the proof kind of exchange (`KindGitHubOIDC`). A rename on either side
+    // must fail here and not turn the third clause of the guard into a rule about nothing.
+    let go = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../exchange/internal/exchanged/subject.go"),
+    )
+    .unwrap();
+    assert!(
+        go.contains("KindGitHubOIDC = \"github-oidc\""),
+        "the Go constant KindGitHubOIDC is no longer \"github-oidc\""
+    );
+    assert!(
+        policy::schema::BUILTIN.contains("principal.verifier == \"github-oidc\""),
+        "the guard no longer names the github-oidc verifier"
+    );
+}
+
+/// verifies: REQ-WORKLOAD-007
+#[test]
+fn an_operator_policy_cannot_take_the_id_of_the_guard() {
+    let reuse = format!(
+        "@id(\"{GUARD}\")\npermit (principal is Workload, action == Action::\"artifact.sign\", resource);"
+    );
+    let r = Engine::build(&Inputs {
+        boundary: "dev".into(),
+        policies: vec![PolicyDoc {
+            file: "reuse".into(),
+            cedar: reuse,
+        }],
+        vocabulary: local("vocabulary.yaml").into_bytes(),
+        links: Vec::new(),
+    });
+    assert!(
+        r.is_err(),
+        "an operator policy with the id of the guard loaded"
+    );
+}

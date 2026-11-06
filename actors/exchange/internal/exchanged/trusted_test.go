@@ -396,6 +396,10 @@ func TestAGitHubProofCarriesTheClaimsPolicyDecidesOn(t *testing.T) {
 		{"REQ-WORKLOAD-007/no_event_name_is_refused", map[string]any{"jti": "d", "event_name": nil}, nil, true},
 		{"REQ-WORKLOAD-007/empty_event_name_is_refused", map[string]any{"jti": "e", "event_name": ""}, nil, true},
 		{"REQ-WORKLOAD-007/event_name_that_is_not_text_is_refused", map[string]any{"jti": "f", "event_name": 7}, nil, true},
+		{"REQ-WORKLOAD-007/ref_that_is_not_text_is_refused", map[string]any{"jti": "g", "ref": 7}, nil, true},
+		{"REQ-WORKLOAD-007/ref_type_that_is_not_text_is_refused", map[string]any{"jti": "h", "ref_type": []string{"tag"}}, nil, true},
+		{"REQ-WORKLOAD-007/repository_that_is_not_text_is_refused", map[string]any{"jti": "i", "repository": 7}, nil, true},
+		{"REQ-WORKLOAD-007/environment_that_is_not_text_is_refused", map[string]any{"jti": "j", "environment": true}, nil, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
