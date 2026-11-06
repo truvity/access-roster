@@ -1891,8 +1891,8 @@ requirements:
       - {kind: integration-test, ref: "a person with a hardware-attested binding adds a key with no proof, a stale proof and a proof by another person's key (each refused) and then with a fresh proof (accepted)"}
   - id: REQ-KEYS-134
     area: KEYS
-    statement: "sluis MUST require an approval that policy names before it records the first hardware-attested binding of a person."
-    rationale: "The first key of a person has no earlier key to vouch for it (ADR 0043)."
+    statement: "sluis MUST record the first hardware-attested binding of a person only after approval by an operator who holds the key-administration grant, is a different person and presents a fresh hardware-attested assertion."
+    rationale: "The first key of a person has no earlier key to vouch for it, and a directory change cannot show whose device it is (ADR 0043, FB1 A)."
     level: MUST
     source: security-review
     status: planned
@@ -1901,7 +1901,7 @@ requirements:
     standards: []
     features: [design]
     verification:
-      - {kind: integration-test, ref: "a first bind with no approval, or approved by the person alone, is refused; approval by an operator with a fresh hardware-attested assertion, or by the directory fact policy names, is accepted"}
+      - {kind: integration-test, ref: "a first bind approved by no one, the person, a directory fact, or an operator with a stale assertion or no grant is refused; another operator with a fresh assertion is accepted"}
   - id: REQ-KEYS-135
     area: KEYS
     statement: "sluis MUST write an audit record for every key bind, refusal and end."

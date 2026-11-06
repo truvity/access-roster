@@ -20,6 +20,7 @@ sluis already knows who a person is, signs the person in with a hardware key, an
 | G1 A | "OpenPGP keys born on cards, with no SSH-signing fallback." |
 | G4 A | Staff cards are generated on the card, the PIN and Admin PIN are changed at issue, each person gets a second card, and the attestation is recorded in ritueel's ledger. |
 | G5 A | A leaver is removed from the organisation and the GitHub account, the certification lapses, the key leaves the keyring, and a revocation is for compromise only. Old commits stay Verified, by design. |
+| FB1 A | "The same rule in both records, operator approval only": the first hardware binding is approved by an operator, and a directory fact is not enough. |
 | P10 A | An `sk-ssh` key gets an SSH certificate, later. |
 | PX1 | "the card primary expires after about 3 years and is extended at the card." The GitHub App re-uploads the extended key. |
 | PK1 A | A privileged action needs an assertion that the boundary itself verified ([0017](/decisions/0017-identity-and-sign-in/); the classes and the enrolment rule are in [pull request #1484](https://github.com/truvity/sluis/pull/1484)). |
@@ -82,8 +83,8 @@ Two clocks run, and they are not the same. The **certification** is sluis's and 
 Attestation proves that a genuine card made a key. It does not prove whose card it is: anyone can buy one and attest a key of their own. Whose it is comes from three things: the fresh hardware sign-in of the person, the approval of the first binding, and the rule for every later one. This applies the enrolment rule of [pull request #1484](https://github.com/truvity/sluis/pull/1484) to bindings.
 
 - **Once a person holds a `hardware-attested` binding, adding any further binding needs a fresh proof from it** (an assertion the boundary checks, signed by the bound key; [REQ-KEYS-133](/requirements/keys/#REQ-KEYS-133)). It covers a binding of every class. A stolen session cannot add a key of its own.
-- **The first binding needs approval.** Policy names who may give it: an operator who holds key administration and approves with a fresh hardware-attested assertion of their own, or a directory fact that the person is a live member of the staff group entitled to a company key. A directory approval is enough here, and was refused for the first hardware key of [pull request #1484](https://github.com/truvity/sluis/pull/1484), because the question differs. That record asks whose device a key is; this one asks only whether the person is entitled to a company key, and the person has already passed the device question, because a binding needs a hardware step-up ([REQ-KEYS-134](/requirements/keys/#REQ-KEYS-134)).
-- **A person with no usable `hardware-attested` binding** (both cards lost) is bound again by the approval of the first binding.
+- **The first binding needs an operator's approval** (FB1 A). The approver holds the key-administration grant, is a different person from the enrollee, and approves with a fresh `hardware-attested` assertion of their own, as for the first hardware key of [pull request #1484](https://github.com/truvity/sluis/pull/1484) (REQ-AUTHN-092 there). A directory fact is not an approval: the directory cannot say whose device a key is, and a directory change needs no hardware proof. The config kind `FirstAdmin` names the first operator of an installation, who has no approver ([REQ-KEYS-134](/requirements/keys/#REQ-KEYS-134)).
+- **A person with no usable `hardware-attested` binding** (both cards lost) is bound again by the same operator approval.
 - **Every bind, every refusal and every end is audited** ([REQ-KEYS-135](/requirements/keys/#REQ-KEYS-135)). **A new `hardware-attested` binding alerts the operators and notifies the person** at their verified address, with the fingerprint ([REQ-KEYS-136](/requirements/keys/#REQ-KEYS-136)).
 
 ### Life of a binding
@@ -142,7 +143,7 @@ So the design checks the public key of the attestation against the public key of
 - **One company primary with everyone's subkeys.** GitHub attribution, user ID churn and revocation churn: one revocation touches every person.
 - **ritueel binds each person's subkey in a ceremony (G2a).** The card and the "person present" check run on the client, so a ceremony role can bind a software subkey, and it needs a person at ritueel for every joiner and lost card.
 - **Trust an attestation alone.** Anyone can attest a key on a card they bought, so the attestation says what a key is and not whose it is.
-- **Directory approval for every further binding.** A directory change needs no hardware proof, so it would let a changed directory entry add a key to a person who has one.
+- **Directory approval of the first binding, or of any further one.** The directory cannot say whose device a key is, and a directory change needs no hardware proof, so a changed entry would add a key to a person; FB1 A chose operator approval only, the rule of #1484.
 - **An SSH-signing fallback for staff (G1 A).** It cannot be tied to a card the same way, and GitHub treats it as a different key.
 - **A key that never expires.** A lost card would leave a key valid for ever, and the yearly certification would be the only limit; an expiry the card extends keeps a person's key in step with their card.
 - **A new attestation at every renewal.** It brings a person back to the card once a year for a check that the lost-card rule already covers.
