@@ -27,7 +27,11 @@ import (
 // KindOwn is the Kind of a Subject that this boundary's own issuer signed.
 const KindOwn = "own"
 
-// KindGitHubOIDC is the proof kind of a GitHub Actions identity token (ADR 0022).
+// KindGitHubOIDC is the proof kind of a GitHub Actions identity token (ADR 0022). It is also the value of the Cedar
+// attribute Workload.verifier, and the built-in forbid of policy names it by this string
+// (actors/policy/src/schema.rs): a test in actors/policy pins the two to each other.
+// TODO(#961): the workload exchange sets Workload.verifier from this constant. REQ-WORKLOAD-007 stays partial until an
+// end-to-end test (a verified token, the entity attributes, a refusal of artifact.sign) runs in CI (#890).
 const KindGitHubOIDC = "github-oidc"
 
 const (
