@@ -33,6 +33,7 @@ sluisctl restore start 20261010T020000Z-3fa9c1 --confirm example --wait
 
 sluisctl render --installation installation.yaml --out rendered/   # the service and policy documents
 sluisctl policy render policy/ -o policy.yaml   # the one policy document an installation reads
+sluisctl policy fragment check --ceiling ceiling.yaml access.yaml   # a company's own rows against its ceiling
 ```
 
 ## Commands
@@ -57,6 +58,7 @@ sluisctl policy render policy/ -o policy.yaml   # the one policy document an ins
 | `recovery password\|verifier` | read a recovery or conformance password from SSM, or derive the SRP credential the service holds | [recovery](#recovery-password-and-recovery-verifier) |
 | `render` | an installation in, the service and policy documents out | [render](#render-an-installation-in-the-two-documents-out) |
 | `policy render` | the one policy document an installation reads, from its layers | [policy render](#policy-render-the-one-policy-document) |
+| `policy fragment check` | a company's own access rows against its ceiling | [fragment check](policy-fragment.md#the-command) |
 
 | Detail | Behavior |
 |---|---|

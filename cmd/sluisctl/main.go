@@ -182,6 +182,7 @@ func usage(to *os.File) {
   recovery      password: the recovery or conformance password of a Lambda installation, decoded, for a pipe; verifier: the SRP credential of a password
   render        an installation in, the service and policy documents out
   policy render the one policy document an installation reads, from its layers
+  policy fragment check  a company's own access rows against its ceiling, before they are merged
 
 sluisctl's own flags on bao go BEFORE the bao subcommand; bao's own
 (including -namespace) go after it, exactly where bao has always

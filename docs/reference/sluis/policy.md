@@ -11,6 +11,7 @@ Tables of the policy file (`version: 1`) and of the policy document (`apiVersion
 | [policy-bindings.md](policy-bindings.md) | `github`, `people`, `slack`, the access document |
 | [policy-ownership.md](policy-ownership.md) | the service's own groups, organisation and workspace owners |
 | [policy-validation.md](policy-validation.md) | load refusals, the unconsumed-group warning |
+| [policy-fragment.md](policy-fragment.md) | a company's own rows, the ceiling, the violation codes |
 | [taxonomy.md](taxonomy.md) | grammar of grant names |
 
 ## The tables
