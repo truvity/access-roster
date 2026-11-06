@@ -289,7 +289,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962, 1362]
+    issues: [1453, 1362]
     verification:
       - {kind: integration-test, ref: "revoke a key: the next key set written to a directory and to a bucket lacks its kid, and a token it signed fails against the document"}
   - id: REQ-EXPORT-021
@@ -303,7 +303,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962, 1362]
+    issues: [1453, 1454]
     verification:
       - {kind: integration-test, ref: "a destination driver with a recorded call log: the log shows write, purge, read back and the report in this order after the revocation"}
   - id: REQ-EXPORT-022
@@ -317,7 +317,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962]
+    issues: [1453]
     verification:
       - {kind: integration-test, ref: "a read back that returns another digest: the report says purge-pending; one that returns the written digest: published"}
   - id: REQ-EXPORT-023
@@ -331,7 +331,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962]
+    issues: [1454]
     verification:
       - {kind: integration-test, ref: "the edge configuration of a test installation is read: the stale window is at most 65 minutes, and a purge evicts the stale copy"}
   - id: REQ-EXPORT-024
@@ -345,7 +345,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962, 1362]
+    issues: [1453]
     verification:
       - {kind: integration-test, ref: "store@ refuses the read of KeyRevocation: the document is byte-for-byte as before, an alarm is raised and the report says unverified"}
   - id: REQ-EXPORT-025
@@ -359,7 +359,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962]
+    issues: [1454]
     verification:
       - {kind: integration-test, ref: "the bucket is stopped: the public address still answers with the live key set, and the revoked kid is absent"}
   - id: REQ-EXPORT-026
@@ -373,7 +373,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962]
+    issues: [1454]
     verification:
       - {kind: integration-test, ref: "with the credential: a purge of a named address succeeds and a purge of another address is refused by the edge"}
   - id: REQ-EXPORT-027
@@ -387,7 +387,7 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962, 1014]
+    issues: [1453, 1014]
     verification:
       - {kind: integration-test, ref: "the conformance suite runs against the directory driver, the in-memory driver and the bucket driver; a driver without a public address answers unsupported to Purge and ReadBack"}
   - id: REQ-EXPORT-028
@@ -402,6 +402,6 @@ requirements:
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [962, 1362]
+    issues: [1454]
     verification:
       - {kind: integration-test, ref: "a revocation is written: the write, the purge and the read back of the test installation's edge are done within 60 seconds"}
