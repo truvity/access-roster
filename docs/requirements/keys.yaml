@@ -177,7 +177,7 @@ requirements:
     source: design-decision
     status: planned
     milestone: first-version
-    issues: [962]
+    issues: [1338, 1454]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1031,7 +1031,7 @@ requirements:
     runtimes: all
     actors: [signer, exporter]
     standards: []
-    issues: [774, 962]
+    issues: [774, 962, 1453]
     verification:
       - {kind: integration-test, ref: "a rotation writes a new SigningRing; the exported key set carries the new key and the old one for the overlap"}
 
@@ -1364,6 +1364,7 @@ requirements:
     status: partial
     milestone: first-version
     gap: no-proving-test
+    issues: [1338, 1453]
     runtimes: all
     actors: [signer]
     standards: []
@@ -1409,7 +1410,7 @@ requirements:
     source: design-decision
     status: planned
     milestone: first-version
-    issues: [1361, 1362]
+    issues: [1361, 1362, 1454]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1696,7 +1697,7 @@ requirements:
     source: design-decision
     status: planned
     milestone: first-version
-    issues: [962, 1362]
+    issues: [1453, 1362]
     runtimes: all
     actors: [signer]
     standards: []
