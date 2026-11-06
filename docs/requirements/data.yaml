@@ -1140,7 +1140,7 @@ requirements:
     issues: [862]
     tests: [kits/go/registry/itemport_test.go]
     verification:
-      - {kind: integration-test, ref: "TestItemPortSeesItemsOnly in kits/go/registry: ItemService has exactly Get, Query, Transact and TailLog; no field names a kind; every message of the port has its field set pinned (item: key, version, bytes, expiry, indexes)"}
+      - {kind: integration-test, ref: "TestItemPortSeesItemsOnly in kits/go/registry: ItemService has exactly Get, Query, Transact, TailLog; no field names a kind; every message has its fields pinned (item: key, version, bytes, expiry, indexes)"}
   - id: REQ-DATA-070
     area: DATA
     statement: "A config source driver MUST return the bytes and a version label without parsing them."
