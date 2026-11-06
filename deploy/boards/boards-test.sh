@@ -10,6 +10,9 @@
 #   - the m1 profile deploys the twelve units of the spine with the key driver of the run, and cli/sluis is staged;
 #   - an rqlite package whose sha256 differs from its pin is refused, in the cache and after a download, and a version without a pin;
 #   - the readiness of an rqlite node is read from /status and /nodes, and one that has no leader, or two, is not ready.
+#   - the command of a board_ssh is ONE string that the shell of the board parses again: the fake ssh joins the arguments after the
+#     address like ssh does and checks the string with bash -n (and runs the rqlite reader with bash -c), so an argument with a
+#     (, a * or a ? in it that is not quoted is a syntax error here as it is on a board.
 # Run from anywhere: deploy/boards/boards-test.sh
 set -euo pipefail
 
@@ -53,17 +56,34 @@ for a in "$@"; do
 done
 cmd=${cmd# }
 printf '%s' "$cmd" >"$FAKE_SSH_LOG.cmd.$n"
+# What ssh does: the words are joined with spaces, and the shell of the board parses the string. A string that does not parse is
+# what a board answers with status 2.
+bash -n -c "$cmd" 2>/dev/null || { echo "bash: syntax error in the command: $cmd" >&2; exit 2; }
 case "$cmd" in
 "uname -n") echo "${FAKE_NODE:-board-b}" ;;
 *"command -v tar"*) exit "${FAKE_TAR_RC:-0}" ;;
 "mktemp -d") echo /tmp/fake-stage ;;
 "sudo -n test -x /opt/sluis/bin/cli/sluis") exit "${FAKE_CLI_RC:-0}" ;;
 "sudo -n /opt/sluis/bin/cli/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
-"timeout 15 bash -s -- "*) printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "${FAKE_HTTP_STATUS:-200 OK}" "${FAKE_HTTP_BODY:-}" ;;
+"timeout 15 bash -s -- "*) bash -c "$cmd" </dev/null ;;
 esac
 exit 0
 F
 chmod +x "$work/bin/ssh"
+# The fake of `timeout 15 bash -s -- IP PORT PATH`: the board side of rqlite_get. It keeps its arguments (the path as the shell of the
+# board gave it) and answers with FAKE_STATUS for /status, FAKE_NODES for /nodes and FAKE_HTTP_BODY for any other path.
+cat >"$work/bin/timeout" <<'F'
+#!/bin/bash
+[ "$1" = 15 ] && [ "$2" = bash ] && [ "$3" = -s ] && [ "$4" = -- ] && [ "$#" = 7 ] || { echo "timeout: unexpected arguments: $*" >&2; exit 2; }
+printf '%s\n' "$5" "$6" "$7" >"${FAKE_SSH_LOG:-/dev/null}.get"
+case "$7" in
+/status) body=${FAKE_STATUS:-} ;;
+/nodes) body=${FAKE_NODES:-} ;;
+*) body=${FAKE_HTTP_BODY:-} ;;
+esac
+printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "${FAKE_HTTP_STATUS:-200 OK}" "$body"
+F
+chmod +x "$work/bin/timeout"
 export FAKE_SSH_LOG="$work/ssh.log"
 export SLUIS_BOARD_SSH_USER=operator SLUIS_BOARD_SSH_AUTH_SOCK=/nonexistent
 export SLUIS_BOARD_SSH_OPTIONS="-o UserKnownHostsFile=$work/known_hosts -o StrictHostKeyChecking=yes"
@@ -89,6 +109,9 @@ check "unlock: and come after the defaults" bash -c 'awk "/^arg: BatchMode=yes/{
 # -T is the first argument of the ssh that carries the PIN, so before the options of the run; the ssh keeps the first value it sees.
 check "unlock: the ssh that carries the PIN has -T first, before the options" bash -c 'tr "\0" "\n" <"$1" | head -n 1 | grep -qx -- -T' _ "$FAKE_SSH_LOG.args.$u"
 check "unlock: and its standard input is not a terminal" test ! -e "$FAKE_SSH_LOG.tty.$u"
+# StrictHostKeyChecking=yes comes right after -T, before the options of the run (and so before any config file): ssh keeps the first.
+check "unlock: the ssh that carries the PIN has -o StrictHostKeyChecking=yes second, before the options of the run" bash -c 'tr "\0" "\n" <"$1" | sed -n "1,3p" | tr "\n" " " | grep -qx -- "-T -o StrictHostKeyChecking=yes "' _ "$FAKE_SSH_LOG.args.$u"
+check "unlock: and the ssh that does not carry a secret does not get it" bash -c '! tr "\0" "\n" <"$1" | sed -n 1,3p | grep -q StrictHostKeyChecking' _ "$FAKE_SSH_LOG.args.1"
 # A pipe with a CRLF, or no newline at all, is passed as it is: the CLI strips a trailing CR and reads to the end.
 newlog
 printf '%s' "$pin" | SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >/dev/null 2>&1
@@ -101,7 +124,7 @@ for f in "$here/boards.sh" "$here/../../Justfile" "$here/../../docs/runtimes/bar
 	if grep -n -- "$pin" "$f" >/dev/null; then bad "the PIN of the test is in $f"; fi
 done
 # Options that must not carry a PIN. Nothing is sent to the board: the refusal comes before the first ssh.
-for opts in "-o StrictHostKeyChecking=no" "-oStrictHostKeyChecking=no" "-o StrictHostKeyChecking=off" "-o stricthostkeychecking=NO" "-tt" "-t" "-vt"; do
+for opts in "-o StrictHostKeyChecking=no" "-oStrictHostKeyChecking=no" "-o StrictHostKeyChecking=off" "-o stricthostkeychecking=NO" "-o StrictHostKeyChecking=\"no\"" "-o StrictHostKeyChecking='no'" "-o \"StrictHostKeyChecking=no\"" "-o StrictHostKeyChecking = no" "-o UserKnownHostsFile=/dev/null" "-oUserKnownHostsFile=/dev/null" "-o UserKnownHostsFile=\"/dev/null\"" "-o userknownhostsfile=/dev/null -o StrictHostKeyChecking=yes" "-tt" "-t" "-vt"; do
 	newlog
 	if printf '%s\n' "$pin" | SLUIS_BOARD_SSH_OPTIONS="$opts" SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>"$work/err"; then
 		bad "unlock: the options '$opts' are refused"
@@ -111,7 +134,8 @@ for opts in "-o StrictHostKeyChecking=no" "-oStrictHostKeyChecking=no" "-o Stric
 done
 newlog
 printf '%s\n' "$pin" | SLUIS_BOARD_SSH_OPTIONS="-o UserKnownHostsFile=$work/known_hosts -o StrictHostKeyChecking=accept-new" SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>"$work/err"
-check "unlock: accept-new goes on, with a warning" grep -q 'warning: StrictHostKeyChecking=accept-new' "$work/err"
+check "unlock: accept-new goes on, with a warning that it is ignored" grep -q 'warning: StrictHostKeyChecking=accept-new is ignored' "$work/err"
+check "unlock: and the yes before it is what ssh keeps" bash -c 'tr "\0" "\n" <"$1" | grep -n -x -e StrictHostKeyChecking=yes -e StrictHostKeyChecking=accept-new | tr "\n" " " | grep -q "^[0-9]*:StrictHostKeyChecking=yes .*accept-new"' _ "$FAKE_SSH_LOG.args.$(unlock_call)"
 newlog
 printf '%s\n' "$pin" | SLUIS_BOARD_SSH_OPTIONS="-o RequestTTY=force" SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >/dev/null 2>&1
 check "unlock: RequestTTY=force in the options comes after -T, which wins" bash -c 'tr "\0" "\n" <"$1" | grep -n -x -e -T -e RequestTTY=force | tr "\n" " " | grep -q "^1:-T .*RequestTTY=force"' _ "$FAKE_SSH_LOG.args.$(unlock_call)"
@@ -166,6 +190,8 @@ PY
 	check "pty: bash -x: tracing was on before the PIN (the trace is in the transcript)" grep -qa '^+ ' "$work/pty.out"
 	pty_unlock "SHELLOPTS=xtrace" env SHELLOPTS=xtrace bash "$here/boards.sh" unlock
 	check "pty: SHELLOPTS=xtrace: tracing was on before the PIN" grep -qa '^+ ' "$work/pty.out"
+	# SHELLOPTS=allexport would export every variable that is assigned, the PIN's included, to the ssh: set +a before the read.
+	pty_unlock "SHELLOPTS=allexport" env SHELLOPTS=allexport bash "$here/boards.sh" unlock
 	: >"$work/xtrace.fd"
 	pty_unlock "BASH_XTRACEFD" bash -c 'exec 7>"$1"; exec env SHELLOPTS=xtrace BASH_XTRACEFD=7 bash "$2" unlock' _ "$work/xtrace.fd" "$here/boards.sh"
 	check "pty: BASH_XTRACEFD: tracing went to the file before the PIN" test -s "$work/xtrace.fd"
@@ -303,13 +329,14 @@ nodes_ok='{"192.0.2.13:4002":{"id":"192.0.2.13:4002","reachable":true,"leader":t
 cat >"$work/bin/ssh" <<'F'
 #!/bin/bash
 cat >/dev/null
-last=${!#}
-case "$last" in
-/status) body=$FAKE_STATUS ;;
-/nodes) body=$FAKE_NODES ;;
-*) exit 0 ;;
-esac
-printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "${FAKE_HTTP_STATUS:-200 OK}" "$body"
+cmd=""
+seen=0
+for a in "$@"; do
+	if [ "$seen" = 1 ]; then cmd="$cmd $a"; fi
+	[[ "$a" == *@* ]] && seen=1
+done
+# The shell of the board parses the joined string and runs it; the fake timeout (above) answers for the node.
+bash -c "${cmd# }" </dev/null
 F
 id12=$(rl rqlite_node_id 192.0.2.12 4002)
 check "the id of a node is its Raft address" test "$id12" = "192.0.2.12:4002"
@@ -326,6 +353,21 @@ ready "$status_ok" "$nodes_ok" "503 Service Unavailable" && bad "ready: a 503" |
 line=$( ( FAKE_NODES=$nodes_ok rl rqlite_cluster_line 192.0.2.12 192.0.2.12 4001 ) )
 check "the cluster line says the nodes, the voters and the leader" test "$line" = "2 nodes (2 voters), leader 192.0.2.13:4002"
 check "the node count is the number of entries of /nodes" test "$( ( FAKE_NODES=$nodes_ok rl rqlite_node_count 192.0.2.12 192.0.2.12 4001 ) )" = 2
+# rqlite_get hands its arguments to the shell of the board as one string: a path with (, *, ?, %, a space or a single quote in it
+# arrives as it was, and an answer that is not a 200 is a failure. The path of board_data_keys is the one with count(*) in it.
+export FAKE_SSH_LOG
+get_path='/db/query?q=SELECT%20count(*)%20FROM%20durable_items%20WHERE%20key%20LIKE%20%27%25/data-key-wrap/%25%27'
+got=$( ( FAKE_HTTP_BODY='{"results":[{"values":[[3]]}]}' rl rqlite_get 192.0.2.12 192.0.2.12 4001 "$get_path" ) 2>"$work/err" ) || bad "get: the path of the data-key count is read ($(cat "$work/err"))"
+check "get: the path with count(*) and % reaches the board as it was written, in one piece" bash -c '[ "$(sed -n 3p "$1")" = "$2" ] && [ "$(sed -n 1p "$1")" = 192.0.2.12 ] && [ "$(sed -n 2p "$1")" = 4001 ]' _ "$FAKE_SSH_LOG.get" "$get_path"
+check "get: and its body is what the node answered" test "$got" = '{"results":[{"values":[[3]]}]}'
+odd="/a b/it's;\$(x)*?"
+( FAKE_HTTP_BODY=x rl rqlite_get 192.0.2.12 192.0.2.12 4001 "$odd" ) >/dev/null 2>"$work/err" || bad "get: an odd path is read ($(cat "$work/err"))"
+check "get: a path with a space, a single quote, ;, \$( and a glob in it arrives as it was, and runs nothing" test "$(sed -n 3p "$FAKE_SSH_LOG.get")" = "$odd"
+( FAKE_HTTP_STATUS="503 Service Unavailable" FAKE_HTTP_BODY=x rl rqlite_get 192.0.2.12 192.0.2.12 4001 "$get_path" ) >/dev/null 2>&1 && bad "get: an answer that is not a 200 fails" || ok "get: an answer that is not a 200 fails"
+# A board that cannot parse the command (what the unquoted form gave) is a failure too, not an empty answer.
+( rl board_ssh 192.0.2.12 'timeout 15 bash -s -- 192.0.2.12 4001 /db/query?q=SELECT count(*)' ) >/dev/null 2>"$work/err" && bad "get: the fake ssh parses the string like a shell (an unquoted ( is a syntax error)" || ok "get: the fake ssh refuses a command that the shell of a board would not parse (the unquoted form of rqlite_get)"
+q=$(rl shell_quote "a b" "x(*)?" "it's" "")
+check "shell_quote: words with a space, a ( * ?, a single quote and nothing at all come out as the same words" test "$(eval "printf '<%s>' $q")" = "<a b><x(*)?><it's><>"
 # The wait is bounded by the clock: a ssh that takes 2 s per call (a board that drops packets) ends a wait of 2 s after one poll. When
 # the loop counted its own sleeps (0, 2, 4 ...) it would have polled again and again, for 6 s here and for half an hour in the field.
 cat >"$work/bin/ssh" <<'F'

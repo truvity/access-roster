@@ -478,11 +478,14 @@ rqlite-undeploy)
 	# the cluster's copy of the store. With it they are removed as well, the drop-in LAST: it is what says that this tool made the
 	# install, so a purge that stops half way (a package manager that fails) is found and finished by the next run. A node that is
 	# purged stays in the cluster's configuration of the other nodes until it is removed there.
-	if ! systemctl cat "$rqlite_unit" >/dev/null 2>&1; then
-		echo "rqlite: not installed"
-		exit 0
-	fi
+	# The drop-in is asked first: a purge that stopped half way (the package is removed, the unit file with it, the drop-in and the
+	# data are left) has no unit and still has the drop-in, and the next run must finish it, not call the board "not installed" and
+	# leave the Raft state behind. Without the drop-in the unit decides.
 	if [ ! -e "$rqlite_dropin" ]; then
+		if ! systemctl cat "$rqlite_unit" >/dev/null 2>&1; then
+			echo "rqlite: not installed"
+			exit 0
+		fi
 		echo "rqlite: no $rqlite_dropin, so this tool did not install it; it is left as it is (running or not), with its package and its data"
 		exit 0
 	fi

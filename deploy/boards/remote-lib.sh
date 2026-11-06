@@ -304,7 +304,9 @@ rqlite_valid_port() { [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$1" -le 65535 ]; }
 # node with no -join and no state bootstraps a cluster of one; with -bootstrap-expect it first tries to join a node that is in a
 # cluster, and only when N nodes have announced themselves does one of them form the cluster), so a board that was wiped or
 # reflashed joins the cluster that the others hold, and N nodes that start together form one cluster. A node that has state
-# does not bootstrap again: it takes up its place in the cluster it was in. There is no -node-id: rqlite takes the Raft address
+# does not form a cluster again: it takes up its place in the one it was in. (rqlite's Boot does run again on every start of
+# a node with -bootstrap-expect, and it finds the node already a member: that is harmless, and the reason the flags can stay in
+# the drop-in for good.) There is no -node-id: rqlite takes the Raft address
 # as the id, which is the same on every start, is different on every board, and cannot be taken from a host name that moved.
 # The join list is the voter set, so a node that is added later is a run with the longer list (every drop-in is written again).
 # A cluster of one has neither flag: nothing else can hold state it could split from.
@@ -393,7 +395,8 @@ rqlite_relabel() {
 
 # --- SELinux denials ----------------------------------------------------------------------------------------------------------
 
-# avc_auditd_ok succeeds when auditd is running and the kernel's audit is enabled. ausearch reads auditd's log, so a denial from
+# avc_auditd_ok succeeds when auditd is running and the kernel's audit is enabled (auditctl -s: enabled 1, or 2 when the audit
+# configuration is locked as immutable, which records as well). ausearch reads auditd's log, so a denial from
 # before auditd started (a board where `dnf install audit` was just run, with no reboot) is in the journal only, and "no matches"
 # would be a guess: the check refuses to say "clean" then.
 avc_auditd_ok() {
@@ -402,7 +405,7 @@ avc_auditd_ok() {
 	if command -v auditctl >/dev/null 2>&1; then
 		enabled=$(auditctl -s 2>/dev/null | sed -n 's/^enabled \([0-9][0-9]*\).*/\1/p' | head -n 1 || true)
 	fi
-	if [ "$st" = active ] && [ "$enabled" = 1 ]; then return 0; fi
+	if [ "$st" = active ] && { [ "$enabled" = 1 ] || [ "$enabled" = 2 ]; }; then return 0; fi
 	echo "avc: auditd is not recording (auditd is '${st:-unknown}', audit enabled='${enabled:-unknown}'): denials before auditd started are not visible, so no record would not mean no denial. Install and enable it (dnf install audit; systemctl enable --now auditd) and reboot the board once, so that it records from the start of the boot." >&2
 	return 1
 }

@@ -22,8 +22,9 @@
 # that was wiped or reflashed would then start a second cluster at the address of a node of the first, and the other two nodes,
 # still a quorum, would elect a leader of their own: two leaders for one membership, and lost writes. With -bootstrap-expect a node
 # without state first tries to join a node that is in a cluster, so a wiped board comes back into the cluster of the others, and
-# N nodes that start together form one. So all N must be started within about two minutes (rqlite's bootstrap-expect timeout,
-# after which systemd starts the node again); the recipe starts them one after another and waits afterwards. A board that joins
+# N nodes that start together form one. The recipe starts them one after another and waits afterwards. A node that is started later than
+# about two minutes after the first (rqlite's bootstrap-expect timeout) only makes that first node give up and be started again by
+# systemd; the cluster still forms when the last node is up. A board that joins
 # later is a run with the longer SLUIS_BOARDS: every drop-in is written again, and the nodes that are running restart onto it.
 #
 # The settings come from the environment (the run.env of the build); the repository names no host:

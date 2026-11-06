@@ -95,7 +95,9 @@ rqlite_fetch() { # name dir
 # the images carry no curl), and fails when the answer is not a 200. No TLS and no authentication yet (docs/runtimes/bare-metal.md).
 rqlite_get() { # board ip port path
 	local out
-	out=$(board_ssh "$1" timeout 15 bash -s -- "$2" "$3" "$4" <<'REMOTE'
+	# ssh joins its arguments into one string that the login shell of the board parses again, so the arguments are quoted for that
+	# shell (shell_quote, ssh-lib.sh): a path with count(*) or a ? in it would otherwise be a syntax error or a glob over there.
+	out=$(board_ssh "$1" "timeout 15 bash -s -- $(shell_quote "$2") $(shell_quote "$3") $(shell_quote "$4")" <<'REMOTE'
 exec 3<>"/dev/tcp/$1/$2" || exit 1
 printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$3" "$1" >&3
 cat <&3
