@@ -16,7 +16,7 @@ use sluis_kit::Client;
 use sluis_proto::sluis::key::v2alpha1::KeyRevocation;
 use sluis_proto::sluis::signer::v2alpha1::SigningRing;
 
-use crate::{Error, Kind, Store};
+use crate::{Error, Kind, Store, Watch, WatchOpts};
 
 /// The target kind of an item that revokes one key by its kid.
 pub const TARGET_KID: &str = "kid";
@@ -109,6 +109,25 @@ impl KeyRevocations {
             Err(Error::NotFound) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    /// Follows the kind from a listing: the boundary's revocations at no tenant, as [`Watch`] says. A revocation is
+    /// never changed or removed (REQ-KEYS-091), so after the first [`crate::Event::Resync`] the events are puts.
+    ///
+    /// # Errors
+    ///
+    /// As [`Store::watch`].
+    pub fn watch(&self) -> Result<Watch<KeyRevocationKind>, Error> {
+        self.store.watch("")
+    }
+
+    /// As [`KeyRevocations::watch`], with a resume point and a backoff.
+    ///
+    /// # Errors
+    ///
+    /// As [`Store::watch`].
+    pub fn watch_with(&self, opts: WatchOpts) -> Result<Watch<KeyRevocationKind>, Error> {
+        self.store.watch_with("", opts)
     }
 
     /// Every kid that `KeyRevocation` lists.

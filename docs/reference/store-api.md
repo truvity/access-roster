@@ -169,6 +169,7 @@ A refusal is a Connect error with the `Refusal` detail and a reason that names t
 
 - **A client is generated from the kind's Protobuf message** ([0004](/decisions/0004-the-data-model/#schemas-are-protobuf)). In Go it is `store.Client[T Kind]`; in Rust a kind implements `trait Kind { type Id; type Value: buffa::Message; const NAME: &'static str; }` and the client is `Store<K: Kind>` ([0005](/decisions/0005-the-store/#typed-clients)).
 - **The client does the encoding on this page:** the kind's name becomes its segment, the id is validated against [Address encoding](#address-encoding), and a sealed kind's value is sealed at key@ before it is written and opened after it is read ([0006](/decisions/0006-keys-and-sealing/#seal-and-open)).
+- **The Rust client follows a kind with `Store::watch`** ([REQ-DATA-108](/requirements/data/#REQ-DATA-108), [REQ-DATA-109](/requirements/data/#REQ-DATA-109)): it lists, watches from the position of the listing, drops a repeat, reconnects from the last position with a backoff, and says a resume point the log no longer holds as an explicit resync with the whole state of the kind. A value that does not decode or a change that is malformed ends the watch with an error. The Go client has no watch helper yet.
 - **Both kits pass one conformance suite** ([0012](/decisions/0012-the-language-follows-the-executable/#the-rules), rule R9), which includes the vectors of this page.
 
 ## Address encoding
