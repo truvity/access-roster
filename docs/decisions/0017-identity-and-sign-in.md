@@ -1,7 +1,7 @@
 # 0017 — Each boundary has its own issuer, a token has one audience, people sign in with passkeys and step-up, and break-glass recovery uses passkeys held in config
 
 **Status:** Accepted
-**Date:** 2026-11-03
+**Date:** 2026-11-06
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -19,6 +19,8 @@ Constraints from outside:
 - Upstream multi-factor authentication on every sign-in is slow, and sluis cannot ask the upstream for a fresh factor on its own terms. WebAuthn, RFC 9470 (step-up) and RFC 8628 (device login) are the published answers.
 
 Operators sign in through an upstream directory. When the directory is down, a federation is misconfigured or no upstream can vouch for anyone, they still need a way back in to repair it. That way in is the one exception to "no accounts", so it has to be narrow, visible, proven to work, and independent of the data that may be the thing that is damaged. v1 offered two recovery proofs: a Kubernetes ServiceAccount token checked by the API server, and an SRP-6a password that never crossed the wire ([#795](https://github.com/truvity/sluis/issues/795)). Both are reusable secrets, or depend on a system that may be the one that failed. WebAuthn gives a phishing-resistant proof whose private half never leaves its authenticator, and an attestation statement can show that an authenticator is hardware. The tooling that enrols such credentials was measured in a spike ([#1178](https://github.com/truvity/sluis/issues/1178)) on 2026-11-03: a hardware FIDO key, a PIV slot and a synced passkey were each enrolled and verified, and its findings are the decisions below.
+
+Staff passkeys had no class: a passkey synced through a platform account and a key that never leaves a security key counted the same. NIST SP 800-63B-4 (final, 2025-07-31) allows exportable keys at authenticator assurance level 2 (AAL2) and forbids syncable authenticators at AAL3 ([AAL requirements](https://pages.nist.gov/800-63-4/sp800-63b/aal/), read 2026-11-06). A synced passkey gives no attestation, and an attestation is the only way a verifier learns what an authenticator is (the Microsoft Entra passkey documentation, updated 2026-06-15, says so for the Apple and Google passkey providers). A workforce also has a few people whose sign-in can move keys, identities and releases, and for them the account that syncs a passkey is a path to the credential. The maintainer decided on 2026-11-06 to run two tiers, to adopt the class model below, and to switch enforcement on later ([Two tiers of staff sign-in](/decisions/0017-identity-and-sign-in/#two-tiers-of-staff-sign-in); the feature is [#885](https://github.com/truvity/sluis/issues/885)).
 
 Tokens are standard JWS and JWT, signed by the token-signing keys of [0006](/decisions/0006-keys-and-sealing/#the-token-signing-key). The actors are those of [0002](/decisions/0002-families-of-actors/#the-four-families).
 
@@ -53,13 +55,52 @@ Tokens are standard JWS and JWT, signed by the token-signing keys of [0006](/dec
 
 ### Passkeys
 
-- **Passkeys are the fast sign-in path and count as phishing-resistant multi-factor authentication.** They are credentials of staff who come from a directory; sluis stores only their public keys, as the durable kind `StaffPasskey` that `session` writes, sealed in the person's tenant.
-- **A full upstream sign-in, with the upstream's own multi-factor authentication, is still required** every N days and for high-privilege grant names. Policy sets N and the rules.
+- **Passkeys are the fast sign-in path and count as phishing-resistant multi-factor authentication.** They are credentials of staff who come from a directory; sluis stores only their public keys, as the durable kind `StaffPasskey` that `session` writes, sealed in the person's tenant, with the class of [The passkey class](/decisions/0017-identity-and-sign-in/#the-passkey-class).
+- **A full upstream sign-in, with the upstream's own multi-factor authentication, is still required** every N days. Policy sets N and the rules. A high-privilege grant name needs the privileged tier of [Two tiers of staff sign-in](/decisions/0017-identity-and-sign-in/#two-tiers-of-staff-sign-in), not the upstream's multi-factor authentication alone.
 - **Staff passkeys and the ceremonies use one relying-party ID,** the shared sign-in domain declared in the config kind `FrontHost`. It is the registrable parent domain, `example.com`, because the boundary hosts are siblings of the group host, so one passkey works on every sluis host.
 - **End-user passkeys for customers belong to the upstream.** A client's own login domain and its branding are [0035](/decisions/0035-customer-pages/)'s.
 - **Every verifier keeps a strict allow-list of web origins:** the group host, the boundary hosts and their audit hosts ([0028](/decisions/0028-audit-pieces/#the-audit-front)), nothing else. An assertion from any other origin under the parent domain is refused.
 - **Passkeys are tested from outside the product:** a browser's virtual authenticator and a software authenticator library drive the released binary. There is no test code in sluis.
 - **Break-glass recovery has its own credentials,** held in config ([Break-glass recovery](/decisions/0017-identity-and-sign-in/#break-glass-recovery)). Session classes and limits are [0018](/decisions/0018-sessions/).
+
+### Two tiers of staff sign-in
+
+- **Enforced: later.** The tiers and the rules below are accepted. From the first version `session` records the class of every staff passkey and puts `acr` and `amr` into tokens, so nobody registers again when enforcement starts. The policy rules that demand the privileged tier are written as reviewed policy and switched on by committing them, so turning enforcement on is a policy change and no code change. Until the maintainer commits them, no grant demands the privileged tier and every staff passkey of every class signs in as before.
+- **The ordinary tier: everyone signs in with a phishing-resistant method, and a synced passkey is enough.** This is AAL2 of NIST SP 800-63B-4. A staff passkey of any class meets it, and sluis asks for no attestation of it ([REQ-AUTHN-083](/requirements/authn/#REQ-AUTHN-083)).
+- **The privileged tier: a person who administers identity, keys, organisation settings or releases signs in with a device-bound, attested security key.** The privileged grants are signing, key administration, identity administration, organisation settings and releases. The installation's policy names the grant names and clients that demand the tier. The tier is a property of the sign-in: a person who holds such a grant meets it with a key of class `hardware-attested`, and signs in to everything else as before.
+- **The tier is modelled on AAL3 and does not claim it.** A non-exportable key that resists phishing is the part of AAL3 that a verifier can check; sluis does not require a FIPS-validated authenticator and claims no conformance.
+- **Break-glass recovery is exempt.** It keeps its own credentials and its own rules ([Break-glass recovery](/decisions/0017-identity-and-sign-in/#break-glass-recovery)), among them the pinned synced passkey of [REQ-AUTHN-069](/requirements/authn/#REQ-AUTHN-069). The tier rules never apply to a recovery sign-in, and a recovery session carries the recovery scope only.
+
+### The passkey class
+
+Every `StaffPasskey` has a class, set at registration and stored with the credential's AAGUID and the outcome of its attestation check ([REQ-AUTHN-080](/requirements/authn/#REQ-AUTHN-080)).
+
+| Class | How it is derived | `amr` that sluis adds |
+|---|---|---|
+| `hardware-attested` | The registration carried an attestation statement that sluis verified to a pinned vendor attestation root, the AAGUID is on the installation's allowlist, and the backup eligible flag (BE) is clear ([REQ-AUTHN-081](/requirements/authn/#REQ-AUTHN-081)) | `mfa`, `hwk` |
+| `hardware` | No verified attestation (none was sent, it did not verify, or the AAGUID is not on the allowlist), and BE is clear. The key may be device-bound, but only the authenticator says so | `mfa` |
+| `synced` | BE is set, whatever the attestation says | `mfa`, `swk` |
+
+- **The class comes from three things:** the attestation statement and the AAGUID allowlist, which decide whether a device-bound key was proven, and the flags BE and BS (backup state) in the authenticator data. BE says the credential may be backed up and is fixed for the life of a credential; BS says whether it is backed up now. BE wins: a credential with BE set is `synced` even when an attestation statement is present, because a backed-up key has left its device.
+- **Each assertion is checked against the class.** An assertion whose BE differs from the registered one is refused, and so is one with BS set and BE clear, which WebAuthn defines as invalid ([REQ-AUTHN-089](/requirements/authn/#REQ-AUTHN-089)). A class never changes in place: a person who wants a better class registers a new credential.
+- **`amr` never claims more than sluis verified.** `hwk` only for `hardware-attested` ([REQ-AUTHN-085](/requirements/authn/#REQ-AUTHN-085)), `swk` only for `synced` ([REQ-AUTHN-088](/requirements/authn/#REQ-AUTHN-088)), and neither for `hardware`. The `acr` is the installation's own value for the tier that the assertion met.
+- **The AAGUID allowlist is installation config** in the config kind `SignInMethods`: the models the installation issues to its privileged people, each certified in the FIDO Metadata Service (MDS3), as a `hardware-fido` credential must be. A tenant may only narrow it ([REQ-AUTHN-082](/requirements/authn/#REQ-AUTHN-082)). It is a control only because attestation is verified; an AAGUID alone is self-asserted.
+- **The attestation verifier is the one of break-glass,** with the same pinned vendor roots ([REQ-AUTHN-068](/requirements/authn/#REQ-AUTHN-068), [0024](/decisions/0024-root-custody-and-the-signing-api/)).
+- **No enterprise attestation.** sluis asks for conveyance `direct` at most and never for `enterprise` ([REQ-AUTHN-084](/requirements/authn/#REQ-AUTHN-084)). It keeps a model, never a per-device identifier such as a serial number, which would let sites correlate a person's key. An organisation that wants an inventory of keys keeps a purchase register by hand.
+- **The signature counter is checked only for credentials that are not `synced`** ([REQ-AUTHN-052](/requirements/authn/#REQ-AUTHN-052)). A credential with BE set legitimately reports counter 0 or a counter that does not rise, so a regression is no sign of a clone, and a check would refuse real sign-ins. `hardware-attested` and `hardware` keep the check, as `hardware-fido` does for break-glass.
+
+### Fresh privileged sign-in
+
+- **A privileged grant needs a fresh sign-in at the `hardware-attested` tier, through RFC 9470 step-up** ([REQ-AUTHN-086](/requirements/authn/#REQ-AUTHN-086)). The rule is a `forbid` with `@step_up("acr_values=<hardware tier> max_age=<seconds>")` ([Policy](/reference/policy/#step-up)); `session` answers `insufficient_user_authentication` with those values, and the client signs in again with a key of that class.
+- **"Fresh" is a sign-in age.** It is `auth_age`, the seconds since the person's latest authentication, which for this rule must itself be a `hardware-attested` assertion. A sign-in upstream, or with a synced passkey, resets nothing. Policy sets the value in `max_age`, and the recommended default is 900 seconds (15 minutes), the value of the example in the policy reference.
+- **The boundary verifies the assertion itself** ([Step-up](/decisions/0017-identity-and-sign-in/#step-up)). The ceremony offers only the person's `hardware-attested` credentials. A person with none gets `unmet_authentication_requirements` ([REQ-AUTHN-009](/requirements/authn/#REQ-AUTHN-009)), never a lower tier, and the token of a met step-up carries the new `acr`, `amr` and `auth_time` ([REQ-AUTHN-053](/requirements/authn/#REQ-AUTHN-053)).
+- **Signing and key administration are decided in the boundary that signs or holds the key,** so they are met only by an assertion that boundary verified itself.
+
+### What an upstream adds to a tier
+
+- **An upstream sign-in counts toward the privileged tier only through a mapped `amr` or `acr`,** and never above the ceiling of its connection ([REQ-AUTHN-087](/requirements/authn/#REQ-AUTHN-087), [REQ-AUTHN-010](/requirements/authn/#REQ-AUTHN-010), [REQ-FED-028](/requirements/fed/#REQ-FED-028)). The connection's mapping table names the upstream values that stand for the tier, and its `assurance` is the cap ([0031](/decisions/0031-ciam-is-a-broker/), [#1329](https://github.com/truvity/sluis/issues/1329)). A bare `hwk` from an upstream is a hint: the upstream decides it, and sluis cannot check how the person authenticated.
+- **Missing evidence is unknown, and unknown is refused.** An upstream that sends no `amr` or `acr`, or a value the mapping does not name, leaves the name out of the policy context, and the rule's `forbid` holds ([Policy](/reference/policy/#context), [REQ-TOKEN-035](/requirements/token/#REQ-TOKEN-035)). A Google sign-in carries no `amr` until [#1154](https://github.com/truvity/sluis/issues/1154) is built, so until then it never meets the privileged tier by itself.
+- **A boundary's own demand is met by its own check.** An upstream claim can satisfy the tier where policy is evaluated from the person's session at the front; a boundary that demands fresh authentication verifies the assertion itself, as above.
 
 ### Step-up
 
@@ -99,12 +140,13 @@ sluis claims a conformance plan only when it passes, and discovery says only wha
 - **A `hardware-piv` credential proves itself with a signature over `authenticatorData || SHA-256(clientDataJSON)`, in assertion shape,** because a PIV slot cannot speak WebAuthn. The key is generated on the device, and its attestation chain is verified to the same pinned root. User presence and user verification follow from the slot's attested policy, which must be PIN once or always and touch always; a slot with any weaker policy is refused at enrolment.
 - **An enrolment is compared by its public key and its attestation chain, never by the bytes of its attestation certificate.** A PIV attestation certificate is re-issued on every request, so its bytes differ each time for the same key.
 - **The enrolment tools only show the JSON to commit.** A command-line tool enrols a hardware key, `hardware-fido` or `hardware-piv`, and reads the public key of a PIV slot from its attestation. A page enrols the synced passkey: it runs on the shared sign-in domain over https, sends nothing (the content security policy sets `connect-src 'none'`) and stores nothing. The operator copies the JSON it shows into config and commits it.
-- **The verify flow is the same checks for every class:** the credential id or the public key, the client data type, challenge and origin, the relying-party ID hash, the flags, and the signature. The signature counter is checked for `hardware-fido`, ignored for `hardware-piv`, and not used as a clone signal for `synced`, whose counter is 0. <!-- terms-allow: origin (the WebAuthn client-data origin) -->
+- **The verify flow is the same checks for every class:** the credential id or the public key, the client data type, challenge and origin, the relying-party ID hash, the flags, and the signature. The signature counter is checked for `hardware-fido`, ignored for `hardware-piv`, and not used as a clone signal for `synced`, whose counter is 0. The same rule governs staff passkeys ([The passkey class](/decisions/0017-identity-and-sign-in/#the-passkey-class)). <!-- terms-allow: origin (the WebAuthn client-data origin) -->
 - **A recovery session carries the recovery scope only** ([REQ-AUTHN-070](/requirements/authn/#REQ-AUTHN-070)), and gets no refresh token. The scope is the built-in break-glass policy, which grants beyond config, so linking it is a loosening: `session` has `exchange`, the owner of `PredefinedPolicyLinkTemporary`, write the link, and it expires, after 1 hour by default and 24 hours at most ([0007](/decisions/0007-policy-and-sealed-grants/#template-links)). It restores access: an operator repairs a connection, a federation or a tenant setting. Config, the recovery credentials among it, changes only by a commit, so recovery cannot change it ([principle 17](/principles/#17-where-a-thing-is-written-decides-its-class)).
 - **Every use is audited, successful or refused** ([REQ-AUTHN-071](/requirements/authn/#REQ-AUTHN-071)). Recovery never waits for the audit path: the record is spooled locally and delivered when the path is back ([0029](/decisions/0029-the-audit-log/#retention)).
 - **Every successful use raises an alert to the operators** ([REQ-AUTHN-072](/requirements/authn/#REQ-AUTHN-072)). An unexpected recovery is an incident until proven otherwise.
 - **The runbook requires a drill every quarter** ([REQ-AUTHN-073](/requirements/authn/#REQ-AUTHN-073)): each credential is used once in a test of the full path, and the drill is itself audited and alerted.
 - **Recovery runs on every runtime** and needs no cloud account and no cluster: `session` verifies the assertion against its own challenge, like any passkey. `sluis config check` warns when recovery is enabled without all three credentials.
+- **Recovery is exempt from the tiers.** It needs no `hardware-attested` sign-in, and its pinned synced passkey stays accepted whatever the privileged tier demands ([Two tiers of staff sign-in](/decisions/0017-identity-and-sign-in/#two-tiers-of-staff-sign-in)).
 - **Recovery is for sign-in to sluis only.** Emergency SSH access to hosts is the break-glass SSH CA that ritueel holds offline ([0023](/decisions/0023-certificate-authorities/#ssh)).
 
 ## Consequences
@@ -122,6 +164,11 @@ sluis claims a conformance plan only when it passes, and discovery says only wha
 - Recovery needs three credentials committed before it is needed, and an operator who skipped that has no way back in but a restore. Adding or replacing a credential is a commit, which takes a review and a deploy; that is the price of keeping the credentials out of the data that a restore rewinds.
 - Whoever holds a registered hardware key and can unlock it, or controls the synced passkey's vault, can open a recovery session. The recovery scope and its expiry bound what it can do, and the alert and the audit record make every use visible.
 - The quarterly drill costs an operator's time four times a year; a recovery path that is never exercised fails when it is needed.
+- Few people hold a privileged grant, so few need a security key that attests; registering one costs those people a key, not the company.
+- Enforcement can start grant by grant, by a policy commit, because every passkey already carries a class. A privileged person who registered only a synced passkey is refused the grant and asked to register a key, which is the intended outcome and a visible one.
+- An upstream that sends no evidence keeps a person at the ordinary tier for the front's grants, so a Google sign-in meets the privileged tier only after #1154 and an operator's mapping. The signing and key-administration grants never rely on an upstream claim.
+- A synced passkey is still a credential that a platform account can recover, so the ordinary tier is only as strong as that account. This is the AAL2 trade, and the privileged tier keeps it away from the grants that matter most.
+- Verifying attestation for staff adds work to registration and a list of AAGUIDs to keep as the vendor's models change.
 - The standards register and the [conformance page](/standards/conformance/) follow this record. The page [Break-glass recovery](/security/break-glass/) describes the recovery section.
 - Threats addressed: T-2, T-3, T-5, T-6, T-7 and T-21, see the [threat model](/security/threat-model/).
 
@@ -142,6 +189,14 @@ sluis claims a conformance plan only when it passes, and discovery says only wha
 - **A recovery password, as v1's SRP-6a.** A reusable secret that must be stored, rotated and guarded, and the one password in a product that stores none.
 - **Recovery codes.** Printed reusable secrets with the same problems, and no proof that a person holds them at the moment of use.
 - **A ServiceAccount token checked by a cluster's API server.** Recovery would depend on the cluster, which may be the thing that failed, and would not exist on the other runtimes.
+- **Hardware keys for everyone.** A key to buy and lose per person, and not every sign-in can use one; AAL2 is enough for ordinary access.
+- **Synced passkeys at the privileged tier.** The account that syncs the passkey would be a path to the credential for the grants that matter most.
+- **Attestation required for every staff passkey.** Synced passkeys give none, so phone and laptop passkeys would be refused.
+- **Enterprise attestation.** It identifies one key by its serial number and ties a person's keys together across sites; a purchase register gives an inventory without it.
+- **Class from BS alone.** BS changes over a credential's life and BE does not, so BS cannot decide what a credential is.
+- **Trusting an upstream `hwk` for the privileged tier.** It is a statement of the upstream, absent unless requested, and sluis cannot check it.
+- **Checking the signature counter of synced passkeys.** They report 0, so the check would refuse real sign-ins and prove nothing about a clone.
+- **Switching the tiers on now.** The attestation verifier and the upstream `claims` request are not built, so a rule would lock out the people it protects; the class is recorded now and the rule is a policy commit later.
 - **Hardware keys without attestation.** A software authenticator could then be registered as a hardware key.
 - **Only hardware keys.** Losing both, or the place where both are kept, would leave no way back in; the pinned synced passkey covers that.
 - **A recovery session with the operator's full scope.** It would turn the emergency door into a standing back door.
@@ -149,6 +204,7 @@ sluis claims a conformance plan only when it passes, and discovery says only wha
 ## Follow-ups
 
 - The enrolment tools for the three credential classes, built to the findings of the spike measured on 2026-11-03: [#1178](https://github.com/truvity/sluis/issues/1178).
+- The tiers, the class, the allowlist and the fresh privileged sign-in, built with the passkey feature: [#885](https://github.com/truvity/sluis/issues/885). The upstream mapping and ceiling: [#916](https://github.com/truvity/sluis/issues/916), [#1329](https://github.com/truvity/sluis/issues/1329). Asking Google for `amr`: [#1154](https://github.com/truvity/sluis/issues/1154). The requirements are [REQ-AUTHN-052](/requirements/authn/#REQ-AUTHN-052) and [REQ-AUTHN-080](/requirements/authn/#REQ-AUTHN-080) to [REQ-AUTHN-089](/requirements/authn/#REQ-AUTHN-089).
 - The recovery sign-in, built in the parity milestone: [#795](https://github.com/truvity/sluis/issues/795).
 - The generic OpenID Connect upstream for the first working version: [#1106](https://github.com/truvity/sluis/issues/1106); directory sync and subjects before the first sign-in: [#805](https://github.com/truvity/sluis/issues/805).
 - End-user subject lifecycle: [0034](/decisions/0034-end-users-and-upstream-signals/), [#1024](https://github.com/truvity/sluis/issues/1024).

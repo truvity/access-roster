@@ -55,7 +55,19 @@ The keyless method is the target for new installations. It needs the GCP exchang
 
 sluis finds the person by the issuer and the Google `sub`, never by e-mail: a different `sub` is a different person, and a sign-in is refused when the configured subject claim contradicts the claim pinned for the issuer ([0019](/decisions/0019-person-and-upstream-link/#linking-an-upstream-account)). Whether Google verified the e-mail is a fact that policy may read. The person's sluis subject is an opaque id, never the e-mail address ([0017](/decisions/0017-identity-and-sign-in/#subjects)).
 
-Google sends `amr` and `auth_time` only when the sign-in request carries a `claims` parameter that asks for them, and the console settings for them are on. Until the generic upstream can send a configured `claims` parameter ([#1154](https://github.com/truvity/sluis/issues/1154)), a Google sign-in reaches policy with no `amr`, which policy treats as unknown ([Policy](/reference/policy/#context)).
+## What Google says about the sign-in
+
+Read on 2026-11-06:
+
+- **Google sends `amr` and `auth_time` only when the request asks for them.** The sign-in request has to carry a `claims` parameter that names both, and Google sends them only to verified apps, per its [announcement of 2026-06-16](https://developers.googleblog.com/en/enhance-security-and-trust-new-session-metadata-in-sign-in-with-google/). The values it documents are `pwd`, `mfa`, `hwk`, `swk`, `tel` and `sms` (RFC 8176 names). The claim can still be absent. Google's [OpenID reference](https://developers.google.com/identity/openid-connect/reference) lists no `acr` among the ID-token claims and documents no `acr_values` support.
+- **Until the generic upstream can send a configured `claims` parameter ([#1154](https://github.com/truvity/sluis/issues/1154)), a Google sign-in reaches policy with no `amr`,** which policy treats as unknown ([Policy](/reference/policy/#context)). That issue gates every use of Google's evidence, so it comes first.
+- **Whether a passkey sign-in yields `hwk` or `swk` is not known (to be confirmed).** The test is one afternoon: sign in with a hardware security key, with a synced passkey, with a phone prompt and with a one-time code, and record the `amr` of each. Until it is done, nobody relies on `hwk` from Google, and a synced passkey is not assumed to yield `swk`.
+- **Workspace has no documented switch for attestation.** The 2-step verification setting "Only security key" accepts security keys and passkeys alike, and no Admin console setting that requires a device-bound key or restricts models was found.
+
+What sluis does with it ([0017](/decisions/0017-identity-and-sign-in/#what-an-upstream-adds-to-a-tier)):
+
+- **An `amr` from Google is a hint.** Google decides it and sluis cannot check how the person authenticated. It counts toward the hardware-attested tier only through the connection's mapping table, never above the connection's ceiling ([REQ-AUTHN-087](/requirements/authn/#REQ-AUTHN-087)).
+- **A missing `amr` is unknown, and unknown is refused** for a grant that demands the tier. The signing and key-administration grants do not rely on Google at all: a boundary verifies the person's own security-key assertion.
 
 ## What is audited
 
