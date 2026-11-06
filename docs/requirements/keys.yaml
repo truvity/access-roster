@@ -1735,8 +1735,8 @@ requirements:
   # ---- a person binds their own keys to their identity (decision 0043)
   - id: REQ-KEYS-122
     area: KEYS
-    statement: "sluis MUST accept a key binding only with a possession signature, made by the card's signing subkey, of the challenge that sluis issued for that person, boundary and subkey."
-    rationale: "A card that cannot sign the challenge is not present, and a copied public key would otherwise bind (ADR 0043)."
+    statement: "sluis MUST accept a key binding only with a possession signature of the challenge that sluis issued for that person, boundary and card, made by every subkey in the bundle."
+    rationale: "A card that cannot sign the challenge is not present, and an attestation certificate is public, so a subkey without its own proof could be copied from another person (ADR 0043)."
     level: MUST
     source: design-decision
     status: planned
@@ -1745,7 +1745,7 @@ requirements:
     standards: []
     features: [design]
     verification:
-      - {kind: integration-test, ref: "a bind with a signature by another key, over another challenge, or none is refused; a bind with a correct signature by the signing subkey succeeds"}
+      - {kind: integration-test, ref: "a bind lacking the signature of any one subkey, with a signature by another key, or over another challenge, is refused; a bind with a correct signature by every subkey succeeds"}
   - id: REQ-KEYS-123
     area: KEYS
     statement: "sluis MUST refuse a staff key binding unless the person has a hardware-attested sign-in within the age that policy sets, verified by the boundary that holds the binding."
@@ -2595,3 +2595,55 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a bind with a JWS over the challenge by the JWK succeeds; a JWS over other bytes, an expired challenge and a JWS by another key are refused"}
+  - id: REQ-KEYS-192
+    area: KEYS
+    statement: "sluis MUST refuse a key binding whose bundle carries an encryption-capable subkey."
+    rationale: "Staff keys have no encryption subkey, because a lost card would lose the mail it decrypted, and a bound encryption key could not be replaced (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a bundle with an encryption subkey is refused; a bundle with a signing subkey and an authentication subkey is bound"}
+  - id: REQ-KEYS-193
+    area: KEYS
+    statement: "sluis MUST compute the key identity of an OpenPGP ECDSA P-384 subkey as the SHA-256 of the algorithm octet 0x13, the OID length octet, the OID and the MPI of the public point as the key packet carries it."
+    rationale: "A fixed byte layout makes the identity the same in sluis and in ritueel, whatever the creation time (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: test-vectors, ref: "the published key vector yields the published key identity; the same key with another creation time yields the same identity and another fingerprint"}
+  - id: REQ-KEYS-194
+    area: KEYS
+    statement: "sluis key bind MUST read proof.json only as an object with the members bundle, subkey_sha256, primary, key and subkeys, and refuse a file whose subkey_sha256 is not the SHA-256 of the .subkey.pgp bytes."
+    rationale: "Both repositories share the member names, and the proof must not be movable to another file (ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: test-vectors, ref: "a proof.json with every member and the right digest is read; a missing member, an unknown bundle number and a wrong digest are each refused"}
+  - id: REQ-KEYS-195
+    area: KEYS
+    statement: "sluis MUST verify an OpenPGP ECDSA signature whose r or s MPI has fewer octets than the curve size by padding it to the curve size first."
+    rationale: "An MPI strips leading zero octets, and a verifier that does not pad rejects about one signature in 128 (ADR 0043)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: test-vectors, ref: "the published challenge signature, whose s has a leading zero octet, verifies; a signature with neither padded verifies; a damaged r or s does not"}
