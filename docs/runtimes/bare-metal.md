@@ -140,6 +140,8 @@ When `SLUIS_BOARDS_KEY_DRIVER` is unset, a deploy keeps the key driver each boar
 
 Going back to software is the same five steps with `SLUIS_BOARDS_KEY_DRIVER=software`. The board's software key stays in its state directory when the card is taken, so it comes back with the same id. The wraps for an id that left the `KeyPlan` stay in the store, unused until the id is listed again; nothing here deletes a wrap, and 0006 deletes those of a lost recipient by a procedure of its own. The signer pre-publishes the new token key of the board for 30 minutes before it signs ([the lead time](/decisions/0006-keys-and-sealing/#the-token-signing-key)), so `boards-smoke` right after the switch stops at the token step and says the earliest time at which the key is active (the signer makes it active at its next tick after that); run it again then.
 
+A board that was reinstalled from scratch is a rebuild, not a switch: see [Rebuild one board](/runtimes/rebuild-a-board/).
+
 ### `openat2` under `RestrictSUIDSGID`
 
 systemd's `RestrictSUIDSGID=yes` installs a seccomp filter that answers the `openat2` system call with `ENOSYS`. It does so on every systemd version tried (MEASURED 2026-11-04 on the boards' systemd 249, and again on systemd 259 with `systemd-run --user -p RestrictSUIDSGID=yes`). The drivers that open files below a root (`file`, `credential` and the `fs` blob) use `openat2` with `RESOLVE_BENEATH` and `RESOLVE_NO_SYMLINKS`, so on a unit with that line they fail.

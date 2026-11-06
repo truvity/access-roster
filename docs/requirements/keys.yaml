@@ -936,6 +936,38 @@ requirements:
     verification:
       - {kind: integration-test, ref: "reboot one board with its peers up: it unlocks through PinRelease with no new listener"}
       - {kind: test-vectors, ref: "a PinRelease opened with another request's key fails"}
+  - id: REQ-KEYS-117
+    area: KEYS
+    statement: "A locked key@ MUST unlock from the PinRelease of any one listed, unrevoked, unlocked peer that is reachable, with no peer in particular required."
+    rationale: "A board that is down or left out must not stop another board from unlocking; a boundary has one PIN, so one verified answer is enough, and three boards then unlock whichever two stay up (docs/runtimes/rebuild-a-board.md; extends REQ-KEYS-059)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: no-proving-test
+    features: ["design"]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "board-flow test: with one board off, a restarted board unlocks from the third without anyone giving it the PIN; repeat with the other peer off"}
+      - {kind: integration-test, ref: "actors/key/internal/keyd: three nodes, one unlocked, one never answering: the locked node takes the unlocked one's answer. Not written; existing tests have one releasing peer"}
+  - id: REQ-KEYS-118
+    area: KEYS
+    statement: "A locked key@ MUST keep asking its peers for the PIN, with a bounded backoff, for as long as it is locked and no card has refused a released PIN."
+    rationale: "A peer that is down, a store that is not ready yet or a request that expired unanswered must delay the unlock and not end it; the one deliberate stop is a card that refused a released PIN, because the card blocks after its retry count (REQ-KEYS-058)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: no-proving-test
+    features: ["design"]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "actors/key/internal/keyd: with no peer answering, pinLoops asks again with a wait that doubles from 500 ms to a 10 s cap; a late answer unlocks. Built; only RequestPin without an answer is tested"}
+      - {kind: integration-test, ref: "board-flow test: with both peers off a restarted board stays locked and keeps asking; when a peer is back it unlocks without a restart"}
   - id: REQ-KEYS-060
     area: KEYS
     statement: "A log key MUST rotate only on compromise."

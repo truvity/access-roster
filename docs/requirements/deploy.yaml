@@ -505,3 +505,42 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "boards-test.sh: a fake board without tar is refused with the install command, nothing is sent to it, and an unreachable board is not reported as a missing tar"}
+  - id: REQ-DEPLOY-038
+    area: DEPLOY
+    statement: "A boards installation MUST let an operator rebuild one member from a fresh operating system without touching the other members' keys."
+    rationale: "A board that is reinstalled loses its SSH host keys, its machine-id and its local rqlite data, and the other two boards must keep serving while it comes back (docs/runtimes/rebuild-a-board.md)."
+    level: MUST
+    source: design-decision
+    status: planned
+    features: ["design"]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "board-flow test: reinstall one of three boards and follow the runbook; the board is unlocked and the other two boards' recipients, keys and state are unchanged. Not run yet"}
+  - id: REQ-DEPLOY-039
+    area: DEPLOY
+    statement: "A rebuilt member MUST rejoin the rqlite cluster under its previous Raft address, so that the cluster has three voters again."
+    rationale: "The node id of an rqlite node is its Raft address, so a member that returns under another address is a new node and leaves the stale one in the membership (docs/runtimes/bare-metal.md, rqlite on the boards)."
+    level: MUST
+    source: design-decision
+    status: planned
+    features: ["design"]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "board-flow test: remove the stale node, reinstall, run boards-rqlite; every node reports 3 nodes, 3 voters, one leader. Not run yet; no recipe removes a node"}
+  - id: REQ-DEPLOY-040
+    area: DEPLOY
+    statement: "After a rebuild the signed KeyPlan MUST list the rebuilt member's current recipient and no earlier recipient of that member."
+    rationale: "A peer releases the PIN and wraps a data key only for a recipient that the signed KeyPlan lists (REQ-KEYS-093), so a rebuilt member is trusted through the KeyPlan and the card, not through its SSH host keys (docs/runtimes/rebuild-a-board.md)."
+    level: MUST
+    source: design-decision
+    status: planned
+    features: ["design"]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "board-flow test: rebuild one board with a changed recipient, re-enrol, re-sign; the KeyPlan lists the new one only, and a request signed by the old key is refused. Not run yet"}
