@@ -38,6 +38,15 @@ for f in schemas/config/*.schema.json schemas/config/v1/*.schema.json; do
   esac
 done
 
+# The fragment and ceiling schemas of a company's own access rows.
+for f in schemas/policy/tenant/*.schema.json; do
+  id=$(id_of "$f")
+  case "$id" in
+    "$base/schemas/"*) publish "$f" "${id#"$base/"}" ;;
+    *) echo "pages-site: $f has \$id $id, want one under $base/schemas/" >&2; exit 1 ;;
+  esac
+done
+
 # audit: its record schema, meta-schemas, configuration schemas and the common
 # catalogue's payload schemas, under schemas/audit/.
 publish audit/gen/jsonschema/record.v1.schema.json schemas/audit/v1/record.schema.json

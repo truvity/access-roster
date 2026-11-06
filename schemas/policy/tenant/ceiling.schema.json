@@ -1,0 +1,66 @@
+{
+  "$id": "https://truvity.github.io/sluis/schemas/policy/tenant/ceiling.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How far one owner may reach, authored by the installation beside the company's registration. The zero ceiling (an empty document) allows nothing, so a missing ceiling never reads as no limit.",
+  "properties": {
+    "aws_accounts": {
+      "description": "The AWS accounts a workload of the owner may run in.",
+      "items": {
+        "pattern": "^[0-9]{12}$",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "clusters": {
+      "description": "The clusters a workload of the owner may run in.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "directories": {
+      "description": "The email domains every address and directory group of the owner must belong to: `acme.example`.",
+      "items": {
+        "pattern": "^[^@*\\s]+$",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "github_orgs": {
+      "description": "The GitHub organisation logins the owner holds.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "groups": {
+      "description": "Patterns of the internal groups the owner may mint or be granted: `scope:thing:role`, where `*` stands for one whole segment and never for the installation-wide scope `all`.",
+      "items": {
+        "pattern": "^(\\*|[^:*\\s]+):(\\*|[^:*\\s]+):(\\*|[^:*\\s]+)$",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rungs": {
+      "description": "The rungs the owner may add people to.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "slack_workspaces": {
+      "description": "The Slack workspace keys the owner holds.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "title": "The ceiling of a company's access fragment",
+  "type": "object"
+}

@@ -1,0 +1,381 @@
+{
+  "$defs": {
+    "address": {
+      "description": "An address or directory group: name@domain. The domain must be one of the owner's directories.",
+      "pattern": "^[^@\\s]+@[^@\\s]+$",
+      "type": "string"
+    },
+    "awsRole": {
+      "additionalProperties": false,
+      "description": "One IAM role, exactly.",
+      "properties": {
+        "account": {
+          "description": "The 12-digit AWS account id. The owner must be allowed to run in it.",
+          "pattern": "^[0-9]{12}$",
+          "type": "string"
+        },
+        "path": {
+          "description": "The role's IAM path as AWS spells it: `/` for none.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "description": "The role's name, without its path.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "account",
+        "role",
+        "path"
+      ],
+      "type": "object"
+    },
+    "githubOrg": {
+      "additionalProperties": false,
+      "description": "One GitHub organisation's bindings.",
+      "properties": {
+        "ignore": {
+          "description": "Addresses and GitHub logins the controller leaves alone in this organisation.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Belong in the organisation without a team.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "teams": {
+          "additionalProperties": {
+            "$ref": "#/$defs/githubTeam"
+          },
+          "description": "Teams, by slug.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "githubTeam": {
+      "additionalProperties": false,
+      "description": "One team's two roles.",
+      "properties": {
+        "maintainers": {
+          "description": "Team maintainers.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Team members.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "job": {
+      "additionalProperties": false,
+      "description": "One CI job identity: every field must hold for the job's token.",
+      "properties": {
+        "events": {
+          "description": "What may start the run.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ref": {
+          "description": "What the run is on: `refs/heads/<name>`, `refs/tags/<prefix>*` or `refs/pull/*/merge`.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "repository": {
+          "description": "The repository the run belongs to, `<owner>/<name>`. The owner must be one of the owner's GitHub organisations.",
+          "pattern": "^[^/\\s]+/[^/\\s]+$",
+          "type": "string"
+        },
+        "workflows": {
+          "description": "The workflow files, one matcher each.",
+          "items": {
+            "$ref": "#/$defs/jobWorkflow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "repository"
+      ],
+      "type": "object"
+    },
+    "jobWorkflow": {
+      "additionalProperties": false,
+      "description": "One workflow file pair.",
+      "properties": {
+        "caller": {
+          "description": "The file the run starts from, a path in the repository.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "reusable": {
+          "description": "The reusable workflow the job is defined in, when the caller calls one.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "population": {
+      "additionalProperties": false,
+      "description": "A set of directory groups and, as the exception, individual addresses.",
+      "properties": {
+        "groups": {
+          "description": "Directory groups.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "users": {
+          "description": "Individual addresses.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "project": {
+      "additionalProperties": false,
+      "description": "One business project's delivery authority.",
+      "properties": {
+        "approvers": {
+          "description": "Hold the approver group. Empty falls back to the deployers.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "deployers": {
+          "description": "Hold the deployer group on every scope.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "scopes": {
+          "description": "The scopes the project runs on.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "secret_scopes": {
+          "description": "The scopes where the project keeps secrets and runs nothing.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "viewer_scopes": {
+          "description": "The scopes on which the project mints a viewer.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "viewer_users": {
+          "description": "Hold the viewer on a running scope in place of the scope's cluster viewers.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "viewers": {
+          "description": "Hold the viewer on a secret scope.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "slackChannel": {
+      "additionalProperties": false,
+      "description": "One channel's binding.",
+      "properties": {
+        "adopt": {
+          "description": "An existing channel, by id.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "ignore": {
+          "description": "Addresses or Slack user ids a strict channel never removes.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "members": {
+          "description": "Directory groups whose holders belong in the channel.",
+          "items": {
+            "$ref": "#/$defs/address"
+          },
+          "type": "array"
+        },
+        "mode": {
+          "description": "extend adds only (the default); strict adds and removes, on private channels only.",
+          "enum": [
+            "extend",
+            "strict"
+          ]
+        },
+        "private": {
+          "description": "The channel is private.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "slackWorkspace": {
+      "additionalProperties": false,
+      "description": "One Slack workspace's bindings.",
+      "properties": {
+        "channels": {
+          "additionalProperties": {
+            "$ref": "#/$defs/slackChannel"
+          },
+          "description": "Channels, by the name Slack spells it.",
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "workload": {
+      "additionalProperties": false,
+      "description": "One program's identity: a ServiceAccount in a cluster, or one or more IAM roles in an account.",
+      "properties": {
+        "aws": {
+          "description": "An IAM role, or a list of them, instead of the cluster fields.",
+          "oneOf": [
+            {
+              "$ref": "#/$defs/awsRole"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/awsRole"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          ]
+        },
+        "cluster": {
+          "description": "The cluster whose ServiceAccount tokens this admits. The owner must be allowed to run in it.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "name": {
+          "description": "The ServiceAccount's name.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "namespace": {
+          "description": "The ServiceAccount's namespace.",
+          "minLength": 1,
+          "type": "string"
+        },
+        "why": {
+          "description": "One line on what the program does with the group.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "why"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://truvity.github.io/sluis/schemas/policy/tenant/fragment.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "What a company states for itself in its own repository: people added to named rungs, projects, application grants, GitHub and Slack bindings, CI jobs and workloads. It has no key for the scopes matrix, the scope facts, the vocabulary, the conventions, the lifetimes, the claims or the clients, and a rung takes people and no session length. `sluisctl policy fragment check` holds a fragment to the owner's ceiling (ceiling.schema.json); this schema holds its shape.",
+  "properties": {
+    "applications": {
+      "additionalProperties": {
+        "$ref": "#/$defs/population"
+      },
+      "description": "An internal group, `<scope>:<thing>:<role>`, granted to a population directly.",
+      "propertyNames": {
+        "pattern": "^[^:*\\s]+:[^:*\\s]+:[^:*\\s]+$"
+      },
+      "type": "object"
+    },
+    "github": {
+      "additionalProperties": {
+        "$ref": "#/$defs/githubOrg"
+      },
+      "description": "The company's GitHub organisations, by login.",
+      "type": "object"
+    },
+    "jobs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/job"
+      },
+      "description": "The company's CI jobs, keyed by the internal group each becomes.",
+      "propertyNames": {
+        "pattern": "^[^:*\\s]+:[^:*\\s]+:[^:*\\s]+$"
+      },
+      "type": "object"
+    },
+    "projects": {
+      "additionalProperties": {
+        "$ref": "#/$defs/project"
+      },
+      "description": "The company's business projects, by name.",
+      "type": "object"
+    },
+    "rungs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/population"
+      },
+      "description": "People added to a rung of the installation's ladder, by rung name. The ceiling lists the rungs the owner may add people to.",
+      "type": "object"
+    },
+    "slack": {
+      "additionalProperties": {
+        "$ref": "#/$defs/slackWorkspace"
+      },
+      "description": "The company's Slack workspaces, by workspace key.",
+      "type": "object"
+    },
+    "workloads": {
+      "additionalProperties": {
+        "$ref": "#/$defs/workload"
+      },
+      "description": "The company's programs, keyed by the internal group each becomes.",
+      "propertyNames": {
+        "pattern": "^[^:*\\s]+:[^:*\\s]+:[^:*\\s]+$"
+      },
+      "type": "object"
+    }
+  },
+  "title": "A company's access fragment",
+  "type": "object"
+}
