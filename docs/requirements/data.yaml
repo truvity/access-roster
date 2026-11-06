@@ -1329,7 +1329,7 @@ requirements:
     tests: [actors/store/tests/config.rs]
     verification:
       - {kind: integration-test, ref: "a cold start with a document of a lower sequence than a previous run starts and runs it"}
-      - {kind: integration-test, ref: "no file or item holds a sequence mark after a run"}
+      - {kind: integration-test, ref: "no file holds a sequence mark after a run: the config source and socket directories are unchanged by each start and reload; the loader is handed no path and no engine"}
   - id: REQ-DATA-082
     area: DATA
     statement: "store@ MUST validate the whole set of documents of a boundary, including links, bounds and templates, and swap the snapshot atomically."
@@ -1434,7 +1434,7 @@ requirements:
     issues: [864, 1157]
     tests: [actors/store/src/bootstrap.rs]
     verification:
-      - {kind: test-vectors, ref: "bootstrap file vectors: the key list is closed, so a key that could carry a secret is refused by place without its value, and a private-key PEM is refused as a publisher key"}
+      - {kind: test-vectors, ref: "bootstrap file vectors: key lists equal the documented keys, so a key that could carry a secret is refused by place without its value; a private-key PEM is refused; free-text fields keep their shape"}
   - id: REQ-DATA-089
     area: DATA
     statement: "store@ MUST refuse a bootstrap file that another uid can write."
