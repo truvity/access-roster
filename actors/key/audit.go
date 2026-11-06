@@ -11,16 +11,20 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/version"
 )
 
-// OCSF class 6003 is API Activity; activity 1 is Create, and 99 Other, which names itself (0030 "The class
-// mapping"). The table is code (0030 "The action table is code").
-const classAPIActivity = 6003
+// OCSF class 6003 is API Activity; activity 99 is Other, which names itself. Class 3004 is Entity Management;
+// activity 1 is Create (0030 "The class mapping": a key created, rotated or destroyed is 3004 / 1, 3, 4). The
+// table is code (0030 "The action table is code").
+const (
+	classAPIActivity      = 6003
+	classEntityManagement = 3004
+)
 
 // actions is key@'s action table: metadata.event_code to the class and activity of the record.
 var actions = map[string]audit.Action{
 	keyd.ActionStart:       {Name: keyd.ActionStart, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Start"},
 	keyd.ActionRefuse:      {Name: keyd.ActionRefuse, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Refuse"},
-	keyd.ActionDataKeyMake: {Name: keyd.ActionDataKeyMake, ClassUID: classAPIActivity, ActivityID: 1},
-	keyd.ActionWrapWrite:   {Name: keyd.ActionWrapWrite, ClassUID: classAPIActivity, ActivityID: 1},
+	keyd.ActionDataKeyMake: {Name: keyd.ActionDataKeyMake, ClassUID: classEntityManagement, ActivityID: 1},
+	keyd.ActionWrapWrite:   {Name: keyd.ActionWrapWrite, ClassUID: classEntityManagement, ActivityID: 1},
 	keyd.ActionSign:        {Name: keyd.ActionSign, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Sign"},
 	// A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87, so 0030 gives them the row
 	// "Key use": 6003 / 99, named. A revocation is not in the rows "Key created, rotated or destroyed" (the key is not
