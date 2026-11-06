@@ -3,6 +3,10 @@
   "extends": [
     "github>truvity/ci-workflows"
   ],
+  "baseBranches": [
+    "master",
+    "main"
+  ],
   "osvVulnerabilityAlerts": true,
   "automerge": true,
   "automergeType": "pr",
@@ -13,7 +17,11 @@
     "on master grants bypass to the renovate App as an Integration actor,",
     "so renovate has to merge through its own API call -- as the App the bypass",
     "names -- or its green batch sits waiting for a human approval that the",
-    "bypass was supposed to make unnecessary."
+    "bypass was supposed to make unnecessary.",
+    "baseBranches lists both lines: master is v1, main is v2. Renovate counts branches and pull requests",
+    "across the whole repository, not per base branch, and each base branch gets its own set of renovate/*",
+    "branches (batch, lock file maintenance, majors), so adding main doubles the demand on the default limit",
+    "of 10 and a full limit silently starves lock file maintenance (branch-limit-reached). Both limits are 20."
   ],
   "platformAutomerge": false,
   "packageRules": [
@@ -45,6 +53,9 @@
         "(truvity/ci-caller, renovate-public.yaml); without that entry renovate refuses it and reports",
         "an artifact error on the pull request."
       ],
+      "matchBaseBranches": [
+        "master"
+      ],
       "matchManagers": [
         "gomod"
       ],
@@ -65,6 +76,9 @@
         "upstream wrote them at one version. Their go.mod files are upstream's and",
         "are not updated here; the root go.mod's require is."
       ],
+      "matchBaseBranches": [
+        "master"
+      ],
       "matchFileNames": [
         "third_party/**"
       ],
@@ -78,6 +92,9 @@
         "never the automerged batch, which it would hold red, and a human re-applies",
         "the patch or drops the copy (third_party/zitadel-oidc/README.md).",
         "Drop the copy only after a zitadel/oidc release contains #1021 (issue #1020) or an equivalent fix: dropping it earlier brings the conformance warning back."
+      ],
+      "matchBaseBranches": [
+        "master"
       ],
       "matchManagers": [
         "gomod"
@@ -94,6 +111,9 @@
     },
     {
       "description": "MkDocs 2.0 breaks the plugins and theme overrides the documentation site (mkdocs.yaml, hack/mkdocs_hooks.py) is built with; hold it below 2 until they are ported.",
+      "matchBaseBranches": [
+        "master"
+      ],
       "matchManagers": [
         "pip_requirements"
       ],
@@ -111,7 +131,24 @@
         "go"
       ],
       "enabled": false
+    },
+    {
+      "description": [
+        "Branch `main` is v2 (Go, Rust, Astro and Starlight under site/); `master` is v1. This file is read from",
+        "the default branch, so a rule that holds for one line only says so with matchBaseBranches. On main the",
+        "managers are gomod (one module), cargo (one workspace), npm (site/, Yarn), devbox and github-actions;",
+        "the preset's grouping (all non-major in one PR, after three days), 0.x minors, majors by estate decision",
+        "and the weekly lock file maintenance apply as on master. The one difference is automerge: v2 is merged by",
+        "the maintainer (GOVERNANCE.md), so Renovate opens the pull requests on main and does not merge them (security fixes keep the preset's automerge).",
+        "To let it, delete this rule once the `checks` job has been green on a few of them."
+      ],
+      "matchBaseBranches": [
+        "main"
+      ],
+      "automerge": false
     }
   ],
-  "constraintsFiltering": "strict"
+  "constraintsFiltering": "strict",
+  "branchConcurrentLimit": 20,
+  "prConcurrentLimit": 20
 }
