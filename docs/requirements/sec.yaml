@@ -287,20 +287,19 @@ requirements:
       - {kind: integration-test, ref: "404 on public listener"}
   - id: REQ-SEC-011
     area: SEC
-    statement: "Tokens of one installation MUST NOT be accepted by another installation's token endpoint, introspection or exchange, except in an exchange between installations of one operator that both declare the trust (REQ-EXCH-006)."
+    statement: "Tokens of one installation MUST NOT be accepted by another installation's token endpoint, introspection or exchange, except in an exchange with an issuer that the installation lists in its ExchangeTrust (REQ-EXCH-006)."
     rationale: "Cross-installation replay breaks isolation, and a declared trust of one operator is the one way across (ADR 0008)."
     level: MUST
     source: standard
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-52, section: "7", depth: Full}
       - {id: ST-56, section: "3", depth: Full}
     issues: [962]
     verification:
-      - {kind: integration-test, ref: "cross-installation negative test: another operator, and one operator without the declared trust"}
+      - {kind: integration-test, ref: "cross-installation negative cases: exchange refuses an issuer that is not in ExchangeTrust, the token endpoint refuses a refresh token it never issued, and /introspect is an unrouted path"}
   - id: REQ-SEC-020
     area: SEC
     statement: "sluis MUST bound the sign-in starts of each connection with a token bucket kept in its state."

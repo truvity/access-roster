@@ -78,6 +78,28 @@ func TestAuthorizeSendsThePersonToTheUpstream(t *testing.T) {
 	}
 }
 
+// A pending sign-in lives in the sealed sign-in cookie alone: before a person is known the start writes no item of any
+// kind, not even a counter, and the cookie is the one the state is in.
+//
+// verifies: REQ-SESS-047
+func TestAuthorizeStoresNothingBeforeAPersonIsKnown(t *testing.T) {
+	e := newEnv(t, nil)
+	e.store.mu.Lock()
+	seeded := len(e.store.items) // the config the test seeds
+	e.store.mu.Unlock()
+	r := e.authorize(newAuthorize().req)
+	set := headerOf(r, "Set-Cookie")
+	if len(set) != 1 || !strings.HasPrefix(set[0], sessiond.SigninCookie+"=") || !strings.HasPrefix(sessiond.SigninCookie, "__Host-") {
+		t.Fatalf("Set-Cookie = %v", set)
+	}
+	e.store.mu.Lock()
+	writes, items := len(e.store.writes), len(e.store.items)
+	e.store.mu.Unlock()
+	if writes != 0 || items != seeded {
+		t.Errorf("the sign-in start wrote %d batches and left %d items, seeded %d", writes, items, seeded)
+	}
+}
+
 func TestAuthorizeIsAudited(t *testing.T) {
 	e := newEnv(t, nil)
 	e.authorize(newAuthorize().req)
@@ -570,6 +592,52 @@ func TestAuthorizeNeedsATenant(t *testing.T) {
 	}
 }
 
+// Sluis never sets a sign-in cookie larger than 4 KiB. Every value that goes into the sealed pending sign-in is set to
+// its largest: the client's id, the tenant and the upstream's name at the 128 bytes of an address part, the redirect_uri,
+// state and nonce at their bounds, the scope at all three scopes served, the challenge at its length and max_age at
+// the largest whole number. The cookie of that request fits in 4096 bytes with room to spare, which is why the guard in
+// Authorize ("the request is too large") is unreachable with today's bounds. It stays as defence, and a change to a
+// bound or to the pending sign-in that breaks this test is what the guard would have caught.
+//
+// verifies: REQ-SESS-050
+func TestAuthorizeNeverSetsACookieLargerThan4KiB(t *testing.T) {
+	const part = 128 // the longest part of an address (store-api.md, "Address encoding")
+	longClient := strings.Repeat("c", part)
+	long := "https://app.example.com/" + strings.Repeat("p", 1000)
+	if len(long) != 1024 {
+		t.Fatalf("redirect_uri of %d bytes, want the bound 1024", len(long))
+	}
+	e := newEnv(t, func(o *options) {
+		o.client.Id = longClient
+		o.client.Redirects = []string{long}
+		o.boundary.DefaultTenant = strings.Repeat("t", part)
+		o.upstream.Name = strings.Repeat("u", part)
+	})
+	p := newAuthorize()
+	p.req.ClientId = longClient
+	p.req.RedirectUri = long
+	p.req.State, p.req.Nonce = strings.Repeat("s", 256), strings.Repeat("n", 256)
+	p.req.Scope = "openid profile email"
+	p.req.MaxAge = "2147483647"
+	r := e.authorize(p.req)
+	_ = location(t, r)
+	v := cookieValue(t, r)
+	if v == "" {
+		t.Fatalf("no cookie: %v", headerOf(r, "Set-Cookie"))
+	}
+	if len(v) > 4096 {
+		t.Fatalf("a sign-in cookie of %d bytes", len(v))
+	}
+	t.Logf("the largest sign-in cookie is %d bytes of 4096", len(v))
+	// And it opens: the callback accepts it.
+	up := location(t, r)
+	cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: up.Query().Get("state"), Cookie: v})
+	if location(t, cb).Query().Get("code") == "" {
+		t.Fatal("the largest request did not complete")
+	}
+}
+
+// One past the redirect_uri bound is not served at all, and the largest ordinary request fits the cookie.
 func TestAuthorizeTheLargestRequestFitsTheCookie(t *testing.T) {
 	// Everything a client supplies at its bound, with the longest redirect_uri: the sealed cookie stays under what
 	// entry passes on (4096), and a request one past a bound is refused rather than set as a cookie entry would drop.

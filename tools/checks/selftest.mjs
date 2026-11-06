@@ -169,12 +169,13 @@ reqExpect('a partial record still needs its gap', catalogueFiles('    status: pa
 const MANUAL = '{kind: manual, ref: "a reviewer reads the example"}';
 const manualRecord = '    manual_reason: "No tool can read the example for the reader."\n';
 const attestation = (line) => ({ 'docs/requirements/attestations.yaml': `schema: 1\nattestations:\n${line}` });
-const goodAttestation = '  - {req: REQ-EX-001, by: example-maintainer, on: "2026-11-04", checked: "The example page was read end to end against the record."}\n';
+const goodAttestation = '  - {req: REQ-EX-001, by: maintainer@example.com, on: "2026-11-04", checked: "The example page was read end to end against the record."}\n';
 reqExpect('a done manual record with no attestation', catalogueFiles(done(manualRecord), {}, MANUAL), 'fail', { has: ['L21 REQ-EX-001', 'no evidence'] });
 reqExpect('a done manual record with an attestation', catalogueFiles(done(manualRecord), attestation(goodAttestation), MANUAL), 'pass', { has: ['1 attestations'] });
 reqExpect('an attestation for a record with no manual verification', catalogueFiles(done(), { ...testFile(goTagged), ...attestation(goodAttestation) }), 'fail', { has: ['L22', 'no manual verification'] });
 reqExpect('an attestation for an unknown requirement', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('REQ-EX-001', 'REQ-EX-007')), MANUAL), 'fail', { has: ['L22', 'no such requirement'] });
-reqExpect('an attestation that does not say what was checked', catalogueFiles(done(manualRecord), attestation('  - {req: REQ-EX-001, by: example-maintainer, on: "2026-11-04"}\n'), MANUAL), 'fail', { has: ['L1 attestations.yaml', 'missing checked'] });
+reqExpect('an attestation that does not say what was checked', catalogueFiles(done(manualRecord), attestation('  - {req: REQ-EX-001, by: maintainer@example.com, on: "2026-11-04"}\n'), MANUAL), 'fail', { has: ['L1 attestations.yaml', 'missing checked'] });
+reqExpect('an attestation by a login instead of a commit e-mail', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('maintainer@example.com', 'example-maintainer')), MANUAL), 'fail', { has: ['L1 attestations.yaml', 'by'] });
 reqExpect('an attestation dated in the future', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('2026-11-04', '2999-01-01')), MANUAL), 'fail', { has: ['L22', 'in the future'] });
 reqExpect('an attestation that carries an e-mail address', catalogueFiles(done(manualRecord), attestation(goodAttestation.replace('The example page', 'dev@example.com read the page')), MANUAL), 'fail', { has: ['L10', 'e-mail'] });
 

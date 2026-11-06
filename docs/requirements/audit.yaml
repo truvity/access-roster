@@ -96,19 +96,18 @@ requirements:
       - {kind: integration-test, ref: "pseudonym test"}
   - id: REQ-AUDIT-004
     area: AUDIT
-    statement: "The hash of an audit record MUST be computed over its canonical JSON form."
+    statement: "The hash of an audit record MUST be SHA-384 over its RFC 8785 canonical form."
     rationale: "A canonical form makes hashes reproducible."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
     issues: [1121]
     verification:
-      - {kind: test-vectors, ref: "RFC 8785 test data"}
+      - {kind: test-vectors, ref: "SHA-384 known answers over the RFC 8785 bytes of every record vector, in Go and Rust"}
   - id: REQ-AUDIT-005
     area: AUDIT
     statement: "Audit records of a period MUST be organised in a Merkle tree following the RFC 6962 hash rules."
@@ -1147,14 +1146,13 @@ requirements:
     rationale: "The audit front is the same shape on every installation."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [985]
     verification:
-      - {kind: integration-test, ref: "audit front topology test"}
+      - {kind: integration-test, ref: "topology test: the generated Compose services and systemd units give the audit front its own entry instance and socket, and the forwarder config gives it its own host"}
   - id: REQ-AUDIT-078
     area: AUDIT
     statement: "The audit console's browser session MUST be held by the audit installation's own `session` actor as an HttpOnly cookie, with no token in the browser."
@@ -1256,15 +1254,14 @@ requirements:
     rationale: "A sibling inherits no cookie scope, and one origin per host holds (ADR 0028)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-59, section: "5.1.4.1", depth: Partial}
     issues: [985]
     verification:
-      - {kind: integration-test, ref: "audit host web origin test"}
+      - {kind: integration-test, ref: "host config test: the forwarder config of the local installation names the audit host as a sibling of the boundary host, with no path matcher and its own entry socket"}
   - id: REQ-AUDIT-086
     area: AUDIT
     statement: "Every audit record MUST be an OCSF 1.x event of core classes, with the profile of the sluis extension and no `unmapped` object."
@@ -1339,19 +1336,18 @@ requirements:
       - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
   - id: REQ-AUDIT-091
     area: AUDIT
-    statement: "A stored audit record MUST hold enum ids only, with no enum captions, observables or enrichments."
+    statement: "A stored audit record MUST hold enum ids only, with no enum captions, observables or enrichments, except the decision of an authorization, which OCSF requires."
     rationale: "Derived data stays out of the hashed evidence and is added on export."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-114, section: "base event", depth: Partial}
     issues: [1120]
     verification:
-      - {kind: integration-test, ref: "lean record test"}
+      - {kind: integration-test, ref: "lean record test: every record vector, in Go and Rust, holds no observables, enrichments or caption outside authorizations[].decision, and a record with each is flagged"}
   - id: REQ-AUDIT-092
     area: AUDIT
     statement: "The audit export MUST be NDJSON of OCSF events that carry the log's boundary in `metadata.log_name`."
@@ -1830,15 +1826,14 @@ requirements:
     rationale: "`delegation` exists only for AI operations and carries identifiers only, so the actor chain of an exchange is `actor`, `user` and `unmapped.sluis.actor_chain`."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-114, section: "delegation", depth: Partial}
     issues: [1120]
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "negative vector test over every record vector, in Go and Rust: no delegation object and no profile but security_control; OCSF schema validity is a different row"}
   - id: REQ-AUDIT-125
     area: AUDIT
     statement: "One log key per writer instance MUST sign the checkpoints of its project's audit log."
@@ -2292,19 +2287,18 @@ requirements:
       - {kind: integration-test, ref: "a machine-plane record is sealed under the operator tenant's evidence key"}
   - id: REQ-AUDIT-153
     area: AUDIT
-    statement: "A reader that opens an entry MUST check that the clear envelope agrees with the record."
+    statement: "An actor that opens an entry MUST check that the clear envelope agrees with the record."
     rationale: "A writer that lies in the envelope is then caught by the first reader that opens the record (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
-    actors: [reader]
+    actors: [indexer]
     standards: []
     issues: [1218]
     verification:
-      - {kind: test-vectors, ref: "entries whose envelope differs from the record in one field each are reported"}
+      - {kind: test-vectors, ref: "table test in the indexer: an entry whose clear envelope differs from the record in one field each (seven fields and the boundary) is refused"}
   - id: REQ-AUDIT-154
     area: AUDIT
     statement: "In audit alone a record for a tenant the boundary does not know MUST be held in the transport and raise an alarm."

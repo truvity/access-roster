@@ -1,5 +1,5 @@
 {
- "comment": "Record vectors for the audit emitter, read by kits/go/audit and kits/rust/sluis-audit. Each case builds a record from resolved inputs; expected is the RFC 8785 text.",
+ "comment": "Record vectors for the audit emitter, read by kits/go/audit and kits/rust/sluis-audit. Each case builds a record from resolved inputs; expected is the RFC 8785 text and sha384 is the hex SHA-384 of those bytes, the hash of the record (REQ-AUDIT-004).",
  "cases": [
   {
    "actor": "key",
@@ -17,7 +17,8 @@
     },
     "status": 1
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Sign\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"key.sign\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600399}",
+   "sha384": "689a1e206c6457b0250c51a4d8993b0c2f6b2c87adbb4b67795fb62a4415699ad7bbfcb0ada49537ecdc5335c0fe7e43"
   },
   {
    "actor": "key",
@@ -55,7 +56,8 @@
      "n": 9007199254740991
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Open\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"key.open\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_code\":\"grant\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600399,\"unmapped\":{\"sluis\":{\"actor_chain\":[\"exchange@dev\",\"session@dev\"],\"approver\":\"policy@dev\",\"key\":{\"algorithm\":\"ES384\",\"kind_id\":2,\"store\":{\"type_id\":1}},\"n\":9007199254740991,\"ok\":true}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}",
+   "sha384": "132e1af6e1f10e4edd1c5b32a24927b12a602ef645c3193be43503a9dd89544aa0161ca71631dad3dc2818bdd472c7b3"
   },
   {
    "actor": "session",
@@ -73,7 +75,8 @@
     "status": 1,
     "tenant": "globex"
    },
-   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201}"
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"event_code\":\"session.logon\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"globex\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300201}",
+   "sha384": "90c701c5a3df5230c5913db9d5351b3f95b08540807f455ebad20b33e61c00b4f61ffc7a326a1d123fcbca749b96a917"
   },
   {
    "actor": "store",
@@ -100,7 +103,8 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-2\"}},{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-1\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000aa\",\"version\":\"sha384:abc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600303}"
+   "expected": "{\"action_id\":1,\"activity_id\":3,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-2\"}},{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p-1\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000aa\",\"version\":\"sha384:abc\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600303}",
+   "sha384": "0f2bda675317b4389a999027fd50f3b4e4c035edf889b388520deb99bde1d6fb243e4258475607d3aa56c8fa12e6f14b"
   },
   {
    "actor": "store",
@@ -127,7 +131,8 @@
      "decision": 2
     }
    },
-   "expected": "{\"action_id\":2,\"activity_id\":2,\"activity_name\":\"Read\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Denied\",\"policy\":{\"uid\":\"p-9\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000bb\"},\"severity_id\":1,\"status_code\":\"rule\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600302}"
+   "expected": "{\"action_id\":2,\"activity_id\":2,\"activity_name\":\"Read\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"store@dev\"}},\"authorizations\":[{\"decision\":\"Denied\",\"policy\":{\"uid\":\"p-9\"}}],\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"01950000-0000-7000-8000-0000000000bb\"},\"severity_id\":1,\"status_code\":\"rule\",\"status_id\":2,\"time\":1793750400000,\"type_uid\":600302}",
+   "sha384": "c0afcb6015b651ea6d87310d782c0e2db63ff6dde1c37f10c148efda148f0b260ca2c20d813af641d68b59c8a5c66029"
   },
   {
    "actor": "key",
@@ -147,7 +152,8 @@
      "decision_id": "d-1"
     }
    },
-   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"d-1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302}"
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"event_code\":\"store.read\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"d-1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302}",
+   "sha384": "98a5824c34b51cba2fbc51cec8f228b6eea1a3ce7ce302c130a0cb17aa525e8c04a118b58612e0c006a976f7d2d0d6fd"
   },
   {
    "actor": "key",
@@ -174,7 +180,8 @@
      "text": "tab\there \"quoted\" \u2603"
     }
    },
-   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}"
+   "expected": "{\"activity_id\":99,\"activity_name\":\"Reload\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":6,\"class_uid\":6002,\"metadata\":{\"event_code\":\"x.y\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"1.2.3\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600299,\"unmapped\":{\"sluis\":{\"a\":{\"a\":\"\",\"b\":[]},\"text\":\"tab\\there \\\"quoted\\\" \u2603\",\"z\":\"last\",\"\u00e9\":\"e acute\"}}}",
+   "sha384": "b682d5f8e1aee6b478737ff14ea60120d4e18f07c98edc75962b91e4fd54f5bfe6429827a37b58e17bb9e7301163c2bf"
   }
  ],
  "pseudonyms": [

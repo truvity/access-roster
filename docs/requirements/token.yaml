@@ -135,8 +135,7 @@ requirements:
     rationale: "The ID token audience is the client; leaking the resource confuses verifiers."
     level: MUST
     source: security-review
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -144,7 +143,7 @@ requirements:
       - {id: ST-08, section: "2", depth: Full}
     issues: [776, 791]
     verification:
-      - {kind: integration-test, ref: "negative test"}
+      - {kind: integration-test, ref: "negative test: the ID token audience is the client alone, and a resource indicator on the sign-in or on the code and refresh grants is refused before session sees it"}
   - id: REQ-TOKEN-005
     area: TOKEN
     statement: "sluis MUST issue an access token for a specific resource only when the request names it with the resource parameter."
@@ -181,7 +180,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:

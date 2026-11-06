@@ -431,7 +431,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
@@ -725,15 +725,14 @@ requirements:
     rationale: "An unauthenticated request must create no stored state, and no grant for a tenant's keys exists before a person is decided (ADR 0025)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [793]
     verification:
-      - {kind: integration-test, ref: "a sign-in start writes no item of any kind but its rate bucket"}
+      - {kind: integration-test, ref: "a sign-in start sets the sealed sign-in cookie and writes no item of any kind"}
   - id: REQ-SESS-048
     area: SESS
     statement: "session MUST seal the sign-in cookie under the boundary's cookie data key and bind it to the request that began the sign-in."
@@ -765,19 +764,18 @@ requirements:
       - {kind: integration-test, ref: "a callback at 10 minutes and one second with a moved clock is refused"}
   - id: REQ-SESS-050
     area: SESS
-    statement: "session MUST refuse to set a sign-in cookie larger than 4 KiB."
+    statement: "session MUST NOT set a sign-in cookie larger than 4 KiB."
     rationale: "A cookie over the browser's limit is dropped silently and would break the sign-in (ADR 0025)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [793]
     verification:
-      - {kind: integration-test, ref: "an authorize request whose state would exceed 4 KiB is refused"}
+      - {kind: integration-test, ref: "a request with every field of the pending sign-in at its maximum gives a cookie within 4 KiB; the guard above it stays as defence and is unreachable with today's bounds"}
   - id: REQ-SESS-051
     area: SESS
     statement: "Dropping a generation of a tenant's chain data key MUST end the session chains sealed under it."

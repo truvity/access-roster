@@ -68,11 +68,11 @@ platform:
 	const kinds = `
 schema: 1
 kinds:
-  - {name: Cfg, scope: boundary, class: config, treatment: plain, writer: IaC, readers: [every actor, store@], exportable: "no", backed_up: "no"}
-  - {name: Tmp, scope: boundary, class: temp, treatment: sealed, writer: session, readers: [entry], watched_by: [entry], ttl: {default: 5m, max: 1h}, exportable: "no", backed_up: "no"}
-  - {name: Mine, scope: boundary, class: temp, treatment: plain, writer: self, self_scoped: true, readers: [self], ttl: {default: 1m, max: 2m}, exportable: "no", backed_up: "no"}
-  - {name: Own, scope: boundary, class: durable, treatment: plain, writer: entry, readers: [the actor named in the id], exportable: "no", backed_up: "yes"}
-  - {name: Fact, scope: boundary+tenant, class: durable, treatment: sealed, writer: adapter-<vendor>, readers: ["adapter-<vendor> (as facts source)", "entry (a label)"], exportable: "yes", backed_up: "yes"}
+  - {name: Cfg, scope: boundary, class: config, treatment: plain, profile: "-", writer: IaC, readers: [every actor, store@], exportable: "no", backed_up: "no"}
+  - {name: Tmp, scope: boundary, class: temp, treatment: sealed, profile: "-", writer: session, readers: [entry], watched_by: [entry], ttl: {default: 5m, max: 1h}, exportable: "no", backed_up: "no"}
+  - {name: Mine, scope: boundary, class: temp, treatment: plain, profile: "-", writer: self, self_scoped: true, readers: [self], ttl: {default: 1m, max: 2m}, exportable: "no", backed_up: "no"}
+  - {name: Own, scope: boundary, class: durable, treatment: plain, profile: "-", writer: entry, readers: [the actor named in the id], exportable: "no", backed_up: "yes"}
+  - {name: Fact, scope: boundary+tenant, class: durable, treatment: sealed, profile: "-", writer: adapter-<vendor>, readers: ["adapter-<vendor> (as facts source)", "entry (a label)"], exportable: "yes", backed_up: "yes"}
 `
 	const keys = `
 schema: 1
@@ -232,6 +232,45 @@ func TestBuildRefuses(t *testing.T) {
 				t.Fatalf("got %v, want an error with %q", err, c.want)
 			}
 		})
+	}
+}
+
+// The registry check of the kind registry: every kind has exactly one class, one treatment and one profile (or "-" for
+// protocol state), and a config or secret kind has no tenant scope.
+func TestKindRegistryCheck(t *testing.T) {
+	cases := map[string]struct {
+		change func(*inputs)
+		want   string
+	}{
+		"REQ-DATA-002/an unknown class":                            {func(in *inputs) { in.kinds.Kinds[3].Class = "weird" }, "class"},
+		"REQ-DATA-002/no treatment":                                {func(in *inputs) { in.kinds.Kinds[3].Treatment = "" }, "treatment"},
+		"REQ-DATA-002/an unknown treatment":                        {func(in *inputs) { in.kinds.Kinds[3].Treatment = "garbled" }, "treatment"},
+		"REQ-DATA-002/no profile":                                  {func(in *inputs) { in.kinds.Kinds[3].Profile = "" }, "profile"},
+		"REQ-DATA-002/an unknown profile":                          {func(in *inputs) { in.kinds.Kinds[3].Profile = "Whatever" }, "profile"},
+		"REQ-DATA-007/a config kind scoped to boundary and tenant": {func(in *inputs) { in.kinds.Kinds[0].Scope = "boundary+tenant" }, "has no tenant scope"},
+		"REQ-DATA-007/a secret kind scoped to boundary and tenant": {func(in *inputs) {
+			in.kinds.Kinds[0].Class = "secret"
+			in.kinds.Kinds[0].Scope = "boundary+tenant"
+		}, "has no tenant scope"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			in := fixture(t)
+			c.change(in)
+			_, err := build(in)
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got %v, want an error with %q", err, c.want)
+			}
+		})
+	}
+	// The fixture itself passes, so each refusal above is the one change.
+	if _, err := build(fixture(t)); err != nil {
+		t.Fatalf("the fixture is refused: %v", err)
+	}
+	// A kind with two classes cannot be written: the field is one scalar.
+	var doc kindsDoc
+	if err := yaml.Unmarshal([]byte("kinds:\n  - {name: Two, class: [durable, temp]}\n"), &doc); err == nil {
+		t.Error("REQ-DATA-002: a kind with two classes was read")
 	}
 }
 

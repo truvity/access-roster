@@ -249,16 +249,15 @@ requirements:
     rationale: "A responder adds an always-on dependency to relying parties."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-63, section: "1", depth: Full}
     issues: [913]
     verification:
       - {kind: manual, ref: "decision record"}
-      - {kind: integration-test, ref: "404 test for a status endpoint"}
+      - {kind: integration-test, ref: "404 test for a status endpoint: the paths of an OCSP client and the usual status paths are unrouted at the edge"}
   - id: REQ-PKI-009
     area: PKI
     statement: "sluis MAY issue post-quantum or hybrid certificates once a certificate profile is standardised."

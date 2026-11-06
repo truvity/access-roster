@@ -105,6 +105,22 @@ func TestRefreshOfASpentTokenEndsTheChain(t *testing.T) {
 	}
 }
 
+// A refresh token of another installation names a chain this one never made: the token endpoint answers invalid_grant
+// and creates nothing, as it does for a guess at the secret of a chain it knows.
+//
+// verifies: REQ-SEC-011
+func TestRefreshWithATokenThisInstallationNeverIssuedIsRefused(t *testing.T) {
+	e := newEnv(t, nil)
+	e.redeemed()
+	before := e.store.count("session-chain", testTenant)
+	foreign := strings.Repeat("b", 22) + "." + strings.Repeat("c", 43)
+	assertOAuth(t, e.token(refreshRequest(foreign)), http.StatusBadRequest, "invalid_grant")
+	if n := e.store.count("session-chain", testTenant); n != before {
+		t.Fatalf("%d chains, want %d", n, before)
+	}
+}
+
+// verifies: REQ-SEC-011
 func TestRefreshWithAnUnknownSecretLeavesTheChainAlone(t *testing.T) {
 	// The sid is in every token, so it is not a secret: a guess at the secret must not end the person's session.
 	e := newEnv(t, nil)

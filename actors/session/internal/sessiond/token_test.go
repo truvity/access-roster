@@ -431,6 +431,76 @@ func TestTokenPolicyDenies(t *testing.T) {
 	})
 }
 
+// The audience of an ID token is the client alone: a single string, the client of the request, whatever else the
+// request names. A resource indicator is not a parameter of the sign-in or the code exchange (entry refuses it, see
+// the entry tests), and the audience is built from the client of the request, never from a request parameter.
+//
+// verifies: REQ-TOKEN-004
+func TestTheAudienceOfAnIDTokenIsTheClientAlone(t *testing.T) {
+	e := newEnv(t, nil)
+	first, _ := e.redeemed()
+	_, id := tokenClaims(t, first["id_token"].(string))
+	if id["aud"] != testClient {
+		t.Fatalf("aud = %#v, want the client %q alone", id["aud"], testClient)
+	}
+	if _, resource := id["resource"]; resource {
+		t.Error("the ID token carries a resource")
+	}
+}
+
+// No scope releases personal data yet: an ID token and an access token for openid, profile and email carry no name, no
+// e-mail address and nothing of the upstream's claims. This is the negative half of the claim-release matrix and a
+// tripwire without a tag: the requirement on releasing personal data only when a scope asks is proved when the
+// allow-list that releases the claims under profile and email exists, and the positive rows must then be added here.
+func TestNoScopeReleasesPersonalDataYet(t *testing.T) {
+	personal := []string{"name", "given_name", "family_name", "middle_name", "nickname", "preferred_username", "picture",
+		"email", "email_verified", "phone_number", "address", "birthdate", "locale", "zoneinfo", "updated_at", "profile", "website", "gender"}
+	for _, scope := range []string{"openid", "openid profile", "openid email", "openid profile email"} {
+		t.Run(scope, func(t *testing.T) {
+			e := newEnv(t, nil)
+			p := newAuthorize()
+			p.req.Scope = scope
+			a := e.authorize(p.req)
+			up := location(t, a)
+			cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-scope-0001", State: up.Query().Get("state"), Cookie: cookieValue(t, a)})
+			code := location(t, cb).Query().Get("code")
+			if code == "" {
+				t.Fatalf("no code: %s", location(t, cb))
+			}
+			tr := e.token(codeRequest(code, p))
+			if tr.GetStatus() != http.StatusOK {
+				t.Fatalf("token: %d %s", tr.GetStatus(), tr.GetBody())
+			}
+			for _, name := range []string{"id_token", "access_token"} {
+				_, claims := tokenClaims(t, body(t, tr)[name].(string))
+				for _, k := range personal {
+					if _, ok := claims[k]; ok {
+						t.Errorf("%s carries %s under %q", name, k, scope)
+					}
+				}
+				if raw, _ := json.Marshal(claims); strings.Contains(string(raw), "alice") {
+					t.Errorf("%s holds the upstream's subject under %q: %s", name, scope, raw)
+				}
+			}
+		})
+	}
+}
+
+// A machine grant is not served: client_credentials answers unsupported_grant_type and issues nothing, a refresh token
+// included. This is a tripwire and carries no tag: the requirement on refresh tokens for machine grants is proved when
+// the client-credentials grant or the workload exchange exists, and this test must then give way to a test of it.
+func TestClientCredentialsIsNotServedAndIssuesNoRefreshToken(t *testing.T) {
+	e := newEnv(t, nil)
+	r := e.token(&sessionv2alpha1.TokenRequest{GrantType: "client_credentials", ClientId: testClient})
+	b := assertOAuth(t, r, http.StatusBadRequest, "unsupported_grant_type")
+	if _, ok := b["refresh_token"]; ok || strings.Contains(string(r.GetBody()), "refresh_token") {
+		t.Errorf("a refresh token for a machine grant: %s", r.GetBody())
+	}
+	if e.store.count("session-chain", testTenant) != 0 {
+		t.Error("a chain was made for a machine grant")
+	}
+}
+
 func allowAll(r *policyv2alpha1.DecideRequest) *policyv2alpha1.DecideResponse {
 	g := fakeGrant{id: "d-x", tenant: r.GetTenant(), verbs: r.GetGrantStoreVerbs(), ops: r.GetGrantKeyOps(), expires: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)}
 	return &policyv2alpha1.DecideResponse{
