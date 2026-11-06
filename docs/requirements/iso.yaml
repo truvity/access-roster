@@ -983,14 +983,14 @@ requirements:
     rationale: "Only sluis itself verifies a grant, so a seal under a key that never leaves key@ makes a signature on a grant unnecessary."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [892, 914]
+    tests: [actors/key/internal/keyd/seal_test.go]
     verification:
-      - {kind: test-vectors, ref: "a sealed grant opened with a different purpose in the encryption context; refused, and a tampered grant; refused"}
+      - {kind: test-vectors, ref: "a sealed grant opened as another purpose in the context (data, or the purpose byte changed), under another key or at another address is refused; a change of any byte of it is refused"}
   - id: REQ-ISO-068
     area: ISO
     statement: "The data keys of a tenant MUST be wrapped under the boundary's wrapping key with the tenant and the purpose in the context."
