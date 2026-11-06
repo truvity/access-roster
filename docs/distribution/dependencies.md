@@ -55,6 +55,8 @@ The package cell reads `deb / rpm`. The rpm column covers Rocky Linux 10 and Ama
 | **Cluster prerequisites** | the chart: Gateway or Ingress, cert-manager, a CNI that enforces NetworkPolicy, native sidecars, the `restricted` Pod Security level | n/a | n/a | n/a | Checked by the chart before it installs ([Kubernetes](/runtimes/kubernetes/#packaging-and-the-baseline)) | n/a |
 | **Rust extension, configuration layer** | a holder's drivers on AWS (AppConfig, SSM, DynamoDB, KMS) | n/a | n/a | n/a | n/a | Built by sluis: the drivers layer carries the one Rust extension and the configuration layer the signed config. Not built |
 
+The `audit` and `policycoreutils` rows serve the default mandatory access control of each family. [REQ-DEPLOY-033](/requirements/deploy/#REQ-DEPLOY-033) wants sluis to run with no SELinux or AppArmor denial under the distribution's own policy (SELinux enforcing on Rocky, AppArmor on Ubuntu); it is about compatibility, because the default policy does not confine sluis. [REQ-DEPLOY-039](/requirements/deploy/#REQ-DEPLOY-039) is the later step: the .rpm would ship an SELinux module and the .deb an AppArmor profile.
+
 Three things have no row because nothing on a host satisfies them: the services a driver talks to (an AWS account, DynamoDB, NATS JetStream, PostgreSQL, a Cloudflare account) are the installation's dependencies ([Runtimes](/runtimes/#installations-nodes-and-dependencies)), the libraries a Rust or Go executable links in (SQLite is bundled, TLS is rustls) are in its file, and the shell tools the boards scripts run on a board (`bash`, `timeout`, `getent`, `sudo`) are part of every base image of a supported system.
 
 ## Floors and pins
