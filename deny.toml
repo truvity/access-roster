@@ -1,0 +1,28 @@
+# cargo-deny, for the licence rule only (REQ-SUPPLY-045, docs/reference/approved-libraries.md, "Licences"):
+# `just check-licenses`. Advisories are checked by `cargo audit` in tools/advisories, so none are checked here.
+#
+# The allow list is the decision of 2026-11-06: MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0, and the four added by
+# the owner that day (ISC, Zlib, Unicode-3.0 and Apache-2.0 with the LLVM exception). Any other licence needs a decision
+# of the same kind, in that page, before it is added here. An `OR` expression passes under its permissive choice.
+[graph]
+# The shipped targets: the boards (arm64 and amd64, glibc and musl). A crate that only a Windows or macOS build uses is
+# not linked into a sluis artifact.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
+]
+
+[licenses]
+allow = [
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "Apache-2.0",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "Apache-2.0 WITH LLVM-exception",
+]
+confidence-threshold = 0.9

@@ -415,6 +415,8 @@ jobs:
         env:
           SLUIS_ADVISORIES_CC: /usr/bin/gcc
           SLUIS_ADVISORIES_PKG_CONFIG: /usr/bin/pkg-config
+      # The licence rule for Rust (REQ-SUPPLY-045), over the same lock file: cargo deny check licenses, about a second.
+      - run: devbox run -- just check-licenses
 
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:

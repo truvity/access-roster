@@ -174,6 +174,44 @@
         }
       }
     },
+    "cargo-deny@0.20.2": {
+      "last_modified": "2026-11-04T21:12:09Z",
+      "resolved": "github:NixOS/nixpkgs/6dadaf4375be35033e1c84395adbd53ff5fded96#cargo-deny",
+      "source": "devbox-search",
+      "version": "0.20.2",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/xhr5w7b93hn0lx2a6yahf63kjz7c42dw-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/xhr5w7b93hn0lx2a6yahf63kjz7c42dw-cargo-deny-0.20.2"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/3bm2naqv96ri3vfljca4i8n9rb322i2j-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/3bm2naqv96ri3vfljca4i8n9rb322i2j-cargo-deny-0.20.2"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/d06nmx3jrs73dgb64k6wrpmisnnjr8pf-cargo-deny-0.20.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/d06nmx3jrs73dgb64k6wrpmisnnjr8pf-cargo-deny-0.20.2"
+        }
+      }
+    },
     "cargo-zigbuild@0.23.4": {
       "last_modified": "2026-11-03T03:15:56Z",
       "resolved": "github:NixOS/nixpkgs/9a6cbf4722bdbbef65f9e0400452ca088e31dc4b#cargo-zigbuild",
