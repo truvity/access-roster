@@ -11,6 +11,7 @@ default:
     - key.wrap.write
     - key.pin.release
     - key.pin.unlock
+    - key.revoke
     - store.start
     - store.refused
     - store.reload

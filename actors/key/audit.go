@@ -22,6 +22,12 @@ var actions = map[string]audit.Action{
 	keyd.ActionDataKeyMake: {Name: keyd.ActionDataKeyMake, ClassUID: classAPIActivity, ActivityID: 1},
 	keyd.ActionWrapWrite:   {Name: keyd.ActionWrapWrite, ClassUID: classAPIActivity, ActivityID: 1},
 	keyd.ActionSign:        {Name: keyd.ActionSign, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Sign"},
+	// A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87, so 0030 gives them the row
+	// "Key use": 6003 / 99, named. A revocation is not in the rows "Key created, rotated or destroyed" (the key is not
+	// destroyed, it is listed in KeyRevocation), so it takes the class of the other facts of key@, named.
+	keyd.ActionPinRelease: {Name: keyd.ActionPinRelease, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Release"},
+	keyd.ActionPinUnlock:  {Name: keyd.ActionPinUnlock, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Unlock"},
+	keyd.ActionRevoke:     {Name: keyd.ActionRevoke, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Revoke"},
 }
 
 // emitter adapts the emitter library to keyd.Auditor. Each event is emitted once: the library gives every call a
