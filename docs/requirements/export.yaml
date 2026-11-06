@@ -117,14 +117,14 @@ requirements:
     rationale: "What may leave sluis is decided in review as a property of the kind and not at run time (ADR 0009)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1014]
+    tests: [kits/go/registry/registry_test.go]
     verification:
-      - {kind: test-vectors, ref: "registry check: exactly SigningRing, KeyCertificate, TrustAnchors, Crl, Krl, TrustBundle and ClientSecretExport are marked exportable"}
+      - {kind: test-vectors, ref: "TestExportableKinds in kits/go/registry: exactly SigningRing, KeyCertificate, TrustAnchors, Crl, Krl, TrustBundle and ClientSecretExport are marked exportable"}
   - id: REQ-EXPORT-009
     area: EXPORT
     statement: "The kind registry MUST mark a kind exportable only when a consumer is named and a rule lets exporter@ read it."

@@ -1132,15 +1132,15 @@ requirements:
     rationale: "A driver that interpreted kinds would be a second place where rules could differ (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [862]
+    tests: [kits/go/registry/itemport_test.go]
     verification:
-      - {kind: integration-test, ref: "the driver contract has the calls Get, Query, Transact and TailLog and no call that names a kind"}
+      - {kind: integration-test, ref: "TestItemPortSeesItemsOnly in kits/go/registry: ItemService has exactly Get, Query, Transact and TailLog; no field of them names a kind; an item is key, version, bytes, expiry, index entries"}
   - id: REQ-DATA-070
     area: DATA
     statement: "A config source driver MUST return the bytes and a version label without parsing them."

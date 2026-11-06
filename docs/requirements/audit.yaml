@@ -644,15 +644,15 @@ requirements:
     rationale: "The notary is folded into the rules of key@, which signs every checkpoint (ADR 0028)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-49, section: "7515", depth: Partial}
     issues: [838]
+    tests: [kits/go/registry/registry_test.go]
     verification:
-      - {kind: integration-test, ref: "actor inventory test"}
+      - {kind: integration-test, ref: "TestNoNotaryActor in kits/go/registry: nothing is named notary, the audit family is writer, witness, indexer and reader, and the writer signs with the audit-log key at key@"}
   - id: REQ-AUDIT-043
     area: AUDIT
     statement: "`sluis config check` MUST refuse direct audit transport on a runtime that has no local disk."
