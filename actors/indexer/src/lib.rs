@@ -11,3 +11,7 @@ pub mod merkle;
 pub mod note;
 pub mod ports;
 pub mod run;
+
+/// A seeded generator for the property tests: a fixed seed makes a failure repeatable.
+#[cfg(test)]
+mod testrng;

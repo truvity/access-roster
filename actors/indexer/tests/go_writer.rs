@@ -9,7 +9,79 @@
 mod common;
 
 use common::{Env, by_tenant, value};
+use indexer::note::{Error, LogKey};
 use indexer::run::Runner;
+
+/// The fixture of the Go writer, in the source tree.
+fn fixture(path: &str) -> Vec<u8> {
+    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/testdata/go-writer");
+    std::fs::read(p.join(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+/// The origin of the fixture's log, and the checkpoint sizes the writer kept under `checkpoints/`.
+const FIXTURE_ORIGIN: &str = "sluis.local.test/dev/sluis/audit/main";
+const FIXTURE_SIZES: [u64; 4] = [11, 22, 33, 44];
+
+/// verifies: REQ-SEC-018, REQ-AUDIT-050
+#[test]
+fn every_checkpoint_the_go_writer_signed_verifies_in_the_rust_indexer() {
+    // The verifier key and the signed notes come from the Go writer (`actors/writer`, P-256, SHA-256 over
+    // the note text, D-25); the library reads them with the verifier of `indexer::note`.
+    let key = LogKey::parse(std::str::from_utf8(&fixture("vkey")).unwrap()).unwrap();
+    assert_eq!(key.name(), FIXTURE_ORIGIN);
+    let head = key.open(&fixture("audit/main/checkpoint")).unwrap();
+    assert_eq!((head.origin.as_str(), head.size), (FIXTURE_ORIGIN, 44));
+    // Each checkpoint of the history is under its own tree size, and no two roots are alike.
+    let mut roots = vec![head.root];
+    for size in FIXTURE_SIZES {
+        let cp = key
+            .open(&fixture(&format!("audit/main/checkpoints/{size}")))
+            .unwrap();
+        assert_eq!((cp.origin.as_str(), cp.size), (FIXTURE_ORIGIN, size));
+        roots.push(cp.root);
+    }
+    assert_eq!(roots[0], roots[4], "the head is the checkpoint of size 44");
+    roots.sort_unstable();
+    roots.dedup();
+    assert_eq!(roots.len(), 4);
+}
+
+/// verifies: REQ-SEC-018
+#[test]
+fn a_go_writer_checkpoint_that_is_changed_cut_or_under_another_key_is_refused() {
+    let key = LogKey::parse(std::str::from_utf8(&fixture("vkey")).unwrap()).unwrap();
+    let note = fixture("audit/main/checkpoint");
+    // Every octet of the note, changed: refused, or the same checkpoint (a change in the base64 of the
+    // signature cannot land on another valid signature; the text is signed).
+    let want = key.open(&note).unwrap();
+    for at in 0..note.len() {
+        let mut m = note.clone();
+        m[at] ^= 1;
+        match key.open(&m) {
+            Ok(cp) => assert_eq!(cp, want, "change at {at}"),
+            Err(e) => assert_ne!(e, Error::Key, "change at {at}"),
+        }
+    }
+    // The size of one checkpoint over the signature of another: the signature does not fit the text.
+    let (a, b) = (
+        String::from_utf8(fixture("audit/main/checkpoints/11")).unwrap(),
+        String::from_utf8(fixture("audit/main/checkpoints/22")).unwrap(),
+    );
+    let (text_a, sigs_b) = (
+        a.split_once("\n\n").unwrap().0,
+        b.split_once("\n\n").unwrap().1,
+    );
+    let mixed = format!("{text_a}\n\n{sigs_b}");
+    assert_eq!(key.open(mixed.as_bytes()), Err(Error::Signature));
+    // A cut note is not a signed note, or its signature does not fit.
+    for n in [0, 10, note.len() / 2, note.len() - 1] {
+        assert!(key.open(&note[..n]).is_err(), "cut at {n}");
+    }
+    // Another key: the Go writer's signature is not its signature.
+    let other = common::TestLog::new(std::path::Path::new("/nonexistent"));
+    let other = LogKey::parse(&other.vkey()).unwrap();
+    assert_eq!(other.open(&note), Err(Error::Signature));
+}
 
 /// verifies: REQ-AUDIT-005
 #[tokio::test]

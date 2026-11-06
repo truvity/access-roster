@@ -240,6 +240,7 @@ requirements:
       - {kind: integration-test, ref: "TestCheckpointsVerifyWithTheTransparencyDevVerifier: audit-log checkpoints open with the transparency-dev reference; fuzz targets in cli/sluis and writerd"}
       - {kind: test-vectors, ref: "official vectors for each external standard it implements"}
       - {kind: integration-test, ref: "fuzz corpus in CI for each format of its own"}
+      - {kind: test-vectors, ref: "checkpoints of the Go writer fixtures verify in the Rust indexer through signed_note, tlog_checkpoint and tlog_core, with the Certificate Transparency reference tree"}
   - id: REQ-SEC-009
     area: SEC
     statement: "A threat model and its negative tests MUST exist before code is merged for the authentication, federation, exchange and administration surfaces."
