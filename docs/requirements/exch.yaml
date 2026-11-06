@@ -248,7 +248,7 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a scan of the store, the logs and the audit log after a mint finds no credential value"}
+      - {kind: integration-test, ref: "a scan of the store, the logs, the audit log, every span and every metric attribute after a mint finds no credential value, account id, token id or name, or URL"}
   - id: REQ-EXCH-017
     area: EXCH
     statement: "store@ MUST refuse a write of a MinterTarget that lies outside MinterBounds."
@@ -324,3 +324,55 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a client authenticates the exchange with a signed assertion"}
       - {kind: conformance-suite, ref: "the FAPI 2.0 plan includes a token exchange"}
+  - id: REQ-EXCH-022
+    area: EXCH
+    statement: "A credential minter MUST count the caps on live tokens per caller and per target and on mints per caller per hour from sluis's own record of what it minted, without listing the tokens at the vendor."
+    rationale: "Listing every token of an account on each mint made a mint cost several seconds, and the count that sluis needs is its own to keep (ADR 0025)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake vendor that counts list calls sees none during a mint; the record's caps refuse the next mint above them with RATE_LIMITED; mints in flight count against the caps"}
+  - id: REQ-EXCH-023
+    area: EXCH
+    statement: "A credential minter MUST refuse a mint with the reason UNAVAILABLE when it cannot read its record of what it minted."
+    rationale: "A cap that cannot be counted must not be treated as unreached (principle 4, ADR 0025)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "with the record unreadable the mint fails with UNAVAILABLE and no token is created at the vendor"}
+  - id: REQ-EXCH-024
+    area: EXCH
+    statement: "A credential minter MUST compare its record of what it minted with the vendor's list at a fixed interval and correct the record where the two differ."
+    rationale: "A crash between creating a token and recording it leaves a live token that no cap counts (ADR 0025)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake vendor holds a token that the record lacks; the next pass records it; an entry for a token that the vendor no longer holds is forgotten after the vendor confirms it is gone"}
+  - id: REQ-EXCH-025
+    area: EXCH
+    statement: "A credential minter SHOULD count each correction of its record in a metric labelled by the kind of correction."
+    rationale: "The number of corrections is the measure of how far the record drifts from the vendor (ADR 0016)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "after the reconcile pass of the previous row the drift counter holds one for the missing token and one for the forgotten entry"}

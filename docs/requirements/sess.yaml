@@ -789,3 +789,17 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "drop a tenant's chain key generation: its chains refuse to open and another tenant's chains still work"}
+  - id: REQ-SESS-054
+    area: SESS
+    statement: "An access token that sluis issues to a person MUST NOT outlive the session chain that it names."
+    rationale: "A token redeemed with no session behind it cannot be ended by a sign-out (ADR 0018)."
+    level: MUST
+    source: security-review
+    status: partial
+    gap: no-proving-test
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a token redeemed without offline_access expires no later than the end of its chain; ending the chain ends the token's use as a bearer"}

@@ -1593,3 +1593,30 @@ requirements:
     tests: [actors/store/tests/store.rs, actors/store/tests/config.rs, actors/store/tests/signed_config.rs, kits/go/store/store_test.go]
     verification:
       - {kind: integration-test, ref: "a reader gets the source's bytes; a non-reader, a non-config kind and a self-scoped kind are refused; the size is bounded"}
+  - id: REQ-DATA-110
+    area: DATA
+    statement: "The registry generator MUST fail when a Tenant-adjustable kind has a field that carries no bound in config or in the built-in layer and is not listed as unbounded with a reason."
+    rationale: "A field added later must not become a way for a tenant to widen itself (ADR 0004; v1 ADR 0078)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "the generator test adds a field to a fixture kind of the Tenant-adjustable profile and the generator fails until the field is bounded or listed as unbounded with a reason"}
+  - id: REQ-DATA-111
+    area: DATA
+    statement: "store@ SHOULD refuse a write to a kind whose list field holds more entries than the maximum count that the kind declares."
+    rationale: "A list that grows without a bound will one day exceed the size limit of an item in the engine, and v1 found this with a field it had not counted (ADR 0005)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    actors: [store]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a write one entry over the declared maximum is refused; a kind with a bound counts every field it writes, bookkeeping fields included, before the write"}

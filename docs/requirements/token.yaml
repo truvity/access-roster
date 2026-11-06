@@ -157,7 +157,7 @@ requirements:
       - {id: ST-08, section: "2", depth: Full}
     issues: [791]
     verification:
-      - {kind: integration-test, ref: "resource matrix across code and refresh grants"}
+      - {kind: integration-test, ref: "resource matrix across code and refresh grants, with the audience of the ID token checked in each cell (REQ-TOKEN-004)"}
   - id: REQ-TOKEN-021
     area: TOKEN
     split_from: REQ-TOKEN-005
