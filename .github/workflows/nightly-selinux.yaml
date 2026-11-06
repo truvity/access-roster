@@ -1,5 +1,7 @@
 # The boards deploy against Rocky Linux 10 with SELinux enforcing, in a virtual machine under KVM (deploy/boards/os-vm-test.sh).
-# A container cannot show the labels or an AVC denial, so this runs nightly and on demand, not on every pull request.
+# A container cannot show the labels or an AVC denial, so this is meant to run nightly and on demand, not on every pull request.
+# It has never run: GitHub starts a scheduled workflow, and lists a manual one, only from the default branch, and the default
+# branch is still the v1 line (master). Until main is the default branch, run deploy/boards/os-vm-test.sh by hand (docs/runtimes/bare-metal.md).
 # It judges nothing for a merge: a failure is a mail to whoever last touched the schedule, and the logs are kept.
 name: Nightly SELinux
 

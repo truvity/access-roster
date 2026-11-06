@@ -15,7 +15,7 @@ import (
 const (
 	// BinDir is the infrastructure convention on the boards (D-12); the packages use /usr/libexec/sluis.
 	BinDir = "/opt/sluis/bin"
-	// StateRoot holds the state of the units. It is not /var/lib/sluis, which is the rqlite user's.
+	// StateRoot holds the state of the units. It is not /var/lib/rqlite, which is the rqlite package's.
 	StateRoot = "/var/lib/sluis-state"
 	// LoadRoot is where the deploy puts the files that LoadCredentialEncrypted= reads (systemd credentials, encrypted on the board
 	// with its own host key, so that a reflash, which makes a new key, is followed by a deploy that encrypts them again).
@@ -210,7 +210,7 @@ func rqliteUnit(port string) driverProc {
 		Args:            []string{"--rqlite-url", "${SLUIS_RQLITE_URL}", "--namespace", port},
 		Environment:     []string{"SLUIS_RQLITE_URL=http://127.0.0.1:4001"},
 		EnvironmentFile: "-/etc/sluis/rqlite-%i.env",
-		After:           []string{"sluis-rqlite.service"},
+		After:           []string{"rqlited.service"},
 	}
 }
 

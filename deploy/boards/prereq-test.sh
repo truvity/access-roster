@@ -216,4 +216,69 @@ rm "$work/bin/selinuxenabled"
 : >"$RESTORECON_LOG"
 accept "no selinuxenabled: nothing to do" run relabel
 if [ ! -s "$RESTORECON_LOG" ]; then echo "ok   and restorecon is not run"; else echo "FAIL restorecon ran"; fail=1; fi
+
+# rqlite: the drop-in, the addresses, and the plain-HTTP checks of what rqlite.sh sends
+# verifies: the drop-in resets ExecStart= and sets the node id, the addresses and, off the bootstrap node, -join
+want=$'# Made by sluis (just boards-rqlite). Do not edit: the next run writes it again.\n# No TLS and no authentication yet: the firewall of the board must admit these ports from the peers alone.\n[Service]\nExecStart=\nExecStart=/usr/bin/rqlited -node-id board-b -http-addr 192.0.2.12:4001 -raft-addr 192.0.2.12:4002 -join 192.0.2.13:4002 /var/lib/rqlite/data'
+is "a joining node's drop-in" "$want" run rqlite_dropin_text board-b 192.0.2.12 4001 4002 192.0.2.13:4002
+got=$(run rqlite_dropin_text board-a 192.0.2.13 4001 4002 "")
+if [ "$got" = "${want%%$'\n'ExecStart=/usr/bin/rqlited*}"$'\nExecStart=/usr/bin/rqlited -node-id board-a -http-addr 192.0.2.13:4001 -raft-addr 192.0.2.13:4002 /var/lib/rqlite/data' ]; then echo "ok   the bootstrap node's drop-in has no -join"; else echo "FAIL the bootstrap drop-in: $got"; fail=1; fi
+refuse "a node id with a space is refused" "refusing the rqlite node id" run rqlite_dropin_text "core 2" 192.0.2.12 4001 4002 ""
+refuse "a name for the board's address is refused" "refusing the rqlite address" run rqlite_dropin_text board-b board.example.com 4001 4002 ""
+refuse "an address with an octet above 255 is refused" "refusing the rqlite address" run rqlite_dropin_text board-b 192.0.2.256 4001 4002 ""
+refuse "a port of 0 is refused" "refusing the rqlite ports" run rqlite_dropin_text board-b 192.0.2.12 0 4002 ""
+refuse "a join address with a flag in it is refused" "refusing the rqlite join address" run rqlite_dropin_text board-b 192.0.2.12 4001 4002 "192.0.2.13:4002 -x"
+refuse "a join address that is a name is refused" "refusing the rqlite join address" run rqlite_dropin_text board-b 192.0.2.12 4001 4002 "board-a:4002"
+# rqlite_relabel
+ln -sf "$(command -v dirname)" "$work/bin/dirname"
+printf '#!/bin/bash\nexit 0\n' >"$work/bin/selinuxenabled"
+chmod +x "$work/bin/selinuxenabled"
+cat >"$work/bin/systemctl" <<'F'
+#!/bin/bash
+[ "$1" = show ] && [ "$3" = FragmentPath ] && { echo "$FAKE_FRAGMENT"; exit 0; }
+exit 0
+F
+chmod +x "$work/bin/systemctl"
+: >"$RESTORECON_LOG"
+: >"$work/rqlited.service"
+FAKE_FRAGMENT="$work/rqlited.service" run rqlite_relabel
+if grep -qx -- "-v -- $work/rqlited.service" "$RESTORECON_LOG"; then echo "ok   rqlite_relabel relabels the files that exist, each alone, and never recursively"; else echo "FAIL restorecon: $(cat "$RESTORECON_LOG")"; fail=1; fi
+
+# avc_check: the AVC records since boot, with fakes of getenforce and ausearch (FAKE_ENFORCING, FAKE_AUSEARCH_OUT, FAKE_AUSEARCH_RC)
+cat >"$work/bin/getenforce" <<'F'
+#!/bin/bash
+echo "${FAKE_ENFORCING:-Enforcing}"
+F
+cat >"$work/bin/ausearch" <<'F'
+#!/bin/bash
+[ "$*" = "-m AVC,USER_AVC -ts boot" ] || { echo "unexpected arguments: $*" >&2; exit 2; }
+printf '%s' "${FAKE_AUSEARCH_OUT:-<no matches>}"
+exit "${FAKE_AUSEARCH_RC:-1}"
+F
+chmod +x "$work/bin/getenforce" "$work/bin/ausearch"
+for t in grep wc; do ln -sf "$(command -v "$t")" "$work/bin/$t"; done
+# verifies: a board where SELinux is not enforcing has nothing to check
+FAKE_ENFORCING=Permissive accept "avc: permissive: nothing to check" run avc_check
+FAKE_ENFORCING=Disabled accept "avc: disabled: nothing to check" run avc_check
+accept "avc: enforcing and no record is clean" run avc_check
+is "avc: and says so" "avc: no AVC or USER_AVC record since boot" run avc_check
+other='----
+time->Thu Nov  6 10:00:00 2026
+type=AVC msg=audit(1793000000.000:100): avc:  denied  { read } for  pid=900 comm="chronyd" name="drift" dev="vda1" ino=5 scontext=system_u:system_r:chronyd_t:s0 tcontext=system_u:object_r:var_t:s0 tclass=file permissive=0'
+FAKE_AUSEARCH_OUT="$other" FAKE_AUSEARCH_RC=0 accept "avc: a denial of another program is printed and does not fail" run avc_check
+out=$(FAKE_AUSEARCH_OUT="$other" FAKE_AUSEARCH_RC=0 run avc_check 2>&1)
+if [[ "$out" == *"1 AVC/USER_AVC records since boot, 0 naming sluis or rqlite"* ]]; then echo "ok   avc: and is said to name nothing of ours"; else echo "FAIL avc summary: $out"; fail=1; fi
+for rec in \
+	'type=AVC msg=audit(1793000001.000:101): avc:  denied  { execute } for  pid=901 comm="(rqlited)" path="/usr/bin/rqlited" dev="vda1" ino=6 scontext=system_u:system_r:init_t:s0 tcontext=system_u:object_r:usr_t:s0 tclass=file permissive=0' \
+	'type=AVC msg=audit(1793000002.000:102): avc:  denied  { connectto } for  pid=902 comm="key" path="/run/sluis/key/dev/admin.sock" scontext=system_u:system_r:unconfined_service_t:s0 tcontext=system_u:system_r:pcscd_t:s0 tclass=unix_stream_socket permissive=0' \
+	'type=USER_AVC msg=audit(1793000003.000:103): pid=1 uid=0 auid=4294967295 ses=4294967295 subj=system_u:system_r:init_t:s0 msg='"'"'avc:  denied  { start } for auid=n/a uid=0 gid=0 path="/etc/systemd/system/sluis-key@.service" scontext=system_u:system_r:init_t:s0 tcontext=system_u:object_r:etc_t:s0 tclass=service'"'"; do
+	FAKE_AUSEARCH_OUT="$other
+$rec" FAKE_AUSEARCH_RC=0 refuse "avc: a record naming a sluis or rqlite path or domain fails: ${rec:0:60}" 'FAILED: the records above name a sluis or rqlite' run avc_check
+done
+FAKE_AUSEARCH_OUT='ausearch: cannot open /var/log/audit/audit.log' FAKE_AUSEARCH_RC=10 refuse "avc: an ausearch that fails for another reason is not a clean board" 'ausearch failed \(status 10\)' run avc_check
+mv "$work/bin/ausearch" "$work/ausearch.off"
+refuse "avc: enforcing with no ausearch is a refusal that names the package" 'install the audit package' run avc_check
+FAKE_ENFORCING=Permissive accept "avc: with no ausearch, permissive still has nothing to check" run avc_check
+mv "$work/ausearch.off" "$work/bin/ausearch"
+if grep -q 'avc_check' "$here/remote.sh" && grep -q 'stage-avc' "$here/boards.sh"; then echo "ok   boards.sh runs the avc check after a deploy"; else echo "FAIL boards.sh does not run the avc check"; fail=1; fi
 exit "$fail"

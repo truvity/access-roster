@@ -55,3 +55,16 @@ func TestAsActorJoinsTheKeyDirectoryGroupByName(t *testing.T) {
 		t.Error("an actor that is not a caller of key@ joined a key@ directory group")
 	}
 }
+
+func TestSSHArgsCarryTheOptionsOfTheRunAfterTheDefaults(t *testing.T) {
+	t.Setenv("SLUIS_BOARD_SSH_OPTIONS", "-o UserKnownHostsFile=/run/known_hosts  -o StrictHostKeyChecking=yes")
+	got := strings.Join(sshArgs(sshOptions(), "operator@192.0.2.12", "hostname"), " ")
+	want := "-o BatchMode=yes -o ConnectTimeout=10 -o UserKnownHostsFile=/run/known_hosts -o StrictHostKeyChecking=yes operator@192.0.2.12 hostname"
+	if got != want {
+		t.Errorf("ssh arguments = %q, want %q", got, want)
+	}
+	t.Setenv("SLUIS_BOARD_SSH_OPTIONS", "")
+	if got := strings.Join(sshArgs(sshOptions(), "operator@192.0.2.12", "hostname"), " "); got != "-o BatchMode=yes -o ConnectTimeout=10 operator@192.0.2.12 hostname" {
+		t.Errorf("with no options the arguments are %q", got)
+	}
+}

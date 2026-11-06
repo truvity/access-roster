@@ -31,6 +31,9 @@ const (
 	blobLog   = "/var/lib/sluis-state/dev/drv-writer-fs/audit/main"
 )
 
+// rqliteUnit is the engine's unit, the upstream package's rqlited.service (boards-rqlite installs it; it has no instance).
+const rqliteUnit = "rqlited"
+
 // units the smoke needs active on a board before it starts. The key driver is the software one, or the card driver when
 // the boards were deployed with SLUIS_BOARDS_KEY_DRIVER=yubikey-piv (the same variable; boards.sh); the card driver must
 // have been unlocked first (`sluis node unlock`), or key@ cannot sign. SLUIS_SMOKE_STOP_AFTER=token ends the run after
@@ -50,6 +53,7 @@ func unitsFor(keyDriver, stopAfter string) ([]string, error) {
 		drv, "sluis-drv-store-credential", "sluis-drv-store-file", "sluis-drv-store-rqlite-durable",
 		"sluis-drv-store-rqlite-temp", "sluis-drv-writer-fs", "sluis-drv-writer-spool",
 		"sluis-store", "sluis-key", "sluis-entry", "sluis-policy", "sluis-signer",
+		rqliteUnit,
 	}
 	switch stopAfter {
 	case "":
@@ -66,6 +70,20 @@ var (
 	keyDriverEnv string
 	units        []string
 )
+
+// sshOptions are the extra ssh arguments of SLUIS_BOARD_SSH_OPTIONS, split at white space, the same variable that boards.sh and
+// rqlite.sh read (deploy/boards/ssh-lib.sh): a reinstalled board has a new host key, and this is how a run trusts it without
+// touching ~/.ssh/known_hosts. They come after the defaults, as in the scripts.
+func sshOptions() []string {
+	return strings.Fields(os.Getenv("SLUIS_BOARD_SSH_OPTIONS"))
+}
+
+// sshArgs is the argument list of one ssh to a board: the defaults, the options of the run, the target and the command.
+func sshArgs(opts []string, target, script string) []string {
+	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=10"}
+	args = append(args, opts...)
+	return append(args, target, script)
+}
 
 // board is one board reached over SSH.
 type board struct {
@@ -130,6 +148,10 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 		return err
 	}
 	b.node = strings.TrimSpace(out)
+	// The smoke copies files to the board and the log back with tar; the Rocky image of the boards is built without it.
+	if _, err := b.sh(nil, "command -v tar >/dev/null"); err != nil {
+		return errors.New("the board has no tar, which the smoke needs (dnf install tar, or apt-get install tar)")
+	}
 	drv := keyDriverEnv
 	if drv == "" { // the board's own driver, from the unit-file state: the card driver is enabled on a board that was switched
 		if out, _ := b.sh(nil, "systemctl show -p UnitFileState --value sluis-drv-key-yubikey-piv@dev.service"); strings.TrimSpace(out) == "enabled" {
@@ -258,7 +280,7 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 
 // sh runs a shell command on the board as the SSH user. The agent socket is set for ssh alone.
 func (b *board) sh(stdin io.Reader, script string) (string, error) {
-	c := exec.Command("ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", b.user+"@"+b.addr, script) //nolint:gosec // the board comes from the environment of the run; the script is built here
+	c := exec.Command("ssh", sshArgs(sshOptions(), b.user+"@"+b.addr, script)...) //nolint:gosec // the board and the ssh options come from the environment of the run; the script is built here
 	c.Env = append(os.Environ(), "SSH_AUTH_SOCK="+b.agent)
 	c.Stdin = stdin
 	var stdout, stderr bytes.Buffer
@@ -281,7 +303,7 @@ func (b *board) requireActive() error {
 	var bad []string
 	for _, u := range units {
 		name := u + "@dev.service"
-		if u == "sluis-rqlite" {
+		if u == rqliteUnit {
 			name = u + ".service"
 		}
 		out, _ := b.sh(nil, "systemctl is-active "+name) // a non-zero exit is an inactive unit

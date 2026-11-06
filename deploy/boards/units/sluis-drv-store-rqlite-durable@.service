@@ -3,7 +3,7 @@
 [Unit]
 Description=sluis driver store-rqlite durable (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
-After=sluis-rqlite.service
+After=rqlited.service
 
 [Service]
 Type=simple

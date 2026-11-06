@@ -257,3 +257,123 @@ check_pinned_ids() {
 		return 1
 	fi
 }
+
+# --- rqlite -------------------------------------------------------------------------------------------------------------------
+# The engine is rqlite's own upstream package (rqlite.sh puts it on the board and runs remote.sh rqlite-install). The package
+# brings /usr/bin/rqlited, the user and group rqlite, /var/lib/rqlite (0750) and rqlited.service, which runs
+# `/usr/bin/rqlited /var/lib/rqlite/data` and is not enabled. What the deploy adds is one drop-in of that unit; its presence is
+# also what says that this tool installed rqlite on the board, so that undeploy touches no rqlite that someone else made.
+rqlite_unit=rqlited.service
+rqlite_dropin_dir=/etc/systemd/system/rqlited.service.d
+rqlite_dropin=$rqlite_dropin_dir/10-sluis.conf
+rqlite_data_dir=/var/lib/rqlite/data
+
+# rqlite_valid_ipv4 says whether the argument is a dotted IPv4 address; rqlite binds and advertises the address of the board, and
+# peers dial it, so a name that resolves differently on two boards is not taken.
+rqlite_valid_ipv4() {
+	local o
+	[[ "$1" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+	local IFS=.
+	for o in $1; do [ "$((10#$o))" -le 255 ] || return 1; done
+}
+rqlite_valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && [ "$((10#$1))" -ge 1 ] && [ "$((10#$1))" -le 65535 ]; }
+
+# rqlite_dropin_text node ip http_port raft_port join prints the drop-in: the ExecStart of the package, reset, and again with the
+# node id, the HTTP and Raft addresses of the board (-http-addr, -raft-addr: the flags of rqlited 10) and, on a node that is not the
+# bootstrap one, -join with the Raft address (host:port) of the bootstrap node. The join is empty for the bootstrap node, which
+# then starts a cluster of one. A node that already has state ignores -join on a restart and takes its place in the cluster.
+rqlite_dropin_text() { # node ip http_port raft_port join
+	[[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "remote: refusing the rqlite node id '$1'" >&2; return 1; }
+	rqlite_valid_ipv4 "$2" || { echo "remote: refusing the rqlite address '$2'" >&2; return 1; }
+	if ! rqlite_valid_port "$3" || ! rqlite_valid_port "$4"; then
+		echo "remote: refusing the rqlite ports '$3' '$4'" >&2
+		return 1
+	fi
+	local join=""
+	if [ -n "${5:-}" ]; then
+		if ! [[ "$5" =~ ^[0-9.]+:[0-9]+$ ]] || ! rqlite_valid_ipv4 "${5%:*}" || ! rqlite_valid_port "${5#*:}"; then
+			echo "remote: refusing the rqlite join address '$5'" >&2
+			return 1
+		fi
+		join=" -join $5"
+	fi
+	printf '%s\n' \
+		'# Made by sluis (just boards-rqlite). Do not edit: the next run writes it again.' \
+		'# No TLS and no authentication yet: the firewall of the board must admit these ports from the peers alone.' \
+		'[Service]' \
+		'ExecStart=' \
+		"ExecStart=/usr/bin/rqlited -node-id $1 -http-addr $2:$3 -raft-addr $2:$4$join $rqlite_data_dir"
+}
+
+# rqlite_install_package file installs an upstream package with the package manager of the board's family, from the file, which
+# rqlite.sh checked against its pin before it left the workstation. The package manager is not asked to check a signature: upstream
+# signs nothing, and the pin is the trust.
+rqlite_install_package() { # file
+	case "$1" in
+	*.deb)
+		command -v apt-get >/dev/null 2>&1 || { echo "remote: a .deb package, and the board has no apt-get" >&2; return 1; }
+		DEBIAN_FRONTEND=noninteractive apt-get install -y -- "$1"
+		;;
+	*.rpm)
+		command -v dnf >/dev/null 2>&1 || { echo "remote: an .rpm package, and the board has no dnf" >&2; return 1; }
+		dnf install -y -- "$1"
+		;;
+	*) echo "remote: not a package: $1" >&2; return 1 ;;
+	esac
+}
+
+# rqlite_relabel gives the files of the package and of the drop-in the labels that the policy has for their paths, where SELinux
+# is on: the binaries, the unit and its drop-ins, and the data directory alone (never walked: it is the service user's). Without
+# it an rqlite that was started before any relabel can fail to execute or run in the wrong domain. A failure is a warning.
+rqlite_relabel() {
+	command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled || return 0
+	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the rqlite files keep the labels they were made with" >&2; return 0; }
+	local p fragment list=()
+	fragment=$(systemctl show -p FragmentPath --value "$rqlite_unit" 2>/dev/null || true)
+	for p in /usr/bin/rqlited /usr/bin/rqlite /usr/bin/rqbench /var/lib/rqlite "$fragment" "$rqlite_dropin_dir" "$rqlite_dropin"; do
+		[ -n "$p" ] && [ -e "$p" ] && list+=("$p")
+	done
+	[ "${#list[@]}" -gt 0 ] || return 0
+	restorecon -v -- "${list[@]}" || echo "remote: warning: restorecon did not label every rqlite file" >&2
+}
+
+# --- SELinux denials ----------------------------------------------------------------------------------------------------------
+
+# selinux_enforcing says whether the board runs SELinux in enforcing mode.
+selinux_enforcing() {
+	command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enforcing ]
+}
+
+# avc_check prints the AVC and USER_AVC records since the boot of a board with SELinux enforcing, and fails when one of them names
+# a sluis or rqlite path or domain (the comm, a path or name, the source or target context). A denial of a program that is not
+# ours is printed and does not fail: the check is about the labels of our own files. It also fails when SELinux is enforcing and
+# `ausearch` is missing, because then it cannot see a denial and "nothing found" would be a guess (install audit).
+avc_check() {
+	local out rc=0 all ours
+	if ! selinux_enforcing; then
+		echo "avc: SELinux is not enforcing on this board; nothing to check"
+		return 0
+	fi
+	command -v ausearch >/dev/null 2>&1 || { echo "avc: SELinux is enforcing and ausearch is missing: install the audit package (dnf install audit), or the denials cannot be read" >&2; return 1; }
+	out=$(ausearch -m AVC,USER_AVC -ts boot 2>&1) || rc=$?
+	# ausearch exits 1 and says "<no matches>" when there is nothing; any other failure is not a clean board.
+	if [ "$rc" -ne 0 ] && ! grep -q 'no matches' <<<"$out"; then
+		echo "avc: ausearch failed (status $rc): $out" >&2
+		return 1
+	fi
+	all=$(grep -E 'type=(USER_)?AVC' <<<"$out" || true)
+	if [ -z "$all" ]; then
+		echo "avc: no AVC or USER_AVC record since boot"
+		return 0
+	fi
+	ours=$(grep -Ei 'sluis|rqlite' <<<"$all" || true)
+	local n_all=0 n_ours=0
+	n_all=$(wc -l <<<"$all")
+	[ -z "$ours" ] || n_ours=$(wc -l <<<"$ours")
+	echo "avc: $n_all AVC/USER_AVC records since boot, $n_ours naming sluis or rqlite"
+	printf '%s\n' "$all"
+	if [ -n "$ours" ]; then
+		echo "avc: FAILED: the records above name a sluis or rqlite path or domain" >&2
+		return 1
+	fi
+}
