@@ -88,12 +88,11 @@ requirements:
       - {kind: integration-test, ref: "redirect matrix (exact, prefix, case, userinfo, fragment, port)"}
   - id: REQ-AUTHN-004
     area: AUTHN
-    statement: "A policy that registers a non-loopback http redirect URI or a non-loopback http post-logout redirect URI MUST be refused at load, for every client type and every installation profile."
-    rationale: "Cleartext redirects expose authorization codes to the network, and a post-logout address that is plain http is as open as a redirect address (v1 fixed both in one advisory)."
+    statement: "A policy that registers a non-loopback http redirect URI MUST be refused at load, for every client type and every installation profile."
+    rationale: "Cleartext redirects expose authorization codes to the network."
     level: MUST
     source: security-review
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -102,7 +101,7 @@ requirements:
     issues: [775, 786]
     tests: [actors/store/tests/config.rs, actors/session/internal/sessiond/authorize_test.go]
     verification:
-      - {kind: integration-test, ref: "policy-load negative test for a redirect URI (done) and for a registered post-logout URI (planned, with the post-logout field of ADR 0021)"}
+      - {kind: integration-test, ref: "policy-load negative test"}
   - id: REQ-AUTHN-005
     area: AUTHN
     statement: "Every authorization response that carries a code or an error MUST include the iss parameter."
@@ -1244,3 +1243,18 @@ requirements:
     issues: [979, 796]
     verification:
       - {kind: integration-test, ref: "form post page CSP test: form-action is the scheme, host and port of that response redirect_uri"}
+  - id: REQ-AUTHN-090
+    area: AUTHN
+    split_from: REQ-AUTHN-004
+    statement: "A policy that registers a non-loopback http post-logout redirect URI MUST be refused at load, for every client type and every installation profile."
+    rationale: "A post-logout address that is plain http is as open to the network as a redirect address, and v1 closed both in one advisory (ADR 0021)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-14, section: "2.1", depth: Full}
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "policy-load negative test for a registered post-logout URI with a non-loopback http address, with the post-logout field of ADR 0021"}
