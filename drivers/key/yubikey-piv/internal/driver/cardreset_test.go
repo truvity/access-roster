@@ -41,19 +41,19 @@ func TestAVerifiedCardIsResetWhenTheDriverStarts(t *testing.T) {
 	c.Retries = 2 // a counter that is not full, so a change to it shows
 	c.Verify()
 	r := startWith(t, c, driver.Development, "key", self())
-	if c.Resets == 0 || c.Verified() {
-		t.Fatalf("resets %d, verified %v: the card was not logged out at the start", c.Resets, c.Verified())
+	if c.ResetCount() == 0 || c.Verified() {
+		t.Fatalf("resets %d, verified %v: the card was not logged out at the start", c.ResetCount(), c.Verified())
 	}
 	st := status(t, r)
 	if !st.GetLocked() || st.GetPinRetries() != 2 {
 		t.Fatalf("locked %v, retries %d, want locked and 2: the reset must not change the counter", st.GetLocked(), st.GetPinRetries())
 	}
-	if c.LoginAttempts != 0 {
-		t.Fatalf("%d PIN attempts, want none: a reset sends no PIN", c.LoginAttempts)
+	if c.Attempts() != 0 {
+		t.Fatalf("%d PIN attempts, want none: a reset sends no PIN", c.Attempts())
 	}
 	r.unlock(t, "123456")
-	if c.LoginAttempts != 1 {
-		t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
+	if c.Attempts() != 1 {
+		t.Fatalf("%d PIN attempts, want 1", c.Attempts())
 	}
 }
 
@@ -79,14 +79,14 @@ func TestTheResetKeepsTheKeysOfTheCard(t *testing.T) {
 func TestAVerifiedCardAtUnlockIsResetAndUnlocked(t *testing.T) {
 	c := cardtest.New()
 	r := startWith(t, c, driver.Development, "key", self())
-	before := c.Resets
+	before := c.ResetCount()
 	c.Verify()
 	r.unlock(t, "123456")
-	if c.Resets != before+1 {
-		t.Fatalf("%d resets since the start, want 1", c.Resets-before)
+	if c.ResetCount() != before+1 {
+		t.Fatalf("%d resets since the start, want 1", c.ResetCount()-before)
 	}
-	if c.LoginAttempts != 1 {
-		t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
+	if c.Attempts() != 1 {
+		t.Fatalf("%d PIN attempts, want 1", c.Attempts())
 	}
 	if st := status(t, r); st.GetLocked() {
 		t.Fatal("the driver is locked after the unlock")
@@ -106,10 +106,10 @@ func TestStatusLogsOutACardThatTheDriverDoesNotHoldAPINFor(t *testing.T) {
 	}
 	// With the PIN held the card is logged in by the driver itself: the counter is unknown, and Status does not reset.
 	r.unlock(t, "123456")
-	n := c.Resets
+	n := c.ResetCount()
 	st = status(t, r)
-	if st.GetLocked() || st.GetPinRetries() != -1 || c.Resets != n || !c.Verified() {
-		t.Fatalf("locked %v, retries %d, resets %d->%d", st.GetLocked(), st.GetPinRetries(), n, c.Resets)
+	if st.GetLocked() || st.GetPinRetries() != -1 || c.ResetCount() != n || !c.Verified() {
+		t.Fatalf("locked %v, retries %d, resets %d->%d", st.GetLocked(), st.GetPinRetries(), n, c.ResetCount())
 	}
 }
 
@@ -126,20 +126,20 @@ func TestACounterThatCannotBeReadAfterTheResetRefusesTheUnlock(t *testing.T) {
 			c := cardtest.New()
 			r := startWith(t, c, driver.Development, "key", self())
 			c.Verify()
-			set(c)
+			c.Configure(set)
 			_, err := r.admin.Unlock(context.Background(), connect.NewRequest(&keystorev2alpha1.UnlockRequest{Pin: []byte("123456")}))
 			wantRefused(t, err, connect.CodeFailedPrecondition, "card")
-			if c.LoginAttempts != 0 {
-				t.Fatalf("%d PINs reached the card, want none", c.LoginAttempts)
+			if c.Attempts() != 0 {
+				t.Fatalf("%d PINs reached the card, want none", c.Attempts())
 			}
-			if c.Retries != 3 {
-				t.Fatalf("counter %d, want 3", c.Retries)
+			if c.RetriesLeft() != 3 {
+				t.Fatalf("counter %d, want 3", c.RetriesLeft())
 			}
 			// The cause is gone: the next unlock works.
-			c.ResetErr, c.ResetKeepsVerified = nil, false
+			c.Configure(func(c *cardtest.Card) { c.ResetErr, c.ResetKeepsVerified = nil, false })
 			r.unlock(t, "123456")
-			if c.LoginAttempts != 1 {
-				t.Fatalf("%d PIN attempts, want 1", c.LoginAttempts)
+			if c.Attempts() != 1 {
+				t.Fatalf("%d PIN attempts, want 1", c.Attempts())
 			}
 		})
 	}
@@ -208,7 +208,7 @@ func TestAPeersReleaseUnlocksADriverWhoseCardWasLeftVerified(t *testing.T) {
 	if err := finish(b.locked, a.GetAnswerText(), a.GetAnswerSignatureDer(), b.plan); err != nil {
 		t.Fatalf("FinishPinRelease on a verified card: %v", err)
 	}
-	if b.locked.card.LoginAttempts != 1 {
-		t.Fatalf("%d PIN attempts, want 1", b.locked.card.LoginAttempts)
+	if b.locked.card.Attempts() != 1 {
+		t.Fatalf("%d PIN attempts, want 1", b.locked.card.Attempts())
 	}
 }
