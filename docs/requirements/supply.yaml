@@ -422,12 +422,13 @@ requirements:
     standards: []
     features: [design]
     manual_reason: "A statement on a documentation page is checked by reading it."
+    issues: [1124]
     verification:
       - {kind: manual, ref: "release-signing page review"}
   - id: REQ-SUPPLY-044
     area: SUPPLY
-    statement: "The workflow lint MUST fail a workflow in which a job that signs or attests can run on a pull-request event and holds id-token write."
-    rationale: "A pull request runs the files it proposes, so a pull-request job with id-token write can sign through GitHub's own Sigstore instance, which the signing API does not govern (ADR 0042, C3 A; REQ-WORKLOAD-007)."
+    statement: "The workflow lint MUST fail any workflow in which a job that is reachable from a pull-request trigger, directly or through workflow_call, is granted id-token write."
+    rationale: "A pull request runs the files it proposes, so a job it reaches with id-token write can sign through GitHub's own Sigstore instance, which the signing API does not govern (ADR 0042, C3 A; REQ-WORKLOAD-007)."
     level: MUST
     source: security-review
     status: planned
@@ -435,5 +436,6 @@ requirements:
     runtimes: all
     standards: []
     features: [design]
+    issues: [1124]
     verification:
-      - {kind: integration-test, ref: "fixture workflows: a signing job under pull_request, pull_request_target, issue_comment or workflow_run with id-token write fails the lint, and the same job on a tag or a dispatch passes"}
+      - {kind: integration-test, ref: "fixtures: id-token write in a job under a pull-request trigger, or in a workflow that such a trigger calls through workflow_call, fails the lint; the same job on a tag or a dispatch passes"}
