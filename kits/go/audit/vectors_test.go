@@ -410,6 +410,65 @@ func TestRecordVectorsAreLean(t *testing.T) {
 	}
 }
 
+// delegationUses lists where a record has a delegation object, and the profiles it declares other than security_control.
+func delegationUses(v any, path string) []string {
+	var out []string
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			p := path + "/" + k
+			if k == "delegation" {
+				out = append(out, p)
+			}
+			if p == "/metadata/profiles" {
+				if list, ok := e.([]any); ok {
+					for _, pr := range list {
+						if pr != "security_control" {
+							out = append(out, p+"="+pr.(string))
+						}
+					}
+				}
+			}
+			out = append(out, delegationUses(e, p)...)
+		}
+	case []any:
+		for _, e := range x {
+			out = append(out, delegationUses(e, path+"[]")...)
+		}
+	}
+	return out
+}
+
+// No record uses the delegation object or declares the ai_operation profile: the profiles of every record vector are
+// security_control alone. The check is run on a record that has both, so it is not vacuous.
+//
+// verifies: REQ-AUDIT-124
+func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		var rec any
+		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if bad := delegationUses(rec, ""); len(bad) != 0 {
+			t.Errorf("%s: %v", c.Name, bad)
+		}
+	}
+	var dirty any
+	if err := json.Unmarshal([]byte(`{"delegation":{},"metadata":{"profiles":["security_control","ai_operation"]}}`), &dirty); err != nil {
+		t.Fatal(err)
+	}
+	got := delegationUses(dirty, "")
+	slices.Sort(got)
+	if want := []string{"/delegation", "/metadata/profiles=ai_operation"}; !slices.Equal(got, want) {
+		t.Errorf("flagged %v, want %v", got, want)
+	}
+}
+
 func TestUUIDVectors(t *testing.T) {
 	var f recordFile
 	readVectors(t, "record-vectors.json", &f)

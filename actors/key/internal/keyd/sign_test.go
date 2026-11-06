@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 	jose "github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/proto"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 )
@@ -323,5 +324,50 @@ func TestMacKeysAreNeverExtracted(t *testing.T) {
 	}
 	if n.driver.signs.Load() != 0 {
 		t.Fatal("the driver was asked to sign")
+	}
+}
+
+// The mac key of the boundary and the pairwise key of a tenant exist at generation 1 only: no call makes another
+// generation of either (an epoch on them is refused; only the pseudonym key is rolled by epoch), so the keys the store
+// holds for them are one wrap of generation 1 per recipient. A rotation job, when it is built, must skip these two
+// purposes (ADR 0006); this test is the tripwire that fails when a second generation appears.
+//
+// verifies: REQ-KEYS-043, REQ-KEYS-072
+func TestMacAndPairwiseKeysAreNeverMadeInAnotherGeneration(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	ctx := context.Background()
+	mac := func(purpose, tenant, epoch string) error {
+		_, err := n.client("session").Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch}))
+		return err
+	}
+	for _, c := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {
+		if err := mac(c.purpose, c.tenant, ""); err != nil {
+			t.Fatalf("Mac under %s: %v", c.purpose, err)
+		}
+		// A second generation cannot be asked for: an epoch is refused on both purposes.
+		wantRefusal(t, mac(c.purpose, c.tenant, "202611"), connect.CodeInvalidArgument, "epoch")
+	}
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	seen := map[string]int{}
+	for _, it := range e.store.items {
+		if it.GetAddress().GetKind() != "data-key-wrap" {
+			continue
+		}
+		w := &keyv2alpha1.DataKeyWrap{}
+		if err := proto.Unmarshal(it.GetValue(), w); err != nil {
+			t.Fatal(err)
+		}
+		if w.GetPurpose() != "mac" && w.GetPurpose() != "pairwise" {
+			continue
+		}
+		seen[w.GetPurpose()]++
+		if w.GetGeneration() != 1 || !strings.Contains(it.GetAddress().GetId(), "/1/") {
+			t.Errorf("a wrap of %s at generation %d (%s)", w.GetPurpose(), w.GetGeneration(), it.GetAddress().GetId())
+		}
+	}
+	if seen["mac"] == 0 || seen["pairwise"] == 0 {
+		t.Fatalf("the test saw wraps %v, want both purposes", seen)
 	}
 }

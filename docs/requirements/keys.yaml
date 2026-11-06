@@ -692,15 +692,14 @@ requirements:
     rationale: "Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [1210]
     verification:
-      - {kind: integration-test, ref: "the rotation job skips the mac purpose; a replacement is a migration that makes the values again"}
+      - {kind: integration-test, ref: "key@ makes the mac key and a tenant's pairwise key at generation 1 only: an epoch on either is refused and every stored wrap is of generation 1; a rotation job, when built, must skip both"}
   - id: REQ-KEYS-044
     area: KEYS
     statement: "key@ MUST listen on Unix sockets only, one per caller, each in a directory that only its caller can open."
@@ -1111,15 +1110,14 @@ requirements:
     rationale: "A new key would change every pairwise subject of the tenant (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "the key plan check refuses a rotation of the pairwise purpose"}
+      - {kind: integration-test, ref: "key@ makes the mac key and a tenant's pairwise key at generation 1 only: an epoch on either is refused and every stored wrap is of generation 1; a rotation job, when built, must skip both"}
   - id: REQ-KEYS-073
     area: KEYS
     statement: "Moving a tenant MUST re-wrap its pairwise key for the new boundary's wrapping key and not replace it."

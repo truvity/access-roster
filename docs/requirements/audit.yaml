@@ -1826,15 +1826,14 @@ requirements:
     rationale: "`delegation` exists only for AI operations and carries identifiers only, so the actor chain of an exchange is `actor`, `user` and `unmapped.sluis.actor_chain`."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-114, section: "delegation", depth: Partial}
     issues: [1120]
     verification:
-      - {kind: test-vectors, ref: "action table example records through the OCSF schema validator"}
+      - {kind: test-vectors, ref: "negative vector test over every record vector, in Go and Rust: no delegation object and no profile but security_control; OCSF schema validity is a different row"}
   - id: REQ-AUDIT-125
     area: AUDIT
     statement: "One log key per writer instance MUST sign the checkpoints of its project's audit log."

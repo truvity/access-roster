@@ -605,7 +605,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1205]

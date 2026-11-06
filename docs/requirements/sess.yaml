@@ -431,7 +431,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:

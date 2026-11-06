@@ -156,7 +156,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
@@ -171,7 +171,7 @@ requirements:
     level: MUST
     source: stakeholder-ciam
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:

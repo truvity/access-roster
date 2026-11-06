@@ -758,6 +758,43 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     );
 }
 
+/// A resource indicator (RFC 8707) is a parameter of the token exchange only. On the sign-in and on the code and refresh
+/// grants it is an unknown parameter and the request is refused before session sees it, so it cannot reach the audience
+/// of an ID token.
+///
+/// verifies: REQ-TOKEN-004
+#[tokio::test]
+async fn a_resource_indicator_is_refused_where_an_id_token_is_made() {
+    let up = up().await;
+    let authorize = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&resource=https%3A%2F%2Frs.example.com"),
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!(authorize.status, 400, "{}", authorize.text());
+    for grant in [
+        "grant_type=authorization_code&code=c&redirect_uri=u&code_verifier=v&client_id=sluis-cli",
+        "grant_type=refresh_token&refresh_token=r",
+    ] {
+        let r = post_token(
+            &up,
+            &format!("{grant}&resource=https%3A%2F%2Frs.example.com"),
+        )
+        .await;
+        assert_eq!(r.status, 400, "{grant}: {}", r.text());
+        assert!(!r.text().contains("rs.example.com"));
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 3, "{recs:?}");
+    assert!(
+        recs.iter().all(|r| r["status_code"] == "unknown_parameter"),
+        "{recs:?}"
+    );
+}
+
 /// There is no introspection endpoint: a token of any installation sent to `/introspect` is answered as an unrouted
 /// path, and the refusal is audited as a route that does not exist.
 ///

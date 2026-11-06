@@ -96,6 +96,48 @@ fn record_vectors_are_lean() {
     );
 }
 
+fn delegation_uses(v: &Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, e) in m {
+                let p = format!("{path}/{k}");
+                if k == "delegation" {
+                    out.push(p.clone());
+                }
+                if p == "/metadata/profiles" {
+                    for pr in e.as_array().into_iter().flatten() {
+                        if pr != "security_control" {
+                            out.push(format!("{p}={}", pr.as_str().unwrap_or("?")));
+                        }
+                    }
+                }
+                delegation_uses(e, &p, out);
+            }
+        }
+        Value::Array(a) => a
+            .iter()
+            .for_each(|e| delegation_uses(e, &format!("{path}[]"), out)),
+        _ => {}
+    }
+}
+
+/// verifies: REQ-AUDIT-124
+#[test]
+fn record_vectors_use_no_delegation_and_no_ai_profile() {
+    let f = parse(RECORDS);
+    assert!(!arr(&f, "cases").is_empty());
+    for c in arr(&f, "cases") {
+        let mut bad = Vec::new();
+        delegation_uses(&parse(text(c, "expected")), "", &mut bad);
+        assert!(bad.is_empty(), "{}: {bad:?}", text(c, "name"));
+    }
+    let dirty = serde_json::json!({"delegation": {}, "metadata": {"profiles": ["security_control", "ai_operation"]}});
+    let mut bad = Vec::new();
+    delegation_uses(&dirty, "", &mut bad);
+    bad.sort();
+    assert_eq!(bad, ["/delegation", "/metadata/profiles=ai_operation"]);
+}
+
 #[test]
 fn canonical_matches_the_jcs_vectors() {
     let f = parse(JCS);
