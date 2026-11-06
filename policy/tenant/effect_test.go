@@ -67,7 +67,9 @@ func TestCheckEffect_ZeroCeilingRefusesAnyNonEmptyFragment(t *testing.T) {
 		t.Fatal("the zero ceiling accepted a fragment: the guard is vacuous")
 	}
 
-	allEffect(t, vs)
+	if len(vs) != 1 || vs[0].Code != tenant.OwnerEmptyCeiling {
+		t.Fatalf("want exactly one owner-empty-ceiling, got %v", vs)
+	}
 }
 
 func TestCheckEffect_RefusesJoiningARungWhoseCellsExceedTheCeiling(t *testing.T) {
@@ -104,7 +106,7 @@ func TestCheckEffect_RefusesAGroupTheConventionsDeriveForAProject(t *testing.T) 
 	// conventions also give the deploy population the unit database level on
 	// `dev`: dev:web:admin.
 	o := acmeWide()
-	o.Ceiling.Groups = []string{"dev:web:deployer", "dev:web:approver"}
+	o.Ceiling.Groups = []string{"dev:web:deployer", "dev:web:approver", "dev:web:viewer"}
 
 	f := tenant.Fragment{Projects: map[string]compile.Project{
 		"web": {Scopes: []string{"dev"}, Deployers: []string{"team-web@acme.example"}},

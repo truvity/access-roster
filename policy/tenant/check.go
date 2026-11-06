@@ -22,13 +22,14 @@ import (
 // can collide, which is the form a company runs in its own repository. An
 // empty fragment is always accepted; the zero ceiling refuses every other.
 // The group a Project or an Application derives through an installation's
-// naming conventions, and what joining a rung brings, are not seen here.
+// naming conventions, and what joining a rung brings, are not seen here:
+// [CheckEffect] derives them.
 func Check(base *compile.Model, o Owner, f Fragment) []Violation {
 	if f.IsEmpty() {
 		return nil
 	}
 
-	c := &checker{owner: o.Name, ceiling: o.Ceiling, base: base}
+	c := newChecker(base, o)
 
 	if o.Name == "" {
 		c.add(OwnerName, "owner", "the owner has no name, so a violation could not say whose it is")
@@ -40,13 +41,6 @@ func Check(base *compile.Model, o Owner, f Fragment) []Violation {
 		return c.sorted()
 	}
 
-	c.directories = lowerSet(o.Ceiling.Directories)
-	c.githubOrgs = lowerSet(o.Ceiling.GitHubOrgs)
-	c.slackWorkspaces = lowerSet(o.Ceiling.SlackWorkspaces)
-	c.clusters = set(o.Ceiling.Clusters)
-	c.accounts = set(o.Ceiling.AWSAccounts)
-	c.rungs = set(o.Ceiling.Rungs)
-
 	c.rungRows(f.Rungs)
 	c.projectRows(f.Projects)
 	c.applicationRows(f.Applications)
@@ -57,6 +51,21 @@ func Check(base *compile.Model, o Owner, f Fragment) []Violation {
 	c.collisions(f)
 
 	return c.sorted()
+}
+
+// newChecker is a checker for one owner, with the ceiling's lists as sets.
+func newChecker(base *compile.Model, o Owner) *checker {
+	return &checker{
+		owner:           o.Name,
+		ceiling:         o.Ceiling,
+		base:            base,
+		directories:     lowerSet(o.Ceiling.Directories),
+		githubOrgs:      lowerSet(o.Ceiling.GitHubOrgs),
+		slackWorkspaces: lowerSet(o.Ceiling.SlackWorkspaces),
+		clusters:        set(o.Ceiling.Clusters),
+		accounts:        set(o.Ceiling.AWSAccounts),
+		rungs:           set(o.Ceiling.Rungs),
+	}
 }
 
 type checker struct {
@@ -74,12 +83,15 @@ func (c *checker) add(code, path, format string, args ...any) {
 	c.out = append(c.out, Violation{Owner: c.owner, Code: code, Path: path, Detail: fmt.Sprintf(format, args...)})
 }
 
-func (c *checker) sorted() []Violation {
-	slices.SortStableFunc(c.out, func(a, b Violation) int {
+func (c *checker) sorted() []Violation { return sortViolations(c.out) }
+
+// sortViolations sorts by path, then code, then detail, in place.
+func sortViolations(vs []Violation) []Violation {
+	slices.SortStableFunc(vs, func(a, b Violation) int {
 		return cmp.Or(cmp.Compare(a.Path, b.Path), cmp.Compare(a.Code, b.Code), cmp.Compare(a.Detail, b.Detail))
 	})
 
-	return c.out
+	return vs
 }
 
 // address checks one directory group or address: exactly one `@`, and the

@@ -14,9 +14,18 @@
 // [Check] refuses a fragment that reaches outside its ceiling and returns a
 // list of [Violation] values with stable codes. The zero ceiling refuses
 // every fragment that declares anything, so a missing ceiling never reads as
-// no limit. The checks here read the rows themselves. They need no model of
-// the installation, which lets a company run them in its own repository; a
-// base model, when given, adds the keys the owner may not redeclare.
+// no limit. [Check] reads the rows themselves. It needs no model of the
+// installation, which lets a company run it in its own repository; a base
+// model, when given, adds the keys the owner may not redeclare.
+//
+// [CheckEffect] is the guard. It derives the installation's roster
+// ([compile.Roster]) before and after the fragment is merged and refuses what
+// the difference reaches outside the ceiling: a company that joins a rung
+// inherits that rung's cells, and a name it wrote cannot say that. [MergeAll]
+// runs both checks for every owner, leaves out an owner with any violation,
+// refuses two owners that declare or mint the same thing, and merges the rest
+// in an order that does not matter, so one invalid company changes nothing for
+// another.
 //
 // The package adds no concept to the policy. A group is still
 // `<scope>:<thing>:<role>` ([policy.SplitGroup]), and a ceiling pattern is
