@@ -522,7 +522,7 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "boards-test.sh: a fake board without tar is refused with the install command, nothing is sent to it, and an unreachable board is not reported as a missing tar"}
-  - id: REQ-DEPLOY-039
+  - id: REQ-DEPLOY-042
     area: DEPLOY
     statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."
     rationale: "Under the default policy a compromised actor is held by the uids, the socket modes and the systemd sandbox alone, so a type or a profile per actor is a second lock on the one path that reaches the card (REQ-DEPLOY-033, docs/runtimes/bare-metal.md, SELinux and the firewall)."
