@@ -66,6 +66,7 @@
 #   SLUIS_BOARDS_STATE          the directory of the harness state (default .cache/boards); `recipients` writes its file
 #                               recipients there and `just boards-prepare` signs the KeyPlan with it
 #   SLUIS_RQLITE_PORT_HTTP      the port of the board's rqlite node (default 4001)
+#   SLUIS_RQLITE_PORT_RAFT      its Raft port (default 4002); status needs it for the node id, which is the Raft address
 #   SLUIS_BOARDS_KEY_DRIVER     the key driver of key@ for every board of the run: software or yubikey-piv. UNSET, each board keeps
 #                               the key driver it runs now (a board with nothing deployed yet gets software), which is what
 #                               the deploys of a rollout other than the switch want. The card driver replaces the software
@@ -93,13 +94,17 @@
 # nothing else; rqlite is not in it: undeploy then stops and disables rqlited.service, and removes the package, the
 # drop-in and /var/lib/rqlite only with SLUIS_PURGE_STATE=1 and only where rqlite.sh installed it (remote.sh rqlite-undeploy).
 #
-# deploy ends with `avc`, and `just boards-smoke` runs it after the smoke: on a board where SELinux is enforcing it prints the AVC
-# and USER_AVC records since boot (ausearch -m AVC,USER_AVC -ts boot) and fails when one names a sluis or rqlite path or domain.
+# deploy ends with `avc`, and `just boards-smoke` runs it after the smoke: on a board where SELinux is enforcing (read from
+# /sys/fs/selinux/enforce) it prints the AVC and USER_AVC records since boot (ausearch -m AVC,USER_AVC -ts boot) and fails on an
+# enforced denial in the domain of the units (unconfined_service_t), of the card service (pcscd_t, pcscd_var_run_t), of an
+# executable of the deploy (its comm, from the manifest), or on a sluis or rqlite path; other records are warnings. It also fails
+# when auditd is not running, because a denial from before it started is not visible (remote-lib.sh, avc_check).
 #
 # unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
 # input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /opt/sluis/bin/cli/sluis node unlock <host> --boundary
 # dev` on the board through the ssh session's standard input. It is never an argument of any command, an environment variable or
-# a line of output.
+# a line of output. The ssh of the PIN is run with -T, before the options of the run, and a -t in the options, or
+# StrictHostKeyChecking=no, in SLUIS_BOARD_SSH_OPTIONS refuses the command (accept-new warns). Tracing (bash -x) is turned off first.
 set -euo pipefail
 
 mode=${1:?usage: boards.sh deploy|undeploy|status|recipients|check|unlock|avc}
@@ -119,9 +124,12 @@ agent=${SLUIS_BOARD_SSH_AUTH_SOCK:-${SSH_AUTH_SOCK:-}}
 . "$here/ssh-lib.sh"
 # shellcheck source=deploy/boards/rqlite-lib.sh
 . "$here/rqlite-lib.sh"
+# shellcheck source=deploy/boards/remote-lib.sh
+. "$here/remote-lib.sh" # rqlite_valid_ipv4; the rest of it is for the board
 dry=${SLUIS_BOARDS_DRY_RUN:-}
 seed=${SLUIS_BOARDS_SEED:-.cache/boards/seed}
 rqlite_port=${SLUIS_RQLITE_PORT_HTTP:-4001}
+rqlite_raft_port=${SLUIS_RQLITE_PORT_RAFT:-4002}
 only=${SLUIS_BOARDS_ONLY:-}
 profile=${SLUIS_BOARDS_PROFILE:-}
 boundary=dev
@@ -259,7 +267,7 @@ stage() { # dir
 # reached is told apart from one that has no tar.
 board_has_tar() { # board
 	local rc=0
-	board_ssh "$1" 'command -v tar >/dev/null 2>&1' </dev/null || rc=$?
+	board_ssh_n "$1" 'command -v tar >/dev/null 2>&1' || rc=$?
 	case "$rc" in
 	0) return 0 ;;
 	1) echo "boards: the board '$1' has no tar, which the deploy uses to unpack what it sends. Install it there (dnf install tar, or apt-get install tar) and run again; the Rocky 10 image of the boards lacks tar, audit and policycoreutils-python-utils." >&2 ;;
@@ -280,7 +288,7 @@ bare_stage() { # dir
 run_on() { # board mode stage
 	local b=$1 m=$2 s=$3 d rc=0
 	board_has_tar "$b" || return 1
-	d=$(board_ssh "$b" mktemp -d)
+	d=$(board_ssh_n "$b" mktemp -d)
 	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
 		# The board's own rqlite node, per D-13 (no TLS, no authentication yet).
 		printf 'SLUIS_RQLITE_URL=http://%s:%s\n' "$b" "$rqlite_port" >"$s/files/etc/rqlite.env"
@@ -290,8 +298,8 @@ run_on() { # board mode stage
 		printf 'SLUIS_CARD_SERIAL=%s\n' "$(card_serial "$b")" >"$s/files/card/yubikey-piv.env"
 	fi
 	tar -C "$s" -cf - . | board_ssh "$b" "tar -xf - -C '$d'"
-	board_ssh "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
-	board_ssh "$b" "rm -rf '$d'"
+	board_ssh_n "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
+	board_ssh_n "$b" "rm -rf '$d'"
 	return "$rc"
 }
 
@@ -301,7 +309,7 @@ run_on() { # board mode stage
 board_key_driver() { # board
 	local out card sw
 	# shellcheck disable=SC2016 # the loop runs on the board
-	out=$(board_ssh "$1" 'for u in sluis-drv-key-yubikey-piv@dev.service sluis-drv-key-software@dev.service; do
+	out=$(board_ssh_n "$1" 'for u in sluis-drv-key-yubikey-piv@dev.service sluis-drv-key-software@dev.service; do
 printf "%s %s %s\n" "$u" "$(systemctl show -p LoadState --value "$u" 2>/dev/null)" "$(systemctl show -p UnitFileState --value "$u" 2>/dev/null)"
 done') || {
 		echo "boards: cannot read the key driver of the board '$1'" >&2
@@ -344,13 +352,17 @@ unit_kind() { # answer unit
 
 # board_data_keys prints how many DataKeyWrap items the board's rqlite node holds, from a read-only query of its own node, at the
 # address the actors use (http://<board>:<port>, as run_on writes it to rqlite.env; the board name resolves on the board) (the
-# key of an item is <boundary>/<tenant>/<kind>/<id>). A node whose table does not exist yet holds none. It fails when the
-# answer cannot be read: the guard that uses it refuses then.
+# key of an item is <boundary>/<tenant>/<kind>/<id>). The query is read on the board by rqlite_get (bash and /dev/tcp), because the
+# images of the boards carry no curl (Ubuntu 26.04 has none). A node whose table does not exist yet holds none. It fails when the
+# answer cannot be read, whatever the reason (no ssh, no node, an answer that is not a 200, a body without a count): the guard
+# that uses it refuses then.
 board_data_keys() { # board
-	local out
-	out=$(board_ssh "$1" "curl -fsS --get --data-urlencode \"q=SELECT count(*) FROM durable_items WHERE key LIKE '%/data-key-wrap/%'\" http://$1:$rqlite_port/db/query") || return 1
-	if printf '%s' "$out" | grep -q 'no such table'; then echo 0; return 0; fi
-	printf '%s' "$out" | sed -n 's/.*"values":\[\[\([0-9][0-9]*\)\]\].*/\1/p' | grep -E '^[0-9]+$' || return 1
+	local out q
+	# q=SELECT count(*) FROM durable_items WHERE key LIKE '%/data-key-wrap/%', percent-encoded.
+	q='SELECT%20count(*)%20FROM%20durable_items%20WHERE%20key%20LIKE%20%27%25/data-key-wrap/%25%27'
+	out=$(rqlite_get "$1" "$1" "$rqlite_port" "/db/query?q=$q") || return 1
+	if [[ "$out" == *'no such table'* ]]; then echo 0; return 0; fi
+	sed -n 's/.*"values":\[\[\([0-9][0-9]*\)\]\].*/\1/p' <<<"$out" | grep -E '^[0-9]+$' || return 1
 }
 
 # The mark that a board switched its key driver and has not been verified. The board's own file is the truth:
@@ -362,13 +374,13 @@ board_data_keys() { # board
 pending_file=$state/switch-pending
 marker=/var/lib/sluis-state/dev/switch-pending
 board_marker_set() { # board
-	board_ssh "$1" "sudo -n sh -c 'umask 077; mkdir -p $(dirname "$marker") && date -u +%Y-%m-%dT%H:%M:%SZ >$marker'"
+	board_ssh_n "$1" "sudo -n sh -c 'umask 077; mkdir -p $(dirname "$marker") && date -u +%Y-%m-%dT%H:%M:%SZ >$marker'"
 }
 board_marker_clear() { # board
-	board_ssh "$1" "sudo -n rm -f $marker"
+	board_ssh_n "$1" "sudo -n rm -f $marker"
 }
 board_marker_get() { # board: prints the mark, nothing when there is none; fails when the board cannot be read
-	board_ssh "$1" "sudo -n sh -c 'if [ -e $marker ]; then cat $marker; fi'"
+	board_ssh_n "$1" "sudo -n sh -c 'if [ -e $marker ]; then cat $marker; fi'"
 }
 # pending_has_other prints a board other than the given ones that is pending, from the marks of the boards this run names and
 # from the cache of the others, and returns 0 if there is one. A board that cannot be read counts as pending (fail closed).
@@ -518,27 +530,36 @@ unlock)
 	# The PIN of the card goes from standard input of this script to standard input of `sluis node unlock` on the board, through the
 	# ssh session, and nowhere else: not an argument (a process list shows arguments), not an environment variable, not a line of
 	# output. A terminal is asked without echo.
+	# Tracing is turned off before anything touches the PIN: `bash -x`, or SHELLOPTS=xtrace in the environment, would print the
+	# command that carries it (set +x also drops xtrace from SHELLOPTS, which is read-only and cannot be unset). The trace itself
+	# is not shown (the redirection of the braces), and the file descriptor a trace may go to is dropped.
+	{ set +x; } 2>/dev/null
+	unset BASH_XTRACEFD
 	if [ "${#boards[@]}" -ne 1 ]; then
 		echo "unlock: SLUIS_BOARDS must name exactly one board" >&2
 		exit 2
 	fi
 	b=${boards[0]}
+	# The ssh that carries the PIN: no terminal (the remote line discipline would echo the PIN back to this terminal), and no
+	# connection whose host key is not checked (the PIN would go to whoever answers).
+	ssh_secret_options_ok || exit 2
 	if [ -n "$dry" ]; then
 		echo "dry run: would give a PIN read from standard input to the card driver of $b"
 		exit 0
 	fi
-	node=$(board_ssh "$b" uname -n </dev/null) || { echo "unlock: cannot reach the board '$b'" >&2; exit 1; }
+	node=$(board_ssh_n "$b" uname -n) || { echo "unlock: cannot reach the board '$b'" >&2; exit 1; }
 	[[ "$node" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "unlock: the board '$b' gave an unusable host name" >&2; exit 1; }
-	board_ssh "$b" "sudo -n test -x /opt/sluis/bin/cli/sluis" </dev/null || { echo "unlock: $b has no /opt/sluis/bin/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
+	board_ssh_n "$b" "sudo -n test -x /opt/sluis/bin/cli/sluis" || { echo "unlock: $b has no /opt/sluis/bin/cli/sluis: run 'just build-arm64' and 'just boards-deploy' first" >&2; exit 1; }
 	unlock_cmd="sudo -n /opt/sluis/bin/cli/sluis node unlock $node --boundary $boundary"
 	rc=0
 	if [ -t 0 ]; then
 		IFS= read -rsp "PIN of the card of $node: " pin
 		echo >&2
-		printf '%s\n' "$pin" | board_ssh "$b" "$unlock_cmd" || rc=$?
+		# printf is a builtin: the PIN is never in the argument list of a process, and pin is not exported.
+		printf '%s\n' "$pin" | board_ssh_secret "$b" "$unlock_cmd" || rc=$?
 		pin=""
 	else
-		board_ssh "$b" "$unlock_cmd" || rc=$?
+		board_ssh_secret "$b" "$unlock_cmd" || rc=$?
 	fi
 	exit "$rc"
 	;;
@@ -686,13 +707,19 @@ undeploy | status | avc)
 		undeploy) run_on "$b" rqlite-undeploy "$tmp" || { echo "board $b: rqlite-undeploy FAILED" >&2; rc=1; } ;;
 		status)
 			if run_on "$b" rqlite-status "$tmp"; then
-				if rqlite_valid_ipv4 "$b" && node=$(board_ssh "$b" uname -n </dev/null); then
-					if why=$(rqlite_node_ready "$b" "$b" "$rqlite_port" "$node" 2>&1); then
-						echo "rqlite: ready; $(rqlite_cluster_line "$b" "$b" "$rqlite_port" || echo 'cluster unknown')"
-					else
-						echo "rqlite: NOT ready: $why" >&2
-						rc=1
+				if ! rqlite_valid_ipv4 "$b"; then
+					echo "rqlite: readiness NOT checked: '$b' is not an IPv4 address (boards-rqlite takes addresses, and a node is dialled by its address)" >&2
+					rc=1
+				elif ! rqlite_need_jq; then
+					rc=1
+				elif why=$(rqlite_node_ready "$b" "$b" "$rqlite_port" "$(rqlite_node_id "$b" "$rqlite_raft_port")" "$rqlite_raft_port" 2>&1); then
+					echo "rqlite: ready; $(rqlite_cluster_line "$b" "$b" "$rqlite_port" || echo 'cluster unknown')"
+					if n=$(rqlite_node_count "$b" "$b" "$rqlite_port") && [ "$n" != "${#boards[@]}" ]; then
+						echo "rqlite: this node sees $n node(s) in /nodes; the run names ${#boards[@]} board(s) (a run of fewer boards than the cluster is expected to differ)"
 					fi
+				else
+					echo "rqlite: NOT ready: $why" >&2
+					rc=1
 				fi
 			else
 				echo "board $b: rqlite is not running" >&2

@@ -439,9 +439,10 @@ boards-prepare:
     deploy/boards/prepare.sh
 
 # Install rqlite on every board of SLUIS_BOARDS from the upstream release package (v10.6.6), pinned by sha256 in
-# deploy/boards/rqlite.pins: apt-get install on Ubuntu, dnf install on Rocky. A drop-in of rqlited.service sets the node id, the
-# board's HTTP and Raft addresses and, on every node but SLUIS_RQLITE_BOOTSTRAP, -join; then it waits until the node is a ready
-# voter. The first step on a fresh board, before boards-deploy. No TLS and no authentication: see deploy/boards/rqlite.sh.
+# deploy/boards/rqlite.pins: apt-get install on Ubuntu, dnf install on Rocky. A drop-in of rqlited.service sets the board's HTTP and
+# Raft addresses and, on every node, -bootstrap-expect N and -join with the Raft addresses of all N boards (SLUIS_BOARDS), so that a
+# node without state never forms a cluster of its own; it starts all nodes, then waits until each is a ready voter and /nodes
+# holds N nodes. The first step on a fresh board, before boards-deploy. No TLS and no authentication: see deploy/boards/rqlite.sh.
 # SLUIS_BOARDS_DRY_RUN=1 prints the plan.
 boards-rqlite:
     deploy/boards/rqlite.sh
@@ -465,8 +466,9 @@ boards-undeploy:
 boards-unlock:
     deploy/boards/boards.sh unlock
 
-# Read only: on a board where SELinux is enforcing, the AVC and USER_AVC records since boot; it fails when one names a sluis or
-# rqlite path or domain. boards-deploy and boards-smoke run it at their end.
+# Read only: on a board where SELinux is enforcing, the AVC and USER_AVC records since boot; it fails on an enforced denial in the
+# domain of the units or the card service, of an executable of the deploy, or on a sluis or rqlite path, and when auditd is not
+# recording. boards-deploy and boards-smoke run it at their end.
 boards-avc:
     deploy/boards/boards.sh avc
 

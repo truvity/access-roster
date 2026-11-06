@@ -456,7 +456,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "boards.sh avc (run by boards-deploy and boards-smoke): no AVC since boot names a sluis or rqlite path or domain; prereq-test.sh checks the verdict on fakes, a real board or os-vm-test.sh the proof"}
+      - {kind: integration-test, ref: "prereq-test.sh: avc_check fails on enforced denials in unconfined_service_t, pcscd_t, our comm or path, and with no auditd (fakes); proof is os-vm-test.sh or a real board, run by neither yet"}
   - id: REQ-DEPLOY-034
     area: DEPLOY
     statement: "The boards deploy MUST refuse an rqlite package, cached or downloaded, whose sha256 differs from the digest pinned in the repository."
@@ -468,7 +468,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "boards-test.sh: a package with another digest is refused after a download and from the cache, a cached file that does not verify is replaced, a name without a pin is refused before any download"}
+      - {kind: integration-test, ref: "boards-test.sh: another digest is refused (download, cache), a missing pin before any download (curl never called); prereq-test.sh: the board checks the pin again before the install"}
   - id: REQ-DEPLOY-035
     area: DEPLOY
     statement: "The boards unlock command MUST NOT put the PIN of the card in an argument of any command, in the environment or in its output."
@@ -480,7 +480,7 @@ requirements:
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "boards-test.sh: with a fake ssh, the PIN is on the standard input of the command on the board and in no argument of any ssh and in no output"}
+      - {kind: integration-test, ref: "boards-test.sh (fake ssh, pty): PIN byte-exact on stdin only, in no argv, env or output, also under xtrace; -T first; -t and StrictHostKeyChecking=no refused. Not run: real sudo, sshd, CLI"}
   - id: REQ-DEPLOY-036
     area: DEPLOY
     statement: "The boards scripts and the smoke program MUST pass the options of SLUIS_BOARD_SSH_OPTIONS to every ssh they run."

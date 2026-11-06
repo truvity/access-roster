@@ -204,6 +204,10 @@ var drivers = map[string]driverSpec{
 	},
 }
 
+// rqliteUnit is one rqlite store driver. SLUIS_RQLITE_URL here is only the default: the board's own address is written to
+// /etc/sluis/rqlite-%i.env by deploy/boards/boards.sh (the EnvironmentFile below wins), because `just boards-rqlite` makes rqlited
+// bind the address of the board and not the loopback address. A deploy with no seed writes no such file and the unit then points at
+// the loopback address, where nothing listens on a board; that is why this default is not the address of any board.
 func rqliteUnit(port string) driverProc {
 	return driverProc{
 		Port: port, Socket: port + ".sock",

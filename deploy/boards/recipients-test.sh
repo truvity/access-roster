@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2015,SC2016 # `A && ok || fail` pairs report a check either way; single quotes hold the code of `bash -c`
 # A test of `boards.sh recipients`, `check` and the one-board-at-a-time rule of `deploy`, against a stand-in for ssh: no board,
 # no host. The stand-in answers like a board: key@'s check prints the wrapping key id the test gives that board, and
 # systemctl is-enabled prints the key driver the test gives it. Run from the repository root: deploy/boards/recipients-test.sh
@@ -80,8 +81,15 @@ case "$cmd" in
 	;;
 *systemctl*) eval "$cmd" ;;
 *db/query*)
+	# The count is read by rqlite_get (bash and /dev/tcp on the board): the answer is an HTTP response. KEYSFAIL_<board> makes it a 503.
 	n_var="KEYS_$key"
-	echo "{\"results\":[{\"columns\":[\"count(*)\"],\"types\":[\"integer\"],\"values\":[[${!n_var:-0}]]}]}"
+	fail_var="KEYSFAIL_$key"
+	status="200 OK"
+	[ -z "${!fail_var:-}" ] || status="503 Service Unavailable"
+	body="{\"results\":[{\"columns\":[\"count(*)\"],\"types\":[\"integer\"],\"values\":[[${!n_var:-0}]]}]}"
+	[ "${KEYS_NOTABLE:-}" != "$board" ] || body='{"results":[{"error":"no such table: durable_items"}]}'
+	[ "${KEYS_GARBAGE:-}" != "$board" ] || body='{"results":[{}]}'
+	printf 'HTTP/1.0 %s\r\nContent-Type: application/json\r\n\r\n%s' "$status" "$body"
 	;;
 tar\ -xf*) mkdir -p "$STUB_LOG"; tar -tf - >>"$STUB_LOG/$board.files" ;;
 *) exit 0 ;;
@@ -168,6 +176,14 @@ grep -q "switches the key driver of 3 boards" "$work/out" || { echo "FAIL the re
 SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_b_test=3 refuses "the first-deploy override is refused when a store holds data keys" ./deploy/boards/boards.sh deploy
 grep -q "holds 3 DataKeyWrap items" "$work/out" || { echo "FAIL the refusal does not say why: $(cat "$work/out")"; fail=1; }
 check "the first-deploy override passes when no store holds a data key" env SLUIS_BOARDS_NO_DATA_KEYS=1 ./deploy/boards/boards.sh deploy
+# The count is read without curl (rqlite_get: bash and /dev/tcp on the board), and an unreadable count still refuses.
+: >"$work/trace"
+STUB_TRACE="$work/trace" SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_b_test=3 refuses "the count is read" ./deploy/boards/boards.sh deploy
+check "the count is read by the /dev/tcp reader, never by curl" bash -c 'grep -q "/db/query?q=SELECT%20count" "$1" && ! grep -q curl "$1"' _ "$work/trace"
+SLUIS_BOARDS_NO_DATA_KEYS=1 KEYSFAIL_b_test=1 refuses "an answer that is not a 200 refuses the override" ./deploy/boards/boards.sh deploy
+grep -q "cannot read the data keys of the board 'b.test'" "$work/out" || { echo "FAIL the refusal for an unreadable count does not say so: $(cat "$work/out")"; fail=1; }
+SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_GARBAGE=b.test refuses "an answer without a count refuses the override" ./deploy/boards/boards.sh deploy
+check "a store whose table does not exist yet holds none" env SLUIS_BOARDS_NO_DATA_KEYS=1 KEYS_NOTABLE=b.test ./deploy/boards/boards.sh deploy
 rm -f "$work/state/switch-pending"
 
 # One board switches; the others are not named.
