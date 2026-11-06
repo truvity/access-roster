@@ -414,8 +414,8 @@ requirements:
       - {kind: integration-test, ref: "snapshot swap and digest audit test on each runtime"}
   - id: REQ-OPS-030
     area: OPS
-    statement: "Before the first relying party moves from v1, the cutover inventory MUST list every relying party of the v1 issuer and every consumer that keys on its sub, aud or groups claim."
-    rationale: "A consumer keyed on v1's e-mail sub breaks when the subject becomes opaque (ADR 0015)."
+    statement: "Before the first relying party moves from v1, the cutover inventory MUST list every relying party of the v1 issuer, every consumer that keys on its sub, aud or groups claim, and how each relying party caches the key set: whether it honours max-age, whether it fetches again on an unknown kid, and the longest cache seen."
+    rationale: "A consumer keyed on v1's e-mail sub breaks when the subject becomes opaque, and a relying party that caches the key set for an hour breaks the first rotation after the move (ADR 0015, ADR 0006)."
     level: MUST
     source: v1-parity
     status: planned
@@ -424,7 +424,7 @@ requirements:
     standards: []
     issues: [1017]
     verification:
-      - {kind: integration-test, ref: "the inventory run against a v1 fixture lists each relying party and each consumer of the sub claim"}
+      - {kind: integration-test, ref: "the inventory run against a v1 fixture lists each relying party, each consumer of the sub claim and the key-set caching behaviour of each relying party"}
   - id: REQ-OPS-031
     area: OPS
     statement: "A reconciler pass MUST change an external system only while its process holds the lease for that target."
@@ -1231,3 +1231,94 @@ requirements:
     issues: [1220]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: a person with different subjects in the two tenants is reconciled by the part's vendor identifier alone"}
+  - id: REQ-OPS-092
+    area: OPS
+    statement: "A provisioner MUST NOT promote a person to an administrator role, nor add a person to a group that confers one, on a directory fact that is stale or that the directory does not vouch for."
+    rationale: "An answer the directory cannot vouch for may be wrong, and an administrator added by mistake is worse than a member left out (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: with a stale or unvouched fact the pass adds the person as a member and never as an administrator, and removes and demotes no one"}
+  - id: REQ-OPS-093
+    area: OPS
+    statement: "A reconciler MUST hold a pass that would remove the last administrator of a container until an operator confirms it."
+    rationale: "A container with no administrator cannot be repaired by sluis or by its members (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a pass that would leave a container with no administrator is held and changes nothing"}
+  - id: REQ-OPS-094
+    area: OPS
+    statement: "A reconciler MUST hold a pass that would demote more than one administrator of a container until an operator confirms it."
+    rationale: "Demoting several administrators in one pass is the shape of a wrong desired state (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a pass that demotes two administrators is held; a pass that demotes one is applied"}
+  - id: REQ-OPS-095
+    area: OPS
+    statement: "A reconciler MUST NOT demote or suspend the account whose credential it uses."
+    rationale: "An account that loses its administrator role takes the reconciler's access away, and the container can no longer be reconciled (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a desired state that would demote or suspend the credential's own account leaves that account an administrator and reports the change as held"}
+  - id: REQ-OPS-096
+    area: OPS
+    statement: "A reconciler MUST hold a pass that would suspend more accounts than the limit that the target declares until an operator confirms it."
+    rationale: "A suspension cuts a person off from every container of the vendor, so a mass suspension must be seen first (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a pass at the limit is applied and a pass one above it is held"}
+  - id: REQ-OPS-097
+    area: OPS
+    statement: "A provisioner MUST hold the whole target when, at the start of a pass, the credential of the connection no longer holds the vendor role that the pass needs."
+    rationale: "A key of an account that was demoted or suspended still authenticates and then fails in the middle of a pass, or changes less than it should (ADR 0026, ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: the fake vendor demotes the credential's account; the pass holds the target with a reason from the closed list and makes no change"}
+  - id: REQ-OPS-098
+    area: OPS
+    statement: "The confirmation of a held change MUST name the set of changes it confirms and lapse within 24 hours."
+    rationale: "A confirmation that stays valid could approve a different change made later (ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: conformance-suite, ref: "provisioner suite: a confirmation of one change set does not release a different set, and a confirmation older than 24 hours releases nothing"}

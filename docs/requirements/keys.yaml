@@ -3061,3 +3061,32 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a JWS with alg none, each HS algorithm, or a JWK of type oct is refused"}
+  - id: REQ-KEYS-119
+    area: KEYS
+    statement: "The generated key policy of every KMS key MUST allow the control-plane actions (CreateAlias, UpdateAlias, DeleteAlias and the others) only to the key administrators that the installation names, with no delegation to IAM through the account root."
+    rationale: "A role with a broad allow could otherwise retarget an alias and send new writes to a key of its choice (ADR 0006)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: ["serverless", "kubernetes"]
+    actors: [key]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "the generated policy of each KMS key matches a golden file: control-plane actions allowed to the named administrators alone, denied to all others, none delegated to the root"}
+      - {kind: integration-test, ref: "a role with a broad kms allow cannot create, update or delete the alias of a key"}
+  - id: REQ-KEYS-120
+    area: KEYS
+    statement: "The pre-publication lead time of a token-signing key MUST be an installation setting with a default of 30 minutes and a floor derived from the cache budget."
+    rationale: "The relying parties that move first at a cutover may hold the key set longer than the budget assumes, and the installation must be able to raise the time to the longest cache found (ADR 0006)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [signer]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "`sluis config check` refuses a lead time below the sum of max-age, edge time to live, refetch allowance and skew; the signer honours a larger value"}

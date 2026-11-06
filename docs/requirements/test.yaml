@@ -171,3 +171,16 @@ requirements:
     verification:
       - {kind: conformance-suite, ref: "OIDF Config OP, Basic OP and the logout plans against the EKS customer installation"}
       - {kind: conformance-suite, ref: "FAPI2-SP against the EKS customer installation"}
+  - id: REQ-TEST-012
+    area: TEST
+    statement: "The fake vendor server of a provisioner conformance suite SHOULD name the vendor release and the date whose behaviour it models."
+    rationale: "A fake that is not tied to a release keeps passing after the vendor changes (ADR 0026)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: manual, ref: "each fake vendor server carries the vendor release and the date it was read, in a header comment that the suite prints"}
