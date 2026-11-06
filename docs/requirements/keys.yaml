@@ -2019,7 +2019,7 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a request that holds a secret key packet, or an SSH private key, is refused and the material is not stored or logged"}
-  - id: REQ-KEYS-144
+  - id: REQ-KEYS-146
     area: KEYS
     statement: "sluis MUST refuse to bind an OpenPGP key that has no expiry or whose expiry is later than the bound that policy sets."
     rationale: "A key that expires in about 3 years and is extended at the card stays in step with the card, and a lost card cannot leave a key valid for ever (ADR 0043, PX1)."
@@ -2032,7 +2032,7 @@ requirements:
     features: [design]
     verification:
       - {kind: integration-test, ref: "a key with no expiry and one beyond the bound are refused; a key within it is bound and the binding carries the key's expiry as its own"}
-  - id: REQ-KEYS-145
+  - id: REQ-KEYS-147
     area: KEYS
     statement: "sluis MUST accept an extension of a bound OpenPGP key only as the same key with a later expiry, after a fresh hardware step-up and a proof of possession."
     rationale: "Extending at the card must not add or swap a key, so the binding, its class and its place in the keyring and on GitHub are kept (ADR 0043, PX1)."

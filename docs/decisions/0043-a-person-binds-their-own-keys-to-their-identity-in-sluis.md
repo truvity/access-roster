@@ -72,8 +72,8 @@ An attestation that is present and does not verify is refused, not downgraded: a
 
 Two clocks run, and they are not the same. The **certification** is sluis's and lasts about 13 months; sluis renews it. The **key** is the person's: the card primary expires after about 3 years (PX1), and only the card can extend it.
 
-- **A key with no expiry is refused,** and so is one that expires beyond the bound policy sets, by default 3 years. The binding's expiry is the key's own expiry ([REQ-KEYS-144](/requirements/keys/#REQ-KEYS-144)).
-- **The person extends the key at the card,** with the ritueel helper or `gpg`, which makes a new self-signature on the same key. They present the extended public key to `sluis key bind`; sluis accepts it only as the same key with a later expiry, after a fresh hardware step-up and a proof of possession, and keeps the binding ([REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145)). It is not a new binding, so the enrolment gate below does not apply to it; it adds no key.
+- **A key with no expiry is refused,** and so is one that expires beyond the bound policy sets, by default 3 years. The binding's expiry is the key's own expiry ([REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146)).
+- **The person extends the key at the card,** with the ritueel helper or `gpg`, which makes a new self-signature on the same key. They present the extended public key to `sluis key bind`; sluis accepts it only as the same key with a later expiry, after a fresh hardware step-up and a proof of possession, and keeps the binding ([REQ-KEYS-147](/requirements/keys/#REQ-KEYS-147)). It is not a new binding, so the enrolment gate below does not apply to it; it adds no key.
 - **A key that is not extended lapses with its binding.** sluis warns the person and the operators before the key's expiry, as [0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning) does for certifications. When the key expires, sluis stops renewing the certification, the key leaves the keyring and the GitHub sync removes it.
 - **The GitHub sync re-uploads the extended key.** GitHub's copy of a key changes only when it is uploaded again, so the sync adds the new copy and removes the old one, by the update rule of [pull request #1485](https://github.com/truvity/sluis/pull/1485) ([REQ-OPS-099](https://github.com/truvity/sluis/pull/1485) there).
 
@@ -133,7 +133,7 @@ So the design checks the public key of the attestation against the public key of
 - sluis certifies on its own authority, under a trust signature from the root. The root stays offline, and the weight moves to policy, the hardware sign-in and detection. That is a stronger position than a ceremony role that binds software, and a weaker one than a ceremony with a person present; the design chooses automation and says what it costs.
 - A card that sluis cannot attest is class `hardware` or `software`, and cannot sign for the company. An installation that wants to accept a new model extends the allowlist.
 - The staff keyring is produced by sluis from the bindings. The sync of [pull request #1485](https://github.com/truvity/sluis/pull/1485) was written when ritueel produced it; that source is now sluis, and its two controls (the person-to-certificate rule and sluis's own certification) hold, the second now with its certification in place. The wording of both records is brought in line when they merge.
-- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145).
+- New obligations are [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) and [REQ-KEYS-147](/requirements/keys/#REQ-KEYS-147).
 
 ## Roads not taken
 
@@ -149,7 +149,7 @@ So the design checks the public key of the attestation against the public key of
 
 ## Follow-ups
 
-- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-145](/requirements/keys/#REQ-KEYS-145) ([#1496](https://github.com/truvity/sluis/issues/1496)), gated on the conformance test above.
+- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143), [REQ-KEYS-146](/requirements/keys/#REQ-KEYS-146) and [REQ-KEYS-147](/requirements/keys/#REQ-KEYS-147) ([#1496](https://github.com/truvity/sluis/issues/1496)), gated on the conformance test above.
 - Run the conformance test and date the result ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Add the certification purpose to the table of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) and to the key plan when it is built ([#1496](https://github.com/truvity/sluis/issues/1496)).
 - Write the form of the staff keyring, its signature and its list of withdrawn keys, now that sluis produces it, with test vectors shared with ritueel ([#1496](https://github.com/truvity/sluis/issues/1496)).
