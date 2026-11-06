@@ -93,9 +93,17 @@ case "$cmd" in
 *remote.sh*)
 	fail_var="DEPLOYFAIL_$key"
 	[ -z "${!fail_var:-}" ] || exit 1
-	# The outcome "locked" of remote.sh (settle_units): the board is deployed and only waits for its PIN.
-	lock_var="DEPLOYLOCKED_$key"
-	if [ -n "${!lock_var:-}" ] && [[ "$cmd" == *"remote.sh' deploy "* ]]; then echo "unit sluis-key@dev.service locked: stand-in"; exit 10; fi
+	# What remote.sh deploy ends with (settle_units): the line "SLUIS-BOARD-STATE: ok|locked|failed" and a status. DEPLOYLOCKED_<board>
+	# is a board that is only locked (the line, and 10); DEPLOYLOCKRC_<board> changes the status; DEPLOYNOSTATE_<board> is a status
+	# without the line (a 10 that something else exited with).
+	if [[ "$cmd" == *"remote.sh' deploy "* ]]; then
+		lock_var="DEPLOYLOCKED_$key"
+		rc_var="DEPLOYLOCKRC_$key"
+		nostate_var="DEPLOYNOSTATE_$key"
+		if [ -n "${!lock_var:-}" ]; then echo "unit sluis-key@dev.service locked: stand-in"; echo "SLUIS-BOARD-STATE: locked"; exit "${!rc_var:-10}"; fi
+		if [ -n "${!nostate_var:-}" ]; then exit "${!nostate_var}"; fi
+		echo "SLUIS-BOARD-STATE: ok"
+	fi
 	;;
 *"date -u"*switch-pending*) mkdir -p "$STUB_LOG"; date -u +%FT%TZ >"$mark" ;;
 *"rm -f"*switch-pending*) rm -f "$mark" ;;
@@ -260,6 +268,13 @@ rm -rf "$work/log" "$work/state/switch-pending"
 export SLUIS_BOARDS="a.test" SLUIS_BOARDS_KEY_DRIVER=yubikey-piv
 DEPLOYFAIL_a_test=1 refuses "and an ordinary failure of remote.sh (status 1) is not taken for the locked outcome" ./deploy/boards/boards.sh deploy
 grep -q "LOCKED" "$work/out" && { echo "FAIL a failure was called locked"; fail=1; } || echo "ok   it says FAILED and not LOCKED"
+rm -rf "$work/log" "$work/state/switch-pending"
+DEPLOYNOSTATE_a_test=10 refuses "a status 10 without the state line is not the locked outcome" ./deploy/boards/boards.sh deploy
+grep -q "deploy FAILED" "$work/out" && ! grep -q "LOCKED" "$work/out" || { echo "FAIL a bare 10 was taken for locked: $(cat "$work/out")"; fail=1; }
+DEPLOYNOSTATE_a_test=0 refuses "a status 0 without the state line did not wait for its units, and fails" ./deploy/boards/boards.sh deploy
+DEPLOYLOCKED_a_test=1 DEPLOYLOCKRC_a_test=1 refuses "the locked line with a status 1 is a failure" ./deploy/boards/boards.sh deploy
+DEPLOYLOCKED_a_test=1 DEPLOYLOCKRC_a_test=0 check "the locked line with status 0 is the locked outcome too" ./deploy/boards/boards.sh deploy
+grep -q "board a.test: deployed, LOCKED" "$work/out" || { echo "FAIL the locked line with status 0 was not read: $(cat "$work/out")"; fail=1; }
 
 # verifies: a switching board is checked (remote.sh preflight) before it is marked, and a board that fails the check is not
 # marked and gets no deploy.

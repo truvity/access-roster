@@ -25,7 +25,10 @@
 //!   which caps the owning group and every named user and group. So `mode & 0o020 == 0` means no
 //!   ACL entry grants write, and the one bit that an ACL can show in group is read, which is how
 //!   systemd grants the service user the read of a credential. Others stay `mode & 0o007 == 0`.
-//!   Only the owner or root can set an ACL, and both are trusted.
+//!   Only the owner or root can set an ACL, and both are trusted. Even so the ACL itself is read
+//!   from the open file and held to what systemd makes: version 2, named-user entries only for the
+//!   uid of this process, and no named-group entry that grants read ([`acl_trusted`]); any other
+//!   ACL leaves the group-read bit unexplained, and the file is refused.
 //! - A file is opened with `O_NONBLOCK`, so that a FIFO in the directory cannot hang the open
 //!   (and the worker thread with it), and anything that is not a regular file is refused.
 //! - A symlink is refused in the path and as the file: a credential is a plain file.
@@ -189,7 +192,8 @@ impl Dir {
             return Err(Error::Bound);
         }
         // Asked only when the group bits show a read, the one case in which it matters.
-        let acl = meta.mode() & 0o040 != 0 && has_access_acl(&file);
+        let acl = meta.mode() & 0o040 != 0
+            && access_acl(&file).is_some_and(|raw| acl_trusted(&raw, own_uid()));
         if !file_ok(meta.uid(), meta.mode(), own_uid(), self.systemd, acl) {
             return Err(Error::Rule);
         }
@@ -271,11 +275,43 @@ fn same_directory(st: &rustix::fs::Stat, systemd_dir: &Path) -> bool {
         .is_ok_and(|m| m.dev() == st.st_dev && m.ino() == st.st_ino)
 }
 
-/// Whether the open file carries an access ACL. An error is "no": the file is then held to the
-/// plain rule, which refuses a group read.
-fn has_access_acl(file: &std::fs::File) -> bool {
-    // Only whether the attribute exists is asked, so the buffer is empty: the size comes back.
-    rustix::fs::fgetxattr(file, "system.posix_acl_access", &mut [0u8; 0]).is_ok()
+/// The access ACL of the open file as the kernel stores it (`system.posix_acl_access`), or `None`
+/// when there is none, it cannot be read, or it is larger than any ACL systemd makes.
+fn access_acl(file: &std::fs::File) -> Option<Vec<u8>> {
+    let mut buf = [0u8; 512];
+    let n = rustix::fs::fgetxattr(file, "system.posix_acl_access", &mut buf[..]).ok()?;
+    Some(buf[..n].to_vec())
+}
+
+/// Whether a raw access ACL (the `posix_acl_xattr` format: a little-endian `u32` version, 2, then
+/// entries of tag `u16`, permission `u16`, id `u32`) is no more than what systemd makes for a
+/// service user: only the entries of acl(5) that it knows, a named user entry for `uid` alone, and
+/// no named group entry that grants read. Any other ACL is not trusted, though it was set by the
+/// owner or root: the group bits of the mode would then show a read that nobody explained.
+fn acl_trusted(raw: &[u8], uid: u32) -> bool {
+    const USER_OBJ: u16 = 0x01;
+    const USER: u16 = 0x02;
+    const GROUP_OBJ: u16 = 0x04;
+    const GROUP: u16 = 0x08;
+    const MASK: u16 = 0x10;
+    const OTHER: u16 = 0x20;
+    let Some((head, entries)) = raw.split_at_checked(4) else {
+        return false;
+    };
+    if head != 2u32.to_le_bytes() || entries.len() % 8 != 0 {
+        return false;
+    }
+    entries.as_chunks::<8>().0.iter().all(|e| {
+        let tag = u16::from_le_bytes([e[0], e[1]]);
+        let perm = u16::from_le_bytes([e[2], e[3]]);
+        let id = u32::from_le_bytes([e[4], e[5], e[6], e[7]]);
+        match tag {
+            USER => id == uid,
+            GROUP => perm & 0o4 == 0,
+            USER_OBJ | GROUP_OBJ | MASK | OTHER => true,
+            _ => false,
+        }
+    })
 }
 
 /// Whether `owner` may own a directory or file that the driver trusts: its own uid, or root where
@@ -293,7 +329,7 @@ fn dir_ok(owner: u32, mode: u32, uid: u32, systemd: bool) -> bool {
 
 /// A credential is trusted when `uid` owns it (or root does, in the directory systemd made),
 /// others have no access at all, group cannot write, and group cannot read either unless the file
-/// carries an access ACL (`acl`) in the directory systemd made. The group bits then are the mask
+/// carries a trusted access ACL (`acl`, see [`acl_trusted`]) in the directory systemd made. The group bits then are the mask
 /// of that ACL, which is systemd's grant of the read to the service user.
 fn file_ok(owner: u32, mode: u32, uid: u32, systemd: bool, acl: bool) -> bool {
     let group_read = if acl && systemd { 0 } else { 0o040 };
@@ -551,10 +587,10 @@ mod tests {
                 &systemd_acl(own_uid()),
                 rustix::fs::XattrFlags::empty(),
             );
-            if set.is_err() {
-                eprintln!("no ACL support below {}", t.path().display());
-                return;
-            }
+            // Not a skip: a filesystem without ACLs would make this test prove nothing.
+            set.unwrap_or_else(|e| {
+                panic!("no POSIX ACL support below {}: {e}", t.path().display())
+            });
             assert_eq!(
                 f.metadata().unwrap().mode() & 0o777,
                 0o640,
@@ -593,30 +629,110 @@ mod tests {
         });
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
-    fn an_access_acl_is_seen_on_the_open_file() {
-        let acl = systemd_acl(own_uid());
+    fn an_access_acl_is_read_from_the_open_file_and_held_to_what_systemd_makes() {
+        let me = own_uid();
         let t = closed_dir();
         let p = t.path().join("c");
         std::fs::write(&p, b"v").unwrap();
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
         let f = std::fs::File::open(&p).unwrap();
-        assert!(!has_access_acl(&f), "a plain file");
-        match rustix::fs::fsetxattr(
+        assert!(access_acl(&f).is_none(), "a plain file");
+        // Not a skip: a filesystem without ACLs would make this test prove nothing.
+        rustix::fs::fsetxattr(
             &f,
             "system.posix_acl_access",
-            &acl,
+            &systemd_acl(me),
             rustix::fs::XattrFlags::empty(),
-        ) {
-            Ok(()) => {
-                assert!(has_access_acl(&f), "a file with an ACL");
-                // What systemd shows: the group bits became the mask.
-                assert_eq!(f.metadata().unwrap().mode() & 0o777, 0o640);
+        )
+        .unwrap_or_else(|e| panic!("no POSIX ACL support below {}: {e}", t.path().display()));
+        let raw = access_acl(&f).expect("a file with an ACL");
+        assert!(acl_trusted(&raw, me), "what systemd makes");
+        // What systemd shows: the group bits became the mask.
+        assert_eq!(f.metadata().unwrap().mode() & 0o777, 0o640);
+    }
+
+    /// verifies: REQ-DATA-112
+    #[test]
+    fn an_acl_that_names_another_user_or_lets_a_group_read_is_not_trusted() {
+        let me = 61_022;
+        let acl = |entries: &[(u16, u16, u32)]| {
+            let mut raw = 2u32.to_le_bytes().to_vec();
+            for (tag, perm, id) in entries {
+                raw.extend_from_slice(&tag.to_le_bytes());
+                raw.extend_from_slice(&perm.to_le_bytes());
+                raw.extend_from_slice(&id.to_le_bytes());
             }
-            // A filesystem without ACLs (the temporary directory of an unusual host).
-            Err(Errno::OPNOTSUPP) => eprintln!("no ACL support below {}", t.path().display()),
-            Err(e) => panic!("{e}"),
-        }
+            raw
+        };
+        let base = [
+            (1u16, 6u16, u32::MAX),
+            (4, 0, u32::MAX),
+            (0x10, 4, u32::MAX),
+            (0x20, 0, u32::MAX),
+        ];
+        let with = |extra: (u16, u16, u32)| acl(&[base.as_slice(), &[extra]].concat());
+        assert!(acl_trusted(&systemd_acl(me), me), "systemd's own");
+        assert!(acl_trusted(&acl(&base), me), "no named entry at all");
+        assert!(
+            !acl_trusted(&systemd_acl(me + 1), me),
+            "a named user that is not this uid"
+        );
+        assert!(
+            !acl_trusted(&with((2, 4, 0)), me),
+            "root named as a user is not this uid either"
+        );
+        assert!(
+            !acl_trusted(&with((8, 4, 100)), me),
+            "a named group that reads"
+        );
+        assert!(
+            !acl_trusted(&with((8, 6, 100)), me),
+            "a named group that reads and writes"
+        );
+        assert!(
+            acl_trusted(&with((8, 0, 100)), me),
+            "a named group with no access grants nothing"
+        );
+        assert!(
+            !acl_trusted(&with((0x40, 4, 0)), me),
+            "a tag that acl(5) does not know"
+        );
+        let mut v1 = systemd_acl(me);
+        v1[0] = 1;
+        assert!(!acl_trusted(&v1, me), "version 1");
+        let mut cut = systemd_acl(me);
+        cut.pop();
+        assert!(!acl_trusted(&cut, me), "a truncated entry");
+        assert!(
+            !acl_trusted(&[], me) && !acl_trusted(&[2, 0], me),
+            "no header"
+        );
+    }
+
+    /// verifies: REQ-DATA-112
+    #[test]
+    fn a_file_whose_acl_is_not_systemds_is_refused_in_systemds_directory() {
+        both(|| {
+            let t = closed_dir();
+            let p = t.path().join("c");
+            std::fs::write(&p, b"v").unwrap();
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let f = std::fs::File::open(&p).unwrap();
+            rustix::fs::fsetxattr(
+                &f,
+                "system.posix_acl_access",
+                &systemd_acl(own_uid() + 1),
+                rustix::fs::XattrFlags::empty(),
+            )
+            .unwrap_or_else(|e| panic!("no POSIX ACL support below {}: {e}", t.path().display()));
+            let systemd = Dir::open_in(t.path(), Some(t.path())).unwrap();
+            assert!(
+                matches!(systemd.read("c"), Err(Error::Rule)),
+                "an ACL that names another user"
+            );
+        });
     }
 
     #[test]

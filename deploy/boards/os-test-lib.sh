@@ -91,7 +91,7 @@ os_check_refusal() {
 }
 
 # The real credential driver (OS_REAL_DRIVER=1) is the program of the unit sluis-drv-store-credential@dev, so the deploy above has
-# already started it with the directory systemd made for it, under the unit's user and sandbox, and waited until it stood still. What
+# already started it with the directory systemd made for it, under the unit's user and sandbox, and waited until it had not restarted for about 6 s. What
 # is added here: how systemd made the directory on this system (said, so that the log of a job shows which case was run: the
 # service user's own where the filesystem has no ACLs, root's with a POSIX ACL where it has: MEASURED on Ubuntu 26.04, systemd 259),
 # that the driver did not refuse it, and `credential check` in a unit of its own with the same user and the same three encrypted
