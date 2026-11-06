@@ -486,7 +486,7 @@ func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
 					ctx.GetAmrPresent() != a.GetAmrPresent() {
 					t.Errorf("refresh %d: policy was told %v", i, ctx)
 				}
-				if want := int64(authTime.Unix()); ctx.AuthAge == nil || *ctx.AuthAge != e.clk.now().Unix()-want {
+				if want := authTime.Unix(); ctx.AuthAge == nil || *ctx.AuthAge != e.clk.now().Unix()-want {
 					t.Errorf("refresh %d: auth age = %v, want the age of the sign-in's auth_time", i, ctx.AuthAge)
 				}
 			}
