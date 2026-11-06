@@ -397,6 +397,12 @@ check-code: rqlite-fetch
 check-advisories *args:
     go run ./tools/advisories {{ args }}
 
+# The licence rule for Rust (REQ-SUPPLY-045): `cargo deny check licenses` over Cargo.lock, with the allow list of deny.toml,
+# which is the list on docs/reference/approved-libraries.md. About a second, no network. Go is not checked yet (a follow-up,
+# see "The check" on that page). The `advisories` job of checks.yaml runs it.
+check-licenses:
+    cargo deny --locked check licenses
+
 # Registry codegen: the enforcement tables of the three registries (docs/architecture/actors.yaml,
 # kinds.yaml and keys.yaml) as kits/go/registry/zz_registry.go and
 # kits/rust/sluis-registry/src/generated.rs. Run it after a registry changes.

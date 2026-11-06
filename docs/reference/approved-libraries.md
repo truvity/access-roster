@@ -101,11 +101,11 @@ Source: `cargo metadata --locked` over `Cargo.lock` (281 packages: 21 workspace 
 
 Nine Rust crates are under the four licences that the owner added: the cryptographic backend (`aws-lc-rs`, `aws-lc-sys`, `untrusted`), the hash and compression crates (`foldhash`, `zlib-rs`), the Unicode tables (`unicode-ident`, `unicode-normalization`) and a build helper (`ar_archive_writer`). With them the tree has no licence outside the allowed ones. Unlicense, CC0-1.0, MIT-0 and BSD-1-Clause appear only as one choice of an `OR` and are not needed. The documentation site is outside the rule, and the console, which will have a TypeScript tree, does not exist yet.
 
-### The check, planned
+### The check
 
-The requirement is `planned`: no check runs yet. One is cheap for Rust and needs a small tool for Go, and both belong in the `advisories` job of the CI workflow, which reads the same lock files. The job is not on `main` yet ([#1477](https://github.com/truvity/sluis/pull/1477)), so the steps are not added here; they are a follow-up on [#1039](https://github.com/truvity/sluis/issues/1039).
+The requirement stays `planned`: the check runs for Rust and not yet for Go. The Rust step (1 below) runs in the `advisories` job of the CI workflow as `just check-licenses`; the Go lister (2) and the test (3) are the follow-up on [#1039](https://github.com/truvity/sluis/issues/1039).
 
-1. **Rust: `cargo deny check licenses`** with a `deny.toml` that holds the allow list. Measured 2026-11-06 with cargo-deny 0.20.2 offline over this `Cargo.lock`: 0.4 seconds. The first four licences alone fail with nine errors (the crates above); the four added on 2026-11-06 make it pass (`licenses ok`), and they are the `allow` list of the planned `deny.toml`. A probe project that depends on `sequoia-openpgp` 2.4.2 fails on `LGPL-2.0-or-later`, so the check does catch the case the rule is for.
+1. **Rust: `cargo deny check licenses`** with a `deny.toml` that holds the allow list (it runs as `just check-licenses`). Measured 2026-11-06 with cargo-deny 0.20.2 offline over this `Cargo.lock`: 0.4 seconds. The first four licences alone fail with nine errors (the crates above); the four added on 2026-11-06 make it pass (`licenses ok`), and they are the `allow` list of `deny.toml`. A probe project that depends on `sequoia-openpgp` 2.4.2 fails on `LGPL-2.0-or-later`, so the check does catch the case the rule is for.
 2. **Go: a lister over `go.mod`,** run with and without the tag `sluis_card`. `github.com/google/go-licenses/v2` (`@latest`, 2026-11-06) does not work: on Go 1.27.3 it stops with "Package ... does not have module info" for every standard-library package. The alternative is about fifty lines of our own in `tools/`: `go list -deps -json`, the `LICENSE` file of each module, and a classifier. The classifier is a parser of a format, so it would use a library, not a regular expression.
 3. **A test of each:** a fixture with a copyleft crate and module, which the check must fail on.
 
@@ -207,4 +207,4 @@ Both readers were run on 2026-11-01 and again on 2026-11-02 (`go.yaml.in/yaml/v3
 
 **The CI check against home-made primitives and unlisted libraries** is built with the first code ([#1039](https://github.com/truvity/sluis/issues/1039)); it reads the data file beside this page, `approved-libraries.yaml`. Until then the review of each pull request is the check.
 
-**The licence check** ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045)) is the second job of the same lint; see [the check, planned](#the-check-planned).
+**The licence check** ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045)) is the second job of the same lint; see [the check](#the-check).
