@@ -67,6 +67,12 @@ type Card struct {
 	Signs int
 	// Loggedin is the PIN state of the powered card.
 	Loggedin bool
+	// ResetErr makes ResetSession fail with it, as a card that another process holds does (card.ErrSharing).
+	ResetErr error
+	// ResetKeepsVerified makes ResetSession succeed and leave the card logged in, as a reset that did not take.
+	ResetKeepsVerified bool
+	// Resets counts the calls of ResetSession.
+	Resets int
 	// PKI makes this card a sibling of another fake: its attestation certificate is signed by that card's TEST ONLY
 	// intermediate, so each card verifies the other's attestations, as two YubiKeys both chain to Yubico's root.
 	PKI *Card
@@ -463,11 +469,36 @@ func (c *Card) Login(pin []byte) error {
 	return c.login(string(pin))
 }
 
-// PINRetries implements card.Card.
+// PINRetries implements card.Card. A card that is logged in answers the empty VERIFY with success, so the counter cannot
+// be read: card.ErrVerified, as the real one. The call changes no counter.
 func (c *Card) PINRetries() (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.Retries, c.dead()
+	if err := c.dead(); err != nil {
+		return 0, err
+	}
+	if c.Loggedin {
+		return 0, card.ErrVerified
+	}
+	return c.Retries, nil
+}
+
+// ResetSession implements card.Card: a reset of the session logs the card out and changes nothing else, not the keys,
+// the PIN, the retry counter or the management key.
+func (c *Card) ResetSession() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Resets++
+	if err := c.dead(); err != nil {
+		return err
+	}
+	if c.ResetErr != nil {
+		return c.ResetErr
+	}
+	if !c.ResetKeepsVerified {
+		c.Loggedin = false
+	}
+	return nil
 }
 
 // Reset logs the card out, as a power loss or a reset of the applet does.
@@ -475,6 +506,21 @@ func (c *Card) Reset() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.Loggedin = false
+}
+
+// Verify logs the card in as another process, or an earlier driver that ended without a reset, would have left it: the
+// driver did not send the PIN and does not hold it. It does not touch the counter or LoginAttempts.
+func (c *Card) Verify() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Loggedin = true
+}
+
+// Verified reports whether the card is logged in.
+func (c *Card) Verified() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Loggedin
 }
 
 // auth is what a key of the policy needs before it works.
@@ -545,6 +591,7 @@ func (c *Card) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
+	c.Loggedin = false // Close leaves the card logged out
 	return nil
 }
 

@@ -168,7 +168,31 @@ type Problems struct{ List []string }
 
 func (p *Problems) Error() string { return "card refused: " + fmt.Sprint(p.List) }
 
+// freshSession puts the card in a known state: logged out. An earlier driver that ended without a reset (a restart that
+// did not restart pcscd, a crash, a kill) leaves the card PIN-verified, and the card then answers to anything that reaches
+// its reader while this driver says it is locked. The session is reset (SCARD_RESET_CARD: no key, no PIN and no counter
+// changes), and the PIN counter is read to prove it: a card that is still verified, or that cannot be reset because
+// another process holds it, is refused (fail closed).
+func (s *Service) freshSession() error {
+	if err := s.card.ResetSession(); err != nil {
+		word := "reset_failed"
+		if errors.Is(err, card.ErrSharing) {
+			word = "held_elsewhere"
+		}
+		slog.Error("the card session cannot be reset at start", "error", err.Error())
+		return &Problems{[]string{"card.session: " + word}}
+	}
+	if _, err := s.card.PINRetries(); errors.Is(err, card.ErrVerified) {
+		slog.Error("the card is still PIN-verified after a reset of its session")
+		return &Problems{[]string{"card.session: still_verified"}}
+	}
+	return nil
+}
+
 func (s *Service) start(wantSerial uint32) error {
+	if err := s.freshSession(); err != nil {
+		return err
+	}
 	v := s.card.Version()
 	if !v.AtLeast(FirmwareFloor.Major, FirmwareFloor.Minor, FirmwareFloor.Patch) {
 		return &Problems{[]string{"card.firmware: below the floor of " + FirmwareFloor.String()}}

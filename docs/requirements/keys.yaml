@@ -1269,6 +1269,24 @@ requirements:
       - {kind: integration-test, ref: "a released PIN the card refused stops the release in the driver across a restart, until a person unlocks the board"}
       - {kind: integration-test, ref: "no answer of the key-store port carries a PIN"}
       - {kind: test-vectors, ref: "the driver and key@ read the slot map with one reader, which reads the shared KeyPlan payload vectors as store@ does"}
+  - id: REQ-KEYS-228
+    area: KEYS
+    statement: "The card driver MUST end any PIN verification the card holds before it reports itself locked, by resetting the card session at its start, when it finds the card verified while it holds no PIN, and on a clean exit, and refuse to start or to unlock, with a reason, when the reset fails, another process holds the card, or the PIN counter still cannot be read."
+    rationale: "A driver that ends leaves the card logged in, so a restarted driver that says locked would leave the keys open to whatever reaches the card service and could not read the counter that guards the unlock; the reset is a warm reset at the PC/SC layer, which leaves the keys, the PIN and the retry counters alone, and no PIN is sent without a successful counter read (ADR 0006, Touch and PIN)."
+    level: MUST
+    source: security-review
+    status: partial
+    gap: attestation-missing
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - drivers/key/yubikey-piv/internal/driver/cardreset_test.go
+      - drivers/key/yubikey-piv/internal/card/piv_test.go
+    verification:
+      - {kind: integration-test, ref: "on a fake card: a card left verified is logged out at start, unlock, Status and a peer's release, with keys and counter unchanged; a failed or held reset sends no PIN"}
+      - {kind: manual, ref: "on a real board: restart the card driver with pcscd running, then just boards-unlock and a peer's PIN release unlock it; the PIN counter is the same before and after"}
   - id: REQ-KEYS-076
     area: KEYS
     statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
