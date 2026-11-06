@@ -118,7 +118,7 @@ A dependency that provides a cryptographic primitive, or parses a protocol or a 
 3. Add a security note, as for any change that touches keys or signing ([Review](/contributing/workflow/#review)).
 4. Name its licence, and the licences of its dependencies that a build links. It must pass the [licence rule](#licences); a copyleft library is refused whatever its quality.
 
-The lockfiles pin versions. A choice names the version it was evaluated at and the date, so that the next reader can judge how far the library has moved ([principle 9](/principles/#9-measure-before-deciding-and-date-the-measurement)); a security fix can set a floor.
+The lockfiles pin versions. A choice names the version it was evaluated at and the date, so that the next reader can judge how far the library has moved ([principle 9](/principles/#9-measure-before-deciding-and-date-the-measurement)); a security fix can set a floor. The floor is enforced, not only written here: the `advisories` job of CI ([REQ-SUPPLY-030](/requirements/supply/#REQ-SUPPLY-030)) runs `govulncheck`, `cargo audit` and `osv-scanner` over the lock files and fails on a known advisory that affects a function sluis calls, so a lock file that falls below a floor set by an advisory turns CI red. The job cannot see a floor that is set by a choice and no advisory, and a vulnerability in code that sluis never calls (the JWE half of `go-jose`, say) does not fail it; the floor on this page still holds for both. An exception goes into `tools/advisories/ignore.yaml` with a reason and an expiry date, and never into this page.
 
 ## Choices made on 2026-11-01
 
