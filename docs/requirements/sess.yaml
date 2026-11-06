@@ -121,15 +121,15 @@ requirements:
     rationale: "Refresh must not upgrade or hide a state change."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "6", depth: Full}
     issues: [777]
+    tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
-      - {kind: integration-test, ref: "claim-preservation test"}
+      - {kind: integration-test, ref: "claim-preservation test: two refreshes an hour apart keep acr, amr, auth_time and sid of the sign-in in the ID token, the access token, the chain and the policy request; an absent acr stays absent"}
   - id: REQ-SESS-004
     area: SESS
     statement: "Each client session MUST have a sid that is unique per installation, client and single sign-on session."
@@ -682,15 +682,15 @@ requirements:
     rationale: "A copy of the store must not yield a usable refresh token, and a lost temp class costs only a sign-in (ADR 0018)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     actors: [session]
     standards: []
     issues: [1221]
+    tests: [actors/session/internal/sessiond/refresh_test.go]
     verification:
-      - {kind: integration-test, ref: "a SessionChain is temp and hashed; a scan finds no refresh token value"}
+      - {kind: integration-test, ref: "a SessionChain is temp and hashed, written with a ttl; it holds the SHA-384 of the current secret and of the spent ones; a scan of the store finds no refresh token value, before or after a refresh"}
   - id: REQ-SESS-045
     area: SESS
     statement: "The session cookie MUST be sealed and opened at key@ on every request under the boundary's cookie data key."
