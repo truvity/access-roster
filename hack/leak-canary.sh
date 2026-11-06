@@ -93,13 +93,14 @@ patterns=(
   'excavador\.xyz'                     # estate domain
   '\.truvity\.private\b'               # private hostnames
   'truvity/gitops'                     # the private estate repository
+  'truvity/kernel'                     # the same repository, renamed
   'INF-[0-9]+'                         # tracker keys (audit/): a key points at a board nobody outside can open
 )
 
 # Name patterns match case-insensitively; every other pattern is exact.
 flags() {
   case "$1" in
-    "$estate_names" | "$estate_hive" | 'excavador\.xyz' | '\.truvity\.private\b' | 'truvity/gitops') echo -iE ;;
+    "$estate_names" | "$estate_hive" | 'excavador\.xyz' | '\.truvity\.private\b' | 'truvity/gitops' | 'truvity/kernel') echo -iE ;;
     *) echo -E ;;
   esac
 }
