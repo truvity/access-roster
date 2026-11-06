@@ -235,9 +235,9 @@ requirements:
     standards:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [1039]
-    manual_reason: "The rule constrains the source tree and its dependencies; a reviewer confirms the dependency lint."
     verification:
       - {kind: manual, ref: "dependency lint"}
+      - {kind: test-vectors, ref: "checkpoints of the Go writer fixtures verify in the Rust indexer through signed_note, tlog_checkpoint and tlog_core, with the Certificate Transparency reference tree"}
   - id: REQ-SEC-009
     area: SEC
     statement: "A threat model and its negative tests MUST exist before code is merged for the authentication, federation, exchange and administration surfaces."
