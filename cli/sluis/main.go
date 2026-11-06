@@ -1,5 +1,5 @@
 // Command sluis is the command-line tool of sluis (docs/reference/cli.md). This build has login, token,
-// audit verify, config check and explain, node unlock, key revoke and version; the rest of the tree belongs to later
+// audit verify, config check and explain, node unlock and status, key revoke and version; the rest of the tree belongs to later
 // milestones.
 //
 // The commands follow the conventions of kits/go/cli: the exit codes 0 done, 1 failed, 2 usage and 3 refused, and
@@ -84,6 +84,7 @@ commands:
   config explain DIR       print what each setting of the bootstrap file and the documents in DIR resolves to,
                            and its layer, version and source (--field PATH limits it)
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
+  node status NODE         say whether the card driver of this node holds its PIN: locked or unlocked (no PIN is read)
   key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
                            on this node (--declaration FILE), then check that the keys left the key
                            sets (--issuer, --entry-socket, --wait; exit 5 when not confirmed); --check only looks again
@@ -130,7 +131,10 @@ func (a *app) run(ctx context.Context, args []string) int {
 		if len(args) > 1 && args[1] == "unlock" {
 			return a.exec(ctx, a.unlockCommand(), args[2:])
 		}
-		_, _ = fmt.Fprintf(a.stderr, "sluis: node: expected the command unlock\n\n%s", usageText)
+		if len(args) > 1 && args[1] == "status" {
+			return a.exec(ctx, a.statusCommand(), args[2:])
+		}
+		_, _ = fmt.Fprintf(a.stderr, "sluis: node: expected the command unlock or status\n\n%s", usageText)
 		return cli.ExitUsage
 	case "key":
 		if len(args) > 1 && args[1] == "revoke" {
