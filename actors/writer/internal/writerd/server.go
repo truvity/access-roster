@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"connectrpc.com/connect"
+	"filippo.io/torchwood"
 	"golang.org/x/mod/sumdb/note"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
@@ -352,30 +353,33 @@ func recordUID(entry []byte) (string, bool) {
 }
 
 // readCheckpoint reads checkpoints/<size> and checks its signature with the log key.
-func (s *Server) readCheckpoint(ctx context.Context, size int64) (checkpoint, []byte, error) {
+func (s *Server) readCheckpoint(ctx context.Context, size int64) (torchwood.Checkpoint, []byte, error) {
 	data, _, err := s.blob.get(ctx, fmt.Sprintf("%scheckpoints/%d", s.prefix, size))
 	if err != nil {
-		return checkpoint{}, nil, err
+		return torchwood.Checkpoint{}, nil, err
 	}
 	cp, err := s.openNote(data)
 	if err != nil {
-		return checkpoint{}, nil, err
+		return torchwood.Checkpoint{}, nil, err
 	}
-	if cp.size != size {
-		return checkpoint{}, nil, errors.New("the checkpoint names another size")
+	if cp.N != size {
+		return torchwood.Checkpoint{}, nil, errors.New("the checkpoint names another size")
 	}
 	return cp, data, nil
 }
 
 // openNote verifies a signed note with the log key and reads its body.
-func (s *Server) openNote(data []byte) (checkpoint, error) {
+func (s *Server) openNote(data []byte) (torchwood.Checkpoint, error) {
 	n, err := note.Open(data, note.VerifierList(s.key))
+	if err == nil && !s.key.everyLineVerifies(data, n.Text) {
+		err = errors.New("a signature line of the log key does not verify")
+	}
 	if err != nil {
-		return checkpoint{}, errors.New("the note does not verify with the log key")
+		return torchwood.Checkpoint{}, errors.New("the note does not verify with the log key")
 	}
 	cp, err := parseCheckpoint(n.Text)
-	if err != nil || cp.origin != s.origin {
-		return checkpoint{}, errors.New("not a checkpoint of this log")
+	if err != nil || cp.Origin != s.origin {
+		return torchwood.Checkpoint{}, errors.New("not a checkpoint of this log")
 	}
 	return cp, nil
 }
@@ -384,7 +388,7 @@ func (s *Server) openNote(data []byte) (checkpoint, error) {
 // signature and root are checked; otherwise key@ signs one and it is created once.
 func (s *Server) checkpointAt(ctx context.Context, size int64, root [32]byte) ([]byte, error) {
 	if cp, data, err := s.readCheckpoint(ctx, size); err == nil {
-		if cp.root != root {
+		if cp.Hash != root {
 			return nil, fmt.Errorf("%w: a checkpoint of this size names another root", ErrFence)
 		}
 		return data, nil
@@ -392,13 +396,15 @@ func (s *Server) checkpointAt(ctx context.Context, size int64, root [32]byte) ([
 		return nil, fmt.Errorf("%w: the checkpoint at this size is not the writer's: %w", ErrFence, err)
 	}
 	body := checkpointBody(s.origin, size, root)
-	res, err := s.keys.Sign(ctx, connect.NewRequest(&keyv2alpha1.SignRequest{
-		Purpose: logKeyPurpose, Content: body, Algorithm: logKeyAlgorithm,
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("sign the checkpoint: %w", err)
-	}
-	data, err := s.key.signedNote(body, res.Msg.GetSignatureDer())
+	data, err := s.key.signedNote(body, func(body []byte) ([]byte, error) {
+		res, err := s.keys.Sign(ctx, connect.NewRequest(&keyv2alpha1.SignRequest{
+			Purpose: logKeyPurpose, Content: body, Algorithm: logKeyAlgorithm,
+		}))
+		if err != nil {
+			return nil, fmt.Errorf("sign the checkpoint: %w", err)
+		}
+		return res.Msg.GetSignatureDer(), nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -426,10 +432,10 @@ func (s *Server) movePointer(ctx context.Context, data []byte, size int64) error
 			if err != nil {
 				return fmt.Errorf("%w: the pointer is not the writer's: %w", ErrFence, err)
 			}
-			if cp.size > size {
+			if cp.N > size {
 				return fmt.Errorf("%w: the pointer is ahead of the log", ErrFence)
 			}
-			if cp.size == size {
+			if cp.N == size {
 				s.pointerETag = tag
 				return nil
 			}

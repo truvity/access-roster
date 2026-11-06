@@ -3,7 +3,6 @@ package writerd
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"filippo.io/torchwood"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
@@ -28,22 +28,9 @@ const (
 
 // tilePath is the path of a hash tile, or of an entry bundle when level is -1, below the log's prefix (C2SP
 // tlog-tiles, "Merkle Tree"): tile/<L>/<N> and tile/entries/<N>, with N as groups of three digits led by x, and a
-// partial tile as <N>.p/<W>. It is the path `sluis audit verify` reads.
+// partial tile as <N>.p/<W>. It is the path `sluis audit verify` reads. torchwood writes it.
 func tilePath(level int, n int64, width int) string {
-	nStr := fmt.Sprintf("%03d", n%1000)
-	for n >= 1000 {
-		n /= 1000
-		nStr = fmt.Sprintf("x%03d/%s", n%1000, nStr)
-	}
-	l := "entries"
-	if level >= 0 {
-		l = strconv.Itoa(level)
-	}
-	p := "tile/" + l + "/" + nStr
-	if width < tileWidth {
-		p += ".p/" + strconv.Itoa(width)
-	}
-	return p
+	return torchwood.TilePath(tlog.Tile{H: tileHeight, L: level, N: n, W: width})
 }
 
 // treeState is the size and root of the tree, and the entries of its last, incomplete bundle.
@@ -171,11 +158,11 @@ func (o *overlay) ReadHashes(idx []int64) ([]tlog.Hash, error) {
 }
 
 // bundle encodes entries as an entry bundle (C2SP tlog-tiles, "Log entries"): a two-octet length and the entry.
+// Every entry is at most maxEntry, checked by extend.
 func bundle(entries [][]byte) []byte {
 	var b []byte
 	for _, e := range entries {
-		b = binary.BigEndian.AppendUint16(b, uint16(len(e))) //nolint:gosec // every entry is at most maxEntry, checked by extend
-		b = append(b, e...)
+		b, _ = torchwood.AppendTileEntry(b, e) // the error is an entry over maxEntry, which extend refused
 	}
 	return b
 }
@@ -184,15 +171,12 @@ func bundle(entries [][]byte) []byte {
 func parseBundle(b []byte) ([][]byte, error) {
 	var out [][]byte
 	for len(b) > 0 {
-		if len(b) < 2 {
+		e, rest, err := torchwood.ReadTileEntry(b)
+		if err != nil {
 			return nil, errors.New("short bundle")
 		}
-		n := int(binary.BigEndian.Uint16(b))
-		if len(b) < 2+n {
-			return nil, errors.New("short bundle")
-		}
-		out = append(out, slices.Clone(b[2:2+n]))
-		b = b[2+n:]
+		out = append(out, slices.Clone(e))
+		b = rest
 	}
 	return out, nil
 }

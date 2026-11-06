@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,6 +19,8 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"filippo.io/torchwood"
+	"golang.org/x/mod/sumdb/tlog"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
@@ -331,21 +332,12 @@ func auditEvents(ctx context.Context, blob string, from int64) (*eventsOut, erro
 // The entries of a tiled log (C2SP tlog-tiles, "Log entries"): entry bundles of up to 256 entries, each entry a
 // big-endian uint16 length and its bytes. `sluis audit verify` authenticates every tile; this reader only lists the
 // entries so that the records can be opened.
-const bundleWidth = 256
+const bundleWidth = torchwood.TileWidth
 
 // bundlePath is the path of entry bundle n: tile/entries/<N>, with N as groups of three digits led by x, and a partial
 // bundle as <N>.p/<W>.
 func bundlePath(n int64, width int) string {
-	nStr := fmt.Sprintf("%03d", n%1000)
-	for n >= 1000 {
-		n /= 1000
-		nStr = fmt.Sprintf("x%03d/%s", n%1000, nStr)
-	}
-	p := "tile/entries/" + nStr
-	if width < bundleWidth {
-		p += ".p/" + strconv.Itoa(width)
-	}
-	return filepath.FromSlash(p)
+	return filepath.FromSlash(torchwood.TilePath(tlog.Tile{H: torchwood.TileHeight, L: -1, N: n, W: width}))
 }
 
 func readEntries(dir string, size int64) ([][]byte, error) {
@@ -364,15 +356,12 @@ func readEntries(dir string, size int64) ([][]byte, error) {
 			return nil, fmt.Errorf("entry bundle %d: %w", b, err)
 		}
 		for n := 0; n < width; n++ {
-			if len(data) < 2 {
-				return nil, fmt.Errorf("entry bundle %d: short bundle", b)
+			entry, rest, err := torchwood.ReadTileEntry(data)
+			if err != nil {
+				return nil, fmt.Errorf("entry bundle %d: %w", b, err)
 			}
-			l := int(binary.BigEndian.Uint16(data))
-			if len(data) < 2+l {
-				return nil, fmt.Errorf("entry bundle %d: short entry", b)
-			}
-			all = append(all, data[2:2+l])
-			data = data[2+l:]
+			all = append(all, entry)
+			data = rest
 		}
 	}
 	return all, nil
