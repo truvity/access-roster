@@ -356,6 +356,8 @@ func TestDriversAreAccountedFor(t *testing.T) {
 // The search path (WP-26): the indexer follows the log with a verifier key the deploy wrote; its drivers give the index and
 // the blob a socket each for the indexer and the reader; the reader reads the writer's directory through the group of the
 // writer's driver; and the audit front is a second instance of entry that calls the reader alone.
+//
+// verifies: REQ-AUDIT-077
 func TestSearchPath(t *testing.T) {
 	files := generate(t)
 	reader, _ := registry.UID("reader", dev.UIDBlock)

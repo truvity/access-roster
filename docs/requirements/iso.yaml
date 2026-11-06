@@ -643,15 +643,14 @@ requirements:
     rationale: "What entry does not hold cannot be stolen from it."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
     issues: [863]
     verification:
-      - {kind: test-vectors, ref: "T-4 registry corpus: an entry that lists a credential in the actor registry; the registry check refuses it"}
+      - {kind: test-vectors, ref: "registry test over actors.yaml: entry is not a holder and has no port of a credential holder; a copy with a holder flag or a key-store port is refused"}
 
   # ---- enrolment and trust bundles
   - id: REQ-ISO-044
@@ -771,14 +770,13 @@ requirements:
     rationale: "Adapters hold vendor connections, so they must not also be able to sign for sluis."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [863]
     verification:
-      - {kind: test-vectors, ref: "T-15 registry corpus: an adapter given a signing purpose in the actor registry; the registry check refuses it"}
+      - {kind: test-vectors, ref: "registry test over keys.yaml: no adapter may use any op of a signing or key-agreement purpose, which is what an authority key is here"}
 
   # ---- operators and configuration
   - id: REQ-ISO-053

@@ -758,6 +758,7 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     );
 }
 
+/// verifies: REQ-UX-006
 #[tokio::test]
 async fn an_error_from_an_actor_shows_nothing_of_its_reason() {
     let up = up().await;
@@ -768,6 +769,17 @@ async fn an_error_from_an_actor_shows_nothing_of_its_reason() {
     assert!(
         !text.contains("globex") && !text.contains("secret") && !text.contains("refused"),
         "{text}"
+    );
+    // The reason is in the audit record of the refusal, under the same correlation id, and nowhere in the body.
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    let rec = recs
+        .iter()
+        .find(|r| r["metadata"]["correlation_uid"].as_str() == denied.h("sluis-correlation-id"))
+        .expect("the audit record of the refusal");
+    assert_eq!(rec["status_code"], "rpc_permission_denied");
+    assert!(
+        !text.contains("rpc_permission_denied"),
+        "the body names the reason: {text}"
     );
     *up.fake.error.lock().unwrap() = Some((ErrorCode::Unavailable, "x"));
     assert_eq!(

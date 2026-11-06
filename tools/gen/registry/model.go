@@ -237,6 +237,7 @@ var (
 	classes    = []string{"config", "secret", "durable", "temp"}
 	scopes     = []string{"boundary", "boundary+tenant"}
 	treatments = []string{"hashed", "sealed", "plain"}
+	profiles   = []string{"Fixed", "Operable", "Tenant-adjustable", "-"}
 )
 
 func (b *builder) kinds(m *model) {
@@ -273,6 +274,14 @@ func (b *builder) kinds(m *model) {
 		}
 		if !slices.Contains(treatments, k.Treatment) {
 			b.errorf("%s: treatment %q", k.Name, k.Treatment)
+		}
+		// One profile, or "-" for protocol state.
+		if !slices.Contains(profiles, k.Profile) {
+			b.errorf("%s: profile %q", k.Name, k.Profile)
+		}
+		// A tenant never appears in config or secret (ADR 0004): those classes are boundary-scoped.
+		if (k.Class == "config" || k.Class == "secret") && k.Scope != "boundary" {
+			b.errorf("%s: a %s kind has no tenant scope, got %q", k.Name, k.Class, k.Scope)
 		}
 		row := kind{
 			Name: k.Name, Segment: seg, Class: k.Class, Scope: k.Scope, Treatment: k.Treatment,

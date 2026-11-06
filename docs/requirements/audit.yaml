@@ -1146,14 +1146,13 @@ requirements:
     rationale: "The audit front is the same shape on every installation."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [985]
     verification:
-      - {kind: integration-test, ref: "audit front topology test"}
+      - {kind: integration-test, ref: "topology test: the generated Compose services and systemd units give the audit front its own entry instance and socket, and the forwarder config gives it its own host"}
   - id: REQ-AUDIT-078
     area: AUDIT
     statement: "The audit console's browser session MUST be held by the audit installation's own `session` actor as an HttpOnly cookie, with no token in the browser."
@@ -1255,15 +1254,14 @@ requirements:
     rationale: "A sibling inherits no cookie scope, and one origin per host holds (ADR 0028)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-59, section: "5.1.4.1", depth: Partial}
     issues: [985]
     verification:
-      - {kind: integration-test, ref: "audit host web origin test"}
+      - {kind: integration-test, ref: "host config test: the forwarder config of the local installation names the audit host as a sibling of the boundary host, with no path matcher and its own entry socket"}
   - id: REQ-AUDIT-086
     area: AUDIT
     statement: "Every audit record MUST be an OCSF 1.x event of core classes, with the profile of the sluis extension and no `unmapped` object."

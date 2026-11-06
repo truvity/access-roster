@@ -51,6 +51,7 @@ type kindDoc struct {
 	Scope      string   `yaml:"scope"`
 	Class      string   `yaml:"class"`
 	Treatment  string   `yaml:"treatment"`
+	Profile    string   `yaml:"profile"`
 	Writer     string   `yaml:"writer"`
 	Readers    []string `yaml:"readers"`
 	WatchedBy  []string `yaml:"watched_by"`
