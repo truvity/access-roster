@@ -105,7 +105,7 @@ Vigilant mode is a per-user setting that marks unsigned commits Unverified. Only
 - The App is public, so anyone can authorise it. It holds nothing for a person the directory does not know, and an authorisation from an unknown account is deleted.
 - A person who revokes the authorisation, or whose account sluis cannot reach, is not managed. The cost is an alert and a manual step, not a hidden gap.
 - The sync depends on ritueel's staff keyring and on its format. That contract is ritueel's to write, and the sluis side passes its test vectors when they exist.
-- Requirements: [REQ-OPS-099](/requirements/ops/#REQ-OPS-099) to [REQ-OPS-107](/requirements/ops/#REQ-OPS-107) for the sync, [REQ-SUPPLY-040](/requirements/supply/#REQ-SUPPLY-040) for the two-part verification of a release (G8 A) and [REQ-SUPPLY-041](/requirements/supply/#REQ-SUPPLY-041) for the workflow lint (C3 A). Pages: [GitHub](/integrations/github/) and [Release signing](/distribution/release-signing/), changed with this record.
+- Requirements: [REQ-OPS-099](/requirements/ops/#REQ-OPS-099) to [REQ-OPS-107](/requirements/ops/#REQ-OPS-107) for the sync, [REQ-SUPPLY-043](/requirements/supply/#REQ-SUPPLY-043) for the two-part verification of a release (G8 A) and [REQ-SUPPLY-044](/requirements/supply/#REQ-SUPPLY-044) for the workflow lint (C3 A). Pages: [GitHub](/integrations/github/) and [Release signing](/distribution/release-signing/), changed with this record.
 - Not decided here and tracked as follow-ups: the form of the staff keyring document, the CI check, the measurements below, and an App for Enterprise Managed Users.
 
 ## Roads not taken
