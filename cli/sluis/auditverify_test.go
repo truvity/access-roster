@@ -23,7 +23,7 @@ func verifyArgs(l *fixtureLog, extra ...string) []string {
 	return append([]string{"audit", "verify", l.dir, "--key", l.key.vkey}, extra...)
 }
 
-// verifies: REQ-AUDIT-026
+// verifies: REQ-SEC-018, REQ-AUDIT-026
 func TestAuditVerifyOK(t *testing.T) {
 	key := newFixtureKey(t)
 	l := newFixtureLog(t, key, fixtureEntries, 100, 300)
@@ -36,6 +36,7 @@ func TestAuditVerifyOK(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAuditVerifyJSON(t *testing.T) {
 	key := newFixtureKey(t)
 	l := newFixtureLog(t, key, fixtureEntries, 300)
@@ -53,6 +54,7 @@ func TestAuditVerifyJSON(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAuditVerifyKeyFileAndEmptyLog(t *testing.T) {
 	key := newFixtureKey(t)
 	l := newFixtureLog(t, key, 0)
@@ -66,7 +68,7 @@ func TestAuditVerifyKeyFileAndEmptyLog(t *testing.T) {
 	}
 }
 
-// verifies: REQ-AUDIT-026, REQ-AUDIT-056
+// verifies: REQ-SEC-018, REQ-AUDIT-026, REQ-AUDIT-056
 func TestAuditVerifyRefusals(t *testing.T) {
 	other := newFixtureKey(t)
 	cases := []struct {
@@ -145,6 +147,7 @@ func TestAuditVerifyRefusals(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAuditVerifyFailuresAndUsage(t *testing.T) {
 	key := newFixtureKey(t)
 	empty := t.TempDir()
@@ -171,6 +174,7 @@ func TestAuditVerifyFailuresAndUsage(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestParseVerifierKeyRejects(t *testing.T) {
 	key := newFixtureKey(t)
 	if _, err := parseVerifierKey(key.vkey); err != nil {
@@ -192,6 +196,7 @@ func TestParseVerifierKeyRejects(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAuditVerifyRefusesAnotherDigest(t *testing.T) {
 	// A checkpoint signed over the SHA-384 digest, the form before D-25, is not a standard note and is refused.
 	key := newFixtureKey(t)
@@ -204,6 +209,7 @@ func TestAuditVerifyRefusesAnotherDigest(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestAuditVerifyRefusesAP384LogKey(t *testing.T) {
 	// The log key is P-256 (D-25): a verifier key of a P-384 key is not accepted.
 	priv, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
@@ -221,6 +227,7 @@ func TestAuditVerifyRefusesAP384LogKey(t *testing.T) {
 	}
 }
 
+// verifies: REQ-SEC-018
 func TestTilePath(t *testing.T) {
 	for _, c := range []struct {
 		level int

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,10 +16,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
+	"filippo.io/torchwood"
 	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 
@@ -137,26 +139,12 @@ func parseVerifierKey(s string) (*logKey, error) {
 }
 
 // tileHeight is the height of every tlog-tiles tile (C2SP tlog-tiles: 8, so 256 hashes or entries).
-const tileHeight = 8
+const tileHeight = torchwood.TileHeight
 
 // tilePath is the path of a hash tile, or of an entry bundle when level is -1, below the log's directory
-// (C2SP tlog-tiles, "Merkle Tree"): tile/<L>/<N>, tile/entries/<N>, with N as groups of three digits led by x, and a
-// partial tile as <N>.p/<W>.
+// (C2SP tlog-tiles, "Merkle Tree"): tile/<L>/<N>, tile/entries/<N>, and a partial tile as <N>.p/<W>. torchwood writes it.
 func tilePath(level int, n int64, width int) string {
-	nStr := fmt.Sprintf("%03d", n%1000)
-	for n >= 1000 {
-		n /= 1000
-		nStr = fmt.Sprintf("x%03d/%s", n%1000, nStr)
-	}
-	l := "entries"
-	if level >= 0 {
-		l = strconv.Itoa(level)
-	}
-	p := "tile/" + l + "/" + nStr
-	if width < 1<<tileHeight {
-		p += ".p/" + strconv.Itoa(width)
-	}
-	return filepath.FromSlash(p)
+	return filepath.FromSlash(torchwood.TilePath(tlog.Tile{H: tileHeight, L: level, N: n, W: width}))
 }
 
 // logDir reads the files of one log directory. A file is limited in size so a damaged directory cannot fill the memory.
@@ -164,18 +152,23 @@ type logDir string
 
 const maxFile = 1 << 25 // an entry bundle of 256 entries of up to 65535 octets is the largest object
 
-func (d logDir) read(rel string) ([]byte, error) {
+func (d logDir) read(rel string) ([]byte, error) { return d.readLimit(rel, maxFile) }
+
+// errTooLarge is a file over the limit it was read with.
+var errTooLarge = errors.New("too large")
+
+func (d logDir) readLimit(rel string, limit int) ([]byte, error) {
 	f, err := os.Open(filepath.Join(string(d), rel)) //nolint:gosec // the person names the log directory; rel is built here
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	b, err := io.ReadAll(io.LimitReader(f, maxFile+1))
+	b, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > maxFile {
-		return nil, fmt.Errorf("%s: too large", rel)
+	if len(b) > limit {
+		return nil, fmt.Errorf("%s: %w", rel, errTooLarge)
 	}
 	return b, nil
 }
@@ -201,14 +194,25 @@ func (d logDir) tileOrFull(level int, n int64, width, unit int, bundle bool) (b 
 	return full[:width*unit], rel, false, nil
 }
 
-// tileReader serves the hash tiles of the directory to tlog.TileHashReader, which checks them against the tree.
-type tileReader struct{ dir logDir }
+// tileReader serves the hash tiles of the directory to tlog.TileHashReader, which checks them against the tree. It
+// keeps the tiles it read last, since the checkpoints of a long history ask for the same few tiles again and again.
+type tileReader struct {
+	dir   logDir
+	cache map[tlog.Tile][]byte
+}
 
-func (tileReader) Height() int                     { return tileHeight }
-func (tileReader) SaveTiles([]tlog.Tile, [][]byte) {}
-func (r tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
+// tileCache is the number of tiles kept (8 KiB each at most).
+const tileCache = 1024
+
+func (*tileReader) Height() int                     { return tileHeight }
+func (*tileReader) SaveTiles([]tlog.Tile, [][]byte) {}
+func (r *tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 	out := make([][]byte, len(tiles))
 	for i, t := range tiles {
+		if b, ok := r.cache[t]; ok {
+			out[i] = b
+			continue
+		}
 		b, rel, _, err := r.dir.tileOrFull(t.L, t.N, t.W, tlog.HashSize, false)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -216,6 +220,10 @@ func (r tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 			}
 			return nil, err
 		}
+		if r.cache == nil || len(r.cache) >= tileCache {
+			r.cache = make(map[tlog.Tile][]byte, tileCache)
+		}
+		r.cache[t] = b
 		out[i] = b
 	}
 	return out, nil
@@ -228,43 +236,69 @@ func (e *tileError) Error() string { return e.reason }
 
 func slashPath(p string) string { return filepath.ToSlash(p) }
 
-// checkpoint is a parsed tlog-checkpoint body (C2SP tlog-checkpoint: origin, size, root hash, extension lines).
+// checkpoint is a parsed tlog-checkpoint (C2SP tlog-checkpoint: origin, size, root hash, extension lines) and the file
+// it came from.
 type checkpoint struct {
-	origin string
-	size   int64
-	hash   tlog.Hash
-	file   string
+	torchwood.Checkpoint
+	file string
 }
 
-func parseCheckpoint(text string) (checkpoint, error) {
-	lines := strings.Split(text, "\n")
-	// The body ends with a newline, so the last element is empty.
-	if len(lines) < 4 || lines[len(lines)-1] != "" {
-		return checkpoint{}, errors.New("not a checkpoint")
+// parseCheckpoint reads a checkpoint body with torchwood. It adds the one rule the standard states in prose: the
+// origin is a non-empty line.
+func parseCheckpoint(text string) (torchwood.Checkpoint, error) {
+	cp, err := torchwood.ParseCheckpoint(text)
+	if err != nil || cp.Origin == "" {
+		return torchwood.Checkpoint{}, errors.New("not a checkpoint")
 	}
-	var cp checkpoint
-	cp.origin = lines[0]
-	size, err := strconv.ParseInt(lines[1], 10, 64)
-	if cp.origin == "" || err != nil || size < 0 || strconv.FormatInt(size, 10) != lines[1] {
-		return checkpoint{}, errors.New("not a checkpoint")
-	}
-	cp.size = size
-	h, err := base64.StdEncoding.DecodeString(lines[2])
-	if err != nil || len(h) != tlog.HashSize {
-		return checkpoint{}, errors.New("not a checkpoint")
-	}
-	copy(cp.hash[:], h)
 	return cp, nil
+}
+
+// everyLineVerifies reports whether every signature line of the log's key in a signed note verifies. note.Open checks
+// the first line of a key and drops a repeat of the same name and key ID unchecked, so a good line followed by a bad
+// repeat would open. The verifier in Rust refuses such a note, and two verifiers of one log must agree; so each line
+// of the key is checked here. Lines of other keys are not ours to check.
+func everyLineVerifies(data []byte, text string, k *logKey) bool {
+	sigs, ok := bytes.CutPrefix(data, []byte(text+"\n"))
+	if !ok {
+		return false
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(sigs), "\n"), "\n") {
+		rest, ok := strings.CutPrefix(line, "\u2014 ")
+		if !ok {
+			return false
+		}
+		name, b64, _ := strings.Cut(rest, " ")
+		if name != k.name {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(raw) < 4 {
+			return false
+		}
+		if binary.BigEndian.Uint32(raw) != k.KeyHash() {
+			continue
+		}
+		if !k.Verify([]byte(text), raw[4:]) {
+			return false
+		}
+	}
+	return true
 }
 
 // readCheckpoint opens a signed note with the log key and parses its body. A bad signature, an unknown key or a note
 // that is not a checkpoint is a refusal that names the file.
 func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
-	b, err := d.read(rel)
+	b, err := d.readLimit(rel, maxCheckpointFile)
+	if errors.Is(err, errTooLarge) {
+		return checkpoint{}, refused(slashPath(rel) + ".length")
+	}
 	if err != nil {
 		return checkpoint{}, err
 	}
 	n, err := note.Open(b, note.VerifierList(vk))
+	if err == nil && !everyLineVerifies(b, n.Text, vk) {
+		err = errors.New("a signature line of the log key does not verify")
+	}
 	if err != nil {
 		return checkpoint{}, refused(slashPath(rel) + ".signature")
 	}
@@ -272,7 +306,87 @@ func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
 	if err != nil {
 		return checkpoint{}, refused(slashPath(rel) + ".format")
 	}
-	cp.file = slashPath(rel)
+	return checkpoint{Checkpoint: cp, file: slashPath(rel)}, nil
+}
+
+// The limits of the checkpoints/<size> directory, the one object family that is sluis's own (docs/reference/
+// checkpoint-history.md). A log has no limit on how many checkpoints it holds: the writer makes one for each sealed
+// batch, so the count grows for the life of the log and a compliance lock forbids pruning it. The reader streams the
+// directory instead, and keeps 8 octets of memory for each checkpoint.
+const (
+	historyBatch      = 1024    // directory entries read at a time
+	maxHistoryName    = 19      // octets of a name: the decimal digits of the largest int64
+	maxCheckpointFile = 1 << 20 // octets of a checkpoint file; torchwood bounds a checkpoint at the same order
+)
+
+// historySize reads the name of a checkpoints/<size> file: the size as a decimal integer without sign, leading zero or
+// space. It is the only way a name is read.
+func historySize(name string) (int64, error) {
+	if name == "" || len(name) > maxHistoryName {
+		return 0, errors.New("not a size")
+	}
+	size, err := strconv.ParseInt(name, 10, 64)
+	if err != nil || size < 0 || strconv.FormatInt(size, 10) != name {
+		return 0, errors.New("not a size")
+	}
+	return size, nil
+}
+
+// historySizes lists the checkpoints directory in batches and returns the sizes its names stand for, in ascending
+// order. An absent directory is an empty list. A name that is not a size, or a directory, is a refusal; when several
+// are wrong the smallest name (in byte order) is the one reported, so the same log always gives the same refusal.
+func historySizes(d logDir) ([]int64, error) {
+	f, err := os.Open(filepath.Join(string(d), "checkpoints")) //nolint:gosec // the person names the log directory
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	var sizes []int64
+	var bad *string
+	for {
+		entries, err := f.ReadDir(historyBatch)
+		for _, e := range entries {
+			size, perr := historySize(e.Name())
+			if perr != nil || e.IsDir() {
+				if bad == nil || e.Name() < *bad {
+					n := e.Name()
+					bad = &n
+				}
+				continue
+			}
+			sizes = append(sizes, size)
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if bad != nil {
+		return nil, refused(slashPath(filepath.Join("checkpoints", *bad)) + ".name")
+	}
+	slices.Sort(sizes)
+	return sizes, nil
+}
+
+// readHistoryFile reads checkpoints/<size> and checks it: signed by the log key, a checkpoint of that size, of the
+// origin the log's pointer names.
+func readHistoryFile(d logDir, size int64, origin string, vk *logKey) (checkpoint, error) {
+	rel := filepath.Join("checkpoints", strconv.FormatInt(size, 10))
+	cp, err := readCheckpoint(d, rel, vk)
+	if err != nil {
+		return checkpoint{}, err
+	}
+	if cp.N != size {
+		return checkpoint{}, refused(cp.file + ".size")
+	}
+	if cp.Origin != origin {
+		return checkpoint{}, refused(cp.file + ".origin")
+	}
 	return cp, nil
 }
 
@@ -280,90 +394,95 @@ func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
 // checkpoint of the history in checkpoints/<size>; takes the largest as the head; rebuilds the tree from the
 // hash tiles with the RFC 6962 hashes (tlog.TileHashReader authenticates every tile against the head); checks
 // that each entry bundle hashes to the leaf hashes; and checks that every other checkpoint is a prefix of the
-// head (tlog: the tree hash of its size, recomputed from the tiles, equals its root hash).
+// head (tlog: the tree hash of its size, recomputed from the tiles, equals its root hash). The history is read one
+// file at a time, in ascending order of size, so the memory is that of the sizes and not of the checkpoints.
 func verifyLog(dir string, vk *logKey, wantOrigin string) (*auditOut, error) {
 	d := logDir(dir)
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() { //nolint:gosec // the person names the log directory
 		return nil, fmt.Errorf("%s: not a directory", filepath.Base(dir))
 	}
-	var cps []checkpoint
 	head, err := readCheckpoint(d, "checkpoint", vk)
 	if err != nil {
 		return nil, err
 	}
-	cps = append(cps, head)
-	hist, err := os.ReadDir(filepath.Join(dir, "checkpoints"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if wantOrigin != "" && head.Origin != wantOrigin {
+		return nil, refused(head.file + ".origin")
+	}
+	sizes, err := historySizes(d)
+	if err != nil {
 		return nil, err
 	}
-	for _, e := range hist {
-		size, perr := strconv.ParseInt(e.Name(), 10, 64)
-		rel := filepath.Join("checkpoints", e.Name())
-		if perr != nil || size < 0 || strconv.FormatInt(size, 10) != e.Name() {
-			return nil, refused(slashPath(rel) + ".name")
-		}
-		cp, err := readCheckpoint(d, rel, vk)
-		if err != nil {
+	// The top is the largest checkpoint of the pointer and the history.
+	top := head
+	if n := len(sizes); n > 0 && sizes[n-1] > head.N {
+		if top, err = readHistoryFile(d, sizes[n-1], head.Origin, vk); err != nil {
 			return nil, err
 		}
-		if cp.size != size {
-			return nil, refused(slashPath(rel) + ".size")
-		}
-		cps = append(cps, cp)
 	}
-	for _, cp := range cps {
-		if cp.origin != head.origin {
-			return nil, refused(cp.file + ".origin")
-		}
-		if wantOrigin != "" && cp.origin != wantOrigin {
-			return nil, refused(cp.file + ".origin")
-		}
-	}
-	sort.SliceStable(cps, func(i, j int) bool { return cps[i].size > cps[j].size })
-	top := cps[0]
-	for _, cp := range cps[1:] {
-		if cp.size == top.size && cp.hash != top.hash {
-			return nil, refused(cp.file + ".fork")
-		}
+	if head.N == top.N && head.Hash != top.Hash {
+		return nil, refused(head.file + ".fork")
 	}
 
-	tree := tlog.Tree{N: top.size, Hash: top.hash}
-	hr := tlog.TileHashReader(tree, tileReader{d})
-	if top.size == 0 {
-		if top.hash != tlog.Hash(sha256.Sum256(nil)) {
+	hr := tlog.TileHashReader(top.Tree, &tileReader{dir: d})
+	if top.N == 0 {
+		if top.Hash != tlog.Hash(sha256.Sum256(nil)) {
 			return nil, refused(top.file + ".hash")
 		}
 	} else {
-		root, err := tlog.TreeHash(top.size, hr)
+		root, err := tlog.TreeHash(top.N, hr)
 		if err != nil {
 			return nil, tileFailure(err)
 		}
-		if root != top.hash {
+		if root != top.Hash {
 			return nil, refused(top.file + ".hash")
 		}
 	}
-	for _, cp := range cps[1:] {
-		if cp.size == 0 {
-			continue
-		}
-		root, err := tlog.TreeHash(cp.size, hr)
+	for _, size := range sizes {
+		cp, err := readHistoryFile(d, size, head.Origin, vk)
 		if err != nil {
-			return nil, tileFailure(err)
+			return nil, err
 		}
-		if root != cp.hash {
-			return nil, refused(cp.file + ".inconsistent")
+		if err := prefixOfTop(cp, top, hr); err != nil {
+			return nil, err
 		}
 	}
-	if err := verifyEntries(d, top.size, hr); err != nil {
+	if head.N != top.N {
+		if err := prefixOfTop(head, top, hr); err != nil {
+			return nil, err
+		}
+	}
+	if err := verifyEntries(d, top.N, hr); err != nil {
 		return nil, err
 	}
 	return &auditOut{
-		Origin:      top.origin,
-		Size:        top.size,
-		RootHash:    base64.StdEncoding.EncodeToString(top.hash[:]),
-		Checkpoints: len(cps),
-		Entries:     top.size,
+		Origin:      top.Origin,
+		Size:        top.N,
+		RootHash:    base64.StdEncoding.EncodeToString(top.Hash[:]),
+		Checkpoints: 1 + len(sizes),
+		Entries:     top.N,
 	}, nil
+}
+
+// prefixOfTop checks that cp is a checkpoint of the tree that top commits to: of the same size it names the same root,
+// of a smaller size its root is the tree hash of that size, recomputed from the tiles.
+func prefixOfTop(cp, top checkpoint, hr tlog.HashReader) error {
+	if cp.N == top.N {
+		if cp.Hash != top.Hash {
+			return refused(cp.file + ".fork")
+		}
+		return nil
+	}
+	if cp.N == 0 {
+		return nil
+	}
+	root, err := tlog.TreeHash(cp.N, hr)
+	if err != nil {
+		return tileFailure(err)
+	}
+	if root != cp.Hash {
+		return refused(cp.file + ".inconsistent")
+	}
+	return nil
 }
 
 // tileFailure turns an error of the tile reader into a refusal, when it is one: a tile that is absent, or whose
@@ -397,15 +516,12 @@ func verifyEntries(d logDir, size int64, hr tlog.HashReader) error {
 		leaves := make([]tlog.Hash, 0, width)
 		rest := b
 		for i := range width {
-			if len(rest) < 2 {
+			entry, after, err := torchwood.ReadTileEntry(rest)
+			if err != nil {
 				return refused(slashPath(rel) + ".format")
 			}
-			l := int(binary.BigEndian.Uint16(rest))
-			if len(rest) < 2+l {
-				return refused(slashPath(rel) + ".format")
-			}
-			leaves = append(leaves, tlog.RecordHash(rest[2:2+l]))
-			rest = rest[2+l:]
+			leaves = append(leaves, tlog.RecordHash(entry))
+			rest = after
 			idx[i] = tlog.StoredHashIndex(0, n*full+int64(i))
 		}
 		// A bundle read from its own path holds exactly its entries; a full bundle that stands in for a partial one holds more.

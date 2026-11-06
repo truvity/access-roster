@@ -1,6 +1,7 @@
 package writerd
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -10,29 +11,28 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
+	"filippo.io/torchwood"
+	"golang.org/x/mod/sumdb/note"
 	"golang.org/x/mod/sumdb/tlog"
 )
 
 // The checkpoint is a standard C2SP signed note of type 0x02 (ECDSA), as the witness implementation of
-// transparency-dev reads it (decision D-25; ADR 0006, "Named exceptions"; ADR 0029, "Tiled log"):
+// transparency-dev reads it (decision D-25; ADR 0006, "Named exceptions"; ADR 0029, "Tiled log"). The note container,
+// the checkpoint body and the tile paths come from libraries (REQ-SEC-018): golang.org/x/mod/sumdb/note assembles and
+// opens the note, and filippo.io/torchwood writes and parses the checkpoint body. What no approved library has, and
+// what stays here, is the type 0x02 key: its verifier key text, its key ID and its signature check, and the adapter
+// that has key@ make the signature. For this type the standard fixes:
 //
 //   - the log key is a P-256 key and the signature is ASN.1 DER ECDSA over the SHA-256 of the note text;
 //   - the key ID is the first four octets of the SHA-256 of the DER SubjectPublicKeyInfo;
 //   - the verifier key is name+hex(key ID)+base64(0x02 || DER SubjectPublicKeyInfo);
 //   - the signature line is "— " name " " base64(key ID || ASN.1 DER ECDSA signature).
 //
-// A generic verifier checks it without sluis code (TestCheckpointsVerifyWithAnIndependentStandardVerifier).
+// github.com/transparency-dev/formats verifies the same notes in a test, independently of this code
+// (TestCheckpointsVerifyWithTheTransparencyDevVerifier).
 const sigTypeECDSA = 0x02
-
-// checkpointDigest is the digest the log key signs for a checkpoint: the SHA-256 of the note body (C2SP
-// signed-note, signature type 0x02).
-func checkpointDigest(body []byte) []byte {
-	d := sha256.Sum256(body)
-	return d[:]
-}
 
 // logKey is the public half of the log key, as a note.Verifier and as the verifier key text.
 type logKey struct {
@@ -62,7 +62,8 @@ func newLogKey(name string, spki []byte) (*logKey, error) {
 func (k *logKey) Name() string    { return k.name }
 func (k *logKey) KeyHash() uint32 { return k.id }
 func (k *logKey) Verify(msg, sig []byte) bool {
-	return ecdsa.VerifyASN1(k.pub, checkpointDigest(msg), sig)
+	d := sha256.Sum256(msg)
+	return ecdsa.VerifyASN1(k.pub, d[:], sig)
 }
 
 // verifierKey is the text a verifier is given: name+hex(key ID)+base64(0x02 || SubjectPublicKeyInfo).
@@ -70,50 +71,79 @@ func (k *logKey) verifierKey() string {
 	return fmt.Sprintf("%s+%08x+%s", k.name, k.id, base64.StdEncoding.EncodeToString(append([]byte{sigTypeECDSA}, k.spki...)))
 }
 
+// keySigner is the note.Signer that has key@ make the signature: the private key never leaves key@. sign returns the
+// DER signature key@ made over the SHA-256 of the body it is given. The signature is checked with the log key before
+// it is returned, so a signature that does not verify never reaches the blob.
+type keySigner struct {
+	key  *logKey
+	sign func(body []byte) ([]byte, error)
+}
+
+func (s keySigner) Name() string    { return s.key.name }
+func (s keySigner) KeyHash() uint32 { return s.key.id }
+func (s keySigner) Sign(msg []byte) ([]byte, error) {
+	der, err := s.sign(msg)
+	if err != nil {
+		return nil, err
+	}
+	if !s.key.Verify(msg, der) {
+		return nil, errors.New("the signature of the checkpoint does not verify with the log key")
+	}
+	return der, nil
+}
+
 // checkpointBody is the body of a tlog-checkpoint (C2SP tlog-checkpoint): the origin line, the tree size in
 // decimal, the root hash in standard base64, and a newline after the last line. It is what key@ is given to sign.
 func checkpointBody(origin string, size int64, root tlog.Hash) []byte {
-	return fmt.Appendf(nil, "%s\n%d\n%s\n", origin, size, base64.StdEncoding.EncodeToString(root[:]))
+	return []byte(torchwood.Checkpoint{Origin: origin, Tree: tlog.Tree{N: size, Hash: root}}.String())
 }
 
-// signedNote returns the body, a blank line and the one signature line (C2SP signed-note), from the DER
-// signature key@ made over checkpointDigest(body).
-func (k *logKey) signedNote(body, der []byte) ([]byte, error) {
-	if !ecdsa.VerifyASN1(k.pub, checkpointDigest(body), der) {
-		return nil, errors.New("the signature of the checkpoint does not verify with the log key")
-	}
-	var id [4]byte
-	binary.BigEndian.PutUint32(id[:], k.id)
-	line := base64.StdEncoding.EncodeToString(append(id[:], der...))
-	out := append([]byte{}, body...)
-	return append(out, fmt.Sprintf("\n— %s %s\n", k.name, line)...), nil
+// signedNote signs the body through sign (a call to key@) and returns the signed note: the body, a blank line and
+// the one signature line (C2SP signed-note).
+func (k *logKey) signedNote(body []byte, sign func(body []byte) ([]byte, error)) ([]byte, error) {
+	return note.Sign(&note.Note{Text: string(body)}, keySigner{key: k, sign: sign})
 }
 
-// checkpoint is a parsed checkpoint body.
-type checkpoint struct {
-	origin string
-	size   int64
-	root   tlog.Hash
+// everyLineVerifies reports whether every signature line of the log's key in a signed note verifies. note.Open checks
+// the first line of a key and drops a repeat of the same name and key ID unchecked, so a good line followed by a bad
+// repeat would open. The verifier in Rust refuses such a note, and two verifiers of one log must agree; so each line
+// of the key is checked here. Lines of other keys are not ours to check.
+func (k *logKey) everyLineVerifies(data []byte, text string) bool {
+	sigs, ok := bytes.CutPrefix(data, []byte(text+"\n"))
+	if !ok {
+		return false
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(sigs), "\n"), "\n") {
+		rest, ok := strings.CutPrefix(line, "\u2014 ")
+		if !ok {
+			return false
+		}
+		name, b64, _ := strings.Cut(rest, " ")
+		if name != k.name {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(raw) < 4 {
+			return false
+		}
+		if binary.BigEndian.Uint32(raw) != k.KeyHash() {
+			continue
+		}
+		if !k.Verify([]byte(text), raw[4:]) {
+			return false
+		}
+	}
+	return true
 }
 
-// parseCheckpoint reads a checkpoint body: origin, size, root, and no extension line (the writer writes none).
-func parseCheckpoint(text string) (checkpoint, error) {
-	lines := strings.Split(text, "\n")
-	if len(lines) != 4 || lines[3] != "" || lines[0] == "" {
-		return checkpoint{}, errors.New("not a checkpoint")
+// parseCheckpoint reads a checkpoint body: origin, size, root, and no extension line (the writer writes none). The
+// body must be the one checkpointBody writes, byte for byte, so that a body another encoder wrote is not taken for
+// the writer's own.
+func parseCheckpoint(text string) (torchwood.Checkpoint, error) {
+	cp, err := torchwood.ParseCheckpoint(text)
+	if err != nil || cp.Origin == "" || cp.Extension != "" || cp.String() != text {
+		return torchwood.Checkpoint{}, errors.New("not a checkpoint")
 	}
-	var cp checkpoint
-	cp.origin = lines[0]
-	size, err := strconv.ParseInt(lines[1], 10, 64)
-	if err != nil || size < 0 || strconv.FormatInt(size, 10) != lines[1] {
-		return checkpoint{}, errors.New("not a checkpoint")
-	}
-	cp.size = size
-	h, err := base64.StdEncoding.Strict().DecodeString(lines[2])
-	if err != nil || len(h) != tlog.HashSize {
-		return checkpoint{}, errors.New("not a checkpoint")
-	}
-	copy(cp.root[:], h)
 	return cp, nil
 }
 

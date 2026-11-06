@@ -23,5 +23,6 @@ The three registries that generate the enforcement have a generated page each ([
 | [Store API](/reference/store-api/) | The store service on the wire, the typed clients, the item contract of the drivers, the address encoding and the sealed envelope |
 | [Policy](/reference/policy/) | The Cedar schema, its entity types and actions, template links, the grant vocabulary file, and a worked example with test vectors |
 | [Approved libraries](/reference/approved-libraries/) | The cryptography and parser libraries each language may use, and the choices made for each |
+| [Checkpoint history](/reference/checkpoint-history/) | The `checkpoints/<size>` objects of a tiled log, the one part of its layout that is sluis's own: names, content, reader rules, limits and tests |
 
 Each page marks a point that still needs the maintainer as a proposed note that links its issue. Everything else on these pages is decided.
