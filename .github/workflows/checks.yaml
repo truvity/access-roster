@@ -338,10 +338,12 @@ jobs:
           echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
       - run: devbox run -- just rqlite-fetch local-deny
 
-  # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module, cargo audit over every Cargo.lock and osv-scanner
-  # over the lock files, failing on a known advisory that affects us unless tools/advisories/ignore.yaml lists it, with a
-  # reason and an expiry date. A new advisory can turn this job red on a commit that did not touch a dependency; that is
-  # the point, and the fix is a bump (or a dated entry), not a re-run.
+  # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
+  # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
+  # advisory that affects us unless tools/advisories/ignore.yaml lists it, with a reason and an expiry date. A new advisory
+  # can turn this job red on a commit that did not touch a dependency; that is the point, and the fix is a bump (or a
+  # dated entry), not a re-run. The card build is cgo and needs pkg-config and libpcsclite-dev, as native-arm64 installs
+  # them; the tagged scan fails, and so does this job, when they are missing.
   advisories:
     name: 'advisories (govulncheck, cargo audit, osv-scanner)'
     runs-on: ubuntu-latest
@@ -350,20 +352,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: The card driver's C dependencies (govulncheck with the tag sluis_card)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends pkg-config libpcsclite-dev
       - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
-      # cargo audit keeps the RustSec database as a git checkout in ~/.cargo/advisory-db and fetches only the difference. The
-      # key is new on every run so that the next run starts from the newest copy; the restored copy is brought up to date
-      # before it is read, so a stale cache never hides an advisory. govulncheck and osv-scanner ask their services (vuln.go.dev,
-      # api.osv.dev) for what they need, which is small; they have no database to keep.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-            ~/.cargo/advisory-db
-          key: advisories-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          key: advisories-go-${{ runner.os }}-${{ hashFiles('go.sum') }}
           restore-keys: |
-            advisories-${{ runner.os }}-
+            advisories-go-${{ runner.os }}-
+      # cargo audit keeps the RustSec database as a git checkout in ~/.cargo/advisory-db and fetches only the difference,
+      # so a copy up to a week old is brought up to date before it is read: a stale cache never hides an advisory. The key
+      # is the ISO week. govulncheck and osv-scanner ask their services (vuln.go.dev, api.osv.dev) for what they need,
+      # which is small; they have no database to keep.
+      - id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/advisory-db
+          key: advisory-db-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: |
+            advisory-db-${{ runner.os }}-
       - run: devbox run -- just check-advisories
 
   # One name to require. A job that was skipped or cancelled is not a pass.

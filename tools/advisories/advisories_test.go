@@ -12,7 +12,7 @@ func ignoreDoc(entries string) []byte {
 	return []byte("schema: 1\nignores:\n" + entries)
 }
 
-// verifies: REQ-SUPPLY-034
+// verifies: REQ-SUPPLY-034, REQ-SUPPLY-040
 func TestIgnoreListRefusesWhatAReviewerCannotJudge(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -80,14 +80,17 @@ func TestGovulncheckCountsOnlyWhatWeCall(t *testing.T) {
 {"finding":{"osv":"GO-2026-0001","fixed_version":"v1.2.3","trace":[{"module":"example.test/m","version":"v1.0.0","package":"example.test/m","function":"Parse"}]}}
 {"finding":{"osv":"GO-2026-0002","fixed_version":"v2.0.0","trace":[{"module":"example.test/n","version":"v1.0.0","package":"example.test/n"}]}}
 `
-	got, err := parseGovulncheck([]byte(stream), "go.mod")
+	got, skipped, err := parseGovulncheck([]byte(stream), "go.mod")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want the one that is only imported", skipped)
 	}
 	if len(got) != 1 || got[0].IDs[0] != "GO-2026-0001" || got[0].IDs[2] != "GHSA-aaaa-bbbb-cccc" || got[0].Fixed != "v1.2.3" {
 		t.Fatalf("got %+v, want only the called vulnerability, with its aliases", got)
 	}
-	if _, err := parseGovulncheck(nil, "go.mod"); err == nil {
+	if _, _, err := parseGovulncheck(nil, "go.mod"); err == nil {
 		t.Fatal("an empty output was taken for a clean scan")
 	}
 }
@@ -120,11 +123,41 @@ func TestOSVSkipsAGoVulnerabilityThatIsNotCalledAndKeepsTheRest(t *testing.T) {
 {"source":{"path":"/r/site/yarn.lock"},"packages":[{"package":{"name":"undici","version":"7.29.1"},
 "vulnerabilities":[{"id":"GHSA-aaaa-bbbb-cccc","summary":"s","affected":[{"package":{"name":"undici"},"ranges":[{"events":[{"introduced":"0"},{"fixed":"7.30.1"}]}]}]}],
 "groups":[{"ids":["GHSA-aaaa-bbbb-cccc"],"aliases":["CVE-2026-0001","GHSA-aaaa-bbbb-cccc"]}]}]}]}`
-	got, err := parseOSV([]byte(report))
+	got, skipped, err := parseOSV([]byte(report))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if skipped != 1 {
+		t.Fatalf("skipped = %d, want the uncalled Go one", skipped)
+	}
 	if len(got) != 1 || got[0].Package != "undici" || got[0].Fixed != "7.30.1" || got[0].IDs[1] != "CVE-2026-0001" {
 		t.Fatalf("got %+v, want the npm one only", got)
+	}
+}
+
+// verifies: REQ-SUPPLY-030
+func TestALockFileWithoutAResultFailsTheGate(t *testing.T) {
+	locks := []string{"go.mod", "Cargo.lock", "site/yarn.lock"}
+	all := "Scanned /r/go.mod file and found 8 packages\nScanned /r/Cargo.lock file and found 281 packages\nScanned /r/site/yarn.lock file and found 592 packages\n"
+	if err := checkOSVCoverage(all, "/r", locks); err != nil {
+		t.Fatalf("a complete scan was refused: %v", err)
+	}
+	missing := "Scanned /r/go.mod file and found 8 packages\nScanned /r/Cargo.lock file and found 281 packages\n"
+	if err := checkOSVCoverage(missing, "/r", locks); err == nil || !strings.Contains(err.Error(), "site/yarn.lock") {
+		t.Fatalf("a lock file without a line was accepted: %v", err)
+	}
+	empty := "Scanned /r/go.mod file and found 0 packages\nScanned /r/Cargo.lock file and found 281 packages\nScanned /r/site/yarn.lock file and found 592 packages\n"
+	if err := checkOSVCoverage(empty, "/r", locks); err == nil || !strings.Contains(err.Error(), "go.mod") {
+		t.Fatalf("a lock file that gave no package was accepted: %v", err)
+	}
+}
+
+// verifies: REQ-SUPPLY-030
+func TestTheSameAdvisoryFromTwoScansIsOneFinding(t *testing.T) {
+	a := finding{Tool: "govulncheck", IDs: []string{"GO-2026-0001", "CVE-2026-0001"}, Package: "m", Version: "v1"}
+	b := a
+	b.Tool = "osv-scanner"
+	if got := dedupe([]finding{a, b, a}); len(got) != 1 {
+		t.Fatalf("got %d findings, want 1", len(got))
 	}
 }
