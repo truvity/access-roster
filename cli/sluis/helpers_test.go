@@ -35,9 +35,14 @@ func newTestApp(t *testing.T) *testApp {
 
 // do runs the command line and returns its exit code. The buffers keep what it printed.
 func (ta *testApp) do(args ...string) int {
+	return ta.doCtx(context.Background(), args...)
+}
+
+// doCtx is do with a context, which a test cancels to end the command at a moment it chose.
+func (ta *testApp) doCtx(ctx context.Context, args ...string) int {
 	ta.out.Reset()
 	ta.err.Reset()
-	return ta.run(context.Background(), args)
+	return ta.run(ctx, args)
 }
 
 // object decodes the one JSON object on standard output.

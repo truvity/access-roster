@@ -386,7 +386,7 @@ func TestKeyRevokeNeedsBothAddressesInOneRound(t *testing.T) {
 		}
 		return []string{kidA}
 	}
-	if code := c.revoke("--entry-socket", c.entrySock, "--wait", "400ms", "--output", "json"); code != 5 {
+	if code := c.revokeUntilRead(3, "--entry-socket", c.entrySock, "--output", "json"); code != 5 {
 		t.Fatalf("exit %d, want 5; %s", code, c.ta.out.String())
 	}
 	o := c.ta.object(t)
@@ -406,7 +406,7 @@ func TestKeyRevokeKeepsTheLastCompleteRound(t *testing.T) {
 	c.public.hang = func() bool { return reads.Add(1) > 2 }
 	c.public.block = make(chan struct{})
 	t.Cleanup(func() { close(c.public.block) })
-	if code := c.revoke("--entry-socket", c.entrySock, "--wait", "500ms", "--output", "json"); code != 5 {
+	if code := c.revokeUntilRead(3, "--entry-socket", c.entrySock, "--output", "json"); code != 5 {
 		t.Fatalf("exit %d, want 5; %s", code, c.ta.out.String())
 	}
 	if a := addressOf(t, c.ta.object(t), "public"); a["state"] != "listed" {
