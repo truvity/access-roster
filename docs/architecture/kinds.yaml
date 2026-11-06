@@ -829,7 +829,7 @@ kinds:
     readers: [session]
     exportable: no
     backed_up: yes
-    notes: "An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key and the sign count, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream."
+    notes: "An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream."
 
   - name: SigningRing
     serves: work

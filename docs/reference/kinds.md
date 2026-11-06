@@ -610,7 +610,7 @@ A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), t
 
 ### `StaffPasskey`
 
-An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key and the sign count, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
+An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
 
 - **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
