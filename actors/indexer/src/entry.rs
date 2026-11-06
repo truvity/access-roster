@@ -268,6 +268,55 @@ mod tests {
         })
     }
 
+    const RECORD: &str = r#"{"activity_id":3,"actor":{"user":{"type_id":3,"uid":"key@dev"}},"class_uid":6003,"metadata":{"event_code":"key.open","log_name":"dev","product":{"name":"sluis"},"tenant_uid":"acme","uid":"01950000-0000-7000-8000-000000000001"},"status_id":1,"time":1793750400000}"#;
+
+    fn envelope() -> RecordEntry {
+        RecordEntry {
+            uid: "01950000-0000-7000-8000-000000000001".into(),
+            tenant: "acme".into(),
+            time_ms: 1_793_750_400_000,
+            class_uid: 6003,
+            activity_id: 3,
+            status_id: 1,
+            actor_type_id: 3,
+            recorded_ms: 0,
+            sealed: Vec::new(),
+        }
+    }
+
+    /// An entry whose clear envelope differs from the record in one field each is refused, and the
+    /// envelope that agrees is accepted.
+    ///
+    /// verifies: REQ-AUDIT-153
+    #[test]
+    fn an_envelope_that_differs_from_the_record_in_one_field_is_refused() {
+        let opened = Opened::parse(RECORD.as_bytes()).unwrap();
+        assert_eq!(opened.check(&envelope(), "dev"), Ok(()));
+        let lies: [(&str, Box<dyn Fn(&mut RecordEntry)>); 7] = [
+            ("time", Box::new(|e| e.time_ms += 1)),
+            ("class_uid", Box::new(|e| e.class_uid += 1)),
+            ("activity_id", Box::new(|e| e.activity_id += 1)),
+            ("status_id", Box::new(|e| e.status_id += 1)),
+            ("actor type_id", Box::new(|e| e.actor_type_id += 1)),
+            ("metadata.uid", Box::new(|e| e.uid.push('x'))),
+            (
+                "metadata.tenant_uid",
+                Box::new(|e| e.tenant = "globex".into()),
+            ),
+        ];
+        for (field, lie) in lies {
+            let mut e = envelope();
+            lie(&mut e);
+            assert_eq!(opened.check(&e, "dev"), Err(Error::Envelope), "{field}");
+        }
+        // The record names this boundary: the same record under another boundary's log is refused.
+        assert_eq!(
+            opened.check(&envelope(), "prod"),
+            Err(Error::Envelope),
+            "metadata.log_name"
+        );
+    }
+
     /// verifies: REQ-AUDIT-004
     #[test]
     fn the_hash_of_a_record_is_the_sha384_of_its_canonical_bytes() {

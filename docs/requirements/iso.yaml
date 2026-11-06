@@ -522,15 +522,14 @@ requirements:
     rationale: "A stolen cookie then reaches only the boundaries with a loose freshness rule, and only for as long as the rule allows."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-24, section: "3", depth: Full}
     issues: [885, 916]
     verification:
-      - {kind: test-vectors, ref: "T-7: a valid session cookie whose passkey use is older than the production rule; answered with insufficient_user_authentication and acr_values"}
+      - {kind: test-vectors, ref: "T-7: an authentication older than the production rule; answered with insufficient_user_authentication and max_age (the step-up round trip with fakes), and a fresh one is accepted"}
   - id: REQ-ISO-036
     area: ISO
     statement: "The compiled policy MUST forbid a subject of one tenant any grant in another tenant's scope unless a cross-tenant grant allows it."

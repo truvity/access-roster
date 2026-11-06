@@ -242,11 +242,11 @@ func TestKindRegistryCheck(t *testing.T) {
 		change func(*inputs)
 		want   string
 	}{
-		"REQ-DATA-002/an unknown class":     {func(in *inputs) { in.kinds.Kinds[3].Class = "weird" }, "class"},
-		"REQ-DATA-002/no treatment":         {func(in *inputs) { in.kinds.Kinds[3].Treatment = "" }, "treatment"},
-		"REQ-DATA-002/an unknown treatment": {func(in *inputs) { in.kinds.Kinds[3].Treatment = "garbled" }, "treatment"},
-		"REQ-DATA-002/no profile":           {func(in *inputs) { in.kinds.Kinds[3].Profile = "" }, "profile"},
-		"REQ-DATA-002/an unknown profile":   {func(in *inputs) { in.kinds.Kinds[3].Profile = "Whatever" }, "profile"},
+		"REQ-DATA-002/an unknown class":                            {func(in *inputs) { in.kinds.Kinds[3].Class = "weird" }, "class"},
+		"REQ-DATA-002/no treatment":                                {func(in *inputs) { in.kinds.Kinds[3].Treatment = "" }, "treatment"},
+		"REQ-DATA-002/an unknown treatment":                        {func(in *inputs) { in.kinds.Kinds[3].Treatment = "garbled" }, "treatment"},
+		"REQ-DATA-002/no profile":                                  {func(in *inputs) { in.kinds.Kinds[3].Profile = "" }, "profile"},
+		"REQ-DATA-002/an unknown profile":                          {func(in *inputs) { in.kinds.Kinds[3].Profile = "Whatever" }, "profile"},
 		"REQ-DATA-007/a config kind scoped to boundary and tenant": {func(in *inputs) { in.kinds.Kinds[0].Scope = "boundary+tenant" }, "has no tenant scope"},
 		"REQ-DATA-007/a secret kind scoped to boundary and tenant": {func(in *inputs) {
 			in.kinds.Kinds[0].Class = "secret"

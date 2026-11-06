@@ -2288,19 +2288,18 @@ requirements:
       - {kind: integration-test, ref: "a machine-plane record is sealed under the operator tenant's evidence key"}
   - id: REQ-AUDIT-153
     area: AUDIT
-    statement: "A reader that opens an entry MUST check that the clear envelope agrees with the record."
+    statement: "An actor that opens an entry MUST check that the clear envelope agrees with the record."
     rationale: "A writer that lies in the envelope is then caught by the first reader that opens the record (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
-    actors: [reader]
+    actors: [indexer]
     standards: []
     issues: [1218]
     verification:
-      - {kind: test-vectors, ref: "entries whose envelope differs from the record in one field each are reported"}
+      - {kind: test-vectors, ref: "table test in the indexer: an entry whose clear envelope differs from the record in one field each (seven fields and the boundary) is refused"}
   - id: REQ-AUDIT-154
     area: AUDIT
     statement: "In audit alone a record for a tenant the boundary does not know MUST be held in the transport and raise an alarm."
