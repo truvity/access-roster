@@ -26,6 +26,7 @@ Conflicts across files are refused when the layers merge. The merged policy is v
 | vocabulary | [policy-vocabulary.md](policy-vocabulary.md) |
 | `groups_delimiter`, `signing_alg` | [policy-clients.md](policy-clients.md) |
 | GitHub, people and Slack bindings | [policy-bindings.md](policy-bindings.md) |
+| a company's own rows against its ceiling | [policy-fragment.md](policy-fragment.md) |
 
 `session: agent` alone loads. With `signed_out` or `backchannel_logout_uri` it only warns ([agent-class sessions](policy-clients.md#agent-class-sessions)).
 

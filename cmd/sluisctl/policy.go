@@ -14,7 +14,7 @@ import (
 // It touches nothing but the files it is given: no session, no network.
 func policyCommand(args []string) error {
 	if len(args) == 0 {
-		return badUsage("sluisctl policy needs a subcommand: render")
+		return badUsage("sluisctl policy needs a subcommand: render or fragment")
 	}
 	switch args[0] {
 	case "render":
@@ -25,10 +25,11 @@ func policyCommand(args []string) error {
 		_, _ = fmt.Fprint(stdout, policyUsage)
 		return nil
 	}
-	return badUsage("sluisctl policy %q: the subcommand is render", args[0])
+	return badUsage("sluisctl policy %q: the subcommands are render and fragment", args[0])
 }
 
 const policyUsage = `Usage: sluisctl policy render [-o <file>] <file or directory>
+       sluisctl policy fragment check --ceiling <file> [--owner <name>] <fragment>
 
 Renders the one canonical policy document (apiVersion:
 sluis.truvity.github.io/policy/v2,
