@@ -13,7 +13,7 @@ This page is the operator's runbook for a key that may be in the wrong hands. Th
 1. **Declare, do not wait.** A suspected compromise is handled as a compromise. A false alarm costs one refresh per client; a wait costs forged tokens ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#a-person-declares-and-a-suspicion-counts)).
 2. **Only a person declares.** You write a declaration that names the keys, sign it with the publisher key that signs the `KeyPlan`, and deliver it on a node as root ([`sluis key revoke`](/reference/cli/#sluis-key-revoke)). It needs neither sign-in nor the token keys, so it works when both are down. An alert never revokes on its own.
 3. **If the compromise is in the key service itself** (a stolen role, a key policy that let someone else sign, a card in someone else's hands), remove that access first, in the key service. Then declare. A replacement key made under the same access is not a transition ([principle 2](/principles/#2-trust-is-layered-and-redundancy-is-not-a-defence-against-compromise)).
-4. **Read the answer.** The command prints "not confirmed" until it has fetched the published key set from its public address and found the key gone ([principle 4](/principles/#4-verify-never-trust-a-claim)). Treat "not confirmed" as not done.
+4. **Read the answer.** The command prints "not confirmed" until it has fetched the published key set from its public address and the live key set of `entry`, and found the key gone from both ([principle 4](/principles/#4-verify-never-trust-a-claim)). Treat "not confirmed" as not done.
 5. **A revocation is an audit fact and an alert.** It names the keys, the reason and the publisher key that signed the declaration.
 
 A revocation is never undone. A restore, a roll-forward or a write by the key's own node cannot bring a revoked key back ([ADR 0041](/decisions/0041-a-compromised-key-is-revoked-then-replaced/#the-tighten-only-record)).
@@ -23,9 +23,9 @@ A revocation is never undone. A restore, a roll-forward or a write by the key's 
 This is the path with the most at stake, and the one a drill rehearses.
 
 1. **Declare.** `sluis key revoke --boundary B --kid KID --reason compromise --out revoke.yaml` (or `suspicion`), sign `revoke.yaml` with the publisher key, then `sluis key revoke --boundary B --declaration revoke.jws` as root on any node. The command asks `key@` to write a `KeyRevocation` item, and the `key@` of any node can, so a compromised or powered-off node does not block you. `store@` accepts only creates of that kind, so the revocation cannot be undone.
-2. **The key leaves the key set at once.** `exporter@` and `entry` omit every revoked `kid` from every key set they publish, and `exporter@` purges the edge copy. `signer` neither promotes nor signs with the revoked `kid`.
+2. **The key leaves the key set at once.** `exporter@` and `entry` omit every revoked `kid` from every key set they publish, and `exporter@` writes the new set, purges the edge copy and reads it back within 60 seconds ([Publishing public material](/decisions/0009-export/#the-order-and-the-time)). `signer` neither promotes nor signs with the revoked `kid`.
 3. **The replacement signs at once when no other key is active.** On a multi-node installation the other nodes' keys are already published and cached, so nothing else is needed when the compromise is one node's. On a single-key installation a new key is made, published and purged before its first token.
-4. **Wait for "confirmed".** If it stays "not confirmed", the edge copy is stale: purge it by hand and run `sluis key status`.
+4. **Wait for "confirmed".** The command checks two addresses and needs the `kid` gone from both: the public key set, through the edge, and the live key set of `entry`. It names the one that still lists the key. If the public address does, the edge copy is stale or `exporter@` could not publish: read its report (`ExportReport`) and purge the address by hand in the edge's own console or API (for Cloudflare, the purge of the URL). If only the live key set does, `entry` has not reread `KeyRevocation`: look at its answer. Then run `sluis key revoke --declaration` again; it is a retry and changes nothing that exists. Treat "not confirmed" as not done.
 5. **Find the forgeries.** Every signature is an audit fact, so a token in the window that has no matching fact is forged. A relying party that logs `jti` can do the same; ask the relying parties for their logs.
 
 What people and relying parties see:
@@ -96,6 +96,7 @@ Each figure is the time from the declaration to the first refusal by a verifier 
 |---|---|---|---|---|
 | Token-signing key, a standard verifier | | | | |
 | Token-signing key, the edge cache purged | | | | |
+| exporter@: the revocation seen to the read back completed (target 60 seconds) | | | | |
 | Workload-issuer key, AWS | | | | |
 | Workload-issuer key, GCP | | | | |
 | Workload-issuer key, Entra | | | | |
