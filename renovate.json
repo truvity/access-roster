@@ -131,21 +131,6 @@
         "go"
       ],
       "enabled": false
-    },
-    {
-      "description": [
-        "Branch `main` is v2 (Go, Rust, Astro and Starlight under site/); `master` is v1. This file is read from",
-        "the default branch, so a rule that holds for one line only says so with matchBaseBranches. On main the",
-        "managers are gomod (one module), cargo (one workspace), npm (site/, Yarn), devbox and github-actions;",
-        "the preset's grouping (all non-major in one PR, after three days), 0.x minors, majors by estate decision",
-        "and the weekly lock file maintenance apply as on master. The one difference is automerge: v2 is merged by",
-        "the maintainer (GOVERNANCE.md), so Renovate opens the pull requests on main and does not merge them (security fixes keep the preset's automerge).",
-        "To let it, delete this rule once the `checks` job has been green on a few of them."
-      ],
-      "matchBaseBranches": [
-        "main"
-      ],
-      "automerge": false
     }
   ],
   "constraintsFiltering": "strict",
