@@ -3,7 +3,9 @@
 //! in-memory engine and the rqlite driver on a real rqlited (`just rqlite-fetch`; without the binary the rqlite
 //! half prints `SKIP`, and `SLUIS_REQUIRE_RQLITED=1` makes that a failure). A delete and the re-creation that
 //! follows it (before and while the watch is open), an expiry and the re-creation after it, and an item changed many times each end, for a consumer that
-//! dedupes by the log sequence, with the right state.
+//! dedupes by the log sequence, with the right state. The same rigs show that an item re-created after a delete or a
+//! sweep is at version 1, that two store@ instances with different clocks leave the timestamps they computed
+//! themselves, and that takers racing for a lease have one winner and a fencing token that grows by one at each takeover.
 
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -14,7 +16,7 @@ use std::time::{Duration, SystemTime};
 
 use connectrpc::error::ErrorCode;
 use sluis_conformance::memory::MemoryEngine;
-use sluis_kit::{Allow, Identities, ServerConfig, dial};
+use sluis_kit::{Allow, Identities, ServerConfig, dial, refusal_reason};
 use sluis_proto::sluis::store::v2alpha1::{
     ChangeType, GetRequest, ListRequest, Operation, StoreServiceClient, StoreServiceExt as _, Verb,
     WatchRequest, WatchResponse, WriteRequest,
@@ -28,7 +30,7 @@ use store::config::NoConfig;
 use store::engine::DriverEngine;
 use store::grant::{GrantOpener, OpenError};
 use store::secret::NoSecrets;
-use store::service::{Deps, Service};
+use store::service::{Clock, Deps, Service};
 
 /// `PinReleaseRequest`: a temp kind that key@ alone writes and watches, with a time to live.
 const TEMP: &str = "pin-release-request";
@@ -40,6 +42,10 @@ struct Rig {
     name: &'static str,
     client: StoreServiceClient<sluis_kit::Transport>,
     sweep: Sweeper,
+    /// Where the engines are served, so that a second store@ can be served over the same ones.
+    dir: PathBuf,
+    durable_sock: PathBuf,
+    temp_sock: PathBuf,
     _keep: Vec<Box<dyn std::any::Any + Send>>,
 }
 
@@ -76,6 +82,17 @@ async fn serve_store(
     durable: &Path,
     temp: &Path,
 ) -> StoreServiceClient<sluis_kit::Transport> {
+    serve_store_as(dir, "store.sock", durable, temp, Arc::new(SystemTime::now)).await
+}
+
+/// The same, on the socket `name` and with the given clock.
+async fn serve_store_as(
+    dir: &Path,
+    name: &str,
+    durable: &Path,
+    temp: &Path,
+    clock: Clock,
+) -> StoreServiceClient<sluis_kit::Transport> {
     let svc = Service::new(Deps {
         boundary: "dev".into(),
         durable: DriverEngine::new(&dial(durable), "durable"),
@@ -84,12 +101,12 @@ async fn serve_store(
         config: Arc::new(NoConfig),
         secrets: Arc::new(NoSecrets),
         audit: Quiet,
-        clock: Arc::new(SystemTime::now),
+        clock,
     })
     .with_watch_timing(Duration::from_secs(30), Duration::from_millis(50));
     let me = rustix::process::geteuid().as_raw();
     let ids = Identities::with(0, move |u| (u == me).then_some(("key", 0)));
-    let sock = dir.join("store.sock");
+    let sock = dir.join(name);
     tokio::spawn(sluis_kit::serve_with(
         ServerConfig {
             actor: "store",
@@ -133,6 +150,9 @@ async fn memory_rig() -> Rig {
             let t = swept.clone();
             Box::pin(async move { t.sweep() })
         }),
+        dir: dir.path().to_path_buf(),
+        durable_sock: dsock,
+        temp_sock: tsock,
         _keep: vec![Box::new(dir)],
     }
 }
@@ -260,6 +280,9 @@ async fn rqlite_rig() -> Option<Rig> {
                     .unwrap();
             })
         }),
+        dir: dir.path().to_path_buf(),
+        durable_sock: dsock,
+        temp_sock: tsock,
         _keep: vec![Box::new(dir), Box::new(node)],
     })
 }
@@ -267,10 +290,14 @@ async fn rqlite_rig() -> Option<Rig> {
 // ---- the scenarios ----
 
 fn operation(verb: Verb, id: &str, value: &[u8], ttl: Option<i64>) -> Operation {
+    operation_of(TEMP, verb, id, value, ttl)
+}
+
+fn operation_of(kind: &str, verb: Verb, id: &str, value: &[u8], ttl: Option<i64>) -> Operation {
     Operation {
         verb: verb.into(),
         address: Address {
-            kind: TEMP.into(),
+            kind: kind.into(),
             id: id.into(),
             ..Address::default()
         }
@@ -286,15 +313,33 @@ fn operation(verb: Verb, id: &str, value: &[u8], ttl: Option<i64>) -> Operation 
     }
 }
 
+/// store@ over the engines of `rig` with its own clock, on a socket of its own: a second node of the same installation.
 impl Rig {
-    async fn write(&self, op: Operation) {
-        self.client
-            .write(WriteRequest {
-                operations: vec![op],
-                ..WriteRequest::default()
-            })
+    async fn store_with_clock(
+        &self,
+        name: &str,
+        at: SystemTime,
+    ) -> StoreServiceClient<sluis_kit::Transport> {
+        serve_store_as(
+            &self.dir,
+            name,
+            &self.durable_sock,
+            &self.temp_sock,
+            Arc::new(move || at),
+        )
+        .await
+    }
+
+    /// A write that may be refused, through the store@ of the rig.
+    async fn try_write(&self, op: Operation) -> Result<u64, connectrpc::ConnectError> {
+        write_through(&self.client, op).await
+    }
+
+    /// A write that must succeed; the version it gave the item.
+    async fn write(&self, op: Operation) -> u64 {
+        self.try_write(op)
             .await
-            .unwrap_or_else(|e| panic!("{}: write: {e:?}", self.name));
+            .unwrap_or_else(|e| panic!("{}: write: {e:?}", self.name))
     }
 
     async fn position(&self) -> u64 {
@@ -349,6 +394,31 @@ impl Rig {
             Err(e) => panic!("{}: get: {e:?}", self.name),
         }
     }
+}
+
+trait WithVersion {
+    fn with_version(self, v: u64) -> Self;
+}
+
+impl WithVersion for Operation {
+    fn with_version(mut self, v: u64) -> Self {
+        self.if_version = v;
+        self
+    }
+}
+
+async fn write_through(
+    client: &StoreServiceClient<sluis_kit::Transport>,
+    op: Operation,
+) -> Result<u64, connectrpc::ConnectError> {
+    let done = client
+        .write(WriteRequest {
+            operations: vec![op],
+            ..WriteRequest::default()
+        })
+        .await?
+        .into_owned();
+    Ok(done.items.first().map_or(0, |i| i.version))
 }
 
 fn kind_of(m: &WatchResponse) -> ChangeType {
@@ -430,10 +500,14 @@ async fn delete_then_re_create(rig: &Rig) {
     let from = rig.position().await;
     rig.write(operation(Verb::CREATE, "node-a/n1", b"old", Some(600)))
         .await;
+    rig.write(operation(Verb::UPDATE, "node-a/n1", b"older", None).with_version(1))
+        .await;
     rig.write(operation(Verb::DELETE, "node-a/n1", b"", None))
         .await;
-    rig.write(operation(Verb::CREATE, "node-a/n1", b"new", Some(600)))
+    let again = rig
+        .write(operation(Verb::CREATE, "node-a/n1", b"new", Some(600)))
         .await;
+    assert_eq!(again, 1, "{}: re-created after a delete", rig.name);
     let seen = rig.changes(from).await;
     let types: Vec<_> = seen.iter().map(kind_of).collect();
     let delete = types
@@ -494,8 +568,10 @@ async fn delete_then_re_create_while_watching(rig: &Rig) {
     c.apply(&first);
     rig.write(operation(Verb::DELETE, "node-a/w1", b"", None))
         .await;
-    rig.write(operation(Verb::CREATE, "node-a/w1", b"new", Some(600)))
+    let again = rig
+        .write(operation(Verb::CREATE, "node-a/w1", b"new", Some(600)))
         .await;
+    assert_eq!(again, 1, "{}: re-created after a delete", rig.name);
     let mut types = Vec::new();
     loop {
         match tokio::time::timeout(Duration::from_secs(2), stream.message()).await {
@@ -526,10 +602,14 @@ async fn expiry_then_re_create(rig: &Rig) {
     let from = rig.position().await;
     rig.write(operation(Verb::CREATE, "node-a/x1", b"first", Some(1)))
         .await;
+    rig.write(operation(Verb::UPDATE, "node-a/x1", b"first-again", Some(1)).with_version(1))
+        .await;
     tokio::time::sleep(Duration::from_millis(1400)).await;
     (rig.sweep)().await;
-    rig.write(operation(Verb::CREATE, "node-a/x1", b"second", Some(600)))
+    let again = rig
+        .write(operation(Verb::CREATE, "node-a/x1", b"second", Some(600)))
         .await;
+    assert_eq!(again, 1, "{}: re-created after a sweep", rig.name);
     let seen = rig.changes(from).await;
     let mut c = Consumer::default();
     for m in &seen {
@@ -580,7 +660,168 @@ async fn many_changes_end_with_the_last(rig: &Rig) {
     );
 }
 
-/// verifies: REQ-DATA-100, REQ-DATA-101
+/// A frozen clock at `secs` seconds since the epoch.
+fn frozen(secs: u64) -> SystemTime {
+    SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
+}
+
+async fn expiry_of(client: &StoreServiceClient<sluis_kit::Transport>, id: &str) -> i64 {
+    client
+        .get(GetRequest {
+            address: Address {
+                kind: TEMP.into(),
+                id: id.into(),
+                ..Address::default()
+            }
+            .into(),
+            ..GetRequest::default()
+        })
+        .await
+        .unwrap()
+        .into_owned()
+        .item
+        .as_option()
+        .unwrap()
+        .expires_at
+        .as_option()
+        .expect("an expiry")
+        .seconds
+}
+
+/// Two store@ instances over the same engines, one a day ahead of the other: each item carries the expiry that the
+/// instance which wrote it computed from its own clock, a later write replaces it with the later writer's own, and the
+/// engine adds none of its own (a client has no field for a time other than the time to live).
+async fn two_nodes_leave_the_timestamps_they_computed(rig: &Rig) {
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let (a_now, b_now) = (secs, secs + 86_400);
+    let a = rig.store_with_clock("node-a.sock", frozen(a_now)).await;
+    let b = rig.store_with_clock("node-b.sock", frozen(b_now)).await;
+    let ttl = |id: &str, ttl: i64| operation(Verb::CREATE, id, b"v", Some(ttl));
+    write_through(&a, ttl("node-a/c1", 600)).await.unwrap();
+    write_through(&b, ttl("node-b/c1", 600)).await.unwrap();
+    let want = |now: u64, ttl: u64| i64::try_from(now + ttl).unwrap();
+    // Read through node a, whose clock is behind both: an item that the node ahead wrote is not yet past its expiry for
+    // it. (Node b would read node a's item as expired, which is the expiry store@ computed, kept.)
+    assert_eq!(
+        expiry_of(&a, "node-a/c1").await,
+        want(a_now, 600),
+        "{}: written by the node behind",
+        rig.name
+    );
+    assert_eq!(
+        expiry_of(&a, "node-b/c1").await,
+        want(b_now, 600),
+        "{}: written by the node ahead",
+        rig.name
+    );
+    // Node b changes the item that node a made: the time is b's now.
+    write_through(
+        &b,
+        operation(Verb::UPDATE, "node-a/c1", b"w", Some(300)).with_version(1),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        expiry_of(&a, "node-a/c1").await,
+        want(b_now, 300),
+        "{}: an update sets the time again, from the clock of whoever wrote it",
+        rig.name
+    );
+}
+
+/// Takers racing for one lease through store@: one wins each round, the version is the fencing token and grows by one at
+/// each takeover, and the ones that lose are told why (the lease is taken, or the version they read is stale).
+async fn lease_takers_have_one_winner(rig: &Rig) {
+    const TAKERS: usize = 6;
+    assert_eq!(
+        sluis_registry::kind_by_name("Lease").map(|k| k.class),
+        Some(sluis_registry::Class::Temp),
+        "the lease is a temp kind"
+    );
+    let lease = |verb, who: usize, v| {
+        operation_of(
+            "lease",
+            verb,
+            "key/race",
+            format!("taker-{who}").as_bytes(),
+            None,
+        )
+        .with_version(v)
+    };
+    for round in 0..4u64 {
+        let tries = futures::future::join_all((0..TAKERS).map(|i| async move {
+            let op = if round == 0 {
+                lease(Verb::CREATE, i, 0)
+            } else {
+                lease(Verb::UPDATE, i, round)
+            };
+            (i, rig.try_write(op).await)
+        }))
+        .await;
+        let mut winner = None;
+        for (i, r) in tries {
+            match r {
+                Ok(version) => {
+                    assert!(
+                        winner.is_none(),
+                        "{}: two winners in round {round}",
+                        rig.name
+                    );
+                    assert_eq!(
+                        version,
+                        round + 1,
+                        "{}: the token of round {round}",
+                        rig.name
+                    );
+                    winner = Some(i);
+                }
+                Err(e) => {
+                    let (code, why) = if round == 0 {
+                        (ErrorCode::AlreadyExists, "taken")
+                    } else {
+                        (ErrorCode::Aborted, "version")
+                    };
+                    assert_eq!(
+                        (e.code, refusal_reason(&e).as_deref()),
+                        (code, Some(why)),
+                        "{}: a loser of round {round}",
+                        rig.name
+                    );
+                }
+            }
+        }
+        let winner = winner.unwrap_or_else(|| panic!("{}: no winner in round {round}", rig.name));
+        let held = rig
+            .client
+            .get(GetRequest {
+                address: Address {
+                    kind: "lease".into(),
+                    id: "key/race".into(),
+                    ..Address::default()
+                }
+                .into(),
+                ..GetRequest::default()
+            })
+            .await
+            .unwrap()
+            .into_owned()
+            .item
+            .as_option()
+            .unwrap()
+            .clone();
+        assert_eq!(
+            (held.version, held.value),
+            (round + 1, format!("taker-{winner}").into_bytes()),
+            "{}: the lease after round {round}",
+            rig.name
+        );
+    }
+}
+
+/// verifies: REQ-DATA-100, REQ-DATA-101, REQ-DATA-054, REQ-DATA-063, REQ-DATA-098
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn on_the_memory_engine_a_consumer_by_sequence_ends_with_the_right_state() {
     let rig = memory_rig().await;
@@ -588,9 +829,11 @@ async fn on_the_memory_engine_a_consumer_by_sequence_ends_with_the_right_state()
     delete_then_re_create_while_watching(&rig).await;
     expiry_then_re_create(&rig).await;
     many_changes_end_with_the_last(&rig).await;
+    two_nodes_leave_the_timestamps_they_computed(&rig).await;
+    lease_takers_have_one_winner(&rig).await;
 }
 
-/// verifies: REQ-DATA-100, REQ-DATA-101
+/// verifies: REQ-DATA-100, REQ-DATA-101, REQ-DATA-054, REQ-DATA-063, REQ-DATA-098
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn on_rqlite_a_consumer_by_sequence_ends_with_the_right_state() {
     let Some(rig) = rqlite_rig().await else {
@@ -600,4 +843,6 @@ async fn on_rqlite_a_consumer_by_sequence_ends_with_the_right_state() {
     delete_then_re_create_while_watching(&rig).await;
     expiry_then_re_create(&rig).await;
     many_changes_end_with_the_last(&rig).await;
+    two_nodes_leave_the_timestamps_they_computed(&rig).await;
+    lease_takers_have_one_winner(&rig).await;
 }
