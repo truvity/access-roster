@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"testing"
 	"time"
 
@@ -542,4 +543,256 @@ func TestTenantExitMakesChainFactsUnopenable(t *testing.T) {
 	if pt, err := open1(b.client("exchange"), "chain", "session-chain", "globex", vecID, globex, nil); err != nil || string(pt) != "globex facts" {
 		t.Fatalf("another tenant's chain after the exit: %q, %v", pt, err)
 	}
+}
+
+// A Seal or an Open of a tenant's data or evidence key is refused by key@'s own grant check, whatever else is in
+// the call: the envelope is real, the caller's rule allows the call, and the same call passes with a good grant.
+// key@ has no store rule in these tests (the fake store serves wraps and config only), so the refusals below are
+// the grant check standing alone, as the second verification line asks.
+//
+// verifies: REQ-KEYS-030
+func TestTenantKeyCallsRefuseWithoutAMatchingGrant(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	refusals := func() int {
+		c := 0
+		for _, ev := range n.audit.all() {
+			if ev.Action == ActionRefuse && ev.Reason == reasonGrant {
+				c++
+			}
+		}
+		return c
+	}
+	for _, u := range []struct{ purpose, kind, sealer, opener string }{
+		{"data", "person", "session", "session"},
+		{"evidence", "usage", "writer", "indexer"},
+	} {
+		t.Run(u.purpose, func(t *testing.T) {
+			// Every actor named here has the rule it needs: the registry, not a grant, allows the call.
+			if !registry.KeyAllows(u.sealer, registry.ScopeTenant, u.purpose, "seal") || !registry.KeyAllows(u.opener, registry.ScopeTenant, u.purpose, "open") {
+				t.Fatalf("the registry gives %s no seal or %s no open of tenant %s", u.sealer, u.opener, u.purpose)
+			}
+			sealG := func(holder string, tenants, ops []string, life time.Duration) []byte {
+				return n.grant(holder, tenants, ops, life)
+			}
+			seal := func(grant []byte) ([]byte, error) {
+				return seal1(n.client(u.sealer), u.purpose, u.kind, "acme", vecID, []byte("secret"), grant)
+			}
+			open := func(env, grant []byte) ([]byte, error) {
+				return open1(n.client(u.opener), u.purpose, u.kind, "acme", vecID, env, grant)
+			}
+			good, err := seal(sealG(u.sealer, []string{"acme"}, []string{"seal"}, time.Minute))
+			if err != nil {
+				t.Fatalf("a good grant was refused: %v", err)
+			}
+			if pt, err := open(good, sealG(u.opener, []string{"acme"}, []string{"open"}, time.Minute)); err != nil || string(pt) != "secret" {
+				t.Fatalf("Open with a good grant = %q, %v", pt, err)
+			}
+
+			sealShort := sealG(u.sealer, []string{"acme"}, []string{"seal"}, 10*time.Second)
+			openShort := sealG(u.opener, []string{"acme"}, []string{"open"}, 10*time.Second)
+			sealKeep := sealG(u.sealer, []string{"acme"}, []string{"seal"}, time.Minute)
+			openKeep := sealG(u.opener, []string{"acme"}, []string{"open"}, time.Minute)
+			before, calls := refusals(), 0
+			sealCases := map[string][]byte{
+				"seal, no grant":                   nil,
+				"seal, a grant for another tenant": sealG(u.sealer, []string{"globex"}, []string{"seal"}, time.Minute),
+				"seal, a grant for open only":      sealG(u.sealer, []string{"acme"}, []string{"open"}, time.Minute),
+				"seal, a grant made for another":   sealG(u.opener+"x", []string{"acme"}, []string{"seal"}, time.Minute),
+			}
+			openCases := map[string][]byte{
+				"open, no grant":                   nil,
+				"open, a grant for another tenant": sealG(u.opener, []string{"globex"}, []string{"open"}, time.Minute),
+				"open, a grant for seal only":      sealG(u.opener, []string{"acme"}, []string{"seal"}, time.Minute),
+				"open, a grant made for another":   sealG(u.sealer+"x", []string{"acme"}, []string{"open"}, time.Minute),
+			}
+			for name, g := range sealCases {
+				env, err := seal(g)
+				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
+				if env != nil {
+					t.Errorf("%s: an envelope came back with the refusal", name)
+				}
+				calls++
+			}
+			for name, g := range openCases {
+				pt, err := open(good, g)
+				wantRefusalNamed(t, name, err, connect.CodePermissionDenied, "grant")
+				if pt != nil {
+					t.Errorf("%s: plaintext came back with the refusal", name)
+				}
+				calls++
+			}
+			// The grant is checked per item: one item of another tenant fails the whole batch, though the
+			// first item alone is allowed by the grant.
+			globexGrant := sealG(u.sealer, []string{"globex"}, []string{"seal"}, time.Minute) // before the client: the identity is read per connection
+			other, err := seal1(n.client(u.sealer), u.purpose, u.kind, "globex", vecID, []byte("other"), globexGrant)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := n.client(u.opener).Open(context.Background(), connect.NewRequest(&keyv2alpha1.OpenRequest{
+				Items: []*keyv2alpha1.OpenItem{
+					{Purpose: u.purpose, Address: addr(u.kind, "acme", vecID), Envelope: good},
+					{Purpose: u.purpose, Address: addr(u.kind, "globex", vecID), Envelope: other},
+				}, Grant: openKeep,
+			}))
+			wantRefusalNamed(t, "open, a batch with an item of another tenant", err, connect.CodePermissionDenied, "grant")
+			if res != nil {
+				t.Error("a refused batch returned plaintexts")
+			}
+			calls++
+
+			// An expired grant: good until its second of expiry, and refused from it (not after it).
+			if _, err := seal(sealShort); err != nil {
+				t.Fatalf("a fresh grant was refused: %v", err)
+			}
+			if _, err := open(good, openShort); err != nil {
+				t.Fatalf("a fresh grant was refused: %v", err)
+			}
+			e.clock.advance(10 * time.Second)
+			if env, err := seal(sealShort); env != nil {
+				t.Error("an expired grant sealed")
+			} else {
+				wantRefusalNamed(t, "seal, an expired grant", err, connect.CodePermissionDenied, "grant")
+			}
+			if pt, err := open(good, openShort); pt != nil {
+				t.Error("an expired grant opened")
+			} else {
+				wantRefusalNamed(t, "open, an expired grant", err, connect.CodePermissionDenied, "grant")
+			}
+			calls += 2
+			// The grants that were not expired still work, so each refusal above is the grant's fault alone.
+			if _, err := seal(sealKeep); err != nil {
+				t.Errorf("a grant that had not expired was refused: %v", err)
+			}
+			if _, err := open(good, openKeep); err != nil {
+				t.Errorf("a grant that had not expired was refused: %v", err)
+			}
+			if got := refusals() - before; got != calls {
+				t.Errorf("%d refusals audited for %d refused calls", got, calls)
+			}
+		})
+	}
+}
+
+// A grant is sealed, not signed: it is an AES-256-GCM envelope of the purpose grant under the boundary's grant key,
+// bound to the address (boundary, tenant "-", kind "grant", the decision id). The purpose byte is in the clear header
+// and in the authenticated context, so a grant that is opened as another purpose, or an envelope of another purpose
+// presented as a grant, or a grant with any byte changed, is refused.
+//
+// verifies: REQ-ISO-067
+func TestGrantIsSealedUnderTheGrantKeyWithThePurposeInTheContext(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	g := grantProto("session", []string{"acme"}, e.clock.now(), time.Minute)
+	res, err := n.client("policy").SealGrant(context.Background(), connect.NewRequest(&keyv2alpha1.SealGrantRequest{Grant: g}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed := res.Msg.GetSealedGrant()
+	idLen := int(binary.BigEndian.Uint16(sealed))
+	id, env := string(sealed[2:2+idLen]), sealed[2+idLen:]
+	if id != g.GetDecisionId() {
+		t.Fatalf("the sealed grant names decision %q, want %q", id, g.GetDecisionId())
+	}
+	if h, err := envelope.ParseHeader(env); err != nil || h.Purpose != envelope.CodeGrant || h.Generation != sealGeneration {
+		t.Fatalf("header = %+v, %v; want purpose grant, generation %d", h, err, sealGeneration)
+	}
+	// The grant is not readable from the sealed form.
+	for _, secret := range []string{"session", "acme", "token.issue"} {
+		if bytes.Contains(sealed, []byte(secret)) {
+			t.Errorf("the sealed grant holds %q in the clear", secret)
+		}
+	}
+	// The grant key is the boundary's key of the purpose grant: the envelope opens under it at the grant address, and
+	// the plaintext is the grant policy decided.
+	var key []byte
+	if err := n.srv.withKey(context.Background(), keyRef{"", "grant", sealGeneration}, false, func(k []byte) error {
+		key = bytes.Clone(k)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	grantAddr := envelope.Address{Boundary: testBoundary, Tenant: envelope.NoTenant, Kind: "grant", ID: id}
+	pt, err := envelope.Open(key, env, grantAddr)
+	if err != nil {
+		t.Fatalf("the grant does not open under the grant key at its address: %v", err)
+	}
+	var opened typev2alpha1.Grant
+	if err := proto.Unmarshal(pt, &opened); err != nil || opened.GetHolder() != "session" || opened.GetDecisionId() != id {
+		t.Fatalf("opened grant = %v, %v", &opened, err)
+	}
+	wire := func(id string, env []byte) []byte {
+		out := binary.BigEndian.AppendUint16(nil, uint16(len(id))) //nolint:gosec // a decision id is short
+		return append(append(out, id...), env...)
+	}
+	openGrant := func(sealed []byte) error {
+		_, err := n.client("store").OpenGrant(context.Background(), connect.NewRequest(&keyv2alpha1.OpenGrantRequest{SealedGrant: sealed}))
+		return err
+	}
+	if err := openGrant(sealed); err != nil { // the control: every refusal below is the change made to it
+		t.Fatalf("the untouched grant was refused: %v", err)
+	}
+	if got := wire(id, env); !bytes.Equal(got, sealed) {
+		t.Fatal("the wire form of a sealed grant is not u16 length | decision id | envelope")
+	}
+
+	// The purpose in the context: the same grant plaintext sealed under the same key at the same address, but as the
+	// data purpose, is no grant; nor is the grant's envelope with the purpose byte changed.
+	asData, err := envelope.Seal(key, envelope.CodeData, sealGeneration, grantAddr, pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relabelled := bytes.Clone(env)
+	relabelled[1] = envelope.CodeData
+	if _, err := envelope.Open(key, relabelled, grantAddr); !errors.Is(err, envelope.ErrOpen) {
+		t.Errorf("a grant with the purpose byte changed opens at the envelope: %v", err)
+	}
+	// An envelope of the data purpose, sealed by key@ itself under the boundary's data key at the grant's address and
+	// then labelled as a grant, is under another key.
+	dataEnv, err := seal1(n.client("exchange"), "data", "grant", "", id, pt, nil)
+	if err != nil {
+		t.Fatalf("seal a boundary value at the address of the grant: %v", err)
+	}
+	labelled := bytes.Clone(dataEnv)
+	labelled[1] = envelope.CodeGrant
+	for name, bad := range map[string][]byte{
+		"the grant plaintext sealed as data":      wire(id, asData),
+		"the grant with its purpose byte changed": wire(id, relabelled),
+		"a data envelope as it is":                wire(id, dataEnv),
+		"a data envelope labelled as a grant":     wire(id, labelled),
+		"the grant under another decision id":     wire("0192f4a0-0000-7000-8000-ffffffffffff", env),
+		"the grant with a longer id length":       append(binary.BigEndian.AppendUint16(nil, uint16(idLen+1)), sealed[2:]...), //nolint:gosec // a decision id is short
+		"the grant cut after its header":          wire(id, env[:envelope.HeaderLen]),
+		"the grant with its tag cut":              wire(id, env[:len(env)-1]),
+		"the grant with a byte appended":          wire(id, append(bytes.Clone(env), 0)),
+		"the id alone":                            sealed[:2+idLen],
+		"nothing":                                 nil,
+		"zeroes":                                  make([]byte, envelope.MinLen),
+	} {
+		wantRefusalNamed(t, name, openGrant(bad), connect.CodePermissionDenied, "grant")
+	}
+	// The boundary is in the context too: the envelope does not open as the grant of another boundary.
+	if _, err := envelope.Open(key, env, envelope.Address{Boundary: "other", Tenant: envelope.NoTenant, Kind: "grant", ID: id}); !errors.Is(err, envelope.ErrOpen) {
+		t.Errorf("a grant opens at the address of another boundary: %v", err)
+	}
+
+	// Authenticated: a change of any byte of the envelope, in the header, the nonce, the ciphertext or the tag, is
+	// refused by OpenGrant, and by the grant check of a Seal that carries it.
+	for i := range env {
+		bad := bytes.Clone(env)
+		bad[i] ^= 1
+		err := openGrant(wire(id, bad))
+		if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "grant" {
+			t.Errorf("OpenGrant with byte %d of the envelope changed: %v, want permission_denied/grant", i, err)
+		}
+	}
+	for _, i := range []int{1, envelope.HeaderLen, envelope.HeaderLen + 12, len(env) - 1} { // purpose, nonce, ciphertext, tag
+		bad := bytes.Clone(env)
+		bad[i] ^= 1
+		_, err := seal1(n.client("session"), "data", "person", "acme", vecID, []byte("x"), wire(id, bad))
+		wantRefusalNamed(t, "use, byte "+fmtAny(i), err, connect.CodePermissionDenied, "grant")
+	}
+	// A grant that is a grant is still refused to the actor with no rule to seal one.
+	_, err = n.client("session").SealGrant(context.Background(), connect.NewRequest(&keyv2alpha1.SealGrantRequest{Grant: g}))
+	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 }

@@ -500,16 +500,16 @@ requirements:
     rationale: "The grant check is the second of two independent checks between an actor and a tenant's sealed value (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [800]
+    tests: [actors/key/internal/keyd/seal_test.go]
     verification:
-      - {kind: integration-test, ref: "Seal and Open with no grant, with an expired grant, with a grant for another tenant and for another operation; each refused"}
-      - {kind: integration-test, ref: "the store's rule switched off: the grant check alone still refuses"}
+      - {kind: integration-test, ref: "Seal and Open of data and evidence with no grant, an expired grant, a grant for another tenant, another operation or another holder; each refused with the reason grant"}
+      - {kind: integration-test, ref: "key@ alone, with no store rule in the call: the grant check alone refuses each of them, and the same calls pass with a good grant"}
   - id: REQ-KEYS-031
     area: KEYS
     statement: "key@ MUST record every refusal as an audit fact."
