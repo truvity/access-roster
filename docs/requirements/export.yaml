@@ -405,3 +405,17 @@ requirements:
     issues: [1454]
     verification:
       - {kind: integration-test, ref: "a revocation is written: the write, the purge and the read back of the test installation's edge are done within 60 seconds"}
+  - id: REQ-EXPORT-029
+    area: EXPORT
+    statement: "exporter@ MUST send a Put that its destination refuses with 401 or 403 once more after it has read its destination credential again, and no more than once."
+    rationale: "R2 temporary credentials that the API mints were accepted at the first attempt in all 30 trials of the spike of 2026-11-06 and none was refused after an accept, so the destination credential needs one retry and no hold-back, which keeps the revocation inside its 60 seconds (ADR 0009, REQ-EXPORT-028)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [exporter]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake destination refuses the first Put with 401: the write and the purge still finish within the 60 seconds of REQ-EXPORT-028; two refusals fail the Put after two attempts"}
