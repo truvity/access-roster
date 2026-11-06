@@ -35,7 +35,7 @@ func runScript(t *testing.T, args ...string) {
 	}
 }
 
-// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029, REQ-DEPLOY-031
+// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029, REQ-DEPLOY-031, REQ-DEPLOY-043
 func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 	// prereq-test.sh: the packages of each family, the refusal that names them, the systemd floor of the credentials and their
 	// encryption under the board's host key, run against fakes of dpkg, rpm, systemctl and systemd-creds; and the wait for the units after the start (settle_units: a unit
@@ -47,7 +47,7 @@ func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 // the PIN of boards-unlock reaches the board on standard input only, SLUIS_BOARD_SSH_OPTIONS reaches every ssh, a board without tar is
 // refused before anything is sent, and an rqlite package whose sha256 differs from its pin is refused. It needs jq.
 //
-// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037
+// verifies: REQ-DEPLOY-034, REQ-DEPLOY-035, REQ-DEPLOY-036, REQ-DEPLOY-037, REQ-DEPLOY-043
 func TestBoardsScriptsAgainstAFakeSsh(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq is not installed: boards-test.sh needs it (it is in devbox)")

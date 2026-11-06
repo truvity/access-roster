@@ -320,8 +320,10 @@ deploy)
 	# The actors dial each other when they start and retry every two seconds until the peer is up, so give them time: the wait ends
 	# when every unit is active and has not restarted for about 6 s, or after settle_timeout (60 s). A unit that restarts, or is not active
 	# by then, fails the deploy with the last lines of its journal. The one state that does not is a card board that is locked,
-	# waiting for its PIN (settle_units in remote-lib.sh): it prints "SLUIS-BOARD-STATE: locked" as its last line and exits
-	# with settle_locked_status (10); boards.sh reads the line first, and says what to do next. Everything printed above this line was a static check or a start, and says nothing about a run.
+	# waiting for its PIN (settle_units in remote-lib.sh): the card driver says it (sluis node status), every unit that has not settled
+	# is waiting for the driver, and the last line is "SLUIS-BOARD-STATE: locked"; the exit status is settle_locked_status (10), and
+	# boards.sh reads the line first and says what to do next. A card board that is unlocked ends "ok". Everything printed above
+	# this line was a static check or a start, and says nothing about a run.
 	echo "settling: waiting up to ${settle_timeout}s for ${#units[@]} units to be active and not to restart for about 6 s"
 	rc=0
 	settle_units "${units[@]}" || rc=$?
@@ -402,6 +404,19 @@ status)
 		echo "failed: $failed"
 		rc=1
 	fi
+	# The lock of the card, from the card driver itself (board_lock_state, remote-lib.sh), one line for boards.sh to read. A locked
+	# board is not a failure of status; a card board whose lock cannot be read is: nobody has looked.
+	lock_state=none lock_why=""
+	if systemctl is-enabled --quiet "sluis-drv-key-yubikey-piv@$boundary.service" 2>/dev/null; then
+		board_lock_state
+	fi
+	case "$lock_state" in
+	locked) echo "lock: the card driver is locked: it holds no PIN, so key@ cannot sign or open a key" ;;
+	unlocked) echo "lock: the card driver is unlocked" ;;
+	none) echo "lock: no card driver on this board, so no PIN" ;;
+	*) echo "lock: UNKNOWN: $lock_why"; rc=1 ;;
+	esac
+	printf '%s%s\n' "$lock_state_prefix" "$lock_state"
 	exit "$rc"
 	;;
 

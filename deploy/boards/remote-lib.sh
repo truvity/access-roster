@@ -508,29 +508,63 @@ avc_check() {
 # of its journal, and fails the deploy, with one exception: the locked card board.
 #
 # Every journal read is bounded to this deploy: settle_since is the time just before the units were started (remote.sh sets it,
-# `date '+%Y-%m-%d %H:%M:%S.%6N'`), and `journalctl --since` drops everything older, so a line that an earlier deploy left, the
-# "locked" of a board that has been unlocked since, counts for nothing.
+# `date '+%Y-%m-%d %H:%M:%S.%6N'`), and `journalctl --since` drops everything older, so a line that an earlier deploy left
+# counts for nothing.
 #
-# The locked board (docs/runtimes/bare-metal.md, "The card driver"): a card board starts with no PIN. Its card driver is up and
-# waits for `sluis node unlock`; key@ asks the driver to Ensure its keys, the driver refuses with the reason "locked", and key@
-# exits with `failed_precondition: locked` until the PIN is given. That is a state the operator ends with boards-unlock and not a
-# fault of the deploy, so it is the outcome `locked` (status settle_locked_status, not a failure) when, and only when:
-#   - the card driver's unit settled (it holds the PIN, so it must be up);
-#   - key@ did not settle, and its journal since the start says `failed_precondition: locked`;
-#   - every other unit that did not settle depends on key@ in the unit graph (`systemctl show -p Requires,Wants,BindsTo,After`
-#     names key@'s unit), so that it waits for key@ by construction. A unit that does not, whatever its journal says, and a unit
-#     with a fault of its own, is never taken for a locked board.
-# Anything else that did not settle is a failure.
+# The lock (docs/runtimes/bare-metal.md, "The card driver"): a card board starts with no PIN, and so does a board whose card driver
+# was restarted, which is what a deploy does. Its card driver is up and waits for `sluis node unlock` or for a peer's PIN release;
+# key@ starts and stays up ("key@ ready", "locked: asked the peers for the PIN"), but every Sign or Ecdh it hands to the driver
+# fails with `unavailable: driver`, so the actors that sign or open a key when they start (the writer's first checkpoint) exit and
+# restart, and the other units run. So key@'s journal says nothing that tells the lock from a fault, and every unit may be
+# active while the board is locked. What says it is the card driver: board_lock_state asks it on its admin socket
+# (`sluis node status`, a read-only call that reads and prints no PIN). The outcome is, for a board with the card driver:
+#   ok      every unit settled and the driver says unlocked;
+#   locked  the driver says locked, and every unit that did not settle is waiting for it: it is key@ or needs it (a Requires,
+#           Wants, BindsTo or After of key@'s unit or the card driver's in the unit graph, or the group of key@'s socket, which is
+#           how an actor is allowed to call it), and its last line of output that is not an info, debug or warning log says
+#           `unavailable: driver` or `failed_precondition: locked`, the words with which key@ refuses while the driver is locked.
+#           (No unit unsettled is the common case: the board is locked and nothing is restarting.)
+#   failed  everything else: a unit that did not settle and is not waiting for the lock (a fault of its own, whatever else it
+#           needs), a unit whose output ends in something else, a driver that is not up, and a lock state that cannot be read
+#           (no sluis CLI on the board, no admin socket): "ok" is never said for a lock nobody has looked at.
+# A board without the card driver (the software key) has no PIN: the lock state is "none", and a unit that did not settle fails.
 #
 # The last line it prints is `SLUIS-BOARD-STATE: ok`, `locked` or `failed`: boards.sh reads that line, and the exit status is the
 # second check (0, settle_locked_status, 1). It reads $boundary from the caller. Tunables, for a test: settle_timeout (60 s),
-# settle_step (2 s between polls), settle_stable (3 polls in a row), settle_journal_lines (10).
+# settle_step (2 s between polls), settle_stable (3 polls in a row), settle_journal_lines (10), lock_cli (the sluis CLI of the board).
 settle_timeout=${settle_timeout:-60}
 settle_step=${settle_step:-2}
 settle_stable=${settle_stable:-3}
 settle_journal_lines=${settle_journal_lines:-10}
 settle_locked_status=10
 settle_state_prefix='SLUIS-BOARD-STATE: '
+lock_state_prefix='SLUIS-BOARD-LOCK: '
+lock_cli=${lock_cli:-/opt/sluis/bin/cli/sluis}
+
+# board_lock_state sets lock_state to locked, unlocked or unknown, and lock_why to the reason when it is unknown. It asks the card
+# driver of this board on its admin socket through `sluis node status` (root only; it sends and prints no PIN). The node is this
+# board's host name, as boards-unlock gives it, so that a driver which serves another node is refused (unknown), not believed.
+board_lock_state() {
+	local out node rc=0
+	lock_state=unknown lock_why=""
+	if [ ! -x "$lock_cli" ]; then
+		lock_why="$lock_cli is not on the board: run 'just build-arm64' and 'just boards-deploy'"
+		return 0
+	fi
+	node=${lock_node:-$(uname -n)}
+	out=$("$lock_cli" node status "$node" --boundary "$boundary" 2>&1) || rc=$?
+	if [ "$rc" != 0 ]; then
+		lock_why="'sluis node status' failed (status $rc): ${out:-no output}"
+		return 0
+	fi
+	out=$(printf '%s\n' "$out" | tail -n 1) # a log line of the CLI comes before its answer
+	case "$out" in
+	"node $node is locked") lock_state=locked ;;
+	"node $node is unlocked") lock_state=unlocked ;;
+	*) lock_why="'sluis node status' said something else: $out" ;;
+	esac
+	return 0
+}
 
 # unit_state UNIT prints "ActiveState SubState NRestarts".
 unit_state() {
@@ -550,23 +584,50 @@ unit_journal() {
 	fi
 }
 
-# unit_depends_on UNIT OTHER succeeds when the unit graph says that UNIT waits for OTHER: OTHER is among its Requires, Wants,
-# BindsTo or After.
-unit_depends_on() {
+# unit_last_words UNIT prints the last line that the process of UNIT wrote since settle_since and that is not an info, debug or
+# warning log line (the actors log JSON, one object a line, with "level"): what a process says last before it exits is its
+# error. Only the process's own output is read (_SYSTEMD_UNIT=), not what systemd says about the unit.
+unit_last_words() {
+	local since=()
+	[ -z "${settle_since:-}" ] || since=(--since "$settle_since")
+	journalctl _SYSTEMD_UNIT="$1" ${since[@]+"${since[@]}"} --no-pager -o cat 2>/dev/null |
+		grep -vE '"level" *: *"(INFO|DEBUG|WARN)"|level=(INFO|DEBUG|WARN)' | tail -n 1 || true
+}
+
+# unit_needs_key UNIT KEY_UNIT CARD_UNIT succeeds when UNIT is key@ or needs it: KEY_UNIT or CARD_UNIT is among its Requires, Wants,
+# BindsTo or After, or it is in the group of key@'s sockets (sluis-key-<boundary>), which every unit that may call key@ joins.
+unit_needs_key() {
 	local k v w
+	[ "$1" = "$2" ] && return 0
 	while IFS='=' read -r k v; do
 		for w in $v; do
-			[ "$w" = "$2" ] && return 0
+			case "$k" in
+			SupplementaryGroups) [ "$w" = "sluis-key-$boundary" ] && return 0 ;;
+			*) { [ "$w" = "$2" ] || [ "$w" = "$3" ]; } && return 0 ;;
+			esac
 		done
-	done < <(systemctl show -p Requires -p Wants -p BindsTo -p After "$1" 2>/dev/null || true)
+	done < <(systemctl show -p Requires -p Wants -p BindsTo -p After -p SupplementaryGroups "$1" 2>/dev/null || true)
 	return 1
 }
 
-# settle_units UNIT... waits as described above and prints one line per unit: `unit U active`, `unit U locked ...`, or
-# `unit U FAILED: ...` followed by the last lines of its journal, then the state line. It returns 0 when all settled,
-# settle_locked_status when the board is only locked, and 1 otherwise.
+# unit_waits_for_lock UNIT KEY_UNIT CARD_UNIT succeeds when UNIT is waiting for the PIN: it needs key@ and its last words are the
+# refusal of key@ for a locked driver. A unit with another last word has a fault of its own, however much it needs key@.
+unit_waits_for_lock() {
+	local last
+	unit_needs_key "$1" "$2" "$3" || return 1
+	last=$(unit_last_words "$1")
+	case "$last" in
+	*'unavailable: driver'* | *'failed_precondition: locked'*) return 0 ;;
+	esac
+	return 1
+}
+
+# settle_units UNIT... waits as described above and prints one line per unit: `unit U active`, `unit U waits for the PIN ...`, or
+# `unit U FAILED: ...` followed by the last lines of its journal, then the line `SLUIS-BOARD-LOCK: locked|unlocked|unknown|none`
+# and the state line. It returns 0 when all settled and the board is unlocked, settle_locked_status when the board is only locked,
+# and 1 otherwise.
 settle_units() {
-	local u a s n polls=0 max all key_unit card_unit journal locked=0 failed=0 board_locked=no rc=0 state
+	local u a s n polls=0 max all key_unit card_unit journal locked=0 failed=0 rc=0 state have_card=0
 	local -A prev=() run=() last=() settled=() verdict=()
 	key_unit=sluis-key@$boundary.service
 	card_unit=sluis-drv-key-yubikey-piv@$boundary.service
@@ -591,12 +652,11 @@ settle_units() {
 	done
 	for u in "$@"; do
 		if [ "${run[$u]}" -ge "$settle_stable" ]; then settled[$u]=1; else settled[$u]=0; fi
+		[ "$u" = "$card_unit" ] && have_card=1
 	done
-	# The locked board: the card driver is up and key@ says why it is not.
-	if [ "${settled[$card_unit]:-0}" = 1 ] && [ "${settled[$key_unit]:-1}" = 0 ]; then
-		journal=$(unit_journal "$key_unit")
-		case "$journal" in *'failed_precondition: locked'*) board_locked=yes ;; esac
-	fi
+	# The lock, from the card driver itself, once the units have had their time.
+	lock_state=none lock_why=""
+	if [ "$have_card" = 1 ]; then board_lock_state; fi
 	for u in "$@"; do
 		if [ "${settled[$u]}" = 1 ]; then
 			verdict[$u]=ok
@@ -604,12 +664,9 @@ settle_units() {
 			continue
 		fi
 		journal=$(unit_journal "$u")
-		if [ "$board_locked" = yes ] && [ "$u" = "$key_unit" ]; then
+		if [ "$lock_state" = locked ] && unit_waits_for_lock "$u" "$key_unit" "$card_unit"; then
 			verdict[$u]=locked
-			printf 'unit %s locked: the card driver waits for its PIN, so key@ cannot make its keys (%s); run boards-unlock\n' "$u" "${last[$u]}"
-		elif [ "$board_locked" = yes ] && unit_depends_on "$u" "$key_unit"; then
-			verdict[$u]=locked
-			printf 'unit %s waits for key@, which is locked (%s)\n' "$u" "${last[$u]}"
+			printf 'unit %s waits for the PIN: the card driver is locked and the unit needs key@ (%s); run boards-unlock\n' "$u" "${last[$u]}"
 		else
 			verdict[$u]=failed
 			printf 'unit %s FAILED: not settled after %s s: %s\n' "$u" "$settle_timeout" "${last[$u]}"
@@ -617,8 +674,15 @@ settle_units() {
 		fi
 	done
 	for u in "$@"; do
-		case "${verdict[$u]}" in failed) failed=1 ;; locked) locked=1 ;; esac
+		case "${verdict[$u]}" in failed) failed=1 ;; esac
 	done
+	case "$lock_state" in
+	locked) printf 'lock: the card driver is locked: it holds no PIN, so key@ cannot sign or open a key; run boards-unlock (or a peer that holds the KeyPlan releases it)\n'; locked=1 ;;
+	unlocked) echo "lock: the card driver is unlocked" ;;
+	none) echo "lock: no card driver on this board, so no PIN" ;;
+	*) printf 'lock: UNKNOWN: %s\n' "$lock_why"; failed=1 ;;
+	esac
+	printf '%s%s\n' "$lock_state_prefix" "$lock_state"
 	state=ok
 	if [ "$failed" = 1 ]; then
 		state=failed
