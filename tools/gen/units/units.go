@@ -21,8 +21,8 @@ const (
 	// with its own host key, so that a reflash, which makes a new key, is followed by a deploy that encrypts them again).
 	LoadRoot = "/etc/sluis/credentials"
 	// DriversDir holds every driver's executable. The platform starts a driver (its own unit, beside its owner); an
-	// actor's unit makes this tree noexec, and every place the actor can write, so no actor can start a driver or a
-	// copy of one (REQ-ISO-104).
+	// actor's unit makes this tree noexec, and the places the actor can write (listed in actorUnit), so no actor can
+	// start a driver or a copy of one from them (REQ-ISO-104).
 	DriversDir = BinDir + "/drivers"
 
 	// maxName is the longest user name that systemd-sysusers accepts (31 characters).
@@ -687,9 +687,10 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("StateDirectoryMode=0700")
 	}
 	b.blank()
-	// What an actor may not execute: the drivers' tree, and every place it can write (its run directory, its state
-	// directory, the private /tmp and /var/tmp), so that a copy of a driver cannot run either.
-	noExec := []string{DriversDir, "/run/sluis/" + a.Name, "/tmp", "/var/tmp"}
+	// What an actor may not execute: the drivers' tree, and the places it can write that are listed here (its run
+	// directory, its state directory, the private /tmp and /var/tmp, and /dev/shm), so that a copy of a driver put
+	// there cannot run either.
+	noExec := []string{DriversDir, "/run/sluis/" + a.Name, "/tmp", "/var/tmp", "/dev/shm"}
 	if spec.State {
 		noExec = append(noExec, fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name))
 	}
@@ -896,7 +897,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 
 // harden is the hardening of PLAN.md section 6 and ADR 0003. Without egress a unit has no network at all.
 //
-// Every unit has SocketBindDeny=any: no unit may bind a TCP or UDP port (REQ-ISO-095). The Unix sockets of the
+// Every unit carries SocketBindDeny=any, which asks systemd to deny a bind of a TCP or UDP port (REQ-ISO-095). The Unix sockets of the
 // platform are not affected, and neither is a connection out, so an adapter with egress still connects. noExec are the
 // paths the unit may not execute anything from (REQ-ISO-104). The leading "-" makes a path that does not exist on a
 // board no error. A driver's own unit names none: it is the one the platform starts.

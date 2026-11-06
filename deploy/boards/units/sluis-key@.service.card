@@ -47,7 +47,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/key -/tmp -/var/tmp -/var/lib/sluis-state/%i/key
+NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/key -/tmp -/var/tmp -/dev/shm -/var/lib/sluis-state/%i/key
 ReadWritePaths=/run/sluis/key
 
 [Install]

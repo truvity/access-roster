@@ -185,7 +185,7 @@ func TestNoUnitMayBindAPort(t *testing.T) {
 	}
 }
 
-// An actor may not execute a driver: its unit makes the drivers' tree and every place it can write noexec, and its own
+// An actor may not execute a driver: its unit makes the drivers' tree and the places it can write noexec, and its own
 // executable is under neither. The platform starts each driver as a unit of its own, which names no noexec path, so that
 // its own executable runs.
 //
@@ -234,7 +234,7 @@ func TestNoActorMayExecADriver(t *testing.T) {
 			continue
 		}
 		paths := strings.Fields(m[1])
-		for _, want := range []string{"-" + DriversDir, "-/tmp", "-/var/tmp"} {
+		for _, want := range []string{"-" + DriversDir, "-/tmp", "-/var/tmp", "-/dev/shm"} {
 			if !slices.Contains(paths, want) {
 				t.Errorf("%s: NoExecPaths %q lacks %s", name, m[1], want)
 			}
