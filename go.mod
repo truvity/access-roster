@@ -8,6 +8,7 @@ require (
 	connectrpc.com/connect v1.21.1
 	github.com/go-jose/go-jose/v4 v4.1.7
 	github.com/go-piv/piv-go/v2 v2.6.0
+	github.com/gowebpki/jcs v1.0.2
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/mod v0.42.0
 	google.golang.org/protobuf v1.36.12

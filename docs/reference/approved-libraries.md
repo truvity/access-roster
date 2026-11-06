@@ -28,6 +28,7 @@ The rules behind it are in [ADR 0006](/decisions/0006-keys-and-sealing/#algorith
 | `golang.org/x/mod/sumdb/note`, `golang.org/x/mod/sumdb/tlog` | C2SP signed notes, and the hashes and tiles of a tiled log, in `writer`, `witness` and the CLI's `audit verify` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
 | `filippo.io/torchwood` | C2SP checkpoints, cosignatures and tiles, and the tile client, in `writer` and `witness` | [ADR 0029](/decisions/0029-the-audit-log/#witnesses) |
 | `filippo.io/sunlight` | C2SP `static-ct-api` entries and checkpoints, in the issuance log of `ca` | [ADR 0023](/decisions/0023-certificate-authorities/#issuance-log-and-revocation) |
+| `github.com/gowebpki/jcs` | RFC 8785 canonical JSON of the audit records: the order of members, the escapes and the text of numbers; the sluis profile (integers within ±(2^53−1), no floats, depth, UTF-8) is checked before it | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
 | `go.yaml.in/yaml/v3` | Reading the bootstrap file and the YAML config documents, through the strict profile of [the bootstrap file](/reference/bootstrap-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 
 Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([ADR 0006](/decisions/0006-keys-and-sealing/#algorithms)).
@@ -48,6 +49,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | `saphyr-parser` | Reading the bootstrap file and the YAML config documents, through the strict profile of [the bootstrap file](/reference/bootstrap-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `hyper`, `hyper-util` | The HTTP/1.1 and HTTP/2 server of `entry` and of the Rust kit: parsing the request head and framing the body | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `serde_json` | JSON of the audit records, in the emitter and in `indexer`, and the error bodies of `entry` | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
+| `serde_json_canonicalizer` | RFC 8785 canonical JSON of the audit records, in the emitter: the order of members, the escapes and the text of numbers; the sluis profile is checked before it | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
 | `ssh-key` | OpenSSH keys and certificates in `ssh-ca`, with a signing key that signs through the `keys` port; chosen with a condition, see [below](#rust-openssh-certificates) | [ADR 0023](/decisions/0023-certificate-authorities/#ssh) |
 | The AWS SDK for Rust | AWS calls from the AWS-backed drivers; its SigV4 and checksums are outside any FIPS module | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 

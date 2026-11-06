@@ -443,3 +443,209 @@ fn a_policy_declares_its_profile_and_a_record_without_one_does_not() {
         "{r}"
     );
 }
+
+// ---- RFC 8785 through the library (REQ-SEC-018): the corpus of the RFC's author, the differential
+// file shared with the Go package, and a property test.
+
+use std::fmt::Write as _;
+use std::path::PathBuf;
+
+use proptest::prelude::*;
+
+/// `kits/conformance/audit`, which the Go package reads too.
+fn conformance_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../conformance/audit")
+}
+
+/// The corpus input file names, sorted, as the Go package sorts them.
+fn corpus_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(conformance_dir().join("jcs-corpus/input"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| {
+            std::path::Path::new(n)
+                .extension()
+                .is_some_and(|x| x.eq_ignore_ascii_case("json"))
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+fn corpus_file(dir: &str, name: &str) -> String {
+    std::fs::read_to_string(conformance_dir().join("jcs-corpus").join(dir).join(name)).unwrap()
+}
+
+/// The corpus inputs that carry a number which is not an integer: the library canonicalises them
+/// and the sluis profile refuses them.
+const PROFILE_REFUSES: [&str; 2] = ["structures.json", "values.json"];
+
+/// verifies: REQ-SEC-018, REQ-AUDIT-106, REQ-AUDIT-107
+#[test]
+fn the_corpus_through_the_library() {
+    let names = corpus_names();
+    assert!(!names.is_empty(), "no corpus input");
+    for name in names {
+        let got = serde_json_canonicalizer::pipe(&corpus_file("input", &name)).unwrap();
+        assert_eq!(got, corpus_file("output", &name), "{name}");
+    }
+}
+
+/// verifies: REQ-SEC-018, REQ-AUDIT-106, REQ-AUDIT-107
+#[test]
+fn the_corpus_through_canonical() {
+    for name in corpus_names() {
+        let v = parse(&corpus_file("input", &name));
+        let got = canonical(&v);
+        if PROFILE_REFUSES.contains(&name.as_str()) {
+            assert!(
+                got.is_err(),
+                "{name}: a number that is not an integer was accepted"
+            );
+        } else {
+            assert_eq!(
+                String::from_utf8(got.unwrap()).unwrap(),
+                corpus_file("output", &name),
+                "{name}"
+            );
+        }
+    }
+}
+
+/// One line per case: `name TAB canonical text`, or `!refused`; canonical JSON holds no raw tab
+/// or newline. The Go package builds the same lines from the same inputs.
+fn differential_lines() -> String {
+    let mut out = String::new();
+    let mut line = |name: &str, got: Option<Vec<u8>>| {
+        let text = got.map_or_else(|| "!refused".to_owned(), |b| String::from_utf8(b).unwrap());
+        assert!(!text.contains(['\t', '\n']), "{name}: a raw tab or newline");
+        writeln!(out, "{name}\t{text}").unwrap();
+    };
+    for name in corpus_names() {
+        let input = corpus_file("input", &name);
+        line(
+            &format!("corpus-library/{name}"),
+            serde_json_canonicalizer::pipe(&input)
+                .ok()
+                .map(String::into_bytes),
+        );
+        line(
+            &format!("corpus-profile/{name}"),
+            canonical(&parse(&input)).ok(),
+        );
+    }
+    let f = parse(JCS);
+    for v in arr(&f, "vectors") {
+        line(
+            &format!("jcs-vectors/{}", text(v, "name")),
+            canonical(&v["input"]).ok(),
+        );
+    }
+    for v in arr(&f, "refused") {
+        line(
+            &format!("jcs-vectors-refused/{}", text(v, "name")),
+            canonical(&v["input"]).ok(),
+        );
+    }
+    let f = parse(RECORDS);
+    for c in arr(&f, "cases") {
+        let ev = event_of(&c["event"]);
+        line(
+            &format!("record/{}", text(c, "name")),
+            build_record(&RecordInput {
+                actor: text(c, "actor"),
+                boundary: text(c, "boundary"),
+                release: text(c, "release"),
+                uid: text(c, "uid"),
+                time_ms: c["time_ms"].as_i64().unwrap(),
+                correlation: c.get("correlation").and_then(Value::as_str),
+                pseudonym: c.get("pseudonym").and_then(Value::as_str),
+                ev: &ev,
+            })
+            .ok(),
+        );
+    }
+    out
+}
+
+/// The Rust half of the differential test: the Go package builds the same lines and compares them
+/// with the same file, so Go and Rust give identical bytes for the corpus and for the audit
+/// vectors. The Go test writes the file; a changed byte is a changed audit record hash.
+///
+/// verifies: REQ-SEC-018, REQ-AUDIT-106, REQ-AUDIT-107
+#[test]
+fn rust_and_go_give_identical_bytes() {
+    let want = std::fs::read_to_string(conformance_dir().join("jcs-differential.tsv")).unwrap();
+    let got = differential_lines();
+    for (i, (g, w)) in got.lines().zip(want.lines()).enumerate() {
+        assert_eq!(g, w, "line {} differs", i + 1);
+    }
+    assert_eq!(got.lines().count(), want.lines().count(), "line count");
+}
+
+/// Whether a value is inside the sluis profile, decided without the code under test.
+fn in_profile(v: &Value, depth: usize) -> bool {
+    depth <= 16
+        && match v {
+            Value::Null | Value::Bool(_) | Value::String(_) => true,
+            Value::Number(n) => n
+                .as_i64()
+                .is_some_and(|i| i.unsigned_abs() <= 9_007_199_254_740_991),
+            Value::Array(a) => a.iter().all(|e| in_profile(e, depth + 1)),
+            Value::Object(m) => m.values().all(|e| in_profile(e, depth + 1)),
+        }
+}
+
+fn any_value() -> impl Strategy<Value = Value> {
+    let leaf = prop_oneof![
+        Just(Value::Null),
+        any::<bool>().prop_map(Value::from),
+        any::<i64>().prop_map(Value::from),
+        (-(1_i64 << 53)..=(1_i64 << 53)).prop_map(Value::from),
+        any::<u64>().prop_map(Value::from),
+        any::<f64>()
+            .prop_map(|f| serde_json::Number::from_f64(f).map_or(Value::Null, Value::Number)),
+        any::<String>().prop_map(Value::from),
+        "[a\u{e9}\u{20ac}\u{fb33}\u{1f600}\u{10000}\\n\"\\\\<]{0,4}".prop_map(Value::from),
+    ];
+    leaf.prop_recursive(20, 64, 6, |inner| {
+        prop_oneof![
+            prop::collection::vec(inner.clone(), 0..6).prop_map(Value::Array),
+            prop::collection::hash_map(
+                prop_oneof![
+                    any::<String>(),
+                    "[a\u{e9}\u{20ac}\u{fb33}\u{1f600}\u{10000}]{0,3}"
+                ],
+                inner,
+                0..6
+            )
+            .prop_map(|m| Value::Object(m.into_iter().collect())),
+        ]
+    })
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(512))]
+
+    /// What `canonical` accepts is exactly the sluis profile; it is valid JSON, its own canonical
+    /// form (the library maps it to itself) and the value it was given. What it refuses, it
+    /// refuses with a reason.
+    ///
+    /// verifies: REQ-SEC-018, REQ-AUDIT-106, REQ-AUDIT-107
+    #[test]
+    fn canonical_accepts_the_profile_and_is_idempotent(v in any_value()) {
+        match canonical(&v) {
+            Ok(out) => {
+                prop_assert!(in_profile(&v, 0), "accepted a value outside the profile");
+                let text = String::from_utf8(out).unwrap();
+                let back: Value = serde_json::from_str(&text).unwrap();
+                prop_assert_eq!(&back, &v);
+                prop_assert_eq!(serde_json_canonicalizer::pipe(&text).unwrap(), text);
+            }
+            Err(e) => {
+                prop_assert!(!in_profile(&v, 0), "refused a value inside the profile");
+                prop_assert!(!refusal_of(&e).0.is_empty());
+            }
+        }
+    }
+}

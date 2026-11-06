@@ -1,0 +1,35 @@
+corpus-library/arrays.json	[56,{"1":[],"10":null,"d":true}]
+corpus-profile/arrays.json	[56,{"1":[],"10":null,"d":true}]
+corpus-library/french.json	{"peach":"This sorting order","péché":"is wrong according to French","pêche":"but canonicalization MUST","sin":"ignore locale"}
+corpus-profile/french.json	{"peach":"This sorting order","péché":"is wrong according to French","pêche":"but canonicalization MUST","sin":"ignore locale"}
+corpus-library/structures.json	{"":"empty","1":{"\n":56,"f":{"F":5,"f":"hi"}},"10":{},"111":[{"E":"no","e":"yes"}],"A":{},"a":{}}
+corpus-profile/structures.json	!refused
+corpus-library/unicode.json	{"Unnormalized Unicode":"Å"}
+corpus-profile/unicode.json	{"Unnormalized Unicode":"Å"}
+corpus-library/values.json	{"literals":[null,true,false],"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],"string":"€$\u000f\nA'B\"\\\\\"/"}
+corpus-profile/values.json	!refused
+corpus-library/weird.json	{"\n":"Newline","\r":"Carriage Return","1":"One","</script>":"Browser Challenge","":"Control","ö":"Latin Small Letter O With Diaeresis","€":"Euro Sign","😂":"Smiley","דּ":"Hebrew Letter Dalet With Dagesh"}
+corpus-profile/weird.json	{"\n":"Newline","\r":"Carriage Return","1":"One","</script>":"Browser Challenge","":"Control","ö":"Latin Small Letter O With Diaeresis","€":"Euro Sign","😂":"Smiley","דּ":"Hebrew Letter Dalet With Dagesh"}
+jcs-vectors/empty object	{}
+jcs-vectors/empty array	[]
+jcs-vectors/literals (RFC 8785 section 3.2.4)	[null,true,false]
+jcs-vectors/key order by UTF-16 code units (RFC 8785 section 3.2.3)	{"\r":"Carriage Return","1":"One","":"Control","ö":"Latin Small Letter O With Diaeresis","€":"Euro Sign","😀":"Emoji: Grinning Face","דּ":"Hebrew Letter Dalet With Dagesh"}
+jcs-vectors/escaping (RFC 8785 section 3.2.2.2)	"\u0000\u0001\u001f\b\t\n\f\r\"\\/  é😀"
+jcs-vectors/nested objects are sorted at every depth	{"a":"1","b":{"a":[{"x":null,"y":true}],"z":1}}
+jcs-vectors/integers at the bound	[0,-1,9007199254740991,-9007199254740991]
+jcs-vectors/array order is kept	["b","a",["d","c"]]
+jcs-vectors/an empty key sorts first	{"":2,"a":1}
+jcs-vectors/a key that is a prefix of another sorts first	{"a":2,"aa":3,"ab":1}
+jcs-vectors/an astral character sorts before a high BMP one (UTF-16, not code points)	{"𐀀":2,"דּ":1}
+jcs-vectors-refused/a float	!refused
+jcs-vectors-refused/a float with an exponent	!refused
+jcs-vectors-refused/a float in a member	!refused
+jcs-vectors-refused/an integer above 2^53-1	!refused
+jcs-vectors-refused/an integer below -(2^53-1)	!refused
+record/a minimal success	{"activity_id":99,"activity_name":"Sign","actor":{"user":{"type_id":3,"uid":"key@dev"}},"category_uid":6,"class_uid":6003,"metadata":{"event_code":"key.sign","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"severity_id":1,"status_id":1,"time":1793750400000,"type_uid":600399}
+record/a failure with tenant, correlation id and a person	{"activity_id":99,"activity_name":"Open","actor":{"user":{"type_id":3,"uid":"key@dev"}},"category_uid":6,"class_uid":6003,"metadata":{"correlation_uid":"req-7f3a_01","event_code":"key.open","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"tenant_uid":"acme","uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"severity_id":1,"status_code":"grant","status_id":2,"time":1793750400000,"type_uid":600399,"unmapped":{"sluis":{"actor_chain":["exchange@dev","session@dev"],"approver":"policy@dev","key":{"algorithm":"ES384","kind_id":2,"store":{"type_id":1}},"n":9007199254740991,"ok":true}},"user":{"uid":"p1.202611.AAAAAAAAAAAAAAAAAAAAAA"}}
+record/a sign-in is category 3	{"activity_id":1,"actor":{"user":{"type_id":3,"uid":"session@dev"}},"category_uid":3,"class_uid":3002,"metadata":{"event_code":"session.logon","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"tenant_uid":"globex","uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"severity_id":1,"status_id":1,"time":1793750400000,"type_uid":300201}
+record/a policy decision	{"action_id":1,"activity_id":3,"actor":{"user":{"type_id":3,"uid":"store@dev"}},"authorizations":[{"decision":"Allowed","policy":{"uid":"p-2"}},{"decision":"Allowed","policy":{"uid":"p-1"}}],"category_uid":6,"class_uid":6003,"metadata":{"event_code":"store.write","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"profiles":["security_control"],"tenant_uid":"acme","uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"policy":{"uid":"01950000-0000-7000-8000-0000000000aa","version":"sha384:abc"},"severity_id":1,"status_id":1,"time":1793750400000,"type_uid":600303}
+record/a denied decision	{"action_id":2,"activity_id":2,"activity_name":"Read","actor":{"user":{"type_id":3,"uid":"store@dev"}},"authorizations":[{"decision":"Denied","policy":{"uid":"p-9"}}],"category_uid":6,"class_uid":6003,"metadata":{"event_code":"store.read","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"profiles":["security_control"],"tenant_uid":"acme","uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"policy":{"uid":"01950000-0000-7000-8000-0000000000bb"},"severity_id":1,"status_code":"rule","status_id":2,"time":1793750400000,"type_uid":600302}
+record/a decision id alone, with no outcome	{"activity_id":2,"actor":{"user":{"type_id":3,"uid":"key@dev"}},"category_uid":6,"class_uid":6003,"metadata":{"event_code":"store.read","log_name":"dev","product":{"name":"sluis","version":"0.0.0-test"},"profiles":["security_control"],"uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"policy":{"uid":"d-1"},"severity_id":1,"status_id":1,"time":1793750400000,"type_uid":600302}
+record/member names sort in the record and in unmapped.sluis	{"activity_id":99,"activity_name":"Reload","actor":{"user":{"type_id":3,"uid":"key@dev"}},"category_uid":6,"class_uid":6002,"metadata":{"event_code":"x.y","log_name":"dev","product":{"name":"sluis","version":"1.2.3"},"uid":"01950000-0000-7000-8000-000000000001","version":"1.9.0"},"severity_id":1,"status_id":1,"time":1793750400000,"type_uid":600299,"unmapped":{"sluis":{"a":{"a":"","b":[]},"text":"tab\there \"quoted\" ☃","z":"last","é":"e acute"}}}
