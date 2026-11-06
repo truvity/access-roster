@@ -218,8 +218,9 @@ requirements:
     rationale: "Cross-protocol key reuse is avoidable."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-62, section: "5280", depth: Partial}

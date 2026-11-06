@@ -1,12 +1,4 @@
 # Attestations: the evidence of a requirement that is verified by manual review (docs/requirements/README.md, "Attestations").
 # One entry says who checked it, when, and what was checked. A manual verification counts as evidence only with an entry here.
 schema: 1
-attestations:
-  - req: REQ-KEYS-009
-    by: excavador
-    on: "2026-11-06"
-    checked: "I read docs/architecture/keys.yaml, ADR 0006 and ADR 0023 on 2026-11-06: every key purpose has its own key and slot, and sluis runs no online certificate status responder."
-  - req: REQ-PKI-008
-    by: excavador
-    on: "2026-11-06"
-    checked: "I read docs/architecture/keys.yaml, ADR 0006 and ADR 0023 on 2026-11-06: every key purpose has its own key and slot, and sluis runs no online certificate status responder."
+attestations: []

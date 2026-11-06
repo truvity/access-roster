@@ -249,8 +249,9 @@ requirements:
     rationale: "A responder adds an always-on dependency to relying parties."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
     milestone: first-version
+    gap: attestation-missing
     runtimes: all
     standards:
       - {id: ST-63, section: "1", depth: Full}
