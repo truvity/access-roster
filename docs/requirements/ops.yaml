@@ -1235,7 +1235,7 @@ requirements:
   # ---- company-issued OpenPGP keys on staff GitHub accounts (decision 0042)
   - id: REQ-OPS-099
     area: OPS
-    statement: "adapter-github MUST put each certificate of a person's active bindings on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, binding signature or expiry of the binding."
+    statement: "adapter-github MUST put the certificate of a person's active binding for a company on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, binding signature or expiry of the binding."
     rationale: "GitHub does not follow a key's renewal, so a key uploaded once goes stale and the person's commits turn Unverified (ADR 0042)."
     level: MUST
     source: design-decision
@@ -1439,7 +1439,7 @@ requirements:
       - {kind: integration-test, ref: "a certificate held by another person's binding, or by no binding, is not added to the person's account"}
   - id: REQ-OPS-114
     area: OPS
-    statement: "adapter-github MUST refuse a pass that exceeds the limits of the target for company keys per person, size of a certificate and changes to one account."
+    statement: "adapter-github MUST refuse a pass that exceeds the limits of the target for company certificates per person per company, size of a certificate and changes to one account."
     rationale: "Bounds on a pass limit what a compromised keyring source can do in one run (ADR 0042)."
     level: MUST
     source: security-review
@@ -1449,7 +1449,7 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "too many keys for one person, a certificate over the size cap and a pass over the change cap are each refused with a reason and change nothing"}
+      - {kind: integration-test, ref: "more than one certificate for one person and company, a certificate over the size cap and a pass over the change cap are each refused with a reason and change nothing"}
   - id: REQ-OPS-115
     area: OPS
     statement: "adapter-github MUST identify a key on a GitHub account by the full version 4 fingerprint that it computes from the key's armoured public key."
@@ -1612,3 +1612,43 @@ requirements:
     issues: [1214]
     verification:
       - {kind: integration-test, ref: "an event whose payload has an action value of revoked and one with no action both lead to the same probe, and only the probe sets the state"}
+  - id: REQ-OPS-127
+    area: OPS
+    statement: "adapter-github MUST keep at most one company certificate per person per company on the person's GitHub account."
+    rationale: "A person has one primary per company with card-born subkeys under it, so a second or a lost card changes the certificate and never adds a key (ADR 0042, BD1 B, BD2 B)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a person with a second card, then a lost card, has one company certificate on the account after each pass, replaced each time, and a personal key is untouched"}
+  - id: REQ-OPS-128
+    area: OPS
+    statement: "adapter-github MUST NOT put the certificate of a customer tenant's person on GitHub unless that tenant's policy enables it."
+    rationale: "Only staff are synced; customers get no key on a personal account unless their tenant later says so (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a customer tenant's person with an active binding gets no call to GitHub while the tenant's policy does not enable the sync"}
+  - id: REQ-OPS-129
+    area: OPS
+    split_from: REQ-OPS-127
+    statement: "adapter-github MUST replace a person's company certificate on GitHub when the person's subkeys change."
+    rationale: "A second card or a lost card changes the subkeys under the one primary, so GitHub's copy must follow (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "adding a card and losing a card each replace the certificate on the account, and the account holds the new subkeys after the pass"}
