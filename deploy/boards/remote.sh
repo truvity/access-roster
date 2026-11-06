@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2154 # rqlite_unit, rqlite_dropin, rqlite_dropin_dir, rqlite_var_dir and rqlite_bin are remote-lib.sh's
 # The part of boards.sh that runs on a board, as root:
-#   remote.sh deploy|preflight|undeploy|status|avc STAGE
+#   remote.sh deploy|preflight|undeploy|status|settle|avc STAGE
 #   remote.sh rqlite-install|rqlite-undeploy|rqlite-status STAGE          (rqlite.sh and boards.sh; see "rqlite" below)
 # It is shipped to the board inside the stage and is never installed. deploy and undeploy change only what the manifest lists,
 # and refuse to touch anything outside the paths and names that deploy makes. rqlite is not in that set: rqlited.service belongs
 # to the upstream package, and only the rqlite-* modes touch it, and only through the drop-in that rqlite-install wrote.
 set -euo pipefail
 
-mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
-stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
+mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
+stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
 boundary=dev
 bin_dir=/opt/sluis/bin
 manifest=/etc/sluis/deployed-$boundary.manifest
@@ -125,6 +125,7 @@ deploy)
 		allowed_path "$dest" || { echo "remote: refusing $dest" >&2; exit 1; }
 		note file "$dest"
 		install -m 0644 -o root -g root "$f" "$dest"
+		drop_restart_backoff "$dest"
 	done
 	sysusers=()
 	for f in "$stage"/files/sysusers/*; do
@@ -417,6 +418,27 @@ status)
 	*) echo "lock: UNKNOWN: $lock_why"; rc=1 ;;
 	esac
 	printf '%s%s\n' "$lock_state_prefix" "$lock_state"
+	exit "$rc"
+	;;
+
+settle)
+	# The wait of the deploy again, for boards-unlock: every enabled unit of the manifest must be active and stand still, and the
+	# driver must say unlocked. Waiting units come back on their own after the PIN, at their next restart (up to 30 s with the
+	# backoff), so the wait is longer than the deploy's. It prints what settle_units prints, with the state line last, and exits 0 for ok.
+	[ -f "$manifest" ] || { echo "remote: nothing deployed (no $manifest)" >&2; exit 1; }
+	units=()
+	while IFS=$'\t' read -r kind value; do
+		[ "$kind" = unit ] || continue
+		allowed_name "${value%@*}-$boundary" || { echo "remote: refusing the unit $value" >&2; exit 1; }
+		systemctl is-enabled --quiet "$value" 2>/dev/null && units+=("$value")
+	done <"$manifest"
+	[ "${#units[@]}" -gt 0 ] || { echo "remote: the manifest lists no enabled unit" >&2; exit 1; }
+	# shellcheck disable=SC2034 # settle_units (remote-lib.sh) reads them
+	settle_since=$(date -d '-3 minutes' '+%Y-%m-%d %H:%M:%S.%6N')
+	settle_timeout=90
+	echo "settling: waiting up to ${settle_timeout}s for ${#units[@]} units to be active and not to restart for about 6 s"
+	rc=0
+	settle_units "${units[@]}" || rc=$?
 	exit "$rc"
 	;;
 

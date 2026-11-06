@@ -547,13 +547,14 @@ cat >"$sbin/sluis" <<'F'
 [ "$1 $2" = "node status" ] || exit 2
 echo x >>"$SC/cli.calls"
 case "$(cat "$SC/lock" 2>/dev/null || echo unlocked)" in
+hang) sleep 30 ;;
 locked | unlocked) echo "node $3 is $(cat "$SC/lock" 2>/dev/null || echo unlocked)" ;;
 garbage) echo "hello" ;;
 *) echo "node node status: the admin socket cannot be reached (is the driver running, and are you root?)" >&2; exit 1 ;;
 esac
 F
 chmod +x "$sbin/systemctl" "$sbin/journalctl" "$sbin/sluis"
-for t in sleep awk sed cat tail grep; do ln -sf "$(command -v "$t")" "$sbin/$t"; done
+for t in sleep awk sed cat tail grep timeout; do ln -sf "$(command -v "$t")" "$sbin/$t"; done
 settle_reset() { rm -f "$sc"/*; }
 journal() { printf '2026-11-06 12:00:10.000000 %s\n' "$2" >>"$sc/$1.journal"; } # a line of this deploy
 stale() { printf '2026-11-06 11:00:00.000000 %s\n' "$2" >>"$sc/$1.journal"; } # a line of an earlier deploy
@@ -565,7 +566,7 @@ looping() { printf 'activating auto-restart %s\n' "$2" >"$sc/$1.state"; } # a un
 settle() { # the units..., run in a subshell with the fakes alone; prints what settle_units printed and "rc=N"
 	(
 		export PATH="$sbin" SC="$sc" boundary=dev settle_timeout=2 settle_step=0.05 settle_stable=3 settle_since="2026-11-06 12:00:00.000000"
-		export lock_cli="${SETTLE_LOCK_CLI:-$sbin/sluis}" lock_node=board-a
+		export lock_cli="${SETTLE_LOCK_CLI:-$sbin/sluis}" lock_node=board-a lock_timeout=1
 		# shellcheck source=/dev/null
 		. "$here/remote-lib.sh"
 		rc=0
@@ -783,6 +784,13 @@ steady "$card"; steady "$key"
 out=$(SETTLE_LOCK_CLI="$sbin/no-such-sluis" settle "$card" "$key")
 sexpect "settle: a board without the sluis CLI cannot be said to be unlocked: failed, with the fix" "$out" "^lock: UNKNOWN: .*is not on the board: run 'just build-arm64'" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
 
+# a card service that hangs: the CLI is cut off after lock_timeout, and the lock is unknown
+settle_reset
+lock hang
+steady "$card"; steady "$key"
+out=$(settle "$card" "$key")
+sexpect "settle: a CLI that does not answer in time is cut off, and the lock is unknown: failed" "$out" '^lock: UNKNOWN: .*did not answer in 1 s' '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
 # a board with the software key has no PIN, and the CLI is not asked
 settle_reset
 rm -f "$sc/lock"
@@ -807,6 +815,28 @@ keygroup "$writer"
 out=$(settle "$key" "$writer")
 sexpect "settle: on a software board a unit that restarts is FAILED, with its journal" "$out" "^unit $writer FAILED" "journal $writer: $waiting" '^rc=1$'
 
+# --- The restart back-off of the actor units is systemd 254's: an older board has the two lines taken out ---------------------------
+vbin=$work/version-bin
+mkdir -p "$vbin"
+ln -sf "$(command -v sed)" "$vbin/sed"
+unit_text() { printf '[Service]\nRestart=on-failure\nRestartSec=2s\nRestartSteps=5\nRestartMaxDelaySec=30\nEnvironment=X=1\n'; }
+backoff_on() { # "systemd N (...)" or "": prints the unit after drop_restart_backoff on a board with that systemctl --version
+	printf '#!/bin/bash\n[ "$1" = --version ] && [ -n %q ] && echo %q\n' "$1" "$1" >"$vbin/systemctl"
+	chmod +x "$vbin/systemctl"
+	unit_text >"$work/backoff.service"
+	# shellcheck source=/dev/null
+	(PATH="$vbin"; . "$here/remote-lib.sh"; drop_restart_backoff "$work/backoff.service")
+	cat "$work/backoff.service"
+}
+for v in "systemd 252 (252.22-1)" "systemd 249 (249.11)" "" "systemd x"; do
+	out=$(backoff_on "$v")
+	if grep -q 'Restart\(Steps\|MaxDelaySec\)' <<<"$out" || ! grep -q '^RestartSec=2s$' <<<"$out" || ! grep -q '^Environment=X=1$' <<<"$out"; then echo "FAIL backoff: systemd '${v:-unknown}' keeps the 254 lines, or loses others: $out"; fail=1; else echo "ok   backoff: systemd '${v:-unknown}': RestartSteps and RestartMaxDelaySec are taken out, the rest stays"; fi
+done
+for v in "systemd 254 (254.5)" "systemd 257 (257-9)" "systemd 259 (259-1)"; do
+	out=$(backoff_on "$v")
+	if [ "$out" = "$(unit_text)" ]; then echo "ok   backoff: systemd '$v' keeps the unit as it is"; else echo "FAIL backoff: systemd '$v' changed the unit: $out"; fail=1; fi
+done
+
 # --- remote.sh status: the lock of the card, from the card driver ---------------------------------------------------------------------
 # A fake systemctl that knows is-enabled and list-units (the card unit is enabled when $SC/card exists) and the fake CLI above.
 stbin=$work/status-bin
@@ -820,7 +850,7 @@ list-units) exit 0 ;;
 esac
 F
 chmod +x "$stbin/systemctl"
-for t in awk sed cat tail grep uname dirname; do ln -sf "$(command -v "$t")" "$stbin/$t"; done
+for t in awk sed cat tail grep uname dirname timeout sleep; do ln -sf "$(command -v "$t")" "$stbin/$t"; done
 ln -sf "$sbin/sluis" "$stbin/sluis"
 mkdir -p "$work/status-stage/files"
 status_of() { # prints what remote.sh status printed, and "rc=N"

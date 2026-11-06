@@ -13,6 +13,8 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-harness-forwarder-%i sluis-r
 ExecStart=/opt/sluis/bin/actors/entry serve --boundary %i --front audit --socket /run/sluis/entry/%i-audit.sock --socket-gid 61027
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

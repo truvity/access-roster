@@ -106,7 +106,7 @@
 # of that unit's journal. (The "verify U: ok" lines come earlier and only say that the unit files read well.) The last line of the
 # board's output is SLUIS-BOARD-STATE: `ok` is every unit up and the card driver unlocked (or a board with no card driver);
 # `locked` is the card driver holding no PIN with nothing unsettled but units that wait for it (an actor that signs or opens a key
-# when it starts exits with "unavailable: driver" until the PIN is given, and restarts every 2 s with no start limit); `failed` is
+# when it starts exits with "unavailable: driver" until the PIN is given, and restarts, backing off from 2 s to 30 s, with no start limit); `failed` is
 # anything else, a lock state that could not be read included. A locked board is not a failure: it ends "deployed, LOCKED", the exit
 # status stays 0 for it, and the line names the command that gives the PIN (`boards-unlock`). A run that also has a failed board
 # still exits 1.
@@ -124,6 +124,8 @@
 # dev` on the board through the ssh session's standard input. It is never an argument of any command, an environment variable or
 # a line of output. The ssh of the PIN is run with -T, before the options of the run, and a -t in the options, or
 # StrictHostKeyChecking=no, in SLUIS_BOARD_SSH_OPTIONS refuses the command (accept-new warns). Tracing (bash -x) is turned off first.
+# After the PIN is taken it asks the driver again (sluis node status) and waits for every unit again (remote.sh settle, up to 90 s), because
+# a unit that loops never reaches systemd's "failed": it fails if the driver is still locked or a unit does not settle.
 set -euo pipefail
 
 mode=${1:?usage: boards.sh deploy|undeploy|status|recipients|check|unlock|avc}
@@ -563,7 +565,7 @@ deploy)
 		esac
 	done
 	for b in ${locked[@]+"${locked[@]}"}; do
-		echo "board $b: deployed, LOCKED: the card driver is up and holds no PIN, so key@ cannot sign or open a key yet, and the units that need it wait and restart every 2 s without a limit until it is given. This is not a failure and the exit status stays 0 for it; give the PIN: SLUIS_BOARDS=$b just boards-unlock. (A peer that already holds the new KeyPlan would release it by itself; the first board of a new KeyPlan has no such peer.)"
+		echo "board $b: deployed, LOCKED: the card driver is up and holds no PIN, so key@ cannot sign or open a key yet, and the units that need it wait and restart, backing off to 30 s, without a limit until it is given. This is not a failure and the exit status stays 0 for it; give the PIN: SLUIS_BOARDS=$b just boards-unlock. (A peer that already holds the new KeyPlan would release it by itself; the first board of a new KeyPlan has no such peer.)"
 	done
 	# The denials of the policy since boot, on a board where SELinux is enforcing: a sluis or rqlite path or domain in one fails the run.
 	bare_stage "$tmp/stage-avc"
@@ -620,6 +622,7 @@ unlock)
 		echo "unlock: the PIN was accepted, but the board '$b' could not be asked for its lock state" >&2
 		exit 1
 	fi
+	after=$(printf '%s\n' "$after" | tail -n 1) # a log line of the CLI may come before its answer
 	case "$after" in
 	"node $node is unlocked") echo "board $b: unlocked" ;;
 	*) echo "board $b: still LOCKED after the unlock ($after)" >&2; exit 1 ;;
@@ -630,6 +633,18 @@ unlock)
 		echo "board $b: unit $u is FAILED (systemd gave up on it): sudo systemctl reset-failed $u && sudo systemctl start $u, or deploy again; a deploy of this version leaves no unit with a start limit" >&2
 		rc=1
 	done
+	# A unit that waited for the PIN restarts on its own and comes up, but one that loops for another reason never reaches
+	# "failed" (no start limit), so "unlocked" says nothing about it: wait for every unit again (remote.sh settle), as the deploy does.
+	# A unit that waited is in the back-off of its restarts (up to 30 s), so this takes up to 90 s.
+	bare_stage "$tmp/settle"
+	settle_rc=0
+	: >"$tmp/settle.out"
+	run_on_log=$tmp/settle.out run_on "$b" settle "$tmp/settle" || settle_rc=$?
+	settle_state=$(sed -n 's/^SLUIS-BOARD-STATE: //p' "$tmp/settle.out" | tail -n 1)
+	case "$settle_rc:$settle_state" in
+	0:ok) echo "board $b: every unit is up" ;;
+	*) echo "board $b: the units did not settle after the unlock (state '${settle_state:-none}'): see the lines above; a unit that restarts again and again is not failed in systemd's eyes" >&2; rc=1 ;;
+	esac
 	exit "$rc"
 	;;
 recipients | check)
