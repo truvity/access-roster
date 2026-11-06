@@ -257,6 +257,50 @@ impl Opened {
 mod tests {
     use super::*;
 
+    const RECORD_VECTORS: &str = include_str!("../../../kits/conformance/audit/record-vectors.json");
+
+    fn hex(b: &[u8]) -> String {
+        use std::fmt::Write as _;
+        b.iter().fold(String::new(), |mut s, x| {
+            let _ = write!(s, "{x:02x}");
+            s
+        })
+    }
+
+    /// verifies: REQ-AUDIT-004
+    #[test]
+    fn the_hash_of_a_record_is_the_sha384_of_its_canonical_bytes() {
+        let f: Value = serde_json::from_str(RECORD_VECTORS).unwrap();
+        let cases = f["cases"].as_array().unwrap();
+        assert!(!cases.is_empty(), "no record vectors");
+        for c in cases {
+            let text = c["expected"].as_str().unwrap();
+            let rec: Value = serde_json::from_str(text).unwrap();
+            let int = |p: &[&str]| super::int(&rec, p).unwrap();
+            let e = RecordEntry {
+                uid: super::text(&rec, &["metadata", "uid"]).unwrap().to_owned(),
+                tenant: super::text(&rec, &["metadata", "tenant_uid"])
+                    .unwrap_or_default()
+                    .to_owned(),
+                time_ms: int(&["time"]),
+                class_uid: int(&["class_uid"]),
+                activity_id: int(&["activity_id"]),
+                status_id: int(&["status_id"]),
+                actor_type_id: int(&["actor", "user", "type_id"]),
+                recorded_ms: 0,
+                sealed: Vec::new(),
+            };
+            let opened = Opened::parse(text.as_bytes()).unwrap();
+            let row = opened.row(&e, 1, text.as_bytes().to_vec()).unwrap();
+            assert_eq!(
+                hex(&row.hash),
+                c["sha384"].as_str().unwrap(),
+                "{}",
+                c["name"]
+            );
+        }
+    }
+
     #[test]
     fn bundle_paths_follow_tlog_tiles() {
         assert_eq!(bundle_path(0, 256), "tile/entries/000");

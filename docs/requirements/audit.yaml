@@ -96,19 +96,18 @@ requirements:
       - {kind: integration-test, ref: "pseudonym test"}
   - id: REQ-AUDIT-004
     area: AUDIT
-    statement: "The hash of an audit record MUST be computed over its canonical JSON form."
+    statement: "The hash of an audit record MUST be SHA-384 over its RFC 8785 canonical form."
     rationale: "A canonical form makes hashes reproducible."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-78, section: "8785", depth: Full}
     issues: [1121]
     verification:
-      - {kind: test-vectors, ref: "RFC 8785 test data"}
+      - {kind: test-vectors, ref: "SHA-384 known answers over the RFC 8785 bytes of every record vector, in Go and Rust"}
   - id: REQ-AUDIT-005
     area: AUDIT
     statement: "Audit records of a period MUST be organised in a Merkle tree following the RFC 6962 hash rules."

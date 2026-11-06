@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"math"
@@ -244,6 +245,7 @@ type recordFile struct {
 		Pseudonym   string    `json:"pseudonym"`
 		Event       eventJSON `json:"event"`
 		Expected    string    `json:"expected"`
+		SHA384      string    `json:"sha384"`
 	} `json:"cases"`
 	Pseudonyms []struct {
 		TimeMS   int64  `json:"time_ms"`
@@ -307,6 +309,33 @@ func TestRecordVectors(t *testing.T) {
 			}
 			if string(got) != c.Expected {
 				t.Fatalf("got  %s\nwant %s", got, c.Expected)
+			}
+		})
+	}
+}
+
+// The hash of a record is the SHA-384 of its RFC 8785 bytes: the known answer of every record vector, the same
+// one the indexer's row carries (actors/indexer).
+//
+// verifies: REQ-AUDIT-004
+func TestRecordHashVectors(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			got, err := buildRecord(recordInput{
+				actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
+				correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha512.Sum384(got)
+			if hex.EncodeToString(sum[:]) != c.SHA384 {
+				t.Fatalf("SHA-384 of %s = %x, want %s", got, sum, c.SHA384)
 			}
 		})
 	}
