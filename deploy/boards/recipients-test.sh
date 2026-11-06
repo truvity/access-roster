@@ -90,7 +90,13 @@ ssh_var="SSHFAIL_$key"
 mark="$STUB_LOG/$board.marker"
 case "$cmd" in
 *"remote.sh' preflight "*) fail_var="PREFLIGHTFAIL_$key"; [ -z "${!fail_var:-}" ] || exit 1 ;;
-*remote.sh*) fail_var="DEPLOYFAIL_$key"; [ -z "${!fail_var:-}" ] || exit 1 ;;
+*remote.sh*)
+	fail_var="DEPLOYFAIL_$key"
+	[ -z "${!fail_var:-}" ] || exit 1
+	# The outcome "locked" of remote.sh (settle_units): the board is deployed and only waits for its PIN.
+	lock_var="DEPLOYLOCKED_$key"
+	if [ -n "${!lock_var:-}" ] && [[ "$cmd" == *"remote.sh' deploy "* ]]; then echo "unit sluis-key@dev.service locked: stand-in"; exit 10; fi
+	;;
 *"date -u"*switch-pending*) mkdir -p "$STUB_LOG"; date -u +%FT%TZ >"$mark" ;;
 *"rm -f"*switch-pending*) rm -f "$mark" ;;
 *switch-pending*cat*) if [ -e "$mark" ]; then cat "$mark"; fi ;;
@@ -237,6 +243,23 @@ rm -rf "$work/log" "$work/state/switch-pending"
 export DRV_a_test=software SLUIS_BOARDS="a.test"
 DEPLOYFAIL_a_test=1 refuses "a deploy that fails after the switch exits non-zero" ./deploy/boards/boards.sh deploy
 [ -s "$work/log/a.test.marker" ] && [ "$(cat "$work/state/switch-pending")" = a.test ] || { echo "FAIL a failed deploy left no mark"; fail=1; }
+
+# A board that is only locked (remote.sh exits 10): the deploy exits 0, says so and names the command that gives the PIN. A failed
+# board next to it still fails the run, and the switch mark stays whichever way the deploy ended.
+rm -rf "$work/log" "$work/state/switch-pending"
+export DRV_a_test=software DRV_b_test=software SLUIS_BOARDS="a.test"
+DEPLOYLOCKED_a_test=1 check "a deploy whose board is only locked exits 0" ./deploy/boards/boards.sh deploy
+grep -q "board a.test: deployed, LOCKED" "$work/out" && grep -q "SLUIS_BOARDS=a.test just boards-unlock" "$work/out" || { echo "FAIL the locked outcome is not said, with the command: $(cat "$work/out")"; fail=1; }
+if grep -q "deploy FAILED" "$work/out"; then echo "FAIL a locked board was reported as failed"; fail=1; else echo "ok   and it is not reported as a failed deploy"; fi
+rm -rf "$work/log" "$work/state/switch-pending"
+export SLUIS_BOARDS="a.test b.test"
+unset SLUIS_BOARDS_KEY_DRIVER # each board keeps its own driver, so none switches
+DEPLOYLOCKED_a_test=1 DEPLOYFAIL_b_test=1 refuses "a locked board next to a failed one still fails the run" ./deploy/boards/boards.sh deploy
+grep -q "board b.test: deploy FAILED" "$work/out" && grep -q "board a.test: deployed, LOCKED" "$work/out" || { echo "FAIL the two outcomes are not both said: $(cat "$work/out")"; fail=1; }
+rm -rf "$work/log" "$work/state/switch-pending"
+export SLUIS_BOARDS="a.test" SLUIS_BOARDS_KEY_DRIVER=yubikey-piv
+DEPLOYFAIL_a_test=1 refuses "and an ordinary failure of remote.sh (status 1) is not taken for the locked outcome" ./deploy/boards/boards.sh deploy
+grep -q "LOCKED" "$work/out" && { echo "FAIL a failure was called locked"; fail=1; } || echo "ok   it says FAILED and not LOCKED"
 
 # verifies: a switching board is checked (remote.sh preflight) before it is marked, and a board that fails the check is not
 # marked and gets no deploy.

@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! credential serve       --socket PATH [--dir DIR] [--socket-gid GID]   # DIR defaults to $CREDENTIALS_DIRECTORY
-//! credential check       [--dir DIR]
+//! credential check       [--dir DIR]                                    # opens DIR and reads every credential in it, printing no value
 //! credential conformance                             # the source suite over a temporary directory
 //! credential version
 //! ```
@@ -74,8 +74,13 @@ impl Commands for Credential {
     }
 
     async fn check(&self, f: Flags) -> Option<anyhow::Result<()>> {
-        let r = dir(&f).and_then(|d| Dir::open(&d));
-        Some(r.map(|_| ()).map_err(|e| Refused(format!("{e:#}")).into()))
+        // The directory is opened by the rules of serve, and every credential in it is read by the rules of a Read, so that a
+        // directory systemd made in a way the driver refuses is found here and not by the first call of store@.
+        let r = dir(&f).and_then(|d| Dir::open(&d)).and_then(|d| d.verify());
+        Some(
+            r.map(|n| println!("credentials directory ok: {n} credentials readable"))
+                .map_err(|e| Refused(format!("{e:#}")).into()),
+        )
     }
 
     async fn conformance(&self, _f: Flags) -> Option<anyhow::Result<()>> {

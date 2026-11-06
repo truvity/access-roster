@@ -268,12 +268,21 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: os-containers-${{ runner.os }}-${{ hashFiles('go.sum') }}
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+          key: os-containers-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
             os-containers-${{ runner.os }}-
+      # The credential driver is the real program in the unit that systemd gives its credentials to (not a stand-in that cats the
+      # files), so that the credentials directory systemd makes on this distribution is the one the driver must accept.
+      - name: Build the credential driver for the runner
+        run: devbox run -- cargo zigbuild --release --target x86_64-unknown-linux-musl -p credential
       - name: Deploy to a systemd container and check the card service
         env:
           SLUIS_OS_IMAGE: ${{ matrix.image }}
+          SLUIS_OS_CREDENTIAL_DRIVER: ${{ github.workspace }}/target/x86_64-unknown-linux-musl/release/credential
         run: devbox run -- go test -count=1 -v -run '^TestBoardsDeployOnASystemdContainer$' ./tools/gen/units
 
   # The deny matrix (ADR 0002, "Enforcement is tested"; REQ-DATA-066, REQ-KEYS-044, REQ-ISO-090): the local installation

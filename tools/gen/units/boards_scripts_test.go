@@ -35,10 +35,11 @@ func runScript(t *testing.T, args ...string) {
 	}
 }
 
-// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029
+// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-029, REQ-DEPLOY-031
 func TestBoardPrerequisitesAgainstFakes(t *testing.T) {
 	// prereq-test.sh: the packages of each family, the refusal that names them, the systemd floor of the credentials and their
-	// encryption under the board's host key, run against fakes of dpkg, rpm, systemctl and systemd-creds.
+	// encryption under the board's host key, run against fakes of dpkg, rpm, systemctl and systemd-creds; and the wait for the units after the start (settle_units: a unit
+	// that restarts or never settles fails with its journal, a locked card board is its own outcome).
 	runScript(t, "deploy/boards/prereq-test.sh")
 }
 
@@ -54,7 +55,7 @@ func TestBoardsScriptsAgainstAFakeSsh(t *testing.T) {
 	runScript(t, "deploy/boards/boards-test.sh")
 }
 
-// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-030, REQ-DEPLOY-031
+// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-030, REQ-DEPLOY-031, REQ-DATA-112
 func TestBoardsDeployOnASystemdContainer(t *testing.T) {
 	image := os.Getenv("SLUIS_OS_IMAGE")
 	if image == "" {

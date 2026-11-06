@@ -259,6 +259,19 @@ requirements:
     issues: [1205]
     verification:
       - {kind: integration-test, ref: "a secret is read and the disk, the audit log, the logs and the traces are scanned for its value"}
+  - id: REQ-DATA-112
+    area: DATA
+    statement: "The credential driver of store@ MUST refuse a credentials directory that group or others can write, or that is owned by neither its own uid nor, for the directory that $CREDENTIALS_DIRECTORY names, root."
+    rationale: "Only the owner and root can then plant a credential; systemd leaves the directory to root with a POSIX ACL for the service user, whose mask is the group bits, so no named entry can write (MEASURED 2026-11-06, Ubuntu 26.04, systemd 259; docs/runtimes/bare-metal.md)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "credential driver unit tests: root-owned 0550 and own-uid directories open; another uid, group-writable and root-owned writable ones are refused; root counts only for $CREDENTIALS_DIRECTORY"}
+      - {kind: integration-test, ref: "os-container-test.sh on Ubuntu 26.04: the real driver in its unit, with the dr-xr-x---+ directory systemd 259 makes, and credential check reads the three credentials"}
   - id: REQ-DATA-018
     area: DATA
     statement: "A secret kind MUST be linked to the config kind it serves."

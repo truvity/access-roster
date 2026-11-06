@@ -289,7 +289,7 @@ deploy)
 			exit 1
 		fi
 		[ -z "$out" ] || printf '%s\n' "$out" | sed "s|^|verify $u: |"
-		echo "verify $u: ok"
+		echo "verify $u: ok (the unit file only; it has not been started)"
 		note unit "$u"
 	done
 	sort_manifest
@@ -314,22 +314,15 @@ deploy)
 	for u in "${units[@]}"; do
 		systemctl start "$u" || true
 	done
-	# The actors dial each other when they start and retry every two seconds until the peer is up: give them time.
-	for _ in $(seq 1 30); do
-		sleep 2
-		pending=0
-		for u in "${units[@]}"; do
-			[ "$(systemctl is-active "$u" || true)" = active ] || pending=1
-		done
-		[ "$pending" = 1 ] || break
-	done
-	fail=0
-	for u in "${units[@]}"; do
-		st=$(systemctl is-active "$u" || true)
-		printf 'unit %s %s\n' "$u" "$st"
-		[ "$st" = active ] || fail=1
-	done
-	exit "$fail"
+	# The actors dial each other when they start and retry every two seconds until the peer is up, so give them time: the wait ends
+	# when every unit is active and has stopped restarting, or after settle_timeout (60 s). A unit that restarts, or is not active
+	# by then, fails the deploy with the last lines of its journal. The one state that does not is a card board that is locked,
+	# waiting for its PIN (settle_units in remote-lib.sh): the exit status is then settle_locked_status (10) and boards.sh says
+	# what to do next. Everything printed above this line was a static check or a start, and says nothing about a run.
+	echo "settling: waiting up to ${settle_timeout}s for ${#units[@]} units to be active and to stop restarting"
+	rc=0
+	settle_units "${units[@]}" || rc=$?
+	exit "$rc"
 	;;
 
 undeploy)
