@@ -758,6 +758,25 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     );
 }
 
+/// There is no introspection endpoint: a token of any installation sent to `/introspect` is answered as an unrouted
+/// path, and the refusal is audited as a route that does not exist.
+///
+/// verifies: REQ-SEC-011
+#[tokio::test]
+async fn there_is_no_introspection_endpoint() {
+    let up = up().await;
+    for method in ["GET", "POST"] {
+        let r = http(&up, method, "/introspect", &[FORM], b"token=abc").await;
+        assert_eq!(r.status, 404, "{method}");
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 2, "{recs:?}");
+    assert!(
+        recs.iter()
+            .all(|r| r["metadata"]["event_code"] == "entry.unrouted" && r["status_code"] == "route")
+    );
+}
+
 /// verifies: REQ-UX-006
 #[tokio::test]
 async fn an_error_from_an_actor_shows_nothing_of_its_reason() {

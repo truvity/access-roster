@@ -28,6 +28,74 @@ fn text<'a>(v: &'a Value, k: &str) -> &'a str {
     v[k].as_str().unwrap_or("")
 }
 
+/// What a stored record must not hold outside `unmapped`: observables, enrichments and enum captions.
+/// `activity_name` describes activity 99 and `authorizations[].decision` is the one caption OCSF requires.
+fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, e) in m {
+                let p = format!("{path}/{k}");
+                if p == "/unmapped" {
+                    continue;
+                }
+                let caption = k == "observables"
+                    || k == "enrichments"
+                    || k == "caption"
+                    || (k.ends_with("_name")
+                        && ![
+                            "/activity_name",
+                            "/metadata/log_name",
+                            "/metadata/product/name",
+                        ]
+                        .contains(&p.as_str()))
+                    || (k == "decision" && p != "/authorizations[]/decision");
+                if caption {
+                    out.push(p.clone());
+                }
+                lean_violations(e, &p, out);
+            }
+        }
+        Value::Array(a) => {
+            for e in a {
+                lean_violations(e, &format!("{path}[]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// verifies: REQ-AUDIT-091
+#[test]
+fn record_vectors_are_lean() {
+    let f = parse(RECORDS);
+    assert!(!arr(&f, "cases").is_empty());
+    for c in arr(&f, "cases") {
+        let mut bad = Vec::new();
+        lean_violations(&parse(text(c, "expected")), "", &mut bad);
+        assert!(bad.is_empty(), "{}: not lean: {bad:?}", text(c, "name"));
+    }
+    // The check is not vacuous: a record with each kind of violation is flagged.
+    let dirty = serde_json::json!({
+        "class_name": "API Activity", "observables": [], "enrichments": [],
+        "actor": {"user": {"type": "System"}, "user_name": "x"},
+        "authorizations": [{"decision": "Allowed"}],
+        "policy": {"decision": "Allowed"}
+    });
+    let mut bad = Vec::new();
+    lean_violations(&dirty, "", &mut bad);
+    bad.sort();
+    assert_eq!(
+        bad,
+        [
+            "/actor/user_name",
+            "/class_name",
+            "/enrichments",
+            "/observables",
+            "/policy/decision"
+        ]
+    );
+}
+
 #[test]
 fn canonical_matches_the_jcs_vectors() {
     let f = parse(JCS);

@@ -257,7 +257,8 @@ impl Opened {
 mod tests {
     use super::*;
 
-    const RECORD_VECTORS: &str = include_str!("../../../kits/conformance/audit/record-vectors.json");
+    const RECORD_VECTORS: &str =
+        include_str!("../../../kits/conformance/audit/record-vectors.json");
 
     fn hex(b: &[u8]) -> String {
         use std::fmt::Write as _;

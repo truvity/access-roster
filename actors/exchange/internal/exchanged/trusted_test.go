@@ -241,6 +241,7 @@ func TestAProofThatStaysValidLongerThanTheGuardCanRememberIsRefused(t *testing.T
 	refusedReason(t, err, "replay")
 }
 
+// verifies: REQ-SEC-011
 func TestATrustedProofIsRefusedForItsIssuerItsAudienceItsKeyAndItsTimes(t *testing.T) {
 	i := newIDP(t)
 	other := newIDP(t)

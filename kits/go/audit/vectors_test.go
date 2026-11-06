@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -338,6 +339,74 @@ func TestRecordHashVectors(t *testing.T) {
 				t.Fatalf("SHA-384 of %s = %x, want %s", got, sum, c.SHA384)
 			}
 		})
+	}
+}
+
+// leanViolations lists what a stored record must not hold outside unmapped.sluis: observables, enrichments, and enum
+// captions. Two members read like captions and are not: activity_name, which describes activity 99 (Other) and is
+// required then, and authorizations[].decision, the one caption OCSF requires of an authorization.
+func leanViolations(rec map[string]any) []string {
+	var bad []string
+	var walk func(path string, v any)
+	walk = func(path string, v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, e := range x {
+				p := path + "/" + k
+				switch {
+				case p == "/unmapped":
+					continue // the sluis facts are the emitter's own and bounded elsewhere
+				case k == "observables" || k == "enrichments" || k == "caption":
+					bad = append(bad, p)
+				case strings.HasSuffix(k, "_name") && p != "/activity_name" && p != "/metadata/log_name" && p != "/metadata/product/name":
+					bad = append(bad, p)
+				case k == "decision" && p != "/authorizations[]/decision":
+					bad = append(bad, p)
+				}
+				walk(p, e)
+			}
+		case []any:
+			for _, e := range x {
+				walk(path+"[]", e)
+			}
+		}
+	}
+	walk("", rec)
+	return bad
+}
+
+// A stored record holds enum ids, not captions, and no observables or enrichments. The check is run on a record
+// that has each of them, so it is not vacuous.
+//
+// verifies: REQ-AUDIT-091
+func TestRecordVectorsAreLean(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if bad := leanViolations(rec); len(bad) != 0 {
+			t.Errorf("%s: not lean: %v", c.Name, bad)
+		}
+	}
+	dirty := map[string]any{
+		"class_name": "API Activity", "observables": []any{}, "enrichments": []any{},
+		"actor":          map[string]any{"user": map[string]any{"type": "System"}, "user_name": "x"},
+		"metadata":       map[string]any{"product": map[string]any{"vendor_name": "v"}},
+		"authorizations": []any{map[string]any{"decision": "Allowed"}},
+		"policy":         map[string]any{"decision": "Allowed"},
+	}
+	want := []string{"/class_name", "/observables", "/enrichments", "/actor/user_name", "/metadata/product/vendor_name", "/policy/decision"}
+	got := leanViolations(dirty)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("violations = %v, want %v", got, want)
 	}
 }
 
