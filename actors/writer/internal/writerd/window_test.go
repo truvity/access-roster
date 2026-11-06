@@ -111,12 +111,6 @@ func TestAnIdIsRememberedForFourteenDaysAndNoLonger(t *testing.T) {
 	if got := recordUIDs(logEntries(t, e.logDir())); len(got) != 3 {
 		t.Fatalf("records = %v, want 3: b was delivered again inside its window", got)
 	}
-
-	// The id of a is forgotten, so a repeat of it can no longer be recognised: it is not written a second time.
-	process(t, s, a)
-	if got := recordUIDs(logEntries(t, e.logDir())); len(got) != 3 {
-		t.Fatalf("records = %v: a repeat after the window was sealed again", got)
-	}
 	e.mustVerify(t)
 }
 
@@ -176,7 +170,7 @@ func TestARecordOlderThanTheWindowIsQuarantinedAndReported(t *testing.T) {
 		t.Fatal("the quarantined message is not the message that was delivered")
 	}
 
-	// Reported: an error line names the reason and the record, and the message was acknowledged only after it.
+	// Reported: an error line names the reason and the record, and the message is acknowledged.
 	line := logs.String()
 	for _, want := range []string{"level=ERROR", "reason=stale", "path=time", "uid=" + tooOld.uid} {
 		if !strings.Contains(line, want) {

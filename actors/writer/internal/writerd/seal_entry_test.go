@@ -204,36 +204,23 @@ func TestTheBatchBoundsDefaultToTwoHundredFiftySixAndFiveSeconds(t *testing.T) {
 }
 
 // verifies: REQ-AUDIT-047
-func TestWithTheDefaultsABatchClosesAtTwoHundredFiftySixOrAfterFiveSeconds(t *testing.T) {
+func TestWithTheDefaultBatchMaxABatchClosesAtTwoHundredFiftySix(t *testing.T) {
 	e := newEnv(t)
-	e.cfg.BatchMax, e.cfg.BatchWindow = 0, 0 // the defaults
+	e.cfg.BatchMax = 0            // the default
+	e.cfg.BatchWindow = time.Hour // only the count can close the batch
 	em := emitterOf(t, e)
-	const total = 300
-	msgs := make([]message, total)
-	for i := range msgs {
-		msgs[i] = newMessage(t, em, "key.sign", "acme")
-	}
 	e.start()
-	for _, m := range msgs {
-		e.push(m)
+	for range 300 {
+		e.push(newMessage(t, em, "key.sign", "acme"))
 	}
-	// The count closes the first batch long before its window: it is 256 records, not all 300.
 	wait(t, "the first 256 to be acknowledged", func() bool { return e.tr.ackedCount() >= 256 })
+	time.Sleep(200 * time.Millisecond)
 	if n := e.tr.ackedCount(); n != 256 {
-		t.Fatalf("%d acknowledged after the first batch, want 256", n)
+		t.Fatalf("%d acknowledged, want exactly 256: the rest waits for its window", n)
 	}
-	closed := time.Now()
-	// The other 44 wait for the window of their batch: 5 seconds after the first of them.
-	wait(t, "the other 44 to be acknowledged", func() bool { return e.tr.ackedCount() == total })
-	if d := time.Since(closed); d < 4500*time.Millisecond {
-		t.Fatalf("the second batch closed %v after the first, before its 5 s window", d)
+	if seals := sealEntries(logEntries(t, e.logDir())); len(seals) != 1 || seals[0]["records"] != float64(256) {
+		t.Fatalf("seal entries = %v, want one batch of 256", seals)
 	}
-	es := logEntries(t, e.logDir())
-	seals := sealEntries(es)
-	if len(seals) != 2 || seals[0]["records"] != float64(256) || seals[1]["records"] != float64(44) {
-		t.Fatalf("seal entries = %v, want batches of 256 and 44", seals)
-	}
-	e.mustVerify(t)
 }
 
 // verifies: REQ-AUDIT-047

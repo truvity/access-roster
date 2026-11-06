@@ -162,6 +162,9 @@ func checkpointFiles(t *testing.T, e *env) []string {
 // verifies: REQ-AUDIT-125
 func TestEachWriterInstanceSignsItsCheckpointsWithItsOwnLogKey(t *testing.T) {
 	// Two installations, each with its own key@ and so its own log key, and the same project and origin.
+	// The keys differ by construction (each fake key@ makes its own). What the test proves is that the writer signs
+	// every checkpoint with the one key key@ gives it for audit-log; one key per instance, used by that instance
+	// only, is key@'s part and is not tested here.
 	a, b := newEnv(t), newEnv(t)
 	b.cfg.Instance = "node-2"
 	ema, emb := emitterOf(t, a), emitterOf(t, b)
