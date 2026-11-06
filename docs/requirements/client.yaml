@@ -332,6 +332,7 @@ requirements:
     issues: [822]
     verification:
       - {kind: integration-test, ref: "MCP client end-to-end test"}
+      - {kind: integration-test, ref: "the authorization server metadata document answers GET and HEAD with Cache-Control public, max-age=300, as the key set does (REQ-KEYS-016)"}
       - {kind: manual, ref: "pin the revision in a decision record"}
   - id: REQ-CLIENT-014
     area: CLIENT

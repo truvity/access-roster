@@ -256,9 +256,231 @@ requirements:
     level: SHOULD
     source: design-decision
     status: planned
-    milestone: backlog
+    milestone: v1-parity
     runtimes: all
     standards: []
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "two clients fetch the key set through the edge; the metric counts each by ua_product (allowlist plus other), asn and cache, and no label holds free text or an address"}
+  - id: REQ-OBS-019
+    area: OBS
+    statement: "A log line MUST NOT carry a string that a caller supplied unless the string is on one line, holds no control character and no bidirectional control character, and is at most 256 characters long."
+    rationale: "A caller can plant a forged line, or hide one, in a log through a string that the log repeats, and a scanner of the code base flagged the field v1 added for the purpose (ADR 0016)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "the shared log helper in the Go kit and its Rust twin, given CR and LF, U+202E, U+2028 and a 10 KiB value, return one line of at most 256 characters with no control character"}
+  - id: REQ-OBS-020
+    area: OBS
+    statement: "A refusal that the authorization endpoint or the token endpoint logs MUST carry the OAuth error code, a reason from a closed list and, when the client is declared, the client id."
+    rationale: "Seventeen error lines in one evening could not be told apart because they named neither the client nor the reason (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a refused authorization request and a refused token request each log the error code, a closed reason and the declared client id; a request that names an unknown client logs no client id"}
+  - id: REQ-OBS-021
+    area: OBS
+    statement: "A refusal that the authorization endpoint or the token endpoint logs MUST NOT carry the query, the state, a PKCE challenge, a code or a token."
+    rationale: "The state and the raw query are the caller's, and a log is read by people who must not receive them (ADR 0016)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a refused authorization request with a state, a challenge and a code in its query leaves none of them in the log line"}
+  - id: REQ-OBS-022
+    area: OBS
+    statement: "A refusal that a caller caused by a mistake in its request MUST NOT be logged at error level."
+    rationale: "An error level that a caller can reach by typing a wrong parameter hides the faults that need an operator (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a request with a missing or unknown client id is logged below error level; a refusal caused by a failed store call is logged at error level"}
+  - id: REQ-OBS-023
+    area: OBS
+    statement: "Every label value that an alert rule or a dashboard selects on MUST be a value that the code emits."
+    rationale: "In v1 a route was named differently in the code and in the rule, so the token latency alert and panel read nothing for weeks (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a test renders the alert rules and the dashboards, extracts every selected label value and fails on one that no registry entry or test fixture can produce"}
+  - id: REQ-OBS-024
+    area: OBS
+    statement: "A counter that an alert rule or a dashboard reads with rate or increase MUST be added to by zero when its scope first exists, so that the series exists before its first event."
+    rationale: "A series that starts at its first event makes increase miss that event and makes a panel read no data until then (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "in the Go kit and the Rust kit, a counter registered for a new kind, target or vendor is exported with value 0 before any event"}
+  - id: REQ-OBS-025
+    area: OBS
+    statement: "An alert on the age or the freshness of a periodic job MUST be derived from a counter of its successful completions, not from a gauge that several instances of the process export under the same labels."
+    rationale: "On serverless every warm environment exports its own gauge, so the series shows whichever environment reported last and a healthy job pages (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "two instances export the same gauge name and labels, one stale and one fresh; the freshness rule reads the counter and does not fire while ok completions arrive"}
+  - id: REQ-OBS-026
+    area: OBS
+    statement: "An alert on failures MUST count only outcomes that are failures, never ordinary conditional outcomes such as a conflict or an item that is not found."
+    rationale: "A conditional write that loses a race is the store working, and counting it as an error teaches operators to ignore the alert (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a port call that ends in conflict or not-found raises the outcome count and not the failure count; a call that ends in an error raises both"}
+  - id: REQ-OBS-027
+    area: OBS
+    statement: "A periodic job MUST have a critical alert that fires when its samples keep arriving and no successful completion has happened for four of its intervals."
+    rationale: "A job that runs and never succeeds is the case a stopped-series alert cannot see (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "rule tests for a live series with ok completions (no alert), a live series whose completions all fail (alert), and a live series that never had an ok completion (alert)"}
+  - id: REQ-OBS-028
+    area: OBS
+    statement: "A periodic job MUST have a warning alert that fires when its series was seen within the last two hours and has sent no sample for the live window, and that clears by itself when the two hours have passed."
+    rationale: "A renamed, removed or relabelled target leaves a series behind, and paging critical for a day on a series that no longer matters teaches operators to ignore the page (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "rule tests for a series that stops (warning, then clears after two hours) and for a series that is live and stalled (critical alert only)"}
+  - id: REQ-OBS-029
+    area: OBS
+    statement: "A periodic job that has gone for good MUST be covered by an alert rule on the absence of its series."
+    rationale: "After the two hours of the warning alert, silence is all that is left, and only an absence rule can see it (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "a rule test in which a declared job has no series at all fires the absence alert"}
+  - id: REQ-OBS-030
+    area: OBS
+    statement: "Each alert rule MUST have rule tests for a firing case, for a case that does not fire and for the regression that caused its last change."
+    rationale: "An alert whose fixes are not pinned by a test regresses silently, as the age alert of v1 did (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "the rule test file of every alert rule holds a firing case, a quiet case and a named regression case; a rule without them fails the check"}
+  - id: REQ-OBS-031
+    area: OBS
+    statement: "The dashboards SHOULD show the cold starts, the initialisation time and the initialisation timeouts of each serverless function, read from the platform's initialisation report events."
+    rationale: "No metric carries these figures, so without a panel on the events a slow cold start is invisible (ADR 0016)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: ["serverless"]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: manual, ref: "the dashboard shows the three figures per function, and the operations guide says that no metric carries them"}
+  - id: REQ-OBS-032
+    area: OBS
+    statement: "An adapter or driver that calls a vendor over the network MUST record one span for each vendor API method and one child span for each attempt, with the status code, the error type and the resend count."
+    rationale: "The span per attempt is what shows where the seconds of a slow mint went (ADR 0016)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake vendor that fails once and then answers produces a method span with two attempt spans holding the status, the error type and the resend count"}
+      - {kind: test-vectors, ref: "the generated allowlist test lists the new attribute names and drops any other attribute of these spans"}
+  - id: REQ-OBS-033
+    area: OBS
+    statement: "A span, a metric attribute or a log line of a vendor call MUST NOT carry the account, a token identifier, a token name, a token value or the URL."
+    rationale: "These identify the customer's account or open it, and a trace is read by more people than the credential (ADR 0016, ADR 0025)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a dump of every span, metric attribute and log line of a mint, taken before any filter, holds none of the account, a token identifier, a token name, a token value or the URL"}
+  - id: REQ-OBS-034
+    area: OBS
+    statement: "The latency alert of the token endpoint SHOULD exclude the exchanges that mint a credential at a vendor, which have a latency alert of their own."
+    rationale: "A vendor call takes seconds, and a few of them in a window made the token endpoint alert flap (ADR 0016)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "rule tests: slow vendor-backed exchanges raise their own alert and not the token endpoint alert; a slow plain token request raises the token endpoint alert"}
+  - id: REQ-OBS-035
+    area: OBS
+    statement: "A request duration histogram SHOULD have a bucket above the longest vendor call that the endpoint waits for."
+    rationale: "A quantile cannot be read above the last finite bucket, so a slow call looks as slow as the last bound (ADR 0016)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: test-vectors, ref: "the bucket bounds of the request duration histogram of an endpoint that waits for a vendor exceed that vendor's declared timeout"}

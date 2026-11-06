@@ -144,7 +144,7 @@ requirements:
       - {id: ST-08, section: "2", depth: Full}
     issues: [776, 791]
     verification:
-      - {kind: integration-test, ref: "negative test"}
+      - {kind: integration-test, ref: "an authorization code request carrying a resource parameter yields an ID token whose aud is the client id alone; the same test runs again on the day resource indicators are accepted (REQ-TOKEN-005)"}
   - id: REQ-TOKEN-005
     area: TOKEN
     statement: "sluis MUST issue an access token for a specific resource only when the request names it with the resource parameter."
@@ -158,7 +158,7 @@ requirements:
       - {id: ST-08, section: "2", depth: Full}
     issues: [791]
     verification:
-      - {kind: integration-test, ref: "resource matrix across code and refresh grants"}
+      - {kind: integration-test, ref: "resource matrix across code and refresh grants, with the audience of the ID token checked in each cell (REQ-TOKEN-004)"}
   - id: REQ-TOKEN-021
     area: TOKEN
     split_from: REQ-TOKEN-005

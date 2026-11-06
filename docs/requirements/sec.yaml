@@ -409,6 +409,7 @@ requirements:
     issues: [1215]
     verification:
       - {kind: integration-test, ref: "a RateWindow id is a Mac output; the source address is not in the item"}
+      - {kind: integration-test, ref: "a forwarded client address is honoured only from a peer on the trusted list and ignored from any other peer"}
   - id: REQ-SEC-028
     area: SEC
     statement: "A tenant MUST NOT raise a rate limit above the RateBound that config declares."
@@ -547,3 +548,16 @@ requirements:
     tests: [actors/store/tests/config.rs, actors/adapter-upstream-oidc/internal/oidc/egress_test.go, actors/exchange/internal/exchanged/unit_test.go]
     verification:
       - {kind: integration-test, ref: "a development set with an http URL off loopback (a name, localhost, another address) is refused at load, and the adapter's and exchange's fetch checks refuse it"}
+  - id: REQ-SEC-038
+    area: SEC
+    statement: "An endpoint that accepts a sluis access token as a bearer MUST check its type, its audience or client and the liveness of its session chain, so that an ID token is refused."
+    rationale: "An ID token is handed to relying parties and sits in their logs, and a token of an ended session is not a credential (ADR 0018)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "every bearer endpoint refuses an ID token, a token of another client and a token whose chain has ended, and accepts a live access token"}

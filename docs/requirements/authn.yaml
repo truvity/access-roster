@@ -88,11 +88,12 @@ requirements:
       - {kind: integration-test, ref: "redirect matrix (exact, prefix, case, userinfo, fragment, port)"}
   - id: REQ-AUTHN-004
     area: AUTHN
-    statement: "A policy that registers a non-loopback http redirect URI MUST be refused at load, for every client type and every installation profile."
-    rationale: "Cleartext redirects expose authorization codes to the network."
+    statement: "A policy that registers a non-loopback http redirect URI or a non-loopback http post-logout redirect URI MUST be refused at load, for every client type and every installation profile."
+    rationale: "Cleartext redirects expose authorization codes to the network, and a post-logout address that is plain http is as open as a redirect address (v1 fixed both in one advisory)."
     level: MUST
     source: security-review
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
@@ -101,7 +102,7 @@ requirements:
     issues: [775, 786]
     tests: [actors/store/tests/config.rs, actors/session/internal/sessiond/authorize_test.go]
     verification:
-      - {kind: integration-test, ref: "policy-load negative test"}
+      - {kind: integration-test, ref: "policy-load negative test for a redirect URI (done) and for a registered post-logout URI (planned, with the post-logout field of ADR 0021)"}
   - id: REQ-AUTHN-005
     area: AUTHN
     statement: "Every authorization response that carries a code or an error MUST include the iss parameter."

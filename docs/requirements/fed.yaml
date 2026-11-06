@@ -102,7 +102,7 @@ requirements:
       - {id: ST-28, section: "5.7", depth: Full}
     issues: [1106, 916]
     verification:
-      - {kind: integration-test, ref: "e-mail link negative test"}
+      - {kind: integration-test, ref: "e-mail link negative test: a sign-in whose e-mail equals an existing person's and whose sub differs creates a new person"}
   - id: REQ-FED-003
     area: FED
     statement: "A client of an upstream connection MUST check iss in the authorization response."

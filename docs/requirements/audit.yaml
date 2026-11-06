@@ -2440,3 +2440,70 @@ requirements:
     issues: [1220]
     verification:
       - {kind: integration-test, ref: "one change across tenants: the source's role reverses its record to the subject, the owner's role reverses its record to the account id, and neither holds a name or address"}
+  - id: REQ-AUDIT-169
+    area: AUDIT
+    statement: "Every request of a blob driver MUST have a bounded duration for each attempt and a bounded number of attempts."
+    rationale: "A blob call with no bound can pass the start-up limit of a function on one slow answer, and the worst case of an operation must be known (ADR 0028)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    actors: [writer, witness, indexer, reader]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: conformance-suite, ref: "the blob port suite runs a fake that stalls during connect, during the headers and in the middle of the body; the call fails within the attempts times the timeout plus the back-off"}
+  - id: REQ-AUDIT-170
+    area: AUDIT
+    statement: "The writer SHOULD log each phase of its start-up with the duration of the phase."
+    rationale: "A start-up that is slow, or near the limit of a function, shows which phase takes the time only if each phase is timed (ADR 0028)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a start of the writer logs one line for each phase of Init and recover with its duration"}
+  - id: REQ-AUDIT-171
+    area: AUDIT
+    statement: "For an AWS S3 blob destination, `sluis config check` MUST report a bucket whose policy lacks a statement that denies s3:BypassGovernanceRetention, s3:DeleteObjectVersion and s3:PutBucketObjectLockConfiguration to every principal except the break-glass roles that the installation declares."
+    rationale: "A bucket that sluis does not own is open to any role of the account with a broad allow unless its policy denies these actions, and sluis renders the lifecycle rule and applies none of the rest (ADR 0029)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a config check against a fake S3 control plane reports a policy without the guard, accepts a policy with it, and reports a log declared compliance whose bucket has no Object Lock"}
+  - id: REQ-AUDIT-172
+    area: AUDIT
+    statement: "`sluis config check` MUST refuse a production installation whose S3 blob destination lacks the guard of the bucket policy when the installation sets the guard as required."
+    rationale: "The report alone does not stop an installation from going live without the protection (ADR 0029)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "with the guard required, a bucket without it is refused for a production boundary and only reported for any other"}
+  - id: REQ-AUDIT-173
+    area: AUDIT
+    statement: "`sluis config check` MUST report a bucket whose policy it cannot read as unchecked rather than as guarded."
+    rationale: "A check that cannot run is not a pass (principle 4); the role of the checker may lack the permission to read the policy."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a fake S3 control plane that denies the read of the policy gives a report that names the bucket as unchecked and the missing permission"}

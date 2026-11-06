@@ -144,7 +144,7 @@ requirements:
       - {id: NC-12, section: "Cedar", depth: Partial}
     issues: [892]
     verification:
-      - {kind: integration-test, ref: "delegation bound test"}
+      - {kind: integration-test, ref: "delegation bound test, including a vector for a template that has no delegation policy (refused for every delegate)"}
   - id: REQ-POLICY-010
     area: POLICY
     statement: "The loader MUST refuse a grant name that the installation's vocabulary does not declare."
@@ -269,3 +269,58 @@ requirements:
     issues: [1212]
     verification:
       - {kind: integration-test, ref: "a PredefinedPolicyLink is written; the next decision uses the recompiled set"}
+  - id: REQ-POLICY-020
+    area: POLICY
+    statement: "The loader MUST refuse a delegation policy that allows a link whose result, with the ladder expanded, names a grant name outside the scope that the delegate's company owns."
+    rationale: "A delegation checked on the names of a link would not notice a derivation that widens it (ADR 0007; v1 ADR 0078)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    actors: [policy]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: integration-test, ref: "a delegation policy that allows a link yielding a grant name of another scope, by a ladder or by a wildcard, is refused at load with the path of the policy"}
+  - id: REQ-POLICY-021
+    area: POLICY
+    statement: "A refused `policy.link` MUST carry a reason from a closed list and the path of the slot, never a slot value."
+    rationale: "A company administrator needs to know why a link was refused without the operator reading Cedar, and a value may be another company's (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    actors: [policy]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "one negative vector for each reason: not-delegate, other-tenant, other-scope, sensitive, no-template and no-delegation"}
+  - id: REQ-POLICY-022
+    area: POLICY
+    statement: "The delegation policy MUST judge the scope of a link against a tenant-to-scope list that config declares, never by the equality of a scope's name and a tenant's."
+    rationale: "A scope that merely shares a name with a tenant would otherwise be claimable by that tenant (ADR 0007)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    actors: [policy]
+    standards: []
+    features: ["design"]
+    verification:
+      - {kind: test-vectors, ref: "a scope named like a tenant that the list does not assign to it is refused; a scope the list assigns is allowed; a template with no delegation policy is refused for every delegate"}
+  - id: REQ-POLICY-023
+    area: POLICY
+    statement: "`sluis config check` SHOULD warn about an internal group that is declared and that no grant, binding or requires clause names."
+    rationale: "A group that nothing uses is a leftover, and v1 logged it on every invocation until it was moved to the check (ADR 0020)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a config with a declared group that nothing names gives one warning that names the group; a config where every group is named gives none"}

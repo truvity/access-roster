@@ -561,7 +561,7 @@ requirements:
     standards: []
     issues: [1081, 1106]
     verification:
-      - {kind: integration-test, ref: "two accounts with one e-mail address are two persons; a changed address keeps the person"}
+      - {kind: integration-test, ref: "two accounts with one e-mail address are two persons; a changed address keeps the person; two ID tokens with the same e-mail and a different sub give two persons and the second inherits no grant"}
   - id: REQ-SUBJ-040
     area: SUBJ
     statement: "sluis MUST refuse a sign-in whose ID token lacks the configured subject claim, or whose value is not a string of at most 255 characters."
@@ -954,3 +954,16 @@ requirements:
     issues: [1024]
     verification:
       - {kind: test-vectors, ref: "session and exchange give one subject for each vector, including (ab, c) and (a, bc)"}
+  - id: REQ-SUBJ-070
+    area: SUBJ
+    statement: "The operator documentation SHOULD state that an upstream account that is deleted and created again is a new person, and that the operator gives it a new binding on its new claim value."
+    rationale: "The old binding names the old claim value and no longer matches, and the operator must not be left to find that out from a missing grant (ADR 0019)."
+    level: SHOULD
+    source: v1-parity
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: manual, ref: "the operations guide names the new binding as the remedy for a recreated upstream account"}
