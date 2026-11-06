@@ -230,14 +230,14 @@ requirements:
     source: standard
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-88, section: "1", depth: Partial}
     issues: [1039]
     verification:
       - {kind: manual, ref: "dependency lint"}
-      - {kind: integration-test, ref: "audit-log checkpoints and tiles come from libraries and verify with the transparency-dev reference verifier; fuzz targets for the checkpoint parser and the checkpoints/<size> reader"}
+      - {kind: integration-test, ref: "TestCheckpointsVerifyWithTheTransparencyDevVerifier: audit-log checkpoints open with the transparency-dev reference; fuzz targets in cli/sluis and writerd"}
   - id: REQ-SEC-009
     area: SEC
     statement: "A threat model and its negative tests MUST exist before code is merged for the authentication, federation, exchange and administration surfaces."

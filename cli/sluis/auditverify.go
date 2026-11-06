@@ -15,7 +15,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -193,14 +193,25 @@ func (d logDir) tileOrFull(level int, n int64, width, unit int, bundle bool) (b 
 	return full[:width*unit], rel, false, nil
 }
 
-// tileReader serves the hash tiles of the directory to tlog.TileHashReader, which checks them against the tree.
-type tileReader struct{ dir logDir }
+// tileReader serves the hash tiles of the directory to tlog.TileHashReader, which checks them against the tree. It
+// keeps the tiles it read last, since the checkpoints of a long history ask for the same few tiles again and again.
+type tileReader struct {
+	dir   logDir
+	cache map[tlog.Tile][]byte
+}
 
-func (tileReader) Height() int                     { return tileHeight }
-func (tileReader) SaveTiles([]tlog.Tile, [][]byte) {}
-func (r tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
+// tileCache is the number of tiles kept (8 KiB each at most).
+const tileCache = 1024
+
+func (*tileReader) Height() int                     { return tileHeight }
+func (*tileReader) SaveTiles([]tlog.Tile, [][]byte) {}
+func (r *tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 	out := make([][]byte, len(tiles))
 	for i, t := range tiles {
+		if b, ok := r.cache[t]; ok {
+			out[i] = b
+			continue
+		}
 		b, rel, _, err := r.dir.tileOrFull(t.L, t.N, t.W, tlog.HashSize, false)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -208,6 +219,10 @@ func (r tileReader) ReadTiles(tiles []tlog.Tile) ([][]byte, error) {
 			}
 			return nil, err
 		}
+		if r.cache == nil || len(r.cache) >= tileCache {
+			r.cache = make(map[tlog.Tile][]byte, tileCache)
+		}
+		r.cache[t] = b
 		out[i] = b
 	}
 	return out, nil
@@ -259,9 +274,11 @@ func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
 }
 
 // The limits of the checkpoints/<size> directory, the one object family that is sluis's own (docs/reference/
-// checkpoint-history.md). They bound what a damaged or hostile directory can make the verifier hold in memory.
+// checkpoint-history.md). A log has no limit on how many checkpoints it holds: the writer makes one for each sealed
+// batch, so the count grows for the life of the log and a compliance lock forbids pruning it. The reader streams the
+// directory instead, and keeps 8 octets of memory for each checkpoint.
 const (
-	maxHistory        = 1 << 20 // checkpoints in the directory; about 200 bytes each in memory
+	historyBatch      = 1024    // directory entries read at a time
 	maxHistoryName    = 19      // octets of a name: the decimal digits of the largest int64
 	maxCheckpointFile = 1 << 20 // octets of a checkpoint file; torchwood bounds a checkpoint at the same order
 )
@@ -279,9 +296,10 @@ func historySize(name string) (int64, error) {
 	return size, nil
 }
 
-// listHistory lists the checkpoints directory, at most limit entries; more is a refusal. An absent directory is
-// an empty list.
-func listHistory(d logDir, limit int) ([]os.DirEntry, error) {
+// historySizes lists the checkpoints directory in batches and returns the sizes its names stand for, in ascending
+// order. An absent directory is an empty list. A name that is not a size, or a directory, is a refusal; when several
+// are wrong the smallest name (in byte order) is the one reported, so the same log always gives the same refusal.
+func historySizes(d logDir) ([]int64, error) {
 	f, err := os.Open(filepath.Join(string(d), "checkpoints")) //nolint:gosec // the person names the log directory
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -290,82 +308,86 @@ func listHistory(d logDir, limit int) ([]os.DirEntry, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	entries, err := f.ReadDir(limit + 1)
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-	if len(entries) > limit {
-		return nil, refused("checkpoints.count")
-	}
-	return entries, nil
-}
-
-// readHistory reads and verifies the checkpoints/<size> directory (ADR 0029): every name is a size, every file is a
-// checkpoint signed with the log key that names that size. An absent directory is an empty history. More than
-// maxHistory files is a refusal, and so is a file over maxCheckpointFile.
-func readHistory(d logDir, vk *logKey) ([]checkpoint, error) {
-	entries, err := listHistory(d, maxHistory)
-	if err != nil {
-		return nil, err
-	}
-	var out []checkpoint
-	for _, e := range entries {
-		rel := filepath.Join("checkpoints", e.Name())
-		size, perr := historySize(e.Name())
-		if perr != nil || e.IsDir() {
-			return nil, refused(slashPath(rel) + ".name")
+	var sizes []int64
+	var bad *string
+	for {
+		entries, err := f.ReadDir(historyBatch)
+		for _, e := range entries {
+			size, perr := historySize(e.Name())
+			if perr != nil || e.IsDir() {
+				if bad == nil || e.Name() < *bad {
+					n := e.Name()
+					bad = &n
+				}
+				continue
+			}
+			sizes = append(sizes, size)
 		}
-		cp, err := readCheckpoint(d, rel, vk)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return nil, err
 		}
-		if cp.N != size {
-			return nil, refused(slashPath(rel) + ".size")
-		}
-		out = append(out, cp)
 	}
-	return out, nil
+	if bad != nil {
+		return nil, refused(slashPath(filepath.Join("checkpoints", *bad)) + ".name")
+	}
+	slices.Sort(sizes)
+	return sizes, nil
+}
+
+// readHistoryFile reads checkpoints/<size> and checks it: signed by the log key, a checkpoint of that size, of the
+// origin the log's pointer names.
+func readHistoryFile(d logDir, size int64, origin string, vk *logKey) (checkpoint, error) {
+	rel := filepath.Join("checkpoints", strconv.FormatInt(size, 10))
+	cp, err := readCheckpoint(d, rel, vk)
+	if err != nil {
+		return checkpoint{}, err
+	}
+	if cp.N != size {
+		return checkpoint{}, refused(cp.file + ".size")
+	}
+	if cp.Origin != origin {
+		return checkpoint{}, refused(cp.file + ".origin")
+	}
+	return cp, nil
 }
 
 // verifyLog checks a tiled log from its files alone. It verifies the signature of the checkpoint, and of every
 // checkpoint of the history in checkpoints/<size>; takes the largest as the head; rebuilds the tree from the
 // hash tiles with the RFC 6962 hashes (tlog.TileHashReader authenticates every tile against the head); checks
 // that each entry bundle hashes to the leaf hashes; and checks that every other checkpoint is a prefix of the
-// head (tlog: the tree hash of its size, recomputed from the tiles, equals its root hash).
+// head (tlog: the tree hash of its size, recomputed from the tiles, equals its root hash). The history is read one
+// file at a time, in ascending order of size, so the memory is that of the sizes and not of the checkpoints.
 func verifyLog(dir string, vk *logKey, wantOrigin string) (*auditOut, error) {
 	d := logDir(dir)
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() { //nolint:gosec // the person names the log directory
 		return nil, fmt.Errorf("%s: not a directory", filepath.Base(dir))
 	}
-	var cps []checkpoint
 	head, err := readCheckpoint(d, "checkpoint", vk)
 	if err != nil {
 		return nil, err
 	}
-	cps = append(cps, head)
-	hist, err := readHistory(d, vk)
+	if wantOrigin != "" && head.Origin != wantOrigin {
+		return nil, refused(head.file + ".origin")
+	}
+	sizes, err := historySizes(d)
 	if err != nil {
 		return nil, err
 	}
-	cps = append(cps, hist...)
-	for _, cp := range cps {
-		if cp.Origin != head.Origin {
-			return nil, refused(cp.file + ".origin")
-		}
-		if wantOrigin != "" && cp.Origin != wantOrigin {
-			return nil, refused(cp.file + ".origin")
+	// The top is the largest checkpoint of the pointer and the history.
+	top := head
+	if n := len(sizes); n > 0 && sizes[n-1] > head.N {
+		if top, err = readHistoryFile(d, sizes[n-1], head.Origin, vk); err != nil {
+			return nil, err
 		}
 	}
-	sort.SliceStable(cps, func(i, j int) bool { return cps[i].N > cps[j].N })
-	top := cps[0]
-	for _, cp := range cps[1:] {
-		if cp.N == top.N && cp.Hash != top.Hash {
-			return nil, refused(cp.file + ".fork")
-		}
+	if head.N == top.N && head.Hash != top.Hash {
+		return nil, refused(head.file + ".fork")
 	}
 
-	tree := top.Tree
-	hr := tlog.TileHashReader(tree, tileReader{d})
+	hr := tlog.TileHashReader(top.Tree, &tileReader{dir: d})
 	if top.N == 0 {
 		if top.Hash != tlog.Hash(sha256.Sum256(nil)) {
 			return nil, refused(top.file + ".hash")
@@ -379,16 +401,18 @@ func verifyLog(dir string, vk *logKey, wantOrigin string) (*auditOut, error) {
 			return nil, refused(top.file + ".hash")
 		}
 	}
-	for _, cp := range cps[1:] {
-		if cp.N == 0 {
-			continue
-		}
-		root, err := tlog.TreeHash(cp.N, hr)
+	for _, size := range sizes {
+		cp, err := readHistoryFile(d, size, head.Origin, vk)
 		if err != nil {
-			return nil, tileFailure(err)
+			return nil, err
 		}
-		if root != cp.Hash {
-			return nil, refused(cp.file + ".inconsistent")
+		if err := prefixOfTop(cp, top, hr); err != nil {
+			return nil, err
+		}
+	}
+	if head.N != top.N {
+		if err := prefixOfTop(head, top, hr); err != nil {
+			return nil, err
 		}
 	}
 	if err := verifyEntries(d, top.N, hr); err != nil {
@@ -398,9 +422,31 @@ func verifyLog(dir string, vk *logKey, wantOrigin string) (*auditOut, error) {
 		Origin:      top.Origin,
 		Size:        top.N,
 		RootHash:    base64.StdEncoding.EncodeToString(top.Hash[:]),
-		Checkpoints: len(cps),
+		Checkpoints: 1 + len(sizes),
 		Entries:     top.N,
 	}, nil
+}
+
+// prefixOfTop checks that cp is a checkpoint of the tree that top commits to: of the same size it names the same root,
+// of a smaller size its root is the tree hash of that size, recomputed from the tiles.
+func prefixOfTop(cp, top checkpoint, hr tlog.HashReader) error {
+	if cp.N == top.N {
+		if cp.Hash != top.Hash {
+			return refused(cp.file + ".fork")
+		}
+		return nil
+	}
+	if cp.N == 0 {
+		return nil
+	}
+	root, err := tlog.TreeHash(cp.N, hr)
+	if err != nil {
+		return tileFailure(err)
+	}
+	if root != cp.Hash {
+		return refused(cp.file + ".inconsistent")
+	}
+	return nil
 }
 
 // tileFailure turns an error of the tile reader into a refusal, when it is one: a tile that is absent, or whose
