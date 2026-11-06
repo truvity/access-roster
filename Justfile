@@ -537,6 +537,42 @@ local-logs *services:
 local-smoke-tamper:
     deploy/local/local.sh tamper
 
+# The Rust toolchain that rust-toolchain.toml pins (channel, components, targets), installed on its own and checked, before
+# anything else runs cargo. Without it the first `cargo` of a job installs the toolchain by itself (rustup's auto-install), and
+# rustup is not safe against a second installer on the same RUSTUP_HOME (rust-lang/rustup#988): a second process finds the
+# first one's components, says "downloading 4 components" and fails with "detected conflict: 'bin/cargo-clippy'", on about
+# one job in fifty. This recipe is that one installer; CI sets RUSTUP_AUTO_INSTALL=0 so that nothing else installs in the
+# background. A failed or half-done install is removed and made again, up to three times, and a run that ends without cargo,
+# clippy, rustfmt and every pinned target fails here and not later in a recipe.
+#
+# Install and check the pinned Rust toolchain, once (`devbox run -- just rust-toolchain`).
+rust-toolchain:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    home=${RUSTUP_HOME:?RUSTUP_HOME is not set (run it as: devbox run -- just rust-toolchain)}
+    channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+    [ -n "$channel" ] || { echo "::error::rust-toolchain.toml names no channel" >&2; exit 1; }
+    targets=$(grep -o '[a-z0-9_]*-[a-z0-9_]*-[a-z0-9_-]*' <<<"$(sed -n 's/^targets *= *//p' rust-toolchain.toml)")
+    [ -n "$targets" ] || { echo "::error::rust-toolchain.toml names no target; the check below would check nothing" >&2; exit 1; }
+    export RUSTUP_AUTO_INSTALL=0
+    complete() {
+        cargo --version && rustc --version && cargo clippy --version && cargo fmt --version || return 1
+        installed=$(rustup target list --installed)
+        for t in $targets; do grep -qx "$t" <<<"$installed" || { echo "the target $t is not installed" >&2; return 1; }; done
+    }
+    for attempt in 1 2 3; do
+        if rustup toolchain install && complete >/dev/null; then
+            echo "rust-toolchain: $(rustc --version), targets: $(echo $targets)"
+            exit 0
+        fi
+        echo "::warning::rust-toolchain: attempt $attempt failed; the rustup, cargo and rustc processes now:" >&2
+        ps -eo pid,etimes,args | grep -E '[r]ustup|[c]argo|[r]ustc' >&2 || echo "(none)" >&2
+        rm -rf "$home/toolchains/$channel"-* "$home/downloads" "$home/tmp" "$home/update-hashes"
+        sleep $((attempt * 3))
+    done
+    echo "::error::rust-toolchain: the toolchain $channel could not be installed in three attempts" >&2
+    exit 1
+
 # The deny matrix (ADR 0002, "Enforcement is tested"): for every caller and every socket of the local installation,
 # a probe as the caller's uid checks that the call graph is enforced at the socket and at the guard. It starts a Compose
 # project of its own, sluis-deny, and removes it; a `local-up` project is left alone. Exit 1 on any violation.
