@@ -65,6 +65,8 @@ case "$cmd" in
 "mktemp -d") echo /tmp/fake-stage ;;
 "sudo -n test -x /opt/sluis/bin/cli/sluis") exit "${FAKE_CLI_RC:-0}" ;;
 "sudo -n /opt/sluis/bin/cli/sluis node unlock "*) echo "node ${FAKE_NODE:-board-b} is unlocked" ;;
+"sudo -n /opt/sluis/bin/cli/sluis node status "*) exit_rc=${FAKE_STATUS_RC:-0}; [ "$exit_rc" != 0 ] || echo "node ${FAKE_NODE:-board-b} is ${FAKE_LOCK:-unlocked}"; exit "$exit_rc" ;;
+*"list-units --failed"*) printf '%s' "${FAKE_FAILED:-}" ;;
 "timeout 15 bash -s -- "*) bash -c "$cmd" </dev/null ;;
 esac
 exit 0
@@ -98,6 +100,14 @@ newlog
 out=$(printf '%s\n' "$pin" | SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock 2>&1)
 u=$(unlock_call)
 check "unlock: the board answers that the node is unlocked" grep -q 'node board-b is unlocked' <<<"$out"
+# After the unlock, the lock state comes from the card driver again (sluis node status), not from the word of the unlock command.
+check "unlock: and the lock state is read back from the driver, one line for the board" grep -qx 'board 192.0.2.12: unlocked' <<<"$out"
+check "unlock: by the status command, as root, with the node and the boundary" grep -qx "arg: sudo -n /opt/sluis/bin/cli/sluis node status board-b --boundary dev" "$FAKE_SSH_LOG"
+# A PIN the card took but a driver that still says locked is not a success; a unit that systemd gave up on is named, with the way back.
+if printf '%s\n' "$pin" | FAKE_LOCK=locked SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a driver that still says locked after the unlock fails"; else check "unlock: a driver that still says locked after the unlock fails, and says so" grep -q 'still LOCKED after the unlock' "$work/out"; fi
+if printf '%s\n' "$pin" | FAKE_STATUS_RC=1 SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a driver that cannot be asked after the unlock fails"; else check "unlock: a driver that cannot be asked after the unlock fails, and says so" grep -q 'could not be asked for its lock state' "$work/out"; fi
+if printf '%s\n' "$pin" | FAKE_FAILED=$'sluis-writer@dev.service loaded failed failed sluis writer (dev)\n' SLUIS_BOARDS=192.0.2.12 "$here/boards.sh" unlock >"$work/out" 2>&1; then bad "unlock: a unit that systemd gave up on fails the unlock"; else check "unlock: a failed unit is named, with reset-failed and start" grep -q 'unit sluis-writer@dev.service is FAILED.*systemctl reset-failed sluis-writer@dev.service && sudo systemctl start sluis-writer@dev.service' "$work/out"; fi
+check "unlock: and the PIN is not in that output either" bash -c '! grep -q -- "$1" "$2"' _ "$pin" "$work/out"
 printf '%s\n' "$pin" >"$work/pin.expected"
 check "unlock: the PIN is on the standard input of the command on the board, byte for byte (one newline, nothing else)" cmp -s "$work/pin.expected" "$FAKE_SSH_LOG.in.$u"
 check "unlock: the PIN is in no argument of any ssh" bash -c '! grep -q -- "$1" "$2" && ! grep -qa -- "$1" "$2".args.*' _ "$pin" "$FAKE_SSH_LOG"

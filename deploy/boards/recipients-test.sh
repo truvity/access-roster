@@ -96,6 +96,12 @@ case "$cmd" in
 	# What remote.sh deploy ends with (settle_units): the line "SLUIS-BOARD-STATE: ok|locked|failed" and a status. DEPLOYLOCKED_<board>
 	# is a board that is only locked (the line, and 10); DEPLOYLOCKRC_<board> changes the status; DEPLOYNOSTATE_<board> is a status
 	# without the line (a 10 that something else exited with).
+	# remote.sh status ends with the lock of the card, from the card driver: "SLUIS-BOARD-LOCK: locked|unlocked|none|unknown". LOCKSTATE_<board>
+	# is what the driver of that board says (unlocked if not set).
+	if [[ "$cmd" == *"remote.sh' status "* ]]; then
+		lockst_var="LOCKSTATE_$key"
+		echo "SLUIS-BOARD-LOCK: ${!lockst_var:-unlocked}"
+	fi
 	if [[ "$cmd" == *"remote.sh' deploy "* ]]; then
 		lock_var="DEPLOYLOCKED_$key"
 		rc_var="DEPLOYLOCKRC_$key"
@@ -315,4 +321,15 @@ grep -q "files/card/pcscd-socket.dropin" "$work/log/a.test.files" || { echo "FAI
 if grep -q "files/card/" "$work/log/b.test.files" "$work/log/c.test.files"; then echo "FAIL a software board got card files"; fail=1; else echo "ok   the software boards got no card file"; fi
 grep -q "bin/drivers/key/software" "$work/log/c.test.files" || { echo "FAIL a board with nothing deployed did not get software"; fail=1; }
 [ ! -s "$work/state/switch-pending" ] || { echo "FAIL a run that switched nothing marked a board pending"; fail=1; }
+
+# boards-status: one line for each board, from its card driver: locked or unlocked.
+rm -rf "$work/log" "$work/state/switch-pending"
+export SLUIS_BOARDS="a.test b.test c.test d.test"
+LOCKSTATE_a_test=locked LOCKSTATE_b_test=unlocked LOCKSTATE_c_test=none LOCKSTATE_d_test=unknown ./deploy/boards/boards.sh status >"$work/out" 2>&1 || true
+grep -q "^board a.test: locked (the card driver holds no PIN; give it: SLUIS_BOARDS=a.test just boards-unlock)$" "$work/out" || { echo "FAIL status: a locked board is not said: $(cat "$work/out")"; fail=1; }
+grep -q "^board b.test: unlocked$" "$work/out" || { echo "FAIL status: an unlocked board is not said: $(cat "$work/out")"; fail=1; }
+grep -q "^board c.test: unlocked (no card driver, so no PIN)$" "$work/out" || { echo "FAIL status: a board without the card driver is not said: $(cat "$work/out")"; fail=1; }
+grep -q "^board d.test: lock state UNKNOWN" "$work/out" || { echo "FAIL status: an unreadable lock is not said: $(cat "$work/out")"; fail=1; }
+[ "$(grep -c '^board [a-d].test: ' "$work/out")" = 4 ] && echo "ok   status: one line for each board, from the card driver" || { echo "FAIL status: not one line each: $(cat "$work/out")"; fail=1; }
+LOCKSTATE_a_test=unknown refuses "status: a board whose lock cannot be read fails the run" env SLUIS_BOARDS=a.test ./deploy/boards/boards.sh status
 exit "$fail"

@@ -521,8 +521,12 @@ cat >"$sbin/journalctl" <<'F'
 #!/bin/bash
 # journalctl -u UNIT [--since STAMP] ...: each line of $SC/<unit>.journal starts with its timestamp (two fields), which --since
 # compares as the text it is, as the timestamps sort that way.
-[ "$1" = -u ] || exit 2
-u=$2
+# journalctl _SYSTEMD_UNIT=UNIT ... reads the same file: the process's own lines; the tests keep no line of systemd about a unit.
+case "$1" in
+-u) u=$2 ;;
+_SYSTEMD_UNIT=*) u=${1#_SYSTEMD_UNIT=} ;;
+*) exit 2 ;;
+esac
 since=""
 while [ "$#" -gt 0 ]; do
 	[ "$1" = --since ] && since=$2
@@ -536,16 +540,32 @@ while IFS= read -r line; do
 	printf '%s\n' "${rest#* }"
 done <"$SC/$u.journal" 2>/dev/null || true
 F
-chmod +x "$sbin/systemctl" "$sbin/journalctl"
-for t in sleep awk sed cat tail; do ln -sf "$(command -v "$t")" "$sbin/$t"; done
+# The fake sluis CLI of the board: `sluis node status NODE --boundary B` says what $SC/lock holds: locked, unlocked, or a failure
+# (any other word is the status it exits with, and "garbage" prints a line that is neither). $SC/cli.calls counts the calls.
+cat >"$sbin/sluis" <<'F'
+#!/bin/bash
+[ "$1 $2" = "node status" ] || exit 2
+echo x >>"$SC/cli.calls"
+case "$(cat "$SC/lock" 2>/dev/null || echo unlocked)" in
+locked | unlocked) echo "node $3 is $(cat "$SC/lock" 2>/dev/null || echo unlocked)" ;;
+garbage) echo "hello" ;;
+*) echo "node node status: the admin socket cannot be reached (is the driver running, and are you root?)" >&2; exit 1 ;;
+esac
+F
+chmod +x "$sbin/systemctl" "$sbin/journalctl" "$sbin/sluis"
+for t in sleep awk sed cat tail grep; do ln -sf "$(command -v "$t")" "$sbin/$t"; done
 settle_reset() { rm -f "$sc"/*; }
 journal() { printf '2026-11-06 12:00:10.000000 %s\n' "$2" >>"$sc/$1.journal"; } # a line of this deploy
 stale() { printf '2026-11-06 11:00:00.000000 %s\n' "$2" >>"$sc/$1.journal"; } # a line of an earlier deploy
 depends() { printf '%s\n' "$2" >>"$sc/$1.deps"; }
 steady() { printf 'active running 0\n' >"$sc/$1.state"; } # an active unit that never restarts
+lock() { printf '%s\n' "$1" >"$sc/lock"; } # what the card driver says: locked, unlocked, or a word that makes the fake CLI fail
+keygroup() { depends "$1" "SupplementaryGroups=sluis-drv-writer-spool-dev sluis-key-dev sluis-store-dev"; } # may call key@
+looping() { printf 'activating auto-restart %s\n' "$2" >"$sc/$1.state"; } # a unit in a restart loop
 settle() { # the units..., run in a subshell with the fakes alone; prints what settle_units printed and "rc=N"
 	(
 		export PATH="$sbin" SC="$sc" boundary=dev settle_timeout=2 settle_step=0.05 settle_stable=3 settle_since="2026-11-06 12:00:00.000000"
+		export lock_cli="${SETTLE_LOCK_CLI:-$sbin/sluis}" lock_node=board-a
 		# shellcheck source=/dev/null
 		. "$here/remote-lib.sh"
 		rc=0
@@ -553,6 +573,7 @@ settle() { # the units..., run in a subshell with the fakes alone; prints what s
 		echo "rc=$rc"
 	) 2>&1
 }
+lock_prefix='SLUIS-BOARD-LOCK: '
 key=sluis-key@dev.service card=sluis-drv-key-yubikey-piv@dev.service store=sluis-store@dev.service writer=sluis-writer@dev.service
 sexpect() { # description output pattern...: the output must match every pattern (grep -E) and none that starts with !
 	local d=$1 out=$2 p
@@ -598,72 +619,230 @@ printf 'failed failed 5\n' >"$sc/$writer.state"
 out=$(settle "$store" "$writer")
 sexpect "settle: a failed unit fails" "$out" "^unit $writer FAILED: .*failed" '^rc=1$'
 
-# The locked card board.
-settle_reset
-steady "$card"; steady "$store"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
-journal "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
-out=$(settle "$card" "$key" "$store")
-sexpect "settle: the card driver up and key@ stopped by the lock is the outcome 'locked': exit 10, nothing FAILED" "$out" "^unit $key locked: .*boards-unlock" "^unit $card active" "^unit $store active" '^rc=10$' '!FAILED'
+# --- The lock: from the card driver (sluis node status), not from the journal ---------------------------------------------------------
+# The writer's journal when it starts on a locked board: the error that ends it (key@ refuses while the driver holds no PIN).
+waiting='writer: serve: sign the checkpoint: unavailable: driver'
 
+# unlocked: ok, and the state line is the last one
 settle_reset
-steady "$card"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
-journal "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
-printf 'activating auto-restart 4\n' >"$sc/$store.state"
-journal "$store" 'dial unix /run/sluis/key/dev/store.sock: connect: no such file or directory'
+lock unlocked
+steady "$card"; steady "$key"; steady "$store"
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: a card board with every unit up and the driver unlocked is ok, exit 0" "$out" '^lock: the card driver is unlocked' "^${lock_prefix}unlocked$" '^SLUIS-BOARD-STATE: ok$' '^rc=0$' '!FAILED' '!waits for the PIN'
+
+# the board of the real run: locked, all units active (key@ stays up and logs "locked: asked the peers"): locked, not ok
+settle_reset
+lock locked
+steady "$card"; steady "$key"; steady "$store"; steady "$writer"
+journal "$key" '{"level":"INFO","msg":"locked: asked the peers for the PIN"}'
+out=$(settle "$card" "$key" "$store" "$writer")
+sexpect "settle: every unit active but the driver locked is the outcome 'locked', never ok: exit 10" "$out" '^lock: the card driver is locked' "^${lock_prefix}locked$" '^SLUIS-BOARD-STATE: locked$' '^rc=10$' '!FAILED' '!STATE: ok'
+
+# a deploy restarted the driver: locked, the writer restarts because it cannot sign
+settle_reset
+lock locked
+steady "$card"; steady "$key"; steady "$store"
+looping "$writer" 33
+keygroup "$writer"
+journal "$writer" '{"level":"INFO","msg":"writer starting"}'
+journal "$writer" "$waiting"
+out=$(settle "$card" "$key" "$store" "$writer")
+sexpect "settle: a writer that restarts only because the driver is locked is waiting, not failed: exit 10" "$out" "^unit $writer waits for the PIN: .*restarted 33 times.*boards-unlock" "^unit $store active" '^SLUIS-BOARD-STATE: locked$' '^rc=10$' '!FAILED'
+
+# the same, and the writer's last line is an info log of its next start: it is still waiting
+settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$writer" 33
+keygroup "$writer"
+journal "$writer" "$waiting"
+journal "$writer" '{"time":"2026-11-06T12:00:11Z","level":"INFO","msg":"writer starting"}'
+journal "$writer" '{"time":"2026-11-06T12:00:11Z","level":"WARN","msg":"the key is not ready"}'
+out=$(settle "$card" "$key" "$writer")
+sexpect "settle: info and warning log lines after the error do not hide it" "$out" "^unit $writer waits for the PIN" '^SLUIS-BOARD-STATE: locked$' '^rc=10$'
+
+# the graph tells it too: After= key@ (or the card driver), with no group
+settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$store" 4
 depends "$store" "After=$card $key"
+journal "$store" 'store: unwrap: unavailable: driver'
 out=$(settle "$card" "$key" "$store")
-sexpect "settle: a unit that depends on key@ in the unit graph waits with it while the board is locked: exit 10" "$out" "^unit $store waits for key@, which is locked" '^rc=10$' '!FAILED' '^SLUIS-BOARD-STATE: locked$'
+sexpect "settle: a unit ordered after key@ in the unit graph, with the refusal as its last line, is waiting" "$out" "^unit $store waits for the PIN" '^SLUIS-BOARD-STATE: locked$' '^rc=10$' '!FAILED'
 
+# key@ itself, when it exits with the lock (an older key@, or a driver that refuses Ensure)
 settle_reset
+lock locked
 steady "$card"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
+looping "$key" 7
 journal "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
-printf 'activating auto-restart 4\n' >"$sc/$store.state"
-journal "$store" 'credential serve: the credentials directory must be owned by the uid of this process'
-out=$(settle "$card" "$key" "$store")
-sexpect "settle: a locked board does not hide a unit with a fault of its own: it fails, exit 1, and key@ is still said to be locked" "$out" "^unit $store FAILED" "journal $store: credential serve: the credentials directory" "^unit $key locked" '^rc=1$'
+out=$(settle "$card" "$key")
+sexpect "settle: key@ that exits with the lock while the driver is locked is waiting too" "$out" "^unit $key waits for the PIN" '^SLUIS-BOARD-STATE: locked$' '^rc=10$' '!FAILED'
 
+# a waiting unit that also has a fault of its own: failed (the other waiting unit is still said to be waiting)
 settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$writer" 33
+keygroup "$writer"
+journal "$writer" "$waiting"
+looping "$store" 9
+keygroup "$store"
+journal "$store" 'unavailable: driver'
+journal "$store" 'store: credential serve: the credentials directory must be owned by the uid of this process'
+out=$(settle "$card" "$key" "$writer" "$store")
+sexpect "settle: a unit that needs key@ but ends with a fault of its own is FAILED on a locked board, exit 1" "$out" "^unit $store FAILED" "journal $store: store: credential serve: the credentials directory" "^unit $writer waits for the PIN" '^lock: the card driver is locked' '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+# a fault that comes after the wait is the unit's last word
+settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$writer" 5
+keygroup "$writer"
+journal "$writer" "$waiting"
+journal "$writer" 'writer: serve: the audit blob is read-only'
+out=$(settle "$card" "$key" "$writer")
+sexpect "settle: a unit whose last word is another error than the lock's is FAILED, though it logged the lock's before" "$out" "^unit $writer FAILED" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+# a unit with no word at all (journal lost, or it dies before it writes): not proven to be waiting
+settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$writer" 5
+keygroup "$writer"
+out=$(settle "$card" "$key" "$writer")
+sexpect "settle: a unit that says nothing is not taken for a waiting one" "$out" "^unit $writer FAILED" '^rc=1$'
+
+# a unit that logs the refusal but is not tied to key@ in the graph or by group
+settle_reset
+lock locked
+steady "$card"; steady "$key"
+looping "$store" 4
+depends "$store" "After=sluis-drv-store-credential@dev.service"
+depends "$store" "Requires=sluis-drv-store-credential@dev.service"
+depends "$store" "SupplementaryGroups=sluis-store-dev"
+journal "$store" 'unavailable: driver'
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: the refusal in the journal of a unit that is not tied to key@ is not enough" "$out" "^unit $store FAILED" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+# the driver is unlocked: the same unit is not waiting for anything, it has a fault
+settle_reset
+lock unlocked
+steady "$card"; steady "$key"
+looping "$writer" 33
+keygroup "$writer"
+journal "$writer" "$waiting"
+out=$(settle "$card" "$key" "$writer")
+sexpect "settle: a writer that restarts while the driver is unlocked is FAILED, whatever it says" "$out" "^unit $writer FAILED" '^lock: the card driver is unlocked' '^SLUIS-BOARD-STATE: failed$' '^rc=1$' '!waits for the PIN'
+
+# key@ in a loop for another reason than the lock
+settle_reset
+lock locked
 steady "$card"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
+looping "$key" 7
 journal "$key" 'something else broke: failed_precondition: store'
 out=$(settle "$card" "$key")
-sexpect "settle: key@ in a loop for another reason than the lock fails, with its journal" "$out" "^unit $key FAILED" "journal $key: something else broke" '^rc=1$' '!^unit [^ ]+ locked'
+sexpect "settle: key@ in a loop for another reason than the lock fails, with its journal, on a locked board" "$out" "^unit $key FAILED" "journal $key: something else broke" '^rc=1$' '!waits for the PIN'
 
-# A "locked" line that an earlier deploy left in the journal is not this deploy's: the journal is read since the start.
+# a line of an earlier deploy is no evidence
 settle_reset
-steady "$card"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
-stale "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
-journal "$key" 'key@: store unavailable'
-out=$(settle "$card" "$key")
-sexpect "settle: a stale 'locked' line of an earlier invocation does not make the board locked" "$out" "^unit $key FAILED" "journal $key: key@: store unavailable" '!locked' '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+lock locked
+steady "$card"; steady "$key"
+looping "$writer" 5
+keygroup "$writer"
+stale "$writer" "$waiting"
+journal "$writer" 'writer: serve: store unavailable'
+out=$(settle "$card" "$key" "$writer")
+sexpect "settle: a refusal that an earlier deploy left in the journal does not make a unit wait" "$out" "^unit $writer FAILED" "journal $writer: writer: serve: store unavailable" '^rc=1$' '!waits for the PIN'
 
-# A unit that is not tied to key@ in the unit graph is a failure, whatever its journal says, also on a locked board.
+# the card driver itself is down: nothing to wait for
 settle_reset
-steady "$card"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
-journal "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
-printf 'activating auto-restart 4\n' >"$sc/$store.state"
-journal "$store" 'dial unix /run/sluis/key/dev/store.sock: connect: no such file or directory'
-depends "$store" "After=$card"
-depends "$store" "Requires=sluis-drv-store-credential@dev.service"
-out=$(settle "$card" "$key" "$store")
-sexpect "settle: a unit that logs key@'s path but does not depend on key@ is FAILED on a locked board" "$out" "^unit $store FAILED" "journal $store: dial unix /run/sluis/key/dev" "^unit $key locked" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
-
-settle_reset
-printf 'activating auto-restart 2\n' >"$sc/$card.state"
-printf 'activating auto-restart 7\n' >"$sc/$key.state"
-journal "$key" 'key-store driver ensure wrapping: failed_precondition: locked'
+lock locked
+looping "$card" 2
+steady "$key"
 journal "$card" 'card driver: no reader'
 out=$(settle "$card" "$key")
-sexpect "settle: no card driver up, no 'locked': both fail" "$out" "^unit $card FAILED" "^unit $key FAILED" '^rc=1$' '!^unit [^ ]+ locked'
+sexpect "settle: a card driver that does not stay up is FAILED, locked or not" "$out" "^unit $card FAILED" "journal $card: card driver: no reader" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+# a lock nobody has looked at is never ok
+settle_reset
+lock broken
+steady "$card"; steady "$key"; steady "$store"
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: a lock state that cannot be read is failed, not ok" "$out" '^lock: UNKNOWN: .*status 1' "^${lock_prefix}unknown$" '^SLUIS-BOARD-STATE: failed$' '^rc=1$' '!STATE: ok'
 
 settle_reset
+lock garbage
+steady "$card"; steady "$key"
+out=$(settle "$card" "$key")
+sexpect "settle: an answer that is neither locked nor unlocked is not believed" "$out" '^lock: UNKNOWN: .*something else' '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+settle_reset
+steady "$card"; steady "$key"
+out=$(SETTLE_LOCK_CLI="$sbin/no-such-sluis" settle "$card" "$key")
+sexpect "settle: a board without the sluis CLI cannot be said to be unlocked: failed, with the fix" "$out" "^lock: UNKNOWN: .*is not on the board: run 'just build-arm64'" '^SLUIS-BOARD-STATE: failed$' '^rc=1$'
+
+# a board with the software key has no PIN, and the CLI is not asked
+settle_reset
+rm -f "$sc/lock"
+steady "$key"; steady "$store"
+out=$(settle "$store" "$key")
+sexpect "settle: a software board has no lock: ok, exit 0" "$out" '^lock: no card driver' "^${lock_prefix}none$" '^SLUIS-BOARD-STATE: ok$' '^rc=0$'
+[ ! -e "$sc/cli.calls" ] && echo "ok   settle: the CLI is not asked on a board without the card driver" || { echo "FAIL the CLI was asked on a software board"; fail=1; }
+
+settle_reset
+lock locked
 steady "$store"; steady "$key"
 journal "$key" 'failed_precondition: locked'
 out=$(settle "$store" "$key")
-sexpect "settle: a key@ that is active is active, whatever its old journal says (software boards have no card driver)" "$out" "^unit $key active" '^rc=0$' '!^unit [^ ]+ locked'
+sexpect "settle: no card driver in the plan, no 'locked', whatever the journal says" "$out" "^unit $key active" '^rc=0$' '!waits for the PIN' '!STATE: locked'
+
+# the other units' faults still show on a software board
+settle_reset
+steady "$key"
+looping "$writer" 5
+journal "$writer" "$waiting"
+keygroup "$writer"
+out=$(settle "$key" "$writer")
+sexpect "settle: on a software board a unit that restarts is FAILED, with its journal" "$out" "^unit $writer FAILED" "journal $writer: $waiting" '^rc=1$'
+
+# --- remote.sh status: the lock of the card, from the card driver ---------------------------------------------------------------------
+# A fake systemctl that knows is-enabled and list-units (the card unit is enabled when $SC/card exists) and the fake CLI above.
+stbin=$work/status-bin
+mkdir -p "$stbin"
+cat >"$stbin/systemctl" <<'F'
+#!/bin/bash
+case "$1" in
+is-enabled) [ -e "$SC/card" ] ;;
+list-units) exit 0 ;;
+*) exit 0 ;;
+esac
+F
+chmod +x "$stbin/systemctl"
+for t in awk sed cat tail grep uname dirname; do ln -sf "$(command -v "$t")" "$stbin/$t"; done
+ln -sf "$sbin/sluis" "$stbin/sluis"
+mkdir -p "$work/status-stage/files"
+status_of() { # prints what remote.sh status printed, and "rc=N"
+	local rc=0
+	env -i PATH="$stbin" SC="$sc" lock_cli="${SETTLE_LOCK_CLI:-$stbin/sluis}" lock_node=board-a "$(command -v bash)" "$here/remote.sh" status "$work/status-stage" 2>&1 || rc=$?
+	echo "rc=$rc"
+}
+settle_reset
+touch "$sc/card"; lock locked
+out=$(status_of)
+sexpect "status: a locked card board says so, from the driver, and is not a failure" "$out" '^lock: the card driver is locked' "^${lock_prefix}locked$" '^rc=0$'
+settle_reset
+touch "$sc/card"; lock unlocked
+out=$(status_of)
+sexpect "status: an unlocked card board says so" "$out" '^lock: the card driver is unlocked' "^${lock_prefix}unlocked$"
+settle_reset
+touch "$sc/card"; lock broken
+out=$(status_of)
+sexpect "status: a card board whose driver cannot be asked is UNKNOWN, and status fails" "$out" '^lock: UNKNOWN' "^${lock_prefix}unknown$" '^rc=1$'
+settle_reset
+lock locked
+out=$(status_of)
+sexpect "status: a board without the card driver has no lock, and the CLI is not asked" "$out" '^lock: no card driver' "^${lock_prefix}none$" '^rc=0$'
+[ ! -e "$sc/cli.calls" ] && echo "ok   status: the CLI is not run on a board without the card driver" || { echo "FAIL the CLI was run on a software board"; fail=1; }
 exit "$fail"

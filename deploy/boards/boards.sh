@@ -101,11 +101,23 @@
 # when auditd is not running, because a denial from before it started is not visible (remote-lib.sh, avc_check).
 #
 # The end of a deploy (remote.sh, settle_units): after the units are started, each board waits up to 60 s until every unit is
-# `active (running)` and has not restarted for about 6 s. A unit that is not, or that restarts, fails the board ("board B: deploy FAILED",
-# exit 1) and the output holds the last lines of that unit's journal. (The "verify U: ok" lines come earlier and only say that
-# the unit files read well.) One state is not a failure: a card board starts locked, with no PIN, so its card driver is up and
-# key@ cannot make its keys yet. The board then ends "deployed, LOCKED", the exit status stays 0 for it, and the line names the
-# command that gives the PIN (`boards-unlock`). A run that also has a failed board still exits 1.
+# `active (running)` and has not restarted for about 6 s, and then asks its card driver whether it holds the PIN (`sluis node status`).
+# A unit that is not settled, or that restarts, fails the board ("board B: deploy FAILED", exit 1) and the output holds the last lines
+# of that unit's journal. (The "verify U: ok" lines come earlier and only say that the unit files read well.) The last line of the
+# board's output is SLUIS-BOARD-STATE: `ok` is every unit up and the card driver unlocked (or a board with no card driver);
+# `locked` is the card driver holding no PIN with nothing unsettled but units that wait for it (an actor that signs or opens a key
+# when it starts exits with "unavailable: driver" until the PIN is given, and restarts every 2 s with no start limit); `failed` is
+# anything else, a lock state that could not be read included. A locked board is not a failure: it ends "deployed, LOCKED", the exit
+# status stays 0 for it, and the line names the command that gives the PIN (`boards-unlock`). A run that also has a failed board
+# still exits 1.
+#
+# status: `boards-status` also prints one line for each board from its card driver: "board B: locked" or "board B: unlocked".
+#
+# A new KeyPlan and the first board: a locked board is released by a peer only when the peer verifies the request against the KeyPlan
+# it holds, and the boards that were not deployed yet hold the old one, which does not list the new board's keys ("PIN release
+# request is refused", why "unlisted"). So when the KeyPlan changes, the first board that is deployed locks (its card driver
+# restarts) and nobody can release it: unlock it by hand (`boards-unlock`) and deploy the next ones after; once a board holds the new
+# KeyPlan and is unlocked, the boards that are deployed after it are released by it. Deploy ONE board, unlock it, then the others.
 #
 # unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
 # input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /opt/sluis/bin/cli/sluis node unlock <host> --boundary
@@ -551,7 +563,7 @@ deploy)
 		esac
 	done
 	for b in ${locked[@]+"${locked[@]}"}; do
-		echo "board $b: deployed, LOCKED: the card driver is up and waits for its PIN, so key@ is not serving yet. This is not a failure and the exit status stays 0 for it; give the PIN: SLUIS_BOARDS=$b just boards-unlock"
+		echo "board $b: deployed, LOCKED: the card driver is up and holds no PIN, so key@ cannot sign or open a key yet, and the units that need it wait and restart every 2 s without a limit until it is given. This is not a failure and the exit status stays 0 for it; give the PIN: SLUIS_BOARDS=$b just boards-unlock. (A peer that already holds the new KeyPlan would release it by itself; the first board of a new KeyPlan has no such peer.)"
 	done
 	# The denials of the policy since boot, on a board where SELinux is enforcing: a sluis or rqlite path or domain in one fails the run.
 	bare_stage "$tmp/stage-avc"
@@ -598,6 +610,26 @@ unlock)
 	else
 		board_ssh_secret "$b" "$unlock_cmd" || rc=$?
 	fi
+	[ "$rc" = 0 ] || exit "$rc"
+	# What the unlock did, from the card driver itself and not from the word of the command: the lock state of the board, and the
+	# units that systemd gave up on (a board still on units of an earlier deploy: they had a start limit, and a unit that waited
+	# for the PIN past it is "failed" and is not started again by the unlock; the units of this deploy have none). Nothing here
+	# reads or prints a PIN.
+	status_cmd="sudo -n /opt/sluis/bin/cli/sluis node status $node --boundary $boundary"
+	if ! after=$(board_ssh_n "$b" "$status_cmd"); then
+		echo "unlock: the PIN was accepted, but the board '$b' could not be asked for its lock state" >&2
+		exit 1
+	fi
+	case "$after" in
+	"node $node is unlocked") echo "board $b: unlocked" ;;
+	*) echo "board $b: still LOCKED after the unlock ($after)" >&2; exit 1 ;;
+	esac
+	failed_units=$(board_ssh_n "$b" "systemctl list-units --failed --no-legend --plain 'sluis-*'" | awk '{print $1}') || failed_units=""
+	for u in $failed_units; do
+		[[ "$u" =~ ^sluis-[a-z0-9-]+@$boundary\.service$ ]] || continue
+		echo "board $b: unit $u is FAILED (systemd gave up on it): sudo systemctl reset-failed $u && sudo systemctl start $u, or deploy again; a deploy of this version leaves no unit with a start limit" >&2
+		rc=1
+	done
 	exit "$rc"
 	;;
 recipients | check)
@@ -738,7 +770,23 @@ undeploy | status | avc)
 	rc=0
 	for b in "${boards[@]}"; do
 		echo "== board $b: $mode"
+		if [ "$mode" = status ]; then
+			# The output goes on to the terminal and into a file, which is read for the line "SLUIS-BOARD-LOCK: ..." of remote.sh.
+			run_on_log=$tmp/status-$b.out
+		else
+			run_on_log=""
+		fi
 		run_on "$b" "$mode" "$tmp" || { echo "board $b: $mode FAILED" >&2; rc=1; }
+		if [ "$mode" = status ]; then
+			# One line for each board, from the card driver itself: locked or unlocked (a board without the card driver has no PIN).
+			case "$(sed -n 's/^SLUIS-BOARD-LOCK: //p' "$tmp/status-$b.out" | tail -n 1)" in
+			locked) echo "board $b: locked (the card driver holds no PIN; give it: SLUIS_BOARDS=$b just boards-unlock)" ;;
+			unlocked) echo "board $b: unlocked" ;;
+			none) echo "board $b: unlocked (no card driver, so no PIN)" ;;
+			*) echo "board $b: lock state UNKNOWN (the card driver could not be asked)" >&2; rc=1 ;;
+			esac
+		fi
+		run_on_log=""
 		# rqlite is the engine the units use and is installed by rqlite.sh, not by deploy: it follows the units, in both directions.
 		case "$mode" in
 		undeploy) run_on "$b" rqlite-undeploy "$tmp" || { echo "board $b: rqlite-undeploy FAILED" >&2; rc=1; } ;;
