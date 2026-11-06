@@ -43,7 +43,7 @@ UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/entry -/tmp -/var/tmp
+NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/entry -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/entry
 
 [Install]

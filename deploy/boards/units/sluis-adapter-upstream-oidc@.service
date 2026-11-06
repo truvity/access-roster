@@ -43,7 +43,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 SocketBindDeny=any
-NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/adapter-upstream-oidc -/tmp -/var/tmp
+NoExecPaths=-/opt/sluis/bin/drivers -/run/sluis/adapter-upstream-oidc -/tmp -/var/tmp -/dev/shm
 ReadWritePaths=/run/sluis/adapter-upstream-oidc
 
 [Install]

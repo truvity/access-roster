@@ -1409,7 +1409,8 @@ requirements:
     standards: []
     issues: [866]
     verification:
-      - {kind: integration-test, ref: "every generated unit has SocketBindDeny=any, so systemd refuses a bind of any TCP or UDP port (unit test over the generated units)"}
+      - {kind: integration-test, ref: "every generated unit carries SocketBindDeny=any (unit test over the generated units)"}
+      - {kind: integration-test, ref: "the first board deploy checks systemctl show -p SocketBindDeny on a running unit, since the directive depends on the kernel's cgroup BPF support"}
   - id: REQ-ISO-096
     area: ISO
     statement: "On a board entry MUST listen on a Unix socket that cloudflared forwards to."
