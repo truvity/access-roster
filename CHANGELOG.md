@@ -1,5 +1,9 @@
 ## Unreleased
 
+### Changed
+
+- **ADR 0078 records how a company access fragment is checked.** A company that states its own people, projects and bindings is held to an owner's ceiling and checked by its derived effect on the roster, and an owner with any violation is excluded alone. Proposed; no code change, and no release is needed for it. **Upgrade:** none.
+
 ## v1.80.4
 
 A patch release: a rotated R2 credential is stored a minute after its token is created, once R2 accepts it, so the audit writer is no longer refused after the 5 s wait of v1.80.3. The presets are ticked at the same time. Upgrade notes: none.
