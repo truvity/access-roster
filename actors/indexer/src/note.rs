@@ -1,23 +1,35 @@
 //! The checkpoint of a log: a C2SP signed note of type 0x02 (ECDSA) over a `tlog-checkpoint` body, read
 //! exactly as the writer makes it and as `sluis audit verify` reads it (cli/sluis/auditverify.go).
 //!
-//! - **signed-note** (C2SP): the text is the checkpoint body, then a blank line, then one signature
-//!   line `— <name> <base64(key hash || signature)>` for each signer. The key hash of type 0x02 is the
-//!   first four octets of the SHA-256 of the DER `SubjectPublicKeyInfo`. The verifier key is
-//!   `name+hex(key hash)+base64(0x02 || SubjectPublicKeyInfo)`.
-//! - **tlog-checkpoint** (C2SP): the origin line, the tree size in decimal, the root hash in standard
-//!   base64, then optional extension lines.
+//! The note and the checkpoint are read by a library, not by this file (REQ-SEC-018):
+//!
+//! - **signed-note** (C2SP): `signed_note` of Cloudflare's azul splits the note, reads the signature
+//!   lines, refuses an oversized note, control characters, more than 100 signatures and a bad name, and
+//!   verifies the signatures a [`NoteVerifier`] knows.
+//! - **tlog-checkpoint** (C2SP): `tlog_checkpoint::CheckpointText` reads the origin line, the tree size
+//!   in decimal, the root hash in standard base64 and the extension lines.
+//!
+//! What stays here is what no library has: the verifier of the log key, a P-256 key of signature type
+//! 0x02, which `signed_note` does not ship (it ships Ed25519). It is a [`NoteVerifier`] on `aws-lc-rs`:
+//!
+//! - The verifier key is `name+hex(key hash)+base64(0x02 || SubjectPublicKeyInfo)`. The key hash of
+//!   type 0x02 is the first four octets of the SHA-256 of the DER `SubjectPublicKeyInfo`, as the writer
+//!   makes it (the wire format is fixed by the Go writer, so this is not the hash that signed-note
+//!   recommends for new types).
 //! - **The signature** is the standard one, as the witness implementation of transparency-dev has it
 //!   (decision D-25; ADR 0006, "Named exceptions"): the log key is a P-256 key, the one exception to
 //!   P-384, and the signature is ASN.1 DER ECDSA over the SHA-256 of the note text.
 //!
 //! A signature line of another name or another key hash is ignored (signed-note: a verifier ignores a
-//! signer it does not know); one that names this key and does not verify refuses the note.
+//! signer it does not know); one that names this key and does not verify refuses the note, and so does
+//! a repeat of such a line.
 
 use aws_lc_rs::digest;
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
+use signed_note::{KeyName, Note, NoteError, NoteVerifier, VerifierList};
+use tlog_checkpoint::CheckpointText;
 
 /// The signature type byte of an ECDSA key in a signed note.
 const SIG_TYPE_ECDSA: u8 = 0x02;
@@ -27,8 +39,6 @@ const SPKI_P256_PREFIX: [u8; 26] = [
     0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
     0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
 ];
-/// The em dash and the space that open a signature line.
-const SIG_LINE: &str = "\u{2014} ";
 
 /// Why a note or a key is refused. Each is a closed word; none carries a value of the note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,13 +85,41 @@ pub struct Checkpoint {
     pub root: [u8; 32],
 }
 
+/// The [`NoteVerifier`] of a P-256 ECDSA key, signature type 0x02.
+#[derive(Clone)]
+struct EcdsaP256Verifier {
+    name: KeyName,
+    id: u32,
+    point: Vec<u8>,
+}
+
+impl NoteVerifier for EcdsaP256Verifier {
+    fn name(&self) -> &KeyName {
+        &self.name
+    }
+
+    fn key_id(&self) -> u32 {
+        self.id
+    }
+
+    fn verify(&self, msg: &[u8], sig: &[u8]) -> bool {
+        // ECDSA over the SHA-256 of the text, as C2SP signature type 0x02 fixes (D-25).
+        UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, &self.point)
+            .verify(msg, sig)
+            .is_ok()
+    }
+
+    fn extract_timestamp_millis(&self, _sig: &[u8]) -> Result<Option<u64>, NoteError> {
+        // Type 0x02 carries no timestamp.
+        Ok(None)
+    }
+}
+
 /// The verifier key of a log: the public half of its key, with the name and key hash a signature line
 /// carries.
 #[derive(Clone)]
 pub struct LogKey {
-    name: String,
-    id: u32,
-    point: Vec<u8>,
+    verifier: EcdsaP256Verifier,
 }
 
 impl LogKey {
@@ -98,9 +136,7 @@ impl LogKey {
         else {
             return Err(Error::Key);
         };
-        if name.is_empty() || name.contains(char::is_whitespace) {
-            return Err(Error::Key);
-        }
+        let name = KeyName::new(name.to_owned()).map_err(|_| Error::Key)?;
         let id = u32::from_str_radix(hash, 16)
             .ok()
             .filter(|_| hash.len() == 8)
@@ -119,16 +155,18 @@ impl LogKey {
             .filter(|p| p.len() == 65 && p[0] == 0x04)
             .ok_or(Error::Key)?;
         Ok(Self {
-            name: name.to_owned(),
-            id,
-            point: point.to_vec(),
+            verifier: EcdsaP256Verifier {
+                name,
+                id,
+                point: point.to_vec(),
+            },
         })
     }
 
     /// The name the key signs under.
     #[must_use]
     pub fn name(&self) -> &str {
-        &self.name
+        self.verifier.name.as_str()
     }
 
     /// Opens the note with this key and reads its checkpoint. The note's text is the checkpoint body;
@@ -138,37 +176,32 @@ impl LogKey {
     ///
     /// [`Error::Format`], [`Error::Signature`] or [`Error::Checkpoint`].
     pub fn open(&self, note: &[u8]) -> Result<Checkpoint, Error> {
-        let note = std::str::from_utf8(note).map_err(|_| Error::Format)?;
-        // The text ends at its last newline; a blank line follows; the signature lines end the note.
-        let cut = note.find("\n\n").ok_or(Error::Format)?;
-        let (text, sigs) = (&note[..=cut], &note[cut + 2..]);
-        if sigs.is_empty() || !sigs.ends_with('\n') {
-            return Err(Error::Format);
-        }
-        let key = UnparsedPublicKey::new(&ECDSA_P256_SHA256_ASN1, &self.point);
-        let mut good = false;
-        for line in sigs.strip_suffix('\n').unwrap_or(sigs).split('\n') {
-            let rest = line.strip_prefix(SIG_LINE).ok_or(Error::Format)?;
-            let (name, b64) = rest.split_once(' ').ok_or(Error::Format)?;
-            let blob = STANDARD.decode(b64).map_err(|_| Error::Format)?;
-            if blob.len() < 5 {
-                return Err(Error::Format);
-            }
-            let (hash, sig) = blob.split_at(4);
-            // A signer this verifier does not know is ignored.
-            if name != self.name || hash != self.id.to_be_bytes() {
-                continue;
-            }
-            // ECDSA over the SHA-256 of the text, as C2SP signature type 0x02 fixes (D-25).
-            if key.verify(text.as_bytes(), sig).is_err() {
+        let note = Note::from_bytes(note).map_err(|_| Error::Format)?;
+        let known = VerifierList::new(vec![Box::new(self.verifier.clone())]);
+        match note.verify(&known) {
+            Ok(_) => {}
+            // A bad signature of the key, or none of the key at all (an unknown signer is ignored).
+            Err(NoteError::InvalidSignature { .. } | NoteError::UnverifiedNote) => {
                 return Err(Error::Signature);
             }
-            good = true;
+            Err(_) => return Err(Error::Format),
         }
-        if !good {
-            return Err(Error::Signature);
+        // The library checks the first line of each (name, key hash) and skips a repeat of it; a repeat
+        // that does not verify refuses the note here, as every line of the key always did.
+        for sig in note.signatures() {
+            if sig.name() == &self.verifier.name
+                && sig.id() == self.verifier.id
+                && !self.verifier.verify(note.text(), sig.signature())
+            {
+                return Err(Error::Signature);
+            }
         }
-        parse_checkpoint(text)
+        let text = CheckpointText::from_bytes(note.text()).map_err(|_| Error::Checkpoint)?;
+        Ok(Checkpoint {
+            origin: text.origin().to_owned(),
+            size: text.size(),
+            root: text.hash().0,
+        })
     }
 }
 
@@ -179,27 +212,6 @@ fn key_id(spki: &[u8]) -> u32 {
     u32::from_be_bytes([b[0], b[1], b[2], b[3]])
 }
 
-/// Reads a checkpoint body: origin, size, root, and any extension lines (tlog-checkpoint).
-fn parse_checkpoint(text: &str) -> Result<Checkpoint, Error> {
-    let lines: Vec<&str> = text.split('\n').collect();
-    // The body ends with a newline, so the last element is empty.
-    if lines.len() < 4 || lines.last() != Some(&"") || lines[0].is_empty() {
-        return Err(Error::Checkpoint);
-    }
-    let size: u64 = lines[1].parse().map_err(|_| Error::Checkpoint)?;
-    // A size with a sign, a plus or leading zeros is not the decimal form the format fixes.
-    if size.to_string() != lines[1] {
-        return Err(Error::Checkpoint);
-    }
-    let root = STANDARD.decode(lines[2]).map_err(|_| Error::Checkpoint)?;
-    let root: [u8; 32] = root.try_into().map_err(|_| Error::Checkpoint)?;
-    Ok(Checkpoint {
-        origin: lines[0].to_owned(),
-        size,
-        root,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use aws_lc_rs::rand::SystemRandom;
@@ -208,6 +220,9 @@ mod tests {
     };
 
     use super::*;
+
+    /// The em dash and the space that open a signature line.
+    const SIG_LINE: &str = "\u{2014} ";
 
     struct Signer {
         pair: EcdsaKeyPair,
@@ -251,6 +266,7 @@ mod tests {
         format!("example.test/dev/p/audit/main\n{size}\n{ROOT}\n")
     }
 
+    /// verifies: REQ-SEC-018
     #[test]
     fn a_note_signed_by_the_key_opens_and_gives_the_checkpoint() {
         let s = signer();
@@ -265,6 +281,7 @@ mod tests {
         assert!(key.open(&s.note("log", &ext)).is_ok());
     }
 
+    /// verifies: REQ-SEC-018
     #[test]
     fn a_changed_text_a_foreign_key_or_a_missing_signature_is_refused() {
         let (s, other) = (signer(), signer());
@@ -297,6 +314,7 @@ mod tests {
         assert_eq!(key.open(bad.as_bytes()), Err(Error::Signature));
     }
 
+    /// verifies: REQ-SEC-018
     #[test]
     fn a_checkpoint_has_the_decimal_size_and_a_32_octet_root() {
         let s = signer();
@@ -319,6 +337,7 @@ mod tests {
         assert!(key.open(&s.note("log", &no_newline)).is_err());
     }
 
+    /// verifies: REQ-SEC-018
     #[test]
     fn a_verifier_key_must_be_a_p256_ecdsa_key_with_its_own_hash() {
         let s = signer();
@@ -366,5 +385,141 @@ mod tests {
             LogKey::parse(&format!("{name}+{id}+{d}")).err(),
             Some(Error::Key)
         );
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn an_oversized_note_a_control_character_or_too_many_signatures_is_refused() {
+        let s = signer();
+        let key = LogKey::parse(&s.vkey("log")).expect("key");
+        // Signed correctly, and still refused: the library reads no note over 1,000,000 octets.
+        let big = format!("{}{}\n", text("42"), "x".repeat(1_000_000));
+        let note = s.note("log", &big);
+        assert!(note.len() > 1_000_000);
+        assert_eq!(key.open(&note), Err(Error::Format));
+        // A note a little under the limit is read.
+        let fits = format!("{}{}\n", text("42"), "x".repeat(900_000));
+        assert!(key.open(&s.note("log", &fits)).is_ok());
+        // A control character other than the newline in the text, or in a signature line.
+        for c in ["\t", "\r", "\u{0}", "\u{1b}"] {
+            let ext = format!("{}a{c}b\n", text("42"));
+            assert_eq!(key.open(&s.note("log", &ext)), Err(Error::Format), "{c:?}");
+        }
+        // 100 signature lines are read, 101 are not, whoever signed them.
+        let good = String::from_utf8(s.note("log", &text("42"))).expect("utf8");
+        let other = signer();
+        for (extra, ok) in [(99, true), (100, false)] {
+            let mut n = good.clone();
+            for i in 0..extra {
+                n.push_str(&other.line(&format!("w{i}"), &text("42")));
+            }
+            assert_eq!(key.open(n.as_bytes()).is_ok(), ok, "{extra} more lines");
+        }
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn a_malformed_signature_line_refuses_the_note_even_beside_a_good_one() {
+        let s = signer();
+        let key = LogKey::parse(&s.vkey("log")).expect("key");
+        let good = String::from_utf8(s.note("log", &text("42"))).expect("utf8");
+        for line in [
+            "not a signature line\n",
+            "\u{2014} log\n",
+            "\u{2014} log !!!!\n",
+            // Fewer than five octets of key hash and signature.
+            "\u{2014} log AAAAAA==\n",
+            // A name with a plus, which signed-note forbids.
+            "\u{2014} a+b AAAAAAAAAA==\n",
+            "\u{2014}  AAAAAAAAAA==\n",
+        ] {
+            let n = format!("{good}{line}");
+            assert_eq!(key.open(n.as_bytes()), Err(Error::Format), "{line:?}");
+        }
+        // The signature block must end in a newline, and the blank line must come before it.
+        let no_end = good.trim_end_matches('\n');
+        assert_eq!(key.open(no_end.as_bytes()), Err(Error::Format));
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn a_repeated_line_of_the_key_that_does_not_verify_refuses_the_note() {
+        let s = signer();
+        let key = LogKey::parse(&s.vkey("log")).expect("key");
+        let good = String::from_utf8(s.note("log", &text("42"))).expect("utf8");
+        // The library checks the first line of a key only; the second is the one this crate checks.
+        let bad = s.line("log", &text("41"));
+        assert_eq!(
+            key.open(format!("{good}{bad}").as_bytes()),
+            Err(Error::Signature)
+        );
+        let twice = format!("{good}{}", s.line("log", &text("42")));
+        assert!(key.open(twice.as_bytes()).is_ok());
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn a_cut_or_changed_note_is_refused_or_gives_the_same_checkpoint() {
+        let s = signer();
+        let key = LogKey::parse(&s.vkey("log")).expect("key");
+        let note = s.note("log", &text("42"));
+        let want = key.open(&note).expect("open");
+        // Every prefix of the note is refused, but the whole one.
+        for n in 0..note.len() {
+            assert!(key.open(&note[..n]).is_err(), "cut at {n}");
+        }
+        // Every octet changed to every other value of a sample: refused, or still the same checkpoint
+        // (a change can only land where it cannot alter what was signed or what is read).
+        let mut rng = crate::testrng::Rng::new(0xc2_5b);
+        for at in 0..note.len() {
+            for _ in 0..4 {
+                let mut m = note.clone();
+                m[at] ^= rng.byte() | 1;
+                if let Ok(cp) = key.open(&m) {
+                    assert_eq!(cp, want, "change at {at}");
+                }
+            }
+        }
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn any_bytes_are_refused_or_read_and_never_panic() {
+        let s = signer();
+        let key = LogKey::parse(&s.vkey("log")).expect("key");
+        let note = s.note("log", &text("42"));
+        let mut rng = crate::testrng::Rng::new(0x5eed_f00d);
+        for round in 0..3000 {
+            // Random octets; or the note with a random run overwritten, dropped or doubled.
+            let b: Vec<u8> = if round % 3 == 0 {
+                let len = rng.below(400);
+                (0..len).map(|_| rng.byte()).collect()
+            } else {
+                let mut m = note.clone();
+                let (a, len) = (rng.below(m.len()), rng.below(8) + 1);
+                let end = (a + len).min(m.len());
+                match round % 3 {
+                    1 => m.drain(a..end).for_each(drop),
+                    _ => {
+                        let run = m[a..end].to_vec();
+                        m.splice(a..a, run);
+                    }
+                }
+                m
+            };
+            let _ = key.open(&b);
+            let _ = LogKey::parse(&String::from_utf8_lossy(&b));
+        }
+        // The verifier key too: random changes of a valid one are refused or give a key that is the same.
+        let vkey = s.vkey("log");
+        for at in 0..vkey.len() {
+            let mut m = vkey.clone().into_bytes();
+            m[at] = m[at].wrapping_add(1);
+            if let Ok(k) = LogKey::parse(&String::from_utf8_lossy(&m)) {
+                // Only the name can change freely; it then names another signer, and the note is refused.
+                assert_ne!(k.name(), "log", "change at {at}");
+                assert_eq!(k.open(&note), Err(Error::Signature), "change at {at}");
+            }
+        }
     }
 }
