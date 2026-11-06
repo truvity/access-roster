@@ -1,0 +1,6 @@
+# owner-slack: a workspace of another company
+slack:
+  globex-chat:
+    channels:
+      web:
+        members: [team-web@acme.example]

@@ -19,6 +19,8 @@ func policyCommand(args []string) error {
 	switch args[0] {
 	case "render":
 		return policyRender(args[1:])
+	case "fragment":
+		return policyFragment(args[1:])
 	case "-h", "--help", "help":
 		_, _ = fmt.Fprint(stdout, policyUsage)
 		return nil

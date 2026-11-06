@@ -1,0 +1,3 @@
+# ceiling: a pattern that is not scope:thing:role
+directories: [acme.example]
+groups: ["dev:*"]

@@ -1,0 +1,3 @@
+# ceiling: an AWS account that is not 12 digits
+directories: [acme.example]
+aws_accounts: ["1234"]
