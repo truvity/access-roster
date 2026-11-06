@@ -5,8 +5,7 @@ Description=sluis key (%i)
 Documentation=https://sluis.id/runtimes/bare-metal/
 Requires=sluis-drv-key-yubikey-piv@%i.service
 After=sluis-drv-key-yubikey-piv@%i.service
-StartLimitIntervalSec=120
-StartLimitBurst=40
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

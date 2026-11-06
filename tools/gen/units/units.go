@@ -635,10 +635,13 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("After=%s", strings.Join(owned, " "))
 	}
 	// An actor dials the sockets of the actors it calls when it starts, and systemd does not order the actors among
-	// themselves, so it may fail a few times while a peer comes up. The default limit (5 starts in 10 s, with
-	// RestartSec=2s) would put it out for good after 10 s; this one gives a board two minutes to settle.
-	b.line("StartLimitIntervalSec=120")
-	b.line("StartLimitBurst=40")
+	// themselves, so it may fail a few times while a peer comes up. And on a card board an actor that signs or opens a
+	// key when it starts fails for as long as the board is locked, which is until a person (or a peer) gives the PIN:
+	// minutes, or a night. Any limit would put such an actor out for good ("start-limit-hit", state failed), and
+	// nothing starts it again after the unlock. So an actor has no start limit: Restart=on-failure with RestartSec=2s
+	// is one start every two seconds, and it is the deploy's wait (settle_units) and `boards-status` that say a unit
+	// that does not stay up, not systemd giving up on it.
+	b.line("StartLimitIntervalSec=0")
 	b.blank()
 	b.line("[Service]")
 	b.line("Type=simple")
