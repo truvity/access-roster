@@ -9,35 +9,29 @@
 //! If the roots agree, the new tree is the old tree plus exactly those entries, and each entry is
 //! covered by the signed root. No hash tile is read, and nothing but the entries is trusted.
 
-use aws_lc_rs::digest;
+use tlog_core::{EMPTY_HASH, node_hash as tlog_node_hash, record_hash};
 
 /// A hash of the tree (SHA-256).
 pub type Hash = [u8; 32];
 
+// The hash rules are `tlog_core`'s (RFC 6962 section 2.1, REQ-SEC-018): this file owns only the compact
+// range below, which no library offers (`tlog_core` reads a tree from stored hashes, all of them, while the
+// indexer keeps one hash per set bit of the size).
+
 /// The hash of the empty tree: the SHA-256 of the empty string.
 #[must_use]
 pub fn empty_root() -> Hash {
-    sha256(&[&[]])
-}
-
-fn sha256(parts: &[&[u8]]) -> Hash {
-    let mut c = digest::Context::new(&digest::SHA256);
-    for p in parts {
-        c.update(p);
-    }
-    let mut out = [0u8; 32];
-    out.copy_from_slice(c.finish().as_ref());
-    out
+    EMPTY_HASH.0
 }
 
 /// The hash of a leaf: the SHA-256 of 0x00 and the entry (RFC 6962 section 2.1).
 #[must_use]
 pub fn leaf_hash(entry: &[u8]) -> Hash {
-    sha256(&[&[0x00], entry])
+    record_hash(entry).0
 }
 
 fn node_hash(left: &Hash, right: &Hash) -> Hash {
-    sha256(&[&[0x01], left, right])
+    tlog_node_hash(tlog_core::Hash(*left), tlog_core::Hash(*right)).0
 }
 
 /// The compact range of a tree: one complete subtree per set bit of the size, largest first.
@@ -159,6 +153,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-SEC-018
     #[test]
     fn the_range_survives_its_encoding_and_a_bad_one_is_refused() {
         let mut r = Range::new();
@@ -173,6 +168,116 @@ mod tests {
         twice.extend_from_slice(&r.encode()[..33]);
         assert!(Range::decode(&twice).is_err(), "levels must decrease");
         assert_eq!(Range::decode(&[]).expect("empty").root(), empty_root());
+    }
+
+    /// The Certificate Transparency reference tree (google/certificate-transparency, `merkle_tree_test`):
+    /// eight leaves and the root of each prefix, the vectors RFC 6962 implementations are checked against.
+    const CT_LEAVES: [&str; 8] = [
+        "",
+        "00",
+        "10",
+        "2021",
+        "3031",
+        "40414243",
+        "5051525354555657",
+        "606162636465666768696a6b6c6d6e6f",
+    ];
+    const CT_ROOTS: [&str; 8] = [
+        "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+        "fac54203e7cc696cf0dfcb42c92a1d9dbaf70ad9e621f4bd8d98662f00e3c125",
+        "aeb6bcfe274b70a14fb067a5e5578264db0fa9b51af5e0ba159158f329e06e77",
+        "d37ee418976dd95753c1c73862b9398fa2a2cf9b4ff0fdfe8b30cd95209614b7",
+        "4e3bbb1f7b478dcfe71fb631631519a3bca12c9aefca1612bfce4c13a86264d4",
+        "76e67dadbcdf1e10e1b74ddc608abd2f98dfb16fbce75277b5232a127f2087ef",
+        "ddb89be403809e325750d3d263cd78929c2942b7942a34b77e122c9594a74c8c",
+        "5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328",
+    ];
+
+    fn hex(b: &[u8]) -> String {
+        b.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    fn unhex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
+            .collect()
+    }
+
+    /// verifies: REQ-SEC-018, REQ-AUDIT-005
+    #[test]
+    fn the_range_gives_the_roots_of_the_ct_reference_tree() {
+        let mut r = Range::new();
+        for (i, (leaf, root)) in CT_LEAVES.iter().zip(CT_ROOTS).enumerate() {
+            r.append(leaf_hash(&unhex(leaf)));
+            assert_eq!(hex(&r.root()), root, "size {}", i + 1);
+        }
+    }
+
+    /// A tree kept the way `tlog_core` keeps it, every node hash stored, to read the root back with its
+    /// own `tree_hash`.
+    struct Stored(Vec<tlog_core::Hash>);
+
+    impl tlog_core::HashReader for Stored {
+        fn read_hashes(
+            &self,
+            indexes: &[u64],
+        ) -> Result<Vec<tlog_core::Hash>, tlog_core::TlogError> {
+            indexes
+                .iter()
+                .map(|i| {
+                    usize::try_from(*i)
+                        .ok()
+                        .and_then(|i| self.0.get(i).copied())
+                        .ok_or(tlog_core::TlogError::BadMath)
+                })
+                .collect()
+        }
+    }
+
+    /// verifies: REQ-SEC-018, REQ-AUDIT-005
+    #[test]
+    fn the_range_agrees_with_the_library_tree_at_every_size() {
+        let mut stored = Stored(Vec::new());
+        let mut r = Range::new();
+        assert_eq!(r.root(), tlog_core::tree_hash(0, &stored).expect("empty").0);
+        for n in 0..300u64 {
+            let leaf = leaf_hash(&n.to_be_bytes());
+            let more = tlog_core::stored_hashes_for_record_hash(n, tlog_core::Hash(leaf), &stored)
+                .expect("stored hashes");
+            stored.0.extend(more);
+            r.append(leaf);
+            let want = tlog_core::tree_hash(n + 1, &stored).expect("tree hash");
+            assert_eq!(r.root(), want.0, "size {}", n + 1);
+        }
+    }
+
+    /// verifies: REQ-SEC-018
+    #[test]
+    fn any_bytes_decode_to_a_range_that_encodes_back_or_are_refused() {
+        let mut rng = crate::testrng::Rng::new(0x5eed);
+        let mut valid = Range::new();
+        for i in 0..200u32 {
+            valid.append(leaf_hash(&i.to_be_bytes()));
+        }
+        let good = valid.encode();
+        for round in 0..4000 {
+            // Random bytes of a random length, and the valid encoding with one byte changed or cut.
+            let len = rng.below(140);
+            let mut b: Vec<u8> = (0..len).map(|_| rng.byte()).collect();
+            if round % 2 == 1 {
+                b = good.clone();
+                let at = rng.below(b.len());
+                b[at] ^= rng.byte() | 1;
+                if round % 4 == 3 {
+                    b.truncate(at);
+                }
+            }
+            if let Ok(r) = Range::decode(&b) {
+                assert_eq!(r.encode(), b);
+                let _ = r.root();
+            }
+        }
     }
 
     /// verifies: REQ-AUDIT-005
