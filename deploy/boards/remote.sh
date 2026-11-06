@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2154 # rqlite_unit, rqlite_dropin and rqlite_dropin_dir are remote-lib.sh's
+# shellcheck disable=SC2154 # rqlite_unit, rqlite_dropin, rqlite_dropin_dir, rqlite_var_dir and rqlite_bin are remote-lib.sh's
 # The part of boards.sh that runs on a board, as root:
 #   remote.sh deploy|preflight|undeploy|status|avc STAGE
 #   remote.sh rqlite-install|rqlite-undeploy|rqlite-status STAGE          (rqlite.sh and boards.sh; see "rqlite" below)
@@ -410,26 +410,39 @@ status)
 	;;
 
 avc)
-	# The denials of the SELinux policy since boot: printed, and a failure when one names a sluis or rqlite path or domain.
+	# The denials of the SELinux policy since boot: printed, and a failure when one is an enforced denial of ours (avc_check).
 	avc_check
 	;;
 
 rqlite-install)
-	# What rqlite.sh sent: the package (one .deb or .rpm below $stage/rqlite) and, in the environment, the address of this board and
-	# the join address of the bootstrap node (empty on the bootstrap node itself). The package manager does the install, the drop-in
-	# sets the node's flags, restorecon labels, and the unit is enabled and (re)started when it is not running with this drop-in.
-	node=$(uname -n)
+	# What rqlite.sh sent: the package (one .deb or .rpm below $stage/rqlite) and, in the environment, the address and ports of this
+	# board, its sha256 pin, the size of the cluster and the Raft addresses of all its nodes (empty for a cluster of one). The board
+	# checks the package against the pin before it hands it to the package manager as root; the package manager does the install,
+	# the drop-in sets the node's flags (no -node-id: rqlite uses the Raft address; every node of a cluster of more than one has
+	# -bootstrap-expect and the whole -join list, so that a node without state can never form a cluster of its own), restorecon
+	# labels, and the unit is enabled and (re)started when it is not running with this drop-in.
 	ip=${RQLITE_NODE_IP:?remote: RQLITE_NODE_IP is not set}
 	http_port=${RQLITE_HTTP_PORT:-4001}
 	raft_port=${RQLITE_RAFT_PORT:-4002}
+	expect=${RQLITE_EXPECT:?remote: RQLITE_EXPECT is not set}
 	join=${RQLITE_JOIN:-}
+	sha=${RQLITE_SHA256:?remote: RQLITE_SHA256 is not set}
+	[[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "remote: RQLITE_SHA256 is not a sha256" >&2; exit 1; }
 	shopt -s nullglob
 	pkgs=("$stage"/rqlite/*.deb "$stage"/rqlite/*.rpm)
 	shopt -u nullglob
 	[ "${#pkgs[@]}" -eq 1 ] || { echo "remote: expected one rqlite package in $stage/rqlite, found ${#pkgs[@]}" >&2; exit 1; }
-	rqlite_dropin_text "$node" "$ip" "$http_port" "$raft_port" "$join" >"$stage/rqlite/10-sluis.conf" || exit 1
+	rqlite_board_has_ip "$ip" || { echo "remote: this board has no address $ip (ip -o -4 addr): rqlite would fail to bind it. SLUIS_BOARDS names the address of the board itself, not one that reaches it through a NAT or an alias." >&2; exit 1; }
+	if [ -e "$rqlite_dropin" ] && grep -q -- ' -node-id ' "$rqlite_dropin"; then
+		# An earlier shape of this recipe named the node by its host name and started the first node as a cluster of one. Its state
+		# holds that id (and, on the first node, a cluster of one), so the node cannot simply change its flags.
+		echo "remote: $rqlite_dropin was made by an earlier version of this recipe (-node-id). Its Raft state does not fit the new flags: run boards-undeploy with SLUIS_PURGE_STATE=1 on every board, then boards-rqlite again." >&2
+		exit 1
+	fi
+	rqlite_dropin_text "$ip" "$http_port" "$raft_port" "$expect" "$join" >"$stage/rqlite/10-sluis.conf" || exit 1
+	sha256sum -c - <<<"$sha  ${pkgs[0]}" >/dev/null || { echo "remote: ${pkgs[0]##*/} on the board does not have the pinned sha256 $sha: refused" >&2; exit 1; }
 	rqlite_install_package "${pkgs[0]}"
-	[ -x /usr/bin/rqlited ] || { echo "remote: the package left no /usr/bin/rqlited" >&2; exit 1; }
+	[ -x "$rqlite_bin" ] || { echo "remote: the package left no $rqlite_bin" >&2; exit 1; }
 	id -u rqlite >/dev/null 2>&1 || { echo "remote: the package left no user rqlite" >&2; exit 1; }
 	changed=0
 	if ! cmp -s "$stage/rqlite/10-sluis.conf" "$rqlite_dropin" 2>/dev/null; then
@@ -439,6 +452,9 @@ rqlite-install)
 	fi
 	rqlite_relabel
 	systemctl daemon-reload
+	# A package upgrade runs the prerm (deb) or preun (rpm) of the upstream package, which stops and disables the unit on every
+	# removal of the old version, an upgrade included. The enable and the is-active check below start it again, on the new binary.
+	# That is how a node comes back after an upgrade here, so do not take these two lines out as redundant.
 	systemctl enable "$rqlite_unit" 2>&1 | sed "s|^|enable rqlited: |"
 	if [ "$changed" = 1 ] || [ "$(systemctl is-active "$rqlite_unit" || true)" != active ]; then
 		systemctl restart "$rqlite_unit"
@@ -452,37 +468,39 @@ rqlite-status)
 		exit 1
 	fi
 	st=$(systemctl is-active "$rqlite_unit" || true)
-	printf 'rqlite %s %s enabled=%s dropin=%s\n' "$(/usr/bin/rqlited -version 2>/dev/null | head -1 || echo unknown)" "$st" "$(systemctl is-enabled "$rqlite_unit" 2>/dev/null || true)" "$([ -e "$rqlite_dropin" ] && echo yes || echo no)"
+	printf 'rqlite %s %s enabled=%s dropin=%s\n' "$("$rqlite_bin" -version 2>/dev/null | head -1 || echo unknown)" "$st" "$(systemctl is-enabled "$rqlite_unit" 2>/dev/null || true)" "$([ -e "$rqlite_dropin" ] && echo yes || echo no)"
 	[ "$st" = active ]
 	;;
 
 rqlite-undeploy)
-	# Stops rqlited and takes it out of the boot. The package, the drop-in and the data stay, because they hold the cluster's
-	# copy of the store; SLUIS_PURGE_STATE=1 removes them as well, and only on a board where this tool installed rqlite (its
-	# drop-in is there). A node that is purged stays in the cluster's configuration of the other nodes until it is removed there.
+	# Only a board where this tool installed rqlite (its drop-in is there) is touched: another rqlited.service is not ours to stop.
+	# Without SLUIS_PURGE_STATE=1 the unit is stopped and disabled; the package, the drop-in and the data stay, because they hold
+	# the cluster's copy of the store. With it they are removed as well, the drop-in LAST: it is what says that this tool made the
+	# install, so a purge that stops half way (a package manager that fails) is found and finished by the next run. A node that is
+	# purged stays in the cluster's configuration of the other nodes until it is removed there.
 	if ! systemctl cat "$rqlite_unit" >/dev/null 2>&1; then
 		echo "rqlite: not installed"
 		exit 0
 	fi
+	if [ ! -e "$rqlite_dropin" ]; then
+		echo "rqlite: no $rqlite_dropin, so this tool did not install it; it is left as it is (running or not), with its package and its data"
+		exit 0
+	fi
 	systemctl disable --now "$rqlite_unit" 2>&1 | sed "s|^|disable rqlited: |" || true
 	if [ "${SLUIS_PURGE_STATE:-}" != 1 ]; then
-		echo "rqlite: stopped and disabled; the package, the drop-in and /var/lib/rqlite stay (SLUIS_PURGE_STATE=1 removes them)"
+		echo "rqlite: stopped and disabled; the package, the drop-in and $rqlite_var_dir stay (SLUIS_PURGE_STATE=1 removes them)"
 		exit 0
 	fi
-	if [ ! -e "$rqlite_dropin" ]; then
-		echo "rqlite: no $rqlite_dropin, so this tool did not install it; the package and the data are left alone"
-		exit 0
-	fi
-	rm -f -- "$rqlite_dropin"
-	rmdir -- "$rqlite_dropin_dir" 2>/dev/null || true
 	case "$(os_family)" in
 	deb) DEBIAN_FRONTEND=noninteractive apt-get remove -y rqlite ;;
 	rpm) dnf remove -y rqlite ;;
-	*) echo "remote: the board's package manager is unknown; the rqlite package stays" >&2 ;;
+	*) echo "remote: the board's package manager is unknown; the rqlite package, its data and the drop-in stay" >&2; exit 1 ;;
 	esac
-	rm -rf -- /var/lib/rqlite
+	rm -rf -- "$rqlite_var_dir"
 	if id -u rqlite >/dev/null 2>&1; then userdel rqlite && echo "removed user rqlite"; fi
 	if getent group rqlite >/dev/null; then groupdel rqlite && echo "removed group rqlite"; fi
+	rm -f -- "$rqlite_dropin"
+	rmdir -- "$rqlite_dropin_dir" 2>/dev/null || true
 	systemctl daemon-reload
 	echo "rqlite: removed"
 	;;

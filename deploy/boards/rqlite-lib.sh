@@ -106,27 +106,52 @@ REMOTE
 	sed '1,/^\r*$/d' <<<"$out"
 }
 
+# rqlite_need_jq refuses, with the fix, a workstation without jq, which every question to a node is read with: without it the
+# operator would see "not ready" after the whole wait.
+rqlite_need_jq() {
+	command -v jq >/dev/null 2>&1 || { echo "rqlite: jq is needed on this workstation to read the answers of the nodes (it is in devbox)" >&2; return 1; }
+}
+
+# rqlite_node_id ip raft_port prints the id that rqlite gives a node that is started without -node-id: its Raft address.
+rqlite_node_id() { # ip raft_port
+	printf '%s:%s\n' "$1" "$2"
+}
+
+# rqlite_firewall_hint is the line that follows a node that its peers cannot reach: the usual cause on the boards is the firewall of
+# the image, which admits ssh and little else, and the probe of this script runs on the board itself, through the loopback.
+rqlite_firewall_hint() { # http_port raft_port
+	printf 'the ports %s and %s must be open between the boards (firewalld: firewall-cmd --permanent --add-port=%s/tcp --add-port=%s/tcp && firewall-cmd --reload; ufw: ufw allow from <peer address> to any port %s,%s proto tcp)' "$1" "$2" "$1" "$2" "$1" "$2"
+}
+
 # rqlite_node_ready says, with a reason on stderr, whether the node of a board is ready: its store is ready and knows a leader,
 # and the node is a reachable voter in /nodes of a cluster with one leader.
-rqlite_node_ready() { # board ip port node_id
-	local st nodes
+rqlite_node_ready() { # board ip port node_id [raft_port]
+	local st nodes raft=${5:-4002}
 	st=$(rqlite_get "$1" "$2" "$3" /status) || { echo "no answer from /status" >&2; return 1; }
 	jq -e --arg id "$4" '.store.ready == true and .store.node_id == $id and ((.store.leader.node_id // "") != "")' >/dev/null <<<"$st" \
 		|| { echo "/status: the store is not ready, or knows no leader" >&2; return 1; }
 	nodes=$(rqlite_get "$1" "$2" "$3" /nodes) || { echo "no answer from /nodes" >&2; return 1; }
 	jq -e --arg id "$4" '(.[$id].reachable == true) and (.[$id].voter == true) and ([.[] | select(.leader == true)] | length == 1)' >/dev/null <<<"$nodes" \
-		|| { echo "/nodes: the node is not a reachable voter of a cluster with one leader" >&2; return 1; }
+		|| { echo "/nodes: the node is not a reachable voter of a cluster with one leader; $(rqlite_firewall_hint "$3" "$raft")" >&2; return 1; }
 }
 
-# rqlite_wait board ip port node_id seconds polls rqlite_node_ready every two seconds until it succeeds or the time is up.
-rqlite_wait() { # board ip port node_id seconds
-	local t=0 why=""
+# rqlite_wait board ip port node_id seconds [raft_port] polls rqlite_node_ready every two seconds until it succeeds or the time is
+# up. The time is the clock ($SECONDS), not the number of polls: one poll is up to two ssh probes of 15 s each, so counting polls
+# would let "120 s" run for half an hour against a board that drops packets.
+rqlite_wait() { # board ip port node_id seconds [raft_port]
+	local deadline=$((SECONDS + $5)) why=""
 	while :; do
-		if why=$(rqlite_node_ready "$1" "$2" "$3" "$4" 2>&1); then return 0; fi
-		[ "$t" -lt "$5" ] || { echo "rqlite: the node $4 on $1 is not ready after $5 s: $why" >&2; return 1; }
+		if why=$(rqlite_node_ready "$1" "$2" "$3" "$4" "${6:-4002}" 2>&1); then return 0; fi
+		[ "$SECONDS" -lt "$deadline" ] || { echo "rqlite: the node $4 on $1 is not ready after $5 s: $why" >&2; return 1; }
 		sleep 2
-		t=$((t + 2))
 	done
+}
+
+# rqlite_node_count board ip port prints the number of nodes in /nodes, as the node of that board sees them.
+rqlite_node_count() { # board ip port
+	local nodes
+	nodes=$(rqlite_get "$1" "$2" "$3" /nodes) || return 1
+	jq -r 'length' <<<"$nodes"
 }
 
 # rqlite_cluster_line prints one line about the cluster as one node sees it: the nodes and the leader.

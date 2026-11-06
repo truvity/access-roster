@@ -7,6 +7,7 @@
 #   state_root           the directory of the units' state
 #   manifest             the file that lists what the deploy made (kind<TAB>path)
 #   os_release_file      /etc/os-release, unless the caller says otherwise (a test)
+#   selinux_enforce_file /sys/fs/selinux/enforce, unless the caller says otherwise (a test)
 
 # os_family says which package manager the board has: deb (Debian, Ubuntu) or rpm (RHEL, Rocky, Fedora). The deploy installs no
 # package: it checks that what the card path needs is there, and refuses with the names if it is not. The image of the board
@@ -101,14 +102,25 @@ encrypt_credential() {
 	mv -f -- "$tmp" "$dest"
 }
 
+# SELinux is read from selinuxfs, not from a command: /sys/fs/selinux/enforce exists where SELinux is enabled (its content is 1 when
+# enforcing, 0 when permissive), and needs neither libselinux-utils (getenforce, selinuxenabled) nor policycoreutils, which a thin
+# image such as the Rocky 10 image of the boards does not carry. Where the file is missing, SELinux is off.
+selinux_enforce_file=${selinux_enforce_file:-/sys/fs/selinux/enforce}
+selinux_enabled() { [ -e "$selinux_enforce_file" ]; }
+selinux_enforcing() {
+	local v=""
+	if [ -r "$selinux_enforce_file" ]; then read -r v <"$selinux_enforce_file" || true; fi
+	[ "$v" = 1 ]
+}
+
 # relabel gives the files this deploy made the labels that the SELinux policy has for their paths. It does nothing where SELinux
-# is not enabled. The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
+# is not enabled (selinux_enabled). The binaries become bin_t and systemd starts them as unconfined_service_t (the policy of RHEL and Rocky); the
 # state is var_lib_t and the sockets var_run_t. It touches only what sluis owns: -R over /opt/sluis and /etc/sluis (root's), and
 # the state root and the files and directories that the manifest of this deploy lists elsewhere (units, drop-ins, sysusers and
 # tmpfiles files, the polkit rule), each one alone, never a whole directory of the system. A failure is a warning: the files are
 # there, and the label is what a later restorecon or a policy module is for.
 relabel() {
-	command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled || return 0
+	selinux_enabled || return 0
 	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the files keep the labels they were made with" >&2; return 0; }
 	local p kind value roots=() singles=()
 	# The state directories belong to the sluis service users, who could swap one for a link while a recursive walk is in it: the
@@ -263,51 +275,93 @@ check_pinned_ids() {
 # brings /usr/bin/rqlited, the user and group rqlite, /var/lib/rqlite (0750) and rqlited.service, which runs
 # `/usr/bin/rqlited /var/lib/rqlite/data` and is not enabled. What the deploy adds is one drop-in of that unit; its presence is
 # also what says that this tool installed rqlite on the board, so that undeploy touches no rqlite that someone else made.
+# The paths can be moved by the caller for a test; on a board they are these.
 rqlite_unit=rqlited.service
-rqlite_dropin_dir=/etc/systemd/system/rqlited.service.d
+rqlite_dropin_dir=${rqlite_dropin_dir:-/etc/systemd/system/rqlited.service.d}
 rqlite_dropin=$rqlite_dropin_dir/10-sluis.conf
-rqlite_data_dir=/var/lib/rqlite/data
+rqlite_var_dir=${rqlite_var_dir:-/var/lib/rqlite}
+rqlite_data_dir=$rqlite_var_dir/data
+rqlite_bin=${rqlite_bin:-/usr/bin/rqlited}
 
-# rqlite_valid_ipv4 says whether the argument is a dotted IPv4 address; rqlite binds and advertises the address of the board, and
-# peers dial it, so a name that resolves differently on two boards is not taken.
+# rqlite_valid_ipv4 says whether the argument is a dotted IPv4 address with no leading zeros ("192.0.2.010" is refused: Go's
+# parser refuses it at bind); rqlite binds and advertises the address of the board, and peers dial it, so a name that resolves
+# differently on two boards is not taken.
 rqlite_valid_ipv4() {
 	local o
 	[[ "$1" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
 	local IFS=.
-	for o in $1; do [ "$((10#$o))" -le 255 ] || return 1; done
+	for o in $1; do
+		[[ "$o" =~ ^(0|[1-9][0-9]*)$ ]] && [ "$o" -le 255 ] || return 1
+	done
 }
-rqlite_valid_port() { [[ "$1" =~ ^[0-9]{1,5}$ ]] && [ "$((10#$1))" -ge 1 ] && [ "$((10#$1))" -le 65535 ]; }
+rqlite_valid_port() { [[ "$1" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$1" -le 65535 ]; }
 
-# rqlite_dropin_text node ip http_port raft_port join prints the drop-in: the ExecStart of the package, reset, and again with the
-# node id, the HTTP and Raft addresses of the board (-http-addr, -raft-addr: the flags of rqlited 10) and, on a node that is not the
-# bootstrap one, -join with the Raft address (host:port) of the bootstrap node. The join is empty for the bootstrap node, which
-# then starts a cluster of one. A node that already has state ignores -join on a restart and takes its place in the cluster.
-rqlite_dropin_text() { # node ip http_port raft_port join
-	[[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] || { echo "remote: refusing the rqlite node id '$1'" >&2; return 1; }
-	rqlite_valid_ipv4 "$2" || { echo "remote: refusing the rqlite address '$2'" >&2; return 1; }
-	if ! rqlite_valid_port "$3" || ! rqlite_valid_port "$4"; then
-		echo "remote: refusing the rqlite ports '$3' '$4'" >&2
+# rqlite_dropin_text ip http_port raft_port expect joins prints the drop-in: the ExecStart of the package, reset, and again with
+# the HTTP and Raft addresses of the board (-http-addr, -raft-addr: the flags of rqlited 10) and, for a cluster of more than one
+# node, -bootstrap-expect with the number of nodes and -join with the Raft addresses (host:port, comma separated) of ALL of them,
+# this one included. That is the shape that rqlite documents for a cluster that comes up together, and it is what makes a split
+# brain impossible: a node that has no state cannot form a cluster by itself (rqlite 10.6.6, cmd/rqlited/main.go createCluster: a
+# node with no -join and no state bootstraps a cluster of one; with -bootstrap-expect it first tries to join a node that is in a
+# cluster, and only when N nodes have announced themselves does one of them form the cluster), so a board that was wiped or
+# reflashed joins the cluster that the others hold, and N nodes that start together form one cluster. A node that has state
+# does not bootstrap again: it takes up its place in the cluster it was in. There is no -node-id: rqlite takes the Raft address
+# as the id, which is the same on every start, is different on every board, and cannot be taken from a host name that moved.
+# The join list is the voter set, so a node that is added later is a run with the longer list (every drop-in is written again).
+# A cluster of one has neither flag: nothing else can hold state it could split from.
+rqlite_dropin_text() { # ip http_port raft_port expect joins
+	local ip=$1 http=$2 raft=$3 expect=$4 joins=${5:-} a n=0 self=0 flags=""
+	rqlite_valid_ipv4 "$ip" || { echo "remote: refusing the rqlite address '$ip'" >&2; return 1; }
+	if ! rqlite_valid_port "$http" || ! rqlite_valid_port "$raft"; then
+		echo "remote: refusing the rqlite ports '$http' '$raft'" >&2
 		return 1
 	fi
-	local join=""
-	if [ -n "${5:-}" ]; then
-		if ! [[ "$5" =~ ^[0-9.]+:[0-9]+$ ]] || ! rqlite_valid_ipv4 "${5%:*}" || ! rqlite_valid_port "${5#*:}"; then
-			echo "remote: refusing the rqlite join address '$5'" >&2
+	if [ "$http" = "$raft" ]; then
+		echo "remote: refusing the rqlite ports '$http' '$raft': the HTTP and the Raft port must differ" >&2
+		return 1
+	fi
+	[[ "$expect" =~ ^[1-9][0-9]{0,2}$ ]] || { echo "remote: refusing the rqlite cluster size '$expect'" >&2; return 1; }
+	if [ "$expect" -eq 1 ]; then
+		[ -z "$joins" ] || { echo "remote: a cluster of one takes no join list ('$joins')" >&2; return 1; }
+	else
+		local -A seen=()
+		local IFS=,
+		for a in $joins; do
+			if ! [[ "$a" =~ ^[0-9.]+:[0-9]+$ ]] || ! rqlite_valid_ipv4 "${a%:*}" || ! rqlite_valid_port "${a#*:}"; then
+				echo "remote: refusing the rqlite join address '$a'" >&2
+				return 1
+			fi
+			[ -z "${seen[$a]:-}" ] || { echo "remote: the rqlite join address '$a' is listed twice" >&2; return 1; }
+			seen[$a]=1
+			n=$((n + 1))
+			[ "$a" != "$ip:$raft" ] || self=1
+		done
+		if [ "$n" -ne "$expect" ] || [ "$self" -ne 1 ]; then
+			echo "remote: the join list must name all $expect nodes, this one ($ip:$raft) included; it names $n" >&2
 			return 1
 		fi
-		join=" -join $5"
+		flags=" -bootstrap-expect $expect -join $joins"
 	fi
 	printf '%s\n' \
 		'# Made by sluis (just boards-rqlite). Do not edit: the next run writes it again.' \
 		'# No TLS and no authentication yet: the firewall of the board must admit these ports from the peers alone.' \
 		'[Service]' \
 		'ExecStart=' \
-		"ExecStart=/usr/bin/rqlited -node-id $1 -http-addr $2:$3 -raft-addr $2:$4$join $rqlite_data_dir"
+		"ExecStart=$rqlite_bin -http-addr $ip:$http -raft-addr $ip:$raft$flags $rqlite_data_dir"
+}
+
+# rqlite_board_has_ip says whether one of the addresses of the board is the argument. rqlite binds the address it is given, and a
+# bind to an address the board does not own fails after systemd has already reported the service started; an ssh through a NAT or
+# an alias would give such an address. Without `ip` the answer is yes (the bind fails later and the wait says so).
+rqlite_board_has_ip() { # ip
+	local addrs
+	command -v ip >/dev/null 2>&1 || return 0
+	addrs=$(ip -o -4 addr show 2>/dev/null) || return 0
+	[[ "$addrs" == *" $1/"* ]]
 }
 
 # rqlite_install_package file installs an upstream package with the package manager of the board's family, from the file, which
-# rqlite.sh checked against its pin before it left the workstation. The package manager is not asked to check a signature: upstream
-# signs nothing, and the pin is the trust.
+# rqlite.sh checked against its pin before it left the workstation (and the board checks again before this runs). The package
+# manager is not asked to check a signature: upstream signs nothing, and the pin is the trust.
 rqlite_install_package() { # file
 	case "$1" in
 	*.deb)
@@ -326,11 +380,11 @@ rqlite_install_package() { # file
 # is on: the binaries, the unit and its drop-ins, and the data directory alone (never walked: it is the service user's). Without
 # it an rqlite that was started before any relabel can fail to execute or run in the wrong domain. A failure is a warning.
 rqlite_relabel() {
-	command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled || return 0
+	selinux_enabled || return 0
 	command -v restorecon >/dev/null 2>&1 || { echo "remote: warning: SELinux is enabled and restorecon is missing; the rqlite files keep the labels they were made with" >&2; return 0; }
 	local p fragment list=()
 	fragment=$(systemctl show -p FragmentPath --value "$rqlite_unit" 2>/dev/null || true)
-	for p in /usr/bin/rqlited /usr/bin/rqlite /usr/bin/rqbench /var/lib/rqlite "$fragment" "$rqlite_dropin_dir" "$rqlite_dropin"; do
+	for p in "$rqlite_bin" /usr/bin/rqlite /usr/bin/rqbench "$rqlite_var_dir" "$fragment" "$rqlite_dropin_dir" "$rqlite_dropin"; do
 		[ -n "$p" ] && [ -e "$p" ] && list+=("$p")
 	done
 	[ "${#list[@]}" -gt 0 ] || return 0
@@ -339,41 +393,105 @@ rqlite_relabel() {
 
 # --- SELinux denials ----------------------------------------------------------------------------------------------------------
 
-# selinux_enforcing says whether the board runs SELinux in enforcing mode.
-selinux_enforcing() {
-	command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = Enforcing ]
+# avc_auditd_ok succeeds when auditd is running and the kernel's audit is enabled. ausearch reads auditd's log, so a denial from
+# before auditd started (a board where `dnf install audit` was just run, with no reboot) is in the journal only, and "no matches"
+# would be a guess: the check refuses to say "clean" then.
+avc_auditd_ok() {
+	local st enabled=""
+	st=$(systemctl is-active auditd 2>/dev/null || true)
+	if command -v auditctl >/dev/null 2>&1; then
+		enabled=$(auditctl -s 2>/dev/null | sed -n 's/^enabled \([0-9][0-9]*\).*/\1/p' | head -n 1 || true)
+	fi
+	if [ "$st" = active ] && [ "$enabled" = 1 ]; then return 0; fi
+	echo "avc: auditd is not recording (auditd is '${st:-unknown}', audit enabled='${enabled:-unknown}'): denials before auditd started are not visible, so no record would not mean no denial. Install and enable it (dnf install audit; systemctl enable --now auditd) and reboot the board once, so that it records from the start of the boot." >&2
+	return 1
 }
 
-# avc_check prints the AVC and USER_AVC records since the boot of a board with SELinux enforcing, and fails when one of them names
-# a sluis or rqlite path or domain (the comm, a path or name, the source or target context). A denial of a program that is not
-# ours is printed and does not fail: the check is about the labels of our own files. It also fails when SELinux is enforcing and
-# `ausearch` is missing, because then it cannot see a denial and "nothing found" would be a guess (install audit).
+# avc_exec_names prints the names that the kernel gives the processes of the executables this deploy made (the `comm`: the
+# basename of the executable, cut to 15 characters), from the files of the manifest below the bin directory.
+avc_exec_names() {
+	local kind value b dir=${bin_dir:-/opt/sluis/bin}
+	[ -f "${manifest:-}" ] || return 0
+	while IFS=$'\t' read -r kind value; do
+		[ "$kind" = file ] || continue
+		case "$value" in
+		"$dir"/actors/* | "$dir"/drivers/* | "$dir"/cli/*)
+			b=${value##*/}
+			printf '%s\n' "${b:0:15}"
+			;;
+		esac
+	done <"$manifest"
+}
+
+# avc_record_is_ours says whether an AVC or USER_AVC record is a denial of sluis or of what it depends on. It is, when the
+# denial was enforced (permissive=0, or no permissive field: a userspace USER_AVC has none; a record with permissive=1 was only
+# logged) and
+#   - its source or target type is unconfined_service_t (what the units run as under the policy of RHEL and Rocky), pcscd_t or
+#     pcscd_var_run_t (the card service and its socket), or
+#   - its comm is the name of an executable of this deploy ($avc_names, from the manifest), or
+#   - its comm, exe, path or name names sluis or rqlite (a field, not the whole record: a host name is not a path).
+avc_record_is_ours() { # record
+	local rec=$1 f t v re c
+	[[ "$rec" != *"permissive=1"* ]] || return 1
+	for f in scontext tcontext; do
+		re="[[:space:]]$f=[^:[:space:]]*:[^:[:space:]]*:([^:[:space:]]*)"
+		if [[ "$rec" =~ $re ]]; then
+			t=${BASH_REMATCH[1]}
+			case "$t" in unconfined_service_t | pcscd_t | pcscd_var_run_t) return 0 ;; esac
+		fi
+	done
+	re='[[:space:]]comm="([^"]*)"'
+	if [[ "$rec" =~ $re ]]; then
+		c=${BASH_REMATCH[1]}
+		c=${c#\(}
+		c=${c%\)} # a unit that is being started shows as "(name)"
+		c=${c:0:15}
+		case $'\n'"${avc_names:-}"$'\n' in *$'\n'"$c"$'\n'*) [ -z "$c" ] || return 0 ;; esac
+	fi
+	for f in comm exe path name; do
+		re="[[:space:]]$f=\"([^\"]*)\""
+		if [[ "$rec" =~ $re ]]; then
+			v=${BASH_REMATCH[1],,}
+			case "$v" in *sluis* | *rqlite*) return 0 ;; esac
+		fi
+	done
+	return 1
+}
+
+# avc_check prints the AVC and USER_AVC records since the boot of a board with SELinux enforcing, and fails when one is a denial of
+# ours (avc_record_is_ours). REQ-DEPLOY-033 says "no AVC denial", and these are the denials that can be about us: the domain the
+# units run in, the card service and its socket, the executables of the deploy, and any sluis or rqlite path. The other records
+# are printed as warnings and do not fail the check. It fails closed when it cannot see: SELinux enforcing and no `ausearch`, or
+# no running auditd (avc_auditd_ok).
 avc_check() {
-	local out rc=0 all ours
+	local out rc=0 line n_all=0 avc_names="" ours=() others=()
 	if ! selinux_enforcing; then
 		echo "avc: SELinux is not enforcing on this board; nothing to check"
 		return 0
 	fi
 	command -v ausearch >/dev/null 2>&1 || { echo "avc: SELinux is enforcing and ausearch is missing: install the audit package (dnf install audit), or the denials cannot be read" >&2; return 1; }
+	avc_auditd_ok || return 1
+	avc_names=$(avc_exec_names)
 	out=$(ausearch -m AVC,USER_AVC -ts boot 2>&1) || rc=$?
 	# ausearch exits 1 and says "<no matches>" when there is nothing; any other failure is not a clean board.
 	if [ "$rc" -ne 0 ] && ! grep -q 'no matches' <<<"$out"; then
 		echo "avc: ausearch failed (status $rc): $out" >&2
 		return 1
 	fi
-	all=$(grep -E 'type=(USER_)?AVC' <<<"$out" || true)
-	if [ -z "$all" ]; then
+	while IFS= read -r line; do
+		[[ "$line" =~ ^type=(USER_)?AVC ]] || continue
+		n_all=$((n_all + 1))
+		if avc_record_is_ours "$line"; then ours+=("$line"); else others+=("$line"); fi
+	done <<<"$out"
+	if [ "$n_all" -eq 0 ]; then
 		echo "avc: no AVC or USER_AVC record since boot"
 		return 0
 	fi
-	ours=$(grep -Ei 'sluis|rqlite' <<<"$all" || true)
-	local n_all=0 n_ours=0
-	n_all=$(wc -l <<<"$all")
-	[ -z "$ours" ] || n_ours=$(wc -l <<<"$ours")
-	echo "avc: $n_all AVC/USER_AVC records since boot, $n_ours naming sluis or rqlite"
-	printf '%s\n' "$all"
-	if [ -n "$ours" ]; then
-		echo "avc: FAILED: the records above name a sluis or rqlite path or domain" >&2
+	echo "avc: $n_all AVC/USER_AVC records since boot, ${#ours[@]} denials of sluis or what it needs, ${#others[@]} others"
+	for line in ${others[@]+"${others[@]}"}; do printf 'avc: warning: %s\n' "$line"; done
+	for line in ${ours[@]+"${ours[@]}"}; do printf 'avc: DENIED: %s\n' "$line"; done
+	if [ "${#ours[@]}" -gt 0 ]; then
+		echo "avc: FAILED: the records above marked DENIED are enforced denials in the domain of the units (unconfined_service_t), of the card service (pcscd_t, pcscd_var_run_t), of an executable of this deploy, or of a sluis or rqlite path" >&2
 		return 1
 	fi
 }
