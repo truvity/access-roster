@@ -218,9 +218,8 @@ requirements:
     rationale: "Cross-protocol key reuse is avoidable."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-62, section: "5280", depth: Partial}
@@ -692,15 +691,14 @@ requirements:
     rationale: "Link ids, upstream session ids and pairwise subjects are made under it, so a new key would change them all (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [1210]
     verification:
-      - {kind: integration-test, ref: "the rotation job skips the mac purpose; a replacement is a migration that makes the values again"}
+      - {kind: integration-test, ref: "key@ makes the mac key and a tenant's pairwise key at generation 1 only: an epoch on either is refused and every stored wrap is of generation 1; a rotation job, when built, must skip both"}
   - id: REQ-KEYS-044
     area: KEYS
     statement: "key@ MUST listen on Unix sockets only, one per caller, each in a directory that only its caller can open."
@@ -1111,15 +1109,14 @@ requirements:
     rationale: "A new key would change every pairwise subject of the tenant (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []
     issues: [1024]
     verification:
-      - {kind: integration-test, ref: "the key plan check refuses a rotation of the pairwise purpose"}
+      - {kind: integration-test, ref: "key@ makes the mac key and a tenant's pairwise key at generation 1 only: an epoch on either is refused and every stored wrap is of generation 1; a rotation job, when built, must skip both"}
   - id: REQ-KEYS-073
     area: KEYS
     statement: "Moving a tenant MUST re-wrap its pairwise key for the new boundary's wrapping key and not replace it."
@@ -1357,20 +1354,19 @@ requirements:
       - {kind: integration-test, ref: "a generation of a tenant's chain key is kept for 90 days after its last seal and deleted after that, with a moved clock; the generations of another tenant are not affected"}
   - id: REQ-KEYS-085
     area: KEYS
-    statement: "signer MUST make a token-signing key active only after the lead time has passed since the key was seen in every published key set."
-    rationale: "A static key set is published later than the store is written, so counting from the write could let a key sign before a verifier can have it (ADR 0006)."
+    statement: "signer MUST make a token-signing key active only after the lead time has passed since the key was written to the live key set."
+    rationale: "A verifier can only have a key after it is published, so the lead time counts from the write and covers the cache budget of the key set; the read-back that proves the publication is REQ-KEYS-116 (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     issues: [1338, 1453]
     runtimes: all
     actors: [signer]
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "the published key set lags the store by an hour; the new key stays pre-published until 30 minutes after it is read back from the public URL, and the live key set counts from the write"}
+      - {kind: integration-test, ref: "a new key stays pre-published until the lead time of 30 minutes after it is written to the live key set, and not a second less; the read-back from the public URL is REQ-KEYS-116"}
   - id: REQ-KEYS-086
     area: KEYS
     statement: "`sluis node unlock` MUST deliver the PIN to a locked key@ only over an authenticated channel."

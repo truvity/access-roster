@@ -758,6 +758,86 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     );
 }
 
+/// No online certificate status responder is served: the paths an OCSP client would use (RFC 6960, appendix A.1) and the
+/// usual status paths are unrouted, until a decision to run one is recorded.
+///
+/// verifies: REQ-PKI-008
+#[tokio::test]
+async fn there_is_no_certificate_status_responder() {
+    let up = up().await;
+    let ocsp = ("Content-Type", "application/ocsp-request");
+    for (method, path) in [
+        ("POST", "/"),
+        ("POST", "/ocsp"),
+        ("GET", "/ocsp/MEgwRjBEMEIwQDAJBgUrDgMCGgUA"),
+        ("GET", "/status"),
+        ("GET", "/ca/status"),
+    ] {
+        let r = http(&up, method, path, &[ocsp], b"\x30\x00").await;
+        assert_ne!(r.status, 200, "{method} {path}");
+        if path != "/" {
+            assert_eq!(r.status, 404, "{method} {path}");
+        }
+    }
+}
+
+/// A resource indicator (RFC 8707) is a parameter of the token exchange only. On the sign-in and on the code and refresh
+/// grants it is an unknown parameter and the request is refused before session sees it, so it cannot reach the audience
+/// of an ID token.
+///
+/// verifies: REQ-TOKEN-004
+#[tokio::test]
+async fn a_resource_indicator_is_refused_where_an_id_token_is_made() {
+    let up = up().await;
+    let authorize = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&resource=https%3A%2F%2Frs.example.com"),
+        &[],
+        b"",
+    )
+    .await;
+    assert_eq!(authorize.status, 400, "{}", authorize.text());
+    for grant in [
+        "grant_type=authorization_code&code=c&redirect_uri=u&code_verifier=v&client_id=sluis-cli",
+        "grant_type=refresh_token&refresh_token=r",
+    ] {
+        let r = post_token(
+            &up,
+            &format!("{grant}&resource=https%3A%2F%2Frs.example.com"),
+        )
+        .await;
+        assert_eq!(r.status, 400, "{grant}: {}", r.text());
+        assert!(!r.text().contains("rs.example.com"));
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 3, "{recs:?}");
+    assert!(
+        recs.iter().all(|r| r["status_code"] == "unknown_parameter"),
+        "{recs:?}"
+    );
+}
+
+/// There is no introspection endpoint: a token of any installation sent to `/introspect` is answered as an unrouted
+/// path, and the refusal is audited as a route that does not exist.
+///
+/// verifies: REQ-SEC-011
+#[tokio::test]
+async fn there_is_no_introspection_endpoint() {
+    let up = up().await;
+    for method in ["GET", "POST"] {
+        let r = http(&up, method, "/introspect", &[FORM], b"token=abc").await;
+        assert_eq!(r.status, 404, "{method}");
+    }
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    assert_eq!(recs.len(), 2, "{recs:?}");
+    assert!(
+        recs.iter()
+            .all(|r| r["metadata"]["event_code"] == "entry.unrouted" && r["status_code"] == "route")
+    );
+}
+
+/// verifies: REQ-UX-006
 #[tokio::test]
 async fn an_error_from_an_actor_shows_nothing_of_its_reason() {
     let up = up().await;
@@ -768,6 +848,17 @@ async fn an_error_from_an_actor_shows_nothing_of_its_reason() {
     assert!(
         !text.contains("globex") && !text.contains("secret") && !text.contains("refused"),
         "{text}"
+    );
+    // The reason is in the audit record of the refusal, under the same correlation id, and nowhere in the body.
+    let recs = up.fake.emitted.lock().unwrap().clone();
+    let rec = recs
+        .iter()
+        .find(|r| r["metadata"]["correlation_uid"].as_str() == denied.h("sluis-correlation-id"))
+        .expect("the audit record of the refusal");
+    assert_eq!(rec["status_code"], "rpc_permission_denied");
+    assert!(
+        !text.contains("rpc_permission_denied"),
+        "the body names the reason: {text}"
     );
     *up.fake.error.lock().unwrap() = Some((ErrorCode::Unavailable, "x"));
     assert_eq!(

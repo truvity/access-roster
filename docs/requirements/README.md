@@ -112,12 +112,12 @@ A requirement verified by manual review has no test to tag. It counts as evidenc
 schema: 1
 attestations:
   - req: REQ-EXAMPLE-001
-    by: <github login of the person who checked>
+    by: <commit e-mail of the person who checked>
     on: "2026-11-04"
     checked: "The sign-in page was read against the record in the browser and in the text-only view."
 ```
 
-`req` is a live record that has a `manual` verification; `by` is a GitHub login (in this public repository, the maintainer's or a reviewer's own); `on` is the UTC date; `checked` is one sentence on what was checked. An entry for a record without a manual verification, for an unknown record, or dated in the future is an error. An attestation is not renewed by itself: when the behaviour changes, the pull request that changes it adds a new entry or moves the record back.
+`req` is a live record that has a `manual` verification; `by` is the commit e-mail of the person who checked, the address on their commits to this public repository (the maintainer's or a reviewer's own; a noreply address where they use one), never a login (owner decision QA1 A, 2026-11-06); `on` is the UTC date; `checked` is one sentence on what was checked. An entry for a record without a manual verification, for an unknown record, or dated in the future is an error. An attestation is not renewed by itself: when the behaviour changes, the pull request that changes it adds a new entry or moves the record back.
 
 ## Adding a requirement
 

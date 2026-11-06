@@ -213,8 +213,8 @@ requirements:
     level: SHOULD
     source: design-decision
     status: partial
-    gap: no-proving-test
-    milestone: first-version
+    gap: partly-built
+    milestone: ciam-upstream
     runtimes: all
     standards:
       - {id: ST-28, section: "3", depth: Full}

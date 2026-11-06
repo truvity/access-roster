@@ -2,10 +2,12 @@ package audit
 
 import (
 	"bytes"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"math"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -244,6 +246,7 @@ type recordFile struct {
 		Pseudonym   string    `json:"pseudonym"`
 		Event       eventJSON `json:"event"`
 		Expected    string    `json:"expected"`
+		SHA384      string    `json:"sha384"`
 	} `json:"cases"`
 	Pseudonyms []struct {
 		TimeMS   int64  `json:"time_ms"`
@@ -309,6 +312,165 @@ func TestRecordVectors(t *testing.T) {
 				t.Fatalf("got  %s\nwant %s", got, c.Expected)
 			}
 		})
+	}
+}
+
+// The hash of a record is the SHA-384 of its RFC 8785 bytes: the known answer of every record vector, the same
+// one the indexer's row carries (actors/indexer).
+//
+// verifies: REQ-AUDIT-004
+func TestRecordHashVectors(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			got, err := buildRecord(recordInput{
+				actor: c.Actor, boundary: c.Boundary, release: c.Release, uid: c.UID, timeMS: c.TimeMS,
+				correlation: c.Correlation, pseudonym: c.Pseudonym, ev: c.Event.event(t),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha512.Sum384(got)
+			if hex.EncodeToString(sum[:]) != c.SHA384 {
+				t.Fatalf("SHA-384 of %s = %x, want %s", got, sum, c.SHA384)
+			}
+		})
+	}
+}
+
+// captionKeys are the members OCSF gives to the text of an enum id: the caption of severity_id, status_id, a type id, a
+// category, a class, an activity or an action, and the words for them. A stored record holds the ids.
+var captionKeys = []string{"caption", "severity", "status", "type", "category", "class", "activity", "action", "disposition"}
+
+// leanViolations lists what a stored record must not hold outside unmapped.sluis: observables, enrichments, and enum
+// captions. Two members read like captions and are not: activity_name, which describes activity 99 (Other) and is
+// required then, and authorizations[].decision, the one caption OCSF requires of an authorization.
+func leanViolations(rec map[string]any) []string {
+	var bad []string
+	var walk func(path string, v any)
+	walk = func(path string, v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for k, e := range x {
+				p := path + "/" + k
+				switch {
+				case p == "/unmapped":
+					continue // the sluis facts are the emitter's own and bounded elsewhere
+				case k == "observables" || k == "enrichments" || slices.Contains(captionKeys, k):
+					bad = append(bad, p)
+				case strings.HasSuffix(k, "_name") && p != "/activity_name" && p != "/metadata/log_name" && p != "/metadata/product/name":
+					bad = append(bad, p)
+				case k == "decision" && p != "/authorizations[]/decision":
+					bad = append(bad, p)
+				}
+				walk(p, e)
+			}
+		case []any:
+			for _, e := range x {
+				walk(path+"[]", e)
+			}
+		}
+	}
+	walk("", rec)
+	return bad
+}
+
+// A stored record holds enum ids, not captions, and no observables or enrichments. The check is run on a record
+// that has each of them, so it is not vacuous.
+//
+// verifies: REQ-AUDIT-091
+func TestRecordVectorsAreLean(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if bad := leanViolations(rec); len(bad) != 0 {
+			t.Errorf("%s: not lean: %v", c.Name, bad)
+		}
+	}
+	dirty := map[string]any{
+		"class_name": "API Activity", "observables": []any{}, "enrichments": []any{},
+		"severity": "Informational", "status": "Success", "caption": "x",
+		"actor":          map[string]any{"user": map[string]any{"type": "System"}, "user_name": "x"},
+		"metadata":       map[string]any{"product": map[string]any{"vendor_name": "v"}},
+		"authorizations": []any{map[string]any{"decision": "Allowed"}},
+		"policy":         map[string]any{"decision": "Allowed"},
+	}
+	want := []string{"/class_name", "/observables", "/enrichments", "/severity", "/status", "/caption", "/actor/user/type", "/actor/user_name", "/metadata/product/vendor_name", "/policy/decision"}
+	got := leanViolations(dirty)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("violations = %v, want %v", got, want)
+	}
+}
+
+// delegationUses lists where a record has a delegation object, and the profiles it declares other than security_control.
+func delegationUses(v any, path string) []string {
+	var out []string
+	switch x := v.(type) {
+	case map[string]any:
+		for k, e := range x {
+			p := path + "/" + k
+			if k == "delegation" {
+				out = append(out, p)
+			}
+			if p == "/metadata/profiles" {
+				if list, ok := e.([]any); ok {
+					for _, pr := range list {
+						if pr != "security_control" {
+							out = append(out, p+"="+pr.(string))
+						}
+					}
+				}
+			}
+			out = append(out, delegationUses(e, p)...)
+		}
+	case []any:
+		for _, e := range x {
+			out = append(out, delegationUses(e, path+"[]")...)
+		}
+	}
+	return out
+}
+
+// No record uses the delegation object or declares the ai_operation profile: the profiles of every record vector are
+// security_control alone. The check is run on a record that has both, so it is not vacuous.
+//
+// verifies: REQ-AUDIT-124
+func TestRecordVectorsUseNoDelegationAndNoAIProfile(t *testing.T) {
+	var f recordFile
+	readVectors(t, "record-vectors.json", &f)
+	if len(f.Cases) == 0 {
+		t.Fatal("the vector file is empty")
+	}
+	for _, c := range f.Cases {
+		var rec any
+		if err := json.Unmarshal([]byte(c.Expected), &rec); err != nil {
+			t.Fatal(err)
+		}
+		if bad := delegationUses(rec, ""); len(bad) != 0 {
+			t.Errorf("%s: %v", c.Name, bad)
+		}
+	}
+	var dirty any
+	if err := json.Unmarshal([]byte(`{"delegation":{},"metadata":{"profiles":["security_control","ai_operation"]}}`), &dirty); err != nil {
+		t.Fatal(err)
+	}
+	got := delegationUses(dirty, "")
+	slices.Sort(got)
+	if want := []string{"/delegation", "/metadata/profiles=ai_operation"}; !slices.Equal(got, want) {
+		t.Errorf("flagged %v, want %v", got, want)
 	}
 }
 

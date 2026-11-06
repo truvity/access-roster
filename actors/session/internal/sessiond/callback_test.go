@@ -4,7 +4,12 @@ package sessiond_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/base32"
+	"encoding/binary"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +36,55 @@ func (e *env) started() (cb *sessionv2alpha1.CallbackRequest, p authorizeParams)
 		Code: "upstream-code-" + up.Query().Get("state")[:8], State: up.Query().Get("state"),
 		Iss: "https://idp.example.test/realms/test", Cookie: cookieValue(e.t, a),
 	}, p
+}
+
+// The id of an upstream link is a keyed hash made at key@: the Mac of the boundary's mac key under the link label,
+// over the length-prefixed issuer and subject (the fake key computes the HMAC the real one does), and the upstream
+// subject is nowhere in it. Another subject of the same issuer, and the same subject of another issuer, give other ids.
+//
+// verifies: REQ-SUBJ-057
+func TestTheIdOfAnUpstreamLinkIsAMacOutputUnderTheLinkLabel(t *testing.T) {
+	e := newEnv(t, nil)
+	cb, _ := e.started()
+	e.callback(cb)
+	links := e.store.ids("upstream-link", testTenant)
+	if len(links) != 1 {
+		t.Fatalf("links %v", links)
+	}
+	prefixed := func(parts ...string) []byte {
+		var out []byte
+		for _, p := range parts {
+			out = binary.BigEndian.AppendUint32(out, uint32(len(p))) //nolint:gosec // short test strings
+			out = append(out, p...)
+		}
+		return out
+	}
+	// The fake key's formula (fakes_test.go): HMAC-SHA384 under the key of the purpose, over the label length, the label
+	// and the input. The label is the one session gives to link ids, which is versioned on purpose.
+	mac := func(issuer, subject string) string {
+		h := hmac.New(sha512.New384, []byte("test mac key|mac|"))
+		const label = "sluis-upstream-link-v2"
+		h.Write(binary.BigEndian.AppendUint16(nil, uint16(len(label))))
+		h.Write([]byte(label))
+		h.Write(prefixed(issuer, subject))
+		return strings.ToLower(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(h.Sum(nil)[:32]))
+	}
+	const issuer = "https://idp.example.test/realms/test"
+	if want := mac(issuer, "alice"); links[0] != want {
+		t.Errorf("link id = %s, want the Mac output %s", links[0], want)
+	}
+	if links[0] == mac(issuer, "bob") || links[0] == mac("https://other.example.test", "alice") {
+		t.Error("the link id does not depend on both the issuer and the subject")
+	}
+	if len(links[0]) != 52 || strings.Contains(links[0], "alice") {
+		t.Errorf("link id %q is not 256 bits of base32 free of the subject", links[0])
+	}
+	e.key.mu.Lock()
+	macs := slices.Contains(e.key.calls, "mac mac")
+	e.key.mu.Unlock()
+	if !macs {
+		t.Error("the link id was not made by a Mac at key@")
+	}
 }
 
 // verifies: REQ-AUTHN-005

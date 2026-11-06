@@ -200,7 +200,10 @@ func TestOnlyTheDevBoundaryIsGenerated(t *testing.T) {
 	}
 }
 
-// The search path (WP-26): who reaches the reader, which volumes are read-only, and who writes what.
+// The search path (WP-26): who reaches the reader, which volumes are read-only, and who writes what. The audit front is
+// its own service, a second instance of entry with its own socket (the topology of REQ-AUDIT-077).
+//
+// verifies: REQ-AUDIT-077
 func TestSearchPath(t *testing.T) {
 	svcs := services(t, generate(t)["compose.yaml"])
 	has := func(svc, line string) bool { return strings.Contains(svcs[svc], line) }
@@ -237,6 +240,49 @@ func TestSearchPath(t *testing.T) {
 	}
 	if !has("indexer", "vkeys:/etc/sluis/vkeys:ro") {
 		t.Errorf("the indexer does not read the verifier keys read-only:\n%s", svcs["indexer"])
+	}
+}
+
+// The entry actor's container has a read-only root file system, a private tmpfs, and no volume it can write but the
+// directory in which it makes its sockets (both fronts).
+//
+// verifies: REQ-ISO-094
+func TestEntryRunsOnAReadOnlyFileSystem(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	for _, name := range []string{"entry", "entry-audit"} {
+		body := svcs[name]
+		if !strings.Contains(body, "\n    read_only: true\n") || !strings.Contains(body, `tmpfs: ["/tmp"]`) {
+			t.Errorf("%s is not read-only with a tmpfs for /tmp:\n%s", name, body)
+		}
+		for _, l := range strings.Split(body, "\n") {
+			l = strings.TrimSpace(l)
+			if !strings.HasPrefix(l, "- ") || !strings.Contains(l, ":/") {
+				continue
+			}
+			if !strings.HasSuffix(l, ":ro") && !strings.HasPrefix(l, "- run-entry:/run/sluis/entry") {
+				t.Errorf("%s may write %s", name, l)
+			}
+		}
+	}
+}
+
+// The local installation's rqlite listens for its client API on the loopback address. This is a tripwire without a tag:
+// the requirement is about boards, where the client API is not on loopback yet, and the row stays partial until the
+// generated board units set the address too.
+func TestRqliteClientAPIIsOnLoopbackInCompose(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	var found bool
+	for name, body := range svcs {
+		if !strings.Contains(body, "/rqlited") {
+			continue
+		}
+		found = true
+		if !strings.Contains(body, `"-http-addr", "127.0.0.1:4001"`) {
+			t.Errorf("%s does not bind the client API to loopback:\n%s", name, body)
+		}
+	}
+	if !found {
+		t.Fatal("no rqlite service in the Compose file")
 	}
 }
 
@@ -317,5 +363,73 @@ func TestAKeyDirectoryOpensToItsCallerAlone(t *testing.T) {
 		case !runs && len(got) != 0:
 			t.Errorf("the group %d of key@'s directory of %s, which does not run here, is joined by %v", g, c, got)
 		}
+	}
+}
+
+// TestAuditFrontHostIsASiblingOnItsOwnSocket reads the forwarder's config of the local installation: the audit front has
+// its own site block, a host that is a sibling of the boundary's (the same parent name, neither a child of it nor a path
+// on it), and its own entry socket, which is not the identity front's.
+//
+// verifies: REQ-AUDIT-077, REQ-AUDIT-085
+func TestAuditFrontHostIsASiblingOnItsOwnSocket(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "local", "Caddyfile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := regexp.MustCompile(`(?m)^(\S+) \{$`)
+	hosts := map[string]string{}
+	var order []string
+	text := string(raw)
+	for _, m := range site.FindAllStringSubmatchIndex(text, -1) {
+		addr := text[m[2]:m[3]]
+		if !strings.HasPrefix(addr, "https://") {
+			continue
+		}
+		end := strings.Index(text[m[1]:], "\n}")
+		hosts[addr] = text[m[1] : m[1]+end]
+		order = append(order, addr)
+	}
+	if len(order) != 2 {
+		t.Fatalf("the forwarder has %d site blocks, want the boundary's and the audit front's: %v", len(order), order)
+	}
+	idHost, auditHost := "https://sluis.dev.local.test:8443", "https://sluis-audit.dev.local.test:8443"
+	for _, h := range []string{idHost, auditHost} {
+		if _, ok := hosts[h]; !ok {
+			t.Fatalf("no site block for %s in %v", h, order)
+		}
+		if strings.Contains(h[len("https://"):], "/") {
+			t.Errorf("%s is a path", h)
+		}
+	}
+	// A sibling: the first label differs and the parent name is the same, so the audit host is neither a child of the
+	// boundary's host nor a path on it.
+	label := func(h string) (string, string) {
+		name, _, _ := strings.Cut(strings.TrimPrefix(h, "https://"), ":")
+		first, parent, _ := strings.Cut(name, ".")
+		return first, parent
+	}
+	_, idParent := label(idHost)
+	_, auditParent := label(auditHost)
+	if idParent != auditParent || idParent == "" {
+		t.Errorf("the hosts are not siblings: %q and %q", idParent, auditParent)
+	}
+	if strings.HasSuffix(strings.TrimPrefix(auditHost, "https://"), "."+strings.TrimPrefix(idHost, "https://")) {
+		t.Error("the audit host is a child of the boundary's host")
+	}
+	// No path matcher: every block forwards the whole host to one Unix socket, and the two sockets differ.
+	sock := regexp.MustCompile(`reverse_proxy unix//(\S+)`)
+	got := map[string]string{}
+	for h, body := range hosts {
+		if strings.Contains(body, "handle_path") || strings.Contains(body, "handle /") || strings.Contains(body, "route /") {
+			t.Errorf("%s has a path matcher:\n%s", h, body)
+		}
+		m := sock.FindStringSubmatch(body)
+		if m == nil {
+			t.Fatalf("%s forwards to no Unix socket:\n%s", h, body)
+		}
+		got[h] = m[1]
+	}
+	if got[idHost] == got[auditHost] || !strings.HasSuffix(got[auditHost], "-audit.sock") {
+		t.Errorf("the sockets are %q and %q: the audit front must have its own", got[idHost], got[auditHost])
 	}
 }

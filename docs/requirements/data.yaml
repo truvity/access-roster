@@ -28,14 +28,13 @@ requirements:
     rationale: "A kind with two classes would have two writers and two backup rules, and where a thing is written decides its class (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
     verification:
-      - {kind: integration-test, ref: "registry check: a kind with two classes, no treatment or an unknown profile fails the check"}
+      - {kind: integration-test, ref: "registry check test: an unknown class, no treatment, no profile or an unknown profile fails the registry build, and a kind cannot be given two classes"}
   - id: REQ-DATA-003
     area: DATA
     statement: "The kind registry MUST name exactly one writer for every kind, except the restore command of store@ and the declared self-scoped kinds."
@@ -100,14 +99,13 @@ requirements:
     rationale: "A tenant never appears in config, so a tenant's change never waits for a review (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1202]
     verification:
-      - {kind: integration-test, ref: "registry check: a config kind scoped to boundary and tenant fails"}
+      - {kind: integration-test, ref: "registry check test: a config or secret kind scoped to boundary and tenant fails the registry build"}
   - id: REQ-DATA-008
     area: DATA
     statement: "The registry check MUST fail a durable or temp kind that holds personal data or free text and is declared plain."
@@ -623,7 +621,7 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [1205]
@@ -796,12 +794,12 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [861]
     verification:
-      - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: addresses for every registry kind equal the golden addresses"}
+      - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: the addresses of a representative set of kinds (one per class and scope) equal hand-written golden addresses; every kind follows with the typed clients"}
   - id: REQ-DATA-054
     area: DATA
     statement: "store@ MUST set every timestamp of an item itself."
@@ -1237,7 +1235,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]

@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 	jose "github.com/go-jose/go-jose/v4"
+	"google.golang.org/protobuf/proto"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 )
@@ -282,5 +283,91 @@ func TestMac(t *testing.T) {
 	} {
 		_, err := mac(c.actor, c.purpose, c.tenant, c.label, "x", c.epoch)
 		wantRefusalNamed(t, name, err, c.code, c.reason)
+	}
+}
+
+// The subject MAC keys never leave key@: the only operation on the boundary's mac key and on a tenant's pairwise key is
+// Mac, which returns a keyed hash. Seal, Open, Sign and PublicKey on either purpose are refused, even for session, the
+// actor that holds the Mac rule for both, and nothing was signed.
+//
+// verifies: REQ-SUBJ-008
+func TestMacKeysAreNeverExtracted(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	ctx := context.Background()
+	c := n.client("session")
+	// The control: Mac works for both, so the refusals below are about the other operations.
+	for _, p := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {
+		if _, err := c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: p.purpose, Tenant: p.tenant, Label: "l", Input: []byte("x")})); err != nil {
+			t.Fatalf("Mac under %s: %v", p.purpose, err)
+		}
+	}
+	refused := func(op string, err error) {
+		t.Helper()
+		if code := connect.CodeOf(err); err == nil || (code != connect.CodePermissionDenied && code != connect.CodeInvalidArgument) {
+			t.Errorf("%s: err = %v, want a refusal", op, err)
+		}
+	}
+	for _, purpose := range []string{"mac", "pairwise"} {
+		tenant := ""
+		if purpose == "pairwise" {
+			tenant = "acme"
+		}
+		_, err := seal1(c, purpose, "person", tenant, vecID, []byte("x"), nil)
+		refused("Seal "+purpose, err)
+		_, err = open1(c, purpose, "person", tenant, vecID, []byte("not-an-envelope"), nil)
+		refused("Open "+purpose, err)
+		_, err = c.Sign(ctx, signReq(purpose, []byte("x")))
+		refused("Sign "+purpose, err)
+		_, err = c.PublicKey(ctx, connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: purpose}))
+		refused("PublicKey "+purpose, err)
+	}
+	if n.driver.signs.Load() != 0 {
+		t.Fatal("the driver was asked to sign")
+	}
+}
+
+// The mac key of the boundary and the pairwise key of a tenant exist at generation 1 only: no call makes another
+// generation of either (an epoch on them is refused; only the pseudonym key is rolled by epoch), so the keys the store
+// holds for them are one wrap of generation 1 per recipient. A rotation job, when it is built, must skip these two
+// purposes (ADR 0006); this test is the tripwire that fails when a second generation appears.
+//
+// verifies: REQ-KEYS-043, REQ-KEYS-072
+func TestMacAndPairwiseKeysAreNeverMadeInAnotherGeneration(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	ctx := context.Background()
+	mac := func(purpose, tenant, epoch string) error {
+		_, err := n.client("session").Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: "l", Input: []byte("x"), Epoch: epoch}))
+		return err
+	}
+	for _, c := range []struct{ purpose, tenant string }{{"mac", ""}, {"pairwise", "acme"}} {
+		if err := mac(c.purpose, c.tenant, ""); err != nil {
+			t.Fatalf("Mac under %s: %v", c.purpose, err)
+		}
+		// A second generation cannot be asked for: an epoch is refused on both purposes.
+		wantRefusal(t, mac(c.purpose, c.tenant, "202611"), connect.CodeInvalidArgument, "epoch")
+	}
+	e.store.mu.Lock()
+	defer e.store.mu.Unlock()
+	seen := map[string]int{}
+	for _, it := range e.store.items {
+		if it.GetAddress().GetKind() != "data-key-wrap" {
+			continue
+		}
+		w := &keyv2alpha1.DataKeyWrap{}
+		if err := proto.Unmarshal(it.GetValue(), w); err != nil {
+			t.Fatal(err)
+		}
+		if w.GetPurpose() != "mac" && w.GetPurpose() != "pairwise" {
+			continue
+		}
+		seen[w.GetPurpose()]++
+		if w.GetGeneration() != 1 || !strings.Contains(it.GetAddress().GetId(), "/1/") {
+			t.Errorf("a wrap of %s at generation %d (%s)", w.GetPurpose(), w.GetGeneration(), it.GetAddress().GetId())
+		}
+	}
+	if seen["mac"] == 0 || seen["pairwise"] == 0 {
+		t.Fatalf("the test saw wraps %v, want both purposes", seen)
 	}
 }

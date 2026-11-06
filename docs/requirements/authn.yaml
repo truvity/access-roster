@@ -819,8 +819,7 @@ requirements:
     rationale: "A token that hides the new authentication gives the resource server nothing to check."
     level: MUST
     source: stakeholder-ciam
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -828,7 +827,23 @@ requirements:
       - {id: NC-01, section: "8176", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "step-up round trip"}
+      - {kind: integration-test, ref: "step-up round trip with fakes: a stale authentication is challenged with insufficient_user_authentication; after a retry with max_age the token carries the new acr and auth_time"}
+  - id: REQ-AUTHN-101
+    area: AUTHN
+    split_from: REQ-AUTHN-021
+    statement: "When an authorization request carries acr_values, session MUST either authenticate the person to one of them or refuse with unmet_authentication_requirements."
+    rationale: "A step-up that names the level it needs must not be answered with a lower one that session passed off as met (RFC 9470)."
+    level: MUST
+    source: stakeholder-ciam
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [session]
+    standards:
+      - {id: ST-24, section: "3", depth: Full}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "an authorize request with acr_values the upstream cannot meet is refused with unmet_authentication_requirements; one it meets gives a token whose acr is one of them"}
   - id: REQ-AUTHN-022
     area: AUTHN
     statement: "sluis MUST NOT verify end-user passwords."

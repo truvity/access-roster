@@ -20,19 +20,18 @@ requirements:
   - id: REQ-UX-006
     area: UX
     split_from: REQ-UX-001
-    statement: "The reason for a refusal MUST be written to the log only."
+    statement: "The reason for a refusal MUST be written to the audit record only."
     rationale: "Detailed reasons help an attacker."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-14, section: "4", depth: Partial}
     issues: [796]
     verification:
-      - {kind: integration-test, ref: "log-only reason test"}
+      - {kind: integration-test, ref: "an error from an actor leaves the reason in the audit record of the refusal and no trace of it in the response body"}
   - id: REQ-UX-002
     area: UX
     statement: "Every page MUST be rendered from a template with message catalogues."
