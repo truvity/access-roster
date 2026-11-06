@@ -10,11 +10,18 @@ Why it matters: it decides what the requirement rows for the driver, the exporte
 
 ## When
 
-Not measured yet. Prepared 2026-11-06 (UTC). The measurement date and time go here, in UTC, with the dates of every further run.
+Prepared 2026-11-06 (UTC). Run on 2026-11-06 (UTC), from the owner's workstation, with the parent token minted by the v1 sluis installation (a one-hour account token with Workers R2 Storage Write, which covers both permissions of the table below).
+
+| Run | Started (UTC) | Finished (UTC) | Credentials |
+|---|---|---|---|
+| Smoke (`-n 2 -spacing 5s -soak 5s`) | 19:42:38 | 19:42:49 | 2 |
+| Spike (`-n 30 -spacing 10s`) | 19:42:56 | 19:48:27 | 30 |
+
+No further run yet; see open question 2.
 
 ## Verdict
 
-Pending. Fill in after the run, in one or two sentences, and name the arm and the number of credentials.
+NO DELAY, on one run of 30 temporary credentials (arm `temp`): every credential was accepted by its first attempt (time to first accept 0.000 s), none was refused at any time during the 40 s soak, and no 401 or 403 was seen. By the decision rule, "retry once on 401" is enough and the driver needs no hold-back. This excludes a v1-sized effect (about 14 % of rotations) from this place and this moment; it does not exclude a rarer one, a different time of day or another data centre. The `token` control arm was not run, so the run shows no delay today for the temporary credential but does not re-show the v1 delay beside it.
 
 ## Decision rule
 
@@ -96,25 +103,38 @@ The run sends about 90 requests to R2 for each credential (most of them the soak
 
 ## Numbers
 
-Empty until the run. Tables, with units, for each arm:
+Run of 2026-11-06, `-n 30 -spacing 10s`, soak 40 s. The control arm (`token`) was not run: v1 measured that mechanism, and the per-caller token cap of the v1 installation would have blocked the extra tokens.
 
 | Figure | temp | token (control) |
 |---|---|---|
-| Credentials (N) | | |
-| Never accepted within 120 s | | |
-| First attempt refused | | |
-| Most attempts to the first accept | | |
-| Time to first accept, p50 (s) | | |
-| Time to first accept, p95 (s) | | |
-| Time to first accept, max (s) | | |
-| Credentials refused after an accept | | |
-| Refusals after an accept, total | | |
-| Refusals by status: 401 / 403 | | |
-| S3 error codes seen | | |
-| Objects left behind after cleanup | | |
-| Outcome of the decision rule | | |
+| Credentials (N) | 30 | not run |
+| Never accepted within 120 s | 0 | not run |
+| First attempt refused | 0 | not run |
+| Most attempts to the first accept | 1 | not run |
+| Time to first accept, p50 (s) | 0.000 | not run |
+| Time to first accept, p95 (s) | 0.000 | not run |
+| Time to first accept, max (s) | 0.000 | not run |
+| Credentials refused after an accept | 0 | not run |
+| Refusals after an accept, total | 0 | not run |
+| Refusals by status: 401 / 403 | 0 / 0 | not run |
+| S3 error codes seen | none | not run |
+| Objects left behind after cleanup | 0 | not run |
+| Outcome of the decision rule | NO DELAY: retry once on 401 is enough | not run |
 
-Also fill in the time to the first accept of each operation (put, get, head, delete), and the mint time of each arm.
+Time to the first accept of each operation, `temp` arm (the first request of a credential is the put, so its first accept is 0):
+
+| Operation | p50 (s) | p95 (s) | max (s) |
+|---|---|---|---|
+| put | 0.000 | 0.000 | 0.000 |
+| get | 0.243 | 0.418 | 0.451 |
+| head | 0.396 | 0.581 | 0.617 |
+| delete | 40.138 | 40.492 | 40.493 |
+
+The get and head figures are the order of the requests plus the round trips, not refusals: no request was refused. The delete is sent after the 40 s soak, so its figure is the soak plus its own round trip; it was accepted at once.
+
+Mint time of the call (`POST .../r2/temp-access-credentials`), `temp` arm: p50 0.211 s, p95 0.477 s, max 0.497 s over 30 calls.
+
+The smoke run (2 credentials, soak 5 s) needed no change to the harness and also showed no refusal. The parent key id was found by the harness itself, with the token verify call.
 
 ## Roads not taken
 
@@ -141,7 +161,7 @@ Also fill in the time to the first accept of each operation (put, get, head, del
 
 By the pull request that prepares the spike: none to any machine, account or device. The harness was built, linted and tested against local fakes only; it was not run, and nothing called Cloudflare.
 
-By the run, to fill in: the temporary credentials (they expire by themselves), the objects under the prefix (deleted by the harness, the count of leftovers is in the summary), and for `-arm token` the API tokens (deleted by the harness; a failure names `sluis-spike-<run id>-*` for deletion by hand). Undone at the end: the test bucket, the parent token and the creator token, by the owner.
+By the run of 2026-11-06: the temporary credentials (they expire by themselves), the objects under the prefix (all deleted by the harness; 0 left behind) and one dedicated, empty test bucket, created and deleted again after the run (the bucket list afterwards held only the buckets that existed before). The parent token came from the v1 installation, lasts one hour and cannot revoke itself; it was left to expire. The `token` arm was not run, so no control API token was created.
 
 ## Raw logs
 
