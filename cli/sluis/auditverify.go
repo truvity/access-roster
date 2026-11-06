@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -252,6 +253,38 @@ func parseCheckpoint(text string) (torchwood.Checkpoint, error) {
 	return cp, nil
 }
 
+// everyLineVerifies reports whether every signature line of the log's key in a signed note verifies. note.Open checks
+// the first line of a key and drops a repeat of the same name and key ID unchecked, so a good line followed by a bad
+// repeat would open. The verifier in Rust refuses such a note, and two verifiers of one log must agree; so each line
+// of the key is checked here. Lines of other keys are not ours to check.
+func everyLineVerifies(data []byte, text string, k *logKey) bool {
+	sigs, ok := bytes.CutPrefix(data, []byte(text+"\n"))
+	if !ok {
+		return false
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(sigs), "\n"), "\n") {
+		rest, ok := strings.CutPrefix(line, "\u2014 ")
+		if !ok {
+			return false
+		}
+		name, b64, _ := strings.Cut(rest, " ")
+		if name != k.name {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(raw) < 4 {
+			return false
+		}
+		if binary.BigEndian.Uint32(raw) != k.KeyHash() {
+			continue
+		}
+		if !k.Verify([]byte(text), raw[4:]) {
+			return false
+		}
+	}
+	return true
+}
+
 // readCheckpoint opens a signed note with the log key and parses its body. A bad signature, an unknown key or a note
 // that is not a checkpoint is a refusal that names the file.
 func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
@@ -263,6 +296,9 @@ func readCheckpoint(d logDir, rel string, vk *logKey) (checkpoint, error) {
 		return checkpoint{}, err
 	}
 	n, err := note.Open(b, note.VerifierList(vk))
+	if err == nil && !everyLineVerifies(b, n.Text, vk) {
+		err = errors.New("a signature line of the log key does not verify")
+	}
 	if err != nil {
 		return checkpoint{}, refused(slashPath(rel) + ".signature")
 	}

@@ -326,3 +326,48 @@ func TestWriterReadsCheckpointsOfTheFormerWriter(t *testing.T) {
 		t.Fatal("a damaged signature opened")
 	}
 }
+
+// The writer's reader refuses a note in which any signature line of the log key fails, as the CLI and the Rust
+// verifier do: the library alone would open a good line followed by a bad repeat of the same key.
+// verifies: REQ-SEC-018, REQ-AUDIT-040
+func TestOpenNoteRefusesABadRepeatOfTheLogKey(t *testing.T) {
+	lk, priv := testLogKey(t)
+	s := &Server{key: lk, origin: testOrigin}
+	body := checkpointBody(testOrigin, 3, tlog.Hash{3})
+	good, err := lk.signedNote(body, signSHA256(priv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodLine := string(good[len(body)+1:])
+	other := checkpointBody(testOrigin, 4, tlog.Hash{4})
+	otherNote, err := lk.signedNote(other, signSHA256(priv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	badLine := string(otherNote[len(other)+1:]) // a signature of the key over other text
+	var id [4]byte
+	binary.BigEndian.PutUint32(id[:], lk.id)
+	garbage := "— " + testOrigin + " " + base64.StdEncoding.EncodeToString(append(id[:], "garbage"...)) + "\n"
+	text := string(body)
+	for name, c := range map[string]struct {
+		note string
+		ok   bool
+	}{
+		"one good line":               {text + "\n" + goodLine, true},
+		"good, then the same again":   {text + "\n" + goodLine + goodLine, true},
+		"good, then a garbage repeat": {text + "\n" + goodLine + garbage, false},
+		"good, then a bad repeat":     {text + "\n" + goodLine + badLine, false},
+		"bad first, then good":        {text + "\n" + badLine + goodLine, false},
+		"garbage first, then good":    {text + "\n" + garbage + goodLine, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cp, err := s.openNote([]byte(c.note))
+			if c.ok != (err == nil) {
+				t.Fatalf("accepted = %v, err %v", err == nil, err)
+			}
+			if err == nil && cp.N != 3 {
+				t.Fatalf("read %+v", cp)
+			}
+		})
+	}
+}

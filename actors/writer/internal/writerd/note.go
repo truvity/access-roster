@@ -1,6 +1,7 @@
 package writerd
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
@@ -101,6 +102,38 @@ func checkpointBody(origin string, size int64, root tlog.Hash) []byte {
 // the one signature line (C2SP signed-note).
 func (k *logKey) signedNote(body []byte, sign func(body []byte) ([]byte, error)) ([]byte, error) {
 	return note.Sign(&note.Note{Text: string(body)}, keySigner{key: k, sign: sign})
+}
+
+// everyLineVerifies reports whether every signature line of the log's key in a signed note verifies. note.Open checks
+// the first line of a key and drops a repeat of the same name and key ID unchecked, so a good line followed by a bad
+// repeat would open. The verifier in Rust refuses such a note, and two verifiers of one log must agree; so each line
+// of the key is checked here. Lines of other keys are not ours to check.
+func (k *logKey) everyLineVerifies(data []byte, text string) bool {
+	sigs, ok := bytes.CutPrefix(data, []byte(text+"\n"))
+	if !ok {
+		return false
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(string(sigs), "\n"), "\n") {
+		rest, ok := strings.CutPrefix(line, "\u2014 ")
+		if !ok {
+			return false
+		}
+		name, b64, _ := strings.Cut(rest, " ")
+		if name != k.name {
+			continue
+		}
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil || len(raw) < 4 {
+			return false
+		}
+		if binary.BigEndian.Uint32(raw) != k.KeyHash() {
+			continue
+		}
+		if !k.Verify([]byte(text), raw[4:]) {
+			return false
+		}
+	}
+	return true
 }
 
 // parseCheckpoint reads a checkpoint body: origin, size, root, and no extension line (the writer writes none). The

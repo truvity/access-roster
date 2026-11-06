@@ -317,10 +317,10 @@ func TestHistoryRefusalIsDeterministic(t *testing.T) {
 	})
 }
 
-// The note opens with the first line of the log's key, and the library drops a repeat of that key without checking it,
-// so a good line followed by garbage under the same name and key ID is accepted, with the signed text the first line
-// vouches for; a bad line first is refused, however good the repeat. Pinned for golang.org/x/mod v0.42.0: what a
-// verifier accepts is the text that the first line signs and nothing a repeat says.
+// golang.org/x/mod v0.42.0 opens a note with the first line of the log's key and drops a repeat of the same name and key
+// ID unchecked, so a good line followed by a garbage or bad repeat would open. The Rust verifier refuses it, and two
+// verifiers of one log must agree: every line of the key must verify (everyLineVerifies). A repeat of the same good line
+// is no harm and is accepted; a bad line anywhere, first or last, refuses the note.
 // verifies: REQ-SEC-018, REQ-AUDIT-026
 func TestRepeatedSignatureLinesOfTheLogKey(t *testing.T) {
 	key := newFixtureKey(t)
@@ -339,8 +339,9 @@ func TestRepeatedSignatureLinesOfTheLogKey(t *testing.T) {
 	}{
 		"one good line":               {text + "\n" + goodLine, true},
 		"good, then the same again":   {text + "\n" + goodLine + goodLine, true},
-		"good, then a garbage repeat": {text + "\n" + goodLine + garbage, true},
-		"good, then a bad repeat":     {text + "\n" + goodLine + badLine, true},
+		"good, then a garbage repeat": {text + "\n" + goodLine + garbage, false},
+		"good, then a bad repeat":     {text + "\n" + goodLine + badLine, false},
+		"bad, good, then good again":  {text + "\n" + badLine + goodLine + goodLine, false},
 		"garbage first, then good":    {text + "\n" + garbage + goodLine, false},
 		"bad first, then good":        {text + "\n" + badLine + goodLine, false},
 		"only a bad line":             {text + "\n" + badLine, false},
@@ -351,7 +352,6 @@ func TestRepeatedSignatureLinesOfTheLogKey(t *testing.T) {
 			if c.ok != (err == nil) {
 				t.Fatalf("accepted = %v, err %v", err == nil, err)
 			}
-			// What an accepted note says is the signed text, whatever a repeat adds.
 			if err == nil && (cp.N != 5 || cp.Origin != fixtureOrigin) {
 				t.Fatalf("read %+v", cp.Checkpoint)
 			}

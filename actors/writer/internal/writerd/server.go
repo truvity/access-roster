@@ -371,6 +371,9 @@ func (s *Server) readCheckpoint(ctx context.Context, size int64) (torchwood.Chec
 // openNote verifies a signed note with the log key and reads its body.
 func (s *Server) openNote(data []byte) (torchwood.Checkpoint, error) {
 	n, err := note.Open(data, note.VerifierList(s.key))
+	if err == nil && !s.key.everyLineVerifies(data, n.Text) {
+		err = errors.New("a signature line of the log key does not verify")
+	}
 	if err != nil {
 		return torchwood.Checkpoint{}, errors.New("the note does not verify with the log key")
 	}
