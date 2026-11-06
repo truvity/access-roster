@@ -99,7 +99,7 @@ requirements:
   - id: REQ-WORKLOAD-007
     area: WORKLOAD
     statement: "A workload identity from a pull request MUST NOT be able to sign, whatever the operator's policy permits."
-    rationale: "A pull request runs the files it proposes, so its author controls the workflow, and a rule that names only the repository would let that author sign (the guard is a built-in forbid that no operator policy can lift)."
+    rationale: "A pull request runs the files it proposes, so its author controls the workflow, and a rule that names only the repository would let that author sign; the guard is a built-in forbid that no operator policy can lift, and the record is done only when a test runs from a verified token through the entity attributes to a refusal (#890)."
     level: MUST
     source: security-review
     status: partial
