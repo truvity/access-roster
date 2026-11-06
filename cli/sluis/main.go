@@ -86,7 +86,7 @@ commands:
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
                            on this node (--declaration FILE), then check that the keys left the key
-                           sets (--issuer, --entry-socket, --wait; exit 5 when not confirmed)
+                           sets (--issuer, --entry-socket, --wait; exit 5 when not confirmed); --check only looks again
   version                  print the version
 
 flags:

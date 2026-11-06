@@ -1388,8 +1388,8 @@ requirements:
       - {kind: integration-test, ref: "a PIN offered on the admin socket by a uid other than root is refused before it is read; the channel of the record is checked when it is built"}
   - id: REQ-KEYS-087
     area: KEYS
-    statement: "When an operator declares a token-signing key compromised or suspected, key@ MUST write a KeyRevocation item for it at once, with neither the pre-publication period nor the retention period."
-    rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them (ADR 0041)."
+    statement: "When an operator declares a token-signing key compromised or suspected, key@ MUST write a KeyRevocation item for it at once, dated at the declaration, with neither the pre-publication period nor the retention period."
+    rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them; that the key leaves the key sets is REQ-KEYS-106 and REQ-KEYS-107 (ADR 0041)."
     level: MUST
     source: design-decision
     status: done
@@ -1400,7 +1400,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "declare a key: a KeyRevocation item exists at once and the 65 minutes of retention are not applied"}
+      - {kind: integration-test, ref: "declare a key: a KeyRevocation item dated at the declaration exists at once, holds no later effective time or retention, and key@ refuses a Sign with the key at once"}
   - id: REQ-KEYS-088
     area: KEYS
     statement: "sluis key revoke MUST report a revocation as not confirmed until it has fetched the published key set from its public address and the live key set of entry and found the kid absent from both."
@@ -1418,6 +1418,8 @@ requirements:
       - {kind: integration-test, ref: "the edge serves a stale key set after a revocation: the command prints not confirmed, and confirmed once the set lacks the kid"}
       - {kind: integration-test, ref: "the public address lacks the kid and the live key set of entry still lists it: the command prints not confirmed"}
       - {kind: integration-test, ref: "an address that is unreachable, slow, or answers something that is not a key set: the command prints could not tell and not confirmed, and exits 5"}
+      - {kind: integration-test, ref: "a key listed under another kid or none, found by its RFC 7638 thumbprint, is still listed; a duplicate or case-variant member in the answer is could not tell"}
+      - {kind: integration-test, ref: "the kids to look for are those of the signed declaration, whatever key@ answered; with none the command prints not confirmed"}
   - id: REQ-KEYS-089
     area: KEYS
     statement: "A replacement for a revoked token-signing key MUST sign at once when no other key of the issuer is active, with its key set published and purged at the edge before its first token."

@@ -76,6 +76,7 @@ func (a *app) revokeCommand() command {
 		socket      string
 		allowUnk    bool
 		confirm     confirmOptions
+		check       bool
 		set         *flag.FlagSet
 	)
 	return command{
@@ -91,6 +92,7 @@ func (a *app) revokeCommand() command {
 			fs.StringVar(&confirm.issuer, "issuer", "", "the issuer whose key set is checked after the delivery; by default the one entry reports on its socket")
 			fs.StringVar(&confirm.entrySocket, "entry-socket", "", "entry's socket, where its live key set is read; by default "+entrySocketPrefix+"/<boundary>.sock")
 			fs.DurationVar(&confirm.wait, "wait", defaultConfirmWait, "how long to check that the keys left the key sets; 0 checks once")
+			fs.BoolVar(&check, "check", false, "only check that the keys left the key sets, of the --declaration FILE or the --kid keys; deliver nothing")
 		},
 		run: func(ctx context.Context, positional []string, res *result) error {
 			if len(positional) != 0 {
@@ -98,6 +100,15 @@ func (a *app) revokeCommand() command {
 			}
 			if a.boundary == "" || !validBoundary(a.boundary) {
 				return cli.Usage(errors.New("name the boundary with --boundary"))
+			}
+			if check {
+				if reason != "" || out != "" || allowUnk || socket != "" || (declaration == "") == (len(kids) == 0) {
+					return cli.Usage(errors.New("--check takes either --declaration FILE or --kid (repeated), and no --reason, --out, --allow-unknown or --socket"))
+				}
+				if err := validateConfirmFlags(confirm); err != nil {
+					return cli.Usage(err)
+				}
+				return a.checkOnly(ctx, declaration, kids, confirm, res)
 			}
 			if declaration != "" {
 				if len(kids) > 0 || reason != "" || out != "" || allowUnk {
@@ -118,7 +129,7 @@ func (a *app) revokeCommand() command {
 				}
 			})
 			if confirmFlag {
-				return cli.Usage(errors.New("--issuer, --entry-socket and --wait are for --declaration"))
+				return cli.Usage(errors.New("--issuer, --entry-socket and --wait are for --declaration or --check"))
 			}
 			return a.writeDeclaration(kids, reason, out, allowUnk, res)
 		},
@@ -235,9 +246,9 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, confi
 	}
 	audited := msg.GetAudited()
 	o := &revokeOut{Seq: msg.GetSeq(), Audited: &audited}
-	var lines, kids []string
+	var lines, reported []string
 	for _, k := range msg.GetKeys() {
-		kids = append(kids, k.GetKid())
+		reported = append(reported, k.GetKid())
 		o.Keys = append(o.Keys, revokedKeyOut{Kid: k.GetKid(), Already: k.GetAlready(), Unknown: k.GetUnknown(), Pending: k.GetPending()})
 		state := "revoked"
 		switch {
@@ -258,7 +269,16 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, confi
 		_, _ = fmt.Fprintln(a.stderr, res.Text)
 		return errors.New("key revoke: key@ took the declaration in part (store@ failed); deliver the same declaration again to complete it")
 	}
-	conf := a.confirmRevoked(ctx, kids, confirm, a.stderr)
+	// The keys to look for are the ones the operator signed for; what key@ answers can add to them and not shorten them.
+	declared, derr := declaredKids(doc)
+	kids, warnings := unionKids(declared, reported)
+	if derr != nil {
+		warnings = append(warnings, "the keys of the declaration could not be read here: "+derr.Error())
+	}
+	conf := a.confirmRevoked(ctx, kids, warnings, confirm, a.stderr)
+	if derr != nil {
+		conf.Confirmed = false
+	}
 	o.Confirmation = conf
 	lines = append(lines, confirmationLines(conf)...)
 	res.Text = strings.Join(lines, "\n")
@@ -267,6 +287,44 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, confi
 		_, _ = fmt.Fprintln(a.stderr, res.Text)
 		return errors.New("key revoke: the keys are revoked, but key@ could not make the audit fact durable")
 	}
+	if !conf.Confirmed {
+		return notConfirmedError{}
+	}
+	return nil
+}
+
+// checkOnly is `--check`: the confirmation without a delivery, for the keys of a declaration (read from the file,
+// not verified: key@ verified it when it was delivered) or for keys named with --kid. It is for the second look, when
+// the first said "not confirmed", and it works for a declaration that is no longer the latest, which a delivery
+// again would not (key@ takes only a seq above the highest it took).
+func (a *app) checkOnly(ctx context.Context, declaration string, kids kidList, confirm confirmOptions, res *result) error {
+	list := []string(kids)
+	if declaration != "" {
+		doc, err := os.ReadFile(declaration) //nolint:gosec // the operator names the file
+		if err != nil {
+			return fmt.Errorf("key revoke: the declaration cannot be read: %w", err)
+		}
+		if len(doc) > signedconfig.MaxDocument {
+			return refused("declaration")
+		}
+		if list, err = declaredKids(doc); err != nil {
+			return cli.Usage(fmt.Errorf("--declaration: %w", err))
+		}
+	}
+	if len(list) > maxRevokeKids {
+		return cli.Usage(fmt.Errorf("name 1 to %d keys", maxRevokeKids))
+	}
+	for i, k := range list {
+		if !thumbprintPattern.MatchString(k) {
+			return cli.Usage(fmt.Errorf("key %d: not an RFC 7638 thumbprint", i+1))
+		}
+		if slices.Contains(list[:i], k) {
+			return cli.Usage(fmt.Errorf("key %d: listed twice", i+1))
+		}
+	}
+	conf := a.confirmRevoked(ctx, list, nil, confirm, a.stderr)
+	res.Revoke = &revokeOut{Confirmation: conf}
+	res.Text = strings.Join(confirmationLines(conf), "\n")
 	if !conf.Confirmed {
 		return notConfirmedError{}
 	}

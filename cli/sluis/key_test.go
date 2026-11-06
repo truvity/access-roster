@@ -36,8 +36,10 @@ type fakeKeyAdmin struct {
 	pub     *ecdsa.PublicKey
 	refuse  error
 	audited bool
-	mu      sync.Mutex
-	got     []byte
+	// reply, when not nil, replaces the keys that key@ answers with.
+	reply func() []*keyv2alpha1.RevokedKey
+	mu    sync.Mutex
+	got   []byte
 }
 
 func (f *fakeKeyAdmin) Revoke(_ context.Context, req *connect.Request[keyv2alpha1.RevokeRequest]) (*connect.Response[keyv2alpha1.RevokeResponse], error) {
@@ -52,9 +54,11 @@ func (f *fakeKeyAdmin) Revoke(_ context.Context, req *connect.Request[keyv2alpha
 		return nil, krefusal.New(connect.CodePermissionDenied, "declaration", "declaration")
 	}
 	f.got = v.Payload
-	return connect.NewResponse(&keyv2alpha1.RevokeResponse{Seq: v.Seq, Audited: f.audited, Keys: []*keyv2alpha1.RevokedKey{
-		{Kid: kidA}, {Kid: kidB, Already: true},
-	}}), nil
+	keys := []*keyv2alpha1.RevokedKey{{Kid: kidA}, {Kid: kidB, Already: true}}
+	if f.reply != nil {
+		keys = f.reply()
+	}
+	return connect.NewResponse(&keyv2alpha1.RevokeResponse{Seq: v.Seq, Audited: f.audited, Keys: keys}), nil
 }
 
 func serveKeyAdmin(t *testing.T, f *fakeKeyAdmin) string {
