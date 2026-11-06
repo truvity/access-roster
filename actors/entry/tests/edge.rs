@@ -758,6 +758,29 @@ async fn callback_drops_unknown_parameters_and_still_refuses_a_repeated_known_on
     );
 }
 
+/// No online certificate status responder is served: the paths an OCSP client would use (RFC 6960, appendix A.1) and the
+/// usual status paths are unrouted, until a decision to run one is recorded.
+///
+/// verifies: REQ-PKI-008
+#[tokio::test]
+async fn there_is_no_certificate_status_responder() {
+    let up = up().await;
+    let ocsp = ("Content-Type", "application/ocsp-request");
+    for (method, path) in [
+        ("POST", "/"),
+        ("POST", "/ocsp"),
+        ("GET", "/ocsp/MEgwRjBEMEIwQDAJBgUrDgMCGgUA"),
+        ("GET", "/status"),
+        ("GET", "/ca/status"),
+    ] {
+        let r = http(&up, method, path, &[ocsp], b"\x30\x00").await;
+        assert_ne!(r.status, 200, "{method} {path}");
+        if path != "/" {
+            assert_eq!(r.status, 404, "{method} {path}");
+        }
+    }
+}
+
 /// A resource indicator (RFC 8707) is a parameter of the token exchange only. On the sign-in and on the code and refresh
 /// grants it is an unknown parameter and the request is refused before session sees it, so it cannot reach the audience
 /// of an ID token.

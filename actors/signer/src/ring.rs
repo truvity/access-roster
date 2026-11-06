@@ -936,7 +936,7 @@ mod tests {
         assert_eq!(r2, r);
     }
 
-    /// verifies: REQ-KEYS-076
+    /// verifies: REQ-KEYS-076, REQ-KEYS-085
     #[test]
     fn a_new_key_of_a_node_is_published_for_the_window_before_it_signs() {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);

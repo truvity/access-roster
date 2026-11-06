@@ -778,12 +778,12 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     standards: []
     issues: [861]
     verification:
-      - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: addresses for every registry kind equal the golden addresses"}
+      - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: the addresses of a representative set of kinds (one per class and scope) equal hand-written golden addresses; every kind follows with the typed clients"}
   - id: REQ-DATA-054
     area: DATA
     statement: "store@ MUST set every timestamp of an item itself."
@@ -1217,7 +1217,7 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: no-proving-test
+    gap: partly-built
     milestone: first-version
     runtimes: ["bare-metal"]
     actors: [store]

@@ -266,6 +266,26 @@ func TestEntryRunsOnAReadOnlyFileSystem(t *testing.T) {
 	}
 }
 
+// The local installation's rqlite listens for its client API on the loopback address. This is a tripwire without a tag:
+// the requirement is about boards, where the client API is not on loopback yet, and the row stays partial until the
+// generated board units set the address too.
+func TestRqliteClientAPIIsOnLoopbackInCompose(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	var found bool
+	for name, body := range svcs {
+		if !strings.Contains(body, "/rqlited") {
+			continue
+		}
+		found = true
+		if !strings.Contains(body, `"-http-addr", "127.0.0.1:4001"`) {
+			t.Errorf("%s does not bind the client API to loopback:\n%s", name, body)
+		}
+	}
+	if !found {
+		t.Fatal("no rqlite service in the Compose file")
+	}
+}
+
 // TestOnlyStoreAndKeyReadTheBootstrapFile: the bootstrap file is read-only to the two actors that read it. store@ reads
 // all of it; key@ reads its publishers block, to verify the KeyPlan itself instead of trusting store@ (REQ-KEYS-075).
 // Nobody else has the volume, and nobody can write to it.
@@ -352,7 +372,7 @@ func TestAKeyDirectoryOpensToItsCallerAlone(t *testing.T) {
 //
 // verifies: REQ-AUDIT-077, REQ-AUDIT-085
 func TestAuditFrontHostIsASiblingOnItsOwnSocket(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "local", "Caddyfile")) //nolint:gosec // the repository's own forwarder config
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "deploy", "local", "Caddyfile"))
 	if err != nil {
 		t.Fatal(err)
 	}

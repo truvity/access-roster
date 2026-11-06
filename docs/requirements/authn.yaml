@@ -827,7 +827,7 @@ requirements:
       - {id: NC-01, section: "8176", depth: Full}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "step-up round trip with fakes: an authentication older than the freshness rule is challenged with insufficient_user_authentication; the client repeats with max_age, and the token carries the new acr and auth_time"}
+      - {kind: integration-test, ref: "step-up round trip with fakes: a stale authentication is challenged with insufficient_user_authentication; after a retry with max_age the token carries the new acr and auth_time"}
   - id: REQ-AUTHN-091
     area: AUTHN
     split_from: REQ-AUTHN-021

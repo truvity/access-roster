@@ -292,7 +292,8 @@ mod tests {
     fn an_envelope_that_differs_from_the_record_in_one_field_is_refused() {
         let opened = Opened::parse(RECORD.as_bytes()).unwrap();
         assert_eq!(opened.check(&envelope(), "dev"), Ok(()));
-        let lies: [(&str, Box<dyn Fn(&mut RecordEntry)>); 7] = [
+        type Lie = Box<dyn Fn(&mut RecordEntry)>;
+        let lies: [(&str, Lie); 7] = [
             ("time", Box::new(|e| e.time_ms += 1)),
             ("class_uid", Box::new(|e| e.class_uid += 1)),
             ("activity_id", Box::new(|e| e.activity_id += 1)),

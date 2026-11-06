@@ -54,7 +54,7 @@ func TestTheIdOfAnUpstreamLinkIsAMacOutputUnderTheLinkLabel(t *testing.T) {
 	prefixed := func(parts ...string) []byte {
 		var out []byte
 		for _, p := range parts {
-			out = binary.BigEndian.AppendUint32(out, uint32(len(p)))
+			out = binary.BigEndian.AppendUint32(out, uint32(len(p))) //nolint:gosec // short test strings
 			out = append(out, p...)
 		}
 		return out
