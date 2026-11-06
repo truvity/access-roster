@@ -379,33 +379,57 @@ func TestSessionChainIsATempKindThatHoldsOnlyHashes(t *testing.T) {
 		t.Errorf("ends_at = %s, want %s", chain.GetEndsAt().AsTime(), end)
 	}
 
-	// The scan: no value and no key of any item holds a refresh token, in whole or its secret, as the client got it or in
+	// The scan: nothing session stored or wrote holds a refresh token, in whole or its secret, as the client got it or in
 	// the usual encodings of the bytes: the current one, the spent one, or one of either ever shown to the client.
+	chains := e.store.count(kind.Segment, testTenant)
 	e.store.mu.Lock()
 	defer e.store.mu.Unlock()
-	if len(e.store.items) == 0 {
-		t.Fatal("the scan saw no items")
+	// A scan of nothing proves nothing: session wrote the chain and rotated it, so it made writes and holds a chain.
+	if len(e.store.writes) == 0 || chains != 1 {
+		t.Fatalf("the scan saw %d writes and %d chains", len(e.store.writes), chains)
+	}
+	records := e.transport.records()
+	if len(records) == 0 {
+		t.Fatal("the scan saw no audit records")
 	}
 	for _, tok := range []string{rt1, rt2, secret1, secret2} {
 		needles := map[string][]byte{
 			"as issued": []byte(tok), "base64": []byte(base64.StdEncoding.EncodeToString([]byte(tok))),
 			"base64url": []byte(base64.RawURLEncoding.EncodeToString([]byte(tok))), "hex": []byte(hex.EncodeToString([]byte(tok))),
 		}
-		for k, it := range e.store.items {
+		holds := func(hay []byte) (string, bool) {
 			for how, n := range needles {
-				if bytes.Contains(it.value, n) || strings.Contains(k, string(n)) {
-					t.Errorf("a refresh token (%s) is stored in %q", how, strings.ReplaceAll(k, "\x00", "/"))
+				if bytes.Contains(hay, n) {
+					return how, true
+				}
+			}
+			return "", false
+		}
+		// What is stored: every value and every key.
+		for k, it := range e.store.items {
+			if how, bad := holds(it.value); bad {
+				t.Errorf("a refresh token (%s) is stored in the value of %q", how, strings.ReplaceAll(k, "\x00", "/"))
+			}
+			if how, bad := holds([]byte(k)); bad {
+				t.Errorf("a refresh token (%s) is in the key %q", how, strings.ReplaceAll(k, "\x00", "/"))
+			}
+		}
+		// What session wrote, which is what a copy of the store's log would hold: values and addresses.
+		for _, ops := range e.store.writes {
+			for _, op := range ops {
+				a := op.GetAddress()
+				if how, bad := holds(op.GetValue()); bad {
+					t.Errorf("a write of %s/%s carries a refresh token (%s) in its value", a.GetKind(), verbName[op.GetVerb()], how)
+				}
+				if how, bad := holds([]byte(a.GetKind() + "/" + a.GetTenant() + "/" + a.GetId())); bad {
+					t.Errorf("a write of %s/%s carries a refresh token (%s) in its address", a.GetKind(), verbName[op.GetVerb()], how)
 				}
 			}
 		}
-	}
-	// And the writes session made, which are what a copy of the store's log would hold.
-	for _, ops := range e.store.writes {
-		for _, op := range ops {
-			for _, tok := range []string{secret1, secret2} {
-				if bytes.Contains(op.GetValue(), []byte(tok)) {
-					t.Errorf("a write of %s/%s carries a refresh secret", op.GetAddress().GetKind(), verbName[op.GetVerb()])
-				}
+		// And what session said to the audit log.
+		for i, rec := range records {
+			if how, bad := holds(rec); bad {
+				t.Errorf("audit record %d carries a refresh token (%s)", i, how)
 			}
 		}
 	}
@@ -419,22 +443,26 @@ func sha384Of(s string) []byte {
 // verifies: REQ-SESS-016
 func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
 	acr := "urn:example:acr:mfa"
-	cases := map[string]*integrationv2alpha1.Assertion{
-		"acr, amr and auth_time": {
-			Acr: &acr, Amr: []string{"pwd", "hwk", "mfa"}, AmrPresent: true,
-		},
+	cases := []struct {
+		name       string
+		a          *integrationv2alpha1.Assertion
+		noAuthTime bool // the upstream said nothing about when the person authenticated
+	}{
+		{name: "acr, amr and auth_time", a: &integrationv2alpha1.Assertion{Acr: &acr, Amr: []string{"pwd", "hwk", "mfa"}, AmrPresent: true}},
 		// An absent value stays absent: a refresh does not make an acr or an auth_time up (0020, 0031).
-		"no acr": {Amr: []string{"pwd", "otp"}, AmrPresent: true},
-		"acr, no amr": {
-			Acr: &acr,
-		},
+		{name: "no acr", a: &integrationv2alpha1.Assertion{Amr: []string{"pwd", "otp"}, AmrPresent: true}},
+		{name: "acr, no amr", a: &integrationv2alpha1.Assertion{Acr: &acr}},
+		{name: "no auth_time", a: &integrationv2alpha1.Assertion{Acr: &acr, Amr: []string{"pwd", "hwk"}, AmrPresent: true}, noAuthTime: true},
 	}
-	for name, a := range cases {
-		t.Run(name, func(t *testing.T) {
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := c.a
 			e := newEnv(t, nil)
 			authTime := e.clk.now().Add(-90 * time.Second)
 			a.Issuer, a.SubjectClaim, a.Subject = "https://idp.example.test/realms/test", "preferred_username", "alice"
-			a.AuthTime = timestampOf(authTime)
+			if !c.noAuthTime {
+				a.AuthTime = timestampOf(authTime)
+			}
 			e.upstream.assertion = a
 
 			first, _ := e.redeemed()
@@ -442,12 +470,24 @@ func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
 			sid, _, _ := strings.Cut(rt, ".")
 			_, id0 := tokenClaims(t, first["id_token"].(string))
 			_, at0 := tokenClaims(t, first["access_token"].(string))
-			// The sign-in itself carries what the upstream said; the refreshes are compared with it.
-			if num(id0, "auth_time") != authTime.Unix() || id0["sid"] != sid {
+			// The sign-in itself carries what the upstream said, so that the refreshes are compared with something real:
+			// a claim dropped at the sign-in and at every refresh would otherwise pass as "kept".
+			if id0["sid"] != sid {
 				t.Fatalf("the sign-in ID token = %v", id0)
+			}
+			if c.noAuthTime != (id0["auth_time"] == nil) || (!c.noAuthTime && num(id0, "auth_time") != authTime.Unix()) {
+				t.Fatalf("the sign-in auth_time = %v", id0["auth_time"])
 			}
 			if (a.Acr != nil) != (id0["acr"] != nil) || (a.Acr != nil && id0["acr"] != acr) {
 				t.Fatalf("the sign-in acr = %v", id0["acr"])
+			}
+			if len(a.GetAmr()) > 0 {
+				got, ok := id0["amr"].([]any)
+				if !ok || len(got) != len(a.GetAmr()) {
+					t.Fatalf("the sign-in amr = %v, want %v", id0["amr"], a.GetAmr())
+				}
+			} else if id0["amr"] != nil {
+				t.Fatalf("the sign-in made an amr up: %v", id0["amr"])
 			}
 			chainBefore, _, _ := e.store.raw("session-chain", testTenant, sid)
 
@@ -465,14 +505,14 @@ func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
 				if num(id, "iat") != e.clk.now().Unix() {
 					t.Fatalf("refresh %d: iat = %v, the refresh did not happen now", i, id["iat"])
 				}
-				for _, c := range []struct {
+				for _, tk := range []struct {
 					name string
 					m    map[string]any
 					ref  map[string]any
 				}{{"ID token", id, id0}, {"access token", at, at0}} {
 					for _, claim := range []string{"acr", "amr", "auth_time", "sid"} {
-						if !reflect.DeepEqual(c.m[claim], c.ref[claim]) {
-							t.Errorf("refresh %d: %s %s = %v, was %v at sign-in", i, c.name, claim, c.m[claim], c.ref[claim])
+						if !reflect.DeepEqual(tk.m[claim], tk.ref[claim]) {
+							t.Errorf("refresh %d: %s %s = %v, was %v at sign-in", i, tk.name, claim, tk.m[claim], tk.ref[claim])
 						}
 					}
 				}
@@ -481,12 +521,18 @@ func TestRefreshKeepsAcrAmrAuthTimeAndSid(t *testing.T) {
 				}
 				// Policy decides at every refresh on the same assurance, so a refresh cannot lift or hide it there either.
 				reqs := e.policy.requests()
+				if len(reqs) == 0 {
+					t.Fatalf("refresh %d: policy was not asked", i)
+				}
 				ctx := reqs[len(reqs)-1].GetContext()
 				if ctx.GetAcr() != a.GetAcr() || (ctx.Acr != nil) != (a.Acr != nil) || !reflect.DeepEqual(ctx.GetAmr(), a.GetAmr()) ||
 					ctx.GetAmrPresent() != a.GetAmrPresent() {
 					t.Errorf("refresh %d: policy was told %v", i, ctx)
 				}
-				if want := authTime.Unix(); ctx.AuthAge == nil || *ctx.AuthAge != e.clk.now().Unix()-want {
+				switch {
+				case c.noAuthTime && ctx.AuthAge != nil:
+					t.Errorf("refresh %d: auth age = %d, but the upstream sent no auth_time", i, *ctx.AuthAge)
+				case !c.noAuthTime && (ctx.AuthAge == nil || *ctx.AuthAge != e.clk.now().Unix()-authTime.Unix()):
 					t.Errorf("refresh %d: auth age = %v, want the age of the sign-in's auth_time", i, ctx.AuthAge)
 				}
 			}

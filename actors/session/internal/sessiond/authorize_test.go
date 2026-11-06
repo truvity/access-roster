@@ -175,7 +175,7 @@ func TestAuthorizeAnswersImplicitAndHybridResponseTypesWithUnsupportedResponseTy
 	for _, rt := range []string{
 		"token", "id_token", "id_token token", "token id_token",
 		"code token", "code id_token", "code id_token token", "id_token code", "token code",
-		"none", "CODE", "code ", " code",
+		"none", "CODE", "code ", " code", "code code", "code,token", "code+token",
 	} {
 		t.Run(rt, func(t *testing.T) {
 			e := newEnv(t, nil)
@@ -209,6 +209,33 @@ func TestAuthorizeAnswersImplicitAndHybridResponseTypesWithUnsupportedResponseTy
 			recs := e.records()
 			if len(recs) != 1 || recs[0]["status_code"] != "request" {
 				t.Errorf("records = %v, want one with status_code request", recs)
+			}
+		})
+	}
+	// The response modes that carry an implicit or hybrid answer (fragment, form_post) are refused even with the one
+	// served response type, and with an implicit one the response type is the reason, not the mode.
+	for _, c := range []struct{ rt, mode string }{
+		{"code", "fragment"}, {"code", "form_post"}, {"token", "fragment"}, {"id_token", "form_post"}, {"code id_token", "fragment"},
+	} {
+		t.Run(c.rt+"/"+c.mode, func(t *testing.T) {
+			e := newEnv(t, nil)
+			p := newAuthorize()
+			p.req.ResponseType, p.req.ResponseMode = c.rt, c.mode
+			r := e.authorize(p.req)
+			u := location(t, r)
+			q := u.Query()
+			want := "invalid_request"
+			if c.rt != "code" {
+				want = "unsupported_response_type"
+			}
+			if q.Get("error") != want || q.Get("iss") != testIssuer || q.Has("code") || u.Fragment != "" {
+				t.Errorf("response_type=%s response_mode=%s: error %q, query %v, fragment %q, want %s", c.rt, c.mode, q.Get("error"), q, u.Fragment, want)
+			}
+			if got := u.Scheme + "://" + u.Host + u.Path; got != testRedirect {
+				t.Errorf("redirected to %s", got)
+			}
+			if len(headerOf(r, "Set-Cookie")) != 0 || len(e.upstream.begins) != 0 {
+				t.Error("a refused request started a sign-in")
 			}
 		})
 	}
