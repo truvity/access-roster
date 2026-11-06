@@ -446,17 +446,20 @@ requirements:
       - {kind: integration-test, ref: "tools/gen/units: the native job runs a test that fails above GLIBC_2.34 for every executable of deploy/boards/native.list"}
   - id: REQ-DEPLOY-033
     area: DEPLOY
-    statement: "The units of a board with SELinux enforcing MUST run with no AVC denial after a deploy and a smoke."
-    rationale: "The stance is that sluis runs as unconfined_service_t and confines nothing, which holds only if the labels the deploy gives let every unit start (docs/runtimes/bare-metal.md, SELinux and the firewall)."
+    statement: "On every supported host operating system family, sluis MUST run with the mandatory access control that the distribution enables by default (SELinux enforcing with the targeted policy on the RHEL family, AppArmor enabled on the Debian and Ubuntu family) and cause no denial in install, start, unlock, normal operation or uninstall."
+    rationale: "The default policy does not confine sluis (its units run as unconfined_service_t under SELinux and unconfined under AppArmor), so this record guarantees that sluis works under the default policy and not that the policy protects it; the protection is the systemd hardening of REQ-ISO-094, REQ-ISO-095 and REQ-ISO-104 (docs/runtimes/bare-metal.md, SELinux and the firewall)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     features: [design]
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
-      - {kind: integration-test, ref: "prereq-test.sh: avc_check fails on enforced denials in unconfined_service_t, pcscd_t, our comm or path, and with no auditd (fakes); proof is os-vm-test.sh or a real board, run by neither yet"}
+      - {kind: integration-test, ref: "prereq-test.sh: avc_check and avc_auditd_ok against fakes (an enforced denial in unconfined_service_t, pcscd_t or our comm fails; no auditd fails)"}
+      - {kind: integration-test, ref: "boards.sh deploy and smoke run avc_check on a real board; os-vm-test.sh (Rocky 10 enforcing under KVM, by hand until the nightly fires) checks the labels and no AVC since boot"}
+      - {kind: integration-test, ref: "planned: the same check for AppArmor in the Ubuntu run of the boards deploy (an apparmor=DENIED record since boot fails it), which os-container-test.sh cannot see"}
   - id: REQ-DEPLOY-034
     area: DEPLOY
     statement: "The boards deploy MUST refuse an rqlite package, cached or downloaded, whose sha256 differs from the digest pinned in the repository."
@@ -505,3 +508,17 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "boards-test.sh: a fake board without tar is refused with the install command, nothing is sent to it, and an unreachable board is not reported as a missing tar"}
+  - id: REQ-DEPLOY-038
+    area: DEPLOY
+    statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."
+    rationale: "Under the default policy a compromised actor is held by the uids, the socket modes and the systemd sandbox alone, so a type or a profile per actor is a second lock on the one path that reaches the card (REQ-DEPLOY-033, docs/runtimes/bare-metal.md, SELinux and the firewall)."
+    level: SHOULD
+    source: design-decision
+    status: planned
+    features: [design]
+    milestone: v1-parity
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "a denial test on SELinux enforcing in a Rocky 10 virtual machine: a process in another actor's type that connects to the card service's socket is refused and logged, and key@ reaches it"}
+      - {kind: integration-test, ref: "the same denial test with the AppArmor profile enforced on Ubuntu 26.04: another actor's profile is refused the card service's socket, and key@'s reaches it"}
