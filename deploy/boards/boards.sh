@@ -101,7 +101,7 @@
 # when auditd is not running, because a denial from before it started is not visible (remote-lib.sh, avc_check).
 #
 # The end of a deploy (remote.sh, settle_units): after the units are started, each board waits up to 60 s until every unit is
-# `active (running)` and has stopped restarting. A unit that is not, or that restarts, fails the board ("board B: deploy FAILED",
+# `active (running)` and has not restarted for about 6 s. A unit that is not, or that restarts, fails the board ("board B: deploy FAILED",
 # exit 1) and the output holds the last lines of that unit's journal. (The "verify U: ok" lines come earlier and only say that
 # the unit files read well.) One state is not a failure: a card board starts locked, with no PIN, so its card driver is up and
 # key@ cannot make its keys yet. The board then ends "deployed, LOCKED", the exit status stays 0 for it, and the line names the
@@ -293,7 +293,7 @@ bare_stage() { # dir
 
 # run_on copies the stage to the board, runs remote.sh as root there and removes the stage.
 run_on() { # board mode stage
-	local b=$1 m=$2 s=$3 d rc=0
+	local b=$1 m=$2 s=$3 d rc=0 errexit
 	board_has_tar "$b" || return 1
 	d=$(board_ssh_n "$b" mktemp -d)
 	if [ "$m" = deploy ] && [ -d "$s/files/etc" ]; then
@@ -305,7 +305,19 @@ run_on() { # board mode stage
 		printf 'SLUIS_CARD_SERIAL=%s\n' "$(card_serial "$b")" >"$s/files/card/yubikey-piv.env"
 	fi
 	tar -C "$s" -cf - . | board_ssh "$b" "tar -xf - -C '$d'"
-	board_ssh_n "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
+	if [ -n "${run_on_log:-}" ]; then
+		# The output goes on to the terminal and into a file, which the caller reads for the line "SLUIS-BOARD-STATE: ..." of
+		# remote.sh; the status is the one of the ssh, not of tee.
+		: >"$run_on_log"
+		# errexit is off for the pipeline, because "|| true" after it would overwrite PIPESTATUS.
+		case $- in *e*) errexit=1 ;; *) errexit=0 ;; esac
+		set +e
+		board_ssh_n "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" | tee "$run_on_log"
+		rc=${PIPESTATUS[0]}
+		if [ "$errexit" = 1 ]; then set -e; fi
+	else
+		board_ssh_n "$b" "sudo -n env SLUIS_PURGE_STATE='${SLUIS_PURGE_STATE:-}' bash '$d/remote.sh' $m '$d'" || rc=$?
+	fi
 	board_ssh_n "$b" "rm -rf '$d'"
 	return "$rc"
 }
@@ -522,11 +534,16 @@ deploy)
 	for b in "${boards[@]}"; do
 		echo "== board $b: deploy (key driver ${drv[$b]})"
 		brc=0
-		run_on "$b" deploy "$tmp/stage-${drv[$b]}" || brc=$?
-		case "$brc" in
-		0) ;;
-		# The outcome "locked" (remote.sh, settle_units): every unit is as it should be except key@, which waits for the card's PIN.
-		10) locked+=("$b") ;;
+		: >"$tmp/deploy-$b.out"
+		run_on_log=$tmp/deploy-$b.out run_on "$b" deploy "$tmp/stage-${drv[$b]}" || brc=$?
+		# The outcome "locked" (remote.sh, settle_units): every unit is as it should be except key@, which waits for the card's
+		# PIN. The line that remote.sh prints says it; the status 10 is only the second check, so a locked board is neither
+		# a status that was lost on the way nor a 10 that something else exited with. A deploy that exits 0 and prints no
+		# state line did not wait for its units, and is a failure too.
+		state=$(sed -n 's/^SLUIS-BOARD-STATE: //p' "$tmp/deploy-$b.out" | tail -n 1)
+		case "$brc:$state" in
+		0:ok) ;;
+		0:locked | 10:locked) locked+=("$b") ;;
 		*) echo "board $b: deploy FAILED" >&2; rc=1 ;;
 		esac
 		case " ${switching[*]:-} " in

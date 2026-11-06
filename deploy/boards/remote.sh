@@ -311,15 +311,18 @@ deploy)
 		systemctl stop "${units[$i]}" || true
 	done
 	systemctl reset-failed "${units[@]}" || true
+	# The journal is read from here on only: what an earlier deploy left in it is not evidence about this run.
+	# shellcheck disable=SC2034 # settle_units (remote-lib.sh) reads it
+	settle_since=$(date '+%Y-%m-%d %H:%M:%S.%6N')
 	for u in "${units[@]}"; do
 		systemctl start "$u" || true
 	done
 	# The actors dial each other when they start and retry every two seconds until the peer is up, so give them time: the wait ends
-	# when every unit is active and has stopped restarting, or after settle_timeout (60 s). A unit that restarts, or is not active
+	# when every unit is active and has not restarted for about 6 s, or after settle_timeout (60 s). A unit that restarts, or is not active
 	# by then, fails the deploy with the last lines of its journal. The one state that does not is a card board that is locked,
-	# waiting for its PIN (settle_units in remote-lib.sh): the exit status is then settle_locked_status (10) and boards.sh says
-	# what to do next. Everything printed above this line was a static check or a start, and says nothing about a run.
-	echo "settling: waiting up to ${settle_timeout}s for ${#units[@]} units to be active and to stop restarting"
+	# waiting for its PIN (settle_units in remote-lib.sh): it prints "SLUIS-BOARD-STATE: locked" as its last line and exits
+	# with settle_locked_status (10); boards.sh reads the line first, and says what to do next. Everything printed above this line was a static check or a start, and says nothing about a run.
+	echo "settling: waiting up to ${settle_timeout}s for ${#units[@]} units to be active and not to restart for about 6 s"
 	rc=0
 	settle_units "${units[@]}" || rc=$?
 	exit "$rc"

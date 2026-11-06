@@ -502,28 +502,35 @@ avc_check() {
 # --- The wait for the units after the start -------------------------------------------------------------------------------------------
 # `systemd-analyze verify` (remote.sh) only reads the unit files, before anything starts, so its "ok" says nothing about a run.
 # What says that the units run is settle_units: it polls them until each one is `active (running)` with its NRestarts standing
-# still for settle_stable polls in a row, or until settle_timeout seconds are over. (A unit in a restart loop is "activating
-# (auto-restart)" most of the time and `active` for a moment in between, so one sample of `is-active` can say active for a unit
-# that dies every two seconds.) Each unit that did not settle is reported with the last lines of its journal, and fails the
-# deploy, with one exception: the locked card board.
+# still for settle_stable polls in a row (about 6 s at the 2 s step), or until settle_timeout seconds are over. (A unit in a
+# restart loop is "activating (auto-restart)" most of the time and `active` for a moment in between, so one sample of
+# `is-active` can say active for a unit that dies every two seconds.) Each unit that did not settle is reported with the last lines
+# of its journal, and fails the deploy, with one exception: the locked card board.
+#
+# Every journal read is bounded to this deploy: settle_since is the time just before the units were started (remote.sh sets it,
+# `date '+%Y-%m-%d %H:%M:%S.%6N'`), and `journalctl --since` drops everything older, so a line that an earlier deploy left, the
+# "locked" of a board that has been unlocked since, counts for nothing.
 #
 # The locked board (docs/runtimes/bare-metal.md, "The card driver"): a card board starts with no PIN. Its card driver is up and
 # waits for `sluis node unlock`; key@ asks the driver to Ensure its keys, the driver refuses with the reason "locked", and key@
 # exits with `failed_precondition: locked` until the PIN is given. That is a state the operator ends with boards-unlock and not a
 # fault of the deploy, so it is the outcome `locked` (status settle_locked_status, not a failure) when, and only when:
 #   - the card driver's unit settled (it holds the PIN, so it must be up);
-#   - key@ did not settle, and the last lines of its journal say `failed_precondition: locked`;
-#   - every other unit that did not settle names key@'s runtime directory (/run/sluis/key/) in its journal, so it stumbled on
-#     key@, which is down. A unit with a fault of its own (the credentials of store@, say) is never taken for a locked board.
+#   - key@ did not settle, and its journal since the start says `failed_precondition: locked`;
+#   - every other unit that did not settle depends on key@ in the unit graph (`systemctl show -p Requires,Wants,BindsTo,After`
+#     names key@'s unit), so that it waits for key@ by construction. A unit that does not, whatever its journal says, and a unit
+#     with a fault of its own, is never taken for a locked board.
 # Anything else that did not settle is a failure.
 #
-# It reads $boundary from the caller. Tunables, for a test: settle_timeout (60 s), settle_step (2 s between polls), settle_stable
-# (3 polls in a row), settle_journal_lines (10).
+# The last line it prints is `SLUIS-BOARD-STATE: ok`, `locked` or `failed`: boards.sh reads that line, and the exit status is the
+# second check (0, settle_locked_status, 1). It reads $boundary from the caller. Tunables, for a test: settle_timeout (60 s),
+# settle_step (2 s between polls), settle_stable (3 polls in a row), settle_journal_lines (10).
 settle_timeout=${settle_timeout:-60}
 settle_step=${settle_step:-2}
 settle_stable=${settle_stable:-3}
 settle_journal_lines=${settle_journal_lines:-10}
 settle_locked_status=10
+settle_state_prefix='SLUIS-BOARD-STATE: '
 
 # unit_state UNIT prints "ActiveState SubState NRestarts".
 unit_state() {
@@ -534,11 +541,32 @@ unit_state() {
 	printf '%s %s %s\n' "${a:-unknown}" "${s:-unknown}" "${n:-0}"
 }
 
+# unit_journal UNIT prints the last lines of the journal of UNIT since settle_since (all of it, if the caller set none).
+unit_journal() {
+	if [ -n "${settle_since:-}" ]; then
+		journalctl -u "$1" --since "$settle_since" -n "$settle_journal_lines" --no-pager -o cat 2>/dev/null || true
+	else
+		journalctl -u "$1" -n "$settle_journal_lines" --no-pager -o cat 2>/dev/null || true
+	fi
+}
+
+# unit_depends_on UNIT OTHER succeeds when the unit graph says that UNIT waits for OTHER: OTHER is among its Requires, Wants,
+# BindsTo or After.
+unit_depends_on() {
+	local k v w
+	while IFS='=' read -r k v; do
+		for w in $v; do
+			[ "$w" = "$2" ] && return 0
+		done
+	done < <(systemctl show -p Requires -p Wants -p BindsTo -p After "$1" 2>/dev/null || true)
+	return 1
+}
+
 # settle_units UNIT... waits as described above and prints one line per unit: `unit U active`, `unit U locked ...`, or
-# `unit U FAILED: ...` followed by the last lines of its journal. It returns 0 when all settled, settle_locked_status when the
-# board is only locked, and 1 otherwise.
+# `unit U FAILED: ...` followed by the last lines of its journal, then the state line. It returns 0 when all settled,
+# settle_locked_status when the board is only locked, and 1 otherwise.
 settle_units() {
-	local u a s n polls=0 max all key_unit card_unit journal locked=0 failed=0 board_locked=no
+	local u a s n polls=0 max all key_unit card_unit journal locked=0 failed=0 board_locked=no rc=0 state
 	local -A prev=() run=() last=() settled=() verdict=()
 	key_unit=sluis-key@$boundary.service
 	card_unit=sluis-drv-key-yubikey-piv@$boundary.service
@@ -566,7 +594,7 @@ settle_units() {
 	done
 	# The locked board: the card driver is up and key@ says why it is not.
 	if [ "${settled[$card_unit]:-0}" = 1 ] && [ "${settled[$key_unit]:-1}" = 0 ]; then
-		journal=$(journalctl -u "$key_unit" -n "$settle_journal_lines" --no-pager -o cat 2>/dev/null || true)
+		journal=$(unit_journal "$key_unit")
 		case "$journal" in *'failed_precondition: locked'*) board_locked=yes ;; esac
 	fi
 	for u in "$@"; do
@@ -575,11 +603,11 @@ settle_units() {
 			printf 'unit %s active\n' "$u"
 			continue
 		fi
-		journal=$(journalctl -u "$u" -n "$settle_journal_lines" --no-pager -o cat 2>/dev/null || true)
+		journal=$(unit_journal "$u")
 		if [ "$board_locked" = yes ] && [ "$u" = "$key_unit" ]; then
 			verdict[$u]=locked
 			printf 'unit %s locked: the card driver waits for its PIN, so key@ cannot make its keys (%s); run boards-unlock\n' "$u" "${last[$u]}"
-		elif [ "$board_locked" = yes ] && [[ "$journal" == */run/sluis/key/* ]]; then
+		elif [ "$board_locked" = yes ] && unit_depends_on "$u" "$key_unit"; then
 			verdict[$u]=locked
 			printf 'unit %s waits for key@, which is locked (%s)\n' "$u" "${last[$u]}"
 		else
@@ -591,7 +619,14 @@ settle_units() {
 	for u in "$@"; do
 		case "${verdict[$u]}" in failed) failed=1 ;; locked) locked=1 ;; esac
 	done
-	[ "$failed" = 0 ] || return 1
-	[ "$locked" = 0 ] || return "$settle_locked_status"
-	return 0
+	state=ok
+	if [ "$failed" = 1 ]; then
+		state=failed
+		rc=1
+	elif [ "$locked" = 1 ]; then
+		state=locked
+		rc=$settle_locked_status
+	fi
+	printf '%s%s\n' "$settle_state_prefix" "$state"
+	return "$rc"
 }
