@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -47,6 +48,9 @@ type keySetServer struct {
 	// bypass serves the clean key set to a request that a cache would not answer from its copy: one with a query, or
 	// with Cache-Control, Pragma or a condition.
 	bypass bool
+	// onRead, when set, is called with the number of the key set request (1 for the first) as the request arrives,
+	// before it is answered. A test uses it as a signal: the command has begun its nth read.
+	onRead func(n int)
 }
 
 func (s *keySetServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +65,12 @@ func (s *keySetServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(doc))
 	case "/jwks":
+		s.mu.Lock()
+		onRead := s.onRead
+		s.mu.Unlock()
+		if onRead != nil {
+			onRead(s.jwksReads())
+		}
 		if s.block != nil && (s.hang == nil || s.hang()) {
 			select {
 			case <-s.block:
@@ -220,6 +230,25 @@ func newConfirmTest(t *testing.T) *confirmTest {
 func (c *confirmTest) revoke(more ...string) int {
 	args := []string{"key", "revoke", "--boundary", "dev", "--declaration", c.signed, "--socket", c.adminSock}
 	return c.ta.do(append(args, more...)...)
+}
+
+// revokeUntilRead runs the revocation with a wait that is long on purpose, and ends it when the public address
+// receives its nth key set request, by cancelling the command's context, as the end of the wait would. A test that
+// needs "at least n-1 complete rounds, then the end" no longer depends on how long a round takes on this machine:
+// a fixed --wait of a few hundred milliseconds ends the command in the middle of the first round when the machine is
+// loaded (-race, parallel packages), and that round is then all it has to report.
+func (c *confirmTest) revokeUntilRead(n int, more ...string) int {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.public.mu.Lock()
+	c.public.onRead = func(got int) {
+		if got >= n {
+			cancel()
+		}
+	}
+	c.public.mu.Unlock()
+	args := []string{"key", "revoke", "--boundary", "dev", "--declaration", c.signed, "--socket", c.adminSock, "--wait", "10m"}
+	return c.ta.doCtx(ctx, append(args, more...)...)
 }
 
 // addrLine is the line of the output about one address: "public" or "entry".
@@ -500,7 +529,7 @@ func TestKeyRevokeReportsAStaleCopyANoCacheRequestWouldHide(t *testing.T) {
 	c.public.kids = func() []string { return []string{kidA} }
 	c.public.bypass = true
 	c.public.header = http.Header{"Cache-Control": {"public, max-age=3600"}, "Age": {"1200"}, "Etag": {`"stale"`}}
-	if code := c.revoke("--entry-socket", c.entrySock, "--wait", "200ms", "--output", "json"); code != 5 {
+	if code := c.revokeUntilRead(3, "--entry-socket", c.entrySock, "--output", "json"); code != 5 {
 		t.Fatalf("exit %d, want 5; %s", code, c.ta.out.String())
 	}
 	o := c.ta.object(t)
