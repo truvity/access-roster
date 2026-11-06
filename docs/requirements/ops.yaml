@@ -1231,3 +1231,122 @@ requirements:
     issues: [1220]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: a person with different subjects in the two tenants is reconciled by the part's vendor identifier alone"}
+
+  # ---- company-issued OpenPGP keys on staff GitHub accounts (decision 0042)
+  - id: REQ-OPS-099
+    area: OPS
+    statement: "adapter-github MUST put each company key of a person from the verified staff keyring on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a binding, subkey or expiry of the keyring."
+    rationale: "GitHub does not follow a key's renewal, so a key uploaded once goes stale and the person's commits turn Unverified (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "against a fake GitHub: an absent key is added, a key whose copy lacks the renewed binding is replaced, and a second pass makes no call that changes the account"}
+  - id: REQ-OPS-100
+    area: OPS
+    statement: "adapter-github MUST NOT add, change or remove a key on a person's GitHub account that is not a company key."
+    rationale: "A personal key belongs to the person, and the company manages only the keys it issued (ADR 0042, GH1 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "an account with a personal key whose user ID carries a company address keeps that key through an add, an update, a removal and a leaver's pass"}
+  - id: REQ-OPS-101
+    area: OPS
+    statement: "adapter-github MUST add a key to a GitHub account only from a staff keyring whose signature it has verified against the publisher key that config pins."
+    rationale: "The write permission on a person's keys would let a forged keyring sign commits as that person (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a keyring with a bad signature, a signature by another key or a lower sequence than the one held causes no call to the account"}
+  - id: REQ-OPS-102
+    area: OPS
+    statement: "adapter-github MUST NOT remove a key from a GitHub account because the staff keyring is missing, unverified or older than its time to live."
+    rationale: "An unreadable keyring must never look like an empty one (ADR 0042, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "with a missing, an unsigned and an expired keyring a pass removes no key and reports the keyring as unreadable"}
+  - id: REQ-OPS-103
+    area: OPS
+    statement: "adapter-github MUST remove the company keys of a person from the person's GitHub account when the staff keyring no longer holds them or the directory marks the person as left, before it deletes the person's tokens."
+    rationale: "A leaver's company key must not stay on the account, and the tokens that remove it must outlive the removal (ADR 0042, G5 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a person dropped from the keyring and a person marked left both lose their company keys, the outcome is audited, and only then are the tokens deleted"}
+  - id: REQ-OPS-104
+    area: OPS
+    statement: "adapter-github MUST mark a person's key authorisation revoked, delete the stored tokens and raise an alert when GitHub reports that the person revoked the App or rejects the person's token."
+    rationale: "A revoked authorisation leaves keys on an account that sluis can no longer manage, so the gap must be seen (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a github_app_authorization event, and a 401 on a pass with no event, each mark the item revoked, delete both tokens, write an audit record and raise the alert"}
+  - id: REQ-OPS-105
+    area: OPS
+    statement: "adapter-github MUST store a person's GitHub user token and refresh token sealed under the tenant's data key."
+    rationale: "A token that reaches a personal account is a sharp credential, and a copy of the store must not yield it (ADR 0042, ADR 0025)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "the stored GitHubKeyAuthorization item is ciphertext and holds neither token in clear"}
+  - id: REQ-OPS-106
+    area: OPS
+    statement: "adapter-github MUST write the token pair that a refresh returns before it uses the new user token."
+    rationale: "A refresh token works once, so a pair that is used but not written is lost and the person must authorise again (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "against a fake GitHub that honours a refresh token once: two concurrent passes under the lease burn no pair, and a failed write stops the pass before the new token is used"}
+  - id: REQ-OPS-107
+    area: OPS
+    statement: "adapter-github MUST NOT record a user token, a refresh token or a client secret in an audit record, a log line or a span."
+    rationale: "Nothing that opens a personal account may leave the sealed item (ADR 0042, ADR 0025)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a pass with known token values leaves none of them in its audit records, log output and trace attributes"}
