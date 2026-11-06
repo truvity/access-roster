@@ -1550,7 +1550,7 @@ requirements:
     issues: [1214]
     tests: [kits/go/registry/registry_test.go]
     verification:
-      - {kind: integration-test, ref: "TestAdapterCallsPolicyOnly in kits/go/registry: for every adapter the call graph has the edge to policy and to no other work actor (only the store, key and audit transport ports besides)"}
+      - {kind: integration-test, ref: "TestAdapterCallsPolicyOnly in kits/go/registry: for every adapter the call graph has the edge to policy and to no other work actor"}
   - id: REQ-ISO-108
     area: ISO
     statement: "Two L1 boundaries on one engine MUST wrap their data keys under wrapping keys of their own."
