@@ -52,11 +52,16 @@ func (w workflow) pushesToMain() bool {
 	if !ok {
 		return true // `push:` with no filter runs for every branch, main included
 	}
-	branches, ok := m["branches"].([]any)
-	if !ok {
-		return true
+	if branches, ok := m["branches"].([]any); ok {
+		return slices.Contains(branches, any("main"))
 	}
-	return slices.Contains(branches, any("main"))
+	if ignored, ok := m["branches-ignore"].([]any); ok {
+		return !slices.Contains(ignored, any("main"))
+	}
+	// A push block with tags and no branch filter runs for tag pushes only.
+	_, tags := m["tags"]
+	_, tagsIgnore := m["tags-ignore"]
+	return !tags && !tagsIgnore
 }
 
 // concurrencyProblems judges the concurrency block of a CI workflow that runs on a push to main: a push to main must
@@ -176,5 +181,32 @@ func TestTheAdvisoryGateIsAJobOfChecksAndIsRequiredByIt(t *testing.T) {
 	needs, _ := w.Jobs["checks"].Needs.([]any)
 	if !slices.Contains(needs, any("advisories")) {
 		t.Error("the job checks, the one name to require, does not need advisories")
+	}
+}
+
+// verifies: REQ-SUPPLY-031
+func TestWhichWorkflowsRunOnAPushToMain(t *testing.T) {
+	for name, c := range map[string]struct {
+		on   string
+		want bool
+	}{
+		"branches_main":     {"on: {push: {branches: [main]}}", true},
+		"branches_other":    {"on: {push: {branches: [release]}}", false},
+		"no_filter":         {"on: {push: }", true},
+		"empty_map":         {"on: {push: {}}", true},
+		"tags_only":         {"on: {push: {tags: ['v*']}}", false},
+		"tags_ignore_only":  {"on: {push: {tags-ignore: ['v*']}}", false},
+		"branches_ignore":   {"on: {push: {branches-ignore: [dev]}}", true},
+		"main_ignored":      {"on: {push: {branches-ignore: [main]}}", false},
+		"tags_and_branches": {"on: {push: {branches: [main], tags: ['v*']}}", true},
+		"pull_request_only": {"on: {pull_request: {}}", false},
+	} {
+		w, err := parse([]byte(c.on + "\njobs: {}\n"))
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		if got := w.pushesToMain(); got != c.want {
+			t.Errorf("%s: pushesToMain = %v, want %v", name, got, c.want)
+		}
 	}
 }

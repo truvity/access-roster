@@ -440,12 +440,12 @@ requirements:
     features: [design]
     tests: [tools/advisories/advisories_test.go, tools/workflows/workflows_test.go]
     verification:
-      - {kind: integration-test, ref: "the advisories job of checks.yaml runs govulncheck over every Go module, cargo audit over every Cargo.lock and osv-scanner over the lock files, and fails on an advisory that no ignore entry covers"}
+      - {kind: integration-test, ref: "the advisories job of checks.yaml runs govulncheck (default and card builds), cargo audit and osv-scanner over every lock file, and fails on an advisory no ignore entry covers"}
   - id: REQ-SUPPLY-034
     area: SUPPLY
     split_from: REQ-SUPPLY-030
-    statement: "An entry of the advisory ignore list MUST carry a reason and an expiry date no more than 90 days ahead, and a past date voids the entry."
-    rationale: "An exception that cannot expire is a silent permanent one."
+    statement: "An entry of the advisory ignore list MUST carry a reason and an expiry date no more than 90 days ahead."
+    rationale: "An exception that cannot expire, or that nobody explained, is a silent permanent one."
     level: MUST
     source: security-review
     status: done
@@ -456,6 +456,21 @@ requirements:
     tests: [tools/advisories/advisories_test.go]
     verification:
       - {kind: integration-test, ref: "an ignore list with an entry without a reason, without a date, past its date or more than 90 days ahead is refused"}
+  - id: REQ-SUPPLY-040
+    area: SUPPLY
+    split_from: REQ-SUPPLY-030
+    statement: "The advisory gate MUST fail, whatever the scans find, while an entry of the ignore list is past its expiry date."
+    rationale: "An expired exception that only stops covering its advisory could be missed, and a gate that still passes would let it stay."
+    level: MUST
+    source: security-review
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/advisories/advisories_test.go]
+    verification:
+      - {kind: integration-test, ref: "an ignore list with an entry past its date is refused before any scan runs, and the gate exits non-zero"}
   - id: REQ-SUPPLY-031
     area: SUPPLY
     statement: "A push to main MUST NOT cancel the continuous-integration run of an earlier commit on main."
@@ -482,11 +497,11 @@ requirements:
     standards: []
     features: [design]
     verification:
-      - {kind: integration-test, ref: "a release-gate script test over scratch repositories: a tag on main with a green run passes; a tag on an unmerged branch, with no run, a failed run, a cancelled run or an unreadable run is refused"}
+      - {kind: integration-test, ref: "no release workflow exists yet; a script test over scratch repositories: a green tag on main passes; an unmerged, unrun, failed, cancelled or unreadable one is refused"}
   - id: REQ-SUPPLY-033
     area: SUPPLY
-    statement: "A release workflow MUST declare no permission at workflow level, give each job only the permission it needs, and never persist the checkout credential."
-    rationale: "The job that publishes holds the only credential that can change what users install, and nothing else in the run may inherit it."
+    statement: "A release workflow MUST declare no permission at workflow level."
+    rationale: "A permission granted to the whole workflow reaches every job, including those that never need it."
     level: MUST
     source: security-review
     status: planned
@@ -495,4 +510,32 @@ requirements:
     standards: []
     features: [design]
     verification:
-      - {kind: integration-test, ref: "a workflow test: the release workflow has an empty top-level permissions block, no job asks for more than it uses, and every checkout sets persist-credentials: false"}
+      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: the release workflow has an empty top-level permissions block"}
+  - id: REQ-SUPPLY-041
+    area: SUPPLY
+    split_from: REQ-SUPPLY-033
+    statement: "A job of a release workflow MUST declare only the permissions it uses."
+    rationale: "The job that publishes holds the only credential that can change what users install, and no other job may share it."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: each job of the release workflow lists its permissions and the publishing permission is on the publishing job alone"}
+  - id: REQ-SUPPLY-042
+    area: SUPPLY
+    split_from: REQ-SUPPLY-033
+    statement: "A release workflow MUST NOT persist the checkout credential."
+    rationale: "A persisted credential stays readable by every later step of the job, including a dependency's install script."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "no release workflow exists yet, so this waits for it; a workflow test: every checkout of the release workflow sets persist-credentials: false"}

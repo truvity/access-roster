@@ -6,13 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // parseGovulncheck reads the message stream of `govulncheck -format json`. A vulnerability counts when a finding
 // traces to a function we call (the first frame has a function); one that is only imported or only required is not
-// an advisory that affects us, and is left out.
-func parseGovulncheck(raw []byte, source string) ([]finding, error) {
+// an advisory that affects us, and is left out; the second result counts those.
+func parseGovulncheck(raw []byte, source string) ([]finding, int, error) {
 	type frame struct {
 		Module   string `json:"module"`
 		Version  string `json:"version"`
@@ -36,6 +40,7 @@ func parseGovulncheck(raw []byte, source string) ([]finding, error) {
 	}
 	osvs := map[string]osv{}
 	called := map[string]finding{}
+	reported := map[string]bool{}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	seen := false
 	for {
@@ -44,11 +49,14 @@ func parseGovulncheck(raw []byte, source string) ([]finding, error) {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return nil, fmt.Errorf("govulncheck output: %w", err)
+			return nil, 0, fmt.Errorf("govulncheck output: %w", err)
 		}
 		seen = true
 		if msg.OSV != nil {
 			osvs[msg.OSV.ID] = osv{msg.OSV.Aliases, msg.OSV.Summary}
+		}
+		if msg.Finding != nil {
+			reported[msg.Finding.OSV] = true
 		}
 		if msg.Finding != nil && len(msg.Finding.Trace) > 0 && msg.Finding.Trace[0].Function != "" {
 			t := msg.Finding.Trace[0]
@@ -56,7 +64,7 @@ func parseGovulncheck(raw []byte, source string) ([]finding, error) {
 		}
 	}
 	if !seen {
-		return nil, errors.New("govulncheck printed no message: the scan checked nothing")
+		return nil, 0, errors.New("govulncheck printed no message: the scan checked nothing")
 	}
 	var out []finding
 	for id, f := range called {
@@ -65,7 +73,13 @@ func parseGovulncheck(raw []byte, source string) ([]finding, error) {
 		out = append(out, f)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].IDs[0] < out[j].IDs[0] })
-	return out, nil
+	skipped := 0
+	for id := range reported {
+		if _, ok := called[id]; !ok {
+			skipped++
+		}
+	}
+	return out, skipped, nil
 }
 
 // parseCargoAudit reads `cargo audit --json`: the vulnerabilities fail the gate. The warnings (unmaintained, unsound,
@@ -134,7 +148,7 @@ func parseCargoAudit(raw []byte, source string) (vulns []finding, warnings []str
 // parseOSV reads `osv-scanner scan source --format json`. For a Go package the scanner says whether the vulnerable
 // function is called; a group that is not called does not affect us (govulncheck judges the same). Everything else
 // counts, whatever its severity.
-func parseOSV(raw []byte) ([]finding, error) {
+func parseOSV(raw []byte) ([]finding, int, error) {
 	var doc struct {
 		Results []struct {
 			Source struct {
@@ -170,9 +184,10 @@ func parseOSV(raw []byte) ([]finding, error) {
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, fmt.Errorf("osv-scanner output: %w", err)
+		return nil, 0, fmt.Errorf("osv-scanner output: %w", err)
 	}
 	var out []finding
+	skipped := 0
 	for _, r := range doc.Results {
 		for _, p := range r.Packages {
 			info := map[string]struct{ title, fixed string }{}
@@ -203,6 +218,7 @@ func parseOSV(raw []byte) ([]finding, error) {
 					}
 				}
 				if notCalled {
+					skipped++
 					continue
 				}
 				ids := append([]string{}, g.IDs...)
@@ -220,5 +236,32 @@ func parseOSV(raw []byte) ([]finding, error) {
 			}
 		}
 	}
-	return out, nil
+	return out, skipped, nil
+}
+
+var osvScanned = regexp.MustCompile(`Scanned (\S+) file and found (\d+) packages?`)
+
+// checkOSVCoverage judges the progress lines osv-scanner prints on standard error ("Scanned <path> file and found N
+// packages"): every lock file we passed needs a line with at least one package. A lock file osv-scanner skipped or could
+// not read would otherwise look like a clean one, because its report lists only the packages that have a vulnerability.
+func checkOSVCoverage(stderr string, root string, locks []string) error {
+	got := map[string]int{}
+	for _, m := range osvScanned.FindAllStringSubmatch(stderr, -1) {
+		n, _ := strconv.Atoi(m[2])
+		rel, err := filepath.Rel(root, m[1])
+		if err != nil {
+			rel = m[1]
+		}
+		got[rel] = n
+	}
+	var bad []string
+	for _, l := range locks {
+		if got[l] == 0 {
+			bad = append(bad, l)
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("osv-scanner read no package from %s: a lock file without a result is not a clean one", strings.Join(bad, ", "))
+	}
+	return nil
 }

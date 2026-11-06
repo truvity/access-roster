@@ -388,10 +388,12 @@ check-code: rqlite-fetch
     # CI must run the rqlite driver's tests, never skip them for want of the binary (rqlite-fetch).
     SLUIS_REQUIRE_RQLITED=1 just go-lint go-test rust-lint rust-test
 
-# The advisory gate (REQ-SUPPLY-030), as the job `advisories` of checks.yaml runs it: govulncheck over every Go module,
-# cargo audit over every Cargo.lock and osv-scanner over the lock files (go.mod, Cargo.lock, site/yarn.lock). It fails on a
-# known advisory that affects us, unless tools/advisories/ignore.yaml lists it with a reason and an expiry date. Needs the
-# network (vuln.go.dev, api.osv.dev, the RustSec database). `just check-advisories -only go` runs one scan of go, rust, osv.
+# The advisory gate (REQ-SUPPLY-030), as the job `advisories` of checks.yaml runs it: govulncheck over every Go module
+# (the default build, and the card driver with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over
+# the lock files (go.mod, Cargo.lock, site/yarn.lock). It fails on a known advisory that affects us, unless
+# tools/advisories/ignore.yaml lists it with a reason and an expiry date. Needs the network (vuln.go.dev, api.osv.dev, the
+# RustSec database), and for the card build gcc, pkg-config and libpcsclite-dev on the host; `just check-advisories
+# -skip-card` leaves that scan out and says so. `-only go` runs one scan of go, rust, osv.
 check-advisories *args:
     go run ./tools/advisories {{ args }}
 
