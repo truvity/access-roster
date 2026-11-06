@@ -427,19 +427,17 @@ func (b *board) stepIn(into any, user string, groups []string, bind, name string
 	return nil
 }
 
-// jwks reads /jwks from entry through its socket, as the forwarder's uid, the one caller entry serves. The TLS of the
-// forwarder is not in this smoke: it is the harness's and arrives with the edge.
+// jwks reads /jwks from entry through its socket, as the forwarder's uid, the one caller entry serves. The request is
+// made by the `jwks` step of the spine executable that is uploaded to the board, not by curl: the boards have none
+// (docs/runtimes/bare-metal.md). The TLS of the forwarder is not in this smoke: it is the harness's and arrives with
+// the edge.
 func (b *board) jwks() (*jose.JSONWebKeySet, error) {
-	prefix, err := b.asActor("harness-forwarder", nil)
-	if err != nil {
-		return nil, err
-	}
-	out, err := b.sh(nil, prefix+"curl -s -f --max-time 10 --unix-socket /run/sluis/entry/dev.sock -H 'Host: "+host+"' http://localhost/jwks")
-	if err != nil {
+	var raw json.RawMessage
+	if err := b.step(&raw, "harness-forwarder", nil, "jwks", "--socket", "/run/sluis/entry/dev.sock", "--host", host); err != nil {
 		return nil, fmt.Errorf("GET /jwks from entry: %w", err)
 	}
 	var set jose.JSONWebKeySet
-	if err := json.Unmarshal([]byte(out), &set); err != nil {
+	if err := json.Unmarshal(raw, &set); err != nil {
 		return nil, errors.New("/jwks is not a JWK Set")
 	}
 	return &set, nil

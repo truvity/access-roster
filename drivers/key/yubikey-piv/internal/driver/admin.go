@@ -63,6 +63,17 @@ func (a admin) Status(context.Context, *connect.Request[keystorev2alpha1.StatusR
 	a.s.mu.Lock()
 	defer a.s.mu.Unlock()
 	retries, err := a.s.card.PINRetries()
+	if errors.Is(err, card.ErrVerified) {
+		if a.s.pin.held() {
+			// The driver logged the card in itself: the counter cannot be read without ending that, and it is full after a
+			// good PIN. Unknown, not guessed.
+			err = errors.New("the card is logged in with the held PIN")
+		} else {
+			// The card is logged in and the driver holds no PIN: the state is wrong, and anything that reaches the
+			// card's PC/SC reader could use the keys. Put it right, then read the counter.
+			retries, err = a.s.logOut("Status")
+		}
+	}
 	if err != nil {
 		retries = -1
 		if errors.Is(err, card.ErrCardGone) {
@@ -108,10 +119,22 @@ func (s *Service) unlockHeld(ctx context.Context, method string, pin []byte) *co
 	// one left, a wrong PIN would block the card; with none it is blocked already. A counter that cannot be read is a
 	// refusal too: the driver does not guess.
 	retries, rerr := s.card.PINRetries()
+	if errors.Is(rerr, card.ErrVerified) {
+		// An empty VERIFY on a card that is logged in is answered with success, not with the counter. The card was left
+		// logged in by an earlier driver (a restart that did not reset the card), while this one holds no PIN. Reset the
+		// session, then read the counter again. A PIN is not sent unless that read succeeds.
+		retries, rerr = s.logOut(method)
+	}
 	switch {
 	case errors.Is(rerr, card.ErrCardGone):
 		s.cardGone(method)
 		return refuse(ctx, method, connect.CodeUnavailable, reasonCard, "")
+	case errors.Is(rerr, card.ErrSharing):
+		slog.Error("unlock refused: another process holds the card, so it cannot be reset and its counter cannot be read; stop that process", "error", rerr.Error())
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonCard, "")
+	case errors.Is(rerr, card.ErrVerified):
+		slog.Error("unlock refused: the card is still PIN-verified after a reset of its session, so its PIN counter cannot be read")
+		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonCard, "")
 	case rerr != nil:
 		slog.Error("unlock refused: the PIN counter cannot be read", "error", rerr.Error())
 		return refuse(ctx, method, connect.CodeFailedPrecondition, reasonCard, "")
@@ -145,6 +168,20 @@ func (s *Service) unlockHeld(ctx context.Context, method string, pin []byte) *co
 		return refusal.New(connect.CodeInternal, reasonStore, "")
 	}
 	return nil
+}
+
+// logOut ends a PIN verification that the driver does not know of: the card is logged in and the driver holds no PIN. It
+// resets the session of the card (SCARD_RESET_CARD, which changes no key and no counter) and reads the PIN counter again;
+// the counter is ErrVerified still when the reset did not take. The caller holds mu and has seen card.ErrVerified with no
+// PIN held. A reset that fails because another process holds the card returns card.ErrSharing, and one that leaves the
+// card unreachable returns card.ErrCardGone.
+func (s *Service) logOut(method string) (int, error) {
+	slog.Warn("the card is PIN-verified and the driver holds no PIN: resetting the card session", "method", method)
+	if err := s.card.ResetSession(); err != nil {
+		slog.Error("the card session cannot be reset", "method", method, "error", err.Error())
+		return 0, err
+	}
+	return s.card.PINRetries()
 }
 
 // ServeAdmin serves the unlock service on cfg.Socket until ctx ends. The socket is mode 0600 and the peer is

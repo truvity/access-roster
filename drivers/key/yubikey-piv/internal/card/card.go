@@ -92,6 +92,13 @@ var (
 	// ErrCardGone is a card that cannot be talked to any more: removed, reset, powered off or its reader gone. The
 	// connection the driver holds is dead (piv-go does not reconnect); the driver wipes the PIN and exits.
 	ErrCardGone = errors.New("card: the card is gone")
+	// ErrVerified is a card that is logged in with a PIN already: the empty VERIFY that reads the PIN counter is answered
+	// with success instead of the counter, so the counter cannot be read. It is what a card shows after the driver that
+	// verified it ended without the card being reset. It is a state, not a failure of the card: ResetSession clears it.
+	ErrVerified = errors.New("card: the card is already PIN-verified")
+	// ErrSharing is a card that another holder of the PC/SC connection keeps, so that the driver can neither connect to it
+	// exclusively nor reset it. The driver fails closed.
+	ErrSharing = errors.New("card: another process holds the card")
 	// ErrManagementKey is a management key that the card refuses.
 	ErrManagementKey = errors.New("card: the management key was refused")
 	// ErrNoCardSupport is a build without the card (no sluis_card tag).
@@ -146,8 +153,16 @@ type Card interface {
 	// Login sends the PIN to the card once and never again (a wrong PIN is not retried here or by the caller). The
 	// caller wipes pin after the call.
 	Login(pin []byte) error
-	// PINRetries is the attempts the card still allows.
+	// PINRetries is the attempts the card still allows. It is ErrVerified (wrapped) when the card is logged in, because
+	// the empty VERIFY that reads the counter then succeeds and tells nothing; it never sends a PIN and never burns an
+	// attempt.
 	PINRetries() (int, error)
+	// ResetSession resets the card session (a warm reset at the PC/SC layer, SCARD_RESET_CARD): the card forgets any PIN
+	// verification and the applet is selected again. It does not touch the keys, the PIN, the PUK, the management key or the
+	// retry counters, which are persistent data of the applet, and it is not the factory reset of the applet. When it
+	// returns nil the connection is usable again. When it fails, the card is not usable by this Card and the driver fails
+	// closed.
+	ResetSession() error
 
 	// Sign signs a digest with the key of the slot and returns an ASN.1 DER signature. A key whose PIN policy is
 	// PINOnce asks for the PIN through pin when the card is logged out.
@@ -155,7 +170,8 @@ type Card interface {
 	// ECDH derives the shared secret of the key of the slot with a peer's public key.
 	ECDH(slot Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, peer *ecdh.PublicKey) ([]byte, error)
 
-	// Close releases the card.
+	// Close releases the card and leaves it logged out: it resets the session as ResetSession does, best effort (a crash
+	// or a kill does not reach it, which is why the driver resets at its start as well).
 	Close() error
 }
 

@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/go-piv/piv-go/v2/piv"
 )
@@ -39,10 +40,17 @@ func Open(serial uint32) (Card, error) {
 	if serial == 0 && len(readers) > 1 {
 		return nil, fmt.Errorf("card: %d readers and no serial named: refusing to choose the first", len(readers))
 	}
+	var shared error // a reader that another process holds: named at the end if no other reader is the card
 	for _, r := range readers {
 		yk, err := piv.Open(r)
 		if err != nil {
+			if strings.Contains(err.Error(), "other connections outstanding") {
+				shared = fmt.Errorf("%w: open %q: %v", ErrSharing, r, err)
+			}
 			if serial == 0 {
+				if shared != nil {
+					return nil, shared
+				}
 				return nil, fmt.Errorf("card: open %q: %w", r, err)
 			}
 			continue // another reader, or a card that someone else holds
@@ -56,13 +64,19 @@ func Open(serial uint32) (Card, error) {
 			_ = yk.Close()
 			continue
 		}
-		return &pivCard{yk: yk}, nil
+		return &pivCard{yk: yk, reader: r}, nil
+	}
+	if shared != nil {
+		return nil, shared
 	}
 	return nil, ErrNoCard
 }
 
 type pivCard struct {
-	yk *piv.YubiKey
+	yk     *piv.YubiKey
+	reader string
+	// shut is set when the connection was released and not taken again (a failed ResetSession, or Close).
+	shut bool
 }
 
 func (c *pivCard) Serial() (uint32, error) {
@@ -207,7 +221,39 @@ func (c *pivCard) Login(pin []byte) error {
 
 func (c *pivCard) PINRetries() (int, error) {
 	n, err := c.yk.Retries()
+	if isVerifiedAnswer(err) {
+		return 0, ErrVerified
+	}
 	return n, c.gone(err)
+}
+
+// verifiedAnswer is what piv-go says when the empty VERIFY that reads the counter is answered with success, that is,
+// when the card is logged in (piv.ykPINRetries; it has no error value of its own). The text is pinned by a test that
+// builds with the tag.
+const verifiedAnswer = "expected error code from empty pin"
+
+func isVerifiedAnswer(err error) bool {
+	return err != nil && strings.Contains(err.Error(), verifiedAnswer)
+}
+
+// ResetSession resets the session of the card: piv-go's exclusive connection is released, the reader is connected to
+// exclusively and disconnected with SCARD_RESET_CARD (resetReader), and the card is opened again. If another process holds
+// the card the reset fails with ErrSharing. If the card cannot be opened again, this Card is unusable.
+func (c *pivCard) ResetSession() error {
+	if c.shut {
+		return ErrCardGone
+	}
+	_ = c.yk.Close()
+	c.shut = true
+	if err := resetReader(c.reader); err != nil {
+		return err
+	}
+	yk, err := piv.Open(c.reader)
+	if err != nil {
+		return fmt.Errorf("%w: open again after the reset: %v", ErrCardGone, err)
+	}
+	c.yk, c.shut = yk, false
+	return nil
 }
 
 func pinError(err error) error {
@@ -267,4 +313,16 @@ func (c *pivCard) ECDH(s Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSo
 	return secret, c.gone(pinError(err))
 }
 
-func (c *pivCard) Close() error { return c.yk.Close() }
+// Close releases the card and leaves it logged out: the reset is made after the exclusive connection of piv-go is
+// released, and a reset that fails (another process holds the card already) is reported, not retried.
+func (c *pivCard) Close() error {
+	if c.shut {
+		return nil
+	}
+	c.shut = true
+	err := c.yk.Close()
+	if rerr := resetReader(c.reader); rerr != nil && err == nil {
+		err = rerr
+	}
+	return err
+}

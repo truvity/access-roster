@@ -9,6 +9,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -63,6 +65,8 @@ func runStep(args []string) error {
 	blob := fs.String("blob", "", "the directory of the log")
 	logOrigin := fs.String("project", "sluis", "the project of the log")
 	decisionID := fs.String("decision-id", "", "the decision to look for")
+	socket := fs.String("socket", "", "the socket the jwks step reads /jwks from")
+	vhost := fs.String("host", "", "the Host header of the jwks step")
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
@@ -80,6 +84,8 @@ func runStep(args []string) error {
 		out, err = storeRead(ctx, sk["store"], *kind, *tenant)
 	case "key-public":
 		out, err = keyPublic(ctx, sk["key"])
+	case "jwks":
+		out, err = jwks(ctx, *socket, *vhost)
 	case "audit-find":
 		out, err = auditFind(ctx, sk, *boundary, *blob, *logOrigin, *decisionID, *correlation)
 	default:
@@ -89,6 +95,39 @@ func runStep(args []string) error {
 		return err
 	}
 	return json.NewEncoder(os.Stdout).Encode(out)
+}
+
+// jwks reads /jwks through a socket of entry and prints the key set as it came. It is the board's own client for the
+// request, so that the smoke needs no curl on the board (the boards have none). The body is read with a limit and is
+// checked to be a JSON object; the host side checks that it is a JWK Set and verifies the token with it.
+func jwks(ctx context.Context, socket, host string) (json.RawMessage, error) {
+	if socket == "" || host == "" {
+		return nil, errors.New("jwks: --socket and --host are required")
+	}
+	// HTTP/1.1 over the socket, as curl --unix-socket made the request.
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", socket)
+	}}}
+	defer hc.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+"/jwks", http.NoBody) //nolint:gosec // the host is the name the smoke gives; the connection goes to the socket only
+	if err != nil {
+		return nil, err
+	}
+	res, err := hc.Do(req) //nolint:gosec // the socket and the host are named by the smoke that runs the step
+	if err != nil {
+		return nil, fmt.Errorf("GET /jwks: %w", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
+	if err != nil || res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET /jwks: status %d", res.StatusCode)
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(body, &obj); err != nil {
+		return nil, errors.New("GET /jwks: the answer is not a JSON object")
+	}
+	return json.RawMessage(body), nil
 }
 
 // keyPublicOut is the id of the key that key@ signs tokens with now.
