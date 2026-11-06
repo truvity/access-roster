@@ -279,6 +279,7 @@ func TestWriterWritesALogTheCLIVerifies(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-047
 func TestBatchClosesAt256Messages(t *testing.T) {
 	e := newEnv(t)
 	e.cfg.BatchWindow = time.Hour // only the count can close the batch
@@ -299,6 +300,7 @@ func TestBatchClosesAt256Messages(t *testing.T) {
 	e.mustVerify(t)
 }
 
+// verifies: REQ-AUDIT-047
 func TestBatchClosesAfterTheWindow(t *testing.T) {
 	e := newEnv(t)
 	e.cfg.BatchWindow = 300 * time.Millisecond
@@ -544,6 +546,7 @@ func TestNothingIsAcknowledgedWhenAQuarantineCannotBeSealed(t *testing.T) {
 	}
 }
 
+// verifies: REQ-AUDIT-047
 func TestAnIdleLogSignsNothing(t *testing.T) {
 	e := newEnv(t)
 	e.start()

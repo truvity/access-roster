@@ -509,15 +509,15 @@ requirements:
     rationale: "Seal times depend on the clock."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-80, section: "5905", depth: Full}
     issues: [838, 867]
+    tests: [actors/writer/internal/writerd/seal_entry_test.go]
     verification:
-      - {kind: integration-test, ref: "seal offset test"}
+      - {kind: integration-test, ref: "a seal entry holds the clock offset observed for its batch, and observed false when the kernel was not asked (TestASealRecordsTheClockOffsetObservedForItsBatch)"}
   - id: REQ-AUDIT-018
     area: AUDIT
     statement: "A subject erasure request MUST be satisfied by destroying a per-subject key."
@@ -716,31 +716,31 @@ requirements:
     rationale: "A short bound keeps the index and the witnesses within seconds while an idle log signs nothing."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-75, section: "1", depth: Partial}
     issues: [838]
+    tests: [actors/writer/internal/writerd/seal_entry_test.go, actors/writer/internal/writerd/writer_test.go]
     verification:
-      - {kind: integration-test, ref: "seal bound test"}
+      - {kind: integration-test, ref: "defaults of 256 records and 5 s, closing at either bound, and no empty batch (TestWithTheDefaultsABatchClosesAtTwoHundredFiftySixOrAfterFiveSeconds, TestABatchOfRepeatsAndRefusalsIsNotSealed)"}
   - id: REQ-AUDIT-048
     area: AUDIT
     statement: "Each sealed batch MUST end with a seal entry, inside the tree, that records its record count, the writer instance and the observed clock offset."
     rationale: "The offset inside the tree is cosigned by the witnesses with everything else."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-75, section: "1", depth: Partial}
       - {id: ST-80, section: "5905", depth: Partial}
     issues: [838]
+    tests: [actors/writer/internal/writerd/seal_entry_test.go]
     verification:
-      - {kind: integration-test, ref: "seal entry test"}
+      - {kind: integration-test, ref: "every batch ends with a seal entry inside the tree that holds its record count, the writer instance and the clock offset (TestEveryBatchEndsWithASealEntryInsideTheTree)"}
   - id: REQ-AUDIT-049
     area: AUDIT
     statement: "The writer MUST ask every configured witness to cosign each new checkpoint, at most once per witness every 5 seconds, and ask again for the latest checkpoint every 5 minutes while the log is idle."
@@ -794,30 +794,30 @@ requirements:
     rationale: "The window must outlast the longest queue retention of a supported transport."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [1121]
+    tests: [actors/writer/internal/writerd/window_test.go]
     verification:
-      - {kind: integration-test, ref: "late redelivery test"}
+      - {kind: integration-test, ref: "an id is remembered across a restart for 14 days with the clock injected, then dropped (TestAnIdIsRememberedForFourteenDaysAndNoLonger)"}
   - id: REQ-AUDIT-053
     area: AUDIT
     statement: "The writer MUST quarantine and report a record older than its duplicate-removal window instead of writing it."
     rationale: "A record outside the window could be a duplicate that the writer can no longer recognise."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-97, section: "1", depth: Partial}
     issues: [1121]
+    tests: [actors/writer/internal/writerd/window_test.go]
     verification:
-      - {kind: integration-test, ref: "quarantine test"}
+      - {kind: integration-test, ref: "a record older than the window is quarantined with the reason stale, reported and not written (TestARecordOlderThanTheWindowIsQuarantinedAndReported)"}
   - id: REQ-AUDIT-054
     area: AUDIT
     statement: "A blocking emit MUST return only once the record is durable in the transport: accepted by the queue, acknowledged by the writer, or fsync'd to the local spool."
@@ -1702,14 +1702,14 @@ requirements:
     rationale: "The release identifies the action table, so a log needs no copy of it and no versioned document beside the records."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1121, 1120]
+    tests: [actors/writer/internal/writerd/log_content_test.go]
     verification:
-      - {kind: integration-test, ref: "log content test: no catalogue object and no schema entry"}
+      - {kind: integration-test, ref: "every entry of the log is a record or a seal entry, and the log holds no catalogue object and no schema entry (TestTheLogHoldsOnlyRecordsAndSealEntries)"}
   - id: REQ-AUDIT-116
     area: AUDIT
     statement: "An audit record MUST name the product that wrote it and its release in `metadata.product.name` and `metadata.product.version`."
@@ -1845,14 +1845,14 @@ requirements:
     rationale: "A writer's log has one audience and one lifetime, so a second key would add a policy and a slot for nothing (ADR 0029)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [914]
+    tests: [actors/writer/internal/writerd/log_content_test.go]
     verification:
-      - {kind: integration-test, ref: "the checkpoints of the audit log of one writer verify against one public key, and those of two writers against two"}
+      - {kind: integration-test, ref: "the checkpoints of one writer all verify with its one log key and not with the key of another writer (TestEachWriterInstanceSignsItsCheckpointsWithItsOwnLogKey)"}
   - id: REQ-AUDIT-167
     area: AUDIT
     split_from: REQ-AUDIT-125
