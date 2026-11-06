@@ -1596,7 +1596,7 @@ requirements:
   - id: REQ-DATA-110
     area: DATA
     statement: "The registry generator MUST fail when a Tenant-adjustable kind has a field that carries no bound in config or in the built-in layer and is not listed as unbounded with a reason."
-    rationale: "A field added later must not become a way for a tenant to widen itself (ADR 0004; v1 ADR 0078)."
+    rationale: "A field added later must not become a way for a tenant to widen itself (v1 ADR 0078)."
     level: MUST
     source: design-decision
     status: planned
@@ -1609,7 +1609,7 @@ requirements:
   - id: REQ-DATA-111
     area: DATA
     statement: "store@ SHOULD refuse a write to a kind whose list field holds more entries than the maximum count that the kind declares."
-    rationale: "A list that grows without a bound will one day exceed the size limit of an item in the engine, and v1 found this with a field it had not counted (ADR 0005)."
+    rationale: "A list that grows without a bound will one day exceed the size limit of an item in the engine, and v1 found this with a field it had not counted."
     level: SHOULD
     source: v1-parity
     status: planned

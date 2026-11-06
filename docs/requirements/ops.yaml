@@ -1246,7 +1246,7 @@ requirements:
       - {kind: conformance-suite, ref: "provisioner suite: with a stale or unvouched fact the pass adds the person as a member and never as an administrator, and removes and demotes no one"}
   - id: REQ-OPS-093
     area: OPS
-    statement: "A reconciler MUST hold a pass that would remove the last administrator of a container until an operator confirms it."
+    statement: "A reconciler MUST hold a pass that would remove, demote or suspend the last active administrator of a container until an operator confirms it."
     rationale: "A container with no administrator cannot be repaired by sluis or by its members (ADR 0026)."
     level: MUST
     source: design-decision
@@ -1256,7 +1256,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: conformance-suite, ref: "provisioner suite: a pass that would leave a container with no administrator is held and changes nothing"}
+      - {kind: conformance-suite, ref: "provisioner suite: a pass that would remove, demote or suspend the only active administrator is held and changes nothing"}
   - id: REQ-OPS-094
     area: OPS
     statement: "A reconciler MUST hold a pass that would demote more than one administrator of a container until an operator confirms it."
@@ -1285,7 +1285,7 @@ requirements:
       - {kind: conformance-suite, ref: "provisioner suite: a desired state that would demote or suspend the credential's own account leaves that account an administrator and reports the change as held"}
   - id: REQ-OPS-096
     area: OPS
-    statement: "A reconciler MUST hold a pass that would suspend more accounts than the limit that the target declares until an operator confirms it."
+    statement: "A reconciler MUST hold a pass that would suspend more than 3 accounts, or more than the limit that the target declares, until an operator confirms it."
     rationale: "A suspension cuts a person off from every container of the vendor, so a mass suspension must be seen first (ADR 0026)."
     level: MUST
     source: design-decision
@@ -1295,7 +1295,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: conformance-suite, ref: "provisioner suite: a pass at the limit is applied and a pass one above it is held"}
+      - {kind: conformance-suite, ref: "provisioner suite: a target that declares no limit holds a pass that suspends 4 accounts and applies one that suspends 3; a declared limit replaces the 3"}
   - id: REQ-OPS-097
     area: OPS
     statement: "A provisioner MUST hold the whole target when, at the start of a pass, the credential of the connection no longer holds the vendor role that the pass needs."

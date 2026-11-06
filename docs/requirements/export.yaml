@@ -408,7 +408,7 @@ requirements:
   - id: REQ-EXPORT-029
     area: EXPORT
     statement: "exporter@ MUST send a Put that its destination refuses with 401 or 403 once more after it has read its destination credential again, and no more than once."
-    rationale: "R2 temporary credentials that the API mints were accepted at the first attempt in all 30 trials of the spike of 2026-11-06 and none was refused after an accept, so the destination credential needs one retry and no hold-back, which keeps the revocation inside its 60 seconds (ADR 0009, REQ-EXPORT-028)."
+    rationale: "API-minted R2 temporary credentials were accepted at the first attempt in all 30 trials of the spike of 2026-11-06, but the exporter's destination credential is platform-provided and may be a static token, which v1 saw refused for up to about 34 seconds, so whether one retry keeps the revocation inside its 60 seconds is UNVERIFIED (ADR 0013, REQ-EXPORT-028)."
     level: MUST
     source: v1-parity
     status: planned
