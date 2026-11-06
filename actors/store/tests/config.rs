@@ -440,11 +440,8 @@ fn a_client_is_of_exactly_one_type_from_the_closed_set() {
         "InstallationClient",
         &client("  kind: public\n  kind: exchange\n"),
     );
-    assert!(!twice.is_empty());
-    assert!(
-        !twice.contains("exchange"),
-        "an error never shows a value: {twice}"
-    );
+    // The strict profile refuses a key written twice by its line and column, so a second type never reaches the loader.
+    assert_eq!(twice, "line 3, column 3: duplicate key");
     let e = refused("InstallationClient", &client("  kind: surprise-type-9\n"));
     assert!(!e.contains("surprise-type-9"), "{e}");
 }
@@ -800,19 +797,43 @@ fn tree(dir: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
+/// What the directories of a run hold: the config source's files with their bytes, and the names in the socket
+/// directory. Neither is touched by the loader, which is handed a client and a bootstrap file and no path.
+type Dirs = (std::collections::BTreeMap<String, Vec<u8>>, Vec<String>);
+
+fn dirs(e: &Env) -> Dirs {
+    (
+        tree(e.docs.path()),
+        tree(e._sock.path()).keys().cloned().collect(),
+    )
+}
+
 /// verifies: REQ-DATA-081
 #[tokio::test]
 async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     let e = env().await;
-    // A first run: the set at seq 9, then a newer token lifetime at seq 12, which the running store takes.
+    // A first run: the set at seq 9, then a newer token lifetime at seq 12, which the running store takes. The
+    // directories are taken just before each start or reload and compared just after it, so that nothing the test
+    // writes sits between the two.
     write_local(e.docs.path(), &e.pipeline, 9);
+    let before = dirs(&e);
+    assert_eq!(before.0.len(), 10, "the ten signed documents of the set");
+    assert!(
+        before.0.keys().all(|n| n.ends_with(".jws")),
+        "only the signed documents: {:?}",
+        before.0.keys().collect::<Vec<_>>()
+    );
+    assert!(!before.1.is_empty(), "the socket of the config source");
     let first = e.start().await.unwrap();
+    assert_eq!(dirs(&e), before, "the first start wrote nothing");
     e.sign(
         "token-lifetime",
         &source("token-lifetime").replace("10m", "20m"),
         12,
     );
+    let before = dirs(&e);
     assert!(matches!(first.reload().await, Reloaded::Applied(_)));
+    assert_eq!(dirs(&e), before, "an applied reload wrote nothing");
     assert_eq!(first.version("token-lifetime"), Some(12));
     // The run ends. The publisher goes back: the whole set, validly signed again, at lower seqs than that run held
     // (1 for most kinds, 3 for the one that was at 12).
@@ -821,10 +842,12 @@ async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
     e.sign("token-lifetime", source("token-lifetime"), 3);
 
     // A cold start has nothing in force to compare with: it starts, and it runs the documents as the source holds them.
+    let before = dirs(&e);
     let second = e
         .start()
         .await
         .expect("a lower seq than a previous run starts");
+    assert_eq!(dirs(&e), before, "the second start wrote nothing");
     assert_eq!(second.version("token-lifetime"), Some(3));
     assert_eq!(second.version("boundary"), Some(1));
     let t = pb::TokenLifetime::decode_from_slice(&second.get("token-lifetime", "default").unwrap())
@@ -847,27 +870,14 @@ async fn a_cold_start_takes_the_latest_signed_document_whatever_its_seq() {
 
     // From then on the running store takes a growing seq only: the seq in force is the one mark, and it is in memory.
     e.sign("token-lifetime", source("token-lifetime"), 2);
-    let staged = (
-        tree(e.docs.path()),
-        tree(e._sock.path()).keys().cloned().collect::<Vec<_>>(),
-    );
+    let before = dirs(&e);
     let (err, _) = refused_reload(second.reload().await);
     assert!(err.to_string().contains("step 5: a lower seq"), "{err}");
-
-    // No file holds a sequence mark after the runs: the directory of documents and the directory of sockets are as
-    // the publisher left them (the starts and reloads read; they did not write), and the loader has no engine to
-    // write an item to.
+    assert_eq!(dirs(&e), before, "a refused reload wrote nothing");
     assert_eq!(
-        (
-            tree(e.docs.path()),
-            tree(e._sock.path()).keys().cloned().collect::<Vec<_>>()
-        ),
-        (staged.0.clone(), staged.1),
-    );
-    assert!(
-        staged.0.keys().all(|n| n.ends_with(".jws")),
-        "only the signed documents: {:?}",
-        staged.0.keys().collect::<Vec<_>>()
+        second.version("token-lifetime"),
+        Some(3),
+        "the refused reload kept the document in force"
     );
 }
 

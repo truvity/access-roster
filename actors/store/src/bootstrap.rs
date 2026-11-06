@@ -23,6 +23,22 @@ pub const SCHEMA_ID: &str = "https://sluis.id/schema/bootstrap/v1/bootstrap.sche
 /// The default of `start_timeout`.
 const START_TIMEOUT_DEFAULT: Duration = Duration::from_secs(30);
 
+/// The keys of the file, of a destination and of a publisher: closed lists, which are the whole of what the file can
+/// hold (bootstrap-file.md "Keys"). A key that is not listed is refused by place, and `docs/reference/bootstrap-file.md`
+/// is checked against these lists by a test.
+pub(crate) const TOP_KEYS: &[&str] = &[
+    "$schema",
+    "boundary",
+    "start_timeout",
+    "config_source",
+    "secret_source",
+    "durable",
+    "temp",
+    "publishers",
+];
+pub(crate) const DESTINATION_KEYS: &[&str] = &["driver", "socket"];
+pub(crate) const PUBLISHER_KEYS: &[&str] = &["kid", "public_key", "spki_sha384", "co_signs"];
+
 /// The DER prefix of a SubjectPublicKeyInfo of an EC P-384 key (RFC 5480, sections 2.1.1 and
 /// 2.1.1.1: id-ecPublicKey, secp384r1, then the BIT STRING of an uncompressed point).
 const SPKI_P384_PREFIX: [u8; 23] = [
@@ -157,20 +173,7 @@ impl Bootstrap {
         let Value::Map(top) = doc else {
             return err("bootstrap", "must be a mapping");
         };
-        let mut m = Fields::new(
-            "",
-            top,
-            &[
-                "$schema",
-                "boundary",
-                "start_timeout",
-                "config_source",
-                "secret_source",
-                "durable",
-                "temp",
-                "publishers",
-            ],
-        )?;
+        let mut m = Fields::new("", top, TOP_KEYS)?;
         if let Some(v) = m.take("$schema") {
             match v {
                 Value::String(s) if s == SCHEMA_ID => {}
@@ -305,7 +308,7 @@ fn destination(v: Value, path: &str) -> Result<Destination, BootstrapError> {
     let Value::Map(entries) = v else {
         return err(path, "must be a mapping");
     };
-    let mut m = Fields::new(path, entries, &["driver", "socket"])?;
+    let mut m = Fields::new(path, entries, DESTINATION_KEYS)?;
     let driver = match m.require("driver")? {
         Value::String(s) if crate::install::declared(path, &s).is_some() => s,
         Value::String(_) => {
@@ -337,11 +340,7 @@ fn publishers(v: Value) -> Result<Vec<Publisher>, BootstrapError> {
         let Value::Map(entries) = item else {
             return err(&path, "must be a mapping");
         };
-        let mut m = Fields::new(
-            &path,
-            entries,
-            &["kid", "public_key", "spki_sha384", "co_signs"],
-        )?;
+        let mut m = Fields::new(&path, entries, PUBLISHER_KEYS)?;
         let kid = name(m.require("kid")?, &child(&path, "kid"))?;
         if out.iter().any(|p| p.kid == kid) {
             return err(&child(&path, "kid"), "not unique");
@@ -592,8 +591,9 @@ mod tests {
     /// verifies: REQ-DATA-087
     #[test]
     fn the_file_holds_the_boundary_a_destination_for_each_class_the_sockets_and_the_pins() {
-        // One destination for each of the four storage classes, in the order of the file. The match has no wildcard,
-        // so a fifth class does not compile until this test names its port.
+        // One destination for each of the four storage classes, in the order of the file. The match has no wildcard, so
+        // a fifth class does not compile until it names its port, and the expected ports are derived from the classes
+        // the registry's kinds have, not written out by hand.
         let port = |c: Class| match c {
             Class::Config => "config_source",
             Class::Secret => "secret_source",
@@ -602,15 +602,16 @@ mod tests {
         };
         let b = Bootstrap::parse(LOCAL).unwrap();
         let ports: Vec<_> = b.destinations().iter().map(|(p, _)| *p).collect();
-        assert_eq!(
-            ports,
-            [
-                port(Class::Config),
-                port(Class::Secret),
-                port(Class::Durable),
-                port(Class::Temp)
-            ]
-        );
+        let mut want: Vec<&str> = sluis_registry::kinds()
+            .iter()
+            .map(|k| port(k.class))
+            .collect();
+        want.sort_unstable();
+        want.dedup();
+        let mut got = ports.clone();
+        got.sort_unstable();
+        assert_eq!(got, want, "one port for each class the registry has");
+        assert_eq!(ports.len(), 4);
         // Each destination is a driver and the socket where store@ reaches it, and no two share a socket.
         for (name, d) in b.destinations() {
             assert!(!d.driver.is_empty(), "{name}");
@@ -736,7 +737,11 @@ mod tests {
             }
         }
 
-        // The keys the file does have take a shape that no credential has, and the error shows no value.
+        // The keys the file does have take a value of a fixed shape, and a value that is not of that shape is refused
+        // by place without being shown. This is not secret detection: `socket` (any absolute path), `kid` and
+        // `boundary` (a kebab-case name) are free text within their shape, and a credential written in that shape would
+        // pass. The cases below prove "not of the shape", never "not a secret"; what keeps a credential out of the
+        // file is the closed key lists, pinned against the documented keys in the next test.
         let secret_shaped = "AKIAIOSFODNN7EXAMPLEsecret/value+with=chars";
         for (from, to, path) in [
             (
@@ -784,6 +789,55 @@ mod tests {
             "publishers[0].public_key: must be one PEM PUBLIC KEY block"
         );
         assert!(!e.contains("PRIVATE"), "{e}");
+    }
+
+    /// The first column of the table under the heading `heading` of the reference page: the keys it documents.
+    fn documented(heading: &str) -> Vec<String> {
+        const PAGE: &str = include_str!("../../../docs/reference/bootstrap-file.md");
+        let mut lines = PAGE.lines().skip_while(|l| *l != heading).skip(1);
+        let mut keys: Vec<String> = Vec::new();
+        for l in lines.by_ref() {
+            if l.starts_with('#') {
+                break;
+            }
+            // A row: `| `key` | ...`. The header and the rule start with another character.
+            if let Some(rest) = l.strip_prefix("| `")
+                && let Some((key, _)) = rest.split_once('`')
+            {
+                keys.push(key.to_owned());
+            }
+        }
+        keys.sort();
+        keys
+    }
+
+    /// verifies: REQ-DATA-088
+    #[test]
+    fn the_keys_the_file_can_hold_are_exactly_the_documented_ones() {
+        // The lists that the parser refuses everything else against are the keys the reference page documents, so a key
+        // added to the code (a `secret_ref`, a `token_file`) fails here until the page and a reviewer name it.
+        let sorted = |l: &[&str]| {
+            let mut v: Vec<String> = l.iter().map(|k| (*k).to_owned()).collect();
+            v.sort();
+            v
+        };
+        for (heading, list) in [
+            ("## Keys", TOP_KEYS),
+            ("### The four destinations", DESTINATION_KEYS),
+            ("### Publishers", PUBLISHER_KEYS),
+        ] {
+            let docs = documented(heading);
+            assert!(!docs.is_empty(), "{heading}: the page documents no key");
+            assert_eq!(docs, sorted(list), "{heading}");
+        }
+        // A key outside the lists is refused, and the lists are what the parser reads.
+        assert_eq!(
+            refusal(&local(&[(
+                "boundary: dev\n",
+                "boundary: dev\nsecret_ref: x\n"
+            )])),
+            "<key>: unknown key"
+        );
     }
 
     /// verifies: REQ-DATA-089
