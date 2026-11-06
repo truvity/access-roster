@@ -42,7 +42,7 @@ On bare-metal `sluis-node` issues a short-lived **workload token per actor**, fr
 
 Each holder has its own role (a function role on Lambda, a role that trusts the cluster's issuer and the driver container's token audience on Kubernetes), generated from the registries. A work function's role may only invoke the functions its call graph names and send to the audit transport. The trust relationship differs by runtime; the permissions policy is the same in all of them.
 
-KMS key policies name key@'s role alone. There is one symmetric key per boundary, with an encryption context {boundary, tenant, purpose} for every data key it wraps, and one `ECC_NIST_P384` key per enabled signing purpose (a named exception has a key of its own type), because KMS allows one usage per key and `kms:Sign` takes no encryption context ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). A work actor reaches a key only through key@, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A generated key policy for the audit log key (an example; `<account-id>` and `<install>` are placeholders):
+KMS key policies name key@'s role alone. There is one symmetric key per boundary, with an encryption context {boundary, tenant, purpose} for every data key it wraps, and one `ECC_NIST_P384` key per enabled signing purpose (a named exception has a key of its own type), because KMS allows one usage per key and `kms:Sign` takes no encryption context ([0006](/decisions/0006-keys-and-sealing/#keys-per-boundary-on-aws)). A work actor reaches a key only through key@, whose rules say who may ask for which purpose ([0007](/decisions/0007-policy-and-sealed-grants/#two-independent-checks)). A generated key policy for the audit log key (an example; `<account-id>` and `<install>` are placeholders). It has no statement that delegates the key to IAM through the account root, and it allows the control-plane actions, including those on the key's alias, to the named key administrators alone ([REQ-KEYS-119](/requirements/keys/#REQ-KEYS-119)):
 
 ```json
 {
@@ -54,7 +54,15 @@ KMS key policies name key@'s role alone. There is one symmetric key per boundary
     { "Sid": "DenyUseByAnyoneElse", "Effect": "Deny", "Principal": { "AWS": "*" },
       "Action": ["kms:Sign", "kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*"],
       "Resource": "*",
-      "Condition": { "ArnNotEquals": { "aws:PrincipalArn": "arn:aws:iam::<account-id>:role/sluis-<install>-key" } } }
+      "Condition": { "ArnNotEquals": { "aws:PrincipalArn": "arn:aws:iam::<account-id>:role/sluis-<install>-key" } } },
+    { "Sid": "ControlPlaneToKeyAdministratorsOnly", "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::<account-id>:role/sluis-<install>-key-admin" },
+      "Action": ["kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias", "kms:PutKeyPolicy", "kms:ScheduleKeyDeletion", "kms:DisableKey"],
+      "Resource": "*" },
+    { "Sid": "DenyControlPlaneToAnyoneElse", "Effect": "Deny", "Principal": { "AWS": "*" },
+      "Action": ["kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias", "kms:PutKeyPolicy", "kms:ScheduleKeyDeletion", "kms:DisableKey"],
+      "Resource": "*",
+      "Condition": { "ArnNotEquals": { "aws:PrincipalArn": "arn:aws:iam::<account-id>:role/sluis-<install>-key-admin" } } }
   ]
 }
 ```

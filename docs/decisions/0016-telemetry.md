@@ -22,6 +22,7 @@ What is left is what a developer needs before writing the first actor: whether t
 
 - **A log line is one JSON object on stderr,** with the field names of the OpenTelemetry log data model: `timestamp`, `severity_text`, `severity_number`, `body`, `attributes`, and `trace_id` and `span_id` when a span is active (REQ-OBS-007). The runtime collects stderr; the OTLP log exporter is optional, set by `OTEL_LOGS_EXPORTER`.
 - **`body` is a fixed message chosen in code,** never a formatted value. Values go into `attributes`, and only allowlisted ones.
+- **A string that a caller supplied is logged only after the kit's helper has cleaned it:** one line, no control character and no bidirectional control, at most 256 characters ([REQ-OBS-019](/requirements/obs/#REQ-OBS-019)). A refusal at the authorization or token endpoint logs the error code, a closed reason and the declared client id, never the query, the state, a challenge, a code or a token, and a caller's own mistake is logged below error level ([REQ-OBS-020](/requirements/obs/#REQ-OBS-020), [REQ-OBS-021](/requirements/obs/#REQ-OBS-021), [REQ-OBS-022](/requirements/obs/#REQ-OBS-022)).
 
 ### Log levels
 
@@ -44,6 +45,20 @@ What is left is what a developer needs before writing the first actor: whether t
 - **Named metrics that other records rely on:** `sluis.key.expiry` (seconds until a key's certificate or binding expires, attributes `purpose` and `boundary`; the expiry warnings of [0024](/decisions/0024-root-custody-and-the-signing-api/#lifetimes-and-the-warning)), `sluis.audit.spool.depth` (records waiting in a local spool), and `sluis.directory.staleness` (seconds since the last good read of each upstream directory, [0017](/decisions/0017-identity-and-sign-in/#directory-outages)).
 - **Every executable sets the resource attributes** `service.name` (the executable), `service.instance.id` (`<actor>@<boundary>`, [Names](/decisions/0002-families-of-actors/#names)), `service.version` (the release) and `deployment.environment.name` (the environment).
 
+### Gauges, counters and the alerts that read them
+
+These rules come from v1, whose alert rules paged falsely for a day at a time until each of them was learned (v1 on `master`, 2026-10-25 to 2026-11-04). No metric is emitted yet, so they are decided before the first one is.
+
+- **An instance is not a process.** `service.instance.id` is `<actor>@<boundary>`, so on serverless every warm environment of a function exports a gauge with identical attributes, and the backend shows the series of whichever environment reported last. No alert reads the last value of a gauge that several instances export ([REQ-OBS-025](/requirements/obs/#REQ-OBS-025)).
+- **Each named gauge says how its series combine.** `sluis.key.expiry` is read as the minimum over instances, the soonest expiry. `sluis.audit.spool.depth` is the sum for the total waiting, and an alert on a single spool reads the maximum. `sluis.directory.staleness` is shown as the maximum and drives no alert: its alert reads the counter below.
+- **The freshness of a periodic job comes from a counter.** Every periodic job (a reconciler target, a directory refresh, a sweep) adds to the counter `sluis.job.ticks` for each pass, with the attributes `job` (bounded) and `outcome` (`ok` or `failed`). The age of a job is the time since the last increase with `outcome=ok`. Counters from many instances add up and none overwrites another.
+- **A counter that an alert reads exists at zero before its first event.** The kit adds zero to a counter when its scope first exists, for a new kind, target or vendor, because a series that starts at its first event makes `increase` miss that event and leaves a panel with no data ([REQ-OBS-024](/requirements/obs/#REQ-OBS-024)).
+- **A stall and a stopped series are two alerts.** A job is live while a sample of its series arrived within the live window. A live job with no `ok` increase for `maxAge` is a critical alert ([REQ-OBS-027](/requirements/obs/#REQ-OBS-027)). A series seen within the look-back and silent for the live window is a warning that clears when the look-back passes, so a renamed or removed job does not page for a day ([REQ-OBS-028](/requirements/obs/#REQ-OBS-028)). A job that is gone for good leaves only silence, which an `absent` rule sees ([REQ-OBS-029](/requirements/obs/#REQ-OBS-029)). The starting values are v1's: a live window of 15 minutes, `maxAge` of four default intervals (1 hour) and a look-back of 2 hours. They are design figures taken from v1, not measured on v2.
+- **A failure alert counts failures only.** The outcome of a port call is one of `ok`, `conflict`, `not_found` or `error`; the first three are ordinary and the failure share counts `error` alone ([REQ-OBS-026](/requirements/obs/#REQ-OBS-026)).
+- **A label is for operators.** No behaviour, such as a maintenance freeze or an authorization, depends on a route name or any other metric label. v1 had a freeze keyed on a route name that the code named differently from its alert.
+- **Vendor calls have their own spans and their own latency class.** An adapter or driver that calls a vendor records a span for each API method and a child span for each attempt, with no account, token or URL in it ([REQ-OBS-032](/requirements/obs/#REQ-OBS-032), [REQ-OBS-033](/requirements/obs/#REQ-OBS-033)). An exchange that mints at a vendor waits for seconds, so it has an alert of its own and the token endpoint alert leaves it out ([REQ-OBS-034](/requirements/obs/#REQ-OBS-034)); a duration histogram has a bucket above the longest vendor call it waits for ([REQ-OBS-035](/requirements/obs/#REQ-OBS-035)).
+- **Rules are tested like code.** Each alert rule has rule tests for a firing case, a quiet case and the regression of its last change, and every label value a rule selects is one the code emits ([REQ-OBS-030](/requirements/obs/#REQ-OBS-030), [REQ-OBS-023](/requirements/obs/#REQ-OBS-023)).
+
 ### The allowlist
 
 - **An attribute leaves a process only if it is on the allowlist.** The kit drops every other attribute before export, in spans, metrics and logs alike (REQ-OBS-003).
@@ -64,8 +79,10 @@ What is left is what a developer needs before writing the first actor: whether t
 - The allowlist is enforced in the exporter path, so a developer who adds an attribute that is not allowlisted sees it dropped in tests, not leaked in production. The cost is one generated list kept in step with the registry, which CI checks.
 - Bounded metric attributes keep the collector's cost predictable; per-subject or per-request analysis needs traces or the audit log.
 - The audit-to-trace join is a correlation id only; deleting traces never weakens the audit log.
-- The alert rules and the dashboard of v1 are rebuilt on these names in the parity milestone ([#836](https://github.com/truvity/sluis/issues/836)).
-- Requirements: REQ-OBS-001 to REQ-OBS-011 apply as written; [REQ-OBS-012](/requirements/obs/#REQ-OBS-012) to [REQ-OBS-015](/requirements/obs/#REQ-OBS-015) are added.
+- The alert rules and the dashboard of v1 are rebuilt on these names in the parity milestone ([#836](https://github.com/truvity/sluis/issues/836)), with the rules above as their shape.
+- A job's age needs a counter and a gauge is only shown, so each periodic job adds one counter series per outcome. The cost is bounded by the number of jobs.
+- The dashboards show cold starts and the initialisation time of each function from the platform's report events, because no metric carries them ([REQ-OBS-031](/requirements/obs/#REQ-OBS-031)).
+- Requirements: REQ-OBS-001 to REQ-OBS-011 apply as written; [REQ-OBS-012](/requirements/obs/#REQ-OBS-012) to [REQ-OBS-015](/requirements/obs/#REQ-OBS-015) are added, and [REQ-OBS-019](/requirements/obs/#REQ-OBS-019) to [REQ-OBS-035](/requirements/obs/#REQ-OBS-035) carry the log hygiene, the alert rules and the vendor-call rules above.
 
 ## Roads not taken
 
@@ -76,6 +93,9 @@ What is left is what a developer needs before writing the first actor: whether t
 - **A hand-written allowlist.** It drifts from the registry the first time a field is added.
 - **The audit record id as the trace id, or the trace inside the audit record.** Either makes one store depend on the other's retention and lets a trace say what the audit record says.
 - **A log level raised with no expiry.** A forgotten debug level would stay on, and nothing would tell an operator that the log is more detailed than config says.
+- **Alert on the age of a gauge that every instance exports.** It is v1's first shape: on serverless the series flips between instances, and a healthy job paged because one old environment reported last.
+- **Create a counter at its first event.** `increase` over a series that starts at 1 misses the first event, and a panel reads no data until it happens.
+- **Look back a day for a stopped series, and page critical for it.** A renamed or removed target then paged for up to a day; a stall and a stopped series are two alerts.
 - **A log level per tenant.** The layers of the Logging group are built-in, config and the operator's override, set per boundary, actor and module; none carries a tenant ([0004](/decisions/0004-the-data-model/#layers-and-the-direction-rule)).
 
 ## Follow-ups
