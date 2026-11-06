@@ -13,9 +13,13 @@ on:
 permissions:
   contents: read
 
+# A pull request run cancels the run it supersedes. A push to main never cancels, and never shares a group with the
+# commit before it: a group keeps one running and one pending run and drops an older pending one even without
+# cancel-in-progress, so the group of a push is its own commit. A release gate needs a finished, green run on the
+# commit it publishes (REQ-SUPPLY-031).
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  group: checks-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   site:
@@ -334,18 +338,46 @@ jobs:
           echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
       - run: devbox run -- just rqlite-fetch local-deny
 
+  # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module, cargo audit over every Cargo.lock and osv-scanner
+  # over the lock files, failing on a known advisory that affects us unless tools/advisories/ignore.yaml lists it, with a
+  # reason and an expiry date. A new advisory can turn this job red on a commit that did not touch a dependency; that is
+  # the point, and the fix is a bump (or a dated entry), not a re-run.
+  advisories:
+    name: 'advisories (govulncheck, cargo audit, osv-scanner)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # cargo audit keeps the RustSec database as a git checkout in ~/.cargo/advisory-db and fetches only the difference. The
+      # key is new on every run so that the next run starts from the newest copy; the restored copy is brought up to date
+      # before it is read, so a stale cache never hides an advisory. govulncheck and osv-scanner ask their services (vuln.go.dev,
+      # api.osv.dev) for what they need, which is small; they have no database to keep.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/advisory-db
+          key: advisories-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.run_id }}
+          restore-keys: |
+            advisories-${{ runner.os }}-
+      - run: devbox run -- just check-advisories
+
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, advisories]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.advisories.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny advisories: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done

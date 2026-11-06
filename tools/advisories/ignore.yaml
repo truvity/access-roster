@@ -1,0 +1,11 @@
+# The advisories the gate (`just check-advisories`, the job `advisories` of checks.yaml) lets through.
+#
+# An entry is an exception to REQ-SUPPLY-030, so it carries what a reviewer needs:
+#   id       any id of the advisory: GHSA-..., CVE-..., GO-..., RUSTSEC-... The gate matches every alias.
+#   reason   why it does not affect us, or why the fix has to wait, in one sentence. Not "false positive".
+#   expires  the last day (YYYY-MM-DD, UTC) the entry holds. After it the gate fails again. At most 90 days ahead.
+#
+# Prefer the fix to an entry: bump the dependency. An entry that no finding uses is reported, and removed in the
+# next pull request that sees it.
+schema: 1
+ignores: []

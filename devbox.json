@@ -16,7 +16,10 @@
     "protobuf":          "36.2",
     "protoc-gen-go":     "1.36.12",
     "golangci-lint":     "2.15.0",
-    "caddy":             "2.11.7"
+    "caddy":             "2.11.7",
+    "govulncheck":       "1.9.0",
+    "cargo-audit":       "0.22.2",
+    "osv-scanner":       "2.7.0"
   },
   "shell": {
     "init_hook": [],

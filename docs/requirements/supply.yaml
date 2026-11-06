@@ -410,3 +410,74 @@ requirements:
     issues: [1223]
     verification:
       - {kind: integration-test, ref: "the dependencies of sluis-audit-writer and sluis-audit-search reach no package of the identity module"}
+
+  # ---- advisories and the CI that gates a release
+  - id: REQ-SUPPLY-030
+    area: SUPPLY
+    statement: "The continuous-integration gate MUST fail on a known advisory that affects a dependency sluis ships, in Go, Rust and JavaScript, unless an entry of the ignore list covers it."
+    rationale: "A fixed vulnerability that stays in a lock file ships to every installation, and a floor written only in a document (go-jose) is not enforced by anything."
+    level: MUST
+    source: security-review
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/advisories/advisories_test.go, tools/workflows/workflows_test.go]
+    verification:
+      - {kind: integration-test, ref: "the advisories job of checks.yaml runs govulncheck over every Go module, cargo audit over every Cargo.lock and osv-scanner over the lock files, and fails on an advisory that no ignore entry covers"}
+  - id: REQ-SUPPLY-034
+    area: SUPPLY
+    split_from: REQ-SUPPLY-030
+    statement: "An entry of the advisory ignore list MUST carry a reason and an expiry date no more than 90 days ahead, and a past date voids the entry."
+    rationale: "An exception that cannot expire is a silent permanent one."
+    level: MUST
+    source: security-review
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/advisories/advisories_test.go]
+    verification:
+      - {kind: integration-test, ref: "an ignore list with an entry without a reason, without a date, past its date or more than 90 days ahead is refused"}
+  - id: REQ-SUPPLY-031
+    area: SUPPLY
+    statement: "A push to main MUST NOT cancel the continuous-integration run of an earlier commit on main."
+    rationale: "A release gate that publishes only a commit whose run passed starves when the next merge cancels that run."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    tests: [tools/workflows/workflows_test.go]
+    verification:
+      - {kind: integration-test, ref: "every workflow that runs on a push to main and is not a serial deploy has a concurrency group per commit for pushes and cancel-in-progress only for pull requests"}
+  - id: REQ-SUPPLY-032
+    area: SUPPLY
+    statement: "A release MUST be published only from a commit that is an ancestor of main and whose continuous-integration run on main concluded successfully."
+    rationale: "A tag on a red, cancelled or unmerged commit must not become an artifact users install."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a release-gate script test over scratch repositories: a tag on main with a green run passes; a tag on an unmerged branch, with no run, a failed run, a cancelled run or an unreadable run is refused"}
+  - id: REQ-SUPPLY-033
+    area: SUPPLY
+    statement: "A release workflow MUST declare no permission at workflow level, give each job only the permission it needs, and never persist the checkout credential."
+    rationale: "The job that publishes holds the only credential that can change what users install, and nothing else in the run may inherit it."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: first-version
+    runtimes: all
+    standards: []
+    features: [design]
+    verification:
+      - {kind: integration-test, ref: "a workflow test: the release workflow has an empty top-level permissions block, no job asks for more than it uses, and every checkout sets persist-credentials: false"}

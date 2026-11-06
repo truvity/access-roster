@@ -30,6 +30,7 @@ The `Justfile` holds the recipes, and CI runs the same recipes. Run the recipe, 
 | `just check-requirements` | The requirements catalogue: schema, ids, statement and traceability rules |
 | `just check-public` | Content that must not be public, in every tracked text file |
 | `just check-yaml-ext` | YAML files use `.yaml` |
+| `just check-advisories` | The advisory gate: `govulncheck` over every Go module, `cargo audit` over every `Cargo.lock`, and `osv-scanner` over the lock files. Needs the network. Not part of `just check`; the `advisories` job of `checks.yaml` runs it ([Advisories](#advisories)) |
 | `just check-mdx-pages` | Markdown everywhere: an `.mdx` file under `docs/` imports a component and places it ([Page format](/contributing/pages/#page-format)) |
 | `just check-agent-links` | `AGENTS.md` exists, `CLAUDE.md` imports it, and every path that they and the skills point to exists |
 | `just site-check` | The site: `site-lint`, `site-build`, `site-render` and `site-links` |
@@ -41,6 +42,15 @@ The `Justfile` holds the recipes, and CI runs the same recipes. Run the recipe, 
 | `just site-test-worker` | The Worker's tests (`site/scripts/check-worker.mjs`): the status API, the webhook signature, the CI token rules and the KV write rules, with GitHub and KV faked. Part of `just site-workers` |
 
 Read the recipe, and the workflow in `.github/workflows/` that calls it, to know what CI really runs. Build and test recipes for the code arrive with the code, and this table grows with them.
+
+## Advisories
+
+`just check-advisories` (the `advisories` job of `checks.yaml`, and one of the jobs that `checks` needs) fails on a known advisory that affects a dependency sluis ships ([REQ-SUPPLY-030](/requirements/supply/#REQ-SUPPLY-030)). The tools are pinned in `devbox.json` like the others: `govulncheck`, `cargo-audit` and `osv-scanner`. The program that runs them is `tools/advisories/`.
+
+- **What fails.** `govulncheck` (source mode) fails on a vulnerability whose function sluis calls, in every Go module. `cargo audit` fails on a vulnerability in any `Cargo.lock`; its warnings (unmaintained, unsound, yanked) are printed and do not fail. `osv-scanner` reads `go.mod`, `Cargo.lock` and `site/yarn.lock`, and fails on anything it reports, except a Go vulnerability it says is not called. There is no `cargo deny` job in this repository, so `cargo audit` is the Rust check; the `deny` job is the deny matrix of the local installation and has nothing to do with `cargo deny`. The three overlap, and one ignore entry covers every alias of an advisory.
+- **The ignore list.** `tools/advisories/ignore.yaml` lists the exceptions: an advisory id, a reason, and an expiry date no more than 90 days ahead ([REQ-SUPPLY-034](/requirements/supply/#REQ-SUPPLY-034)). A past date fails the gate again, and an entry that no finding uses is reported. Fix the dependency first; an entry is for a fix that is not released yet, or for code that is shipped nowhere (a build tool, say), and the reason says which.
+- **Why a green pull request can turn red.** A new advisory is published without a commit in this repository. The job then fails on the next run, on every branch. That is the gate working: bump the dependency (a `cargo update -p <crate> --precise <version>`, or a `resolutions` entry in `site/package.json` for a package that a tool pins exactly), or add a dated entry with a reason.
+- **Databases.** `govulncheck` asks vuln.go.dev and `osv-scanner` asks api.osv.dev for the packages of the lock files, so neither keeps a database. `cargo audit` keeps the RustSec database in `~/.cargo/advisory-db`, which the job caches and brings up to date before every scan.
 
 ## The site
 
