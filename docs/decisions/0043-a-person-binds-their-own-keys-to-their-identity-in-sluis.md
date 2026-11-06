@@ -3,7 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-11-06
 
-Proposal: [issue #1490](https://github.com/truvity/sluis/issues/1490), owner decisions SK1 E, BK1 A, BK2 A, BK3 A, 2026-11-06.
+Proposal: [issue #1494](https://github.com/truvity/sluis/issues/1494), owner decisions SK1 E, BK1 A, BK2 A, BK3 A, 2026-11-06.
 
 ## Context
 
@@ -138,10 +138,10 @@ So the design checks the public key of the attestation against the public key of
 
 ## Follow-ups
 
-- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143) ([#1490](https://github.com/truvity/sluis/issues/1490)), gated on the conformance test above.
-- Run the conformance test and date the result ([#1490](https://github.com/truvity/sluis/issues/1490)).
-- Add the certification purpose to the table of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) and to the key plan when it is built ([#1490](https://github.com/truvity/sluis/issues/1490)).
-- Write the form of the staff keyring, its signature and its list of withdrawn keys, now that sluis produces it, with test vectors shared with ritueel ([#1490](https://github.com/truvity/sluis/issues/1490)).
-- Bring the wording of the GitHub key sync into line with sluis as the source of the keyring ([#1490](https://github.com/truvity/sluis/issues/1490)).
-- Sealed software keys for non-human identities such as bots and agents (BK3 A): a later feature with its own record when it is designed ([#1490](https://github.com/truvity/sluis/issues/1490)).
-- Enforcement of commit signing on GitHub (G3 C) stays a later CI check against the staff keyring ([#1490](https://github.com/truvity/sluis/issues/1490)).
+- Build `sluis key bind`, the kind `KeyBinding`, the certification purpose and the keyring producer: [REQ-KEYS-122](/requirements/keys/#REQ-KEYS-122) to [REQ-KEYS-143](/requirements/keys/#REQ-KEYS-143) ([#1494](https://github.com/truvity/sluis/issues/1494)), gated on the conformance test above.
+- Run the conformance test and date the result ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Add the certification purpose to the table of [Key purposes](/decisions/0006-keys-and-sealing/#key-purposes) and to the key plan when it is built ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Write the form of the staff keyring, its signature and its list of withdrawn keys, now that sluis produces it, with test vectors shared with ritueel ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Bring the wording of the GitHub key sync into line with sluis as the source of the keyring ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Sealed software keys for non-human identities such as bots and agents (BK3 A): a later feature with its own record when it is designed ([#1494](https://github.com/truvity/sluis/issues/1494)).
+- Enforcement of commit signing on GitHub (G3 C) stays a later CI check against the staff keyring ([#1494](https://github.com/truvity/sluis/issues/1494)).
