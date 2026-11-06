@@ -155,6 +155,36 @@ func TestHardeningAndNetwork(t *testing.T) {
 }
 
 // A caller joins the group of every callee of the registry, and no other.
+// The entry actor's file system is read-only but for its own directory of sockets and a private tmp: ProtectSystem=strict
+// makes the whole tree read-only, and the one path written back is the directory in which entry makes its sockets. It
+// has no state directory and no bind path.
+//
+// verifies: REQ-ISO-094
+func TestEntryRunsOnAReadOnlyFileSystem(t *testing.T) {
+	for _, name := range []string{"sluis-entry@.service", "sluis-entry-audit@.service"} {
+		unit, ok := generate(t)[name]
+		if !ok {
+			t.Fatalf("no %s", name)
+		}
+		for _, want := range []string{"\nProtectSystem=strict\n", "\nProtectHome=yes\n", "\nPrivateTmp=yes\n"} {
+			if !strings.Contains(unit, want) {
+				t.Errorf("%s lacks %q:\n%s", name, want, unit)
+			}
+		}
+		var writable []string
+		for _, l := range strings.Split(unit, "\n") {
+			for _, key := range []string{"ReadWritePaths=", "ReadWriteDirectories=", "BindPaths=", "StateDirectory=", "CacheDirectory=", "LogsDirectory=", "RuntimeDirectory="} {
+				if strings.HasPrefix(l, key) {
+					writable = append(writable, l)
+				}
+			}
+		}
+		if len(writable) != 1 || writable[0] != "ReadWritePaths=/run/sluis/entry" {
+			t.Errorf("%s writes beyond its socket directory: %v", name, writable)
+		}
+	}
+}
+
 func TestCallGraphBecomesGroups(t *testing.T) {
 	files := generate(t)
 	for _, a := range registry.Actors() {

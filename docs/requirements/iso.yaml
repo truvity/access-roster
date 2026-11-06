@@ -1380,19 +1380,18 @@ requirements:
       - {kind: integration-test, ref: "entry has no plugin interface; a dependency check finds no dynamic loader"}
   - id: REQ-ISO-094
     area: ISO
-    statement: "The entry actor MUST run with a read-only file system."
+    statement: "The entry actor MUST run with a read-only root file system, in which only its own socket directory and a private tmp are writable."
     rationale: "What entry cannot write it cannot plant (ADR 0002)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [entry]
     standards: []
     issues: [1215]
     verification:
-      - {kind: integration-test, ref: "entry attempts a write to every mounted path; refused"}
+      - {kind: integration-test, ref: "static test over the generated unit and Compose service of both entry fronts: the root is read-only and the only writable paths are the socket directory and a private tmp"}
 
   # ---- units, listeners and fusion (decision 0003)
   - id: REQ-ISO-095

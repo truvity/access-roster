@@ -243,6 +243,29 @@ func TestSearchPath(t *testing.T) {
 	}
 }
 
+// The entry actor's container has a read-only root file system, a private tmpfs, and no volume it can write but the
+// directory in which it makes its sockets (both fronts).
+//
+// verifies: REQ-ISO-094
+func TestEntryRunsOnAReadOnlyFileSystem(t *testing.T) {
+	svcs := services(t, generate(t)["compose.yaml"])
+	for _, name := range []string{"entry", "entry-audit"} {
+		body := svcs[name]
+		if !strings.Contains(body, "\n    read_only: true\n") || !strings.Contains(body, `tmpfs: ["/tmp"]`) {
+			t.Errorf("%s is not read-only with a tmpfs for /tmp:\n%s", name, body)
+		}
+		for _, l := range strings.Split(body, "\n") {
+			l = strings.TrimSpace(l)
+			if !strings.HasPrefix(l, "- ") || !strings.Contains(l, ":/") {
+				continue
+			}
+			if !strings.HasSuffix(l, ":ro") && !strings.HasPrefix(l, "- run-entry:/run/sluis/entry") {
+				t.Errorf("%s may write %s", name, l)
+			}
+		}
+	}
+}
+
 // TestOnlyStoreAndKeyReadTheBootstrapFile: the bootstrap file is read-only to the two actors that read it. store@ reads
 // all of it; key@ reads its publishers block, to verify the KeyPlan itself instead of trusting store@ (REQ-KEYS-075).
 // Nobody else has the volume, and nobody can write to it.
