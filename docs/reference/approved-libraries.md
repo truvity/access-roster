@@ -1,6 +1,6 @@
 ---
 title: Approved libraries
-description: "The cryptography and parser libraries sluis may use in Go, Rust and TypeScript, the ones it refuses, and how a library is added."
+description: "The cryptography and parser libraries sluis may use in Go, Rust and TypeScript, the ones it refuses, the licence rule, and how a library is added."
 status: target
 sidebar:
   order: 6
@@ -45,6 +45,7 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 | `zeroize` | Wiping secrets from memory | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#context) |
 | `jsonwebtoken`, with its `aws_lc_rs` feature | Verifying JWS and JWT, with an explicit algorithm list | [ADR 0017](/decisions/0017-identity-and-sign-in/#context) |
 | `signed_note`, `tlog_tiles` | C2SP signed notes, checkpoints and tiles in `indexer` and `reader`; the verifier of the log key (P-256 for an audit log, P-384 for the issuance log) is a `NoteVerifier` on `aws-lc-rs` | [ADR 0029](/decisions/0029-the-audit-log/#tiled-log) |
+| `pgp` (rPGP), 0.21.0, pinned, no default features | OpenPGP packets in `signer`: the detached release signature, with the signing step handed to key@; see [OpenPGP in Rust](#openpgp-in-rust) | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-signature) |
 | `saphyr-parser` | Reading the bootstrap file and the YAML config documents, through the strict profile of [the bootstrap file](/reference/bootstrap-file/#format) | [ADR 0004](/decisions/0004-the-data-model/#schemas-are-protobuf) |
 | `hyper`, `hyper-util` | The HTTP/1.1 and HTTP/2 server of `entry` and of the Rust kit: parsing the request head and framing the body | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#the-rules) |
 | `serde_json` | JSON of the audit records, in the emitter and in `indexer`, and the error bodies of `entry` | [ADR 0030](/decisions/0030-audit-records-and-the-usage-stream/#the-record-format) |
@@ -66,8 +67,47 @@ Go keeps the standard library's defaults: `GOFIPS140` and `fips140` are unset ([
 |---|---|---|
 | The `yubikey` crate | Its own notice says it is unaudited and experimental (rule R7) | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#roads-not-taken) |
 | `ykcs11` through `cryptoki`, for key@ | It resets the card for every client when a second one appears, and keeps a PIN copy that cannot be wiped | [ADR 0012](/decisions/0012-the-language-follows-the-executable/#roads-not-taken) |
+| `sequoia-openpgp` (Rust) | LGPL-2.0-or-later: copyleft in a library that would be linked into `signer`, which the [licence rule](#licences) refuses. `sq` and `sqv` stay allowed as external tools in CI | [Licences](#licences), 2026-11-06 |
 | `gpg` on a node | sluis builds the OpenPGP packets itself and the card signs | [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-hand-off) |
 | A Go plugin or a WebAssembly module in an actor | Plugins run out of process, always | [ADR 0003](/decisions/0003-units-transports-and-fusion/#consequences) |
+
+## Licences
+
+Only permissive licences (MIT, BSD, Apache-2.0) are allowed for anything that is linked into a sluis artifact ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045), decided 2026-11-06). Copyleft is allowed only for external tools, such as `gpgv` and `sq` in CI: they run beside sluis, are neither linked into a binary nor shipped in a package, and so their licence does not reach a sluis artifact.
+
+- **Scope.** Every Go module, Rust crate and TypeScript package that a sluis binary or the console links, direct or indirect, in the builds CI makes (the Go build with and without the tag `sluis_card`), and the C libraries a driver links. The documentation site is not an artifact; it is outside the rule.
+- **Dual licences.** An `OR` expression counts under its permissive choice: `r-efi` is `MIT OR Apache-2.0 OR LGPL-2.1-or-later` and is taken as MIT. An `AND` expression needs every part to be permissive.
+- **The list.** MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0 are the owner's list. The tree of 2026-11-06 also needs four licences that the decision does not name: ISC, Zlib, Unicode-3.0 and the LLVM exception to Apache-2.0. They are permissive in the same sense; whether the allow list takes them in is the owner's to decide ([#1039](https://github.com/truvity/sluis/issues/1039)). Nothing has been changed or removed because of them.
+
+### What the tree holds, measured 2026-11-06
+
+Source: `cargo metadata --locked` over `Cargo.lock` (281 packages: 21 workspace crates, all `MIT`, and 260 external), the `LICENSE` file of every module that `go list -m` resolves for `go.mod` (the tree of `origin/main` at `a01e20863`), and the Debian copyright file of `libpcsclite1`. No dependency is under a copyleft licence as its licence field or licence text states it.
+
+| Ecosystem | Licence expression, as the package states it | External packages | On the owner's list |
+|---|---|---|---|
+| Rust | `MIT OR Apache-2.0` (also written `Apache-2.0 OR MIT`, `MIT/Apache-2.0`) | 170 | yes |
+| Rust | `MIT` | 50 | yes |
+| Rust | `Apache-2.0` | 15 | yes |
+| Rust | `Unlicense OR MIT` | 10 | yes, by the MIT choice |
+| Rust | `Apache-2.0 WITH LLVM-exception OR MIT OR Apache-2.0` (`linux-raw-sys`, `rustix`, `wasi`), `CC0-1.0 OR MIT-0 OR Apache-2.0` (`dunce`), `Zlib OR MIT OR Apache-2.0` (`tinyvec`), `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (`r-efi`) | 6 | yes, by the MIT or Apache choice; `r-efi` is taken as MIT |
+| Rust | `Zlib` (`foldhash` twice, `zlib-rs`) | 3 | **no** |
+| Rust | `(MIT OR Apache-2.0) AND Unicode-3.0` (`unicode-ident`, `unicode-normalization`) | 2 | **no**, for the Unicode-3.0 part |
+| Rust | `ISC AND (Apache-2.0 OR ISC)` (`aws-lc-rs`), `ISC AND (Apache-2.0 OR ISC) AND Apache-2.0 AND MIT AND BSD-3-Clause AND ...` (`aws-lc-sys`), `ISC` (`untrusted`) | 3 | **no**, for the ISC part |
+| Rust | `Apache-2.0 WITH LLVM-exception` (`ar_archive_writer`) | 1 | **no**, for the exception |
+| Go | Apache-2.0: `connectrpc.com/connect`, `go-jose/v4`, `go-piv/piv-go/v2` | 3 | yes |
+| Go | BSD-3-Clause: `golang.org/x/crypto`, `golang.org/x/mod`, `google.golang.org/protobuf`, and `google/go-cmp` (tests only) | 4 | yes |
+| Go | MIT and Apache-2.0, per file, as its `NOTICE` says: `go.yaml.in/yaml/v3` | 1 | yes |
+| C (cgo, the card driver only) | BSD-3-Clause: `libpcsclite`; the GPL-3+ files of the Debian package are `src/spy/*` and `debian/*`, which the driver does not link | 1 | yes |
+
+**Nine Rust crates are linked today under a licence that the owner's list does not name.** They are the cryptographic backend (`aws-lc-rs`, `aws-lc-sys`, `untrusted`), the hash and compression crates (`foldhash`, `zlib-rs`), the Unicode tables (`unicode-ident`, `unicode-normalization`) and a build helper (`ar_archive_writer`). All four licences are permissive and the crates are not avoidable, so the proposal is to add ISC, Zlib, Unicode-3.0 and `Apache-2.0 WITH LLVM-exception` to the allow list. Unlicense, CC0-1.0, MIT-0 and BSD-1-Clause appear only as one choice of an `OR` and are not needed. The documentation site is outside the rule, and the console, which will have a TypeScript tree, does not exist yet.
+
+### The check, planned
+
+The requirement is `planned`: no check runs yet. One is cheap for Rust and needs a small tool for Go, and both belong in the `advisories` job of the CI workflow, which reads the same lock files. The job is not on `main` yet ([#1477](https://github.com/truvity/sluis/pull/1477)), so the steps are not added here; they are a follow-up on [#1039](https://github.com/truvity/sluis/issues/1039).
+
+1. **Rust: `cargo deny check licenses`** with a `deny.toml` that holds the allow list. Measured 2026-11-06 with cargo-deny 0.20.2 offline over this `Cargo.lock`: 0.4 seconds. The owner's four licences alone fail with nine errors (the crates above); the four more make it pass (`licenses ok`). A probe project that depends on `sequoia-openpgp` 2.4.2 fails on `LGPL-2.0-or-later`, so the check does catch the case the rule is for.
+2. **Go: a lister over `go.mod`,** run with and without the tag `sluis_card`. `github.com/google/go-licenses/v2` (`@latest`, 2026-11-06) does not work: on Go 1.27.3 it stops with "Package ... does not have module info" for every standard-library package. The alternative is about fifty lines of our own in `tools/`: `go list -deps -json`, the `LICENSE` file of each module, and a classifier. The classifier is a parser of a format, so it would use a library, not a regular expression.
+3. **A test of each:** a fixture with a copyleft crate and module, which the check must fail on.
 
 ## Adding a library
 
@@ -76,6 +116,7 @@ A dependency that provides a cryptographic primitive, or parses a protocol or a 
 1. Open a pull request that adds an entry to the data file and a row here: the name, what it is for, and why this library and not one already listed.
 2. Say whether it is maintained (releases in the last year, a security policy), whether it has had an audit, and whether it is marked experimental; an experimental library is refused for a security function.
 3. Add a security note, as for any change that touches keys or signing ([Review](/contributing/workflow/#review)).
+4. Name its licence, and the licences of its dependencies that a build links. It must pass the [licence rule](#licences); a copyleft library is refused whatever its quality.
 
 The lockfiles pin versions. A choice names the version it was evaluated at and the date, so that the next reader can judge how far the library has moved ([principle 9](/principles/#9-measure-before-deciding-and-date-the-measurement)); a security fix can set a floor.
 
@@ -140,6 +181,31 @@ Both readers were run on 2026-11-01 and again on 2026-11-02 (`go.yaml.in/yaml/v3
 - **Rust uses `buffa` messages and hand-written checks** ([ADR 0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The protovalidate annotations stay in the `.proto` files as the documentation of the rules, and the kit checks a decoded message by hand against them. The shared conformance vectors of rule R9 run the same documents through both kits, so a rule that Go enforces and the Rust checks miss fails a vector. A validation bridge replaces the hand-written checks later.
 - **Not recorded here:** the release date of a crate, its maintainers and whether it has been audited. The pull request that pins the exact version states them, as [Adding a library](#adding-a-library) asks, and a crate that is marked experimental or unaudited for a security function is refused (rule R7).
 
+## Choices made on 2026-11-06
+
+| Question | Chosen | Evaluated at | Not chosen, and why |
+|---|---|---|---|
+| [OpenPGP in Rust](#openpgp-in-rust) | `pgp` (rPGP), pinned, `default-features = false` | 0.21.0, 2026-10-03 | `sequoia-openpgp` 2.4.2 (2026-10-14): LGPL-2.0-or-later, refused by the [licence rule](#licences). RNP: C++ behind a C API, so cgo or a `-sys` crate with `unsafe` |
+
+### OpenPGP in Rust
+
+- **Verdict: `pgp` passes, and is approved for `signer`.** Decided on 2026-11-06 on the condition that it supports an external signer; the check below found that it does, for ECDSA P-384 and for EdDSA. No Go helper is needed for the signature, and `go-crypto` stays the Go library for the parts that are in Go.
+- **The interface.** The trait `pgp::types::SigningKey` has `sign(&self, key_pw, hash: HashAlgorithm, data: &[u8]) -> Result<SignatureBytes>` and `hash_alg()`; `SignatureConfig::v4(typ, pub_alg, hash_alg)` has public `hashed_subpackets` and `unhashed_subpackets` fields; `SignatureConfig::sign(self, &impl SigningKey, &Password, impl Read)` hashes the content, the hashed fields and the trailer, and calls `sign` with the **final digest**. The library never needs a private key: a type that holds the public key packet and a socket to key@ implements `SigningKey`, and returns `SignatureBytes::Mpis` with R and S (ECDSA) or the two 32-byte halves (EdDSA legacy). The crate's own test `tests/hsm-test.rs` (a fake HSM) and its `adapter::EcdsaSigner` do the same for a local key.
+- **Measured 2026-11-06, `pgp` 0.21.0, `p384` 0.13.1, `ed25519-dalek` 2.2.0, Rust 1.99.1, `gpgv` 2.4.8.** A prototype outside the repository gave key@ a Unix socket pair, with the private key in the thread at the other end and none in the type that `pgp` sees. Three tests passed.
+  - **ECDSA P-384, SHA-384:** the callback received a 48-byte digest, twice (one self-certification and one detached signature); the remote answered with an ASN.1 DER signature, as key@ does, and the adapter turned it into R and S. `gpgv` printed `Good signature` for the detached signature against the exported public key, and `BAD signature` after one byte was appended to the data. `gpg --list-packets` shows exactly the packet that [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-signature) fixes: version 4, class `0x00`, algorithm 19, digest algorithm 9, two hashed subpackets (2 and 33) and one unhashed subpacket (16).
+  - **EdDSA (legacy, algorithm 22), SHA-256:** the same, with a 32-byte digest and a 64-byte answer; `gpgv` says `Good signature`.
+  - **Signature input to key@:** [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-signature) says key@ receives the signature input (the content, the hashed fields, the trailer) and parses it before it signs, while the library's callback receives only the digest. The input is reachable from the public API: `SignatureConfig::hash_signature_data` writes the hashed fields into a hasher (a recording `DynDigest` captures the bytes) and `trailer(len)` returns the trailer. The prototype sent that input, 64 bytes for a 23-byte file, to the remote, and the signing type asserted that SHA-384 of it equals the digest `pgp` computed, so the two cannot diverge. `gpgv` accepted the result.
+- **What to watch.**
+  - **The crate is 0.x.** Releases came on 2025-09-25, 2025-11-16, 2026-02-02, 2026-06-23 and 2026-10-03, and a 0.x release may break the API. The version is pinned, and the prototype becomes the test that a bump must pass.
+  - **Default features off, and the licence.** The default feature `bzip2` links `libbz2-rs-sys` (licence `bzip2-1.0.6`, permissive and not on the list) and nothing in a detached signature needs compression. The prototype builds and passes with `default-features = false`. `pgp` alone then has 152 crates (154 with the defaults); `cargo deny` with the proposed allow list of [Licences](#licences) accepts all of them, and the owner's four licences alone refuse two (`Zlib` and `Unicode-3.0`), both already in the tree. `cargo check --target x86_64-unknown-linux-musl` passes; the `aarch64` musl target was not checked.
+  - **`sign` is synchronous.** A call to key@ inside it blocks the thread; `signer` runs it on a blocking thread.
+  - **Audit state.** `docs/SECURITY_STATUS.md` of 0.21.0 names an audit by Radically Open Security (2024-12, two advisories, fixed), an analysis by ETH researchers (2024-03) and an audit of 2019; its `SECURITY.md` takes private reports, with 90 days to fix. It does not mark the crate experimental. It lists the Marvin attack on the `rsa` crate as known, which does not touch ECDSA or EdDSA. SHA-1 is handled by `sha1-checked`; sluis writes only SHA-384.
+  - **`sq` was not run:** it is not installed here. `gpgv` is the only external verifier of this check; the CI check of [REQ-SEC-018](/requirements/sec/#REQ-SEC-018) should add `sqv`.
+  - **ADR 0024 wording.** "`signer` builds the packets itself" is read as "not with `gpg`": the library writes the packet and `signer` chooses its contents. The ADR and the Refused row for `gpg` say the first; a follow-up edit of the ADR can say the second.
+- **The Go fallback, measured and not needed.** `github.com/ProtonMail/go-crypto` v1.5.2 (2026-09-25, BSD-3-Clause, with `cloudflare/circl`, BSD-3-Clause) does take a custom `crypto.Signer`, with limits. For ECDSA, `Signature.Sign` calls `PrivateKey.(crypto.Signer).Sign(rand, digest, hash)` and reads an ASN.1 signature; EdDSA needs its own concrete `*eddsa.PrivateKey` and takes no custom signer. `packet.NewSignerPrivateKey` type-switches on concrete key types and panics on any other, so the key is built by setting the exported field `PrivateKey.PrivateKey` to the signer, and the public key has to come from a parsed key packet because its curve type is internal. A prototype did this for P-384, and `gpgv` said `Good signature`. The subpackets do not match [ADR 0024](/decisions/0024-root-custody-and-the-signing-api/#the-signature): the issuer key id is written in the **hashed** area, the creation time is critical by default, and a random-salt notation is added unless `NonDeterministicSignaturesViaNotation` is switched off. If `pgp` fails a later check, the Go helper is therefore not a drop-in: it needs a patch or a small own packet writer for the signature, which [REQ-SEC-018](/requirements/sec/#REQ-SEC-018) would have to allow as a spec'd and fuzzed exception.
+
 ## Still to build
 
 **The CI check against home-made primitives and unlisted libraries** is built with the first code ([#1039](https://github.com/truvity/sluis/issues/1039)); it reads the data file beside this page, `approved-libraries.yaml`. Until then the review of each pull request is the check.
+
+**The licence check** ([REQ-SUPPLY-045](/requirements/supply/#REQ-SUPPLY-045)) is the second job of the same lint; see [the check, planned](#the-check-planned).
