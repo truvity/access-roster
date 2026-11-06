@@ -86,6 +86,19 @@ require_credential_encryption() {
 		return 1
 	fi
 }
+# The generated actor units back their restarts off (RestartSteps=5, RestartMaxDelaySec=30), which are systemd 254's. An older
+# systemd (the documented floor is 252) ignores an unknown key with a warning in the journal, but `systemd-analyze verify` prints that
+# warning on the deploy's own check, so the two lines are taken out of the installed unit there, and the restart stays a flat 2 s.
+restart_backoff_floor=254
+# drop_restart_backoff FILE removes the two lines when this board's systemd is older than the floor, or its version is unknown.
+drop_restart_backoff() {
+	local v=""
+	read -r _ v _ < <(systemctl --version 2>/dev/null) || true # "systemd 259 (259-1)"
+	case "$v" in *[!0-9]*) v="" ;; esac
+	if [ -z "$v" ] || [ "$v" -lt "$restart_backoff_floor" ]; then
+		sed -i -e '/^RestartSteps=/d' -e '/^RestartMaxDelaySec=/d' "$1"
+	fi
+}
 # encrypt_credential name plain-file destination: the credential, encrypted under the host key and named for the unit's
 # LoadCredentialEncrypted= line (systemd refuses a blob whose embedded name differs), written 0400 root by a rename, so a unit
 # never reads half a file.
@@ -540,6 +553,7 @@ settle_locked_status=10
 settle_state_prefix='SLUIS-BOARD-STATE: '
 lock_state_prefix='SLUIS-BOARD-LOCK: '
 lock_cli=${lock_cli:-/opt/sluis/bin/cli/sluis}
+lock_timeout=${lock_timeout:-20} # seconds: a card service that hangs must not hang the deploy
 
 # board_lock_state sets lock_state to locked, unlocked or unknown, and lock_why to the reason when it is unknown. It asks the card
 # driver of this board on its admin socket through `sluis node status` (root only; it sends and prints no PIN). The node is this
@@ -552,8 +566,11 @@ board_lock_state() {
 		return 0
 	fi
 	node=${lock_node:-$(uname -n)}
-	out=$("$lock_cli" node status "$node" --boundary "$boundary" 2>&1) || rc=$?
-	if [ "$rc" != 0 ]; then
+	out=$(timeout "$lock_timeout" "$lock_cli" node status "$node" --boundary "$boundary" 2>&1) || rc=$?
+	if [ "$rc" = 124 ]; then
+		lock_why="'sluis node status' did not answer in ${lock_timeout} s (a hung card service?)"
+		return 0
+	elif [ "$rc" != 0 ]; then
 		lock_why="'sluis node status' failed (status $rc): ${out:-no output}"
 		return 0
 	fi

@@ -13,6 +13,8 @@ SupplementaryGroups=sluis-drv-writer-spool-%i sluis-key-%i sluis-policy-%i sluis
 ExecStart=/opt/sluis/bin/actors/quota serve --boundary %i --socket /run/sluis/quota/%i.sock
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
 
 # Hardening (ADR 0003)
 NoNewPrivileges=yes

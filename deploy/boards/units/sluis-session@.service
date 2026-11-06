@@ -13,6 +13,8 @@ SupplementaryGroups=sluis-adapter-upstream-oidc-%i sluis-drv-writer-spool-%i slu
 ExecStart=/opt/sluis/bin/actors/session serve --boundary %i --socket /run/sluis/session/%i.sock
 Restart=on-failure
 RestartSec=2s
+RestartSteps=5
+RestartMaxDelaySec=30
 Environment=GOMEMLIMIT=24MiB
 
 # Hardening (ADR 0003)
