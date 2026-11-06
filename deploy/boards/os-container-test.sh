@@ -11,7 +11,7 @@
 # SELinux is not the container's to enforce, so the labels are not tested here (docs/runtimes/bare-metal.md, "SELinux and the
 # firewall"). Needs docker and jq. Run from the repository root: deploy/boards/os-container-test.sh ubuntu:26.04
 # shellcheck disable=SC2016 # the command lines run in the container
-# shellcheck disable=SC2329,SC2034 # cleanup runs from the trap; the OS_CREDENTIALS_ variables are the library's
+# shellcheck disable=SC2329,SC2034 # cleanup runs from the trap; the OS_CREDENTIALS_ and OS_CREDENTIAL_ variables are the library's
 set -euo pipefail
 
 image=${1:?usage: os-container-test.sh IMAGE (ubuntu:26.04 or rockylinux/rockylinux:10)}
@@ -75,6 +75,15 @@ x 'printf "#!/bin/sh\nwhile [ \"\$1\" = -n ]; do shift; done\nexec \"\$@\"\n" >/
 if [ "$fam" = rpm ]; then
 	OS_CREDENTIALS_MAY_BE_MISSING=1
 	OS_CREDENTIALS_MISSING_REASON="the nightly virtual machine test (os-vm-test.sh) proves receipt on Rocky 10"
+fi
+# The real credential driver, when the job built one for this machine (docs/runtimes/bare-metal.md, "What the jobs check"):
+# SLUIS_OS_CREDENTIAL_DRIVER names a static executable; the job builds it with `cargo zigbuild --release --target
+# x86_64-unknown-linux-musl -p credential`. Without it the unit runs a stand-in that only prints what it received.
+if [ -n "${SLUIS_OS_CREDENTIAL_DRIVER:-}" ]; then
+	[ -x "$SLUIS_OS_CREDENTIAL_DRIVER" ] || { bad "SLUIS_OS_CREDENTIAL_DRIVER=$SLUIS_OS_CREDENTIAL_DRIVER is not an executable"; exit 1; }
+	OS_CREDENTIAL_DRIVER=$SLUIS_OS_CREDENTIAL_DRIVER
+else
+	echo "note the real credential driver is not run (SLUIS_OS_CREDENTIAL_DRIVER is not set): the unit runs a stand-in, so how systemd hands over its credentials directory is not exercised"
 fi
 os_prepare_repo
 os_check_refusal

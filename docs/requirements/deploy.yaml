@@ -432,6 +432,7 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "os-container-test.sh in a systemd container of each distribution; SELinux enforcing is os-vm-test.sh, which CI has never run (a schedule runs from the default branch only) and is run by hand; no card"}
+      - {kind: integration-test, ref: "prereq-test.sh, recipients-test.sh: a unit that restarts or is not active within 60 s fails the deploy with its journal; a locked card board ends 'locked' with exit 0"}
   - id: REQ-DEPLOY-032
     area: DEPLOY
     statement: "The card driver MUST NOT ask for a glibc symbol newer than GLIBC_2.34."

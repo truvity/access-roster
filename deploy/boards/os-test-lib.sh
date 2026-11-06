@@ -18,6 +18,16 @@ os_card_packages() {
 	esac
 }
 
+# os_credentials_work: whether this system sets up a credentials directory for a unit at all, tried with a plain LoadCredential=.
+# (Rocky 10's systemd in a Docker container does not on the hosts tried.)
+os_credentials_work() {
+	local r=1
+	x 'echo probe >/etc/sluis-probe-credential'
+	if x "systemd-run --wait --pipe --quiet -p LoadCredential=probe:/etc/sluis-probe-credential -- /bin/sh -c 'cat \"\$CREDENTIALS_DIRECTORY/probe\"'" 2>/dev/null | grep -qx probe; then r=0; fi
+	x 'rm -f /etc/sluis-probe-credential'
+	return "$r"
+}
+
 # os_prepare_repo: the repository the scripts run in (the dist they stage is this test's), the stand-in executables of the
 # three units of the card variant, and a seed of one document whose protected header names a kind, a bootstrap file and three
 # credentials. The stand-in of a unit says what it received through LoadCredentialEncrypted=; the stand-in of the card driver
@@ -39,6 +49,18 @@ os_prepare_repo() {
 		} >"$work/repo/dist/arm64/$b"
 		chmod 0755 "$work/repo/dist/arm64/$b"
 	done
+	# The real credential driver, where the system sets up credentials for a unit at all: the stand-in only cats the files, which any
+	# directory lets through, so it cannot see how systemd hands the directory over (root:root with a POSIX ACL where the filesystem
+	# has ACLs, the service user's own where it has not). OS_CREDENTIAL_DRIVER is a static build for this machine's architecture.
+	OS_REAL_DRIVER=0
+	if [ -n "${OS_CREDENTIAL_DRIVER:-}" ]; then
+		if os_credentials_work; then
+			install -m 0755 "$OS_CREDENTIAL_DRIVER" "$work/repo/dist/arm64/drivers/store/credential"
+			OS_REAL_DRIVER=1
+		else
+			echo "note the real credential driver is not run: this system does not set up credentials for any unit (${OS_CREDENTIALS_MISSING_REASON:-no reason given})"
+		fi
+	fi
 	hdr=$(printf '{"alg":"ES384","kind":"config"}' | base64 -w0 | tr '+/' '-_' | tr -d =)
 	printf '{"payload":"e30","signatures":[{"protected":"%s","signature":"AA"}]}\n' "$hdr" >"$work/seed/config/doc.jws"
 	printf 'boundary: dev\n' >"$work/seed/bootstrap.yaml"
@@ -68,6 +90,31 @@ os_check_refusal() {
 	if x 'test ! -e /opt/sluis && test ! -e /etc/sluis'; then ok "and nothing was written before the refusal"; else bad "files were written before the refusal"; fi
 }
 
+# The real credential driver (OS_REAL_DRIVER=1) is the program of the unit sluis-drv-store-credential@dev, so the deploy above has
+# already started it with the directory systemd made for it, under the unit's user and sandbox, and waited until it stood still. What
+# is added here: how systemd made the directory on this system (said, so that the log of a job shows which case was run: the
+# service user's own where the filesystem has no ACLs, root's with a POSIX ACL where it has: MEASURED on Ubuntu 26.04, systemd 259),
+# that the driver did not refuse it, and `credential check` in a unit of its own with the same user and the same three encrypted
+# credentials, which opens the directory by the rules of serve and reads every file in it by the rules of a Read: a file with the
+# mode and the ACL that systemd gives it must pass the owner and mode rule too, and the driver prints no value.
+os_check_real_credential_driver() {
+	local c args="" out pid journal
+	pid=$(x 'systemctl show -p MainPID --value sluis-drv-store-credential@dev.service')
+	if [ -n "$pid" ] && [ "$pid" != 0 ]; then
+		echo "     the credentials directory of the unit, as the unit sees it (nsenter into its mount namespace):"
+		x "nsenter -t $pid -m -- sh -c 'ls -ld /run/credentials/sluis-drv-store-credential@dev.service; ls -l /run/credentials/sluis-drv-store-credential@dev.service/'" 2>&1 | sed 's/^/       /'
+	fi
+	# The journal is read whole into a variable first: under pipefail a grep -q that quits early would fail the pipeline.
+	journal=$(x "journalctl -u sluis-drv-store-credential@dev.service -o cat --no-pager" || true)
+	if grep -q 'credentials directory must be owned' <<<"$journal"; then
+		bad "the credential driver refused the credentials directory systemd made for its unit"
+		tail -n 5 <<<"$journal" | sed 's/^/     /'
+	else ok "the real credential driver was not refused by the credentials directory of its unit"; fi
+	for c in client-dev client-example-app upstream-workforce; do args="$args -p LoadCredentialEncrypted=$c:/etc/sluis/credentials/dev/sluis-drv-store-credential/$c"; done
+	out=$(x "systemd-run --wait --pipe --quiet -p User=sluis-drv-store-credential-dev -p RestrictSUIDSGID=yes -p UMask=0077 $args -- /opt/sluis/bin/drivers/store/credential check" 2>&1) || true
+	if grep -qx 'credentials directory ok: 3 credentials readable' <<<"$out"; then ok "credential check, in a unit with the same user and credentials, opens the directory and reads the three credentials"; else bad "credential check refused: $out"; fi
+}
+
 # 2. The deploy, the credentials and the reflash.
 os_check_deploy() {
 	local cred=/etc/sluis/credentials/dev/sluis-drv-store-credential/client-dev u
@@ -81,7 +128,9 @@ os_check_deploy() {
 	# test proves receipt on the real distribution).
 	x 'echo probe >/etc/sluis-probe-credential'
 	if x "systemd-run --wait --pipe --quiet -p LoadCredential=probe:/etc/sluis-probe-credential -- /bin/sh -c 'cat \"\$CREDENTIALS_DIRECTORY/probe\"'" 2>/dev/null | grep -qx probe; then
-		if x "journalctl -u sluis-drv-store-credential@dev.service -o cat --no-pager" | grep -qx 'credential client-dev=plain-client-dev-value'; then ok "the unit received the credential through LoadCredentialEncrypted="; else bad "the unit did not receive the credential"; fi
+		if [ "$OS_REAL_DRIVER" = 1 ]; then
+			os_check_real_credential_driver
+		elif x "journalctl -u sluis-drv-store-credential@dev.service -o cat --no-pager" | grep -qx 'credential client-dev=plain-client-dev-value'; then ok "the unit received the credential through LoadCredentialEncrypted="; else bad "the unit did not receive the credential"; fi
 	elif [ "${OS_CREDENTIALS_MAY_BE_MISSING:-0}" = 1 ]; then
 		echo "note this system does not set up credentials for any unit (a plain LoadCredential= fails too): $OS_CREDENTIALS_MISSING_REASON"
 	else

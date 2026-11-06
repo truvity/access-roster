@@ -19,7 +19,7 @@
 #      then `sluis node unlock` on that board. Its key@ makes a new wrapping key; it cannot open a data key yet, and the
 #      other boards keep serving. The deploy first runs the board's checks, which write nothing (remote.sh preflight), then
 #      marks the board as pending verification BEFORE it changes anything on it, and the mark stays whatever the deploy does
-#      (a card board starts locked, so the wait for its units may end non-zero). The mark is a file on the board itself,
+#      (a card board starts locked, so the wait for its units ends with the outcome "locked", exit status 0: see below). The mark is a file on the board itself,
 #      /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so a lost checkout cannot fail the guard open;
 #      $SLUIS_BOARDS_STATE/switch-pending is a cache of it for the boards a run does not name. Name every board of the fleet
 #      when in doubt: the guard reads the mark of each board the run names.
@@ -99,6 +99,13 @@
 # enforced denial in the domain of the units (unconfined_service_t), of the card service (pcscd_t, pcscd_var_run_t), of an
 # executable of the deploy (its comm, from the manifest), or on a sluis or rqlite path; other records are warnings. It also fails
 # when auditd is not running, because a denial from before it started is not visible (remote-lib.sh, avc_check).
+#
+# The end of a deploy (remote.sh, settle_units): after the units are started, each board waits up to 60 s until every unit is
+# `active (running)` and has stopped restarting. A unit that is not, or that restarts, fails the board ("board B: deploy FAILED",
+# exit 1) and the output holds the last lines of that unit's journal. (The "verify U: ok" lines come earlier and only say that
+# the unit files read well.) One state is not a failure: a card board starts locked, with no PIN, so its card driver is up and
+# key@ cannot make its keys yet. The board then ends "deployed, LOCKED", the exit status stays 0 for it, and the line names the
+# command that gives the PIN (`boards-unlock`). A run that also has a failed board still exits 1.
 #
 # unlock: `boards-unlock` gives the PIN to the card driver of ONE board (SLUIS_BOARDS names it). The PIN is read from standard
 # input (a pipe; on a terminal it is asked for without echo) and goes to `sudo /opt/sluis/bin/cli/sluis node unlock <host> --boundary
@@ -369,7 +376,7 @@ board_data_keys() { # board
 # /var/lib/sluis-state/dev/switch-pending (root, mode 0600), so that a lost checkout of the operator cannot make the guard fail
 # open. $state/switch-pending is a cache of it for the boards a run does not name. The mark is made after the board passed the
 # checks of remote.sh preflight, which write nothing, and BEFORE the deploy of the board, and it stays whatever the deploy does
-# (a card board starts locked, so a deploy that waits for the units may end non-zero with the new driver enabled); only `check`
+# (a deploy that fails after the switch leaves the new driver enabled, and a card board that is only locked ends 0 with the outcome "locked"); only `check`
 # clears it.
 pending_file=$state/switch-pending
 marker=/var/lib/sluis-state/dev/switch-pending
@@ -511,12 +518,23 @@ deploy)
 		grep -qxF "$b" "$pending_file" 2>/dev/null || printf '%s\n' "$b" >>"$pending_file"
 	done
 	rc=0
+	locked=()
 	for b in "${boards[@]}"; do
 		echo "== board $b: deploy (key driver ${drv[$b]})"
-		run_on "$b" deploy "$tmp/stage-${drv[$b]}" || { echo "board $b: deploy FAILED" >&2; rc=1; }
+		brc=0
+		run_on "$b" deploy "$tmp/stage-${drv[$b]}" || brc=$?
+		case "$brc" in
+		0) ;;
+		# The outcome "locked" (remote.sh, settle_units): every unit is as it should be except key@, which waits for the card's PIN.
+		10) locked+=("$b") ;;
+		*) echo "board $b: deploy FAILED" >&2; rc=1 ;;
+		esac
 		case " ${switching[*]:-} " in
 		*" $b "*) echo "board $b: switched to ${drv[$b]} (pending verification, whatever the deploy said); now: unlock it if needed, 'boards-recipients' with SLUIS_BOARDS_RECIPIENTS_SWITCHED=1, re-sign, deploy, then 'boards-key-check'" ;;
 		esac
+	done
+	for b in ${locked[@]+"${locked[@]}"}; do
+		echo "board $b: deployed, LOCKED: the card driver is up and waits for its PIN, so key@ is not serving yet. This is not a failure and the exit status stays 0 for it; give the PIN: SLUIS_BOARDS=$b just boards-unlock"
 	done
 	# The denials of the policy since boot, on a board where SELinux is enforcing: a sluis or rqlite path or domain in one fails the run.
 	bare_stage "$tmp/stage-avc"

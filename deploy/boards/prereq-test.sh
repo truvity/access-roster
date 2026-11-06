@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015,SC2016 # `A && ok || fail` pairs report a check either way; single quotes hold the code of `bash -c`
+# shellcheck disable=SC2001,SC2030,SC2031,SC2015,SC2016 # `A && ok || fail` pairs report a check either way; single quotes hold the code of `bash -c`
 # A test of the operating-system checks of remote.sh (deploy/boards/remote-lib.sh) against fakes of dpkg, rpm, systemctl,
 # restorecon and the files of SELinux, and a fake os-release: no board, no package manager. Run from anywhere:
 # deploy/boards/prereq-test.sh
@@ -491,4 +491,132 @@ mkdir -p "$(dirname "$RQ_DROPIN")" "$rq/root/var/lib/rqlite/data"
 printf '[Service]\n' >"$RQ_DROPIN"
 rqx rqlite-undeploy SLUIS_PURGE_STATE=1 RQ_APT_FAIL=1 >"$work/out" 2>&1 && { echo "FAIL a failed removal succeeded"; fail=1; }
 if [ -e "$RQ_DROPIN" ] && [ -d "$rq/root/var/lib/rqlite/data" ] && ! grep -q 'userdel' "$RQ_LOG"; then echo "ok   rqlite-undeploy: a removal that fails leaves the drop-in, the data and the user, so the next run finishes the purge"; else echo "FAIL half purge: $(cat "$RQ_LOG")"; fail=1; fi
+# --- settle_units: the wait for the units after the start (remote-lib.sh) -------------------------------------------------------------
+# A fake systemctl show: each unit has $SC/<unit>.state, a list of "ActiveState SubState NRestarts" lines, one for each poll; the last
+# one repeats. A fake journalctl -u: $SC/<unit>.journal. The timings are short; the rules are the ones of the board.
+sc=$work/settle
+sbin=$work/settle-bin
+mkdir -p "$sc" "$sbin"
+cat >"$sbin/systemctl" <<'F'
+#!/bin/bash
+[ "$1" = show ] && [ "$2" = -p ] || exit 2
+u=${*: -1}
+f=$SC/$u.state
+[ -e "$f" ] || { printf 'ActiveState=inactive\nSubState=dead\nNRestarts=0\n'; exit 0; }
+n=$(($(cat "$f.n" 2>/dev/null || echo 0) + 1))
+echo "$n" >"$f.n"
+line=$(sed -n "${n}p" "$f")
+[ -n "$line" ] || line=$(tail -n 1 "$f")
+read -r a s r <<<"$line"
+printf 'ActiveState=%s\nSubState=%s\nNRestarts=%s\n' "$a" "$s" "$r"
+F
+cat >"$sbin/journalctl" <<'F'
+#!/bin/bash
+[ "$1" = -u ] || exit 2
+cat "$SC/$2.journal" 2>/dev/null || true
+F
+chmod +x "$sbin/systemctl" "$sbin/journalctl"
+for t in sleep awk sed cat tail; do ln -sf "$(command -v "$t")" "$sbin/$t"; done
+settle_reset() { rm -f "$sc"/*; }
+steady() { printf 'active running 0\n' >"$sc/$1.state"; } # an active unit that never restarts
+settle() { # the units..., run in a subshell with the fakes alone; prints what settle_units printed and "rc=N"
+	(
+		export PATH="$sbin" SC="$sc" boundary=dev settle_timeout=2 settle_step=0.05 settle_stable=3
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		rc=0
+		settle_units "$@" || rc=$?
+		echo "rc=$rc"
+	) 2>&1
+}
+key=sluis-key@dev.service card=sluis-drv-key-yubikey-piv@dev.service store=sluis-store@dev.service writer=sluis-writer@dev.service
+sexpect() { # description output pattern...: the output must match every pattern (grep -E) and none that starts with !
+	local d=$1 out=$2 p
+	shift 2
+	for p in "$@"; do
+		if [[ "$p" == '!'* ]]; then
+			if grep -qE -- "${p:1}" <<<"$out"; then echo "FAIL $d: the output has ${p:1}:"; sed 's/^/     /' <<<"$out"; fail=1; return; fi
+		elif ! grep -qE -- "$p" <<<"$out"; then echo "FAIL $d: the output lacks $p:"; sed 's/^/     /' <<<"$out"; fail=1; return; fi
+	done
+	echo "ok   $d"
+}
+
+settle_reset
+steady "$store"; steady "$writer"
+out=$(settle "$store" "$writer")
+sexpect "settle: units that are active and stand still settle, exit 0" "$out" "^unit $store active" "^unit $writer active" '^rc=0$' '!FAILED'
+
+settle_reset
+steady "$store"
+printf 'activating start 0\nactivating start 0\nactive running 0\n' >"$sc/$writer.state"
+out=$(settle "$store" "$writer")
+sexpect "settle: a unit that is slow to start settles once it is active, exit 0" "$out" "^unit $writer active" '^rc=0$'
+
+settle_reset
+steady "$store"
+# active (running) at every sample, but one more restart each time: what is-active would call active
+printf 'active running 1\nactive running 2\nactive running 3\nactive running 4\nactive running 5\nactive running 6\nactive running 7\nactive running 8\nactive running 9\nactive running 10\nactive running 11\nactive running 12\nactive running 13\nactive running 14\nactive running 15\nactive running 16\nactive running 17\nactive running 18\nactive running 19\nactive running 20\nactive running 21\nactive running 22\nactive running 23\nactive running 24\nactive running 25\nactive running 26\nactive running 27\nactive running 28\nactive running 29\nactive running 30\nactive running 31\nactive running 32\nactive running 33\nactive running 34\nactive running 35\nactive running 36\nactive running 37\nactive running 38\nactive running 39\nactive running 40\nactive running 41\n' >"$sc/$writer.state"
+printf 'writer: credential serve: the credentials directory must be owned by the uid of this process\n' >"$sc/$writer.journal"
+out=$(settle "$store" "$writer")
+sexpect "settle: a unit whose NRestarts keeps rising fails, with its journal, though it is 'active' at each sample" "$out" "^unit $writer FAILED: .*restarted [0-9]+ times" "journal $writer: writer: credential serve: the credentials directory must be owned" "^unit $store active" '^rc=1$'
+
+settle_reset
+steady "$store"
+printf 'activating auto-restart 3\n' >"$sc/$writer.state"
+printf 'Started sluis writer\nunavailable: store\n' >"$sc/$writer.journal"
+out=$(settle "$store" "$writer")
+sexpect "settle: a unit that stays 'activating (auto-restart)' fails, with its journal" "$out" "^unit $writer FAILED: .*activating \(auto-restart\)" "journal $writer: unavailable: store" '^rc=1$'
+
+settle_reset
+steady "$store"
+printf 'failed failed 5\n' >"$sc/$writer.state"
+out=$(settle "$store" "$writer")
+sexpect "settle: a failed unit fails" "$out" "^unit $writer FAILED: .*failed" '^rc=1$'
+
+# The locked card board.
+settle_reset
+steady "$card"; steady "$store"
+printf 'activating auto-restart 7\n' >"$sc/$key.state"
+printf 'key-store driver ensure wrapping: failed_precondition: locked\n' >"$sc/$key.journal"
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: the card driver up and key@ stopped by the lock is the outcome 'locked': exit 10, nothing FAILED" "$out" "^unit $key locked: .*boards-unlock" "^unit $card active" "^unit $store active" '^rc=10$' '!FAILED'
+
+settle_reset
+steady "$card"
+printf 'activating auto-restart 7\n' >"$sc/$key.state"
+printf 'key-store driver ensure wrapping: failed_precondition: locked\n' >"$sc/$key.journal"
+printf 'activating auto-restart 4\n' >"$sc/$store.state"
+printf 'dial unix /run/sluis/key/dev/store.sock: connect: no such file or directory\n' >"$sc/$store.journal"
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: a unit that stumbled on key@ while the board is locked waits with it: exit 10" "$out" "^unit $store waits for key@, which is locked" '^rc=10$' '!FAILED'
+
+settle_reset
+steady "$card"
+printf 'activating auto-restart 7\n' >"$sc/$key.state"
+printf 'key-store driver ensure wrapping: failed_precondition: locked\n' >"$sc/$key.journal"
+printf 'activating auto-restart 4\n' >"$sc/$store.state"
+printf 'credential serve: the credentials directory must be owned by the uid of this process\n' >"$sc/$store.journal"
+out=$(settle "$card" "$key" "$store")
+sexpect "settle: a locked board does not hide a unit with a fault of its own: it fails, exit 1, and key@ is still said to be locked" "$out" "^unit $store FAILED" "journal $store: credential serve: the credentials directory" "^unit $key locked" '^rc=1$'
+
+settle_reset
+steady "$card"
+printf 'activating auto-restart 7\n' >"$sc/$key.state"
+printf 'something else broke: failed_precondition: store\n' >"$sc/$key.journal"
+out=$(settle "$card" "$key")
+sexpect "settle: key@ in a loop for another reason than the lock fails, with its journal" "$out" "^unit $key FAILED" "journal $key: something else broke" '^rc=1$' '!^unit [^ ]+ locked'
+
+settle_reset
+printf 'activating auto-restart 2\n' >"$sc/$card.state"
+printf 'activating auto-restart 7\n' >"$sc/$key.state"
+printf 'key-store driver ensure wrapping: failed_precondition: locked\n' >"$sc/$key.journal"
+printf 'card driver: no reader\n' >"$sc/$card.journal"
+out=$(settle "$card" "$key")
+sexpect "settle: no card driver up, no 'locked': both fail" "$out" "^unit $card FAILED" "^unit $key FAILED" '^rc=1$' '!^unit [^ ]+ locked'
+
+settle_reset
+steady "$store"; steady "$key"
+printf 'failed_precondition: locked\n' >"$sc/$key.journal"
+out=$(settle "$store" "$key")
+sexpect "settle: a key@ that is active is active, whatever its old journal says (software boards have no card driver)" "$out" "^unit $key active" '^rc=0$' '!^unit [^ ]+ locked'
 exit "$fail"

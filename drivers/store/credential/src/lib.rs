@@ -131,6 +131,39 @@ impl Dir {
         })
     }
 
+    /// Reads every credential in the directory and drops the values: the names that are credential
+    /// names are each opened and checked by the rules of [`Dir::read`] (owner, mode, type, size),
+    /// the others are not credentials and are left alone. Returns how many were read.
+    ///
+    /// # Errors
+    ///
+    /// The name of the first credential that [`Dir::read`] refuses, and why; never a value.
+    pub fn verify(&self) -> anyhow::Result<usize> {
+        use anyhow::Context as _;
+        // A description of its own, so that the listing does not move the offset of the one held.
+        let fd = rustix::fs::openat(
+            &self.root,
+            ".",
+            OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
+            Mode::empty(),
+        )
+        .context("open the directory again")?;
+        let mut n = 0;
+        for entry in rustix::fs::Dir::read_from(fd).context("list the credentials directory")? {
+            let entry = entry.context("list the credentials directory")?;
+            let Ok(name) = entry.file_name().to_str() else {
+                continue;
+            };
+            if !valid_name(name) {
+                continue;
+            }
+            self.read(name)
+                .map_err(|e| anyhow::anyhow!("credential {name}: {e}"))?;
+            n += 1;
+        }
+        Ok(n)
+    }
+
     /// Reads the credential with this name.
     ///
     /// # Errors
@@ -306,6 +339,7 @@ mod tests {
         t
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn an_owner_other_than_this_uid_is_refused() {
         let me = own_uid();
@@ -335,6 +369,7 @@ mod tests {
     const SYSTEMD_DIR: u32 = 0o40550;
     const SYSTEMD_FILE: u32 = 0o100440;
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn a_root_owned_acl_directory_of_systemd_is_accepted() {
         // A service user; with a mode a plain directory could have, too.
@@ -358,6 +393,7 @@ mod tests {
         assert!(dir_ok(0, 0o40700, 0, false));
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn another_uid_or_a_writable_mode_is_refused_for_root_too() {
         let me = 61_022;
@@ -383,6 +419,7 @@ mod tests {
         assert!(!dir_ok(me, 0o40502, me, true), "own uid, others write");
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn a_file_of_systemd_is_accepted_with_its_acl_and_refused_without() {
         let me = 61_022;
@@ -416,6 +453,7 @@ mod tests {
         );
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn a_file_of_another_uid_or_a_writable_or_open_file_is_refused_for_root_too() {
         let me = 61_022;
@@ -451,6 +489,7 @@ mod tests {
         }
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn a_directory_is_systemds_by_its_inode_once_canonicalised() {
         let t = closed_dir();
@@ -497,6 +536,7 @@ mod tests {
         acl
     }
 
+    /// verifies: REQ-DATA-112
     #[test]
     fn a_file_with_systemds_acl_is_read_in_systemds_directory_and_refused_elsewhere() {
         both(|| {
@@ -527,6 +567,29 @@ mod tests {
                 matches!(elsewhere.read("c"), Err(Error::Rule)),
                 "an ACL outside the directory of systemd is not its grant"
             );
+        });
+    }
+
+    #[test]
+    fn verify_reads_every_credential_and_names_the_first_that_is_refused() {
+        both(|| {
+            let t = closed_dir();
+            for n in ["a", "b"] {
+                std::fs::write(t.path().join(n), b"v").unwrap();
+                std::fs::set_permissions(t.path().join(n), std::fs::Permissions::from_mode(0o400))
+                    .unwrap();
+            }
+            std::fs::write(t.path().join(".hidden"), b"not a credential").unwrap();
+            let dir = Dir::open(t.path()).unwrap();
+            assert_eq!(
+                dir.verify().unwrap(),
+                2,
+                "the hidden file is not a credential"
+            );
+            std::fs::set_permissions(t.path().join("b"), std::fs::Permissions::from_mode(0o440))
+                .unwrap();
+            let e = dir.verify().unwrap_err().to_string();
+            assert_eq!(e, "credential b: rule");
         });
     }
 
