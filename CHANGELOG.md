@@ -1,8 +1,13 @@
 ## Unreleased
 
+## v1.81.0
+
+A minor release: the company-configuration work. A new `policy/tenant` package checks a company's own access rows against an owner's ceiling, by the rows and by their derived effect on the roster, and merges the owners that pass; `sluisctl policy fragment check` runs the check in a company's own repository, with a schema for the fragment and for the ceiling. Non-major dependency updates move with it. Upgrade notes: none.
+
 ### Changed
 
 - **ADR 0078 records how a company access fragment is checked.** A company that states its own people, projects and bindings is held to an owner's ceiling and checked by its derived effect on the roster, and an owner with any violation is excluded alone. Proposed; no code change, and no release is needed for it. **Upgrade:** none.
+- **Non-major dependency updates.** `github.com/truvity/policy` v1.55.1 in the root module, `audit` and the `deploy/pulumi` modules, `github.com/truvity/cnpg/v2` v2.39.0 and `gemaal` v0.26.7 in `audit`, `go.yaml.in/yaml/v3` v3.0.6, and the refreshed lock files of `frontend` and `ts`. **Upgrade:** none.
 
 ### Added
 
