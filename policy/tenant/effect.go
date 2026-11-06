@@ -218,8 +218,9 @@ func (c *checker) groupEffects(before, after *compile.Policy) []string {
 func (c *checker) lostMatchers(prev compile.Group, now *compile.Group) string {
 	var out []string
 
-	for _, m := range gained(now.GitHub, prev.GitHub) {
-		out = append(out, fmt.Sprintf("a GitHub matcher on %q", m.Repository+m.Owner))
+	lost := gained(now.GitHub, prev.GitHub)
+	for i := range lost {
+		out = append(out, fmt.Sprintf("a GitHub matcher on %q", lost[i].Repository+lost[i].Owner))
 	}
 
 	for _, m := range gained(now.ServiceAccounts, prev.ServiceAccounts) {
@@ -238,8 +239,10 @@ func (c *checker) lostMatchers(prev compile.Group, now *compile.Group) string {
 func (c *checker) matcherEffects(
 	path, group string, github []compile.GitHubMatcher, accounts []compile.ServiceAccountMatcher, roles []compile.AWSMatcher,
 ) {
-	for _, m := range github {
+	for i := range github {
+		m := &github[i]
 		owners := []string{}
+
 		if m.Owner != "" {
 			owners = append(owners, m.Owner)
 		}
@@ -385,7 +388,8 @@ func MergeAll(base compile.Model, conv compile.Conventions, owned ...Owned) (com
 	problems := make([][]Violation, len(owners))
 	minted := make([][]string, len(owners))
 
-	for i, o := range owners {
+	for i := range owners {
+		o := &owners[i]
 		problems[i] = Check(&base, o.Owner, o.Fragment)
 
 		vs, groups := effect(compile.Roster, base, conv, o.Owner, o.Fragment)
@@ -401,7 +405,9 @@ func MergeAll(base compile.Model, conv compile.Conventions, owned ...Owned) (com
 	declared := map[string][]int{}
 	named := map[string][]int{}
 
-	for i, o := range owners {
+	for i := range owners {
+		o := &owners[i]
+
 		if o.Owner.Name != "" {
 			named[o.Owner.Name] = append(named[o.Owner.Name], i)
 		}
@@ -449,7 +455,8 @@ func MergeAll(base compile.Model, conv compile.Conventions, owned ...Owned) (com
 
 	var accepted []Fragment
 
-	for i, o := range owners {
+	for i := range owners {
+		o := &owners[i]
 		results[i] = Result{Owner: o.Owner.Name}
 
 		if len(problems[i]) == 0 {
