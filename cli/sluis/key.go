@@ -28,7 +28,8 @@ import (
 //  1. With --kid and --reason it writes the declaration: the payload of a KeyRevocationDeclaration, checked here, to
 //     --out or to standard output. The publisher signs it as it signs the KeyPlan.
 //  2. With --declaration it delivers the signed declaration to key@'s admin socket on the node it runs on, as root.
-//     key@ verifies it and writes the revocations; the command prints what key@ did with each key.
+//     key@ verifies it and writes the revocations; the command prints what key@ did with each key, then confirms that
+//     the keys left the key sets a verifier can be given (keyconfirm.go) and exits 5 when it cannot.
 
 // keyAdminSocketPrefix is the run directory of key@: <prefix>/<boundary>/admin.sock.
 const keyAdminSocketPrefix = "/run/sluis/key"
@@ -50,6 +51,8 @@ type revokeOut struct {
 	Seq     uint64          `json:"seq,omitempty"`
 	Keys    []revokedKeyOut `json:"keys,omitempty"`
 	Audited *bool           `json:"audited,omitempty"`
+	// Confirmation is what the check of the key sets found, after the delivery.
+	Confirmation *confirmationOut `json:"confirmation,omitempty"`
 }
 
 type revokedKeyOut struct {
@@ -72,16 +75,22 @@ func (a *app) revokeCommand() command {
 		declaration string
 		socket      string
 		allowUnk    bool
+		confirm     confirmOptions
+		set         *flag.FlagSet
 	)
 	return command{
 		name: "key revoke",
 		flags: func(fs *flag.FlagSet) {
+			set = fs
 			fs.Var(&kids, "kid", "the RFC 7638 thumbprint of a key to revoke; repeat it for each key")
 			fs.StringVar(&reason, "reason", "", "compromise, suspicion, lost-board or drill")
 			fs.StringVar(&out, "out", "", "write the declaration to this file, not to standard output")
 			fs.BoolVar(&allowUnk, "allow-unknown", false, "let key@ revoke keys that it does not know (a lost board's own keys); without it such a key refuses the declaration")
 			fs.StringVar(&declaration, "declaration", "", "deliver this signed declaration to key@ on this node")
 			fs.StringVar(&socket, "socket", "", "key@'s admin socket; by default "+keyAdminSocketPrefix+"/<boundary>/admin.sock")
+			fs.StringVar(&confirm.issuer, "issuer", "", "the issuer whose key set is checked after the delivery; by default the one entry reports on its socket")
+			fs.StringVar(&confirm.entrySocket, "entry-socket", "", "entry's socket, where its live key set is read; by default "+entrySocketPrefix+"/<boundary>.sock")
+			fs.DurationVar(&confirm.wait, "wait", defaultConfirmWait, "how long to check that the keys left the key sets; 0 checks once")
 		},
 		run: func(ctx context.Context, positional []string, res *result) error {
 			if len(positional) != 0 {
@@ -94,10 +103,22 @@ func (a *app) revokeCommand() command {
 				if len(kids) > 0 || reason != "" || out != "" || allowUnk {
 					return cli.Usage(errors.New("--declaration delivers a signed declaration: it takes no --kid, --reason, --out or --allow-unknown"))
 				}
-				return a.deliverDeclaration(ctx, declaration, socket, res)
+				if err := validateConfirmFlags(confirm); err != nil {
+					return cli.Usage(err)
+				}
+				return a.deliverDeclaration(ctx, declaration, socket, confirm, res)
 			}
 			if socket != "" {
 				return cli.Usage(errors.New("--socket is for --declaration"))
+			}
+			confirmFlag := false
+			set.Visit(func(f *flag.Flag) {
+				if f.Name == "issuer" || f.Name == "entry-socket" || f.Name == "wait" {
+					confirmFlag = true
+				}
+			})
+			if confirmFlag {
+				return cli.Usage(errors.New("--issuer, --entry-socket and --wait are for --declaration"))
 			}
 			return a.writeDeclaration(kids, reason, out, allowUnk, res)
 		},
@@ -172,9 +193,8 @@ func (a *app) writeDeclaration(kids []string, reason, out string, allowUnknown b
 }
 
 // deliverDeclaration sends the signed declaration to key@'s admin socket. key@ decides; the command reports. A
-// revocation is confirmed only when the published key set lacks the key, which this command does not check yet
-// (REQ-KEYS-088), so it says so.
-func (a *app) deliverDeclaration(ctx context.Context, path, socket string, res *result) error {
+// revocation is confirmed only when both key sets lack the keys (REQ-KEYS-088), which the command then checks.
+func (a *app) deliverDeclaration(ctx context.Context, path, socket string, confirm confirmOptions, res *result) error {
 	doc, err := os.ReadFile(path) //nolint:gosec // the operator names the file
 	if err != nil {
 		return fmt.Errorf("key revoke: the declaration cannot be read: %w", err)
@@ -215,8 +235,9 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, res *
 	}
 	audited := msg.GetAudited()
 	o := &revokeOut{Seq: msg.GetSeq(), Audited: &audited}
-	var lines []string
+	var lines, kids []string
 	for _, k := range msg.GetKeys() {
+		kids = append(kids, k.GetKid())
 		o.Keys = append(o.Keys, revokedKeyOut{Kid: k.GetKid(), Already: k.GetAlready(), Unknown: k.GetUnknown(), Pending: k.GetPending()})
 		state := "revoked"
 		switch {
@@ -237,9 +258,17 @@ func (a *app) deliverDeclaration(ctx context.Context, path, socket string, res *
 		_, _ = fmt.Fprintln(a.stderr, res.Text)
 		return errors.New("key revoke: key@ took the declaration in part (store@ failed); deliver the same declaration again to complete it")
 	}
-	_, _ = fmt.Fprintln(a.stderr, "not confirmed: this build does not yet fetch the published key set to check that the keys left it")
+	conf := a.confirmRevoked(ctx, kids, confirm, a.stderr)
+	o.Confirmation = conf
+	lines = append(lines, confirmationLines(conf)...)
+	res.Text = strings.Join(lines, "\n")
 	if !audited {
+		// A failure of the audit comes first; what the check found is still read, on standard error.
+		_, _ = fmt.Fprintln(a.stderr, res.Text)
 		return errors.New("key revoke: the keys are revoked, but key@ could not make the audit fact durable")
+	}
+	if !conf.Confirmed {
+		return notConfirmedError{}
 	}
 	return nil
 }

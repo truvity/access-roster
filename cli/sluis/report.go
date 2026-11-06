@@ -47,6 +47,9 @@ type loginOut struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// exitNotConfirmed is exit code 5 of cli.md: `sluis key revoke` delivered the declaration and could not confirm it.
+const exitNotConfirmed = 5
+
 // finish maps the error of a command to its exit code and prints the end of it.
 func (a *app) finish(res *result, err error, jsonOut bool) int {
 	res.Output = 1
@@ -55,6 +58,9 @@ func (a *app) finish(res *result, err error, jsonOut bool) int {
 		res.ExitCode, res.Outcome = cli.ExitOK, "done"
 	case errors.Is(err, cli.ErrUsage):
 		res.ExitCode, res.Outcome, res.Error = cli.ExitUsage, "usage", err.Error()
+	case errors.As(err, new(notConfirmedError)):
+		// Exit 5 is not a refusal: the declaration was taken, and the check could not find the keys gone.
+		res.ExitCode, res.Outcome, res.Error = exitNotConfirmed, "failed", err.Error()
 	case errors.Is(err, cli.ErrRefused):
 		res.ExitCode, res.Outcome, res.Error = cli.ExitRefused, "refused", err.Error()
 		var re interface{ Reasons() []string }
@@ -70,6 +76,10 @@ func (a *app) finish(res *result, err error, jsonOut bool) int {
 		return res.ExitCode
 	}
 	if err != nil {
+		if res.ExitCode == exitNotConfirmed && res.Text != "" {
+			// The addresses and the verdict are the result; the error line below is for the person.
+			_, _ = fmt.Fprintln(a.stdout, res.Text)
+		}
 		_, _ = fmt.Fprintf(a.stderr, "sluis %s: %v\n", res.Command, err)
 		return res.ExitCode
 	}

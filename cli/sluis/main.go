@@ -45,6 +45,8 @@ type app struct {
 	os string
 	// version is the release this executable belongs to; empty is kits/go/version.
 	version string
+	// confirmEvery is the time between two rounds of the confirmation of `key revoke`; zero is the default.
+	confirmEvery time.Duration
 }
 
 func main() {
@@ -83,7 +85,8 @@ commands:
                            and its layer, version and source (--field PATH limits it)
   node unlock NODE         give the locked card driver of this node its PIN (standard input or --secret-fd)
   key revoke               write a key revocation declaration (--kid, --reason), or deliver a signed one to key@
-                           on this node (--declaration FILE)
+                           on this node (--declaration FILE), then check that the keys left the key
+                           sets (--issuer, --entry-socket, --wait; exit 5 when not confirmed)
   version                  print the version
 
 flags:

@@ -116,7 +116,11 @@ func TestKeyRevokeWritesThenDeliversADeclaration(t *testing.T) {
 	if err := os.WriteFile(signed, doc, 0o600); err != nil { //nolint:gosec // the test's own temporary file
 		t.Fatal(err)
 	}
-	if code := ta.do("key", "revoke", "--boundary", "dev", "--declaration", signed, "--socket", sock, "--output", "json"); code != 0 {
+	// The key sets are the confirmation's own tests; here both lack the keys.
+	pubSrv := &keySetServer{kids: none}
+	issuer := servePublic(t, pubSrv)
+	entrySock := serveEntry(t, &keySetServer{kids: none}, issuer)
+	if code := ta.do("key", "revoke", "--boundary", "dev", "--declaration", signed, "--socket", sock, "--entry-socket", entrySock, "--wait", "0", "--output", "json"); code != 0 {
 		t.Fatalf("exit %d; %s", code, ta.err.String())
 	}
 	if string(f.got) != string(payload) {
@@ -128,13 +132,13 @@ func TestKeyRevokeWritesThenDeliversADeclaration(t *testing.T) {
 	if o["outcome"] != "done" || r["seq"] != float64(42) || len(keys) != 2 || r["audited"] != true {
 		t.Fatalf("object = %v", o)
 	}
-	if !strings.Contains(ta.err.String(), "not confirmed") {
-		t.Fatalf("the command must say the revocation is not confirmed: %q", ta.err.String())
+	if conf, _ := r["confirmation"].(map[string]any); conf["confirmed"] != true {
+		t.Fatalf("object = %v", o)
 	}
 
 	// A fact that key@ could not make durable fails the command, though the keys are revoked.
 	f.audited = false
-	if code := ta.do("key", "revoke", "--boundary", "dev", "--declaration", signed, "--socket", sock); code != 1 {
+	if code := ta.do("key", "revoke", "--boundary", "dev", "--declaration", signed, "--socket", sock, "--entry-socket", entrySock, "--wait", "0"); code != 1 {
 		t.Fatalf("exit %d, want 1 when the audit fact is not durable", code)
 	}
 }
