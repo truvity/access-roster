@@ -87,7 +87,14 @@ func TestEveryActionOfKeyIsInTheTableAndBuildsARecord(t *testing.T) {
 			t.Fatal(err)
 		}
 		md := rec["metadata"].(map[string]any)
-		if md["event_code"] != ev.Action || md["log_name"] != "dev" || rec["class_uid"].(float64) != 6003 {
+		// 0030 "The class mapping": a key created is 3004 Entity Management / 1 Create (a data key, and a wrap of it);
+		// the rest of key@'s facts are 6003 API Activity / 99.
+		wantClass, wantActivity := 6003.0, 99.0
+		if ev.Action == keyd.ActionDataKeyMake || ev.Action == keyd.ActionWrapWrite {
+			wantClass, wantActivity = 3004, 1
+		}
+		if md["event_code"] != ev.Action || md["log_name"] != "dev" || rec["class_uid"].(float64) != wantClass ||
+			rec["activity_id"].(float64) != wantActivity {
 			t.Errorf("%s: record = %v", ev.Action, rec)
 		}
 		wantStatus := 1.0
