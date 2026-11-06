@@ -516,6 +516,35 @@ func (c *Card) Verify() {
 	c.Loggedin = true
 }
 
+// Configure changes the knobs of the card under its lock, for a test that does it while the driver is running.
+func (c *Card) Configure(f func(*Card)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	f(c)
+}
+
+// ResetCount, Attempts and RetriesLeft read the counters under the card's lock, for a test that reads them while the
+// driver, in another goroutine, may be using the card.
+func (c *Card) ResetCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Resets
+}
+
+// Attempts is LoginAttempts, read under the lock.
+func (c *Card) Attempts() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.LoginAttempts
+}
+
+// RetriesLeft is Retries, read under the lock.
+func (c *Card) RetriesLeft() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Retries
+}
+
 // Verified reports whether the card is logged in.
 func (c *Card) Verified() bool {
 	c.mu.Lock()
