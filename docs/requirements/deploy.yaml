@@ -444,6 +444,20 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "tools/gen/units: the native job runs a test that fails above GLIBC_2.34 for every executable of deploy/boards/native.list"}
+  - id: REQ-DEPLOY-038
+    area: DEPLOY
+    statement: "Every distribution form of sluis that is built MUST declare the runtime dependencies that the runtime dependency matrix lists for it."
+    rationale: "A package, an image or a layer that omits a dependency installs and then fails on the host (an image without the card service's library, a board without tar), so one matrix is the list they are all checked against (docs/distribution/dependencies.md)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: partly-built
+    issues: [860]
+    milestone: first-version
+    runtimes: all
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "tools/gen/units: the card packages, the systemd and glibc floors and the rqlite version of the deploy are the ones the matrix names; later forms are checked when built"}
   - id: REQ-DEPLOY-033
     area: DEPLOY
     statement: "The units of a board with SELinux enforcing MUST run with no AVC denial after a deploy and a smoke."

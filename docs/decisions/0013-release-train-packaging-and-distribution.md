@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-03
-**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version))
+**Amended:** 2026-11-04, `sluis config check` runs the store executable as a helper ([One version](/decisions/0013-release-train-packaging-and-distribution/#one-version)); 2026-11-06, the boards run Ubuntu 26.04 and Rocky Linux 10, so the board exception is no longer used ([Supported platforms](/decisions/0013-release-train-packaging-and-distribution/#supported-platforms)), and every distribution form declares its runtime dependencies in one matrix ([Packaging per runtime](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime))
 
 Proposal: [issue #909](https://github.com/truvity/sluis/issues/909).
 
@@ -24,7 +24,7 @@ Two platform facts are hard constraints. The YubiKey driver talks to the smart-c
 - **v2 versions are v2.x.y,** and the main Go module path ends in `/v2` (`github.com/truvity/sluis/v2`). Any further Go module takes the same suffix, and all modules are tagged at one commit.
 - **Before v2.0.0 every release is a pre-release, `v2.0.0-alpha.N`,** tagged on `main`, each a full release of every artifact. Nothing is stable before v2.0.0: no compatibility promise holds between two alphas, images and charts carry no `latest` or other floating tag, and the GitHub release is marked as a pre-release.
 - **One build tool: GoReleaser v2, open-source edition,** for Go and Rust executables alike, with one SBOM generator and one build definition. The Rust executables are built with cargo-zigbuild, current crates and rustls, as static musl binaries, except the binaries that link `libpcsclite`. GoReleaser builds the images from the binaries of the same run with `dockers_v2`, and truvity/ocictl packages and pushes the Helm chart from the same output, with every image pinned by digest. There is no FIPS build in 2.0 ([0006](/decisions/0006-keys-and-sealing/#algorithms)).
-- **The YubiKey driver, and the build of key@ that links `piv-go`, are built in a native job per architecture,** inside the userland of the oldest supported distribution, so they run on every supported glibc. The jobs' outputs join the rest of the release.
+- **The YubiKey driver, and the build of key@ that links `piv-go`, are built in a native job per architecture,** inside a pinned build userland (Ubuntu 22.04, glibc 2.35, which is a build image and not a supported platform), and a test fails the job when an executable asks for a glibc symbol newer than 2.34, the glibc of the oldest supported system, so they run on every supported glibc (`REQ-DEPLOY-032`). The jobs' outputs join the rest of the release.
 - **One command-line tool, `sluis`, with subcommands** for operators and users, such as `sluis config check`, `sluis doctor`, `sluis trust sync` and `sluis key request|install|status`. Root ceremonies belong to [ritueel](https://ritueel.id). Actors, drivers, the node agent and the host service are separate executables, one per process, because each runs as its own user, unit, function or container.
 - **`sluis config check` runs the store executable of the same release as a helper** ([0012](/decisions/0012-the-language-follows-the-executable/#per-actor-table)). The CLI looks for it in this order: its `--helper` flag, the `SLUIS_STORE_HELPER` variable, the install path `../libexec/sluis/actors/store` beside the CLI's own directory, and `store` in that directory. So a host with the `sluis` and `sluis-store` packages uses the package's store, and a tarball that holds both executables in one directory works as it is unpacked. The CLI refuses a helper whose version is not its own. The helper is a Linux executable, so `config check` runs on Linux only.
 
@@ -42,11 +42,12 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 - **Host packages follow the foundation and the modules:**
   - **`sluis`** (the CLI, `sluis agent`, the `sluis trust sync` timer) and **`sluis-node`**;
   - **the foundation:** `sluis-store`, `sluis-key` and `sluis-exporter`, each with its actor and its units;
-  - **`sluis-driver-<name>`,** one per driver executable, with its system dependencies, for example `sluis-driver-yubikey-piv` on pcscd and `sluis-driver-rqlite` shipping `rqlited` under `vendor/`. A driver package depends on the package of its owner. It installs no service for an operator to start: the owner's unit starts the driver and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units));
+  - **`sluis-driver-<name>`,** one per driver executable, with its system dependencies, for example `sluis-driver-yubikey-piv` on pcscd, a CCID driver, libpcsclite and polkit, and `sluis-driver-rqlite` shipping `rqlited` under `vendor/`. A driver package depends on the package of its owner. It installs no service for an operator to start: the owner's unit starts the driver and only the owner can open its socket ([0003](/decisions/0003-units-transports-and-fusion/#units));
   - **the identity module:** `sluis-identity` (the work actors other than `quota`, the first-party adapters included) and `sluis-console`;
   - **the audit module:** `sluis-audit-writer`, which ships the writer and the witness, and `sluis-audit-search`;
   - **the quota module:** `sluis-quota`;
   - **`sluis-host`.**
+- **Every distribution form declares its runtime dependencies,** and the [runtime dependency matrix](/distribution/dependencies/) is the one list of them: a package's `Depends`, `Recommends` and `Suggests`, what a container image installs, what a Lambda layer or extension bundles, and what the boards deploy requires of the board image. A dependency sits on the narrowest package that needs it, so a host that does not run the card driver installs no pcscd. A form that is not built yet is marked so in the matrix (`REQ-DEPLOY-038`).
 - **A module package depends on the foundation packages and on no other module,** and no package depends on a driver package it does not use. A host that runs the foundation with the audit module only installs no work actor of the identity module and no driver it does not run.
 - **Meta-packages exist only for the bare-metal installations that install from packages:** `sluis-install-boards`. Local runs images, so there is no `sluis-install-local`.
 - **`sluis-host` is a separate root host service, mainly for SSH.** It never listens on the network; it fetches the signed SSH principals bundle ([0023](/decisions/0023-certificate-authorities/#ssh)), verifies it, writes it atomically and keeps the last good one.
@@ -59,10 +60,10 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 
 ### Supported platforms
 
-- **Operating systems:** Ubuntu 26.04 LTS, Rocky Linux (the latest stable, 10.x) and Amazon Linux 2023, on amd64 and arm64.
+- **Operating systems:** Ubuntu 26.04 LTS, Rocky Linux (the latest stable, 10.x) and Amazon Linux 2023, on amd64 and arm64. The boards are all aarch64: since 2026-11-06 two run Ubuntu 26.04 and one runs Rocky Linux 10 with SELinux enforcing, on current mainline-based kernels (the distribution's own on Ubuntu, the Kmods SIG kernel on Rocky). The facts per distribution are on [Bare-metal](/runtimes/bare-metal/#supported-operating-systems).
 - **The systemd floor is 252,** the version in Amazon Linux 2023. Generated units may rely on what 252 provides, such as `LoadCredentialEncrypted=` and `ExecPaths=`.
 - **Serverless and Kubernetes have no host distribution.**
-- **A board image older than the floor is a declared exception,** not a supported platform: the units read `LoadCredentialEncrypted=` (systemd 250 and later; the floor is 252), so the boards deploy refuses to write a credential there, and `sluis doctor` warns where its kernel fails the randomness checklist. The exception ends when board images for the supported distributions exist. Key material is never affected: it stays in the card.
+- **A board image older than the floor is a declared exception,** not a supported platform: the units read `LoadCredentialEncrypted=` (systemd 250 and later; the floor is 252), so the boards deploy refuses to write a credential there, and `sluis doctor` warns where its kernel fails the randomness checklist. Until 2026-11-06 the boards ran a vendor image of Ubuntu 22.04 (systemd 249) under this exception; they were reinstalled that day on the supported systems above, so no board uses it now. Key material is never affected: it stays in the card.
 
 ### Distribution
 
@@ -96,7 +97,8 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 - The Lambda limits are a build-time budget: the build fails when a function's drivers need more than three sluis layers. Per-actor functions chain cold starts on a first request, and every data access of a work function is an invoke of store@'s function ([0003](/decisions/0003-units-transports-and-fusion/#transports)); provisioned concurrency on `entry`, `signer` and the holders is the lever if that is too slow.
 - A package per driver means more packages to build and test; the meta-package is the short list an operator installs. A KMS-only host installs no card driver and no pcscd.
 - Prefix scoping on R2 depends on temporary credentials, so the parent token is a per-boundary credential that has to be rotated by the operator.
-- The board exception is the only place where unit credentials are protected by file mode and a private state directory instead of encryption at rest. Key material is never affected: it stays in the card.
+- On every supported platform, the boards included, unit credentials are encrypted at rest under the host key. The board exception, which no board uses since 2026-11-06, was the only place where they were protected by file mode and a private state directory instead. Key material is never affected: it stays in the card.
+- The dependencies of every form are in one matrix that package metadata, images and layers are checked against; until the packages, release images, chart and Lambda artifacts are built, their columns are a specification, and the matrix lists the gaps.
 - R2 is a single provider for downloads; GitHub Releases is the second copy and wins a disagreement.
 - Until the first OpenPGP-signed release, a user checks downloads against checksums and Sigstore attestations (`gh attestation verify`, `cosign verify`), and an apt or dnf repository cannot be verified by its signature. The attestations prove which workflow built a file from which commit, nothing more.
 - GHCR has no OCI referrers API (measured 2026-11-01), so attestations and signatures are found through the fallback tag `sha256-<digest>`; a registry mirror must copy those tags too.
@@ -120,12 +122,14 @@ There are no build profiles: the runtime decides the packaging, and every artifa
 - **A chart per piece, or an umbrella chart with subcharts.** A writer and a reader could come from different releases, and subcharts cannot see the parent's generated schema.
 - **Downloads through redirects, or from GitHub Releases alone.** apt and dnf handle redirects unreliably, and GitHub Releases is not an apt or dnf repository.
 - **Lower the systemd floor to the boards' image.** Every platform would give up encrypted credentials for one vendor image.
+- **Keep the vendor board image as a standing exception.** It cost the boards encrypted credentials and a deploy path for a pcscd without polkit; the boards were reinstalled on the supported systems instead (2026-11-06).
+- **Dependencies written separately in each form's metadata.** The package, the image and the layer would drift apart, as the card path's packages already differ by family; one matrix is the list they are checked against.
 
 ## Follow-ups
 
 - The build system with one version, GoReleaser v2 and the per-architecture jobs: [#860](https://github.com/truvity/sluis/issues/860).
 - Prove that GoReleaser builds the multi-binary Cargo workspace for both architectures before the first Rust code ships: [#947](https://github.com/truvity/sluis/issues/947).
 - The Helm chart, packaged by ocictl with digest-pinned images, in the parity milestone: [#876](https://github.com/truvity/sluis/issues/876).
-- Board OS images for Ubuntu 26.04 and Rocky Linux 10.2, which end the board exception: [#881](https://github.com/truvity/sluis/issues/881).
+- Board OS images for Ubuntu 26.04 and Rocky Linux 10.2 as an artifact of their own. The boards already run both systems (2026-11-06), so the exception has ended before this issue closes: [#881](https://github.com/truvity/sluis/issues/881).
 - OpenPGP release signing and CI upload credentials: [#874](https://github.com/truvity/sluis/issues/874); the keyring package users verify with: [#1013](https://github.com/truvity/sluis/issues/1013); signed apt and rpm repository metadata: [#1074](https://github.com/truvity/sluis/issues/1074).
 - The detail per artifact, what a patch, a minor and a major release may change in the schema, the APIs and the packages, written before v2.0.0: [#1022](https://github.com/truvity/sluis/issues/1022).

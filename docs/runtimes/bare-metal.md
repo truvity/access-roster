@@ -187,7 +187,7 @@ What they do not check, and what is missing:
 
 ### The cgo card driver and glibc
 
-The card driver links `libpcsclite` and is built natively, in the pinned Ubuntu 22.04 userland (glibc 2.35), so it asks for no symbol newer than the build userland has. `native-build.sh` prints the newest symbol it asks for, and a Go test that the native job runs on the executables (`TestNativeExecutablesStayWithinTheGlibcFloor`) fails above `GLIBC_2.34` (MEASURED 2026-11-04: the newest symbol is `GLIBC_2.34`), which is the glibc of Amazon Linux 2023 and so below every supported system. A change that needs a newer symbol raises that line on purpose, and this page with it. `libpcsclite.so.1` comes from the distribution's own package (`libpcsclite1`, `pcsc-lite-libs`), so the card driver depends on nothing else.
+The card driver links `libpcsclite` and is built natively, in the pinned Ubuntu 22.04 userland (glibc 2.35), so it asks for no symbol newer than the build userland has. `native-build.sh` prints the newest symbol it asks for, and a Go test that the native job runs on the executables (`TestNativeExecutablesStayWithinTheGlibcFloor`) fails above `GLIBC_2.34` (MEASURED 2026-11-04: the newest symbol is `GLIBC_2.34`), which is the glibc of Amazon Linux 2023 and so below every supported system. A change that needs a newer symbol raises that line on purpose, and this page with it. `libpcsclite.so.1` comes from the distribution's own package (`libpcsclite1`, `pcsc-lite-libs`), so the card driver depends on nothing else. Every dependency of a board and of the packages, with the package names per family, is in the [runtime dependency matrix](/distribution/dependencies/).
 
 ### Ubuntu 22.04 boards are gone
 
