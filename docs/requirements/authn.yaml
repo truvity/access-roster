@@ -781,6 +781,7 @@ requirements:
     verification:
       - {kind: conformance-suite, ref: "FIDO-CT"}
       - {kind: integration-test, ref: "counter regression negative test for a hardware-attested and a hardware credential, and a synced credential with counter 0 that is accepted"}
+      - {kind: integration-test, ref: "a device-bound authenticator that returns counter 0 on every assertion is accepted (0 then 0), and a counter that was above 0 and falls is refused"}
   - id: REQ-AUTHN-020
     area: AUTHN
     statement: "The page that follows an identifier entered for passkey sign-in MUST NOT reveal whether the identifier exists."
@@ -1260,8 +1261,8 @@ requirements:
       - {kind: integration-test, ref: "form post page CSP test: form-action is the scheme, host and port of that response redirect_uri"}
   - id: REQ-AUTHN-080
     area: AUTHN
-    statement: "sluis MUST store a class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check with each staff passkey when it is registered."
-    rationale: "Policy can ask for a hardware key only if the credential says what it is, and the class cannot be derived later from a stored key (ADR 0017)."
+    statement: "sluis MUST store a class (hardware-attested, hardware or synced), the AAGUID, the raw attestation object and the outcome of the attestation check with each staff passkey when it is registered."
+    rationale: "Policy can ask for a hardware key only if the credential says what it is, and the stored attestation object lets the verifier of the parity milestone classify a key enrolled before it (ADR 0017)."
     level: MUST
     source: design-decision
     status: planned
@@ -1271,10 +1272,10 @@ requirements:
       - {id: ST-59, section: "6.1", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "registration test with a key that sets the backup eligible flag, one that does not, and one that sends an attestation statement: the stored class follows each"}
+      - {kind: integration-test, ref: "registration test with a key that sets the backup eligible flag, one that does not, and one with an attestation statement: the class follows each and the raw object is stored"}
   - id: REQ-AUTHN-081
     area: AUTHN
-    statement: "sluis MUST give a staff passkey the class hardware-attested only when its attestation statement verified to a pinned vendor attestation root, its AAGUID is on the allowlist and its backup eligible flag is clear."
+    statement: "sluis MUST give a staff passkey the class hardware-attested only when its attestation statement verified to a pinned vendor attestation root that the FIDO Metadata Service entry of its AAGUID lists, its AAGUID is on the allowlist and its backup eligible flag is clear."
     rationale: "Only an attested, device-bound key proves that a software copy or a synced credential is not in use (ADR 0017)."
     level: MUST
     source: design-decision
@@ -1285,7 +1286,7 @@ requirements:
       - {id: ST-59, section: "6.5", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "registration test with a missing, an invalid and a valid attestation statement, an AAGUID off the allowlist, and a valid statement with the backup eligible flag set"}
+      - {kind: integration-test, ref: "registration test: a missing, an invalid and a valid statement, an AAGUID off the allowlist, BE set, and a chain to a pinned root that the AAGUID metadata does not list"}
   - id: REQ-AUTHN-082
     area: AUTHN
     statement: "The allowlist of AAGUIDs for the hardware-attested class MUST be installation config that a tenant can narrow and cannot widen."
@@ -1359,7 +1360,7 @@ requirements:
       - {kind: integration-test, ref: "step-up test: a synced passkey, a hardware-attested assertion older than max_age and one within it, for a signing and a key-administration grant"}
   - id: REQ-AUTHN-087
     area: AUTHN
-    statement: "sluis MUST count an upstream sign-in toward the hardware-attested tier only through an amr or acr value that the mapping table of the connection names, and never above the ceiling of the connection."
+    statement: "sluis MUST count an upstream sign-in toward the hardware-attested tier, for any grant except signing and key administration, only through an amr or acr value that the mapping table of the connection names, and never above the ceiling of the connection."
     rationale: "An upstream claim is the statement of the upstream, absent unless requested, and a missing value is unknown and refused (ADR 0017)."
     level: MUST
     source: design-decision
@@ -1371,7 +1372,7 @@ requirements:
       - {id: ST-28, section: "2", depth: Partial}
     issues: [916, 1329, 1154]
     verification:
-      - {kind: integration-test, ref: "federated test: a mapped hwk within the ceiling counts, an unmapped value and a missing amr do not, and a value above the ceiling is capped"}
+      - {kind: integration-test, ref: "federated test: a mapped hwk within the ceiling counts; an unmapped value, a missing amr and a signing or key-administration grant do not; a value above the ceiling is capped"}
   - id: REQ-AUTHN-088
     area: AUTHN
     statement: "A token issued after a staff passkey assertion MUST carry the amr value swk only when the class of the credential is synced."
@@ -1388,7 +1389,7 @@ requirements:
       - {kind: integration-test, ref: "token test for each class: only a synced assertion yields swk"}
   - id: REQ-AUTHN-089
     area: AUTHN
-    statement: "sluis MUST refuse a staff passkey assertion whose backup eligible flag differs from the one registered, or whose backup state flag is set while the backup eligible flag is clear."
+    statement: "sluis MUST refuse a staff passkey registration or assertion whose backup state flag is set while the backup eligible flag is clear, and an assertion whose backup eligible flag differs from the one registered."
     rationale: "The backup eligible flag is fixed for the life of a credential, so a change shows a fault or a forgery, and a class that could drift would be no control (ADR 0017)."
     level: MUST
     source: design-decision
@@ -1399,4 +1400,142 @@ requirements:
       - {id: ST-59, section: "6.1.3", depth: Partial}
     issues: [885]
     verification:
-      - {kind: integration-test, ref: "assertion test with a changed backup eligible flag and with the backup state flag set alone"}
+      - {kind: integration-test, ref: "registration and assertion tests with the backup state flag set alone, and an assertion test with a changed backup eligible flag"}
+  - id: REQ-AUTHN-091
+    area: AUTHN
+    statement: "sluis MUST require a fresh hardware-attested assertion by the person to register any further credential for a person who holds a hardware-attested key."
+    rationale: "Attestation proves that a key is device-bound and not whose device it is, so a stolen synced-passkey session must not be able to add an attacker's key (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "7.1", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "registration test for a person with a hardware key: a synced session, an upstream sign-in and a stale hardware assertion are refused, and a fresh hardware assertion is accepted"}
+  - id: REQ-AUTHN-092
+    area: AUTHN
+    statement: "sluis MUST accept the first hardware-attested key of a person only with the approval of an operator who holds the identity-administration grant, is another person, and approves with a fresh hardware-attested assertion."
+    rationale: "A first hardware key has no earlier hardware key to vouch for it, so a second person must (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "7.1", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "enrolment test: no approval, self-approval, an approver without the grant or with a stale assertion, and a directory-only approval are refused; a valid approval is accepted"}
+  - id: REQ-AUTHN-093
+    area: AUTHN
+    statement: "sluis MUST write an audit record for every enrolment of a hardware-attested key and every refusal of one."
+    rationale: "An unexpected hardware key is a way to the privileged tier and must leave a trace (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "audit test: a successful and a refused enrolment each write one record that names the person, the approver, the AAGUID and the outcome"}
+  - id: REQ-AUTHN-094
+    area: AUTHN
+    statement: "sluis MUST raise an alert to the operators for every enrolment of a hardware-attested key."
+    rationale: "An unexpected hardware key is an incident until proven otherwise (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "alert test: a successful enrolment raises one alert to the operators"}
+  - id: REQ-AUTHN-095
+    area: AUTHN
+    statement: "sluis MUST meet a signing grant or a key-administration grant only with an assertion that the boundary which signs or holds the key verified itself, and never with a claim of an upstream."
+    rationale: "A compromised front or upstream must not be able to claim a fresh hardware key in the boundary that holds the key (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-24, section: "3", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "step-up test: acr and amr from an upstream mapping are refused for a signing and a key-administration grant; an assertion that boundary verified is accepted"}
+  - id: REQ-AUTHN-096
+    area: AUTHN
+    statement: "sluis MUST re-verify the stored attestation object of a staff passkey when the verifier or the attestation metadata changes, and set the class from the result."
+    rationale: "A key enrolled before the verifier existed must be classified without a new registration, and a revoked model must lose its class (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "6.5", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "re-verification test: a stored object from the first version is raised to hardware-attested when the verifier is on, and a key whose root left the bundle falls to hardware"}
+  - id: REQ-AUTHN-097
+    area: AUTHN
+    statement: "sluis MUST refuse the class hardware-attested to a staff passkey whose attestation certificate lacks the id-fido-gen-ce-aaguid extension or carries a value that differs from the AAGUID in the authenticator data."
+    rationale: "The certificate must name the same model that the authenticator claims, or a chain of one model could vouch for another (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "8.2.1", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "registration test with an AAGUID extension that matches, one that differs and one that is missing"}
+  - id: REQ-AUTHN-098
+    area: AUTHN
+    statement: "sluis MUST NOT give a staff passkey the class hardware-attested on self attestation, on the none format or on a statement with no certificate chain."
+    rationale: "Only a chain to a vendor key proves what the authenticator is (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "6.5", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "registration test with self attestation, none and a statement with no chain: each yields the class hardware"}
+  - id: REQ-AUTHN-099
+    area: AUTHN
+    statement: "sluis MUST set the class of the stored credentials of a model whose attestation key the metadata marks revoked or compromised to hardware at the next metadata refresh."
+    rationale: "A compromised vendor key lets a software copy pass as hardware, so the models it vouches for lose the tier (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "6.5", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "metadata refresh test: the stored credentials of a model marked compromised or revoked fall to hardware"}
+  - id: REQ-AUTHN-100
+    area: AUTHN
+    statement: "sluis MUST NOT give the class hardware-attested to a new staff passkey of a model whose attestation key the metadata marks revoked or compromised."
+    rationale: "A compromised vendor key lets a software copy pass as hardware (ADR 0017)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: ST-59, section: "6.5", depth: Partial}
+    issues: [885]
+    verification:
+      - {kind: integration-test, ref: "registration test with a model marked compromised, one marked revoked and one in good standing"}
