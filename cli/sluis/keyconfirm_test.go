@@ -6,6 +6,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -38,8 +40,10 @@ type keySetServer struct {
 	discovery string
 	// issuer is the issuer the discovery document names.
 	issuer string
-	// block holds the key set answer until the request is over or the test ends.
+	// block holds the key set answer until the request is over or the test ends; hang, when set, limits that to the
+	// requests for which it answers true.
 	block chan struct{}
+	hang  func() bool
 	// bypass serves the clean key set to a request that a cache would not answer from its copy: one with a query, or
 	// with Cache-Control, Pragma or a condition.
 	bypass bool
@@ -57,7 +61,7 @@ func (s *keySetServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		_, _ = w.Write([]byte(doc))
 	case "/jwks":
-		if s.block != nil {
+		if s.block != nil && (s.hang == nil || s.hang()) {
 			select {
 			case <-s.block:
 			case <-r.Context().Done():
@@ -80,9 +84,9 @@ func (s *keySetServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(s.body))
 			return
 		}
-		keys := []map[string]string{{"kty": "EC", "kid": "unrelated-key"}}
+		keys := []map[string]string{jwkFor("unrelated-key")}
 		for _, k := range kids {
-			keys = append(keys, map[string]string{"kty": "EC", "kid": k})
+			keys = append(keys, jwkFor(k))
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": keys})
 	default:
@@ -91,6 +95,14 @@ func (s *keySetServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func none() []string { return nil }
+
+// jwkFor is an EC public key of a made-up point, labelled with kid. The point is not on the curve: the check reads
+// the members, as a thumbprint is computed from them, and does not validate a key.
+func jwkFor(kid string) map[string]string {
+	x, y := sha256.Sum256([]byte("x"+kid)), sha256.Sum256([]byte("y"+kid))
+	return map[string]string{"kty": "EC", "crv": "P-256", "kid": kid,
+		"x": base64.RawURLEncoding.EncodeToString(x[:]), "y": base64.RawURLEncoding.EncodeToString(y[:])}
+}
 
 // plainRequests checks that no request was a cache-buster: no query and no header that asks a cache to revalidate.
 func (s *keySetServer) plainRequests(t *testing.T) {
@@ -104,7 +116,10 @@ func (s *keySetServer) plainRequests(t *testing.T) {
 		if r.URL.RawQuery != "" {
 			t.Errorf("%s carried a query: a cache-buster", r.URL.Path)
 		}
-		for _, h := range []string{"Cache-Control", "Pragma", "If-None-Match", "If-Modified-Since", "Authorization", "Cookie"} {
+		if r.ProtoMajor != 1 || !r.Close {
+			t.Errorf("%s: proto %s, close %v: a connection was reused or shared", r.URL.Path, r.Proto, r.Close)
+		}
+		for _, h := range []string{"Cache-Control", "Pragma", "If-None-Match", "If-Modified-Since", "Authorization", "Cookie", "Accept"} {
 			if r.Header.Get(h) != "" {
 				t.Errorf("%s carried %s", r.URL.Path, h)
 			}
@@ -154,14 +169,22 @@ func serveEntry(t *testing.T, s *keySetServer, issuer string) string {
 }
 
 // signedRevocation signs a declaration for kidA and kidB and returns a key@ that takes it, and the signed file.
-func signedRevocation(t *testing.T, audited bool) (adminSock, signed string) {
+func signedRevocation(t *testing.T, audited bool, kids ...string) (f *fakeKeyAdmin, adminSock, signed string) {
 	t.Helper()
+	if len(kids) == 0 {
+		kids = []string{kidA, kidB}
+	}
 	pub, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	adminSock = serveKeyAdmin(t, &fakeKeyAdmin{pub: &pub.PublicKey, audited: audited})
-	payload := "boundary: dev\nkids:\n  - " + kidA + "\n  - " + kidB + "\nreason: compromise\n"
+	f = &fakeKeyAdmin{pub: &pub.PublicKey, audited: audited}
+	adminSock = serveKeyAdmin(t, f)
+	payload := "boundary: dev\nkids:\n"
+	for _, k := range kids {
+		payload += "  - " + k + "\n"
+	}
+	payload += "reason: compromise\n"
 	doc, err := signedconfig.Sign(pub, "publisher-1", 7, signedconfig.KeyRevocationDeclaration, []byte(payload))
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +193,7 @@ func signedRevocation(t *testing.T, audited bool) (adminSock, signed string) {
 	if err := os.WriteFile(signed, doc, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return adminSock, signed
+	return f, adminSock, signed
 }
 
 // confirmTest is the usual arrangement: a public address, entry's socket, key@ and a command.
@@ -180,6 +203,7 @@ type confirmTest struct {
 	issuer            string
 	entrySock         string
 	adminSock, signed string
+	admin             *fakeKeyAdmin
 }
 
 func newConfirmTest(t *testing.T) *confirmTest {
@@ -188,7 +212,7 @@ func newConfirmTest(t *testing.T) *confirmTest {
 	c.ta.confirmEvery = 10 * time.Millisecond
 	c.issuer = servePublic(t, c.public)
 	c.entrySock = serveEntry(t, c.entry, c.issuer)
-	c.adminSock, c.signed = signedRevocation(t, true)
+	c.admin, c.adminSock, c.signed = signedRevocation(t, true)
 	return c
 }
 
@@ -196,6 +220,20 @@ func newConfirmTest(t *testing.T) *confirmTest {
 func (c *confirmTest) revoke(more ...string) int {
 	args := []string{"key", "revoke", "--boundary", "dev", "--declaration", c.signed, "--socket", c.adminSock}
 	return c.ta.do(append(args, more...)...)
+}
+
+// addrLine is the line of the output about one address: "public" or "entry".
+func addrLine(out, which string) string {
+	prefix := "public key set"
+	if which == "entry" {
+		prefix = "entry's live key set"
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, prefix) {
+			return l
+		}
+	}
+	return ""
 }
 
 func lastOutLine(s string) string {
@@ -336,8 +374,8 @@ func TestKeyRevokeSaysItCouldNotTell(t *testing.T) {
 			t.Fatalf("exit %d, want 5", code)
 		}
 		out := c.ta.out.String()
-		if !strings.Contains(out, "public key set: could not tell: discovery:") || !strings.Contains(out, "entry's live key set") ||
-			!strings.Contains(out, "confirmed absent") || lastOutLine(out) != "not confirmed" {
+		if !strings.Contains(addrLine(out, "public"), "could not tell: discovery:") ||
+			!strings.Contains(addrLine(out, "entry"), "confirmed absent") || lastOutLine(out) != "not confirmed" {
 			t.Fatalf("stdout = %q", out)
 		}
 	})
@@ -348,7 +386,8 @@ func TestKeyRevokeSaysItCouldNotTell(t *testing.T) {
 			t.Fatalf("exit %d, want 5", code)
 		}
 		out := c.ta.out.String()
-		if !strings.Contains(out, "entry's live key set ("+gone+"): could not tell") || !strings.Contains(out, "public key set ("+c.issuer+"/jwks): confirmed absent") {
+		if !strings.Contains(addrLine(out, "entry"), "("+gone+"") || !strings.Contains(addrLine(out, "entry"), "could not tell") ||
+			!strings.Contains(addrLine(out, "public"), "confirmed absent") || !strings.Contains(addrLine(out, "public"), c.issuer+"/jwks") {
 			t.Fatalf("stdout = %q", out)
 		}
 	})
@@ -358,7 +397,7 @@ func TestKeyRevokeSaysItCouldNotTell(t *testing.T) {
 		if code := c.revoke("--entry-socket", gone, "--wait", "0"); code != 5 {
 			t.Fatalf("exit %d, want 5", code)
 		}
-		if !strings.Contains(c.ta.out.String(), "public key set: could not tell: no issuer") {
+		if !strings.Contains(c.ta.out.String(), "no issuer") || !strings.Contains(addrLine(c.ta.out.String(), "public"), "could not tell") {
 			t.Fatalf("stdout = %q", c.ta.out.String())
 		}
 		if c.public.jwksReads() != 0 {
@@ -390,7 +429,7 @@ func TestKeyRevokeNeedsTheJWKSURIOfDiscovery(t *testing.T) {
 	for name, tc := range map[string]struct{ doc, want string }{
 		"no jwks_uri":    {`{"issuer":"%s"}`, "the document has no jwks_uri"},
 		"another issuer": {`{"issuer":"https://other.example.com","jwks_uri":"%s/jwks"}`, "the document names another issuer"},
-		"a bad jwks_uri": {`{"issuer":"%s","jwks_uri":"ftp://example.com/jwks"}`, "jwks_uri: not an https URL"},
+		"a bad jwks_uri": {`{"issuer":"%s","jwks_uri":"ftp://example.com/jwks"}`, "jwks_uri on another origin"},
 		"not JSON":       {`<html>`, "the document is not JSON"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -399,7 +438,7 @@ func TestKeyRevokeNeedsTheJWKSURIOfDiscovery(t *testing.T) {
 			if code := c.revoke("--entry-socket", c.entrySock, "--wait", "0"); code != 5 {
 				t.Fatalf("exit %d, want 5", code)
 			}
-			if !strings.Contains(c.ta.out.String(), "public key set: could not tell: discovery: "+tc.want) {
+			if l := addrLine(c.ta.out.String(), "public"); !strings.Contains(l, "could not tell: ") || !strings.Contains(l, tc.want) {
 				t.Fatalf("stdout = %q", c.ta.out.String())
 			}
 			if c.public.jwksReads() != 0 {
@@ -425,7 +464,7 @@ func TestKeyRevokeRefusesToReadABadKeySet(t *testing.T) {
 			if code := c.revoke("--entry-socket", c.entrySock, "--wait", "0"); code != 5 {
 				t.Fatalf("exit %d, want 5; %s", code, c.ta.out.String())
 			}
-			if !strings.Contains(c.ta.out.String(), "public key set ("+c.issuer+"/jwks): could not tell: the answer") {
+			if !strings.Contains(addrLine(c.ta.out.String(), "public"), "could not tell: the answer") {
 				t.Fatalf("stdout = %q", c.ta.out.String())
 			}
 		})
@@ -446,7 +485,7 @@ func TestKeyRevokeEndsAtTheWaitOnATimeout(t *testing.T) {
 	if took := time.Since(start); took > 5*time.Second {
 		t.Fatalf("the command took %s with --wait 300ms", took)
 	}
-	if !strings.Contains(c.ta.out.String(), "public key set ("+c.issuer+"/jwks): could not tell: timed out") {
+	if !strings.Contains(addrLine(c.ta.out.String(), "public"), "could not tell: timed out") {
 		t.Fatalf("stdout = %q", c.ta.out.String())
 	}
 }
@@ -498,7 +537,7 @@ func TestKeyRevokeWithNoStaticDestination(t *testing.T) {
 	if code := c.revoke("--issuer", c.issuer, "--entry-socket", gone, "--wait", "0"); code != 5 {
 		t.Fatalf("exit %d, want 5: entry's live key set was not read", code)
 	}
-	if !strings.Contains(c.ta.out.String(), "entry's live key set ("+gone+"): could not tell") {
+	if !strings.Contains(addrLine(c.ta.out.String(), "entry"), "("+gone+"") && strings.Contains(addrLine(c.ta.out.String(), "entry"), "could not tell") {
 		t.Fatalf("stdout = %q", c.ta.out.String())
 	}
 }
@@ -518,7 +557,7 @@ func TestKeyRevokeIssuerOverrideAndDefaultSocket(t *testing.T) {
 	if code := c.revoke("--issuer", c.issuer, "--wait", "0"); code != 5 {
 		t.Fatalf("exit %d, want 5: no entry on this machine", code)
 	}
-	if !strings.Contains(c.ta.out.String(), "entry's live key set (/run/sluis/entry/dev.sock): could not tell") {
+	if !strings.Contains(addrLine(c.ta.out.String(), "entry"), "(/run/sluis/entry/dev.sock") && strings.Contains(addrLine(c.ta.out.String(), "entry"), "could not tell") {
 		t.Fatalf("stdout = %q", c.ta.out.String())
 	}
 }

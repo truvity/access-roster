@@ -18,6 +18,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	"github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1/keyv2alpha1connect"
@@ -108,6 +109,13 @@ func TestADeclarationRevokesTheKeysItNames(t *testing.T) {
 	if len(items) != 1 || it.GetTargetKind() != targetKid || it.GetTarget() != token || it.GetReasonCode() != "compromise" ||
 		!it.GetRevokedAt().AsTime().Equal(e.clock.now()) {
 		t.Fatalf("items = %v", items)
+	}
+	// The item is dated at the declaration and holds nothing else: no later effective time, no pre-publication or
+	// retention period (REQ-KEYS-087). The key is refused at once, with the clock where it was.
+	populated := 0
+	it.ProtoReflect().Range(func(protoreflect.FieldDescriptor, protoreflect.Value) bool { populated++; return true })
+	if populated != 4 {
+		t.Fatalf("the item has %d fields set, want the four of a plain revocation: %v", populated, it)
 	}
 	n.refusal(t, n.signFor("token-signing", tokenIn), connect.CodePermissionDenied, reasonRevoked, targetKid)
 	if err := n.signFor("audit-log", logIn); err != nil {
