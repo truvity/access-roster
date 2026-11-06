@@ -324,7 +324,7 @@ Schema v1 has only the keys that code of the first working version reads ([princ
 
 #### `scopes`
 
-A scope is an environment, a company or `all` ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). The document does not say which; a scope named like a boundary or a tenant means that boundary or tenant by convention, which is how the delegation policy of [The grants of one tenant](#the-grants-of-one-tenant) reads a company's scope. `all` is an ordinary name with no meaning of its own: `all:x:admin` is a grant name like any other, and never implies `dev:x:admin`.
+A scope is an environment, a company or `all` ([0020](/decisions/0020-grant-vocabulary-and-token-claims/#grant-names-and-the-vocabulary)). The document does not say which; a scope named like a boundary or a tenant means that boundary or tenant by convention, which is how the delegation policy of [The grants of one tenant](#the-grants-of-one-tenant) reads a company's scope. This is the convention of the first working version; at the parity milestone the delegation policy reads a tenant-to-scope list that config declares, and a scope that only shares a tenant's name is not claimed by it ([ADR 0007](/decisions/0007-policy-and-sealed-grants/#template-links), [REQ-POLICY-022](/requirements/policy/#REQ-POLICY-022)). `all` is an ordinary name with no meaning of its own: `all:x:admin` is a grant name like any other, and never implies `dev:x:admin`.
 
 | Field | Required | Meaning |
 |---|---|---|
