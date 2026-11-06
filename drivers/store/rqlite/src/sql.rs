@@ -522,6 +522,41 @@ mod tests {
         all.extend(n.trim_log(1));
         assert!(all.len() > 20, "the sweep saw {} statements", all.len());
 
+        // A new builder cannot escape the scan: every public function of this file is named below, or the test fails.
+        let covered = [
+            "new",
+            "ddl",
+            "schema_version",
+            "get",
+            "query",
+            "log_head",
+            "log_floor",
+            "log_after",
+            "guard",
+            "log_delete",
+            "delete_index",
+            "delete_item",
+            "upsert",
+            "insert_index",
+            "log_put",
+            "sweep_expired",
+            "trim_log",
+        ];
+        let src = include_str!("sql.rs");
+        let production = &src[..src.find("#[cfg(test)]").unwrap()];
+        let declared: Vec<&str> = production
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("pub fn "))
+            .map(|rest| rest.split(['(', '<']).next().unwrap())
+            .collect();
+        assert_eq!(declared.len(), covered.len(), "{declared:?}");
+        for name in &declared {
+            assert!(
+                covered.contains(name),
+                "`Ns::{name}` is not in the clock scan: add it to the statements above and to `covered`"
+            );
+        }
+
         let banned = [
             "now",
             "current_timestamp",

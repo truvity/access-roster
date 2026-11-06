@@ -600,10 +600,14 @@ async fn delete_then_re_create_while_watching(rig: &Rig) {
 
 async fn expiry_then_re_create(rig: &Rig) {
     let from = rig.position().await;
-    rig.write(operation(Verb::CREATE, "node-a/x1", b"first", Some(1)))
+    // Made to last, then shortened by the update (which sets the expiry from its own clock): the 1 s starts at the
+    // update, so a slow runner between the two calls cannot let the item expire before the version-2 write.
+    rig.write(operation(Verb::CREATE, "node-a/x1", b"first", Some(600)))
         .await;
-    rig.write(operation(Verb::UPDATE, "node-a/x1", b"first-again", Some(1)).with_version(1))
+    let updated = rig
+        .write(operation(Verb::UPDATE, "node-a/x1", b"first-again", Some(1)).with_version(1))
         .await;
+    assert_eq!(updated, 2, "{}: the update after the create", rig.name);
     tokio::time::sleep(Duration::from_millis(1400)).await;
     (rig.sweep)().await;
     let again = rig
