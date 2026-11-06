@@ -246,7 +246,7 @@ func TestRealRegistries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m.kinds) != 112 {
+	if len(m.kinds) != 113 {
 		t.Errorf("%d kinds", len(m.kinds))
 	}
 	joined := strings.Join(m.ttlNotes, "\n")

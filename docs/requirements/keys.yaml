@@ -176,7 +176,8 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: v1-parity
+    milestone: first-version
+    issues: [962]
     runtimes: all
     standards: []
     features: ["design"]
@@ -1028,9 +1029,9 @@ requirements:
     status: planned
     milestone: first-version
     runtimes: all
-    actors: [signer]
+    actors: [signer, exporter]
     standards: []
-    issues: [774]
+    issues: [774, 962]
     verification:
       - {kind: integration-test, ref: "a rotation writes a new SigningRing; the exported key set carries the new key and the old one for the overlap"}
 
@@ -1390,28 +1391,31 @@ requirements:
     rationale: "A healthy key needs those periods to move without breaking a verifier, and a stolen key must not wait for them (ADR 0041)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: no-proving-test
     milestone: first-version
-    issues: [1361]
+    issues: [1361, 1362]
     runtimes: all
+    actors: [key]
     standards: []
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "declare a key: a KeyRevocation item exists at once and the 65 minutes of retention are not applied"}
   - id: REQ-KEYS-088
     area: KEYS
-    statement: "sluis key revoke MUST report a revocation as not confirmed until it has fetched the published key set and found the kid absent."
-    rationale: "A check that cannot run is reported as not run, and a stale edge copy must not look like a finished revocation (ADR 0041)."
+    statement: "sluis key revoke MUST report a revocation as not confirmed until it has fetched the published key set from its public address and the live key set of entry and found the kid absent from both."
+    rationale: "A check that cannot run is reported as not run, a stale edge copy must not look like a finished revocation, and the edge falls back to the live key set (ADR 0041, ADR 0009)."
     level: MUST
     source: design-decision
     status: planned
     milestone: first-version
-    issues: [1361]
+    issues: [1361, 1362]
     runtimes: all
     standards: []
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "the edge serves a stale key set after a revocation: the command prints not confirmed, and confirmed once the set lacks the kid"}
+      - {kind: integration-test, ref: "the public address lacks the kid and the live key set of entry still lists it: the command prints not confirmed"}
   - id: REQ-KEYS-089
     area: KEYS
     statement: "A replacement for a revoked token-signing key MUST sign at once when no other key of the issuer is active, with its key set published and purged at the edge before its first token."
@@ -1426,7 +1430,7 @@ requirements:
     standards: []
     features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke the only key: the replacement is active in the ring and signs once entry can list it; a normal rotation still waits. Edge purge pending (REQ-KEYS-088)"}
+      - {kind: integration-test, ref: "revoke the only key: the replacement is active in the ring and signs once entry can list it; a normal rotation still waits. The edge purge is REQ-EXPORT-021"}
   - id: REQ-KEYS-090
     area: KEYS
     statement: "The signer of any node and the operator command MUST each be able to relay an operator's declaration to key@ so that it revokes the token-signing key of any node."
@@ -1671,19 +1675,32 @@ requirements:
       - {kind: integration-test, ref: "the owner node of a revoked key tries to make it active and to sign: both refused"}
   - id: REQ-KEYS-107
     area: KEYS
-    statement: "exporter@ and entry MUST omit every kid that KeyRevocation lists from every key set they publish."
-    rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key (ADR 0041)."
+    statement: "entry and signer MUST omit every kid that KeyRevocation lists from every key set they serve."
+    rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key; the static key set of exporter@ is REQ-EXPORT-020 (ADR 0041)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     issues: [1361, 1362]
     runtimes: all
     standards: []
-    features: ["design"]
     verification:
-      - {kind: integration-test, ref: "revoke a key: the next published key set, static and live, lacks its kid, and a token it signed fails against the set"}
+      - {kind: integration-test, ref: "revoke a key: the next live key set lacks its kid, and a token it signed fails against the set"}
+  - id: REQ-KEYS-116
+    area: KEYS
+    split_from: REQ-KEYS-085
+    statement: "signer MUST NOT make a token-signing key active while the report of exporter@ for the key set is not published or is not fresh."
+    rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it (ADR 0009)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: first-version
+    issues: [962, 1362]
+    runtimes: all
+    actors: [signer]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "the ExportReport of the key set is unverified, absent or older than the stated age: a pre-published key stays pre-published; it is published again: the key becomes active once the lead time has passed"}
   - id: REQ-KEYS-108
     area: KEYS
     statement: "key@ MUST write a KeyRevocation item only on a key revocation declaration for its boundary that a publisher key of its bootstrap file signed."

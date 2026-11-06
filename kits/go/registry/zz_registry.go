@@ -355,6 +355,9 @@ var kinds = []Kind{
 	{Name: "PinRelease", Segment: "pin-release", Class: "temp", Scope: "boundary", Treatment: "plain", Writer: "key",
 		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: true,
 		TTLDefault: 5 * time.Minute, TTLMax: 15 * time.Minute, Indexes: nil},
+	{Name: "ExportReport", Segment: "export-report", Class: "temp", Scope: "boundary", Treatment: "plain", Writer: "exporter",
+		SelfScoped: false, Personal: false, Exportable: false, BackedUp: false, Watched: false,
+		TTLDefault: 2 * 24 * time.Hour, TTLMax: 7 * 24 * time.Hour, Indexes: nil},
 }
 
 var kindByName = map[string]int{
@@ -390,6 +393,7 @@ var kindByName = map[string]int{
 	"ExchangeTrust":                 29,
 	"ExportCursor":                  109,
 	"ExportDestination":             32,
+	"ExportReport":                  112,
 	"FirstAdmin":                    25,
 	"FrontHost":                     5,
 	"GitHubAccountLink":             73,
@@ -505,6 +509,7 @@ var kindBySegment = map[string]int{
 	"exchange-trust":                   29,
 	"export-cursor":                    109,
 	"export-destination":               32,
+	"export-report":                    112,
 	"first-admin":                      25,
 	"front-host":                       5,
 	"git-hub-account-link":             73,
@@ -713,6 +718,7 @@ var storeRules = map[string]map[string]uint16{
 		"client-template":                  0x0043, // get list watch
 		"console-channel":                  0x0003, // get list
 		"erasure-hold":                     0x0003, // get list
+		"export-report":                    0x0003, // get list
 		"first-admin":                      0x0043, // get list watch
 		"front-host":                       0x0043, // get list watch
 		"grant-vocabulary":                 0x0043, // get list watch
@@ -823,6 +829,7 @@ var storeRules = map[string]map[string]uint16{
 		"erasure-hold":           0x0003, // get list
 		"export-cursor":          0x003f, // get list create update delete apply
 		"export-destination":     0x0043, // get list watch
+		"export-report":          0x003f, // get list create update delete apply
 		"git-hub-account-link":   0x0003, // get list
 		"git-hub-app":            0x0003, // get list
 		"git-hub-installation":   0x0003, // get list
@@ -1019,6 +1026,7 @@ var storeRules = map[string]map[string]uint16{
 	},
 	"signer": {
 		"boundary":              0x0043, // get list watch
+		"export-report":         0x0003, // get list
 		"front-host":            0x0043, // get list watch
 		"grant-vocabulary":      0x0043, // get list watch
 		"installation-client":   0x0043, // get list watch
