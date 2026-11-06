@@ -27,7 +27,7 @@ The assets, in the order an attacker wants them:
 | Secret-source values: provider app secrets that IaC writes | A systemd credential or SSM, read by store@ and held in its memory ([0005](/decisions/0005-the-store/#secret-sources)) |
 | Signed config, and the publisher keys that sign it | Signed config documents in the config source; the publisher pins in the bootstrap file ([0005](/decisions/0005-the-store/#configuration-loading)) |
 | Sealed grants | In flight only, for about 60 seconds, never stored ([0007](/decisions/0007-policy-and-sealed-grants/#sealed-grants)) |
-| Export destination credentials | exporter@ alone ([0009](/decisions/0009-export/#destinations)) |
+| Export destination credentials, and the edge-purge credential | exporter@ alone ([0009](/decisions/0009-export/#destinations), [0009](/decisions/0009-export/#the-edge)) |
 | The card PIN of a board | key@'s locked memory; between boards only sealed to a one-time key ([0006](/decisions/0006-keys-and-sealing/#touch-and-pin)) |
 | Break-glass credentials | Public keys in config, the kind `BreakGlassPasskey` ([0017](/decisions/0017-identity-and-sign-in/#break-glass-recovery)) |
 | Issued credentials: tokens, X.509 and SSH certificates, SVIDs | With the clients and workloads; short-lived and, where the audience declares it, sender-constrained |
@@ -98,7 +98,7 @@ The ladder adds separation beyond the two checks: its own key@ from L1, its own 
 | **AP-10** Tenant leaving | A tenant that leaves a boundary, and the operator it leaves | Its people, workloads and data at the time it leaves |
 | **AP-11** Abusive client or tenant | A client, a tenant or an address that sends more than its share, or an upstream that is slow or hostile | A valid connection or client, or only the public endpoints |
 | **AP-12** Compromised store@ | Code execution in store@ of one boundary | The four storage credentials, and the secret-source values in its memory |
-| **AP-13** Compromised exporter@ | Code execution in exporter@ of one boundary | The export destination credentials, a Kubernetes cluster credential on the direct path among them |
+| **AP-13** Compromised exporter@ | Code execution in exporter@ of one boundary | The export destination credentials, a Kubernetes cluster credential on the direct path among them, and the edge-purge credential |
 | **AP-14** Compromised product service | The service identity of a product that pushes allowances or emits audit records | Its X.509-SVID and what its policy allows it |
 | **AP-15** Stolen break-glass credential | A thief of a registered hardware key and its PIN, or of the synced passkey's vault | One recovery credential |
 | **AP-16** Compromised upstream | The upstream of a customer installation (the CIAM broker that holds the tenants' identity providers), or one of the operator-declared upstreams of an internal installation, or its signing keys | Signed ID tokens for any account it holds, with any subject, `acr`, `amr` and e-mail claim |
@@ -160,7 +160,7 @@ The ladder adds separation beyond the two checks: its own key@ from L1, its own 
 
 | ID | Threat | Asset | Position | Control | Residual | Test |
 |---|---|---|---|---|---|---|
-| **T-39** | exporter@'s destination credentials are abused | Exportable values, destinations | AP-13 | Only seven kinds are exportable and exporter@ refuses any other; destinations are config and may not overlap a secret source; the direct Kubernetes Secret path exists only when an installation chooses it, and its credential writes only the named Secrets in the named namespaces; every write is an audit fact ([0009](/decisions/0009-export/#destinations)). The backup job's bucket credential is write-only and opens nothing ([0010](/decisions/0010-backup-and-recovery/#the-archive-key)). | The exportable values it opens, `ClientSecretExport` among them, written to the destinations it holds; on the direct path, the named Secrets of one cluster. | [REQ-EXPORT-007](/requirements/export/#REQ-EXPORT-007) |
+| **T-39** | exporter@'s destination credentials are abused | Exportable values, destinations | AP-13 | Only seven kinds are exportable and exporter@ refuses any other; destinations are config and may not overlap a secret source; the direct Kubernetes Secret path exists only when an installation chooses it, and its credential writes only the named Secrets in the named namespaces; every write is an audit fact ([0009](/decisions/0009-export/#destinations)). The edge-purge credential can evict only the named public addresses of its destinations and writes nothing ([0009](/decisions/0009-export/#the-edge)); with it a compromised exporter@ can make the edge forget a key set, which the fallback to `entry` answers, and it can already write the key set itself. The backup job's bucket credential is write-only and opens nothing ([0010](/decisions/0010-backup-and-recovery/#the-archive-key)). | The exportable values it opens, `ClientSecretExport` among them, written to the destinations it holds; on the direct path, the named Secrets of one cluster; the eviction of the cached key set. | [REQ-EXPORT-007](/requirements/export/#REQ-EXPORT-007), [REQ-EXPORT-026](/requirements/export/#REQ-EXPORT-026) |
 
 ### Machine identity, enrolment and trust
 

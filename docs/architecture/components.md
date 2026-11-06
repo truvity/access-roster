@@ -73,7 +73,7 @@ Each actor runs as `<actor>@<boundary>` ([0002](/decisions/0002-families-of-acto
 | Holder | Credential at rest | What it does | Writes |
 | ------ | ------------------ | ------------ | ------ |
 | `store@` | The engine login of the durable and temp ports, access to the config source and the secret source, and the restore identity | Serves the one store service, checks every call against the kind registry, loads and verifies signed config, and never seals or opens a value ([0005](/decisions/0005-the-store/)) | `MaintenanceMode`; the restore command writes back what it restores |
-| `exporter@` | The credentials of its export destinations, and a write-only credential for the backup bucket | Watches the exportable kinds and writes them out; runs the backup job and opens nothing it backs up ([0009](/decisions/0009-export/), [0010](/decisions/0010-backup-and-recovery/)) | `ExportCursor` |
+| `exporter@` | The credentials of its export destinations with a narrow edge-purge credential, and a write-only credential for the backup bucket | Watches the exportable kinds and writes them out, purges the edge copy of a public document and reads it back; runs the backup job and opens nothing it backs up ([0009](/decisions/0009-export/), [0010](/decisions/0010-backup-and-recovery/)) | `ExportCursor`, `ExportReport` |
 | `key@` | The card PIN, or the permission to use the cloud key service | Offers Seal, Open, Sign and Mac; keeps opened data keys in memory with a time to live per entry ([0006](/decisions/0006-keys-and-sealing/)) | `DataKeyWrap`, `KeyCertificate`, and on boards `PinReleaseRequest` and `PinRelease` |
 | `writer` | Write access to its log in the audit blob | Seals the records it takes from the transport into the audit log and the usage log, and has key@ sign each checkpoint ([0029](/decisions/0029-the-audit-log/)) | Its log, in the blob |
 | `witness` | Read and write access to its cosignatures in the blob | Cosigns each checkpoint that is consistent with the last one it cosigned; optional everywhere | Its cosignatures, in the blob |
@@ -258,7 +258,7 @@ Every kind has exactly one writer. Others read through the store, under the rule
 | `ca`, `ssh-ca` | `IssuedCertificate`, `Revocation`, `Crl`, `TrustBundle`; `IssuedSshCertificate`, `SshRevocation`, `Krl` |
 | `signer`, `quota`, `entry` | `SigningRing`, `OpenPgpBinding`; `Allowance`, `AdmitRecord`, `SpentPush`; `RateWindow` |
 | `console` | Exactly two: `Switch`, `LogLevelOverride` |
-| `store@`, `exporter@` | `MaintenanceMode`; `ExportCursor` |
+| `store@`, `exporter@` | `MaintenanceMode`; `ExportCursor`, `ExportReport` |
 
 There are two exceptions. The restore command of store@ writes back the kinds it restores. And the **declared self-scoped kinds**, `Lease`, `ReplayGuard` and `SpentGrant`, have an id that starts with the writing actor's name; the store lets each actor write only ids under its own name. An adapter writes ids under its own name only, so `adapter-github` and `adapter-slack` never write each other's items. The certificate kinds need one note: the issuance log of `ca` is a C2SP static-ct-api log of every certificate, witnessed like the audit log, and serials are random 128-bit values, so no serial ledger is kept ([0023](/decisions/0023-certificate-authorities/#issuance-log-and-revocation)).
 

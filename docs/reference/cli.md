@@ -117,7 +117,16 @@ An operator revokes keys in two steps, with the publisher's signature between th
 2. **The publisher signs it** as a `KeyRevocationDeclaration`, with the key that signs the `KeyPlan` ([Declarations](/reference/signed-config/#declarations)). On the boards it is the harness: `go run ./tools/harness/sign-config -key-dir .cache/boards/publisher -declaration FILE -declaration-out FILE.jws`.
 3. **`sluis key revoke --boundary B --declaration FILE.jws`** runs on any node of the boundary, as root, and delivers the signed declaration to key@'s admin socket, `/run/sluis/key/BOUNDARY/admin.sock` (`--socket PATH` names another). It prints each key with `revoked` or `already revoked`. A refusal of key@ exits 3 with its reason and path: `declaration`, `seq`, `schema`, `other-boundary`, `wrapping-key` or `unknown-kid`. A key@ that cannot be reached, or an audit fact that key@ could not make durable, exits 1; in the second case the keys are revoked. A declaration that key@ took in part, because store@ failed, exits 1 and prints each key as `revoked` or `not yet revoked`: deliver the same declaration again to complete it.
 
-The command prints `not confirmed` on standard error: this build does not yet fetch the published key set to check that the keys left it ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088)).
+After the delivery the command checks that the keys have left every key set a verifier can be given, and prints `confirmed` or `not confirmed` ([REQ-KEYS-088](/requirements/keys/#REQ-KEYS-088), [Confirmation](/decisions/0009-export/#confirmation)). It fetches two addresses and needs the kid absent from both:
+
+- **The public `jwks_uri` of the issuer,** named with `--issuer URL`, fetched through the edge as a verifier fetches it: no credential and no cache-buster.
+- **The live key set of `entry`,** from `entry`'s own listener, which is what the edge falls back to. On bare-metal it is `entry`'s socket, `/run/sluis/entry/BOUNDARY.sock` or the path of `--entry-socket PATH`. The other runtimes reach it as they are built ([#1014](https://github.com/truvity/sluis/issues/1014)).
+
+The command polls for up to `--wait DURATION` (default 2 minutes, to cover the purge target of 60 seconds) and then prints which address still lists which kid and exits 5. A check that cannot run, such as an issuer that was not named, prints `not confirmed` with the reason and exits 5: it is never reported as passed. When `exporter@` could not read `KeyRevocation`, the published set stays as it was and the command says `not confirmed` ([REQ-EXPORT-024](/requirements/export/#REQ-EXPORT-024)).
+
+:::note[Proposed]
+This build does not check yet: it prints `not confirmed` on standard error whatever the key sets hold ([#1362](https://github.com/truvity/sluis/issues/1362)).
+:::
 
 ### `sluis login` and `sluis token`
 
@@ -141,7 +150,7 @@ It verifies the signature of the checkpoint and of every checkpoint in `checkpoi
 | 2 | Usage error: an unknown command or flag, a missing argument, or a secret with no terminal and no descriptor. |
 | 3 | Refused by a check or by policy: a schema error, a failed `doctor` or `config check` line, a hand-off answer that fails the requester's checks, a refused sign-in or token. |
 | 4 | Refused by key@ or the card: a card that is locked or blocked, a PIN not delivered, a store that refuses the key's policy. |
-| 5 | Reserved: not confirmed. No command of the first working version asks for a confirmation. |
+| 5 | Not confirmed: `sluis key revoke` delivered the declaration, and a key set a verifier can be given still lists a revoked key or could not be checked. Reserved until [#1362](https://github.com/truvity/sluis/issues/1362) builds the check. |
 | 10, 11, 12 | `key status` and `doctor` only: notice, alert and critical. The highest finding wins. |
 
 ## JSON output
