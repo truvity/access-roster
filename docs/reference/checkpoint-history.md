@@ -25,9 +25,9 @@ A sluis audit log is a C2SP `tlog-tiles` log: the entry bundles, the hash tiles 
 | `.name` | The name is not a size in the strict form, or the entry is a directory |
 | `.length` | The file is longer than the limit |
 | `.signature` | The note does not open with the log key |
-| `.format` | The text is not a tlog-checkpoint with a non-empty origin |
+| `.format` | The text is not a tlog-checkpoint with a non-empty origin | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 | `.size` | The size in the text is not the size in the name |
-| `.origin` | The origin differs from the one in the `checkpoint` object, or from `--origin` |
+| `.origin` | The origin differs from the one in the `checkpoint` object, or from `--origin` | <!-- terms-allow: origin (the C2SP checkpoint origin line) -->
 | `.fork` | Two checkpoints of one size name different roots |
 | `.inconsistent` | The root of the checkpoint is not the tree hash of the first `<size>` entries, computed from the tiles |
 | `checkpoints.count` | The directory holds more files than the limit |
