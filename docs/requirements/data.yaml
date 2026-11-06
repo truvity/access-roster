@@ -1320,13 +1320,13 @@ requirements:
     rationale: "A store with nothing in force has nothing to compare with, and a persisted mark would be one more state to lose (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [1157]
+    tests: [actors/store/tests/config.rs]
     verification:
       - {kind: integration-test, ref: "a cold start with a document of a lower sequence than a previous run starts and runs it"}
       - {kind: integration-test, ref: "no file or item holds a sequence mark after a run"}
@@ -1410,31 +1410,31 @@ requirements:
     rationale: "The credentials of store@ are platform-provided, and the file is the one local setting that config cannot change (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [864, 1157]
+    tests: [actors/store/src/bootstrap.rs]
     verification:
       - {kind: test-vectors, ref: "bootstrap file vectors: a file that lacks the boundary, a class destination, a driver socket or a publisher pin is refused"}
-      - {kind: integration-test, ref: "the file names exactly one destination for each of the four classes"}
+      - {kind: integration-test, ref: "the file names exactly one destination for each of the four classes, and a list of two for a class is refused"}
   - id: REQ-DATA-088
     area: DATA
     statement: "The bootstrap file MUST NOT hold a credential."
     rationale: "The credentials of store@ are platform-provided, as a systemd credential, a role or a service account (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [864, 1157]
+    tests: [actors/store/src/bootstrap.rs]
     verification:
-      - {kind: test-vectors, ref: "bootstrap file vectors: any field that carries a secret value is refused"}
+      - {kind: test-vectors, ref: "bootstrap file vectors: the key list is closed, so a key that could carry a secret is refused by place without its value, and a private-key PEM is refused as a publisher key"}
   - id: REQ-DATA-089
     area: DATA
     statement: "store@ MUST refuse a bootstrap file that another uid can write."

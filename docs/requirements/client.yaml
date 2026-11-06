@@ -154,15 +154,15 @@ requirements:
     rationale: "A closed model prevents contradictory configuration."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-01, section: "2.1", depth: Full}
     issues: [789]
+    tests: [actors/store/tests/config.rs]
     verification:
-      - {kind: integration-test, ref: "type-set test"}
+      - {kind: integration-test, ref: "the three types of the set are read; any other value, none, or more than one is refused by the place of kind, and the error shows no value"}
   - id: REQ-CLIENT-020
     area: CLIENT
     split_from: REQ-CLIENT-005
