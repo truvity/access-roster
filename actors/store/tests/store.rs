@@ -2233,3 +2233,483 @@ async fn req_keys_091_only_key_creates_a_key_revocation() {
         );
     }
 }
+
+// ---- one writer per kind, the boundary, read-only kinds, the change log ----
+
+/// The tenant and the id that make a valid address for `kind` as `caller` (the refusal under test is the rule, so the
+/// address must be good).
+fn address_for(kind: &sluis_registry::Kind, caller: &str) -> (&'static str, String) {
+    let tenant = if kind.scope == sluis_registry::Scope::BoundaryTenant {
+        "acme"
+    } else {
+        ""
+    };
+    let id = match kind.name {
+        "DataKeyWrap" => "data/1/n-1".to_owned(),
+        "KeyRevocation" => "purpose/p1".to_owned(),
+        // An adapter writes a kind of its vendor under its own name.
+        _ if kind.self_scoped
+            || sluis_registry::store_self_scoped_for(caller, kind.segment, "create") =>
+        {
+            format!("{caller}/x")
+        }
+        _ => "x".to_owned(),
+    };
+    (tenant, id)
+}
+
+/// The actors the registry names as the one writer of the kind, among the callers of store@.
+fn writers_of(kind: &sluis_registry::Kind) -> Vec<&'static str> {
+    let callers = sluis_registry::callers_of("store");
+    if kind.writer == "adapter-<vendor>" {
+        return callers
+            .iter()
+            .copied()
+            .filter(|c| c.starts_with("adapter-"))
+            .collect();
+    }
+    callers
+        .iter()
+        .copied()
+        .filter(|c| *c == kind.writer)
+        .collect()
+}
+
+/// verifies: REQ-DATA-004
+/// Every caller of store@ that is not the one writer of a kind, and holds a read rule on it or none, creates, updates and
+/// deletes an item of the kind (and applies to it) and is refused with the rule's code, whatever the grant would say; the
+/// engines are never reached. The writer is not refused by the rule. The restore command of store@ that the row names as
+/// the one exception does not exist yet; the other exception, the actor named in the id of a self-scoped kind, is the
+/// last part.
+#[tokio::test]
+async fn an_actor_that_is_not_the_writer_of_a_kind_is_refused_every_write() {
+    use sluis_registry::Class;
+    let f = F::new().await;
+    let callers = sluis_registry::callers_of("store");
+    assert!(callers.len() > 8, "the callers of store@: {callers:?}");
+
+    let (mut refused_writes, mut readers_refused, mut kinds_swept) = (0usize, 0usize, 0usize);
+    for kind in sluis_registry::kinds()
+        .iter()
+        .filter(|k| matches!(k.class, Class::Durable | Class::Temp) && !k.self_scoped)
+    {
+        kinds_swept += 1;
+        let writers = writers_of(kind);
+        for &caller in callers.iter().filter(|c| !writers.contains(c)) {
+            f.as_(caller);
+            let (tenant, id) = address_for(kind, caller);
+            let reads = ["get", "list", "watch"]
+                .iter()
+                .any(|v| sluis_registry::store_allows(caller, kind.segment, v));
+            for verb in [Verb::CREATE, Verb::UPDATE, Verb::DELETE, Verb::APPLY] {
+                let o = with_version(op(verb, kind.segment, tenant, &id, &sealed()), 1);
+                // A good grant of this very caller: the refusal must come from the writer rule, not from a missing grant.
+                let grant = f.grant(caller, &["acme"], &WRITES, 60);
+                let e = f
+                    .write(vec![o], &grant)
+                    .await
+                    .expect_err(&format!("{caller} wrote {} ({verb:?})", kind.name));
+                assert_eq!(
+                    e.code,
+                    ErrorCode::PermissionDenied,
+                    "{caller} {}",
+                    kind.name
+                );
+                assert!(
+                    matches!(reason(&e).as_str(), "rule" | "writer"),
+                    "{caller} {} {verb:?}: reason {}",
+                    kind.name,
+                    reason(&e)
+                );
+                refused_writes += 1;
+                readers_refused += usize::from(reads);
+            }
+        }
+    }
+    assert!(kinds_swept > 40, "the sweep saw {kinds_swept} kinds");
+    assert!(refused_writes > 1_000, "{refused_writes} refusals");
+    assert!(
+        readers_refused > 50,
+        "callers with a read rule were refused {readers_refused} times"
+    );
+    assert!(
+        f.durable.transactions().is_empty() && f.temp.transactions().is_empty(),
+        "a refused write reached an engine"
+    );
+
+    // The writer of a kind is not refused by the rule or the writer check.
+    let mut writers_passed = 0usize;
+    for kind in sluis_registry::kinds()
+        .iter()
+        .filter(|k| matches!(k.class, Class::Durable | Class::Temp) && !k.self_scoped)
+    {
+        for caller in writers_of(kind) {
+            f.as_(caller);
+            let (tenant, id) = address_for(kind, caller);
+            let mut o = op(Verb::CREATE, kind.segment, tenant, &id, &sealed());
+            if !kind.ttl_max.is_zero() {
+                o = with_ttl(o, 60);
+            }
+            let grant = f.grant(caller, &["acme"], &WRITES, 60);
+            if let Err(e) = f.write(vec![o], &grant).await {
+                assert!(
+                    !matches!(reason(&e).as_str(), "rule" | "writer"),
+                    "the writer {caller} of {} was refused by the rule: {}",
+                    kind.name,
+                    reason(&e)
+                );
+            }
+            writers_passed += 1;
+        }
+    }
+    assert!(writers_passed > 30, "{writers_passed} writers tried");
+
+    // A self-scoped kind has every actor as a writer, each under its own id and no other: the actor named in the id.
+    for kind in sluis_registry::kinds()
+        .iter()
+        .filter(|k| matches!(k.class, Class::Durable | Class::Temp) && k.self_scoped)
+    {
+        let mut tried = 0;
+        for &caller in callers
+            .iter()
+            .filter(|c| sluis_registry::store_allows(c, kind.segment, "create"))
+        {
+            f.as_(caller);
+            let other = callers.iter().find(|c| **c != caller).unwrap();
+            let (tenant, _) = address_for(kind, caller);
+            let grant = f.grant(caller, &["acme"], &WRITES, 60);
+            for id in [format!("{other}/x"), "x".to_owned()] {
+                let o = with_ttl(op(Verb::CREATE, kind.segment, tenant, &id, b"h"), 30);
+                refused(
+                    f.write(vec![o], &grant).await,
+                    ErrorCode::PermissionDenied,
+                    "writer",
+                );
+            }
+            tried += 1;
+        }
+        assert!(tried > 0, "no caller creates {}", kind.name);
+    }
+}
+
+/// The names of the kinds that kinds.yaml gives the profile `Fixed` (the generated registry carries no profile).
+fn fixed_kinds() -> Vec<&'static str> {
+    const KINDS: &str = include_str!("../../../docs/architecture/kinds.yaml");
+    let (mut out, mut name, mut in_kinds) = (Vec::new(), "", false);
+    for line in KINDS.lines() {
+        if line == "kinds:" {
+            in_kinds = true;
+        } else if !in_kinds {
+            continue;
+        } else if let Some(n) = line.strip_prefix("  - name: ") {
+            name = n.trim();
+        } else if line.trim_end() == "    profile: Fixed" {
+            out.push(name);
+        }
+    }
+    out
+}
+
+/// Every caller, every write verb, each of the given kinds: refused with the rule, and the engines never reached.
+async fn every_caller_is_refused_every_write(
+    f: &F,
+    kinds: &[&'static sluis_registry::Kind],
+) -> usize {
+    let mut n = 0;
+    for kind in kinds {
+        for &caller in sluis_registry::callers_of("store") {
+            f.as_(caller);
+            let (tenant, id) = address_for(kind, caller);
+            let grant = f.grant(caller, &["acme"], &WRITES, 60);
+            for verb in [Verb::CREATE, Verb::UPDATE, Verb::DELETE, Verb::APPLY] {
+                let o = with_version(op(verb, kind.segment, tenant, &id, b"x"), 1);
+                refused(
+                    f.write(vec![o], &grant).await,
+                    ErrorCode::PermissionDenied,
+                    "rule",
+                );
+                n += 1;
+            }
+        }
+    }
+    assert!(
+        f.durable.transactions().is_empty() && f.temp.transactions().is_empty(),
+        "a write to a read-only kind reached an engine"
+    );
+    n
+}
+
+/// verifies: REQ-DATA-015
+/// No actor creates, updates, deletes or applies any config kind or any secret kind: all of them, all callers of store@,
+/// all four write verbs. A batch that mixes one such write with a good write is refused whole. The permission of the
+/// store@ unit on its sources (the second line of the row) needs the serverless installation and is not proved here.
+#[tokio::test]
+async fn no_actor_writes_a_config_kind_or_a_secret_kind() {
+    use sluis_registry::Class;
+    let f = F::new().await;
+    let read_only: Vec<_> = sluis_registry::kinds()
+        .iter()
+        .filter(|k| matches!(k.class, Class::Config | Class::Secret))
+        .collect();
+    assert!(
+        read_only.iter().any(|k| k.class == Class::Config)
+            && read_only.iter().any(|k| k.class == Class::Secret)
+            && read_only.len() > 30,
+        "{} read-only kinds",
+        read_only.len()
+    );
+    let n = every_caller_is_refused_every_write(&f, &read_only).await;
+    assert!(n > read_only.len() * 8, "{n} refusals");
+
+    // The good write of the same batch is not written either.
+    f.as_("session");
+    let grant = g(&f);
+    refused(
+        f.write(
+            vec![
+                op(Verb::CREATE, "person", "acme", "p1", &sealed()),
+                op(Verb::CREATE, "tunables", "", "default", b"x"),
+            ],
+            &grant,
+        )
+        .await,
+        ErrorCode::PermissionDenied,
+        "rule",
+    );
+    assert!(f.durable.keys().is_empty());
+}
+
+/// verifies: REQ-DATA-024
+/// Every kind whose profile in kinds.yaml is Fixed refuses a write at run time: all callers of store@ (the console, which
+/// carries what an operator or a tenant admin asks for, included), all four write verbs. An operator and a tenant admin
+/// are not callers of store@; they reach it only through the console.
+#[tokio::test]
+async fn a_write_to_a_fixed_kind_is_refused_for_every_caller() {
+    let f = F::new().await;
+    let names = fixed_kinds();
+    assert!(names.len() > 20, "{} Fixed kinds", names.len());
+    let kinds: Vec<_> = names
+        .iter()
+        .map(|n| {
+            sluis_registry::kind_by_name(n).unwrap_or_else(|| panic!("{n} is not in the registry"))
+        })
+        .collect();
+    assert!(
+        sluis_registry::callers_of("store").contains(&"console"),
+        "the console calls store@"
+    );
+    let n = every_caller_is_refused_every_write(&f, &kinds).await;
+    assert!(n > kinds.len() * 8, "{n} refusals");
+}
+
+/// verifies: REQ-DATA-013
+/// The boundary of a call is the one store@ was started with, and the caller is the peer of the transport: no request
+/// message has a field for either, a tenant, a grant or an id that names another boundary or another actor reaches
+/// nothing of it, and every key lands under the boundary of the service.
+#[tokio::test]
+async fn the_boundary_and_the_caller_never_come_from_a_field_of_the_request() {
+    // No request message of the store service has a field that could name a boundary or a caller.
+    const PROTO: &str = include_str!("../../../proto/sluis/store/v2alpha1/store.proto");
+    let (mut requests, mut inside) = (0, false);
+    for line in PROTO.lines() {
+        let line = line.trim();
+        if line.starts_with("message ") {
+            inside = line.contains("Request") || line.contains("Operation");
+            requests += usize::from(inside);
+        } else if line.starts_with("enum ") || line.starts_with("service ") {
+            inside = false;
+        } else if inside && line.contains(" = ") && line.contains(';') {
+            let field = line
+                .split(" = ")
+                .next()
+                .unwrap()
+                .split_whitespace()
+                .last()
+                .unwrap();
+            assert!(
+                !["boundary", "caller", "actor", "holder", "peer", "uid"].contains(&field),
+                "a request field names the boundary or the caller: {line}"
+            );
+        }
+    }
+    assert!(requests >= 6, "the scan saw {requests} request messages");
+
+    let f = F::new().await;
+    f.as_("session");
+    // A grant that says another boundary does not open a door to it.
+    let other = f.grant_with(|g| g.boundary = "prod-b".into());
+    refused(
+        f.write(
+            vec![op(Verb::CREATE, "person", "acme", "p1", &sealed())],
+            &other,
+        )
+        .await,
+        ErrorCode::PermissionDenied,
+        "grant",
+    );
+    // A tenant that is spelled like a path into another boundary is no tenant.
+    for tenant in ["prod-b/acme", "../prod-b", "prod-b/dev/acme"] {
+        let e = f
+            .write(
+                vec![op(Verb::CREATE, "person", tenant, "p1", &sealed())],
+                &f.grant("session", &[tenant], &WRITES, 60),
+            )
+            .await;
+        refused(e, ErrorCode::InvalidArgument, "address");
+        refused(
+            f.get("person", tenant, "p1").await,
+            ErrorCode::InvalidArgument,
+            "address",
+        );
+    }
+    // A tenant named "prod-b" is a tenant of this boundary: the key says so, and the service never holds any other prefix.
+    f.write(
+        vec![op(Verb::CREATE, "person", "prod-b", "p1", &sealed())],
+        &f.grant("session", &["prod-b"], &WRITES, 60),
+    )
+    .await
+    .unwrap();
+    assert_eq!(f.durable.keys(), vec!["dev/prod-b/person/p1".to_owned()]);
+
+    // An item that sits in the engine under another boundary is not reached by any address.
+    f.durable.0.items.lock().unwrap().insert(
+        b"prod-b/acme/person/p9".to_vec(),
+        sluis_proto::sluis::port::item::v2alpha1::DriverItem {
+            key: b"prod-b/acme/person/p9".to_vec(),
+            version: 1,
+            value: sealed(),
+            ..Default::default()
+        },
+    );
+    refused(
+        f.get("person", "acme", "p9").await,
+        ErrorCode::NotFound,
+        "absent",
+    );
+    refused(
+        f.get("person", "prod-b", "acme/person/p9").await,
+        ErrorCode::NotFound,
+        "absent",
+    );
+
+    // The rule applied is the caller's own, whichever actor an id names: session is refused the id of exchange and the
+    // refusal is session's in the audit, while exchange writes it.
+    f.as_("session");
+    let guard = |id: &str| with_ttl(op(Verb::CREATE, "replay-guard", "", id, b"h"), 60);
+    refused(
+        f.write(vec![guard("exchange/jti-1")], &[]).await,
+        ErrorCode::PermissionDenied,
+        "writer",
+    );
+    let facts = f.audit();
+    let last = facts.last().unwrap();
+    assert_eq!(
+        last.fields.first(),
+        Some(&("caller", "session".to_owned())),
+        "{last:?}"
+    );
+    f.as_("exchange");
+    f.write(vec![guard("exchange/jti-1")], &[]).await.unwrap();
+    assert_eq!(
+        f.get("replay-guard", "", "exchange/jti-1")
+            .await
+            .unwrap()
+            .item
+            .version,
+        1
+    );
+}
+
+/// verifies: REQ-DATA-055
+/// Each change of a kind that some actor may watch (or exporter@ exports) goes to the engine as one transaction that asks
+/// for the change-log row of that very change, a put and a delete alike, and the engine's log grows by that row; a kind
+/// that nobody watches asks for none. The engines' side (a transaction that fails leaves no row, one that succeeds leaves
+/// its row) is the conformance suite's case `transact_writes_its_log_rows_atomically`.
+#[tokio::test]
+async fn a_change_of_a_watched_kind_asks_for_its_log_row_in_the_same_transaction() {
+    use sluis_registry::Class;
+    let f = F::new().await;
+    let (mut watched, mut unwatched, mut deleted) = (0, 0, 0);
+    for kind in sluis_registry::kinds()
+        .iter()
+        .filter(|k| matches!(k.class, Class::Durable | Class::Temp))
+    {
+        let want = kind.watched || kind.exportable;
+        let Some(caller) = sluis_registry::callers_of("store")
+            .iter()
+            .copied()
+            .find(|c| sluis_registry::store_allows(c, kind.segment, "create"))
+            .filter(|c| writers_of(kind).contains(c) || kind.self_scoped)
+        else {
+            continue;
+        };
+        f.as_(caller);
+        let (mut tenant, id) = address_for(kind, caller);
+        let value = if kind.name == "KeyRevocation" {
+            tenant = "";
+            revocation("purpose", "p1", "drill")
+        } else {
+            sealed()
+        };
+        let engine = if kind.class == Class::Temp {
+            &f.temp
+        } else {
+            &f.durable
+        };
+        let (txs, head) = (engine.transactions().len(), engine.head());
+        let mut create = op(Verb::CREATE, kind.segment, tenant, &id, &value);
+        if !kind.ttl_max.is_zero() {
+            create = with_ttl(create, 20);
+        }
+        let grant = f.grant(caller, &["acme"], &WRITES, 60);
+        f.write(vec![create], &grant)
+            .await
+            .unwrap_or_else(|e| panic!("{caller} creates {}: {e:?}", kind.name));
+        let sent = engine.transactions();
+        assert_eq!(sent.len(), txs + 1, "{}: one transaction", kind.name);
+        let tx = &sent[txs];
+        assert_eq!(tx.puts.len(), 1, "{}", kind.name);
+        assert_eq!(
+            tx.puts[0].log, want,
+            "{}: the log row of the put",
+            kind.name
+        );
+        assert_eq!(
+            engine.head(),
+            head + u64::from(want),
+            "{}: the log grew by the row of the change",
+            kind.name
+        );
+        if want {
+            watched += 1;
+        } else {
+            unwatched += 1;
+        }
+
+        // A delete asks the same, where the kind allows one (a lease and a revocation are never deleted).
+        if sluis_registry::store_allows(caller, kind.segment, "delete")
+            && !matches!(kind.name, "Lease" | "KeyRevocation")
+        {
+            let head = engine.head();
+            f.write(
+                vec![op(Verb::DELETE, kind.segment, tenant, &id, b"")],
+                &grant,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{caller} deletes {}: {e:?}", kind.name));
+            let sent = engine.transactions();
+            let tx = sent.last().unwrap();
+            assert_eq!(tx.deletes.len(), 1, "{}", kind.name);
+            assert_eq!(
+                tx.deletes[0].log, want,
+                "{}: the log row of the delete",
+                kind.name
+            );
+            assert_eq!(engine.head(), head + u64::from(want), "{}", kind.name);
+            deleted += usize::from(want);
+        }
+    }
+    assert!(watched >= 8, "{watched} watched kinds written");
+    assert!(unwatched >= 8, "{unwatched} unwatched kinds written");
+    assert!(deleted >= 3, "{deleted} watched deletes");
+}

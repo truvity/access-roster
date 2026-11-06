@@ -369,7 +369,7 @@ mod tests {
     use super::*;
     use crate::{item_suite, report};
 
-    /// verifies: REQ-DATA-101, REQ-DATA-102
+    /// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_memory_engine_passes_the_item_suite() {
         let dir = tempfile::tempdir().unwrap();

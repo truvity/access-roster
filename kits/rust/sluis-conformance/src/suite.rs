@@ -50,6 +50,12 @@ pub async fn item_suite(client: Client) -> Vec<Case> {
         run_case("sequence_expired", s.sequence_expired()).await,
         run_case("query_log_head", s.query_log_head()).await,
         run_case("expired_delete_is_logged", s.expired_delete_is_logged()).await,
+        run_case("transact_logs_atomically", s.transact_logs_atomically()).await,
+        run_case(
+            "concurrent_takers_one_winner",
+            s.concurrent_takers_one_winner(),
+        )
+        .await,
     ];
     // What the cases wrote is removed; a failure to do so is a failed case of its own, so a driver
     // that cannot delete does not pass.
@@ -872,6 +878,127 @@ impl Suite {
             matches!(tail.tick(&b, SILENT).await, Tick::Silent),
             "the removal of an item written without a log row left a row"
         );
+        Ok(())
+    }
+
+    /// The change-log row of a change is written in the transaction of the change: a transaction that is refused leaves
+    /// no row for any of its puts and deletes, one that holds leaves one row for each of them and nothing else.
+    async fn transact_logs_atomically(&self) -> anyhow::Result<()> {
+        let (a, x) = (self.key("atomic", "a"), self.key("atomic", "x"));
+        let mine = self.key("atomic", "");
+        let logged = |k: &[u8]| Put {
+            log: true,
+            ..put(k, b"v")
+        };
+        let logged_del = |k: &[u8]| Delete {
+            key: k.to_vec(),
+            log: true,
+            ..Delete::default()
+        };
+        let mut tail = self.open_tail(0).await?;
+        self.transact(vec![absent(&x)], vec![logged(&x)], vec![])
+            .await?;
+        let first = tail.row(&mine, ARRIVES).await?;
+        ensure!(
+            (first.key.as_slice(), first.version, first.deleted) == (x.as_slice(), 1, false),
+            "the write of x left no row of its own"
+        );
+
+        // A condition fails: neither the put of a nor the delete of x happens, and neither leaves a row.
+        let r = self
+            .transact(
+                vec![at_version(&x, 9)],
+                vec![logged(&a)],
+                vec![logged_del(&x)],
+            )
+            .await;
+        expect_refusal(r, ErrorCode::Aborted, "version", Some("conditions[0]"))?;
+        ensure!(
+            is_absent(self.get(&a, true).await) && self.get(&x, true).await?.version == 1,
+            "a refused transaction changed an item"
+        );
+
+        // The same changes with the condition met: one row each. A row of the refused transaction would come before them.
+        self.transact(
+            vec![absent(&a), at_version(&x, 1)],
+            vec![logged(&a)],
+            vec![logged_del(&x)],
+        )
+        .await?;
+        let mut rows = [
+            tail.row(&mine, ARRIVES).await?,
+            tail.row(&mine, ARRIVES).await?,
+        ];
+        rows.sort_by(|p, q| p.key.cmp(&q.key));
+        let shape: Vec<_> = rows
+            .iter()
+            .map(|r| (r.key.clone(), r.version, r.deleted))
+            .collect();
+        ensure!(
+            shape == vec![(a.clone(), 1, false), (x.clone(), 1, true)],
+            "the rows after a refused and a granted transaction are not the put of a and the delete of x"
+        );
+        ensure!(
+            matches!(tail.tick(&mine, SILENT).await, Tick::Silent),
+            "a transaction left a row nobody asked for"
+        );
+        Ok(())
+    }
+
+    /// Takers racing for one key with the same condition: one wins and the others are refused, at the creation and at
+    /// each takeover, and the version of the winner is the next one (a lease's fencing token grows by one at a time).
+    async fn concurrent_takers_one_winner(&self) -> anyhow::Result<()> {
+        const TAKERS: usize = 6;
+        let key = self.key("race", "lease");
+        let k = key.as_slice();
+        for round in 0..4u64 {
+            let tries = futures::future::join_all((0..TAKERS).map(|i| {
+                let value = format!("taker-{round}-{i}");
+                let condition = if round == 0 {
+                    absent(k)
+                } else {
+                    at_version(k, round)
+                };
+                async move {
+                    let r = self
+                        .transact(vec![condition], vec![put(k, value.as_bytes())], vec![])
+                        .await;
+                    (value, r)
+                }
+            }))
+            .await;
+            let mut winner = None;
+            for (value, r) in tries {
+                match r {
+                    Ok(items) => {
+                        ensure!(
+                            winner.is_none(),
+                            "two takers won round {round} of the same condition"
+                        );
+                        ensure!(
+                            items.first().map(|i| i.version) == Some(round + 1),
+                            "the winner of round {round} did not get version {}",
+                            round + 1
+                        );
+                        winner = Some(value);
+                    }
+                    Err(e) => expect_refusal(
+                        Err::<(), _>(e),
+                        ErrorCode::Aborted,
+                        "version",
+                        Some("conditions[0]"),
+                    )?,
+                }
+            }
+            let Some(winner) = winner else {
+                bail!("no taker won round {round}");
+            };
+            let held = self.get(k, true).await?;
+            ensure!(
+                held.version == round + 1 && held.value == winner.as_bytes(),
+                "the key does not hold the winner of round {round}"
+            );
+        }
         Ok(())
     }
 

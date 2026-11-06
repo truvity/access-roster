@@ -167,7 +167,7 @@ fn rqlite_command(args: &[&str]) -> std::process::Output {
         .expect("run the rqlite binary")
 }
 
-/// verifies: REQ-DATA-101, REQ-DATA-102
+/// verifies: REQ-DATA-101, REQ-DATA-102, REQ-DATA-055, REQ-DATA-063, REQ-DATA-098
 /// The suite includes the log head of a query: never 0, and a tail from it misses nothing written after the page.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_driver_passes_the_item_suite_on_both_ports() {

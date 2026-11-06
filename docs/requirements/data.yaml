@@ -56,16 +56,16 @@ requirements:
     rationale: "A compromised work actor must not be able to write what its rules refuse (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [1203]
+    tests: [actors/store/tests/store.rs]
     verification:
-      - {kind: integration-test, ref: "an actor that is not the writer of a kind creates, updates and deletes an item; each is refused with the rule's code"}
-      - {kind: test-vectors, ref: "the generated rules matrix against the registry"}
+      - {kind: integration-test, ref: "every caller of store@ that is not a durable or temp kind's writer is refused a create, update, delete and apply with the rule or writer code, no engine is reached, and the writer is not refused"}
+      - {kind: test-vectors, ref: "the generated rules table against the writer column of the registry, for every kind and every caller of store@; on a self-scoped kind an id that names another actor is refused"}
   - id: REQ-DATA-005
     area: DATA
     statement: "store@ MUST let an actor write an item of a declared self-scoped kind only when the id starts with that actor's name."
@@ -188,16 +188,16 @@ requirements:
     rationale: "A scope taken from the request would let any caller name another boundary's data (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [851]
+    tests: [actors/store/tests/store.rs]
     verification:
-      - {kind: test-vectors, ref: "actor X passes boundary prod-b in a request field; the call is scoped to X's own boundary and prod-b is never reached"}
-      - {kind: test-vectors, ref: "actor X names another actor in a field; the rule applied is X's"}
+      - {kind: test-vectors, ref: "no request message has a boundary or caller field; a grant, tenant or id that names another boundary reaches nothing of it, and every key lands under the service's own boundary"}
+      - {kind: test-vectors, ref: "actor X names another actor in an id; the rule applied and the caller in the audit fact are X's"}
   - id: REQ-DATA-014
     area: DATA
     statement: "Settings that hold for a whole installation MUST be one signed config document that is written, with the same content, into every boundary's config source."
@@ -221,14 +221,15 @@ requirements:
     source: design-decision
     status: partial
     milestone: first-version
-    gap: no-proving-test
+    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1205]
+    tests: [actors/store/tests/store.rs]
     verification:
-      - {kind: integration-test, ref: "the permission of store@ on its config source and secret source holds no write action; a write call to a config kind is refused"}
-      - {kind: integration-test, ref: "IAM policy test: no write action on a configuration profile or a secret parameter"}
+      - {kind: integration-test, ref: "a create, update, delete and apply of every config and secret kind by every caller of store@ is refused with the rule, no engine is reached, and a batch that mixes one in is refused whole"}
+      - {kind: integration-test, ref: "the permission of store@ on its config and secret sources, and the IAM policy of the serverless installation, hold no write action (needs the serverless installation: not built)"}
   - id: REQ-DATA-016
     area: DATA
     statement: "store@ MUST serve a secret kind only to the readers that the kind lists."
@@ -364,15 +365,15 @@ requirements:
     rationale: "A Fixed kind changes only by a reviewed, signed document, and a change at run time would bypass the review (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [1207]
+    tests: [actors/store/tests/store.rs]
     verification:
-      - {kind: integration-test, ref: "a write by the console, an operator and a tenant admin to a Fixed kind is refused"}
+      - {kind: integration-test, ref: "every kind with profile Fixed in kinds.yaml refuses a create, update, delete and apply from every caller of store@, the console included (an operator or tenant admin reaches store@ only through it)"}
   - id: REQ-DATA-025
     area: DATA
     statement: "store@ MUST refuse a write to a Tenant-adjustable kind that lies outside the bounds that config or the built-in layer declares."
@@ -805,15 +806,16 @@ requirements:
     rationale: "An engine that does not rewrite non-deterministic defaults would let a replica compute its own time (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [952]
+    tests: [actors/store/tests/watch_engines.rs, drivers/store/rqlite/src/sql.rs]
     verification:
-      - {kind: integration-test, ref: "items written through two nodes carry timestamps set by store@"}
+      - {kind: integration-test, ref: "two store@ instances with different clocks over one engine, memory and rqlite: each item carries the expiry its writer computed from its own clock, and an update sets it from its writer's clock"}
+      - {kind: test-vectors, ref: "no statement of the rqlite driver and no column default reads a clock or a random source"}
 
   # ---- watch, time to live and leases
   - id: REQ-DATA-055
@@ -822,15 +824,16 @@ requirements:
     rationale: "A watcher must neither miss a change nor see one that did not happen (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [952]
+    tests: [actors/store/tests/store.rs, kits/rust/sluis-conformance/src/memory.rs, drivers/store/rqlite/tests/driver.rs]
     verification:
-      - {kind: integration-test, ref: "a crash between a change and its log row is impossible: kill the engine mid-write and compare the log with the table"}
+      - {kind: integration-test, ref: "each put and delete of a watched or exportable kind goes to the engine as one transaction that asks for its log row, and the log grows by that row; a kind nobody watches asks for none"}
+      - {kind: conformance-suite, ref: "a transaction that is refused leaves no log row and no change, one that holds leaves one row for each logged put and delete, on every engine"}
   - id: REQ-DATA-056
     area: DATA
     statement: "store@ MUST write no change-log row for a kind that nobody may watch."
@@ -1069,16 +1072,16 @@ requirements:
     rationale: "A fencing token lets a write be refused when its holder lost the lease (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [store]
     standards: []
     issues: [956]
+    tests: [actors/store/tests/watch_engines.rs, kits/rust/sluis-conformance/src/memory.rs, drivers/store/rqlite/tests/driver.rs]
     verification:
-      - {kind: integration-test, ref: "two takers race for one lease: one wins; the version grows at each takeover"}
-      - {kind: conformance-suite, ref: "lease conformance on every engine"}
+      - {kind: integration-test, ref: "six takers race for one lease through store@ on memory and rqlite: one wins each of four rounds, the others are told it is taken or stale, and the version grows by one at each takeover"}
+      - {kind: conformance-suite, ref: "six writers race on one key with the same condition on every engine: one wins, the version of the winner is the next one"}
   - id: REQ-DATA-064
     area: DATA
     statement: "store@ MUST let an expired lease be taken over by a conditional update of the same item."
@@ -1567,14 +1570,14 @@ requirements:
     rationale: "The store keeps no tombstone, so a caller must not rely on a version across a deletion (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [864]
+    tests: [actors/store/tests/watch_engines.rs, kits/rust/sluis-conformance/src/memory.rs, drivers/store/rqlite/tests/driver.rs]
     verification:
-      - {kind: conformance-suite, ref: "version conformance on every engine: create, delete, create again gives 1"}
+      - {kind: conformance-suite, ref: "version conformance on every engine: create, delete, create again gives 1; through store@ on memory and rqlite, a create after a delete or a sweep is at version 1"}
   - id: REQ-DATA-099
     area: DATA
     statement: "store@ MUST return, on request, the signed document in force of a config kind exactly as its config source gave it, to the readers of that kind in the registry and to no other caller, and for no self-scoped kind."

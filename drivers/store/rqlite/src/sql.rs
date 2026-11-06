@@ -490,4 +490,61 @@ mod tests {
         let g = ns().guard("k'; DROP TABLE x; --", Expected::Absent, 1);
         assert!(!g.sql.contains("DROP"));
     }
+
+    /// verifies: REQ-DATA-054
+    /// No statement of the driver, the schema included, reads a clock or a random source, and no column has a default
+    /// that does: a replica would compute its own value. Every time a statement uses is a parameter that store@ or the
+    /// driver's request handler passed in, and the expiry of an item is stored exactly as store@ gave it.
+    #[test]
+    fn no_statement_reads_a_clock_and_no_column_defaults_to_one() {
+        let n = ns();
+        let mut all: Vec<Stmt> = n.ddl();
+        all.push(n.schema_version());
+        all.push(n.get("k", 1));
+        all.push(n.query("a/", Some("a/b"), Some(("i", b"v")), 3, 1));
+        all.push(n.log_head());
+        all.push(n.log_floor());
+        all.push(n.log_after(4));
+        for e in [Expected::Absent, Expected::Version(2)] {
+            all.push(n.guard("k", e, 1));
+        }
+        for asked in [true, false] {
+            all.push(n.log_delete("k", 1, asked));
+        }
+        all.push(n.delete_index("k"));
+        all.push(n.delete_item("k"));
+        for expiry in [None, Some(9)] {
+            all.push(n.upsert("k", b"v", expiry, true));
+        }
+        all.push(n.insert_index("k", "i", b"v"));
+        all.push(n.log_put("k", 1));
+        all.extend(n.sweep_expired(1, 5));
+        all.extend(n.trim_log(1));
+        assert!(all.len() > 20, "the sweep saw {} statements", all.len());
+
+        let banned = [
+            "now",
+            "current_timestamp",
+            "current_date",
+            "current_time",
+            "datetime",
+            "strftime",
+            "julianday",
+            "unixepoch",
+            "random",
+            "date(",
+            "time(",
+        ];
+        for s in &all {
+            let sql = s.sql.to_ascii_lowercase();
+            for word in banned {
+                assert!(!sql.contains(word), "`{word}` in: {}", s.sql);
+            }
+        }
+
+        // The expiry travels as a parameter, in milliseconds, exactly as given.
+        let put = n.upsert("k", b"v", Some(1_234_567), false);
+        assert!(put.params.contains(&Param::Int(1_234_567)));
+        assert!(put.sql.contains("excluded.expires_at"));
+    }
 }
