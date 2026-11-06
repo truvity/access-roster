@@ -1,8 +1,11 @@
+//go:build sluis_test
+
 package registry
 
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -387,5 +390,97 @@ func TestKeyCallerGroup(t *testing.T) {
 		if _, ok := KeyCallerGroup(n, "dev"); ok {
 			t.Errorf("KeyCallerGroup(%s) is known, but %s is not a caller of key@", n, n)
 		}
+	}
+}
+
+// verifies: REQ-EXPORT-008
+func TestExportableKinds(t *testing.T) {
+	want := []string{"ClientSecretExport", "Crl", "KeyCertificate", "Krl", "SigningRing", "TrustAnchors", "TrustBundle"}
+	var got []string
+	for _, k := range Kinds() {
+		if k.Exportable {
+			got = append(got, k.Name)
+		}
+	}
+	slices.Sort(got)
+	if len(Kinds()) == 0 {
+		t.Fatal("the kind registry is empty")
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("exportable kinds = %v, want exactly %v", got, want)
+	}
+}
+
+// verifies: REQ-ISO-107
+func TestAdapterCallsPolicyOnly(t *testing.T) {
+	var adapters []string
+	for _, a := range Actors() {
+		if strings.HasPrefix(a.Name, "adapter-") {
+			adapters = append(adapters, a.Name)
+		}
+	}
+	if len(adapters) < 3 {
+		t.Fatalf("found %d adapters (%v), want at least the upstream-oidc, github and slack adapters", len(adapters), adapters)
+	}
+	// The work actors are the callees the requirement is about. store, key and the audit transport are the ports
+	// every actor reaches (data, keys, audit-emit), so they are not work actors and stay open to an adapter.
+	ports := map[string]bool{"store": true, "key": true, "transport": true}
+	callees := map[string]bool{}
+	var work int
+	for _, a := range Actors() {
+		callees[a.Name] = true
+		if a.Family == "work" {
+			work++
+		}
+	}
+	if work < 10 {
+		t.Fatalf("found %d work actors, want the nine core actors and the adapters", work)
+	}
+	callees["transport"] = true
+	callees["adapter-<vendor>"] = true // the wildcard of the registry file is not a callee
+	for _, adapter := range adapters {
+		for callee := range callees {
+			if got, want := MayCall(adapter, callee), callee == "policy" || ports[callee]; got != want {
+				t.Errorf("MayCall(%s, %s) = %t, want %t", adapter, callee, got, want)
+			}
+		}
+		// the declared calls of the registry say the same as the compiled graph
+		a, _ := ActorByName(adapter)
+		if !slices.Equal(a.Calls, []string{"policy"}) {
+			t.Errorf("%s declares calls %v, want [policy]", adapter, a.Calls)
+		}
+	}
+}
+
+// verifies: REQ-AUDIT-042
+func TestNoNotaryActor(t *testing.T) {
+	audit := map[string]bool{}
+	for _, a := range Actors() {
+		if strings.Contains(strings.ToLower(a.Name), "notary") {
+			t.Errorf("actor %s: sluis runs no separate notary", a.Name)
+		}
+		if a.Family == "audit" {
+			audit[a.Name] = true
+		}
+	}
+	var got []string
+	for n := range audit {
+		got = append(got, n)
+	}
+	slices.Sort(got)
+	if want := []string{"indexer", "reader", "witness", "writer"}; !slices.Equal(got, want) {
+		t.Errorf("the audit family = %v, want %v", got, want)
+	}
+	for _, n := range uidNames {
+		if strings.Contains(strings.ToLower(n), "notary") {
+			t.Errorf("uid name %s: no program of sluis is a notary", n)
+		}
+	}
+	if _, ok := ActorByName("notary"); ok {
+		t.Error("the actor registry has a notary")
+	}
+	// The checkpoints are signed by the rules of key@: the writer holds the audit-log signing right.
+	if !KeyAllows("writer", ScopeBoundary, "audit-log", "sign") {
+		t.Error("the writer may not sign with the audit-log key, so nothing signs a checkpoint")
 	}
 }

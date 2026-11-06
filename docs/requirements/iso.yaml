@@ -1543,14 +1543,14 @@ requirements:
     rationale: "Core calls the adapter, and the adapter's one call is to policy for the grant of work that no caller started (ADR 0025)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [1214]
+    tests: [kits/go/registry/registry_test.go]
     verification:
-      - {kind: integration-test, ref: "the call graph check: no edge from an adapter to a core actor"}
+      - {kind: integration-test, ref: "TestAdapterCallsPolicyOnly in kits/go/registry: for every adapter the call graph has the edge to policy and to no other work actor (only the store, key and audit transport ports besides)"}
   - id: REQ-ISO-108
     area: ISO
     statement: "Two L1 boundaries on one engine MUST wrap their data keys under wrapping keys of their own."
