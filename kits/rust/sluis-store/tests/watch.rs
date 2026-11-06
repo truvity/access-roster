@@ -33,6 +33,14 @@ impl Kind for Lease {
     const NAME: &'static str = "Lease";
 }
 
+/// A kind with a tenant (`person`).
+struct Person;
+impl Kind for Person {
+    type Id = String;
+    type Value = Provenance;
+    const NAME: &'static str = "Person";
+}
+
 /// A config kind: it has no change log.
 struct KeyPlan;
 impl Kind for KeyPlan {
@@ -71,6 +79,10 @@ struct Script {
     /// What every `Watch` call asked for: kind, tenant, resume point.
     opens: Mutex<Vec<(String, String, u64)>>,
     lists: AtomicUsize,
+    /// A listing fails once at this page (counted from 0), as a store that goes down in the middle of it.
+    fail_at_page: Mutex<Option<usize>>,
+    /// How long a page of a listing takes.
+    page_delay: Mutex<Duration>,
     /// Streams that are open: counted up at the call, down when the stream is dropped.
     live: Arc<AtomicUsize>,
 }
@@ -82,9 +94,10 @@ impl Drop for Live {
     }
 }
 
-fn address(kind: &str, id: &str) -> Address {
+fn address(kind: &str, tenant: &str, id: &str) -> Address {
     Address {
         kind: kind.into(),
+        tenant: tenant.into(),
         id: id.into(),
         ..Address::default()
     }
@@ -99,8 +112,12 @@ fn prov(path: &str) -> Provenance {
 }
 
 fn wire(kind: &str, id: &str, version: u64, value: &[u8]) -> WireItem {
+    wire_in(kind, "", id, version, value)
+}
+
+fn wire_in(kind: &str, tenant: &str, id: &str, version: u64, value: &[u8]) -> WireItem {
     WireItem {
-        address: address(kind, id).into(),
+        address: address(kind, tenant, id).into(),
         version,
         value: value.to_vec(),
         ..WireItem::default()
@@ -161,6 +178,14 @@ impl StoreService for Script {
         }
         let cur = self.current.lock().unwrap().clone().unwrap();
         let from: usize = r.page_token.parse().unwrap_or(0);
+        let delay = *self.page_delay.lock().unwrap();
+        if !delay.is_zero() {
+            tokio::time::sleep(delay).await;
+        }
+        if *self.fail_at_page.lock().unwrap() == Some(from) {
+            *self.fail_at_page.lock().unwrap() = None;
+            return Err(refusal(ErrorCode::Unavailable, "engine", ""));
+        }
         let items = cur
             .0
             .iter()
@@ -173,7 +198,7 @@ impl StoreService for Script {
                 } else {
                     prov(id).encode_to_vec()
                 };
-                wire(&r.kind, id, *v, &value)
+                wire_in(&r.kind, &r.tenant, id, *v, &value)
             })
             .collect();
         let next = if from + 1 < cur.0.len() {
@@ -296,6 +321,7 @@ fn opts(from: Option<u64>) -> WatchOpts {
     WatchOpts {
         from,
         backoff: FAST,
+        ..WatchOpts::default()
     }
 }
 
@@ -940,4 +966,322 @@ async fn the_revocation_reader_watches_at_no_tenant() {
         *up.script.opens.lock().unwrap(),
         [("key-revocation".to_owned(), String::new(), 10)]
     );
+}
+
+// ---- the idle timeout ----
+
+/// verifies: REQ-DATA-108
+/// A stream that says nothing for the idle timeout is taken for dead (a store@ that is half open sends nothing, not
+/// even an error): it is dropped, the watch says so and reconnects from the last point.
+#[tokio::test]
+async fn a_silent_stream_is_interrupted_after_the_idle_timeout() {
+    let up = up(
+        vec![
+            Session::Stream(vec![Step::Msg(put(11, "a/one", 1, "one")), Step::Hang]),
+            Session::Stream(vec![Step::Msg(put(12, "a/two", 1, "two")), Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                idle_timeout: Duration::from_millis(150),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    let t0 = Instant::now();
+    match ev(&mut w).await {
+        Event::Interrupted { reason, attempt } => {
+            assert_eq!((reason.as_str(), attempt), ("no bookmark", 1));
+        }
+        e => panic!("not an interruption: {e:?}"),
+    }
+    assert!(
+        t0.elapsed() >= Duration::from_millis(140),
+        "{:?}",
+        t0.elapsed()
+    );
+    is_put(&ev(&mut w).await, "a/two", 1, "two", 12);
+    assert_eq!(opens(&up), [10, 11]);
+    // The dead stream was dropped at the store.
+    assert_eq!(up.script.live.load(Ordering::SeqCst), 1);
+}
+
+// ---- cancel safety ----
+
+/// verifies: REQ-DATA-108
+/// A call of `next` that is given up while the watch waits to retry does not shorten the wait: the deadline is kept, so
+/// a loop of `select!` does not become a storm of reconnects.
+#[tokio::test]
+async fn a_cancelled_call_during_the_backoff_keeps_the_wait() {
+    let up = up(
+        vec![
+            Session::Refuse(ErrorCode::Unavailable, "engine"),
+            Session::Stream(vec![Step::Msg(put(11, "a/one", 1, "one")), Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                backoff: Backoff {
+                    initial: Duration::from_millis(400),
+                    max: Duration::from_secs(1),
+                },
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Interrupted { attempt: 1, .. }
+    ));
+    let t0 = Instant::now();
+    for _ in 0..3 {
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), w.next())
+                .await
+                .is_err(),
+            "still waiting"
+        );
+    }
+    assert_eq!(opens(&up), [10], "no reconnect while the wait lasts");
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(
+        t0.elapsed() >= Duration::from_millis(380),
+        "{:?}",
+        t0.elapsed()
+    );
+    assert_eq!(opens(&up), [10, 10]);
+}
+
+/// verifies: REQ-DATA-108
+/// A call of `next` that is given up in the middle of the listing leaves the watch as it was: the next call reads
+/// the listing again from its first page and gives the whole state once.
+#[tokio::test]
+async fn a_cancelled_call_during_the_listing_reads_the_listing_again() {
+    let up = up(
+        vec![Session::Stream(vec![Step::Hang])],
+        vec![
+            Listing::Items(vec![("a/one", 1), ("a/two", 1), ("a/three", 1)], 10),
+            Listing::Items(vec![("a/one", 1), ("a/two", 1), ("a/three", 1)], 10),
+        ],
+    )
+    .await;
+    *up.script.page_delay.lock().unwrap() = Duration::from_millis(200);
+    let mut w = lease_watch(&up, None);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(250), w.next())
+            .await
+            .is_err(),
+        "the listing takes 600 ms"
+    );
+    *up.script.page_delay.lock().unwrap() = Duration::ZERO;
+    match ev(&mut w).await {
+        Event::Resync {
+            cause,
+            items,
+            resume_point,
+        } => {
+            assert_eq!((cause, resume_point), (ResyncCause::Start, 10));
+            assert_eq!(ids(&items), ["a/one", "a/two", "a/three"]);
+        }
+        e => panic!("not a resync: {e:?}"),
+    }
+    assert_eq!(up.script.lists.load(Ordering::SeqCst), 2);
+    quiet(&mut w).await;
+    assert_eq!(
+        opens(&up),
+        [10],
+        "one stream, for the one listing that was given"
+    );
+}
+
+// ---- listing, bookmarks, tenants, giving up ----
+
+/// verifies: REQ-DATA-108
+/// A listing that fails on its second page is reported and read again from its first page; the state given is one
+/// listing and never the halves of two.
+#[tokio::test]
+async fn a_listing_that_fails_on_a_later_page_restarts_whole() {
+    let up = up(
+        vec![Session::Stream(vec![Step::Hang])],
+        vec![
+            Listing::Items(vec![("a/one", 1), ("a/two", 1), ("a/three", 1)], 10),
+            Listing::Items(vec![("a/one", 2), ("a/two", 2), ("a/three", 2)], 12),
+        ],
+    )
+    .await;
+    *up.script.fail_at_page.lock().unwrap() = Some(1);
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Interrupted { attempt: 1, .. }
+    ));
+    match ev(&mut w).await {
+        Event::Resync {
+            items,
+            resume_point,
+            ..
+        } => {
+            assert_eq!(resume_point, 12);
+            assert_eq!(ids(&items), ["a/one", "a/two", "a/three"]);
+            assert!(items.iter().all(|i| i.version == 2));
+        }
+        e => panic!("not a resync: {e:?}"),
+    }
+    quiet(&mut w).await;
+    assert_eq!(opens(&up), [12]);
+}
+
+/// verifies: REQ-DATA-108
+/// The point of a bookmark is the point a reconnect resumes from, though no change moved it.
+#[tokio::test]
+async fn a_bookmark_moves_the_point_a_reconnect_starts_from() {
+    let up = up(
+        vec![
+            Session::Stream(vec![
+                Step::Msg(put(11, "a/one", 1, "one")),
+                Step::Msg(bookmark(20)),
+                Step::End,
+            ]),
+            Session::Stream(vec![Step::Hang]),
+        ],
+        vec![Listing::Items(vec![], 10)],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    is_put(&ev(&mut w).await, "a/one", 1, "one", 11);
+    assert!(matches!(
+        ev(&mut w).await,
+        Event::Bookmark { resume_point: 20 }
+    ));
+    assert!(matches!(ev(&mut w).await, Event::Interrupted { .. }));
+    quiet(&mut w).await;
+    assert_eq!(opens(&up), [10, 20]);
+}
+
+/// verifies: REQ-DATA-108
+/// A store that alternates a bookmark and an expired point is still backed off: a bookmark shows that the stream is
+/// up, not that the log is being read, so it does not reset the count of listings the expiry forced.
+#[tokio::test]
+async fn a_bookmark_does_not_end_the_backoff_of_repeated_expiry() {
+    let expiry = || {
+        Session::Stream(vec![
+            Step::Msg(bookmark(0)),
+            Step::Fail(ErrorCode::FailedPrecondition, "resume_point_expired"),
+        ])
+    };
+    let up = up(
+        vec![expiry(), expiry(), Session::Stream(vec![Step::Hang])],
+        vec![
+            Listing::Items(vec![], 10),
+            Listing::Items(vec![], 20),
+            Listing::Items(vec![], 30),
+        ],
+    )
+    .await;
+    let mut w = lease_watch(&up, None);
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    assert!(
+        matches!(ev(&mut w).await, Event::Resync { .. }),
+        "the first expiry waits for nothing"
+    );
+    assert!(matches!(ev(&mut w).await, Event::Bookmark { .. }));
+    let t0 = Instant::now();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    assert!(
+        t0.elapsed() >= Duration::from_millis(25),
+        "{:?}",
+        t0.elapsed()
+    );
+}
+
+/// verifies: REQ-DATA-108
+/// A kind with a tenant is followed under a tenant: the tenant is on the listing and on the watch, the items carry
+/// it, and a change of another tenant ends the watch.
+#[tokio::test]
+async fn a_tenant_scoped_watch_asks_for_its_tenant_and_refuses_another() {
+    let person = |tenant: &str, seq| WatchResponse {
+        resume_point: seq,
+        r#type: ChangeType::CHANGE_TYPE_PUT.into(),
+        item: wire_in("person", tenant, "p1", 1, &prov("p").encode_to_vec()).into(),
+        ..WatchResponse::default()
+    };
+    let up = up(
+        vec![Session::Stream(vec![
+            Step::Msg(person("acme", 11)),
+            Step::Msg(person("other", 12)),
+            Step::Hang,
+        ])],
+        vec![Listing::Items(vec![("p0", 1)], 10)],
+    )
+    .await;
+    let store = Store::<Person>::new(up.client.clone()).unwrap();
+    assert!(matches!(store.watch(""), Err(Error::Address(f)) if f == "tenant"));
+    assert!(matches!(store.watch("-"), Err(Error::Address(f)) if f == "tenant"));
+    let mut w = store.watch_with("acme", opts(None)).unwrap();
+    match ev(&mut w).await {
+        Event::Resync { items, .. } => assert_eq!(items[0].tenant, "acme"),
+        e => panic!("not a resync: {e:?}"),
+    }
+    match ev(&mut w).await {
+        Event::Put { item, .. } => {
+            assert_eq!((item.tenant.as_str(), item.id.as_str()), ("acme", "p1"))
+        }
+        e => panic!("not a put: {e:?}"),
+    }
+    assert!(matches!(end(&mut w).await, Error::Protocol(_)));
+    assert_eq!(
+        *up.script.opens.lock().unwrap(),
+        [("person".to_owned(), "acme".to_owned(), 10)]
+    );
+}
+
+/// verifies: REQ-DATA-108
+/// With a limit to give up, a store that stays down ends the watch with `GaveUp` after reporting each failure;
+/// without one the watch goes on.
+#[tokio::test]
+async fn a_watch_with_a_limit_gives_up_when_the_store_stays_down() {
+    let up = up(vec![], vec![Listing::Items(vec![], 10)]).await;
+    let mut w = Store::<Lease>::new(up.client.clone())
+        .unwrap()
+        .watch_with(
+            "",
+            WatchOpts {
+                give_up_after: Some(Duration::from_millis(150)),
+                ..opts(None)
+            },
+        )
+        .unwrap();
+    assert!(matches!(ev(&mut w).await, Event::Resync { .. }));
+    let mut last = 0;
+    let err = loop {
+        match tokio::time::timeout(Duration::from_secs(5), w.next())
+            .await
+            .unwrap()
+        {
+            Ok(Event::Interrupted { attempt, .. }) => {
+                assert_eq!(attempt, last + 1, "attempts count up");
+                last = attempt;
+            }
+            Ok(e) => panic!("{e:?}"),
+            Err(e) => break e,
+        }
+    };
+    assert!(matches!(err, Error::GaveUp), "{err:?}");
+    assert!(last >= 2, "{last}");
+    assert!(matches!(end(&mut w).await, Error::Closed));
 }

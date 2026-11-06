@@ -966,8 +966,8 @@ requirements:
       - {kind: integration-test, ref: "an actor with no watch rule, a tenant that does not fit the kind and an engine that is down each get their refusal, audited"}
   - id: REQ-DATA-108
     area: DATA
-    statement: "A typed client's watch helper MUST list the kind, follow it from the position of the listing, deliver each change once and in the order of the log, and reconnect from the last position it delivered after a break."
-    rationale: "Every follower of a kind needs the same list-then-watch loop, and a loop written by hand per actor loses or repeats a change at the seams (ADR 0005, ADR 0009)."
+    statement: "The Rust typed client's watch helper MUST list the kind, follow it from the position of the listing, deliver each change once and in increasing sequence, reconnect from the last position it delivered after a break, and take a stream that stays silent past its idle timeout for broken, assuming a change log whose sequence only grows and is never reused after a restore or a reset."
+    rationale: "Every follower of a kind needs the same list-then-watch loop, and a loop written by hand per actor loses or repeats a change at the seams; the Go client has no watch helper yet (ADR 0005, ADR 0009)."
     level: MUST
     source: design-decision
     status: done
@@ -976,11 +976,11 @@ requirements:
     standards: []
     issues: [1453, 1362]
     verification:
-      - {kind: integration-test, ref: "a scripted store@: listing in pages, then puts, deletes and a bookmark in order; a saved point lists nothing; a repeat is dropped; a break and an end resume from the last point"}
-      - {kind: integration-test, ref: "store@ end to end: revocations listed then followed; a restart resumes; a delete and an expiry arrive as deletes; an idle stream says its point"}
+      - {kind: integration-test, ref: "a scripted store@: a three-page listing, then puts, deletes, a bookmark in order; a repeat is dropped; a break, an end, a silent stream resume from the last point; a cancelled call keeps the backoff"}
+      - {kind: integration-test, ref: "store@ end to end: 150 items over two pages listed then followed; a restart resumes; a delete and an expiry arrive as deletes; an idle stream says its point"}
   - id: REQ-DATA-109
     area: DATA
-    statement: "A typed client's watch helper MUST report a resume point that store@ no longer holds as an explicit resync that carries the whole state of the kind, and end with an error, never a skip, on a value that does not decode, a change that is malformed or a refusal that a retry cannot cure."
+    statement: "The Rust typed client's watch helper MUST report a resume point that store@ no longer holds as an explicit resync that carries the whole state of the kind, and end with an error, never a skip, on a value that does not decode, a change that is malformed or a refusal that a retry cannot cure."
     rationale: "A reader that answers \"not revoked\" from a followed kind must learn that it may have missed a change, and must not go on from a state it cannot trust (ADR 0005, ADR 0041)."
     level: MUST
     source: design-decision

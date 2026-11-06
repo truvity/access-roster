@@ -12,29 +12,55 @@
 //! - **Events.** A [`Event::Put`] is the item as store@ read it at delivery, an [`Event::Delete`] is its address
 //!   and the version of the row (an expiry is a delete), and an [`Event::Bookmark`] is the latest resume point of
 //!   an idle stream (every 30 seconds): a sign of life, and a point a restart can use.
-//! - **At-least-once, in the order of the log.** A change at or below the point already applied is a repeat and is
-//!   dropped here, so a consumer sees each sequence once and in order.
+//! - **Once, in the order of the log, for each address.** A change at or below the point already applied is a
+//!   repeat and is dropped here, so a consumer sees each sequence once and in increasing order. store@ coalesces
+//!   rows: a put is skipped when a later row of the same address is in the run, so the order is guaranteed *for one
+//!   address* and the state a put carries is the state at delivery, not at the sequence; do not infer an order
+//!   across addresses from the sequence numbers. Right after a [`Event::Resync`] a change the listing already shows
+//!   may come again (store-api.md "Watch"), and a delete of an item that expired may repeat or arrive for an item
+//!   the consumer never held: apply a delete by removing the address if present, and treat a put as the full state.
+//! - **The log is monotonic.** The loop assumes that sequence numbers only grow and are never reused. A restore or
+//!   a reset of the change log that reissues numbers would let a saved resume point skip changes without a refusal;
+//!   until store@ closes that, a consumer that persists a point must treat a restore as a reason to start without
+//!   it (`from: None`).
 //! - **A resync is an event.** When store@ no longer holds the resume point (the change log is kept for a bounded
 //!   window), or has not reached it, the loop lists the kind again and says [`Event::Resync`] with the whole
 //!   state, `cause` [`ResyncCause::Expired`]. A consumer *replaces* its state with the items; it never applies
 //!   changes it did not see. The loop never skips from one point to a later one without saying so.
 //! - **A broken stream is an event too.** A stream that ends or fails, and a store@ that is down, give
 //!   [`Event::Interrupted`] and the loop reconnects from the last point with an exponential [`Backoff`]. Until the
-//!   next event of any kind arrives (a bookmark at the latest) the consumer's state is *unconfirmed*: a reader
-//!   that fails closed (REQ-KEYS-107's "not revoked" is a claim to verify) stops answering from it, and carries on
-//!   when events come again.
+//!   caught-up point is reached the consumer's state is *unconfirmed*. The first event after a reconnect does not
+//!   prove that the consumer has caught up: a put or a delete may be the first of many rows still to come. store@
+//!   does not yet say "caught up" (the log head read at open has been delivered); until it does, a reader that fails
+//!   closed (REQ-KEYS-107's "not revoked" is a claim to verify) treats its state as unconfirmed after
+//!   [`Event::Interrupted`] until a [`Event::Bookmark`] arrives, which store@ sends only on a stream that has been
+//!   idle, that is, when it has nothing more to deliver. A watch that is silent for [`WatchOpts::idle_timeout`] is
+//!   interrupted too, so a store@ that is half open is noticed.
+//! - **It gives up only when asked.** The loop retries for ever by default and reports each failure as
+//!   [`Event::Interrupted`] with its `attempt`: a consumer must escalate on it (raise an alarm, refuse to serve from
+//!   its state). [`WatchOpts::give_up_after`] ends the watch with [`Error::GaveUp`] once the failures have gone on
+//!   for that long.
 //! - **It fails closed.** An item that does not decode, a change that is not well formed, a refusal that a retry
 //!   cannot cure (`permission_denied`, `invalid_argument`, `failed_precondition` other than an expired point,
 //!   `unimplemented`, ...) and a kind that has no change log end the watch with an [`Error`]; after it every call
-//!   gives [`Error::Closed`]. The consumer starts a new watch (which lists again) or reports itself broken.
+//!   gives [`Error::Closed`]. The consumer starts a new watch (which lists again) or reports itself broken. A listing
+//!   of more than 1000 pages is fatal too.
+//! - **Values are the kind's, as store@ read them.** An item that has a time to live carries `expires_at`; the
+//!   expiry reaches the watcher as a delete only when the sweeper runs, so a reader that must not use an expired item
+//!   honours `expires_at` itself. [`KeyRevocations::watch`](crate::revocation::KeyRevocations::watch) covers the
+//!   revocations at no tenant only (a boundary's keys), not the data key generations of a tenant. The events print
+//!   their items with `Debug`: do not log them for a secret kind.
 //!
 //! The loop is pulled: nothing runs between calls of [`Watch::next`], and there is no buffer beyond the stream
 //! (HTTP/2 flow control is the backpressure, as store-api.md says). Dropping the [`Watch`] ends the stream; dropping
-//! the future of [`Watch::next`] drops the stream too, and the next call reconnects from the last point, so no event
-//! is lost either way. Run it in a task of its own, started outside a request handler: a call made from a handler
+//! the future of [`Watch::next`] (a `select!` that takes another branch) drops the stream too, and the next call
+//! reconnects from the last point, so no event is lost either way. The time still to wait before a retry is kept as
+//! a deadline, so a cancelled call does not shorten the backoff, and a cancelled listing is read again from its start. Run it in a task of its own, started outside a request handler: a call made from a handler
 //! carries the handler's deadline (contracts.md "Every call"), which would cut the stream short.
 
 use std::time::Duration;
+
+use tokio::time::Instant;
 
 use connectrpc::client::{ClientTransport, ServerStream};
 use connectrpc::error::ErrorCode;
@@ -55,8 +81,8 @@ const EXPIRED: &str = "resume_point_expired";
 type Stream =
     ServerStream<<Transport as ClientTransport>::ResponseBody, WatchResponseView<'static>>;
 
-/// How long the loop waits before it tries again after a failure: `initial` for the first retry, doubled for each
-/// further one, never more than `max`. A message received resets it.
+/// How long the loop waits before it tries again after a failure: `initial` (at least 1 ms) for the first retry,
+/// doubled for each further one, never more than `max`. A message received resets it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Backoff {
     /// The wait before the first retry.
@@ -81,16 +107,19 @@ impl Backoff {
     pub fn delay(&self, attempt: u32) -> Duration {
         match attempt {
             0 => Duration::ZERO,
-            n => self
-                .initial
-                .saturating_mul(1u32 << (n - 1).min(20))
-                .min(self.max),
+            n => {
+                // Never a busy loop: at least a millisecond, and never less than the first wait.
+                let initial = self.initial.max(Duration::from_millis(1));
+                initial
+                    .saturating_mul(1u32 << (n - 1).min(20))
+                    .min(self.max.max(initial))
+            }
         }
     }
 }
 
 /// What a watch starts from, and how it retries.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 pub struct WatchOpts {
     /// The resume point the caller last applied (a persisted cursor, or the point of an event). `None` and `Some(0)`
     /// list the kind first: a watch from 0 starts "from now" in store@ and would lose what changed since, so it is
@@ -98,6 +127,25 @@ pub struct WatchOpts {
     pub from: Option<u64>,
     /// The wait between retries.
     pub backoff: Backoff,
+    /// How long a stream may say nothing before it is taken for dead: store@ sends a bookmark when a stream has been
+    /// idle for 30 seconds, so the default is three of those. On expiry the stream is dropped, the watch says
+    /// [`Event::Interrupted`] (`no bookmark`) and reconnects. It also bounds the wait for the first message.
+    pub idle_timeout: Duration,
+    /// Ends the watch with [`Error::GaveUp`] once the failures have gone on for this long without a message or a
+    /// listing getting through. `None` retries for ever; the consumer escalates on `attempt` of
+    /// [`Event::Interrupted`].
+    pub give_up_after: Option<Duration>,
+}
+
+impl Default for WatchOpts {
+    fn default() -> Self {
+        Self {
+            from: None,
+            backoff: Backoff::default(),
+            idle_timeout: Duration::from_secs(90),
+            give_up_after: None,
+        }
+    }
 }
 
 /// Why the loop listed the kind.
@@ -146,7 +194,8 @@ pub enum Event<K: Kind> {
         resume_point: u64,
     },
     /// The stream broke or store@ could not be reached; the loop reconnects (from the last point) after the backoff.
-    /// The consumer's state is unconfirmed until the next event.
+    /// The consumer's state is unconfirmed until it has caught up: see the module on "caught up". The consumer
+    /// escalates on `attempt` when it keeps growing.
     Interrupted {
         /// The code and reason of the failure, never a value.
         reason: String,
@@ -235,8 +284,13 @@ pub struct Watch<K: Kind> {
     /// Consecutive listings forced by an expired point since a message last arrived: a store that keeps expiring
     /// the point is not listed in a tight loop.
     expiries: u32,
-    /// The wait before the next try, set when a failure is reported.
-    wait: Duration,
+    /// When the next try may start, set when a failure is reported and cleared when the wait is over. A deadline and
+    /// not a duration, so that a dropped `next` does not lose it.
+    retry_at: Option<Instant>,
+    idle_timeout: Duration,
+    give_up_after: Option<Duration>,
+    /// When the failures that go on began.
+    failing_since: Option<Instant>,
     closed: bool,
 }
 
@@ -275,7 +329,10 @@ impl<K: Kind> Store<K> {
             stream: None,
             attempt: 0,
             expiries: 0,
-            wait: Duration::ZERO,
+            retry_at: None,
+            idle_timeout: opts.idle_timeout,
+            give_up_after: opts.give_up_after,
+            failing_since: None,
             closed: false,
         })
     }
@@ -329,13 +386,14 @@ impl<K: Kind> Watch<K> {
 
     async fn step(&mut self) -> Result<Event<K>, Error> {
         loop {
-            if !self.wait.is_zero() {
-                tokio::time::sleep(std::mem::take(&mut self.wait)).await;
+            if let Some(at) = self.retry_at {
+                tokio::time::sleep_until(at).await;
+                self.retry_at = None;
             }
             if !self.synced {
                 match self.list().await {
                     Ok(ev) => return Ok(ev),
-                    Err(e) if retryable(&e) => return Ok(self.interrupted(&e)),
+                    Err(e) if retryable(&e) => return self.interrupted(&e),
                     Err(e) => return Err(e),
                 }
             }
@@ -349,28 +407,36 @@ impl<K: Kind> Watch<K> {
                         self.expire();
                         continue;
                     }
-                    Err(e) if retryable(&e) => return Ok(self.interrupted(&e)),
+                    Err(e) if retryable(&e) => return self.interrupted(&e),
                     Err(e) => return Err(e),
                 }
             };
             // The stream is out of `self` while it is read: a dropped future leaves none, and the next call
             // reconnects from `point`, which only moves in the same step that returns the event.
-            match stream.message::<WatchResponse>().await {
-                Ok(Some(m)) => {
+            let read =
+                tokio::time::timeout(self.idle_timeout, stream.message::<WatchResponse>()).await;
+            match read {
+                Err(_) => return self.interrupted_by("no bookmark"),
+                Ok(Ok(Some(m))) => {
                     self.stream = Some(stream);
                     self.attempt = 0;
-                    self.expiries = 0;
+                    self.failing_since = None;
                     if let Some(ev) = self.apply(&m.to_owned_message())? {
+                        // A store that alternates a bookmark and an expired point is still backed off: only a
+                        // change shows that the log is being read.
+                        if !matches!(ev, Event::Bookmark { .. }) {
+                            self.expiries = 0;
+                        }
                         return Ok(ev);
                     }
                 }
-                Ok(None) => return Ok(self.interrupted_by("stream ended")),
-                Err(e) => {
+                Ok(Ok(None)) => return self.interrupted_by("stream ended"),
+                Ok(Err(e)) => {
                     let e = Error::from(e);
                     if expired(&e) {
                         self.expire();
                     } else if retryable(&e) {
-                        return Ok(self.interrupted(&e));
+                        return self.interrupted(&e);
                     } else {
                         return Err(e);
                     }
@@ -397,6 +463,7 @@ impl<K: Kind> Watch<K> {
                     self.point = resume_point;
                     self.synced = true;
                     self.attempt = 0;
+                    self.failing_since = None;
                     return Ok(Event::Resync {
                         cause: self.cause,
                         items,
@@ -422,22 +489,31 @@ impl<K: Kind> Watch<K> {
     fn expire(&mut self) {
         self.synced = false;
         self.cause = ResyncCause::Expired;
-        self.wait = self.backoff.delay(self.expiries);
+        self.retry_after(self.backoff.delay(self.expiries));
         self.expiries = self.expiries.saturating_add(1);
     }
 
-    fn interrupted(&mut self, e: &Error) -> Event<K> {
+    fn retry_after(&mut self, wait: Duration) {
+        self.retry_at = (!wait.is_zero()).then(|| Instant::now() + wait);
+    }
+
+    fn interrupted(&mut self, e: &Error) -> Result<Event<K>, Error> {
         self.interrupted_by(&e.to_string())
     }
 
-    fn interrupted_by(&mut self, reason: &str) -> Event<K> {
+    /// Reports a failure, or gives up when the failures have gone on for too long.
+    fn interrupted_by(&mut self, reason: &str) -> Result<Event<K>, Error> {
         self.stream = None;
+        let since = *self.failing_since.get_or_insert_with(Instant::now);
+        if self.give_up_after.is_some_and(|d| since.elapsed() >= d) {
+            return Err(Error::GaveUp);
+        }
         self.attempt = self.attempt.saturating_add(1);
-        self.wait = self.backoff.delay(self.attempt);
-        Event::Interrupted {
+        self.retry_after(self.backoff.delay(self.attempt));
+        Ok(Event::Interrupted {
             reason: reason.to_owned(),
             attempt: self.attempt,
-        }
+        })
     }
 
     /// One message of the stream: an event, `None` for a repeat, or the error that ends the watch.
@@ -511,6 +587,22 @@ mod tests {
         assert_eq!(ms, [0, 100, 200, 400, 700, 700]);
         // A long outage cannot overflow the shift or the product.
         assert_eq!(b.delay(u32::MAX), Duration::from_millis(700));
+    }
+
+    #[test]
+    fn the_backoff_is_never_a_busy_loop_and_never_shorter_than_its_first_wait() {
+        let zero = Backoff {
+            initial: Duration::ZERO,
+            max: Duration::ZERO,
+        };
+        assert_eq!(zero.delay(0), Duration::ZERO);
+        assert_eq!(zero.delay(1), Duration::from_millis(1));
+        assert_eq!(zero.delay(5), Duration::from_millis(1));
+        let inverted = Backoff {
+            initial: Duration::from_secs(2),
+            max: Duration::from_secs(1),
+        };
+        assert_eq!(inverted.delay(3), Duration::from_secs(2));
     }
 
     #[test]
