@@ -1,0 +1,4 @@
+# owner-rung: a rung the ceiling does not list
+rungs:
+  ops:
+    groups: [team-web@acme.example]

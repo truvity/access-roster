@@ -1,0 +1,8 @@
+# owner-github: a job in a repository of another company
+jobs:
+  "acme:shop-ci:job":
+    repository: globex/shop
+    ref: refs/heads/main
+    events: [push]
+    workflows:
+      - caller: .github/workflows/ci.yaml

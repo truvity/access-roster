@@ -1,0 +1,7 @@
+# owner-place: a cluster of another company
+workloads:
+  "dev:agent:workload":
+    cluster: globex-dev
+    namespace: web
+    name: agent
+    why: reports

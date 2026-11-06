@@ -1,0 +1,8 @@
+# owner-place: an AWS account of another company
+workloads:
+  "dev:agent:aws":
+    why: uploads
+    aws:
+      account: "999999999999"
+      role: uploader
+      path: /

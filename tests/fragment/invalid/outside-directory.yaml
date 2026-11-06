@@ -1,0 +1,4 @@
+# owner-directory: a person of another company
+rungs:
+  dev:
+    users: [eve@globex.example]

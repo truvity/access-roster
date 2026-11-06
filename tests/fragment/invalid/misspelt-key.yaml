@@ -1,0 +1,5 @@
+# schema and decoder: a misspelt key is an error, not a silent no-op
+projects:
+  web:
+    scopes: [dev]
+    deployer: [team-web@acme.example]

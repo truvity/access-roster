@@ -1,0 +1,4 @@
+# owner-github: an organisation of another company
+github:
+  globex:
+    members: [team-web@acme.example]

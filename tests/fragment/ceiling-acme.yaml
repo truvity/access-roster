@@ -1,0 +1,11 @@
+directories: [acme.example]
+groups:
+  - "dev:web:*"
+  - "stage:web:deployer"
+  - "acme:*:job"
+  - "dev:agent:*"
+rungs: [dev]
+github_orgs: [acme]
+slack_workspaces: [acme-chat]
+clusters: [acme-dev]
+aws_accounts: ["111122223333"]
