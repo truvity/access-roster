@@ -126,6 +126,54 @@
         }
       }
     },
+    "cargo-audit@0.22.2": {
+      "last_modified": "2026-11-04T21:12:09Z",
+      "resolved": "github:NixOS/nixpkgs/6dadaf4375be35033e1c84395adbd53ff5fded96#cargo-audit",
+      "source": "devbox-search",
+      "version": "0.22.2",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/mmw86ggynfbdn3f4i6x8dl6ni3g6nsfg-cargo-audit-0.22.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/mmw86ggynfbdn3f4i6x8dl6ni3g6nsfg-cargo-audit-0.22.2"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/lwd8jxbr7zks1s8qd9ibm2f9zii1588h-cargo-audit-0.22.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/lwd8jxbr7zks1s8qd9ibm2f9zii1588h-cargo-audit-0.22.2"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/alqirjvsifw7qmz7l0fdp8c2jfznkv1h-cargo-audit-0.22.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/alqirjvsifw7qmz7l0fdp8c2jfznkv1h-cargo-audit-0.22.2"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/2gspn37fzjq94h4rg2dd4awjx4y32f3q-cargo-audit-0.22.2",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/2gspn37fzjq94h4rg2dd4awjx4y32f3q-cargo-audit-0.22.2"
+        }
+      }
+    },
     "cargo-zigbuild@0.23.4": {
       "last_modified": "2026-11-03T03:15:56Z",
       "resolved": "github:NixOS/nixpkgs/9a6cbf4722bdbbef65f9e0400452ca088e31dc4b#cargo-zigbuild",
@@ -241,6 +289,44 @@
             }
           ],
           "store_path": "/nix/store/4ifdzaja36bkb7x7za9lz9z7nckv80wj-golangci-lint-2.15.0"
+        }
+      }
+    },
+    "govulncheck@1.9.0": {
+      "last_modified": "2026-11-04T21:12:09Z",
+      "resolved": "github:NixOS/nixpkgs/6dadaf4375be35033e1c84395adbd53ff5fded96#govulncheck",
+      "source": "devbox-search",
+      "version": "1.9.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/kw4gqmcsm1dr6kpdvk8rgcgffl2696c1-govulncheck-1.9.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/kw4gqmcsm1dr6kpdvk8rgcgffl2696c1-govulncheck-1.9.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/5a8ipmv07a3d4xljkw4h6dh52v6n9rm6-govulncheck-1.9.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/5a8ipmv07a3d4xljkw4h6dh52v6n9rm6-govulncheck-1.9.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/kn77a09nx5xvsy0h2cni1aayqkqnkd14-govulncheck-1.9.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/kn77a09nx5xvsy0h2cni1aayqkqnkd14-govulncheck-1.9.0"
         }
       }
     },
@@ -509,6 +595,44 @@
             }
           ],
           "store_path": "/nix/store/rlkgsb80gq0fj00qraxnxa2mkh8xcq3k-nodejs-26.11.1"
+        }
+      }
+    },
+    "osv-scanner@2.7.0": {
+      "last_modified": "2026-11-04T21:12:09Z",
+      "resolved": "github:NixOS/nixpkgs/6dadaf4375be35033e1c84395adbd53ff5fded96#osv-scanner",
+      "source": "devbox-search",
+      "version": "2.7.0",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/0gvfskn3nr5kaxscs1fdj01vml9349ff-osv-scanner-2.7.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/0gvfskn3nr5kaxscs1fdj01vml9349ff-osv-scanner-2.7.0"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/hm4i6ahq4rrkiz9gh62b4hzr8yaw5nah-osv-scanner-2.7.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/hm4i6ahq4rrkiz9gh62b4hzr8yaw5nah-osv-scanner-2.7.0"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/69jfy7z8hdbbdxnrzllx9qlx6yky3c78-osv-scanner-2.7.0",
+              "default": true
+            }
+          ],
+          "store_path": "/nix/store/69jfy7z8hdbbdxnrzllx9qlx6yky3c78-osv-scanner-2.7.0"
         }
       }
     },
