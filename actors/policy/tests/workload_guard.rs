@@ -171,3 +171,35 @@ fn an_operator_policy_cannot_take_the_id_of_the_guard() {
         "an operator policy with the id of the guard loaded"
     );
 }
+
+/// verifies: REQ-WORKLOAD-007
+#[test]
+fn issue_comment_cannot_sign_although_the_policy_permits_the_repository() {
+    refused_on_the_default_branch("issue_comment");
+}
+
+/// verifies: REQ-WORKLOAD-007
+#[test]
+fn workflow_run_cannot_sign_although_the_policy_permits_the_repository() {
+    refused_on_the_default_branch("workflow_run");
+}
+
+/// verifies: REQ-WORKLOAD-007
+#[test]
+fn merge_group_cannot_sign_although_the_policy_permits_the_repository() {
+    refused_on_the_default_branch("merge_group");
+}
+
+/// These events run on a branch ref, so only the event can refuse them (owner decision W1 A,
+/// 2026-11-06); the match is exact, and the same job on a `push` is the operator's to decide.
+fn refused_on_the_default_branch(event: &str) {
+    let (allow, by) = sign(github(
+        json!({"event": event, "ref": "refs/heads/main", "ref_type": "branch"}),
+    ));
+    assert!(!allow, "{event}");
+    assert_eq!(by, [GUARD], "{event}");
+    let (allow, _) = sign(github(
+        json!({"event": "push", "ref": "refs/heads/main", "ref_type": "branch"}),
+    ));
+    assert!(allow, "a push on the same ref is decided by the policy");
+}

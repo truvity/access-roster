@@ -98,8 +98,8 @@ requirements:
   # ---- pull requests (decision 0024)
   - id: REQ-WORKLOAD-007
     area: WORKLOAD
-    statement: "A workload identity from a pull request MUST NOT be able to sign, whatever the operator's policy permits."
-    rationale: "A pull request runs the files it proposes, so its author controls the workflow, and a rule that names only the repository would let that author sign; the guard is a built-in forbid that no operator policy can lift, and the record is done only when a test runs from a verified token through the entity attributes to a refusal (#890)."
+    statement: "A workload identity from a pull request, or from an event that can run pull-request code, MUST NOT be able to sign, whatever the operator's policy permits."
+    rationale: "A pull request runs the files it proposes, and so can issue_comment, workflow_run and merge_group runs (owner decision W1 A, 2026-11-06), so a rule that names only the repository would let its author sign; the record is done when a test runs from a verified token to a refusal (#890)."
     level: MUST
     source: security-review
     status: partial
@@ -109,7 +109,7 @@ requirements:
     standards: []
     issues: [890]
     verification:
-      - {kind: test-vectors, ref: "a workload of event pull_request or pull_request_target, or of a ref under refs/pull/, is refused artifact.sign although the policy permits its repository; a push is decided by the policy"}
+      - {kind: test-vectors, ref: "a workload of a pull_request* event, issue_comment, workflow_run or merge_group, or of a ref under refs/pull/, is refused artifact.sign although the policy permits its repository"}
     tests:
       - actors/policy/tests/workload_guard.rs
       - actors/exchange/internal/exchanged/trusted_test.go
