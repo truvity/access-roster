@@ -4,6 +4,10 @@
 
 - **ADR 0078 records how a company access fragment is checked.** A company that states its own people, projects and bindings is held to an owner's ceiling and checked by its derived effect on the roster, and an owner with any violation is excluded alone. Proposed; no code change, and no release is needed for it. **Upgrade:** none.
 
+### Added
+
+- **`policy/tenant`: a company's access rows, checked against the owner's ceiling.** A new public package for an installation that serves several companies and merges what each states for itself. `tenant.Fragment` carries only what a company may author (additions to named rungs, projects, application grants, GitHub and Slack bindings, CI jobs and workloads, in the types of `policy/compile`), so the scopes matrix, the vocabulary, the lifetimes, the claims, the clients and a rung's session length cannot be written, and `DecodeFragment` refuses an unknown key. `tenant.Ceiling` states the owner's reach: directories, `scope:thing:role` group patterns (`*` is one segment and never the installation-wide scope `all`), rungs, GitHub organisations, Slack workspaces, clusters and AWS accounts. `tenant.Check` returns sorted violations with stable codes (`owner-directory`, `owner-name`, `owner-collision`, `owner-rung`, `owner-github`, `owner-slack`, `owner-place`, `owner-empty-ceiling`); the zero ceiling refuses every fragment that declares anything, and an empty fragment is accepted. This release checks the rows themselves, with an optional base model for keys the owner may not redeclare; the derived effect on the roster and the merge follow in a later release (ADR 0078). Nothing existing changes, so a rendered roster is byte-identical. **Upgrade:** none.
+
 ## v1.80.4
 
 A patch release: a rotated R2 credential is stored a minute after its token is created, once R2 accepts it, so the audit writer is no longer refused after the 5 s wait of v1.80.3. The presets are ticked at the same time. Upgrade notes: none.
