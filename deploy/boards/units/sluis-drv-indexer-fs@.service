@@ -40,6 +40,7 @@ SystemCallErrorNumber=EPERM
 UMask=0077
 PrivateNetwork=yes
 RestrictAddressFamilies=AF_UNIX
+SocketBindDeny=any
 ReadWritePaths=/run/sluis/indexer/%i
 
 [Install]

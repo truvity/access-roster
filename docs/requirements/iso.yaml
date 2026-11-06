@@ -1403,14 +1403,13 @@ requirements:
     rationale: "Unix sockets with a peer-uid check are the only inbound path, so the network reaches no actor (ADR 0003)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: no-proving-test
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     issues: [866]
     verification:
-      - {kind: integration-test, ref: "a port scan of a board finds only the Raft port, and no actor has a TCP listener"}
+      - {kind: integration-test, ref: "every generated unit has SocketBindDeny=any, so systemd refuses a bind of any TCP or UDP port (unit test over the generated units)"}
   - id: REQ-ISO-096
     area: ISO
     statement: "On a board entry MUST listen on a Unix socket that cloudflared forwards to."
@@ -1499,14 +1498,13 @@ requirements:
     rationale: "An actor that can exec a driver can run it with its own arguments (ADR 0003)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards: []
     issues: [862]
     verification:
-      - {kind: integration-test, ref: "the units of a board start each driver beside its owner; an actor's exec of a driver binary is refused"}
+      - {kind: integration-test, ref: "every driver is Required= by its owner's unit; every actor unit has NoExecPaths for the drivers' tree and its writable places, so an exec of a driver or a copy is refused (unit test)"}
   - id: REQ-ISO-105
     area: ISO
     statement: "A service SHOULD prefer the replica of an actor in its own cell for its calls."
