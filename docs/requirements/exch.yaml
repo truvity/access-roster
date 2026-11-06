@@ -248,7 +248,7 @@ requirements:
     standards: []
     issues: [1214]
     verification:
-      - {kind: integration-test, ref: "a scan of the store, the logs, the audit log, every span and every metric attribute after a mint finds no credential value, account id, token id or name, or URL"}
+      - {kind: integration-test, ref: "after a mint, a scan of the store finds no credential value; the logs, the audit log, spans and metric attributes hold no credential, account id, token id, name or URL"}
   - id: REQ-EXCH-017
     area: EXCH
     statement: "store@ MUST refuse a write of a MinterTarget that lies outside MinterBounds."
@@ -376,3 +376,16 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "after the reconcile pass of the previous row the drift counter holds one for the missing token and one for the forgotten entry"}
+  - id: REQ-EXCH-026
+    area: EXCH
+    statement: "The record of a credential minter's mints MUST hold only the token's identifier, a digest of the caller, the target and the expiry of each mint."
+    rationale: "The record is the one place that holds a token identifier, so it must hold nothing that opens the credential or names the account, and the caps are counted from it (ADR 0025)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "every field of a mint's record is one of token id, caller digest, target and expiry; a scan finds no credential value, account id, token name or URL in it"}

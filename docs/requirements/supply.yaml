@@ -413,7 +413,7 @@ requirements:
   - id: REQ-SUPPLY-035
     area: SUPPLY
     statement: "CI MUST fail on a dependency update that leaves a Go module, `Cargo.lock`, `yarn.lock` or `devbox.lock` stale."
-    rationale: "A bump that tidies one module leaves the modules that replace it by path with a stale checksum file (ADR 0013)."
+    rationale: "A bump that tidies one module leaves the modules that replace it by path with a stale checksum file."
     level: MUST
     source: v1-parity
     status: planned
@@ -426,7 +426,7 @@ requirements:
   - id: REQ-SUPPLY-036
     area: SUPPLY
     statement: "A Go module that others import MUST NOT carry a tool directive whose dependencies the module does not otherwise need."
-    rationale: "A tool directive pulls the tool's dependencies into the go.mod of a library that other modules import (ADR 0013)."
+    rationale: "A tool directive pulls the tool's dependencies into the go.mod of a library that other modules import."
     level: MUST
     source: v1-parity
     status: planned
@@ -439,7 +439,7 @@ requirements:
   - id: REQ-SUPPLY-037
     area: SUPPLY
     statement: "A release job MUST push a chart or an image tag once, and on a re-run verify the digest of the existing tag instead of overwriting it."
-    rationale: "A tag that is pushed twice with different content breaks every installation that pinned it (ADR 0013)."
+    rationale: "A tag that is pushed twice with different content breaks every installation that pinned it."
     level: MUST
     source: v1-parity
     status: planned
@@ -452,7 +452,7 @@ requirements:
   - id: REQ-SUPPLY-038
     area: SUPPLY
     statement: "The site workflow SHOULD stay named `site.yaml`, keep its manual trigger and run from the main branch, because the v1 line starts it when it tags a release."
-    rationale: "Renaming the workflow or dropping the trigger stops the v1 documentation from being rebuilt, and the failing job would be on the other branch (ADR 0014, ADR 0001)."
+    rationale: "Renaming the workflow or dropping the trigger stops the v1 documentation from being rebuilt, and the failing job would be on the other branch."
     level: SHOULD
     source: v1-parity
     status: planned

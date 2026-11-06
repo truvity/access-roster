@@ -791,7 +791,7 @@ requirements:
       - {kind: integration-test, ref: "registry check: the AWS baseline of 1 + 4 + 1 holds for the generated installation"}
   - id: REQ-KEYS-050
     area: KEYS
-    statement: "The key policy of the symmetric KMS key of a boundary MUST name the role of key@ alone."
+    statement: "The key policy of the symmetric KMS key of a boundary MUST allow use to the role of key@ alone, apart from the one statement that allows the control-plane actions of REQ-KEYS-119 to the named key administrators."
     rationale: "Every other actor reaches a key through key@, whose rules say who may ask for which purpose (ADR 0006)."
     level: MUST
     source: design-decision
@@ -802,7 +802,7 @@ requirements:
     standards: []
     issues: [914]
     verification:
-      - {kind: test-vectors, ref: "generated key policies for the symmetric key: every Allow statement names the key@ role"}
+      - {kind: test-vectors, ref: "generated key policies for the symmetric key: every Allow of a use action names the key@ role, and the one other Allow names the key administrators"}
       - {kind: integration-test, ref: "the role of any other actor calls KMS; refused"}
   - id: REQ-KEYS-051
     area: KEYS
@@ -1242,7 +1242,7 @@ requirements:
       - {kind: test-vectors, ref: "the driver and key@ read the slot map with one reader, which reads the shared KeyPlan payload vectors as store@ does"}
   - id: REQ-KEYS-076
     area: KEYS
-    statement: "A new token-signing key MUST be pre-published for 30 minutes before it signs: the sum of the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew (25 minutes), rounded up to leave a margin, except a replacement under REQ-KEYS-089."
+    statement: "A new token-signing key MUST be pre-published before it signs for the lead time of the installation, which is 30 minutes by default (the key set's max-age, the edge cache time to live, 10 minutes for a verifier's throttled refetch and 5 minutes of clock skew, 25 minutes, rounded up to leave a margin), except a replacement under REQ-KEYS-089."
     rationale: "Every cache between sluis and a relying party must hold the key before the first token carries it, and the lead time follows from the cache budget that sluis publishes (ADR 0006)."
     level: MUST
     source: design-decision
@@ -1253,7 +1253,7 @@ requirements:
     standards: []
     issues: [774]
     verification:
-      - {kind: integration-test, ref: "a key joins the key set as pre-published, signs nothing for 30 minutes, and then becomes active"}
+      - {kind: integration-test, ref: "with the default lead time, a key joins the key set as pre-published, signs nothing for 30 minutes, and then becomes active"}
   - id: REQ-KEYS-077
     area: KEYS
     statement: "A node MUST move only the token-signing key that its own key@ holds through the states pre-published, active and retiring."
@@ -1737,7 +1737,7 @@ requirements:
       - {kind: integration-test, ref: "revoke a key of each signing purpose: a Sign with it is refused and audited; another key of the purpose signs; an unreadable KeyRevocation refuses the Sign"}
   - id: REQ-KEYS-119
     area: KEYS
-    statement: "The generated key policy of every KMS key MUST allow the control-plane actions (CreateAlias, UpdateAlias, DeleteAlias and the others) only to the key administrators that the installation names, with no delegation to IAM through the account root."
+    statement: "The generated key policy of every KMS key MUST allow the control-plane actions (CreateAlias, UpdateAlias, DeleteAlias, PutKeyPolicy, ScheduleKeyDeletion and DisableKey) only to the key administrators that the installation names, with no delegation to IAM through the account root."
     rationale: "A role with a broad allow could otherwise retarget an alias and send new writes to a key of its choice (ADR 0006)."
     level: MUST
     source: security-review
@@ -1752,7 +1752,7 @@ requirements:
       - {kind: integration-test, ref: "a role with a broad kms allow cannot create, update or delete the alias of a key"}
   - id: REQ-KEYS-120
     area: KEYS
-    statement: "The pre-publication lead time of a token-signing key MUST be an installation setting with a default of 30 minutes and a floor derived from the cache budget."
+    statement: "The pre-publication lead time of a token-signing key MUST be an installation setting with a default of 30 minutes."
     rationale: "The relying parties that move first at a cutover may hold the key set longer than the budget assumes, and the installation must be able to raise the time to the longest cache found (ADR 0006)."
     level: MUST
     source: v1-parity
@@ -1763,7 +1763,7 @@ requirements:
     standards: []
     features: ["parity"]
     verification:
-      - {kind: integration-test, ref: "`sluis config check` refuses a lead time below the sum of max-age, edge time to live, refetch allowance and skew; the signer honours a larger value"}
+      - {kind: integration-test, ref: "the signer honours a setting of 45 minutes and uses 30 when the setting is absent"}
   - id: REQ-KEYS-121
     area: KEYS
     statement: "key@ MUST refuse to start when the ARN that DescribeKey returns for a KMS key differs from the ARN that the signed KeyPlan names for it."
@@ -1778,3 +1778,31 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: integration-test, ref: "a fake KMS whose DescribeKey returns another ARN for the alias makes key@ refuse to start and name the key; the matching ARN starts"}
+  - id: REQ-KEYS-122
+    area: KEYS
+    statement: "`sluis config check` MUST refuse a pre-publication lead time below the sum of the key set's max-age, the edge cache time to live, the refetch allowance and the clock skew."
+    rationale: "A lead time under the cache budget lets a token carry a key that a cache does not hold yet (ADR 0006)."
+    level: MUST
+    source: v1-parity
+    status: planned
+    milestone: first-version
+    runtimes: all
+    actors: [signer]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "config check refuses a lead time of 24 minutes for the default budget and accepts 25 and 30"}
+  - id: REQ-KEYS-123
+    area: KEYS
+    statement: "key@ MUST call KMS by the key ARN that the signed KeyPlan names and never by the alias."
+    rationale: "An alias can be retargeted, and a call by ARN reaches only the key that the reviewed plan named (ADR 0006)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: ["serverless", "kubernetes"]
+    actors: [key]
+    standards: []
+    features: ["parity"]
+    verification:
+      - {kind: integration-test, ref: "a fake KMS records the key identifier of every call of key@: each is the ARN of the KeyPlan, none is an alias, and a retargeted alias changes nothing"}
