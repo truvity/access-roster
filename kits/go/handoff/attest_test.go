@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"math/big"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -309,5 +311,104 @@ func TestAtLeast(t *testing.T) {
 		if got := (&PIVEvidence{Firmware: tc.fw}).AtLeast(5, 7, 0); got != tc.want {
 			t.Errorf("%v at least 5.7.0: %v, want %v", tc.fw, got, tc.want)
 		}
+	}
+}
+
+// The pin of the real maker's root is the root file the card driver embeds.
+func TestYubicoRootPin(t *testing.T) {
+	blk, _ := pem.Decode(mustRead(t, "../../../drivers/key/yubikey-piv/internal/card/certs/yubico-attestation-root-1.pem"))
+	if blk == nil {
+		t.Fatal("no root in the driver's file")
+	}
+	if got := sha256Hex(blk.Bytes); got != YubicoRootSHA256 {
+		t.Fatalf("the driver's root has SHA-256 %s, the kit pins %s", got, YubicoRootSHA256)
+	}
+}
+
+// Under the real maker's root the issuer of the token's certificate must be named as the card driver matches it, "Yubico PIV
+// Attestation " first; under another root the looser "PIV Attestation" in the name serves the made-up makers. Which rule holds is
+// decided by the root the chain ends in, so the tests give the check the made-up root as the one held to the real names.
+func TestPIVIssuerNameRule(t *testing.T) {
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	key := newKey(t)
+	for _, tc := range []struct {
+		issuer string
+		strict bool // the chain ends in the root held to the real names
+		want   bool
+	}{
+		{"Yubico PIV Attestation B2 1", true, true},
+		{"Yubico PIV Attestation A 1", true, true},
+		{"Made-up PIV Attestation B2 1 (TEST ONLY)", true, false},
+		{"yubico PIV Attestation B2 1", true, false},
+		{" Yubico PIV Attestation B2 1", true, false},
+		{"Not Yubico PIV Attestation B2 1", true, false},
+		{"Yubico PIV Attestation", true, false},
+		{"Yubico OPGP Attestation B2 1", true, false},
+		{"Yubico Attestation Intermediate B 1", true, false},
+		{"Made-up PIV Attestation B2 1 (TEST ONLY)", false, true},
+		{"Yubico PIV Attestation B2 1", false, true},
+		{"Made-up OPGP Attestation B2 1 (TEST ONLY)", false, false},
+	} {
+		for _, two := range []bool{false, true} {
+			h := handofftest.NewHierarchyWith(now, handofftest.Options{TwoLevels: two, IssuerName: tc.issuer})
+			strictRoot := ""
+			if tc.strict {
+				strictRoot = sha256Hex(h.Root.Raw)
+			}
+			_, err := checkPIVEvidence(h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchorsOf(h), now, strictRoot)
+			if (err == nil) != tc.want {
+				t.Errorf("issuer %q, strict %v, two levels %v: accepted %v, want %v (%v)", tc.issuer, tc.strict, two, err == nil, tc.want, err)
+			}
+		}
+	}
+	// The public check has no way to name another root as the real one: a made-up maker's chain is held to the looser rule.
+	h := handofftest.NewHierarchyWith(now, handofftest.Options{IssuerName: "Made-up PIV Attestation B2 1 (TEST ONLY)"})
+	if _, err := CheckPIVEvidence(h.Attest(&key.PublicKey, handofftest.GoodSlot("9c", 1)), anchorsOf(h), now); err != nil {
+		t.Errorf("a made-up maker under the public check: %v", err)
+	}
+}
+
+// The intermediates of the real bundle: those a PIV token's certificate is signed by pass the rule for the real maker, and the
+// others (the upper level, OpenPGP, FIDO, secure domain, YubiHSM) do not.
+func TestPIVIssuerNameRuleOnTheRealBundle(t *testing.T) {
+	read := func(name string) []*x509.Certificate {
+		var out []*x509.Certificate
+		for rest := mustRead(t, "../../../drivers/key/yubikey-piv/internal/card/certs/"+name); ; {
+			var blk *pem.Block
+			if blk, rest = pem.Decode(rest); blk == nil {
+				return out
+			}
+			c, err := x509.ParseCertificate(blk.Bytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, c)
+		}
+	}
+	root, bundle := read("yubico-attestation-root-1.pem")[0], read("yubico-intermediate.pem")
+	roots, helpers := x509.NewCertPool(), x509.NewCertPool()
+	roots.AddCert(root)
+	for _, c := range bundle {
+		helpers.AddCert(c)
+	}
+	var yes, no int
+	for _, c := range bundle {
+		chains, err := c.Verify(x509.VerifyOptions{Roots: roots, Intermediates: helpers, CurrentTime: time.Now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny}})
+		if err != nil {
+			continue // an intermediate of the bundle that does not chain to this root is not one the check could meet
+		}
+		chain := append([]*x509.Certificate{root}, chains[0]...) // a placeholder where the token's certificate would be
+		want := strings.HasPrefix(c.Subject.CommonName, "Yubico PIV Attestation ")
+		if got := pivIssuer(chain, YubicoRootSHA256); got != want {
+			t.Errorf("%s: the rule says %v, want %v", c.Subject.CommonName, got, want)
+		}
+		if want {
+			yes++
+		} else {
+			no++
+		}
+	}
+	if yes < 3 || no < 5 {
+		t.Fatalf("the bundle gave %d PIV intermediates and %d others", yes, no)
 	}
 }
