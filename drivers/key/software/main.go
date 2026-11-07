@@ -59,6 +59,7 @@ func serve(ctx context.Context, f cli.Flags) error {
 		Mode:     0o600,
 		Allow:    rpc.OwnerOnly(driver.Owner()),
 	}
+	cfg = withTestCaller(cfg)
 	// The owner is another uid: a group that only the owner joins may connect. OwnerOnly still decides who may call.
 	if gid := value(f, "socket-gid"); gid != "0" && gid != "" {
 		n, err := strconv.ParseUint(gid, 10, 32)

@@ -5,14 +5,17 @@
 // installation: the volume is the boundary, so the package adds no passphrase, no import and no export.
 //
 // Every key is P-384 except the one of the audit-log purpose, which is P-256 (ADR 0006, "Named exceptions": the
-// C2SP signed-note signature type 0x02 that generic witnesses verify; D-25).
+// C2SP signed-note signature type 0x02 that generic witnesses verify; D-25), and the one of the RS256 purpose, which
+// is RSA-2048 with the public exponent 65537 (ADR 0006, "Named exceptions": the per-audience RS256 key).
 package keystore
 
 import (
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"errors"
@@ -32,6 +35,7 @@ import (
 const (
 	ES384        = "ES384"     // ECDSA over P-384 with SHA-384 (RFC 7518, section 3.4)
 	ES256        = "ES256"     // ECDSA over P-256 with SHA-256 (RFC 7518, section 3.4); the audit-log purpose only
+	RS256        = "RS256"     // RSASSA-PKCS1-v1_5 with SHA-256 over an RSA-2048 key (RFC 7518, section 3.3); the RS256 purpose only
 	ECDHP384     = "ECDH-P384" // ECDH over P-384 (NIST SP 800-56A)
 	fileExt      = ".p8"       // a PKCS#8 DER private key (RFC 5208)
 	tempMark     = ".tmp-"     // the prefix of a key file that is being written
@@ -41,6 +45,8 @@ const (
 	maxKeyFile   = 4096
 	digestLen    = 48 // SHA-384
 	digestLen256 = 32 // SHA-256
+	rsaBits      = 2048
+	rsaExponent  = 65537
 )
 
 // purposeAlgorithm maps the key purposes that a key store holds (docs/architecture/keys.yaml) to the algorithm
@@ -56,6 +62,9 @@ var purposeAlgorithm = map[string]string{
 	"ssh-host":          ES384,
 	"issuance-log":      ES384,
 	"release-signing":   ES384,
+	// The RS256 purpose (keys.yaml token-signing-rs256): an audience that needs RS256 has a key of its own, never the
+	// token key.
+	"token-signing-rs256": RS256,
 }
 
 // curveOf is the curve of the key of an algorithm.
@@ -100,13 +109,13 @@ var (
 type Store struct {
 	dir  string
 	mu   sync.Mutex
-	keys map[string]*ecdsa.PrivateKey
+	keys map[string]crypto.Signer // an *ecdsa.PrivateKey or, for the RS256 purpose, an *rsa.PrivateKey
 }
 
 // Check verifies the state directory and the key files in it, and returns the keys it read. It writes nothing.
 // The problems are paths with a reason; a directory or file that is not owned by this process's user, or that
 // is not mode 0700 (directory) or 0600 (file), is a problem.
-func Check(dir string) (map[string]*ecdsa.PrivateKey, []string) {
+func Check(dir string) (map[string]crypto.Signer, []string) {
 	var problems []string
 	if p := checkDir(dir); p != "" {
 		return nil, []string{p}
@@ -115,7 +124,7 @@ func Check(dir string) (map[string]*ecdsa.PrivateKey, []string) {
 	if err != nil {
 		return nil, []string{fmt.Sprintf("%s: cannot be listed", dir)}
 	}
-	keys := make(map[string]*ecdsa.PrivateKey)
+	keys := make(map[string]crypto.Signer)
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
 		purpose, isKey := strings.CutSuffix(e.Name(), fileExt)
@@ -131,7 +140,7 @@ func Check(dir string) (map[string]*ecdsa.PrivateKey, []string) {
 			continue
 		}
 		alg, _ := AlgorithmFor(purpose)
-		k, p := readKey(path, curveOf(alg))
+		k, p := readKey(path, alg)
 		if p != "" {
 			problems = append(problems, p)
 			continue
@@ -194,7 +203,7 @@ func (s *Store) Ensure(purpose, algorithm string) (spki []byte, created bool, er
 		spki, err = marshalPublic(k)
 		return spki, false, err
 	}
-	k, err := ecdsa.GenerateKey(curveOf(want), rand.Reader)
+	k, err := generate(want)
 	if err != nil {
 		return nil, false, fmt.Errorf("keystore: generate: %w", err)
 	}
@@ -222,7 +231,7 @@ func (s *Store) CreatedAt(purpose string) (time.Time, error) {
 
 // write puts the key in a temporary file made with O_EXCL, syncs it, links it to its name (which fails when the
 // name is taken, so a key is never replaced), and syncs the directory.
-func (s *Store) write(purpose string, k *ecdsa.PrivateKey) error {
+func (s *Store) write(purpose string, k crypto.Signer) error {
 	der, err := x509.MarshalPKCS8PrivateKey(k)
 	if err != nil {
 		return fmt.Errorf("keystore: marshal: %w", err)
@@ -279,7 +288,8 @@ func (s *Store) PublicKey(purpose string) ([]byte, error) {
 
 // Sign signs a digest with the ES384 key of the purpose (a SHA-384 digest, 48 octets) or its ES256 key (a SHA-256
 // digest, 32 octets), and returns the ASN.1 DER signature (RFC 7518, section 3.4 shows the JOSE form; the DER form
-// is what the port carries). The nonce comes from crypto/rand.
+// is what the port carries). The RS256 key signs a SHA-256 digest and returns the RSASSA-PKCS1-v1_5 signature (RFC
+// 8017, section 8.2.1), 256 octets, which has no DER form. The nonce of an ECDSA signature comes from crypto/rand.
 func (s *Store) Sign(purpose string, digest []byte) ([]byte, error) {
 	k, err := s.get(purpose)
 	if err != nil {
@@ -288,7 +298,7 @@ func (s *Store) Sign(purpose string, digest []byte) ([]byte, error) {
 	want := digestLen
 	switch a, _ := AlgorithmFor(purpose); a {
 	case ES384:
-	case ES256:
+	case ES256, RS256:
 		want = digestLen256
 	default:
 		return nil, ErrAlgorithm
@@ -296,7 +306,11 @@ func (s *Store) Sign(purpose string, digest []byte) ([]byte, error) {
 	if len(digest) != want {
 		return nil, ErrDigest
 	}
-	sig, err := ecdsa.SignASN1(rand.Reader, k, digest)
+	var opts crypto.SignerOpts // nil: an ECDSA key signs the digest as it is
+	if _, ok := k.(*rsa.PrivateKey); ok {
+		opts = crypto.SHA256
+	}
+	sig, err := k.Sign(rand.Reader, digest, opts)
 	if err != nil {
 		return nil, fmt.Errorf("keystore: sign: %w", err)
 	}
@@ -317,7 +331,11 @@ func (s *Store) Ecdh(purpose string, peer []byte) ([]byte, error) {
 	if err != nil {
 		return nil, ErrPeer
 	}
-	priv, err := k.ECDH()
+	ek, ok := k.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, ErrAlgorithm
+	}
+	priv, err := ek.ECDH()
 	if err != nil {
 		return nil, fmt.Errorf("keystore: ecdh key: %w", err)
 	}
@@ -328,7 +346,7 @@ func (s *Store) Ecdh(purpose string, peer []byte) ([]byte, error) {
 	return secret, nil
 }
 
-func (s *Store) get(purpose string) (*ecdsa.PrivateKey, error) {
+func (s *Store) get(purpose string) (crypto.Signer, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	k, ok := s.keys[purpose]
@@ -338,8 +356,17 @@ func (s *Store) get(purpose string) (*ecdsa.PrivateKey, error) {
 	return k, nil
 }
 
-func marshalPublic(k *ecdsa.PrivateKey) ([]byte, error) {
-	return x509.MarshalPKIXPublicKey(&k.PublicKey)
+func marshalPublic(k crypto.Signer) ([]byte, error) {
+	return x509.MarshalPKIXPublicKey(k.Public())
+}
+
+// generate makes the key of an algorithm: a P-256 key for ES256, an RSA-2048 key (the public exponent is 65537, as
+// crypto/rsa fixes it) for RS256, a P-384 key for the others.
+func generate(algorithm string) (crypto.Signer, error) {
+	if algorithm == RS256 {
+		return rsa.GenerateKey(rand.Reader, rsaBits)
+	}
+	return ecdsa.GenerateKey(curveOf(algorithm), rand.Reader)
 }
 
 // checkDir returns the problem of the state directory, or "".
@@ -359,9 +386,10 @@ func checkDir(dir string) string {
 }
 
 // readKey reads and parses one key file, after it checks the file. It returns the problem, or "". A key of
-// another curve than the purpose's is refused, never replaced: an audit-log key that an older driver made as a
-// P-384 key must be removed by the person, because a new key changes the verifier key of the log.
-func readKey(path string, curve elliptic.Curve) (*ecdsa.PrivateKey, string) {
+// another kind than the purpose's is refused, never replaced: an audit-log key that an older driver made as a
+// P-384 key must be removed by the person, because a new key changes the verifier key of the log. The RS256 key must
+// be RSA-2048 with the exponent 65537, the only key the signer and the key set know.
+func readKey(path, algorithm string) (crypto.Signer, string) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0) //nolint:gosec // a path in the state directory
 	if err != nil {
 		return nil, path + ": cannot be opened"
@@ -378,7 +406,7 @@ func readKey(path string, curve elliptic.Curve) (*ecdsa.PrivateKey, string) {
 	case !ownedByMe(fi):
 		return nil, path + ": not owned by the user of this process"
 	}
-	der, err := io.ReadAll(io.LimitReader(f, maxKeyFile)) // a P-384 key is about 185 bytes
+	der, err := io.ReadAll(io.LimitReader(f, maxKeyFile)) // a P-384 key is about 185 bytes, an RSA-2048 key about 1220
 	if err != nil {
 		return nil, path + ": cannot be read"
 	}
@@ -387,6 +415,14 @@ func readKey(path string, curve elliptic.Curve) (*ecdsa.PrivateKey, string) {
 	if err != nil {
 		return nil, path + ": not a PKCS#8 private key"
 	}
+	if algorithm == RS256 {
+		k, ok := parsed.(*rsa.PrivateKey)
+		if !ok || k.N.BitLen() != rsaBits || k.E != rsaExponent {
+			return nil, path + ": not an RSA-2048 key with the exponent 65537; the purpose needs one, and a key is never re-made in place"
+		}
+		return k, ""
+	}
+	curve := curveOf(algorithm)
 	k, ok := parsed.(*ecdsa.PrivateKey)
 	if !ok || k.Curve != curve {
 		return nil, fmt.Sprintf("%s: not a %s key; the purpose needs one, and a key is never re-made in place", path, curve.Params().Name)

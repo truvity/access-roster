@@ -3,9 +3,11 @@ package driver
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
@@ -66,6 +68,7 @@ func Suite() []Case {
 		{"capabilities", caseCapabilities},
 		{"ensure, sign and verify", caseSign},
 		{"audit-log key is P-256 and signs SHA-256", caseAuditLogSign},
+		{"RS256 key is RSA-2048 and signs PKCS#1 v1.5 over SHA-256", caseRS256Sign},
 		{"public key", casePublicKey},
 		{"ecdh against a reference", caseEcdh},
 		{"unknown purpose is refused", caseUnknownPurpose},
@@ -79,8 +82,8 @@ func caseCapabilities(ctx context.Context, c keystorev2alpha1connect.KeyStoreSer
 		return err
 	}
 	if res.Msg.GetStore() != "software" || res.Msg.GetAttests() ||
-		!slices.Equal(res.Msg.GetAlgorithms(), []string{"ES384", "ES256", "ECDH-P384"}) {
-		return errors.New("capabilities differ from software, no attestation, ES384, ES256 and ECDH-P384")
+		!slices.Equal(res.Msg.GetAlgorithms(), []string{"ES384", "ES256", "RS256", "ECDH-P384"}) {
+		return errors.New("capabilities differ from software, no attestation, ES384, ES256, RS256 and ECDH-P384")
 	}
 	return nil
 }
@@ -141,6 +144,38 @@ func caseAuditLogSign(ctx context.Context, c keystorev2alpha1connect.KeyStoreSer
 	return wantRefusal(err, connect.CodeInvalidArgument, "algorithm")
 }
 
+// caseRS256Sign is the per-audience exception (ADR 0006, "Named exceptions"): the RS256 purpose's key is RSA-2048 with the
+// exponent 65537 and signs a SHA-256 digest with RSASSA-PKCS1-v1_5; it refuses the SHA-384 form and another algorithm.
+func caseRS256Sign(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
+	ens, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing-rs256", Algorithm: "RS256"}))
+	if err != nil {
+		return err
+	}
+	k, err := x509.ParsePKIXPublicKey(ens.Msg.GetSpkiDer())
+	if err != nil {
+		return errors.New("the public key is not SubjectPublicKeyInfo in DER")
+	}
+	pub, ok := k.(*rsa.PublicKey)
+	if !ok || pub.N.BitLen() != 2048 || pub.E != 65537 {
+		return errors.New("the public key is not RSA-2048 with the exponent 65537")
+	}
+	digest := sha256.Sum256([]byte("sluis key-store suite"))
+	sig, err := c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "token-signing-rs256", Digest: digest[:], Algorithm: "RS256"}))
+	if err != nil {
+		return err
+	}
+	if err := rsa.VerifyPKCS1v15(pub, crypto.SHA256, digest[:], sig.Msg.GetSignatureDer()); err != nil {
+		return errors.New("the signature does not verify as PKCS#1 v1.5 over SHA-256")
+	}
+	d384 := sha512.Sum384([]byte("sluis key-store suite"))
+	_, err = c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "token-signing-rs256", Digest: d384[:], Algorithm: "RS256"}))
+	if err := wantRefusal(err, connect.CodeInvalidArgument, "digest"); err != nil {
+		return err
+	}
+	_, err = c.Sign(ctx, connect.NewRequest(&keystorev2alpha1.KeyStoreSignRequest{Purpose: "token-signing-rs256", Digest: digest[:], Algorithm: "ES384"}))
+	return wantRefusal(err, connect.CodeInvalidArgument, "algorithm")
+}
+
 func casePublicKey(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
 	ens, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing", Algorithm: "ES384"}))
 	if err != nil {
@@ -196,7 +231,7 @@ func caseUnknownPurpose(ctx context.Context, c keystorev2alpha1connect.KeyStoreS
 }
 
 func caseUnknownAlgorithm(ctx context.Context, c keystorev2alpha1connect.KeyStoreServiceClient) error {
-	_, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing", Algorithm: "RS256"}))
+	_, err := c.Ensure(ctx, connect.NewRequest(&keystorev2alpha1.EnsureRequest{Purpose: "token-signing", Algorithm: "PS256"}))
 	return wantRefusal(err, connect.CodeInvalidArgument, reasonAlgorithm)
 }
 
