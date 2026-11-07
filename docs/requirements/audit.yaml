@@ -85,9 +85,8 @@ requirements:
     rationale: "The trail must not become a personal-data store."
     level: MUST
     source: security-review
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: ST-98, section: "OTLP", depth: Partial}
@@ -778,9 +777,8 @@ requirements:
     rationale: "A standard, time-ordered id lets the writer bound how long it remembers ids."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     standards:
       - {id: NC-02, section: "5.7", depth: Partial}
