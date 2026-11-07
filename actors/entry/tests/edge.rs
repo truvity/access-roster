@@ -1338,7 +1338,9 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
         .filter(|(k, _)| !k.ends_with("_supported"))
         .map(|(k, v)| (k.as_str(), v.as_str().unwrap()))
         .collect();
-    let names: Vec<&str> = urls.iter().map(|(k, _)| *k).collect();
+    // Sorted: the member order of a parsed object depends on the features of the workspace build.
+    let mut names: Vec<&str> = urls.iter().map(|(k, _)| *k).collect();
+    names.sort_unstable();
     assert_eq!(
         names,
         ["authorization_endpoint", "jwks_uri", "token_endpoint"],
