@@ -14,6 +14,11 @@
 #   COMPOSE_PROJECT_NAME     the Compose project (default sluis-local); a second project on one machine sets this, a
 #                            SLUIS_LOCAL_PORT and a SLUIS_LOCAL_TAG of its own, so that it leaves the first alone
 #   SLUIS_LOCAL_TAG          the tag of the images this project builds (default dev)
+#   SLUIS_LOCAL_IMAGES       build (default): build the executables and the images from this checkout; release: run the
+#                            images of a release, pulled from the registry, and build nothing. The release needs
+#                            SLUIS_LOCAL_VERSION (the version of the release, 2.0.0-alpha.1, without the v) or
+#                            SLUIS_RELEASE_IMAGES (the release-images.txt of the release, a file or an https URL, which pins
+#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
@@ -35,6 +40,41 @@ state=.cache/local
 seed=$state/seed
 export SLUIS_LOCAL_SEED=$root/$seed
 compose=(docker compose -f deploy/local/compose.yaml)
+# The images: built from this checkout, or the images of a release (deploy/local/compose.release.yaml replaces them).
+images_mode=${SLUIS_LOCAL_IMAGES:-build}
+exec_key=/sluis
+case "$images_mode" in
+build) ;;
+release)
+	compose+=(-f deploy/local/compose.release.yaml)
+	exec_key=/usr/libexec/sluis/actors/key
+	;;
+*) echo "local: SLUIS_LOCAL_IMAGES is '$images_mode', want build or release" >&2; exit 2 ;;
+esac
+
+# release_pins exports one variable per image of release-images.txt (SLUIS_RELEASE_IMAGES), each set to the image's
+# reference with its digest, which compose.release.yaml reads. Every line is `<repository>:<tag>@sha256:<digest>`.
+release_pins() {
+	local src=${SLUIS_RELEASE_IMAGES:-} list line repo name n=0
+	[ -n "$src" ] || return 0
+	case "$src" in
+	https://*) list=$(curl --fail --silent --show-error --location "$src") || { echo "local: $src could not be read" >&2; return 1; } ;;
+	*) [ -r "$src" ] || { echo "local: SLUIS_RELEASE_IMAGES=$src is not a readable file" >&2; return 1; }; list=$(<"$src") ;;
+	esac
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		[[ "$line" =~ ^[a-z0-9./:_-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]] || { echo "local: '$line' is not <repository>:<tag>@sha256:<digest>" >&2; return 1; }
+		repo=${line%%@*}
+		repo=${repo%:*}
+		name=${repo##*/}
+		export "SLUIS_IMAGE_${name//-/_}=$line"
+		n=$((n + 1))
+	done <<<"$list"
+	[ "$n" -gt 0 ] || { echo "local: $src lists no image" >&2; return 1; }
+}
+if [ "$images_mode" = release ]; then
+	release_pins
+fi
 
 # cidr_range prints the first and last address of an IPv4 CIDR as integers.
 cidr_range() {
@@ -147,6 +187,11 @@ prepare() {
 }
 
 images() {
+	if [ "$images_mode" = release ]; then
+		[ -n "${SLUIS_LOCAL_VERSION:-}${SLUIS_RELEASE_IMAGES:-}" ] || { echo "local: SLUIS_LOCAL_IMAGES=release needs SLUIS_LOCAL_VERSION or SLUIS_RELEASE_IMAGES" >&2; exit 1; }
+		"${compose[@]}" pull --quiet || { echo "local: the images of the release could not be pulled" >&2; exit 1; }
+		return 0
+	fi
 	deploy/local/build.sh
 	mkdir -p dist/local/rqlite
 	case "$(uname -m)" in x86_64 | amd64) a=amd64 ;; *) a=arm64 ;; esac
@@ -176,7 +221,7 @@ key_check() {
 	id=$("${compose[@]}" ps -q key)
 	[ -n "$id" ] || { echo "local: key@ is not running" >&2; return 1; }
 	mapfile -t args < <(docker inspect --format '{{range .Config.Cmd}}{{println .}}{{end}}' "$id")
-	"${compose[@]}" exec -T key /sluis check "${args[@]:1}"
+	"${compose[@]}" exec -T key "$exec_key" check "${args[@]:1}"
 }
 
 # list_recipients is the second phase of `up`: it reads the thumbprint of key@'s wrapping key, lists it in the signed
