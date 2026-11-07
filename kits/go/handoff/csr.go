@@ -43,8 +43,11 @@ var dnsName = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a
 // Validate refuses constraints that cannot be a request: no permitted subtree at all, a name that is not a lower-case
 // host name, a range that is not in its masked form.
 func (c Constraints) Validate() error {
-	if len(c.URIHosts)+len(c.DNS)+len(c.IPRanges) == 0 {
+	if n := len(c.URIHosts) + len(c.DNS) + len(c.IPRanges); n == 0 {
 		return errors.New("handoff: a request needs at least one permitted subtree")
+	} else if n > maxSubtrees {
+		// key@ signs at most this many (CheckInfo); say so here, with the number, and not as a refusal of the signature.
+		return fmt.Errorf("handoff: %d permitted names and ranges, at most %d are signed", n, maxSubtrees)
 	}
 	for _, h := range c.URIHosts {
 		if len(h) > 253 || !dnsName.MatchString(h) {
@@ -86,7 +89,16 @@ func CertificationRequestInfo(spki []byte, spec RequestSpec) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return marshalInfo(spki, spec.Subject, exts)
+	info, err := marshalInfo(spki, spec.Subject, exts)
+	if err != nil {
+		return nil, err
+	}
+	// The bounds key@ signs within, checked here with the same function, so that a request that is too large is an error
+	// of the command that names the bound, and not a generic refusal of the signature.
+	if err := CheckInfo(info, spki); err != nil {
+		return nil, fmt.Errorf("handoff: the request is not one key@ signs (%w): a subject of at most %d octets, at most %d names and ranges, and %d octets of request", err, maxSubject, maxSubtrees, maxInfo)
+	}
+	return info, nil
 }
 
 // marshalInfo is the DER of a CertificationRequestInfo with the given extensions in its extensionRequest.

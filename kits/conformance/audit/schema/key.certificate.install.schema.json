@@ -125,8 +125,14 @@
       "lost": {
        "$ref": "defs.schema.json#/$defs/lost"
       },
+      "previous_not_after": {
+       "$ref": "defs.schema.json#/$defs/uint"
+      },
       "purpose": {
        "$ref": "defs.schema.json#/$defs/ident"
+      },
+      "replace": {
+       "$ref": "defs.schema.json#/$defs/bool"
       },
       "trust_sequence": {
        "$ref": "defs.schema.json#/$defs/uint"
@@ -137,6 +143,7 @@
       "chain_length",
       "key_id",
       "purpose",
+      "replace",
       "trust_sequence"
      ],
      "type": "object"
