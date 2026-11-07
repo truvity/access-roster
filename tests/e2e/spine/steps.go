@@ -342,29 +342,84 @@ func (a auditOut) complete() bool {
 func auditFind(ctx context.Context, sk map[string]string, boundary, blob, project, decisionID, correlation string) (*auditOut, error) {
 	hc, url := rpc.Dial(sk["policy"])
 	pol := policyv2alpha1connect.NewPolicyServiceClient(hc, url, rpc.ClientOptions()...)
-	res, err := pol.Decide(ctx, connect.NewRequest(&policyv2alpha1.DecideRequest{
-		Action:      "audit.index",
-		Principal:   &policyv2alpha1.EntityRef{Type: "Actor", Id: "indexer"},
-		Resource:    &policyv2alpha1.EntityRef{Type: "Boundary", Id: boundary},
-		Tenant:      "*",
-		Actor:       &policyv2alpha1.ActorFacts{Name: "indexer"},
-		GrantKeyOps: []string{"open"},
-	}))
-	if err != nil {
-		return nil, describe("policy Decide audit.index", err)
-	}
-	if res.Msg.GetDecision() != policyv2alpha1.Decision_ALLOW || len(res.Msg.GetSealedGrant()) == 0 {
-		return nil, errors.New("policy gave the indexer no grant to open audit records")
-	}
-	grant := res.Msg.GetSealedGrant()
+	grants := &grantSource{now: time.Now, ask: func(ctx context.Context) ([]byte, error) {
+		res, err := pol.Decide(ctx, connect.NewRequest(&policyv2alpha1.DecideRequest{
+			Action:      "audit.index",
+			Principal:   &policyv2alpha1.EntityRef{Type: "Actor", Id: "indexer"},
+			Resource:    &policyv2alpha1.EntityRef{Type: "Boundary", Id: boundary},
+			Tenant:      "*",
+			Actor:       &policyv2alpha1.ActorFacts{Name: "indexer"},
+			GrantKeyOps: []string{"open"},
+		}))
+		if err != nil {
+			return nil, describe("policy Decide audit.index", err)
+		}
+		if res.Msg.GetDecision() != policyv2alpha1.Decision_ALLOW || len(res.Msg.GetSealedGrant()) == 0 {
+			return nil, errors.New("policy gave the indexer no grant to open audit records")
+		}
+		return res.Msg.GetSealedGrant(), nil
+	}}
 	hc, url = rpc.Dial(sk["key"])
 	kc := keyv2alpha1connect.NewKeyServiceClient(hc, url, rpc.ClientOptions()...)
 
-	out, err := scanLog(ctx, kc, grant, blob, project, decisionID, correlation)
+	out, err := scanLog(ctx, kc, grants, blob, project, decisionID, correlation)
 	if err != nil {
 		return nil, err
 	}
 	return out.out, nil
+}
+
+// grantReuse is how long a grant is held before policy is asked again: half of the grant's life (60 seconds, ADR 0007),
+// as the indexer does (actors/indexer, GRANT_REUSE).
+const grantReuse = 30 * time.Second
+
+// openBatch is how many records go in one Open (key@ takes 64 at most, all or none), as the indexer does.
+const openBatch = 64
+
+// grantSource holds the grant of the pass. A grant lives 60 seconds at most, and a log of a board that has run for days
+// holds thousands of records, so a pass that opens them with the one grant it asked for first runs past its life
+// (REQ-AUDIT-184). The grant is asked for again when it is half its life old, and when key@ refuses it.
+type grantSource struct {
+	ask  func(context.Context) ([]byte, error)
+	now  func() time.Time
+	held []byte
+	at   time.Time
+}
+
+// get returns the grant held, or asks policy for a new one when none is held, the one held is older than grantReuse, or
+// fresh is set.
+func (g *grantSource) get(ctx context.Context, fresh bool) ([]byte, error) {
+	if !fresh && g.held != nil && g.now().Sub(g.at) < grantReuse {
+		return g.held, nil
+	}
+	grant, err := g.ask(ctx)
+	if err != nil {
+		return nil, err
+	}
+	g.held, g.at = grant, g.now()
+	return grant, nil
+}
+
+// openItems opens a batch of records under the grant. When key@ refuses the grant, the grant may have run out while the
+// pass worked: policy is asked once more and the batch is tried again, and a second refusal ends the pass. The check at
+// key@ is the same, whoever asks.
+func openItems(ctx context.Context, kc keyv2alpha1connect.KeyServiceClient, grants *grantSource, items []*keyv2alpha1.OpenItem) ([][]byte, error) {
+	for fresh := false; ; fresh = true {
+		grant, err := grants.get(ctx, fresh)
+		if err != nil {
+			return nil, err
+		}
+		res, err := kc.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: items, Grant: grant}))
+		if err == nil {
+			if len(res.Msg.GetPlaintexts()) != len(items) {
+				return nil, errors.New("key Open: the answer does not match the items")
+			}
+			return res.Msg.GetPlaintexts(), nil
+		}
+		if reason, _ := refusal.Reason(err); fresh || reason != "grant" {
+			return nil, describe("key Open", err)
+		}
+	}
 }
 
 // scan is one pass over the log.
@@ -373,11 +428,21 @@ type scan struct {
 	has map[string]bool
 }
 
+// complete reports whether the pass has found every record of the run.
+func (s *scan) complete() bool {
+	for _, w := range wanted {
+		if !s.has[w] {
+			return false
+		}
+	}
+	return true
+}
+
 // wanted are the records the M1 spine must have written: the policy decision, the signer's sign, and key@'s sign for
 // the signer's call (PLAN.md §2, "M1": every step is audited).
 var wanted = []string{"policy.decide", "signer.sign", "key.sign"}
 
-func scanLog(ctx context.Context, kc keyv2alpha1connect.KeyServiceClient, grant []byte, blob, project, decisionID, correlation string) (*scan, error) {
+func scanLog(ctx context.Context, kc keyv2alpha1connect.KeyServiceClient, grants *grantSource, blob, project, decisionID, correlation string) (*scan, error) {
 	s := &scan{out: &auditOut{}, has: map[string]bool{}}
 	head, err := readFile(filepath.Join(blob, "checkpoint"))
 	if err != nil {
@@ -396,6 +461,12 @@ func scanLog(ctx context.Context, kc keyv2alpha1connect.KeyServiceClient, grant 
 	if err != nil {
 		return nil, err
 	}
+	type sealedRecord struct {
+		tenant string
+		uid    string
+		env    []byte
+	}
+	var records []sealedRecord
 	for _, raw := range entries {
 		var e struct {
 			Entry    string `json:"entry"`
@@ -408,51 +479,60 @@ func scanLog(ctx context.Context, kc keyv2alpha1connect.KeyServiceClient, grant 
 		if json.Unmarshal(raw, &e) != nil || e.Entry != "record" {
 			continue
 		}
-		s.out.Records++
 		env, err := base64.StdEncoding.DecodeString(e.Sealed)
 		if err != nil {
 			return nil, errors.New("an entry's sealed record is not base64")
 		}
-		// The address is the one the writer sealed at (writerd.SealID): <project>/audit/main/<record id>.
-		res, err := kc.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{
-			Items: []*keyv2alpha1.OpenItem{{
+		records = append(records, sealedRecord{tenant: e.Metadata.Tenant, uid: e.Metadata.UID, env: env})
+	}
+	s.out.Records = len(records)
+	// The records of this run are the newest, so the pass goes from the end in batches and stops when it has them: a log
+	// of a board that has run for days holds thousands, and the pass has no use for the old ones.
+	for end := len(records); end > 0 && !s.complete(); end -= min(end, openBatch) {
+		batch := records[max(0, end-openBatch):end]
+		items := make([]*keyv2alpha1.OpenItem, len(batch))
+		for i, r := range batch {
+			// The address is the one the writer sealed at (writerd.SealID): <project>/audit/main/<record id>.
+			items[i] = &keyv2alpha1.OpenItem{
 				Purpose:  "evidence",
-				Address:  &typev2alpha1.Address{Kind: "audit-entry", Tenant: e.Metadata.Tenant, Id: project + "/audit/main/" + e.Metadata.UID},
-				Envelope: env,
-			}},
-			Grant: grant,
-		}))
+				Address:  &typev2alpha1.Address{Kind: "audit-entry", Tenant: r.tenant, Id: project + "/audit/main/" + r.uid},
+				Envelope: r.env,
+			}
+		}
+		plaintexts, err := openItems(ctx, kc, grants, items)
 		if err != nil {
-			return nil, describe("key Open", err)
+			return nil, err
 		}
-		var rec struct {
-			Metadata struct {
-				EventCode   string `json:"event_code"`
-				Correlation string `json:"correlation_uid"`
-			} `json:"metadata"`
-			Actor struct {
-				User struct {
+		for _, pt := range plaintexts {
+			var rec struct {
+				Metadata struct {
+					EventCode   string `json:"event_code"`
+					Correlation string `json:"correlation_uid"`
+				} `json:"metadata"`
+				Actor struct {
+					User struct {
+						UID string `json:"uid"`
+					} `json:"user"`
+				} `json:"actor"`
+				Status string `json:"status"`
+				Policy struct {
 					UID string `json:"uid"`
-				} `json:"user"`
-			} `json:"actor"`
-			Status string `json:"status"`
-			Policy struct {
-				UID string `json:"uid"`
-			} `json:"policy"`
+				} `json:"policy"`
+			}
+			if json.Unmarshal(pt, &rec) != nil {
+				return nil, errors.New("an opened record is not JSON")
+			}
+			ev := rec.Metadata.EventCode
+			mine := correlation != "" && rec.Metadata.Correlation == correlation
+			if ev == "policy.decide" && decisionID != "" && rec.Policy.UID == decisionID {
+				mine = true
+			}
+			if !mine {
+				continue
+			}
+			s.has[ev] = true
+			s.out.Found = append(s.out.Found, foundEntry{Event: ev, Actor: rec.Actor.User.UID, Status: rec.Status, Correlation: rec.Metadata.Correlation, DecisionID: rec.Policy.UID})
 		}
-		if json.Unmarshal(res.Msg.GetPlaintexts()[0], &rec) != nil {
-			return nil, errors.New("an opened record is not JSON")
-		}
-		ev := rec.Metadata.EventCode
-		mine := correlation != "" && rec.Metadata.Correlation == correlation
-		if ev == "policy.decide" && decisionID != "" && rec.Policy.UID == decisionID {
-			mine = true
-		}
-		if !mine {
-			continue
-		}
-		s.has[ev] = true
-		s.out.Found = append(s.out.Found, foundEntry{Event: ev, Actor: rec.Actor.User.UID, Status: rec.Status, Correlation: rec.Metadata.Correlation, DecisionID: rec.Policy.UID})
 	}
 	return s, nil
 }
