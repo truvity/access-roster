@@ -10,6 +10,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/truvity/sluis/v2/kits/go/pinrelease"
+	"github.com/truvity/sluis/v2/kits/go/slotplan"
 )
 
 // keysYAML is the part of docs/architecture/keys.yaml that the slot plan is checked against.
@@ -174,5 +175,18 @@ func TestAnInstallationSlotMapCannotShareASlotBetweenKeys(t *testing.T) {
 				t.Fatalf("error = %v, want %q listed twice", err, c.path)
 			}
 		})
+	}
+}
+
+// The card driver's table is the default map that key@ checks a KeyPlan against (kits/go/slotplan), slot for slot: key@
+// refuses a plan the card would not follow only if the two tables are one.
+func TestTheDriversTableIsTheSlotPlanKitsDefault(t *testing.T) {
+	if len(slotPlan) != len(slotplan.Default) {
+		t.Fatalf("the driver has %d purposes, the kit %d", len(slotPlan), len(slotplan.Default))
+	}
+	for _, e := range slotPlan {
+		if got := slotplan.Default[e.purpose]; got != e.slot.String() {
+			t.Errorf("%s: the driver's slot %s, the kit's %q", e.purpose, e.slot, got)
+		}
 	}
 }

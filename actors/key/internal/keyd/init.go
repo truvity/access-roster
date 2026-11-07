@@ -85,6 +85,28 @@ func checkPlan(plan *configv2alpha1.KeyPlan) error {
 	return nil
 }
 
+// checkStoreSlots refuses, on a card, a KeyPlan whose slots the card driver does not follow. The card driver serves the
+// default slot map and takes no override, so a plan that names another slot, or a card-key purpose the map lacks, would say
+// one thing while the card did another, or would fail later with a driver error that names no cause. Software and cloud
+// stores have no slots and are not asked.
+func (s *Server) checkStoreSlots(ctx context.Context, plan *configv2alpha1.KeyPlan) error {
+	caps, err := s.driver.Capabilities(ctx, connect.NewRequest(&keystorev2alpha1.CapabilitiesRequest{}))
+	if err != nil {
+		return fmt.Errorf("key-store driver capabilities: %w", err)
+	}
+	if caps.Msg.GetStore() != "yubikey-piv" {
+		return nil
+	}
+	ps := make([]slotplan.Purpose, 0, len(plan.GetPurposes()))
+	for _, p := range plan.GetPurposes() {
+		ps = append(ps, slotplan.Purpose{Name: p.GetPurpose(), Algorithm: p.GetAlgorithm(), Slot: p.GetSlot()})
+	}
+	if err := slotplan.CheckCard(ps); err != nil {
+		return fmt.Errorf("keyplan/default: %w", err)
+	}
+	return nil
+}
+
 // Check is the check command: it reaches the driver, store@ and the config key@ needs, and applies the floors.
 // It writes nothing and creates no key.
 func (s *Server) Check(ctx context.Context) error {
@@ -103,6 +125,9 @@ func (s *Server) Check(ctx context.Context) error {
 		return err
 	}
 	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {
+		return err
+	}
+	if err := s.checkStoreSlots(ctx, plan); err != nil {
 		return err
 	}
 	if err := s.checkTransport(ctx); err != nil {
@@ -154,6 +179,9 @@ func (s *Server) Init(ctx context.Context) error {
 		return err
 	}
 	if err := s.checkFloor(ctx, b.GetEnvironment()); err != nil {
+		return err
+	}
+	if err := s.checkStoreSlots(ctx, plan); err != nil {
 		return err
 	}
 	s.environment = b.GetEnvironment()

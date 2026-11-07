@@ -63,3 +63,56 @@ func TestAWrongSlotMapStopsNodeInitialisationAndTheCheck(t *testing.T) {
 		t.Fatalf("the default plan was refused: %v", err)
 	}
 }
+
+// verifies: REQ-PKI-035
+// A plan that the card driver would not follow is refused at start and in the check command, with the entry named, before
+// any key is asked of the driver: a slot other than the card's for a purpose of its map, and a card-key purpose that the
+// map lacks (the spare slots, which the card driver does not serve yet; REQ-KEYS-063). The same plan is accepted by the
+// software driver, which has no slots, and the default plan is accepted on the card.
+func TestACardIsNotGivenAPlanItDoesNotFollow(t *testing.T) {
+	cases := map[string]struct {
+		edit func(*configv2alpha1.KeyPlan)
+		want string
+	}{
+		"another slot for a purpose of the map": {func(p *configv2alpha1.KeyPlan) { p.Purposes[1].Slot = "88" }, "purposes[1].slot: differs from the slot of the card driver"},
+		"the issuance log, which has no slot on the card": {func(p *configv2alpha1.KeyPlan) {
+			p.Purposes = append(p.Purposes, &configv2alpha1.KeyPurposePlan{Purpose: "issuance-log", Algorithm: "ES384", Slot: "88"})
+		}, "the card driver serves no slot for this purpose"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			for _, store := range []string{"yubikey-piv", "software"} {
+				e := newTestEnv(t, "development")
+				plan := proto.Clone(defaultPlan()).(*configv2alpha1.KeyPlan)
+				c.edit(plan)
+				e.putPlan(plan)
+				d := newFakeDriver(store)
+				d.now = e.clock.now
+				n := e.newNode(nodeOpts{driver: d})
+				err := n.srv.Init(t.Context())
+				if store == "software" {
+					if err != nil && strings.Contains(err.Error(), "card driver") {
+						t.Fatalf("the software driver was refused for a card's limit: %v", err)
+					}
+					continue
+				}
+				if err == nil || !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("Init on a card = %v, want %q", err, c.want)
+				}
+				if got := driverPurposes(d); len(got) != 1 || got[0] != "wrapping" { // the one the test made to list the node
+					t.Fatalf("the driver holds %v after a refused plan, want the test's wrapping key only", got)
+				}
+				if err := n.srv.Check(t.Context()); err == nil || !strings.Contains(err.Error(), c.want) {
+					t.Fatalf("Check on a card = %v, want %q", err, c.want)
+				}
+			}
+		})
+	}
+	e := newTestEnv(t, "development")
+	d := newFakeDriver("yubikey-piv")
+	d.now = e.clock.now
+	n := e.newNode(nodeOpts{driver: d})
+	if err := n.srv.Init(t.Context()); err != nil {
+		t.Fatalf("the default plan on a card: %v", err)
+	}
+}

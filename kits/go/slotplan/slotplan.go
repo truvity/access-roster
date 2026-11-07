@@ -104,3 +104,28 @@ func Check(purposes []Purpose) error {
 	_, err := Resolve(purposes)
 	return err
 }
+
+// CheckCard is the check of a plan against the card driver, which serves the default map and nothing else: it keeps no
+// override of a slot and has no key for a purpose outside the map. A plan that names another slot for a purpose of the
+// map, or lists a card-key purpose the map does not hold (a spare slot), is refused, so that the plan and the card never say
+// different things. The refusal names the entry and the word, never a key. Call Check first; this adds the card's own limit.
+func CheckCard(purposes []Purpose) error {
+	var problems []string
+	for i, p := range purposes {
+		if !onCard(p.Algorithm) {
+			continue
+		}
+		where := fmt.Sprintf("purposes[%d]", i)
+		def, ok := Default[p.Name]
+		switch {
+		case !ok:
+			problems = append(problems, where+": the card driver serves no slot for this purpose")
+		case p.Slot != "" && p.Slot != def:
+			problems = append(problems, where+".slot: differs from the slot of the card driver")
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("card slot map: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
