@@ -31,6 +31,14 @@ func (e *env) signInWithHint(hint, prompt string) (q map[string][]string, author
 	return location(e.t, cb).Query(), true
 }
 
+// errorOf is the error of a redirect, "" when it has none; it never panics on an empty one.
+func errorOf(q map[string][]string) string {
+	if v := q["error"]; len(v) == 1 {
+		return v[0]
+	}
+	return ""
+}
+
 // hintOf makes an id_token_hint with the claims, and a signature that is nothing.
 func hintOf(claims map[string]any) string {
 	b, _ := json.Marshal(claims)
@@ -71,7 +79,7 @@ func TestAnIDTokenHintHoldsTheSignInToItsPerson(t *testing.T) {
 		before := len(e.signer.requests())
 		e.upstream.assertion = upstreamAssertion("preferred_username", "bob")
 		q, ok := e.signInWithHint(hint, "")
-		if !ok || q["error"][0] != "login_required" || q["code"] != nil || q["state"][0] != "client-state-1" {
+		if !ok || errorOf(q) != "login_required" || q["code"] != nil || len(q["state"]) != 1 || q["state"][0] != "client-state-1" {
 			t.Fatalf("redirect = %v", q)
 		}
 		if e.store.count("person", testTenant) != people || len(e.signer.requests()) != before {
@@ -88,7 +96,7 @@ func TestAnIDTokenHintHoldsTheSignInToItsPerson(t *testing.T) {
 		people := e.store.count("person", testTenant)
 		e.upstream.assertion = upstreamAssertion("preferred_username", "carol")
 		q, ok := e.signInWithHint(hint, "")
-		if !ok || q["error"][0] != "login_required" {
+		if !ok || errorOf(q) != "login_required" {
 			t.Fatalf("redirect = %v", q)
 		}
 		if got := e.store.count("person", testTenant); got != people {
@@ -97,9 +105,9 @@ func TestAnIDTokenHintHoldsTheSignInToItsPerson(t *testing.T) {
 	})
 	t.Run("a hint made up by the caller", func(t *testing.T) {
 		e := newEnv(t, nil)
-		real := signed(e, "alice")
+		issued := signed(e, "alice")
 		var c map[string]any
-		parts := strings.Split(real, ".")
+		parts := strings.Split(issued, ".")
 		raw, _ := base64.RawURLEncoding.DecodeString(parts[1])
 		_ = json.Unmarshal(raw, &c)
 		// The right claims under no signature are taken (the hint only refuses); the claims of another person refuse.
@@ -107,14 +115,14 @@ func TestAnIDTokenHintHoldsTheSignInToItsPerson(t *testing.T) {
 			t.Fatalf("refused: %v", q)
 		}
 		c["sub"] = "someone-else"
-		if q, ok := e.signInWithHint(hintOf(c), ""); !ok || q["error"][0] != "login_required" {
+		if q, ok := e.signInWithHint(hintOf(c), ""); !ok || errorOf(q) != "login_required" {
 			t.Fatalf("redirect = %v", q)
 		}
 	})
 	t.Run("aud as a list", func(t *testing.T) {
 		e := newEnv(t, nil)
-		real := signed(e, "alice")
-		raw, _ := base64.RawURLEncoding.DecodeString(strings.Split(real, ".")[1])
+		issued := signed(e, "alice")
+		raw, _ := base64.RawURLEncoding.DecodeString(strings.Split(issued, ".")[1])
 		var c map[string]any
 		_ = json.Unmarshal(raw, &c)
 		c["aud"] = []string{"another-app", testClient}
@@ -135,27 +143,30 @@ func TestAnIDTokenHintOfAnotherIssuerOrClientOrShapeIsRefused(t *testing.T) {
 		return hintOf(c)
 	}
 	for name, hint := range map[string]string{
-		"not a JWT":            "abc",
-		"two parts":            "a.b",
-		"four parts":           "a.b.c.d",
-		"payload not base64":   "a.%%%.c",
-		"payload not JSON":     "a." + base64.RawURLEncoding.EncodeToString([]byte("nope")) + ".c",
-		"another issuer":       with(func(c map[string]any) { c["iss"] = "https://sluis.other.test" }),
-		"no issuer":            with(func(c map[string]any) { delete(c, "iss") }),
-		"another client":       with(func(c map[string]any) { c["aud"] = other }),
-		"no audience":          with(func(c map[string]any) { delete(c, "aud") }),
-		"an audience list":     with(func(c map[string]any) { c["aud"] = []string{other, "x"} }),
-		"an audience number":   with(func(c map[string]any) { c["aud"] = 1 }),
-		"no subject":           with(func(c map[string]any) { delete(c, "sub") }),
-		"an empty subject":     with(func(c map[string]any) { c["sub"] = "" }),
-		"a subject too long":   with(func(c map[string]any) { c["sub"] = strings.Repeat("s", 129) }),
-		"a subject with a nul": with(func(c map[string]any) { c["sub"] = "a\x00b" }),
-		"over the bound":       long,
+		"not a JWT":                 "abc",
+		"a header that is not JSON": "x." + base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"`+testIssuer+`","sub":"s","aud":"`+testClient+`"}`)) + ".y",
+		"a header that is a list":   base64.RawURLEncoding.EncodeToString([]byte(`[]`)) + "." + base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"`+testIssuer+`","sub":"s","aud":"`+testClient+`"}`)) + ".y",
+		"a header that is null":     base64.RawURLEncoding.EncodeToString([]byte(`null`)) + "." + base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"`+testIssuer+`","sub":"s","aud":"`+testClient+`"}`)) + ".y",
+		"two parts":                 "a.b",
+		"four parts":                "a.b.c.d",
+		"payload not base64":        "a.%%%.c",
+		"payload not JSON":          "a." + base64.RawURLEncoding.EncodeToString([]byte("nope")) + ".c",
+		"another issuer":            with(func(c map[string]any) { c["iss"] = "https://sluis.other.test" }),
+		"no issuer":                 with(func(c map[string]any) { delete(c, "iss") }),
+		"another client":            with(func(c map[string]any) { c["aud"] = other }),
+		"no audience":               with(func(c map[string]any) { delete(c, "aud") }),
+		"an audience list":          with(func(c map[string]any) { c["aud"] = []string{other, "x"} }),
+		"an audience number":        with(func(c map[string]any) { c["aud"] = 1 }),
+		"no subject":                with(func(c map[string]any) { delete(c, "sub") }),
+		"an empty subject":          with(func(c map[string]any) { c["sub"] = "" }),
+		"a subject too long":        with(func(c map[string]any) { c["sub"] = strings.Repeat("s", 129) }),
+		"a subject with a nul":      with(func(c map[string]any) { c["sub"] = "a\x00b" }),
+		"over the bound":            long,
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t, func(o *options) { o.extra = []*configv2alpha1.InstallationClient{clientOf(other)} })
 			q, ok := e.signInWithHint(hint, "")
-			if ok || q["error"][0] != "invalid_request" || q["state"][0] != "client-state-1" {
+			if ok || errorOf(q) != "invalid_request" || len(q["state"]) != 1 || q["state"][0] != "client-state-1" {
 				t.Fatalf("redirect = %v", q)
 			}
 			if len(e.upstream.begins) != 0 {
@@ -165,5 +176,65 @@ func TestAnIDTokenHintOfAnotherIssuerOrClientOrShapeIsRefused(t *testing.T) {
 				t.Errorf("records = %v", recs)
 			}
 		})
+	}
+}
+
+// A held person who signs in with the hint of their own sub goes on to the hold and is refused as held; a held person whose
+// sub is not the hint's is refused for the hint first. Either way no code is made.
+func TestAnIDTokenHintDoesNotLetAHeldPersonThrough(t *testing.T) {
+	e := newEnv(t, nil)
+	e.upstream.assertion = upstreamAssertion("preferred_username", "alice")
+	hint := e.signInClient(testClient)["id_token"].(string)
+	e.store.putRaw("person-hold", testTenant, e.store.ids("person", testTenant)[0], []byte{1})
+	q, ok := e.signInWithHint(hint, "")
+	if !ok || errorOf(q) != "access_denied" || q["code"] != nil {
+		t.Fatalf("redirect = %v", q)
+	}
+	if recs := e.records(); recs[len(recs)-1]["status_code"] != "held" {
+		t.Errorf("status_code = %v", recs[len(recs)-1]["status_code"])
+	}
+	q, ok = e.signInWithHint(hintOf(hintClaims("someone-else")), "")
+	if !ok || errorOf(q) != "login_required" || q["code"] != nil {
+		t.Fatalf("redirect = %v", q)
+	}
+	if recs := e.records(); recs[len(recs)-1]["status_code"] != "id_token_hint" {
+		t.Errorf("status_code = %v", recs[len(recs)-1]["status_code"])
+	}
+}
+
+// The sign-in cookie stays under 4 KiB with the longest hint subject that is taken, and the callback still opens it: the
+// hint's person is not this one, so the answer is login_required for the hint, which it can only be once the cookie
+// opened and the state matched.
+//
+// verifies: REQ-SESS-050
+func TestAuthorizeNeverSetsACookieLargerThan4KiBWithAHint(t *testing.T) {
+	const part = 128
+	longClient := strings.Repeat("c", part)
+	long := "https://app.example.com/" + strings.Repeat("p", 1000)
+	e := newEnv(t, func(o *options) {
+		o.client.Id = longClient
+		o.client.Redirects = []string{long}
+		o.boundary.DefaultTenant = strings.Repeat("t", part)
+		o.upstream.Name = strings.Repeat("u", part)
+	})
+	p := newAuthorize()
+	p.req.ClientId, p.req.RedirectUri = longClient, long
+	p.req.State, p.req.Nonce = strings.Repeat("s", 256), strings.Repeat("n", 256)
+	p.req.Scope, p.req.MaxAge = "openid profile email", "2147483647"
+	hint := map[string]any{"iss": testIssuer, "sub": strings.Repeat("h", part), "aud": longClient}
+	p.req.IdTokenHint = hintOf(hint)
+	r := e.authorize(p.req)
+	up := location(t, r)
+	v := cookieValue(t, r)
+	if v == "" || len(v) > 4096 {
+		t.Fatalf("a sign-in cookie of %d bytes", len(v))
+	}
+	t.Logf("the largest sign-in cookie with a hint is %d bytes of 4096", len(v))
+	cb := e.callback(&sessionv2alpha1.CallbackRequest{Code: "c-1234567890", State: up.Query().Get("state"), Cookie: v})
+	if q := location(t, cb).Query(); q.Get("error") != "login_required" || q.Get("state") != p.req.State {
+		t.Fatalf("the callback did not open the cookie: %v", q)
+	}
+	if recs := e.records(); recs[len(recs)-1]["status_code"] != "id_token_hint" {
+		t.Errorf("status_code = %v", recs[len(recs)-1]["status_code"])
 	}
 }

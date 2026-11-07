@@ -32,7 +32,8 @@ const (
 	maxScope       = 256
 
 	// maxCookie is the longest sign-in cookie value entry passes on (HEADER_VALUE_MAX in entry's handler.rs). The
-	// pending sign-in is sealed into it, so the five client-supplied fields above are bounded to keep it under.
+	// pending sign-in is sealed into it, so the client-supplied fields above (the state, the nonce, the redirect_uri and the
+	// scope) and the subject of an id_token_hint (maxHintSubject) are bounded to keep it under.
 	maxCookie = 4096
 )
 
