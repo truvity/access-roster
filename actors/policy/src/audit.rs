@@ -126,6 +126,7 @@ pub fn decide(o: &Outcome<'_>) -> Event {
         sluis,
         correlation_id: None,
         entity: None,
+        subject_best_effort: false,
     }
 }
 
