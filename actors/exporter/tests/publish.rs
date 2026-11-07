@@ -1320,9 +1320,30 @@ async fn the_unverified_alarm_repeats_while_it_lasts() {
     );
 }
 
+/// The write facts so far, in order: the digest, the number of kids and whether the write replaced a document.
+fn write_facts(w: &World) -> Vec<(String, u64, bool)> {
+    w.spool
+        .of("exporter.write")
+        .iter()
+        .map(|r| {
+            let s = &r["unmapped"]["sluis"];
+            (
+                s["sha256"].as_str().unwrap_or("").to_owned(),
+                s["kids"].as_u64().unwrap(),
+                s["replaced"].as_bool().unwrap(),
+            )
+        })
+        .collect()
+}
+
 /// A `put` that timed out but landed leaves the last good document older than the destination. A later trim, with the
 /// listings unreadable, must not write that old body back: it subtracts every kid this process was ever told is revoked,
 /// not only the one the latest event names.
+///
+/// The trim must run on the old body, so nothing may refresh it in between: the retry is a minute, and the only thing
+/// that makes the exporter look again is the revocation of `kid-c`, whose listings are unreadable. (Were the timer short,
+/// a pass that found the landed document would refresh the last good document, and the test would pass for the wrong
+/// reason on a quick machine.)
 ///
 /// verifies: REQ-EXPORT-020, REQ-EXPORT-024
 #[tokio::test]
@@ -1340,8 +1361,16 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         driver: m.clone(),
         documents: vec![doc()],
     }];
-    let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(600)));
+    let run = spawn(w.engine(targets, |c| {
+        c.timing.budget = Duration::from_millis(600);
+        c.retry = Duration::from_secs(60);
+    }));
     until(10, "the first document", || m.inner.body("jwks").is_some()).await;
+    until(10, "the fact of the first write", || {
+        write_facts(&w).len() == 1
+    })
+    .await;
+    let first = m.inner.body("jwks").unwrap();
 
     // `kid-a` is revoked and the new document lands, but the answer is lost: the last good document still lists it.
     m.lose_answer.store(true, Ordering::SeqCst);
@@ -1356,9 +1385,8 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         },
     )
     .await;
-    // The report says `unverified` for as long as it takes the next pass to look: that pass finds the document at the
-    // destination, as it landed, and the state is `written` again. The state was reached, and the reports written are
-    // the record of it; the current report is only what is there now.
+    let second = m.inner.body("jwks").unwrap();
+    // The report says `unverified` until a pass looks again; the reports written are the record of it.
     until_saying(
         10,
         "a report that says unverified (the destination did not answer)",
@@ -1381,6 +1409,11 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         },
     )
     .await;
+    assert_eq!(
+        write_facts(&w).len(),
+        1,
+        "the write that was not answered is not a fact until the destination shows it"
+    );
 
     // Now the answers come back, the listings cannot be read, and `kid-c` is revoked.
     m.lose_answer.store(false, Ordering::SeqCst);
@@ -1393,36 +1426,175 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
     })
     .await;
     tokio::time::sleep(Duration::from_millis(400)).await;
+    let third = m.inner.body("jwks").unwrap();
     assert_eq!(
-        kids(&m.inner.body("jwks").unwrap()),
+        kids(&third),
         ["kid-b"],
         "an old body brought a revoked key back"
     );
-    // Every write is a fact, also the one whose answer was lost: the first document, the one without kid-a that landed
-    // unanswered, and the trim.
+    // Every write is a fact, also the one whose answer was lost, and each says what it wrote: the digest of the body, its
+    // kids, and whether it replaced a document (the first did not).
     until_saying(
         10,
         "a fact for each of the three writes",
-        || w.spool.of("exporter.write").len() == 3,
-        || {
-            format!(
-                "{:?}",
-                w.spool
-                    .of("exporter.write")
-                    .iter()
-                    .map(|r| (
-                        r["unmapped"]["sluis"]["sha256"]
-                            .as_str()
-                            .unwrap_or("")
-                            .get(..8)
-                            .map(str::to_owned),
-                        r["unmapped"]["sluis"]["kids"].clone()
-                    ))
-                    .collect::<Vec<_>>()
-            )
-        },
+        || write_facts(&w).len() == 3,
+        || format!("{:?}", write_facts(&w)),
     )
     .await;
+    let digest = |b: &[u8]| sha256_hex(b);
+    assert_eq!(
+        write_facts(&w),
+        [
+            (digest(&first), 3, false),
+            (digest(&second), 2, true),
+            (digest(&third), 1, true)
+        ]
+    );
+    run.stop().await;
+}
+
+/// A first write whose answer was lost, on an empty destination, is a creation: the fact says it replaced nothing.
+///
+/// verifies: REQ-EXPORT-017
+#[tokio::test]
+async fn a_first_write_whose_answer_was_lost_is_a_creation() {
+    let w = World::new().await;
+    let m = common::Lossy::new(Memory::new());
+    m.lose_answer.store(true, Ordering::SeqCst);
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(600)));
+    until(10, "the document", || m.inner.body("jwks").is_some()).await;
+    until(10, "its fact", || !write_facts(&w).is_empty()).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        write_facts(&w),
+        [(sha256_hex(&m.inner.body("jwks").unwrap()), 1, false)]
+    );
+    run.stop().await;
+}
+
+/// A write that changes only a header leaves the digest as it was. A `put` of it that lands without an answer is one
+/// fact, and one that does not land is none until the write that does: never a fact for a document that was already
+/// there, and never two for one write. A `put` that did not land, with another document there by then, makes no fact for
+/// the digest it was to write.
+///
+/// verifies: REQ-EXPORT-017
+#[tokio::test]
+async fn a_header_only_write_and_a_digest_that_does_not_match_make_exactly_the_facts_of_the_writes()
+{
+    for lands in [true, false] {
+        let w = World::new().await;
+        let m = common::Lossy::new(Memory::new());
+        w.store.set_ring(vec![test_key("kid-a", "active").key]);
+        let first = vec![Target {
+            name: "mem".into(),
+            driver: m.clone(),
+            documents: vec![doc()],
+        }];
+        let run = spawn(w.engine(first, |_| {}));
+        until(10, "the document and its fact", || {
+            m.inner.body("jwks").is_some() && write_facts(&w).len() == 1
+        })
+        .await;
+        run.stop().await;
+        let body = m.inner.body("jwks").unwrap();
+
+        // The cache time changes: the digest is the same, the put is to change a header.
+        let changed = exporter::config::Doc {
+            cache_control: "public, max-age=60".into(),
+            ..doc()
+        };
+        let second = vec![Target {
+            name: "mem".into(),
+            driver: m.clone(),
+            documents: vec![changed],
+        }];
+        if lands {
+            m.lose_answer.store(true, Ordering::SeqCst);
+        } else {
+            m.inner
+                .fail(Op::Put, usize::MAX, Error::Unavailable("down".into()));
+        }
+        let run = spawn(w.engine(second, |c| {
+            c.timing.budget = Duration::from_millis(500);
+            c.retry = Duration::from_millis(100);
+        }));
+        if lands {
+            // The header is at the destination by now, and the next pass shows it: one fact.
+            until(10, "the fact of the header write", || {
+                write_facts(&w).len() == 2
+            })
+            .await;
+        } else {
+            // It did not land: nothing was written, nothing is a fact.
+            tokio::time::sleep(Duration::from_millis(800)).await;
+            assert_eq!(write_facts(&w).len(), 1, "a write that did not happen");
+            m.inner.heal();
+            until(10, "the write that lands", || write_facts(&w).len() == 2).await;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(
+            write_facts(&w),
+            [(sha256_hex(&body), 1, false), (sha256_hex(&body), 1, true)],
+            "lands={lands}"
+        );
+        run.stop().await;
+    }
+
+    // A put that did not land, and another document there by the next pass: the digest it was to write is not there, so
+    // there is no fact for it; the pass that writes the right one makes its own.
+    let w = World::new().await;
+    let m = common::Lossy::new(Memory::new());
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    m.inner
+        .fail(Op::Put, usize::MAX, Error::Unavailable("down".into()));
+    // Another document is there already, so every write replaces something.
+    m.inner.tamper("jwks", b"{\"keys\":[{\"kid\":\"older\"}]}");
+    let run = spawn(w.engine(targets, |c| {
+        c.timing.budget = Duration::from_millis(400);
+        c.retry = Duration::from_millis(100);
+    }));
+    until(10, "unverified", || {
+        w.store
+            .report_log()
+            .iter()
+            .any(|(_, r, _)| r.state == "unverified")
+    })
+    .await;
+    // Someone else writes yet another document, and the destination takes writes again. (A pass may be in flight, with
+    // what it listed before: it writes the right document over one or the other, and the facts are the same.)
+    m.inner.heal();
+    // (With the headers of the document, so that only its digest tells it from the one that was to be written.)
+    m.inner
+        .put(sluis_destination::Document {
+            address: "jwks".into(),
+            content_type: "application/json".into(),
+            cache_control: "public, max-age=300".into(),
+            body: b"{\"keys\":[{\"kid\":\"other\"}]}".to_vec(),
+        })
+        .await
+        .unwrap();
+    until(10, "the right document", || {
+        m.inner.body("jwks").is_some_and(|b| kids(&b) == ["kid-a"])
+    })
+    .await;
+    until(10, "its fact", || !write_facts(&w).is_empty()).await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        write_facts(&w),
+        [(sha256_hex(&m.inner.body("jwks").unwrap()), 1, true)],
+        "exactly the one write that happened, and it replaced the other document"
+    );
     run.stop().await;
 }
 

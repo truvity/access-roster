@@ -50,10 +50,12 @@ fn text(v: &str) -> Value {
 /// emitter refuses is a fact lost exactly when it matters. A name made of letters, digits and `.`, `_`, `-` and `/`, of at
 /// most 128 bytes, is written as it is (that leaves out `@`, `:` and the rest of the pattern, which no name of the store
 /// holds and which would look like an address); any other is its SHA-256 (the first 16 hex digits) after `h-`, which the
-/// operator can compute from the name.
+/// operator can compute from the name. A name that begins with `h-` is hashed too, so that no name can be taken for the
+/// digest form of another.
 fn ident(v: &str) -> Value {
     let fits = !v.is_empty()
         && v.len() <= 128
+        && !v.starts_with("h-")
         && v.bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'));
     if fits {
@@ -239,6 +241,11 @@ mod tests {
             assert!(!got.contains(['@', ':']));
         }
         assert_eq!(name(&"a".repeat(128)), "a".repeat(128));
+        // A real name that looks like the digest form of another is hashed too, so the two cannot be the same.
+        let digest_form = name("a:b");
+        assert_ne!(name(&digest_form), digest_form);
+        assert!(name(&digest_form).starts_with("h-"));
+        assert_eq!(name("h"), "h");
         assert_eq!(
             name("a:b"),
             name("a:b"),
