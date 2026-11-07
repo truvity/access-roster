@@ -550,7 +550,7 @@ requirements:
     rationale: "Policy comes from one source, so the compiler is where a leak between environments is cheapest to stop."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:

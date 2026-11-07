@@ -56,8 +56,7 @@ requirements:
     rationale: "Deny by default is the base of least privilege."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -72,8 +71,7 @@ requirements:
     rationale: "A decision engine that fails open is a bypass."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     actors: [policy]
@@ -177,13 +175,12 @@ requirements:
     rationale: "A wildcard in requires, a claim, a lifetime or the role position would grant or admit by pattern."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [892]
-    tests: [actors/policy/tests/load.rs]
+    tests: [actors/policy/tests/load.rs, actors/store/tests/config.rs]
     verification:
       - {kind: integration-test, ref: "each misplaced wildcard and an empty expansion are refused"}
   - id: REQ-POLICY-013
