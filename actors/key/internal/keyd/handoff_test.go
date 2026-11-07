@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -493,11 +494,77 @@ func TestInstallDoesNotGoBackButRenews(t *testing.T) {
 			t.Fatalf("%s: the installed chain changed", name)
 		}
 	}
-	if _, err := install(n, "x509-intermediate", false, 8, later); err != nil || !bytes.Equal(stored().GetChain()[0], later) || stored().GetTrustSequence() != 8 {
-		t.Fatalf("renewal: %v", err)
+	firstCert, _ := x509.ParseCertificate(first)
+	laterCert, _ := x509.ParseCertificate(later)
+	res, err := install(n, "x509-intermediate", false, 8, later)
+	if err != nil || !bytes.Equal(stored().GetChain()[0], later) || stored().GetTrustSequence() != 8 || !res.GetReplaced() {
+		t.Fatalf("renewal: %v, %v", res, err)
 	}
-	if _, err := install(n, "x509-intermediate", true, 1, earlier); err != nil || !bytes.Equal(stored().GetChain()[0], earlier) {
-		t.Fatalf("replace: %v", err)
+	res, err = install(n, "x509-intermediate", true, 1, earlier)
+	if err != nil || !bytes.Equal(stored().GetChain()[0], earlier) || !res.GetReplaced() {
+		t.Fatalf("replace: %v, %v", res, err)
+	}
+	// A bypass of the guard is in the log: the facts say whether the caller asked to replace, and what the chain replaced.
+	var facts []map[string]any
+	for _, ev := range n.audit.all() {
+		if ev.Action == ActionCertificateInstall {
+			facts = append(facts, ev.Fields)
+		}
+	}
+	if len(facts) != 3 {
+		t.Fatalf("%d install facts, want 3", len(facts))
+	}
+	if _, ok := facts[0]["previous_not_after"]; ok || facts[0]["replace"] != false {
+		t.Errorf("the first install: %v", facts[0])
+	}
+	if facts[1]["previous_not_after"] != firstCert.NotAfter.Unix() || facts[1]["replace"] != false {
+		t.Errorf("the renewal: %v", facts[1])
+	}
+	if facts[2]["previous_not_after"] != laterCert.NotAfter.Unix() || facts[2]["replace"] != true {
+		t.Errorf("the bypass: %v", facts[2])
+	}
+	if res, err = install(n, "x509-intermediate", false, 1, at(20)); err == nil && res.GetReplaced() == false {
+		t.Error("an install over another chain does not say it replaced one")
+	}
+}
+
+// Two installs at once cannot both pass the guard: of chains that end on successive days, whatever the order, the one that
+// ends last is the one installed.
+func TestConcurrentInstallsKeepTheNewest(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	now := n.e.clock.now()
+	k, _ := n.driver.key("x509-intermediate")
+	csr := csrOf(t, k)
+	var chains [][]byte
+	for d := range 8 {
+		chains = append(chains, root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, d), nil))
+	}
+	var wg sync.WaitGroup
+	for _, c := range chains {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = install(n, "x509-intermediate", false, 1, c)
+		}()
+	}
+	wg.Wait()
+	for _, c := range certItems(n) {
+		if c.GetPurpose() == "x509-intermediate" && !bytes.Equal(c.GetChain()[0], chains[len(chains)-1]) {
+			t.Fatal("an older chain replaced a newer one")
+		}
+	}
+}
+
+// The admin socket of a key@ as it is built serves root only; the tests replace the rule with their own uid, so this is
+// where the default is held.
+func TestTheAdminSocketOfAFreshKeyAtServesRootOnly(t *testing.T) {
+	s, err := newServer(Config{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.adminAllow == nil || s.adminAllow(1000) || s.adminAllow(65534) || !s.adminAllow(0) {
+		t.Fatal("the default rule of the admin socket is not root only")
 	}
 }
 

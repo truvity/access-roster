@@ -99,6 +99,8 @@ type Server struct {
 	ring *store.Client[*signerv2alpha1.SigningRing]
 	// declarations is the highest key revocation declaration taken (declaration.go).
 	declarations declarations
+	// handoffMu serialises the installs of a certificate chain (handoff.go).
+	handoffMu sync.Mutex
 	// adminAllow decides from the peer's uid who may use the admin socket (admin.go): root.
 	adminAllow func(uid uint32) bool
 	// pinReqs and pinRels are the temp kinds of the PIN release between boards (pinrelease.go).

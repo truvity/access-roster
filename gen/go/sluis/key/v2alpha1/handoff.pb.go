@@ -318,6 +318,7 @@ type InstallResponse struct {
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`            // the id of the KeyCertificate item
 	Already       bool                   `protobuf:"varint,2,opt,name=already,proto3" json:"already,omitempty"` // the same chain was installed before; nothing was written
 	Audited       bool                   `protobuf:"varint,3,opt,name=audited,proto3" json:"audited,omitempty"`
+	Replaced      bool                   `protobuf:"varint,4,opt,name=replaced,proto3" json:"replaced,omitempty"` // a chain that was installed before was replaced by this one
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -373,6 +374,13 @@ func (x *InstallResponse) GetAudited() bool {
 	return false
 }
 
+func (x *InstallResponse) GetReplaced() bool {
+	if x != nil {
+		return x.Replaced
+	}
+	return false
+}
+
 var File_sluis_key_v2alpha1_handoff_proto protoreflect.FileDescriptor
 
 const file_sluis_key_v2alpha1_handoff_proto_rawDesc = "" +
@@ -394,11 +402,12 @@ const file_sluis_key_v2alpha1_handoff_proto_rawDesc = "" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x14\n" +
 	"\x05chain\x18\x02 \x03(\fR\x05chain\x12%\n" +
 	"\x0etrust_sequence\x18\x03 \x01(\x03R\rtrustSequence\x12\x18\n" +
-	"\areplace\x18\x04 \x01(\bR\areplace\"U\n" +
+	"\areplace\x18\x04 \x01(\bR\areplace\"q\n" +
 	"\x0fInstallResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aalready\x18\x02 \x01(\bR\aalready\x12\x18\n" +
-	"\aaudited\x18\x03 \x01(\bR\aaudited2\x9b\x02\n" +
+	"\aaudited\x18\x03 \x01(\bR\aaudited\x12\x1a\n" +
+	"\breplaced\x18\x04 \x01(\bR\breplaced2\x9b\x02\n" +
 	"\x11KeyHandoffService\x12R\n" +
 	"\aPrepare\x12\".sluis.key.v2alpha1.PrepareRequest\x1a#.sluis.key.v2alpha1.PrepareResponse\x12^\n" +
 	"\vSignRequest\x12&.sluis.key.v2alpha1.SignRequestRequest\x1a'.sluis.key.v2alpha1.SignRequestResponse\x12R\n" +

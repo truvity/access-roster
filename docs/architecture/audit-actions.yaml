@@ -170,8 +170,12 @@ actions:
       caller: {type: ident, required: true}
       chain_length: {type: uint, required: true}
       trust_sequence: {type: uint, required: true}
+      # Whether the caller asked to replace a chain that the guard would have kept (a newer one, or a higher trust sequence),
+      # and, when a chain was installed, the end of its leaf in seconds since the epoch: a bypass of the guard shows in the log.
+      replace: {type: bool, required: true}
+      previous_not_after: {type: uint}
     example:
-      sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7}
+      sluis: {purpose: x509-intermediate, key_id: key-2026-11, caller: admin, chain_length: 1, trust_sequence: 7, replace: false, previous_not_after: 1794744000}
 
   # A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87 (ADR 0030, "Key use").
   - name: key.pin.release
