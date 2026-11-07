@@ -185,7 +185,7 @@ The default card slot map, version 1 ([keys per board](/decisions/0006-keys-and-
 | `9c` | [`x509-intermediate`](#x509-intermediate) | [`ES384`](#es384) | every board |
 | `9d` | [`wrapping`](#wrapping) | [`ECDH-P-384`](#ecdh-p-384) | every board |
 
-**Spare slots:** `88` to `95` (14). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one).
+**Spare slots:** `88` to `95` (14). Shared by every purpose: the new key of an event rotation while the old one finishes, older wrapping keys until their data keys are re-wrapped, and the purposes outside the default map (an enabled on-use purpose or a named exception takes one). The card driver serves the default map only today: it has no key for a purpose outside it, so key@ refuses a KeyPlan that enables such a purpose on a card (the spare slots are not served yet; REQ-KEYS-063).
 
 **Unused:** slot `9e`. The card-authentication slot signs without a PIN by default.
 
