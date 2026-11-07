@@ -186,18 +186,17 @@ requirements:
     rationale: "A scope taken from the request would let any caller name another boundary's data (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [851]
-    tests: [actors/store/tests/store.rs]
+    tests: [actors/store/tests/store.rs, actors/store/tests/serve_config.rs]
     verification:
       - {kind: test-vectors, ref: "no request message has a boundary or caller field; a grant, tenant or id that names another boundary reaches nothing of it, and every key lands under the service's own boundary"}
       - {kind: test-vectors, ref: "actor X names another actor in an id; the rule applied and the caller in the audit fact are X's"}
-      - {kind: integration-test, ref: "store serve builds the service with the boundary of its bootstrap file (one field copied into Deps; not proved: serve stops at the kit's start under a test)"}
+      - {kind: integration-test, ref: "store serve builds the service with the boundary of its bootstrap file (the start fact of a `store serve` with the boundary stage names stage)"}
   - id: REQ-DATA-014
     area: DATA
     statement: "Settings that hold for a whole installation MUST be one signed config document that is written, with the same content, into every boundary's config source."
@@ -292,13 +291,13 @@ requirements:
     rationale: "The store never seals or opens a stored value, so a compromised store yields no sealed data (ADR 0004); the keys it may use open grants (ADR 0007) and, at a restore, the backup archive key (ADR 0006, ADR 0010), and neither opens a stored value."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1206]
+    tests: [actors/store/tests/generic_service.rs]
     verification:
       - {kind: integration-test, ref: "store@ holds no key purpose that opens a stored value (data, evidence, chain, cookie) and no key credential; it opens grants and unwraps the archive key on restore"}
       - {kind: integration-test, ref: "a dump of the engine holds ciphertext and hashes only for sealed and hashed kinds"}
@@ -308,13 +307,13 @@ requirements:
     rationale: "The store cannot read a sealed field, so the writing actor validates before it seals (ADR 0004)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: external-suite-not-run
     runtimes: all
     actors: [store]
     standards: []
     issues: [1206]
+    tests: [actors/store/tests/store.rs]
     verification:
       - {kind: test-vectors, ref: "envelope vectors: a truncated, a mislabelled and a well-formed sealed value"}
   - id: REQ-DATA-021
@@ -675,13 +674,13 @@ requirements:
     rationale: "One service for every kind keeps the wire small, and the rules of the registry give the isolation that a service per kind would only repeat (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [store]
     standards: []
     issues: [1203]
+    tests: [actors/store/tests/generic_service.rs]
     verification:
       - {kind: conformance-suite, ref: "store service conformance: a new kind is added to the registry and served with no new method"}
   - id: REQ-DATA-046
@@ -727,6 +726,7 @@ requirements:
     actors: [store]
     standards: []
     issues: [1203]
+    tests: [actors/store/tests/store.rs]
     verification:
       - {kind: integration-test, ref: "a process under another uid, a Lambda role and a service account each get the rules of their own identity only"}
   - id: REQ-DATA-049
@@ -791,12 +791,12 @@ requirements:
     rationale: "The client is generated from the kind's message, and the identity belongs to the transport (ADR 0005)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards: []
     issues: [861]
+    tests: [kits/go/store/store_test.go, kits/rust/sluis-store/tests/store.rs]
     verification:
       - {kind: conformance-suite, ref: "client kit conformance in Go and Rust: the addresses of a representative set of kinds (one per class and scope) equal hand-written golden addresses; every kind follows with the typed clients"}
   - id: REQ-DATA-054
@@ -1501,6 +1501,7 @@ requirements:
     actors: [store]
     standards: []
     issues: [1157]
+    tests: [drivers/store/file/tests/port.rs]
     verification:
       - {kind: integration-test, ref: "a ConfigMap swap is seen by the file driver; the appconfig driver polls at the interval the service returns; a Lambda layer reports none"}
   - id: REQ-DATA-093

@@ -106,6 +106,7 @@ async fn store_reads_a_document_and_every_refusal_names_a_reason() {
     let _ = stop.send(());
 }
 
+/// verifies: REQ-DATA-092
 #[tokio::test]
 async fn watch_tells_of_a_replaced_and_a_removed_document_and_of_nothing_else() {
     let (docs, s) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
