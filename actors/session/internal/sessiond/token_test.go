@@ -191,7 +191,7 @@ func TestTokenCodeGrantIssuesTheTokens(t *testing.T) {
 	reqs := e.policy.requests()
 	last := reqs[len(reqs)-1]
 	if last.GetPerson().GetSubject() != person || last.GetPerson().GetAccounts()[0] != "workforce/alice" ||
-		strings.Join(last.GetGrantStoreVerbs(), ",") != "update,create" || len(last.GetGrantKeyOps()) != 0 {
+		strings.Join(last.GetGrantStoreVerbs(), ",") != "update,create" || strings.Join(last.GetGrantKeyOps(), ",") != "seal,mac" {
 		t.Errorf("decision = %v", last)
 	}
 	// What was signed is what the signer is allowed to sign: types JWT and at+jwt, one per token.
@@ -391,7 +391,7 @@ func TestTokenPolicyDenies(t *testing.T) {
 	deny := func(annotations map[string]string) func(*policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
 		return func(r *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
 			// The sign-in (the first question) is allowed; the code exchange is not.
-			if len(r.GetGrantKeyOps()) > 0 {
+			if isSignInQuestion(r) {
 				return allowAll(r), nil
 			}
 			return &policyv2alpha1.DecideResponse{
@@ -526,7 +526,7 @@ func TestTokenDependenciesDownFailClosed(t *testing.T) {
 	cases := map[string]func(*env){
 		"policy": func(e *env) {
 			e.policy.decide = func(r *policyv2alpha1.DecideRequest) (*policyv2alpha1.DecideResponse, error) {
-				if len(r.GetGrantKeyOps()) > 0 {
+				if isSignInQuestion(r) {
 					return allowAll(r), nil
 				}
 				return nil, connect.NewError(connect.CodeUnavailable, nil)

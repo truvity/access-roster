@@ -218,8 +218,9 @@ func TestCallbackAsksPolicyWithTheFacts(t *testing.T) {
 	if ctx.Acr != nil || !ctx.GetAmrPresent() || len(ctx.GetAmr()) != 3 || ctx.AuthAge == nil || *ctx.AuthAge != 30 {
 		t.Errorf("context = %v", ctx)
 	}
-	// What the grant must allow: creates, and seal and open under the tenant's data key.
-	if strings.Join(r.GetGrantStoreVerbs(), ",") != "create" || strings.Join(r.GetGrantKeyOps(), ",") != "seal,open" {
+	// What the grant must allow: creates, seal and open under the tenant's data key, and mac for the pairwise key of the
+	// subject (the tenant's first pairwise key is made only under a grant).
+	if strings.Join(r.GetGrantStoreVerbs(), ",") != "create" || strings.Join(r.GetGrantKeyOps(), ",") != "seal,open,mac" {
 		t.Errorf("verbs %v ops %v", r.GetGrantStoreVerbs(), r.GetGrantKeyOps())
 	}
 }

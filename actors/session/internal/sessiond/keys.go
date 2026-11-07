@@ -32,8 +32,11 @@ const (
 
 // mac is a keyed hash with HMAC-SHA384 at key@. purpose is "mac" (the boundary's key, tenant "") or "pairwise" (a
 // tenant's).
-func (k keys) mac(ctx context.Context, purpose, tenant, label string, input []byte) ([]byte, error) {
-	res, err := k.c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: label, Input: input}))
+//
+// grant is the sealed grant of the decision the call follows. key@ looks at it only to make a tenant's first pairwise key,
+// which it makes under a grant that names the tenant and the operation mac; a key that exists is used without one.
+func (k keys) mac(ctx context.Context, purpose, tenant, label string, input, grant []byte) ([]byte, error) {
+	res, err := k.c.Mac(ctx, connect.NewRequest(&keyv2alpha1.MacRequest{Purpose: purpose, Tenant: tenant, Label: label, Input: input, Grant: grant}))
 	if err != nil {
 		return nil, fmt.Errorf("key mac %s: %w", purpose, err)
 	}
@@ -48,7 +51,7 @@ func (k keys) mac(ctx context.Context, purpose, tenant, label string, input []by
 // make a second link for one account: the UpstreamPin refuses it (REQ-SUBJ-041). The id holds no personal data, and
 // session never holds the key. It is 256 bits in lower-case base32, 52 characters.
 func (k keys) linkID(ctx context.Context, issuer, value string) (string, error) {
-	m, err := k.mac(ctx, "mac", "", labelUpstreamLink, lengthPrefixed(issuer, value))
+	m, err := k.mac(ctx, "mac", "", labelUpstreamLink, lengthPrefixed(issuer, value), nil)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +61,7 @@ func (k keys) linkID(ctx context.Context, issuer, value string) (string, error) 
 // pinID is the id of an UpstreamPin: a keyed hash of the issuer over the boundary's mac key, under a label of its own
 // (0019 "The records").
 func (k keys) pinID(ctx context.Context, issuer string) (string, error) {
-	m, err := k.mac(ctx, "mac", "", labelUpstreamPin, lengthPrefixed(issuer))
+	m, err := k.mac(ctx, "mac", "", labelUpstreamPin, lengthPrefixed(issuer), nil)
 	if err != nil {
 		return "", err
 	}
@@ -76,7 +79,7 @@ func flowAddress(kind, id string) *typev2alpha1.Address {
 // decided, or that policy needs in order to decide: key@ checks the cookie purpose by rule only, with no grant (D-5),
 // because a tenant's data key would need the decision these facts are for.
 func (k keys) sealFlow(ctx context.Context, kind, id string, m proto.Message) ([]byte, error) {
-	return k.seal(ctx, "cookie", flowAddress(kind, id), m)
+	return k.seal(ctx, "cookie", flowAddress(kind, id), m, nil)
 }
 
 // chainAddress is the address the sign-in facts of a session chain are sealed to: the chain, in its tenant. The tenant
@@ -86,10 +89,12 @@ func chainAddress(tenant, sid string) *typev2alpha1.Address {
 }
 
 // sealChain seals the sign-in facts of a session chain under the chain key of the chain's tenant (0006, "Data keys").
-// key@ checks the chain purpose by rule only, with no grant, because policy needs these facts to decide; the key is
-// the tenant's, so a tenant's exit takes the facts with it. session seals and opens them, exchange opens them.
-func (k keys) sealChain(ctx context.Context, tenant, sid string, m proto.Message) ([]byte, error) {
-	return k.seal(ctx, "chain", chainAddress(tenant, sid), m)
+// key@ checks the chain purpose by rule only once the tenant's key exists, because policy needs the facts to decide at a
+// refresh. It makes the tenant's first key only under a grant that names the tenant and the operation seal, which is the
+// grant of the decision that admitted this sign-in (the seal comes after the decision). The key is the tenant's, so a
+// tenant's exit takes the facts with it. session seals and opens them, exchange opens them.
+func (k keys) sealChain(ctx context.Context, tenant, sid string, m proto.Message, grant []byte) ([]byte, error) {
+	return k.seal(ctx, "chain", chainAddress(tenant, sid), m, grant)
 }
 
 // openChain opens an envelope made by sealChain into m. errNotOurs says it did not open; any other error is key@
@@ -100,12 +105,12 @@ func (k keys) openChain(ctx context.Context, tenant, sid string, envelope []byte
 
 // seal seals the message under the key of a purpose that key@ checks by rule only (the boundary's cookie, a tenant's
 // chain).
-func (k keys) seal(ctx context.Context, purpose string, a *typev2alpha1.Address, m proto.Message) ([]byte, error) {
+func (k keys) seal(ctx context.Context, purpose string, a *typev2alpha1.Address, m proto.Message, grant []byte) ([]byte, error) {
 	pt, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 	if err != nil {
 		return nil, refusal.New(connect.CodeInternal, "schema", "value")
 	}
-	res, err := k.c.Seal(ctx, connect.NewRequest(&keyv2alpha1.SealRequest{Purpose: purpose, Address: a, Plaintext: pt}))
+	res, err := k.c.Seal(ctx, connect.NewRequest(&keyv2alpha1.SealRequest{Purpose: purpose, Address: a, Plaintext: pt, Grant: grant}))
 	clear(pt)
 	if err != nil {
 		return nil, fmt.Errorf("key seal %s: %w", purpose, err)
