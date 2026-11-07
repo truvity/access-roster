@@ -83,6 +83,36 @@
     "",
     "has space"
    ]
+  },
+  "purpose": {
+   "doc": "a key purpose or the purpose of a data key: lower-case kebab-case (docs/architecture/keys.yaml), 1 to 64 characters",
+   "first": "abcdefghijklmnopqrstuvwxyz",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-",
+   "min": 1,
+   "max": 64
+  },
+  "generation": {
+   "doc": "the generation of a data key as the decimal text of entity.version: digits, 1 to 16",
+   "first": "0123456789",
+   "rest": "0123456789",
+   "min": 1,
+   "max": 16,
+   "refused": [
+    "",
+    "1.5",
+    "-1",
+    "a"
+   ]
+  },
+  "export_name": {
+   "doc": "a destination or a document of exporter: its name when it fits (alphanumeric first, then alphanumerics and . _ - /, at most 128), else h- and 16 hex digits (actors/exporter audit.rs ident)",
+   "first": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+   "rest": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/",
+   "min": 1,
+   "max": 128,
+   "extra": [
+    "h-0123456789abcdef"
+   ]
   }
  },
  "fields": [
@@ -288,6 +318,90 @@
     }
    ],
    "domain": "policy_id"
+  },
+  {
+   "action": "signer.ring.add",
+   "path": "entity.uid",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "signer.ring.change",
+   "path": "entity.uid",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "signer.ring.drop",
+   "path": "entity.uid",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "key.wrap.write",
+   "path": "entity.uid",
+   "shape": "$v",
+   "domain": "recipient"
+  },
+  {
+   "action": "key.wrap.write",
+   "path": "entity.name",
+   "shape": "$v",
+   "domain": "purpose"
+  },
+  {
+   "action": "key.data_key.make",
+   "path": "entity.name",
+   "shape": "$v",
+   "domain": "purpose"
+  },
+  {
+   "action": "key.wrap.write",
+   "path": "entity.version",
+   "shape": "$v",
+   "domain": "generation"
+  },
+  {
+   "action": "key.data_key.make",
+   "path": "entity.version",
+   "shape": "$v",
+   "domain": "generation"
+  },
+  {
+   "action": "exporter.write",
+   "path": "entity.name",
+   "shape": "$v",
+   "domain": "export_name"
+  },
+  {
+   "action": "exporter.unverified",
+   "path": "entity.name",
+   "shape": "$v",
+   "domain": "export_name"
+  },
+  {
+   "action": "exporter.refused",
+   "path": "entity.name",
+   "shape": "$v",
+   "domain": "export_name"
+  },
+  {
+   "action": "exporter.write",
+   "path": "unmapped.sluis.document",
+   "shape": "$v",
+   "domain": "export_name"
+  },
+  {
+   "action": "exporter.unverified",
+   "path": "unmapped.sluis.destination",
+   "shape": "$v",
+   "domain": "export_name"
+  },
+  {
+   "action": "key.data_key.make",
+   "path": "unmapped.sluis.purpose",
+   "shape": "$v",
+   "domain": "purpose"
   }
  ]
 }

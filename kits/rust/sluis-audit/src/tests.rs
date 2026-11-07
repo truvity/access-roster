@@ -42,7 +42,8 @@ const CAPTION_KEYS: [&str; 9] = [
 ];
 
 /// What a stored record must not hold outside `unmapped`: observables, enrichments and enum captions.
-/// `activity_name` describes activity 99 and `authorizations[].decision` is the one caption OCSF requires.
+/// `activity_name` describes activity 99, `entity.type` names the kind of an entity of type_id 99 (the toolkit requires it
+/// beside the id), and `authorizations[].decision` is the one caption OCSF requires.
 fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
     match v {
         Value::Object(m) => {
@@ -51,9 +52,10 @@ fn lean_violations(v: &Value, path: &str, out: &mut Vec<String>) {
                 if p == "/unmapped" {
                     continue;
                 }
-                let caption = k == "observables"
-                    || k == "enrichments"
-                    || CAPTION_KEYS.contains(&k.as_str())
+                let caption = (p != "/entity/type"
+                    && (k == "observables"
+                        || k == "enrichments"
+                        || CAPTION_KEYS.contains(&k.as_str())))
                     || (k.ends_with("_name")
                         && ![
                             "/activity_name",
@@ -283,6 +285,12 @@ fn event_of(v: &Value) -> Event {
         }),
         sluis: sluis_of(v.get("sluis")),
         correlation_id: None,
+        entity: v.get("entity").map(|e| crate::Entity {
+            kind: text(e, "type").into(),
+            name: text(e, "name").into(),
+            uid: text(e, "uid").into(),
+            version: text(e, "version").into(),
+        }),
     }
 }
 
