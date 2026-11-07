@@ -604,6 +604,15 @@ fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
     if !sluis_audit::valid_release(&release) {
         return err(&o.at("release"), "not a semantic version");
     }
+    // The policy the documents were made to: a reader refuses one above its own, by name, so a generator that needs more than
+    // the readers allow fails here and early (ADR 0030, "The catalogue is held to a policy").
+    let policy = o.uint32("policy")?;
+    if policy == 0 {
+        return err(&o.at("policy"), "required");
+    }
+    if policy > sluis_audit::POLICY_VERSION {
+        return err(&o.at("policy"), "needs a newer reader");
+    }
     let actions = o.strings("actions")?;
     if actions.is_empty() {
         return err(&o.at("actions"), "required");
@@ -680,6 +689,7 @@ fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
         release,
         actions,
         schemas,
+        policy,
         ..pb::AuditCatalogue::default()
     })
 }

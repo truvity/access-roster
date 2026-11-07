@@ -23,7 +23,7 @@ func realCatalogue(t *testing.T, release string) *configv2alpha1.AuditCatalogue 
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &configv2alpha1.AuditCatalogue{Release: release}
+	c := &configv2alpha1.AuditCatalogue{Release: release, Policy: audit.PolicyVersion}
 	for _, e := range ents {
 		b, err := os.ReadFile(filepath.Join(schemaDir, e.Name()))
 		if err != nil {
@@ -200,7 +200,9 @@ func TestStartRefusesACatalogueItCannotUse(t *testing.T) {
 		"a schema that does not compile": func(c *configv2alpha1.AuditCatalogue) {
 			c.Schemas[1].Json = `{"type":"nonsense"}`
 		},
-		"no definitions document": func(c *configv2alpha1.AuditCatalogue) { c.Schemas = c.Schemas[1:] },
+		"no definitions document":            func(c *configv2alpha1.AuditCatalogue) { c.Schemas = c.Schemas[1:] },
+		"a policy this writer does not read": func(c *configv2alpha1.AuditCatalogue) { c.Policy = audit.PolicyVersion + 1 },
+		"no policy":                          func(c *configv2alpha1.AuditCatalogue) { c.Policy = 0 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)
@@ -244,13 +246,14 @@ func TestTheWriterReadsReleasesAsTheSharedCorpusDoes(t *testing.T) {
 
 // verifies: REQ-AUDIT-113
 //
-// The backstop of validation: a record whose validation does not finish in time is refused as `schema` at the path `record`
-// and the writer goes on; after four validations that timed out and are still running it refuses without starting another.
-func TestAValidationThatDoesNotFinishInTimeRefusesTheRecordAndTheWriterGoesOn(t *testing.T) {
+// The backstop of validation is a retry and not a refusal: a validation that does not finish in time (a stalled clock, a CPU
+// that a re-sync keeps busy) makes check answer `retry`, which is not a reason of any refusal; and after four timed-out
+// validations still running the writer answers `retry` at once, without starting another.
+func TestAValidationThatDoesNotFinishInTimeIsARetryAndNotARefusal(t *testing.T) {
 	c := realChecker(t)
 	release := make(chan struct{})
 	defer close(release)
-	c.valid = func(string, []byte) error { <-release; return nil } // never finishes until the test ends
+	c.valid = func(string, []byte) error { <-release; return nil } // a stalled clock: it never finishes until the test ends
 	c.budget = 20 * time.Millisecond
 	c.running = new(atomic.Int32)
 	var base exampleCase
@@ -262,15 +265,12 @@ func TestAValidationThatDoesNotFinishInTimeRefusesTheRecordAndTheWriterGoesOn(t 
 	for i := 0; i < maxStuck+3; i++ {
 		start := time.Now()
 		_, rej := c.check(base.UID, "key@dev", []byte(base.Expected), 0)
-		if rej == nil || rej.Reason != reasonSchema || rej.Path != "record" {
-			t.Fatalf("record %d: rejection = %v, want schema at record", i, rej)
-		}
-		if d := time.Since(start); d > 500*time.Millisecond {
-			t.Fatalf("record %d took %v", i, d)
+		if rej == nil || rej.Reason != reasonRetry {
+			t.Fatalf("record %d: rejection = %v, want retry", i, rej)
 		}
 		if i >= maxStuck {
 			if d := time.Since(start); d > 10*time.Millisecond {
-				t.Errorf("record %d: refused after %v, want at once (the stuck validations are at the limit)", i, d)
+				t.Errorf("record %d: answered after %v, want at once (the stuck validations are at the limit)", i, d)
 			}
 		}
 	}
