@@ -31,12 +31,19 @@ type fileOut struct {
 	SHA256 string `json:"sha256"`
 }
 
-// keyOut is one entry of the `keys` member.
+// keyOut is one entry of the `keys` member of `key request` and `key status` (cli.md, "JSON output"). `key status` fills
+// all of it; the members after Fingerprint are the ones a request has no value for.
 type keyOut struct {
 	Purpose     string `json:"purpose"`
 	Boundary    string `json:"boundary"`
 	Store       string `json:"store"`
+	Slot        string `json:"slot,omitempty"`
 	Fingerprint string `json:"fingerprint"`
+	// NotAfter is the earliest end of validity in the installed chain, RFC 3339 in UTC; absent when no certificate is
+	// installed. DaysLeft is the whole days until then, negative once it has ended.
+	NotAfter string `json:"not_after,omitempty"`
+	DaysLeft *int   `json:"days_left,omitempty"`
+	Level    string `json:"level,omitempty"`
 }
 
 // requestCommand is `sluis key request`: it asks key@ on this node for the key of the boundary's X.509 intermediate,
