@@ -1101,11 +1101,16 @@ func (x *LogDecl) GetOrigin() string {
 	return ""
 }
 
-// AuditCatalogue is the kind AuditCatalogue; id "default".
+// AuditCatalogue is the kind AuditCatalogue; id "default". It is the action table of the newest release of the project,
+// with the JSON Schema of each action's records, as one item, so the table and its schemas move together (0030, "The
+// catalogue is the table with its schemas"). Within a major version the table only grows (REQ-AUDIT-119), so it holds for
+// the records of every older release of the same major version; a record of a newer release is refused (REQ-AUDIT-146).
 type AuditCatalogue struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"` // the release the catalogue belongs to
-	Actions       []string               `protobuf:"bytes,2,rep,name=actions,proto3" json:"actions,omitempty"` // the action names (decision D-15: names only tonight)
+	Release       string                 `protobuf:"bytes,1,opt,name=release,proto3" json:"release,omitempty"` // the release the catalogue was made for, a semantic version
+	Actions       []string               `protobuf:"bytes,2,rep,name=actions,proto3" json:"actions,omitempty"` // the action names: metadata.event_code of every record the project may emit
+	Schemas       []*AuditSchema         `protobuf:"bytes,3,rep,name=schemas,proto3" json:"schemas,omitempty"` // the shared definitions, "defs.schema.json", and "<action>.schema.json" for each action
+	Policy        uint32                 `protobuf:"varint,4,opt,name=policy,proto3" json:"policy,omitempty"`  // the version of the schema policy the documents were made to (kits/go/audit/policy.go); a reader refuses a higher one
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1154,6 +1159,73 @@ func (x *AuditCatalogue) GetActions() []string {
 	return nil
 }
 
+func (x *AuditCatalogue) GetSchemas() []*AuditSchema {
+	if x != nil {
+		return x.Schemas
+	}
+	return nil
+}
+
+func (x *AuditCatalogue) GetPolicy() uint32 {
+	if x != nil {
+		return x.Policy
+	}
+	return 0
+}
+
+// AuditSchema is one JSON Schema 2020-12 document of an AuditCatalogue.
+type AuditSchema struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"` // the file name, which the documents reference one another by
+	Json          string                 `protobuf:"bytes,2,opt,name=json,proto3" json:"json,omitempty"` // the document, as JSON text
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuditSchema) Reset() {
+	*x = AuditSchema{}
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuditSchema) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuditSchema) ProtoMessage() {}
+
+func (x *AuditSchema) ProtoReflect() protoreflect.Message {
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuditSchema.ProtoReflect.Descriptor instead.
+func (*AuditSchema) Descriptor() ([]byte, []int) {
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *AuditSchema) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *AuditSchema) GetJson() string {
+	if x != nil {
+		return x.Json
+	}
+	return ""
+}
+
 // ExportDestination is the kind ExportDestination: where exporter@ publishes (0009 "Destinations"); keyed by the
 // destination's name. The destination's credential is not here: the platform provides it to exporter@.
 type ExportDestination struct {
@@ -1167,7 +1239,7 @@ type ExportDestination struct {
 
 func (x *ExportDestination) Reset() {
 	*x = ExportDestination{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1179,7 +1251,7 @@ func (x *ExportDestination) String() string {
 func (*ExportDestination) ProtoMessage() {}
 
 func (x *ExportDestination) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[17]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1192,7 +1264,7 @@ func (x *ExportDestination) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportDestination.ProtoReflect.Descriptor instead.
 func (*ExportDestination) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{17}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ExportDestination) GetType() string {
@@ -1232,7 +1304,7 @@ type ExportedDocument struct {
 
 func (x *ExportedDocument) Reset() {
 	*x = ExportedDocument{}
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1244,7 +1316,7 @@ func (x *ExportedDocument) String() string {
 func (*ExportedDocument) ProtoMessage() {}
 
 func (x *ExportedDocument) ProtoReflect() protoreflect.Message {
-	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[18]
+	mi := &file_sluis_config_v2alpha1_config_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1257,7 +1329,7 @@ func (x *ExportedDocument) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExportedDocument.ProtoReflect.Descriptor instead.
 func (*ExportedDocument) Descriptor() ([]byte, []int) {
-	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{18}
+	return file_sluis_config_v2alpha1_config_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ExportedDocument) GetName() string {
@@ -1385,10 +1457,15 @@ const file_sluis_config_v2alpha1_config_proto_rawDesc = "" +
 	"\aLogDecl\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x12\x16\n" +
-	"\x06origin\x18\x03 \x01(\tR\x06origin\"D\n" +
+	"\x06origin\x18\x03 \x01(\tR\x06origin\"\x9a\x01\n" +
 	"\x0eAuditCatalogue\x12\x18\n" +
 	"\arelease\x18\x01 \x01(\tR\arelease\x12\x18\n" +
-	"\aactions\x18\x02 \x03(\tR\aactions\"\x82\x01\n" +
+	"\aactions\x18\x02 \x03(\tR\aactions\x12<\n" +
+	"\aschemas\x18\x03 \x03(\v2\".sluis.config.v2alpha1.AuditSchemaR\aschemas\x12\x16\n" +
+	"\x06policy\x18\x04 \x01(\rR\x06policy\"5\n" +
+	"\vAuditSchema\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04json\x18\x02 \x01(\tR\x04json\"\x82\x01\n" +
 	"\x11ExportDestination\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x12\n" +
 	"\x04edge\x18\x02 \x01(\tR\x04edge\x12E\n" +
@@ -1414,7 +1491,7 @@ func file_sluis_config_v2alpha1_config_proto_rawDescGZIP() []byte {
 	return file_sluis_config_v2alpha1_config_proto_rawDescData
 }
 
-var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_sluis_config_v2alpha1_config_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*Boundary)(nil),                 // 0: sluis.config.v2alpha1.Boundary
 	(*KeyPlan)(nil),                  // 1: sluis.config.v2alpha1.KeyPlan
@@ -1433,29 +1510,31 @@ var file_sluis_config_v2alpha1_config_proto_goTypes = []any{
 	(*AuditLog)(nil),                 // 14: sluis.config.v2alpha1.AuditLog
 	(*LogDecl)(nil),                  // 15: sluis.config.v2alpha1.LogDecl
 	(*AuditCatalogue)(nil),           // 16: sluis.config.v2alpha1.AuditCatalogue
-	(*ExportDestination)(nil),        // 17: sluis.config.v2alpha1.ExportDestination
-	(*ExportedDocument)(nil),         // 18: sluis.config.v2alpha1.ExportedDocument
-	(*durationpb.Duration)(nil),      // 19: google.protobuf.Duration
+	(*AuditSchema)(nil),              // 17: sluis.config.v2alpha1.AuditSchema
+	(*ExportDestination)(nil),        // 18: sluis.config.v2alpha1.ExportDestination
+	(*ExportedDocument)(nil),         // 19: sluis.config.v2alpha1.ExportedDocument
+	(*durationpb.Duration)(nil),      // 20: google.protobuf.Duration
 }
 var file_sluis_config_v2alpha1_config_proto_depIdxs = []int32{
 	4,  // 0: sluis.config.v2alpha1.KeyPlan.purposes:type_name -> sluis.config.v2alpha1.KeyPurposePlan
-	19, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
+	20, // 1: sluis.config.v2alpha1.KeyPlan.cache_ttl:type_name -> google.protobuf.Duration
 	2,  // 2: sluis.config.v2alpha1.KeyPlan.slot_map:type_name -> sluis.config.v2alpha1.NodeSlotMap
 	3,  // 3: sluis.config.v2alpha1.NodeSlotMap.slots:type_name -> sluis.config.v2alpha1.SlotKey
-	19, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
-	19, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
-	19, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
-	19, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
-	19, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
+	20, // 4: sluis.config.v2alpha1.TokenLifetime.id_token:type_name -> google.protobuf.Duration
+	20, // 5: sluis.config.v2alpha1.TokenLifetime.access_token:type_name -> google.protobuf.Duration
+	20, // 6: sluis.config.v2alpha1.TokenLifetime.human_session_absolute:type_name -> google.protobuf.Duration
+	20, // 7: sluis.config.v2alpha1.TokenLifetime.refresh_idle:type_name -> google.protobuf.Duration
+	20, // 8: sluis.config.v2alpha1.InstallationClient.ttl_cap:type_name -> google.protobuf.Duration
 	13, // 9: sluis.config.v2alpha1.ExchangeTrust.issuers:type_name -> sluis.config.v2alpha1.TrustedIssuer
 	15, // 10: sluis.config.v2alpha1.AuditLog.logs:type_name -> sluis.config.v2alpha1.LogDecl
-	18, // 11: sluis.config.v2alpha1.ExportDestination.documents:type_name -> sluis.config.v2alpha1.ExportedDocument
-	19, // 12: sluis.config.v2alpha1.ExportedDocument.max_age:type_name -> google.protobuf.Duration
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	17, // 11: sluis.config.v2alpha1.AuditCatalogue.schemas:type_name -> sluis.config.v2alpha1.AuditSchema
+	19, // 12: sluis.config.v2alpha1.ExportDestination.documents:type_name -> sluis.config.v2alpha1.ExportedDocument
+	20, // 13: sluis.config.v2alpha1.ExportedDocument.max_age:type_name -> google.protobuf.Duration
+	14, // [14:14] is the sub-list for method output_type
+	14, // [14:14] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_sluis_config_v2alpha1_config_proto_init() }
@@ -1469,7 +1548,7 @@ func file_sluis_config_v2alpha1_config_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sluis_config_v2alpha1_config_proto_rawDesc), len(file_sluis_config_v2alpha1_config_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
