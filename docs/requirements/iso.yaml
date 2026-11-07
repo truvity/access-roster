@@ -1150,7 +1150,7 @@ requirements:
   - id: REQ-ISO-079
     area: ISO
     statement: "An adapter MUST serve the upstreams of one boundary only."
-    rationale: "A compromised adapter then reaches the upstreams of one boundary only."
+    rationale: "A compromised adapter then reaches the upstreams of one boundary only, and the rest of the proof, with the layers switched off one at a time, comes with REQ-ISO-083 in v1 parity."
     level: MUST
     source: design-decision
     status: partial
@@ -1223,7 +1223,7 @@ requirements:
     level: MUST
     source: design-decision
     status: planned
-    milestone: first-version
+    milestone: v1-parity
     runtimes: all
     standards: []
     issues: [877, 851, 950]
