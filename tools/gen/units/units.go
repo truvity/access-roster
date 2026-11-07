@@ -701,7 +701,7 @@ func actorUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	if spec.State {
 		noExec = append(noExec, fmt.Sprintf("%s/%%i/%s", StateRoot, a.Name))
 	}
-	b.harden(len(a.Egress) == 0, noExec)
+	b.harden(len(a.Egress) == 0, noExec, a.Name == "writer")
 	b.line("ReadWritePaths=/run/sluis/%s", a.Name)
 	b.blank()
 	b.line("[Install]")
@@ -889,7 +889,7 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 		b.line("LoadCredentialEncrypted=%s:%s/%%i/%s/%s", c, LoadRoot, stem, c)
 	}
 	b.blank()
-	b.harden(!spec.Network, nil)
+	b.harden(!spec.Network, nil, false)
 	b.line("ReadWritePaths=%s", socketDir)
 	b.blank()
 	b.line("[Install]")
@@ -902,13 +902,14 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	return header + b.String(), sys, "", nil
 }
 
-// harden is the hardening of PLAN.md section 6 and ADR 0003. Without egress a unit has no network at all.
+// harden is the hardening of PLAN.md section 6 and ADR 0003. readsClock is the one exception, for the unit that reads the
+// kernel clock's state (the writer). Without egress a unit has no network at all.
 //
 // Every unit carries SocketBindDeny=any, which asks systemd to deny a bind of a TCP or UDP port (REQ-ISO-095). The Unix sockets of the
 // platform are not affected, and neither is a connection out, so an adapter with egress still connects. noExec are the
 // paths the unit may not execute anything from (REQ-ISO-104). The leading "-" makes a path that does not exist on a
 // board no error. A driver's own unit names none: it is the one the platform starts.
-func (b *unitText) harden(noNetwork bool, noExec []string) {
+func (b *unitText) harden(noNetwork bool, noExec []string, readsClock bool) {
 	b.line("# Hardening (ADR 0003)")
 	b.line("NoNewPrivileges=yes")
 	b.line("CapabilityBoundingSet=")
@@ -921,7 +922,15 @@ func (b *unitText) harden(noNetwork bool, noExec []string) {
 	b.line("ProtectKernelModules=yes")
 	b.line("ProtectKernelLogs=yes")
 	b.line("ProtectControlGroups=yes")
-	b.line("ProtectClock=yes")
+	if readsClock {
+		// The writer asks the kernel how well its clock is disciplined (adjtimex with no mode, which changes nothing) for
+		// its seal entry and to know when it may trust the clock. ProtectClock=yes would deny the call; with the empty
+		// capability set above the unit still cannot set the clock.
+		b.line("# The writer reads the state of the kernel clock (adjtimex, no mode); it has no capability to set it")
+		b.line("ProtectClock=no")
+	} else {
+		b.line("ProtectClock=yes")
+	}
 	b.line("ProtectHostname=yes")
 	b.line("ProtectProc=invisible")
 	b.line("ProcSubset=pid")
@@ -931,7 +940,11 @@ func (b *unitText) harden(noNetwork bool, noExec []string) {
 	b.line("LockPersonality=yes")
 	b.line("MemoryDenyWriteExecute=yes")
 	b.line("SystemCallArchitectures=native")
-	b.line("SystemCallFilter=@system-service")
+	if readsClock {
+		b.line("SystemCallFilter=@system-service adjtimex")
+	} else {
+		b.line("SystemCallFilter=@system-service")
+	}
 	b.line("SystemCallErrorNumber=EPERM")
 	b.line("UMask=0077")
 	if noNetwork {

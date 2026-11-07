@@ -80,32 +80,174 @@ func TestAClockThatJumpsAheadAndIsPutRightForgetsNothingAndBlocksNothing(t *test
 	e.mustVerify(t)
 }
 
+// madeAt is a message made by a clock that reads at.
+func madeAt(t *testing.T, at time.Time) message {
+	t.Helper()
+	return messageAt(t, emitterAt(t, func() time.Time { return at }), "acme", at)
+}
+
+// lastTimeChecks is time_checks of the last seal entry of the log.
+func lastTimeChecks(t *testing.T, e *env) map[string]any {
+	t.Helper()
+	seals := sealEntries(logEntries(t, e.logDir()))
+	return seals[len(seals)-1]["time_checks"].(map[string]any)
+}
+
 // verifies: REQ-AUDIT-178
-func TestAClockThatJumpsBackQuarantinesTheRecordsOfAnotherClockAndNoMore(t *testing.T) {
+func TestAClockThatJumpsBackIsNotTrustedAndNothingIsQuarantinedByIt(t *testing.T) {
 	e, clk, s, _ := clockEnv(t)
 	em := emitterAt(t, clk.now)
-	remote := emitterAt(t, func() time.Time { return windowStart })
 	a := messageAt(t, em, "acme", clk.now())
 	process(t, s, a)
+	if tc := lastTimeChecks(t, e); tc["run"] != true {
+		t.Fatalf("time_checks = %v on a clock that agrees", tc)
+	}
 
-	clk.jump(windowStart.Add(-20 * day)) // a board that started with a clock of long ago
+	clk.jump(windowStart.Add(-20 * day)) // a step back
+	remote := madeAt(t, windowStart)     // made by a clock that is right: 20 days ahead of the writer's
 	own := messageAt(t, em, "acme", clk.now())
-	ahead := messageAt(t, remote, "acme", windowStart) // made by a clock that is right
-	process(t, s, own, ahead)
-	if r := e.reportReasons(t); len(r) != 1 || r[0] != "future:time" {
-		t.Fatalf("quarantined = %v, want the record of the clock that is right, as future", r)
+	process(t, s, remote, own)
+	if r := e.reportReasons(t); len(r) != 0 {
+		t.Fatalf("quarantined = %v on a clock the writer does not trust", r)
 	}
-	if got := recordUIDs(logEntries(t, e.logDir())); strings.Join(got, ",") != strings.Join([]string{a.uid, own.uid}, ",") {
-		t.Fatalf("records = %v", got)
+	if tc := lastTimeChecks(t, e); tc["run"] != false || tc["why"] != whyStepped {
+		t.Fatalf("time_checks = %v, want not run, stepped", tc)
 	}
 
-	// The clock is put right, and what was quarantined comes again: it is sealed, once.
+	// The clock is put right: the checks run again, a repeat is a repeat, and a record far ahead is refused.
 	clk.jump(windowStart.Add(time.Minute))
-	process(t, s, ahead, a)
-	if got := recordUIDs(logEntries(t, e.logDir())); strings.Join(got, ",") != strings.Join([]string{a.uid, own.uid, ahead.uid}, ",") {
-		t.Fatalf("records = %v, want a, own and ahead once each", got)
+	c := messageAt(t, em, "acme", clk.now())
+	far := madeAt(t, windowStart.Add(3*time.Hour))
+	process(t, s, remote, c, far)
+	if got := recordUIDs(logEntries(t, e.logDir())); strings.Join(got, ",") != strings.Join([]string{a.uid, remote.uid, own.uid, c.uid}, ",") {
+		t.Fatalf("records = %v, want a, remote, own and c once each", got)
+	}
+	if r := e.reportReasons(t); len(r) != 1 || r[0] != "future:time" {
+		t.Fatalf("quarantined = %v, want the record 3 hours ahead", r)
+	}
+	if tc := lastTimeChecks(t, e); tc["run"] != true {
+		t.Fatalf("time_checks = %v after the clock was put right", tc)
 	}
 	e.mustVerify(t)
+}
+
+// verifies: REQ-AUDIT-178
+func TestAnUntrustedClockSealsASpoolBacklogOnceAndSaysSo(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		wall    time.Time
+		obs     clockObservation
+		wantWhy string
+	}{
+		{"a boot clock 2 days behind", windowStart.Add(-2 * day), clockObservation{Observed: true, Synced: false}, whyUnsynchronised},
+		{"a boot clock 20 days ahead", windowStart.Add(20 * day), clockObservation{Observed: true, Synced: false}, whyUnsynchronised},
+		{"the kernel refuses to say", windowStart.Add(-2 * day), clockObservation{}, whyUnobserved},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, clk, s, _ := clockEnv(t)
+			var obs atomic.Pointer[clockObservation]
+			obs.Store(&tc.obs)
+			s.clock = func() clockObservation { return *obs.Load() }
+			clk.jump(tc.wall)
+			// The spool holds what the emitters made with the right clock, before the board went down.
+			var backlog []message
+			for i := range 5 {
+				backlog = append(backlog, madeAt(t, windowStart.Add(-time.Duration(5-i)*time.Minute)))
+			}
+			process(t, s, backlog...)
+			if got := recordUIDs(logEntries(t, e.logDir())); strings.Join(got, ",") != strings.Join(uids(backlog), ",") {
+				t.Fatalf("records = %v, want the backlog once each, in order", got)
+			}
+			if r := e.reportReasons(t); len(r) != 0 {
+				t.Fatalf("quarantined = %v", r)
+			}
+			if c := lastTimeChecks(t, e); c["run"] != false || c["why"] != tc.wantWhy {
+				t.Fatalf("time_checks = %v, want not run, %s", c, tc.wantWhy)
+			}
+			// Dedup still holds, and nothing was forgotten.
+			before := len(logEntries(t, e.logDir()))
+			process(t, s, backlog[1], backlog[3])
+			if after := len(logEntries(t, e.logDir())); after != before {
+				t.Fatalf("a repeat was sealed: %d entries, then %d", before, after)
+			}
+			if !remembers(t, e, backlog[0].uid) {
+				t.Fatal("an id was forgotten on a clock that is not trusted")
+			}
+
+			// The clock comes right and the kernel says so: the normal checks apply again.
+			clk.jump(windowStart)
+			obs.Store(&clockObservation{Observed: true, Synced: true})
+			late := madeAt(t, windowStart.Add(5*time.Hour))
+			stale := madeAt(t, windowStart.Add(-15*day))
+			good := madeAt(t, windowStart)
+			process(t, s, late, stale, good)
+			if r := e.reportReasons(t); len(r) != 2 {
+				t.Fatalf("quarantined = %v, want the record 5 hours ahead and the one 15 days old", r)
+			}
+			if c := lastTimeChecks(t, e); c["run"] != true {
+				t.Fatalf("time_checks = %v after the clock came right", c)
+			}
+			e.mustVerify(t)
+		})
+	}
+}
+
+// verifies: REQ-AUDIT-178
+func TestAClockThatHasSteppedAndHoldsIsTrustedAgainWithoutARestartAndTheLogSaysSo(t *testing.T) {
+	e, clk, s, _ := clockEnv(t)
+	logs := logCapture(t)
+	em := emitterAt(t, clk.now)
+	process(t, s, messageAt(t, em, "acme", clk.now()))
+
+	clk.jump(windowStart.Add(20 * day)) // an operator sets the clock, and it stays
+	mk := func() message { return messageAt(t, em, "acme", clk.now()) }
+	process(t, s, mk())
+	if c := lastTimeChecks(t, e); c["why"] != whyStepped {
+		t.Fatalf("time_checks = %v right after the step", c)
+	}
+	clk.set(clk.now().Add(clockSteady - time.Minute))
+	process(t, s, mk())
+	if c := lastTimeChecks(t, e); c["run"] != false {
+		t.Fatalf("time_checks = %v before the new clock has held for %v", c, clockSteady)
+	}
+	clk.set(clk.now().Add(2 * time.Minute))
+	process(t, s, mk())
+	if c := lastTimeChecks(t, e); c["run"] != true {
+		t.Fatalf("time_checks = %v after the new clock has held for %v", c, clockSteady)
+	}
+	out := logs.String()
+	for _, want := range []string{"the clock is not trusted", "why=stepped", "the clock is trusted again"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the log lacks %q: %s", want, out)
+		}
+	}
+	e.mustVerify(t)
+}
+
+// verifies: REQ-AUDIT-178
+func TestTheStateWarnsWellBeforeItReachesTheLimit(t *testing.T) {
+	e := newEnv(t)
+	logs := logCapture(t)
+	st := newWriterState(e.writer().blob)
+	doc := stateDoc{Format: stateFormat, Logs: map[string]logSize{}}
+	for i := range 20_000 { // about 1.3 MB: under half of the 3 MiB the writer puts
+		doc.Segs = append(doc.Segs, segRef{B: int64(i), N: 1, H: strings.Repeat("a", 32)})
+	}
+	if err := st.commit(context.Background(), st.blob, doc); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(logs.String(), "over half") {
+		t.Fatalf("a warning at 40%% of the limit: %s", logs.String())
+	}
+	for i := 20_000; i < 30_000; i++ { // about 1.7 MB: over half
+		doc.Segs = append(doc.Segs, segRef{B: int64(i), N: 1, H: strings.Repeat("a", 32)})
+	}
+	if err := st.commit(context.Background(), st.blob, doc); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "over half") {
+		t.Fatalf("no warning at more than half of the limit: %s", logs.String())
+	}
 }
 
 // verifies: REQ-AUDIT-178
@@ -214,44 +356,57 @@ func TestASegmentNameThatExistsWithOtherBytesIsReportedAsThat(t *testing.T) {
 }
 
 // verifies: REQ-AUDIT-178
-func TestClosedHoursAreMergedWhetherOrNotASpillTouchesThemAndNotMoreThanSweepMaxAtOnce(t *testing.T) {
+func TestASpillCompactsAtMostSweepMaxClosedHoursButMergesEveryHourOverTheBound(t *testing.T) {
 	e := newEnv(t)
 	st := newWriterState(e.writer().blob)
-	st.lim = seenLimits{hot: 0, seg: 1000, merge: 100} // no forced merge: only the sweep acts
+	st.lim = seenLimits{hot: 0, seg: 1000, merge: 100} // no forced merge while the hours are built
 	base := time.Date(2026, time.November, 1, 0, 0, 0, 0, time.UTC)
-	for h := range 6 { // six hours of three batches each, each batch its own small segment
-		for k := range 3 {
-			at := base.Add(time.Duration(h)*time.Hour + time.Duration(k)*time.Minute)
-			commitIDs(t, st, int64(h*3+k+1), []string{uuidV7At(t, at), uuidV7At(t, at)}, at)
+	n := int64(0)
+	for range 3 { // six hours, three small segments each, built at a clock that has not closed any of them
+		for h := range 6 {
+			n++
+			commitIDs(t, st, n, []string{uuidV7At(t, base.Add(time.Duration(h)*time.Hour))}, base)
 		}
 	}
-	// Hours 0 to 3 are closed (an hour over) at the clock of the last commit, hours 4 and 5 are not.
 	small := func(h int) int { return smallSegs(st, base.Add(time.Duration(h)*time.Hour).UnixMilli()/bucketMS) }
-	merged := 0
-	for h := range 4 {
-		if small(h) == 1 {
-			merged++
+	for h := range 6 {
+		if small(h) != 3 {
+			t.Fatalf("hour %d holds %d small segments, want 3", h, small(h))
 		}
 	}
-	if small(4) != 3 || small(5) != 3 {
-		t.Fatalf("open hours hold %d and %d small segments, want 3 each", small(4), small(5))
-	}
-	if merged == 0 || merged > 4*sweepMax {
-		t.Fatalf("%d closed hours merged", merged)
-	}
-	// One more spill, far on: at most sweepMax hours are merged by it.
-	before := 0
-	for h := range 4 {
-		before += small(h)
-	}
-	later := base.Add(8 * time.Hour)
+	// One spill far on, for an hour of its own: the six hours are closed, and it compacts the oldest sweepMax of them.
+	later := base.Add(10 * time.Hour)
 	commitIDs(t, st, 100, []string{uuidV7At(t, later)}, later)
-	after := 0
-	for h := range 4 {
-		after += small(h)
+	for h := range 6 {
+		want := 3
+		if h < sweepMax {
+			want = 1
+		}
+		if small(h) != want {
+			t.Fatalf("after one spill hour %d holds %d small segments, want %d", h, small(h), want)
+		}
 	}
-	if after > before {
-		t.Fatalf("closed hours grew from %d to %d small segments", before, after)
+
+	// The bound is not capped: a spill that touches more hours than sweepMax merges every one that is over it.
+	// (Hours a month on, so none is closed at the clock of these commits.)
+	hours := base.Add(30 * 24 * time.Hour)
+	st.lim = seenLimits{hot: 0, seg: 1000, merge: 100}
+	for range 3 {
+		for h := range 6 {
+			n++
+			commitIDs(t, st, n, []string{uuidV7At(t, hours.Add(time.Duration(h)*time.Hour+time.Minute))}, base)
+		}
+	}
+	st.lim.merge = 2
+	var ids []string
+	for h := range 6 {
+		ids = append(ids, uuidV7At(t, hours.Add(time.Duration(h)*time.Hour+2*time.Minute)))
+	}
+	commitIDs(t, st, n+1, ids, base)
+	for h := range 6 {
+		if got := smallSegs(st, hours.Add(time.Duration(h)*time.Hour).UnixMilli()/bucketMS); got != 1 {
+			t.Fatalf("hour %d holds %d small segments after a spill over the bound, want 1", h, got)
+		}
 	}
 }
 

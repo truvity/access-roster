@@ -54,16 +54,21 @@ func (c clockObservation) value() map[string]any {
 }
 
 // batchCounts are the numbers a seal entry states.
-type batchCounts struct{ records, duplicates, refused int }
+type batchCounts struct {
+	records, duplicates, refused int
+	// timeChecks says whether the checks by the clock ran for the batch, and why not when they did not.
+	timeChecks map[string]any
+}
 
 // sealEntry builds the seal entry of a batch.
 func sealEntry(n batchCounts, instance string, recordedMS int64, clock clockObservation) ([]byte, error) {
 	return audit.Canonical(map[string]any{
-		"entry":      entrySeal,
-		"records":    int64(n.records),
-		"duplicates": int64(n.duplicates),
-		"refused":    int64(n.refused),
-		"clock":      clock.value(),
-		"writer":     map[string]any{"instance": instance, "recorded_at": recordedMS},
+		"entry":       entrySeal,
+		"records":     int64(n.records),
+		"duplicates":  int64(n.duplicates),
+		"refused":     int64(n.refused),
+		"clock":       clock.value(),
+		"time_checks": n.timeChecks,
+		"writer":      map[string]any{"instance": instance, "recorded_at": recordedMS},
 	})
 }
