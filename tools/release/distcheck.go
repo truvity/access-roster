@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"debug/elf"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -74,17 +73,11 @@ func CheckDist(configPath, dist string) []string {
 	if len(cfg.Archives) == 0 {
 		return []string{fmt.Sprintf("%s has no archive: an empty release is a failure", configPath)}
 	}
-	var meta struct {
-		Version string `json:"version"`
-	}
-	mraw, err := os.ReadFile(filepath.Join(dist, "metadata.json")) //nolint:gosec // GoReleaser's own output
+	m, err := distMeta(dist)
 	if err != nil {
 		return []string{err.Error()}
 	}
-	if err := json.Unmarshal(mraw, &meta); err != nil || meta.Version == "" {
-		return []string{fmt.Sprintf("metadata.json has no version: %v", err)}
-	}
-	version := meta.Version
+	version := m.Version
 
 	// The executables must not carry the paths of the machine that built them (Go has -trimpath, Rust --remap-path-prefix).
 	var forbidden []string
