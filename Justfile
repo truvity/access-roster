@@ -576,7 +576,8 @@ release-snapshot: rust-toolchain
 # runs the release test of the images (check-images): the registry holds the version tag and no other, both
 # platforms, and the executable in each image is, hash for hash, the file of the archive of the same architecture. Last, syft
 # makes the SPDX SBOM of each image from the registry (the archives' came with GoReleaser), and check-sboms validates all of
-# them and that each records the crates or Go modules of its executable.
+# them and that each records the crates or Go modules of its executable. With SLUIS_REHEARSAL_LOCAL=1 it also starts the local
+# installation from these images and runs the two smokes.
 release-rehearsal: rust-toolchain rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
@@ -588,7 +589,13 @@ release-rehearsal: rust-toolchain rqlite-fetch
     port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
     registry="sluis-release-registry-$$"
     builder="sluis-release-builder-$$"
+    project_up=
     cleanup() {
+        local rc=$?
+        if [ -n "$project_up" ]; then
+            [ "$rc" -eq 0 ] || { deploy/local/local.sh status >&2 || true; deploy/local/local.sh logs >&2 || true; }
+            deploy/local/local.sh down >/dev/null 2>&1 || true
+        fi
         docker buildx rm --force "$builder" >/dev/null 2>&1 || true
         docker rm --force "$registry" >/dev/null 2>&1 || true
     }
@@ -612,6 +619,24 @@ release-rehearsal: rust-toolchain rqlite-fetch
     go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry "http://127.0.0.1:$port" -prefix sluis
     SLUIS_SBOM_INSECURE=1 tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
+    # With SLUIS_REHEARSAL_LOCAL set, the last proof: the local installation starts under Compose from these images, pinned by the
+    # digests of release-images.txt and pulled from the throwaway registry, with nothing built, and both smokes pass against
+    # it. That is the first "done when" line of the first working version, run against the images of this commit. It needs the
+    # upstream the smokes need (SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS, as the job smokes of checks.yaml makes them).
+    if [ -n "${SLUIS_REHEARSAL_LOCAL:-}" ]; then
+        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/release/release-images.txt"
+        project_up=1
+        # The smokes mount their executable into any image of the project: the release's signer image, by digest.
+        SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/release/release-images.txt)
+        export SLUIS_SMOKE_IMAGE
+        deploy/local/local.sh up
+        # The smokes run the command-line tool of the release: its tarball, unpacked where they look for it.
+        arch=$(go env GOARCH)
+        mkdir -p dist/local/bin/cli
+        tar -xzf "dist/release/sluis_2.0.0-alpha.0_linux_$arch.tar.gz" -C dist/local/bin/cli sluis
+        just local-smoke
+        just local-person-smoke
+    fi
 
 # The release (the job `release` of release.yaml runs this, on a tag, after the release gate): GoReleaser builds, archives and
 # pushes everything to ghcr.io/truvity/sluis and creates the GitHub release as a draft; then the checks of the rehearsal run

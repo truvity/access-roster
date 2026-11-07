@@ -39,13 +39,26 @@ Run each as `devbox run -- just <recipe>`. The project needs Docker, and `SLUIS_
 
 | Recipe | What it does |
 |---|---|
-| `local-up` | Builds the executables and the images, makes the state of the run (harness CA, signed config, credentials) and starts the project; returns when every service that has a health check is healthy |
+| `local-up` | Builds the executables and the images (or, with `SLUIS_LOCAL_IMAGES=release`, pulls those of a release, see [Images](#images)), makes the state of the run (harness CA, signed config, credentials) and starts the project; returns when every service that has a health check is healthy |
 | `local-smoke` | The M1 proof: a client under the uid of `exchange` asks `policy` for a `token.exchange` decision and `signer` for a token; the token is checked against `/jwks` through the forwarder, trusting only the harness CA; the records of the run are found in the audit log; `sluis audit verify` checks the log; `SigningRing` and `DataKeyWrap` are read through store@. The `smokes` job of CI runs it on every pull request |
 | `local-person-smoke` | The M2 proof: `sluis login` signs a person in through the forwarder, `entry`, `session`, the upstream adapter and the identity provider, and `sluis token` exchanges the token for an audience. It then exchanges the same token as the confidential client `example-app`, which authenticates with its secret (HTTP Basic), after a wrong secret has been refused with `invalid_client`. It also checks that the ID token's `sub` and the exchanged token's `sub` are the same pairwise subject, asks for `prompt=none`, `max_age` and `prompt=login` of the identity provider (a silent code for a signed-in browser, `login_required` for one that is not, a form shown again for `login`), finds the audit record of every step and runs `sluis audit verify`. `session` seals the facts of the session chain under the tenant's `chain` key; `session` opens them again at a refresh and `exchange` opens them for a token exchange, and no other actor does either ([0006](/decisions/0006-keys-and-sealing/#data-keys)). The `smokes` job of CI runs it on every pull request |
 | `local-deny` | The deny matrix ([ADR 0002](/decisions/0002-families-of-actors/)): for every caller and every socket, a probe as the caller's uid checks the call graph at the socket and at the guard. It starts a Compose project of its own and removes it, and leaves a `local-up` project alone. The matrix is the Go test `TestDenyMatrix`, and the `deny` job of CI runs it on every pull request, with a Keycloak container serving an empty realm as the upstream |
 | `local-down` | Stops the project and deletes its volumes and the state of the run |
 
 - **The firewall.** A host firewall may let a container reach the upstream from some Docker subnets only. The Compose project of `local-up` has a free /24 of `10.99.0.0/16`, chosen from the project name (`SLUIS_LOCAL_SUBNET` overrides it), because the subnet Docker picks may be one the firewall drops; the deny matrix, which runs its own project, takes `SLUIS_DENY_SUBNET` (for example `10.99.0.0/24`) to put its network on a subnet the firewall allows.
+
+## Images
+
+`local-up` builds every executable and image from the checkout by default, which is what a change to the code is judged by. The installation also runs the images of a release, the published ones, and then builds nothing ([0013](/decisions/0013-release-train-packaging-and-distribution/#packaging-per-runtime)):
+
+```sh
+# Example
+SLUIS_LOCAL_IMAGES=release SLUIS_LOCAL_VERSION=2.0.0-alpha.1 devbox run -- just local-up
+```
+
+- **The same services.** `deploy/local/compose.release.yaml`, generated beside `compose.yaml`, goes after it and gives each service of sluis the image of the release that holds its executable (`ghcr.io/truvity/sluis/actor-store`, `driver-store-rqlite`, and `vendor-rqlite` for the engine), drops its build, and runs the executable at its install path, `/usr/libexec/sluis/actors/<name>` or `/usr/libexec/sluis/drivers/<owner>/<name>`. The uids, groups, mounts and commands are those of `compose.yaml`.
+- **By tag or by digest.** `SLUIS_LOCAL_VERSION` is the tag of the release, without the `v`. `SLUIS_RELEASE_IMAGES` names the `release-images.txt` of the release (a file or an `https` URL) and pins every image by its digest instead; that is the way to reproduce a release exactly. `SLUIS_IMAGE_PREFIX` moves the namespace, which is how a registry mirror or a throwaway registry is used.
+- **Proved on every pull request.** The job `release` of CI builds the release as a tag would, pushes the images to a registry on the runner, starts this installation from them by digest, with nothing built, and runs both smokes against it ([Releasing](/distribution/packages/#releasing)).
 
 ## Host names
 

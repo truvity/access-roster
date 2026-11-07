@@ -428,7 +428,10 @@ jobs:
   release:
     name: 'release (GoReleaser rehearsal: archives, checksums, images, no tag)'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    env:
+      SLUIS_LOCAL_SUBNET: 10.99.203.0/24
+      SLUIS_UPSTREAM_TARGET: 10.99.203.1:8180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -474,8 +477,18 @@ jobs:
             release-${{ runner.os }}-
       - if: ${{ steps.scope.outputs.run == 'true' }}
         run: devbox run -- shellcheck tools/release/*.sh
+      # The upstream the smokes need, made as the job smokes makes it.
+      - name: The upstream, Keycloak 26.8 with the realm of the test users
+        if: ${{ steps.scope.outputs.run == 'true' }}
+        run: |
+          echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
+          tests/installations/local/idp/start.sh "$RUNNER_TEMP/upstream.env"
+      # SLUIS_REHEARSAL_LOCAL: after the checks of the images, the local installation starts from them, nothing built, and both
+      # smokes pass (the first "done when" line of the first working version).
       - if: ${{ steps.scope.outputs.run == 'true' }}
         run: devbox run -- just release-rehearsal
+        env:
+          SLUIS_REHEARSAL_LOCAL: '1'
 
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known

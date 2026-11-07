@@ -42,8 +42,10 @@ const (
 // same variable).
 var project = cmp.Or(os.Getenv("COMPOSE_PROJECT_NAME"), "sluis-local")
 
-// image is the signer image the steps run in, tagged as `deploy/local/local.sh` tags it (SLUIS_LOCAL_TAG).
-var image = "sluis-local/signer:" + cmp.Or(os.Getenv("SLUIS_LOCAL_TAG"), "dev")
+// image is the signer image the steps run in, tagged as `deploy/local/local.sh` tags it (SLUIS_LOCAL_TAG), or the image that
+// SLUIS_SMOKE_IMAGE names when the project runs the images of a release (SLUIS_LOCAL_IMAGES=release): any image of the project
+// will do, because the step's executable is mounted into it.
+var image = cmp.Or(os.Getenv("SLUIS_SMOKE_IMAGE"), "sluis-local/signer:"+cmp.Or(os.Getenv("SLUIS_LOCAL_TAG"), "dev"))
 
 // services the smoke needs healthy before it starts.
 var services = []string{"policy", "signer", "key", "store", "writer", "entry", "forwarder", "rqlite", "drv-key-software", "drv-writer-spool", "drv-writer-fs"}
