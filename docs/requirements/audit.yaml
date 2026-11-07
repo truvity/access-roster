@@ -2610,7 +2610,7 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a state of the old format over 4 MiB and the entries of a crashed batch: the writer adopts and spills at its start, and a crash at each step loses and doubles nothing"}
       - {kind: integration-test, ref: "a clock that jumps and is put right, and a spool backlog on a boot clock behind or ahead or unobserved: sealed once, nothing quarantined by the clock, the seal entry says the checks did not run"}
-      - {kind: manual, ref: "board check: a board whose writer looped on the refused put of its state adopts the entries a crash left on its own and stays up. Run 2026-11-07. Untested on hardware: wrong boot clock; power loss"}
+      - {kind: manual, ref: "board check: a board whose writer looped on the refused put of its state adopts the entries a crash left and stays up. Run 2026-11-07. Untested on hardware: the untrusted-clock path after a power cut"}
   - id: REQ-AUDIT-179
     area: AUDIT
     statement: "The writer MUST NOT take a record identifier as new when a segment of remembered identifiers that its state names is missing or differs from the bytes the state names and stops with an error that names the segment."
