@@ -118,6 +118,10 @@ pub struct Publisher {
     last: Mutex<HashMap<String, Last>>,
     /// The last document known to be at the destination, by `<destination>/<document>`: what a removal trims.
     good: Mutex<HashMap<String, Vec<u8>>>,
+    /// Every kid this process has been told is revoked, by a listing or by an event, and never forgotten: a trim subtracts
+    /// all of them from the last good document, which may be older than the destination (a `put` that timed out may have
+    /// landed), so that it cannot bring back a key that an earlier cycle took out.
+    revoked: Mutex<HashSet<String>>,
     /// When the alarm of a document was last raised.
     alerted: Mutex<HashMap<String, Instant>>,
 }
@@ -137,6 +141,7 @@ impl Publisher {
             timing,
             last: Mutex::new(HashMap::new()),
             good: Mutex::new(HashMap::new()),
+            revoked: Mutex::new(HashSet::new()),
             alerted: Mutex::new(HashMap::new()),
         }
     }
@@ -248,13 +253,22 @@ impl Publisher {
         force: bool,
     ) -> Outcome {
         let key = format!("{destination}/{}", doc.name);
+        {
+            let mut known = lock(&self.revoked);
+            known.extend(removed.iter().cloned());
+            match read {
+                Read::Snapshot(s) => known.extend(s.revoked.iter().cloned()),
+                Read::Unreadable(_, r) => known.extend(r.iter().cloned()),
+                Read::NoRing => {}
+            }
+        }
         match read {
             Read::NoRing => Outcome {
                 state: None,
                 retry: false,
             },
-            Read::Unreadable(what) => {
-                self.unreadable(destination, driver, doc, &key, what, removed, seen, force)
+            Read::Unreadable(what, _) => {
+                self.unreadable(destination, driver, doc, &key, what, seen, force)
                     .await
             }
             Read::Snapshot(snapshot) => {
@@ -265,8 +279,8 @@ impl Publisher {
         }
     }
 
-    /// The listings cannot be read. If a kid was named by an event and the last good document lists it, that one
-    /// document is written without it; otherwise nothing is written. Either way the state is `unverified`.
+    /// The listings cannot be read. If the last good document lists a kid that this process knows to be revoked (named by
+    /// an event, or seen in a listing at any time), that one document is written without it; otherwise nothing is written. Either way the state is `unverified`.
     #[allow(clippy::too_many_arguments)]
     async fn unreadable<D: Destination>(
         &self,
@@ -275,13 +289,13 @@ impl Publisher {
         doc: &Doc,
         key: &str,
         what: &'static str,
-        removed: &HashSet<String>,
         seen: Instant,
         force: bool,
     ) -> Outcome {
+        let removed = lock(&self.revoked).clone();
         if !removed.is_empty() {
             let good = lock(&self.good).get(key).cloned();
-            if let Some(trimmed) = good.and_then(|g| keyset::without_kids(&g, removed)) {
+            if let Some(trimmed) = good.and_then(|g| keyset::without_kids(&g, &removed)) {
                 tracing::error!(destination, document = %doc.name, removed = removed.len(), unreadable = what, "a revoked key is taken out of the published document; the rest cannot be read");
                 return self
                     .deliver(

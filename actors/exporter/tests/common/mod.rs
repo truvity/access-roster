@@ -71,6 +71,8 @@ pub struct FakeStore {
     pub down: AtomicBool,
     /// Refuse the reads of `KeyRevocation` with `unavailable`.
     pub revocations_down: AtomicBool,
+    /// Refuse the reads of `SigningRing` (not its watch) with `unavailable`.
+    pub ring_down: AtomicBool,
     /// Refuse the writes of reports with `unavailable`.
     pub reports_down: AtomicBool,
     /// Watch calls are counted so a test can wait for one.
@@ -233,6 +235,7 @@ impl FakeStore {
     fn refused(&self, kind: &str) -> bool {
         self.down.load(Ordering::SeqCst)
             || (kind == "key-revocation" && self.revocations_down.load(Ordering::SeqCst))
+            || (kind == "signing-ring" && self.ring_down.load(Ordering::SeqCst))
     }
 }
 
@@ -788,6 +791,63 @@ impl<D: Destination> Destination for Hang<D> {
         address: &str,
     ) -> Result<sluis_destination::Fetched, sluis_destination::Error> {
         self.stuck().await;
+        self.inner.read_back(address).await
+    }
+}
+
+// ---------------------------------------------------------------- a put that lands and says it did not
+
+/// A destination whose `put`, while `lose_answer` is set, takes the document and then fails: the call timed out after the
+/// document had landed, which the caller cannot tell from a call that never arrived.
+#[derive(Clone)]
+pub struct Lossy<D> {
+    pub inner: D,
+    pub lose_answer: Arc<AtomicBool>,
+}
+
+impl<D> Lossy<D> {
+    pub fn new(inner: D) -> Self {
+        Self {
+            inner,
+            lose_answer: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl<D: Destination> Destination for Lossy<D> {
+    async fn put(
+        &self,
+        doc: sluis_destination::Document,
+    ) -> Result<sluis_destination::Written, sluis_destination::Error> {
+        let done = self.inner.put(doc).await?;
+        if self.lose_answer.load(Ordering::SeqCst) {
+            return Err(sluis_destination::Error::Unavailable(
+                "the call timed out".into(),
+            ));
+        }
+        Ok(done)
+    }
+    async fn delete(&self, address: &str) -> Result<bool, sluis_destination::Error> {
+        self.inner.delete(address).await
+    }
+    async fn list(
+        &self,
+        prefix: &str,
+        page: Option<&str>,
+        page_size: usize,
+    ) -> Result<sluis_destination::Page, sluis_destination::Error> {
+        self.inner.list(prefix, page, page_size).await
+    }
+    async fn purge(
+        &self,
+        addresses: &[String],
+    ) -> Result<sluis_destination::Purged, sluis_destination::Error> {
+        self.inner.purge(addresses).await
+    }
+    async fn read_back(
+        &self,
+        address: &str,
+    ) -> Result<sluis_destination::Fetched, sluis_destination::Error> {
         self.inner.read_back(address).await
     }
 }
