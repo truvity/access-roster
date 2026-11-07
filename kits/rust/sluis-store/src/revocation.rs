@@ -136,10 +136,30 @@ impl KeyRevocations {
     ///
     /// When the store cannot answer, or a list does not end.
     pub async fn revoked_kids(&self) -> Result<HashSet<String>, Error> {
+        self.kids(false).await
+    }
+
+    /// As [`KeyRevocations::revoked_kids`], with a listing that sees every revocation acknowledged before it
+    /// (`ListRequest.consistency` LINEARIZABLE). For the reader whose output a revocation decides, such as the static
+    /// key set of `exporter@`: a list that did not ask for it may come from a leader that no longer leads, and miss a
+    /// revocation that had been acknowledged. A store that cannot give the read gives an error, never a shorter list.
+    ///
+    /// # Errors
+    ///
+    /// As [`KeyRevocations::revoked_kids`].
+    pub async fn revoked_kids_linearizable(&self) -> Result<HashSet<String>, Error> {
+        self.kids(true).await
+    }
+
+    async fn kids(&self, linearizable: bool) -> Result<HashSet<String>, Error> {
         let mut kids = HashSet::new();
         let mut page = None;
         for _ in 0..MAX_PAGES {
-            let (items, next) = self.store.list("", page).await?;
+            let (items, next) = if linearizable {
+                self.store.list_linearizable("", page).await?
+            } else {
+                self.store.list("", page).await?
+            };
             for i in items {
                 if i.value.target_kind == TARGET_KID && !i.value.target.is_empty() {
                     kids.insert(i.value.target);
