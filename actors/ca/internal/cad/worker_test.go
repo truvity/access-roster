@@ -95,9 +95,11 @@ func (k *fakeKeys) TokenKey(context.Context, *connect.Request[keyv2alpha1.TokenK
 	k.st.mu.Lock()
 	defer k.st.mu.Unlock()
 	tok, inter := k.st.items["token"], k.st.items["inter"]
-	if tok != nil && inter != nil && len(tok.Chain) == 1+len(inter.Chain) && bytes.Equal(tok.Chain[1], inter.Chain[0]) {
-		if c, err := x509.ParseCertificate(tok.Chain[0]); err == nil && !k.now().Before(c.NotBefore) && k.now().Before(c.NotAfter) {
-			out.Chain = tok.Chain
+	if tok != nil && inter != nil {
+		ic, e1 := x509.ParseCertificate(inter.Chain[0])
+		c, e2 := x509.ParseCertificate(tok.Chain[0])
+		if e1 == nil && e2 == nil && c.CheckSignatureFrom(ic) == nil && !k.now().Before(c.NotBefore) && k.now().Before(c.NotAfter) {
+			out.Chain = append([][]byte{tok.Chain[0]}, inter.Chain...)
 		}
 	}
 	return connect.NewResponse(out), nil
@@ -261,8 +263,9 @@ func TestWaitsThenMakesTheTokenCertificateOnceAndSettles(t *testing.T) {
 	}
 }
 
-// A renewal of the intermediate (installed over the same key) makes the stored chain stale: key@ gives none and ca makes the
-// certificate again over the same key, ending with the new intermediate.
+// A renewal of the intermediate (installed over the same key, a later end) makes the certificate older than the intermediate. key@
+// still gives it, so that the key set has no gap, but it ends before the intermediate does, and ca makes the certificate again
+// over the same key, ending with the new intermediate; key@ allows it because it ends later.
 func TestMakesTheCertificateAgainWhenTheIntermediateIsRenewed(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
@@ -278,6 +281,9 @@ func TestMakesTheCertificateAgainWhenTheIntermediateIsRenewed(t *testing.T) {
 	c, _ := x509.ParseCertificate(f.st.items["token"].Chain[0])
 	if !c.NotAfter.Equal(renewed.NotAfter) {
 		t.Fatal("the new certificate does not end with the new intermediate")
+	}
+	if st, err := f.w.Once(ctx); err != nil || st != StateSettled {
+		t.Fatalf("then: %v %v", st, err)
 	}
 }
 
@@ -384,5 +390,15 @@ func TestCheckNamesWhatFails(t *testing.T) {
 	f.st.fail = true
 	if bad := f.w.Check(context.Background()); len(bad) != 1 || bad[0] != "store.KeyCertificate" {
 		t.Fatalf("%v", bad)
+	}
+}
+
+// An intermediate with less than an hour left is waited under: nothing is signed for a certificate that would be of no use.
+func TestAnIntermediateAboutToEndGetsNoCertificate(t *testing.T) {
+	f := newFixture(t)
+	f.install(13)
+	f.clock = f.clock.AddDate(0, 13, 0).Add(-30 * time.Minute)
+	if st, err := f.w.Once(context.Background()); err != nil || st != StateWaiting || len(f.keys.signs) != 0 {
+		t.Fatalf("%v %v, %d signatures", st, err, len(f.keys.signs))
 	}
 }
