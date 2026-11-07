@@ -908,8 +908,8 @@ async fn a_reply_entry_cannot_relay_exactly_is_a_server_error() {
 #[tokio::test]
 async fn methods_and_paths_are_closed() {
     let up = up().await;
-    let r = http(&up, "POST", "/authorize", &[FORM], b"a=1").await;
-    assert_eq!((r.status, r.h("allow")), (405, Some("GET")));
+    let r = http(&up, "PUT", "/authorize", &[FORM], b"a=1").await;
+    assert_eq!((r.status, r.h("allow")), (405, Some("GET, POST")));
     let r = http(&up, "GET", "/token", &[], b"").await;
     assert_eq!((r.status, r.h("allow")), (405, Some("POST")));
     assert_eq!(http(&up, "DELETE", "/jwks", &[], b"").await.status, 405);
@@ -928,6 +928,187 @@ async fn methods_and_paths_are_closed() {
     }
     let c = up.fake.calls.lock().unwrap();
     assert!(c.authorize.is_empty() && c.token.is_empty());
+}
+
+/// The authorization endpoint takes its parameters in the query of a GET or in the form body of a POST, and the request
+/// that session gets is the same (OpenID Connect Core section 3.1.2.1). A POST with a query has two sources and is refused,
+/// like a GET with a body; the media type, the size and the syntax of the body are checked as the token endpoint checks its
+/// own, and the list of names is the same closed list.
+#[tokio::test]
+async fn authorize_takes_a_form_post_as_it_takes_a_query() {
+    let up = up().await;
+    let got = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
+    let posted = http(&up, "POST", "/authorize", &[FORM], AUTHORIZE_Q.as_bytes()).await;
+    assert_eq!((got.status, posted.status), (200, 200));
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.authorize.len(), 2);
+        assert_eq!(c.authorize[0], c.authorize[1], "a POST is the same request");
+    }
+    let charset = (
+        "Content-Type",
+        "application/x-www-form-urlencoded; charset=utf-8",
+    );
+    let refused: [(&str, &str, &[(&str, &str)], Vec<u8>, u16); 11] = [
+        (
+            "a POST with a query",
+            "/authorize?state=x",
+            &[FORM],
+            AUTHORIZE_Q.into(),
+            400,
+        ),
+        ("a GET with a body", "", &[FORM], AUTHORIZE_Q.into(), 400),
+        (
+            "the wrong media type",
+            "/authorize",
+            &[("Content-Type", "text/plain")],
+            AUTHORIZE_Q.into(),
+            415,
+        ),
+        ("no media type", "/authorize", &[], AUTHORIZE_Q.into(), 415),
+        (
+            "JSON",
+            "/authorize",
+            &[("Content-Type", "application/json")],
+            b"{}".to_vec(),
+            415,
+        ),
+        (
+            "an unknown parameter",
+            "/authorize",
+            &[FORM],
+            format!("{AUTHORIZE_Q}&x=1").into(),
+            400,
+        ),
+        (
+            "a repeated parameter",
+            "/authorize",
+            &[FORM],
+            format!("{AUTHORIZE_Q}&state=again").into(),
+            400,
+        ),
+        (
+            "a bad escape",
+            "/authorize",
+            &[FORM],
+            b"state=%zz".to_vec(),
+            400,
+        ),
+        (
+            "bytes that are not UTF-8",
+            "/authorize",
+            &[FORM],
+            b"state=%ff&a=\xff".to_vec(),
+            400,
+        ),
+        (
+            "a body over the limit",
+            "/authorize",
+            &[FORM],
+            format!("state={}", "a".repeat(40_000)).into(),
+            413,
+        ),
+        (
+            "a charset it does not know",
+            "/authorize",
+            &[(
+                "Content-Type",
+                "application/x-www-form-urlencoded; charset=latin-1",
+            )],
+            AUTHORIZE_Q.into(),
+            415,
+        ),
+    ];
+    for (what, target, headers, body, want) in refused {
+        let (method, target) = if what == "a GET with a body" {
+            ("GET", format!("/authorize?{AUTHORIZE_Q}"))
+        } else {
+            ("POST", target.to_owned())
+        };
+        let r = http(&up, method, &target, headers, &body).await;
+        assert_eq!(r.status, want, "{what}");
+    }
+    let r = http(
+        &up,
+        "POST",
+        "/authorize",
+        &[charset],
+        AUTHORIZE_Q.as_bytes(),
+    )
+    .await;
+    assert_eq!(
+        r.status, 200,
+        "charset=utf-8 is the one charset of the format"
+    );
+    assert_eq!(
+        up.fake.calls.lock().unwrap().authorize.len(),
+        3,
+        "a refused request reached session"
+    );
+}
+
+/// `display`, `ui_locales`, `claims_locales` and `login_hint` are parameters of OpenID Connect Core section 3.1.2.1 that
+/// an OP may ignore. `/authorize` accepts them, in a query and in a form, and session gets the request without them; a
+/// repeat is refused as for any parameter. The parameters whose ignoring would be a lie are still refused: a hint about who
+/// the person is, a request object, a claims request.
+#[tokio::test]
+async fn authorize_accepts_the_hints_it_ignores_and_refuses_what_it_cannot_ignore() {
+    let up = up().await;
+    let hints = "display=page&ui_locales=de+en&claims_locales=de&login_hint=alice%40example.test";
+    let plain = http(&up, "GET", &format!("/authorize?{AUTHORIZE_Q}"), &[], b"").await;
+    let query = http(
+        &up,
+        "GET",
+        &format!("/authorize?{AUTHORIZE_Q}&{hints}"),
+        &[],
+        b"",
+    )
+    .await;
+    let form = http(
+        &up,
+        "POST",
+        "/authorize",
+        &[FORM],
+        format!("{AUTHORIZE_Q}&{hints}").as_bytes(),
+    )
+    .await;
+    assert_eq!((plain.status, query.status, form.status), (200, 200, 200));
+    {
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.authorize.len(), 3);
+        assert_eq!(c.authorize[0], c.authorize[1]);
+        assert_eq!(c.authorize[0], c.authorize[2]);
+    }
+    for name in ["display", "ui_locales", "claims_locales", "login_hint"] {
+        let r = http(
+            &up,
+            "GET",
+            &format!("/authorize?{AUTHORIZE_Q}&{name}=a&{name}=a"),
+            &[],
+            b"",
+        )
+        .await;
+        assert_eq!(r.status, 400, "a repeated {name}");
+    }
+    for name in [
+        "id_token_hint=eyJ",
+        "request=eyJ",
+        "request_uri=https%3A%2F%2Frp.example.test%2Fr",
+        "claims=%7B%7D",
+        "registration=%7B%7D",
+        "resource=https%3A%2F%2Fapi.example.test",
+    ] {
+        let r = http(
+            &up,
+            "GET",
+            &format!("/authorize?{AUTHORIZE_Q}&{name}"),
+            &[],
+            b"",
+        )
+        .await;
+        assert_eq!(r.status, 400, "{name}");
+    }
+    assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), 3);
 }
 
 #[tokio::test]
