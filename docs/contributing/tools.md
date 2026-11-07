@@ -14,6 +14,8 @@ Every tool the repository uses is pinned in `devbox.json`, at an exact version, 
 - Prefer a pinned release binary over a container for a tool.
 - Do not use testcontainers.
 
+The sluis command is built, not pinned: `just build-cli` writes `bin/sluis` from this checkout, with the release build's version stamp. Inside devbox `bin/` is first on `PATH`, so `sluis version` runs that build. Before a build, `sluis` is `command not found` (exit 127). Only that recipe writes into `bin/`, and it writes only `sluis`, so no pinned tool is shadowed.
+
 ## Standards first
 
 Follow specifications and standards. Where a standard exists for a protocol, a format or an algorithm, do not invent one; a deliberate deviation from a standard needs a [decision record](/contributing/decisions/). Pin the version of the standard you follow, as you pin the version of a tool.
