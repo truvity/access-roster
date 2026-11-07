@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -119,11 +120,20 @@ func secretForms(key []byte) map[string][]byte {
 		"base64-raw":     []byte(base64.RawStdEncoding.EncodeToString(key)),
 		"base64url":      []byte(base64.URLEncoding.EncodeToString(key)),
 		"base64url-raw":  []byte(base64.RawURLEncoding.EncodeToString(key)),
-		"decimal-bytes":  []byte(fmt.Sprint(key)),         // what fmt prints for a []byte in a log line or an audit field
+		"decimal-bytes":  []byte(decimalList(key)),        // what fmt prints for a []byte in a log line or an audit field
 		"go-syntax-hex":  []byte(fmt.Sprintf("%#v", key)), // []byte{0x1, ...}
 		"hex-with-space": []byte(fmt.Sprintf("% x", key)), // % x
 		"hex-with-colon": []byte(strings.Join(hexList(key), ":")),
 	}
+}
+
+// decimalList is what fmt prints for a []byte: [1 2 3].
+func decimalList(b []byte) string {
+	parts := make([]string, len(b))
+	for i, c := range b {
+		parts[i] = strconv.Itoa(int(c))
+	}
+	return "[" + strings.Join(parts, " ") + "]"
 }
 
 func hexList(b []byte) []string {
@@ -327,7 +337,7 @@ func files(t *testing.T, dirs ...string) []byte {
 				return err
 			}
 			if de.Type().IsRegular() {
-				b, err := os.ReadFile(p)
+				b, err := os.ReadFile(p) //nolint:gosec // a path under the directories the test names
 				if err != nil {
 					return err
 				}
@@ -677,7 +687,11 @@ func TestAnAuthorityKeySignsInsideItsKeyStore(t *testing.T) {
 			}
 		}
 		// The private scalar of the key is nowhere key@ speaks.
-		d := priv.D.FillBytes(make([]byte, (priv.Curve.Params().BitSize+7)/8))
+		ek, err := priv.ECDH()
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := ek.Bytes() // the private scalar, fixed width
 		sinks := map[string][]byte{
 			"response":       bytes.Join(said, nil),
 			"store":          storeBytes(e),
