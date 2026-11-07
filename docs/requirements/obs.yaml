@@ -497,3 +497,16 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: test-vectors, ref: "in the Go kit and the Rust kit, a pass that succeeds adds 1 to sluis.job.ticks{outcome=ok} and a pass that fails adds 1 to outcome=failed; the job attribute is bounded"}
+  - id: REQ-OBS-037
+    area: OBS
+    statement: "The console MUST count each operator call by method and outcome, with no person identifier."
+    rationale: "The counts show which screens operators use, with no browser telemetry (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [960]
+    verification:
+      - {kind: integration-test, ref: "a call adds 1 to the counter of its method and outcome, and no label holds a person"}

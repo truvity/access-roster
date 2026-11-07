@@ -564,3 +564,42 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "every bearer endpoint refuses an ID token, a token of another client and a token whose chain has ended, and accepts a live access token"}
+  - id: REQ-SEC-039
+    area: SEC
+    statement: "The console MUST send a content security policy chosen per route, with a form action allowed only on the route of a vendor flow that posts a form."
+    rationale: "v1 broke its console twice by widening and then narrowing one policy (ADR 0027, REQ-SEC-004)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [796, 960]
+    verification:
+      - {kind: integration-test, ref: "a header snapshot per console route, and the manifest route allowing its one form action"}
+  - id: REQ-SEC-040
+    area: SEC
+    statement: "The operator API MUST refuse a call that changes state when it is sent by GET or with a body that is not JSON."
+    rationale: "A state change a form or a link can make is open to cross-site requests (ADR 0027, REQ-SEC-016)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [796, 960]
+    verification:
+      - {kind: integration-test, ref: "every method that changes state called by GET, by a form post and with a text body is refused"}
+  - id: REQ-SEC-041
+    area: SEC
+    statement: "The console session cookie MUST carry the __Host- prefix."
+    rationale: "The prefix keeps the cookie on one host, with Secure, Path=/ and no Domain (ADR 0027, ADR 0018)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [796, 960]
+    verification:
+      - {kind: integration-test, ref: "the sign-in response sets a cookie whose name starts with __Host- and which has no Domain attribute"}
