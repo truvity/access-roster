@@ -89,7 +89,7 @@ plans:
         failures: [CheckIfAuthorizationEndpointError]
         detail: "PKCE with S256 is required"
         because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again with a confidential client that may skip PKCE when the request carries a nonce (owner decision of 2026-11-07)."
-        cleared_by: "A confidential client with the per-client setting that lets it skip PKCE when the request carries a nonce (owner decision of 2026-11-07; public clients always need PKCE). The certification Basic plan then runs unmodified with that client, and the module's own subject is judged."
+        cleared_by: "A confidential client with the per-client setting that lets it skip PKCE when the request carries a nonce (owner decision of 2026-11-07; public clients always need PKCE). The certification Basic plan then runs unmodified with that client, and the module's own subject is judged. The module sends acr_values=1 2 and expects a code (an acr that does not match is only a warning): owner decision of 2026-11-07, sluis enforces only values listed in acr_values_supported and ignores unlisted ones with a count in the audit record (#1655), so the conformance installation must list only values its Keycloak can meet (none today); measure it once #1655 lands."
       oidcc-ensure-request-with-unknown-parameter-succeeds:
         result: FAILED
         failures: [CheckIfAuthorizationEndpointError]
@@ -291,7 +291,7 @@ plans:
         failures: [CheckIfAuthorizationEndpointError]
         detail: "PKCE with S256 is required"
         because: "The module sends no code_challenge, and sluis requires PKCE with S256 on every authorization code request (REQ-AUTHN-002), so the authorization endpoint answers invalid_request at the client's redirect. Not a suite quirk: the module's request is a valid OpenID Connect Core request without PKCE, which Core does not require. It runs again with a confidential client that may skip PKCE when the request carries a nonce (owner decision of 2026-11-07)."
-        cleared_by: "A confidential client with the per-client setting that lets it skip PKCE when the request carries a nonce (owner decision of 2026-11-07; public clients always need PKCE). The certification Basic plan then runs unmodified with that client, and the module's own subject is judged."
+        cleared_by: "A confidential client with the per-client setting that lets it skip PKCE when the request carries a nonce (owner decision of 2026-11-07; public clients always need PKCE). The certification Basic plan then runs unmodified with that client, and the module's own subject is judged. The module sends acr_values=1 2 and expects a code (an acr that does not match is only a warning): owner decision of 2026-11-07, sluis enforces only values listed in acr_values_supported and ignores unlisted ones with a count in the audit record (#1655), so the conformance installation must list only values its Keycloak can meet (none today); measure it once #1655 lands."
       oidcc-ensure-request-with-unknown-parameter-succeeds:
         result: FAILED
         failures: [CheckIfAuthorizationEndpointError]
