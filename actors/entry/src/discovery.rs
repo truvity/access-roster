@@ -139,6 +139,11 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "authorization_endpoint": format!("{iss}/authorize"),
         "token_endpoint": format!("{iss}/token"),
         "jwks_uri": format!("{iss}/jwks"),
+        // RFC 7009: `session` ends the session chain of a refresh token for the client it was issued to, and answers 200 for
+        // any token it does not revoke. A public client authenticates by its id alone, so `none` is the one method: the
+        // confidential methods are not served here (the field defaults to `client_secret_basic`, which would be an untruth).
+        "revocation_endpoint": format!("{iss}/revoke"),
+        "revocation_endpoint_auth_methods_supported": ["none"],
         "response_types_supported": ["code"],
         "response_modes_supported": ["query"],
         "grant_types_supported": [
@@ -416,7 +421,12 @@ mod tests {
             };
             let v: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
             assert_eq!(v["issuer"].as_str().unwrap().as_bytes(), iss.as_bytes());
-            for endpoint in ["authorization_endpoint", "token_endpoint", "jwks_uri"] {
+            for endpoint in [
+                "authorization_endpoint",
+                "token_endpoint",
+                "jwks_uri",
+                "revocation_endpoint",
+            ] {
                 let url = v[endpoint].as_str().unwrap();
                 assert!(
                     url.starts_with(iss) && url[iss.len()..].starts_with('/'),
