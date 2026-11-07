@@ -134,6 +134,7 @@ func (s *Server) checkStoreSlots(ctx context.Context, plan *configv2alpha1.KeyPl
 	if caps.Msg.GetStore() != slotplan.CardStore {
 		return nil
 	}
+	s.cardRSA = newRateBucket(s.now, cardRSARate, cardRSABurst)
 	ps := make([]slotplan.Purpose, 0, len(plan.GetPurposes()))
 	for _, p := range plan.GetPurposes() {
 		ps = append(ps, slotplan.Purpose{Name: p.GetPurpose(), Algorithm: p.GetAlgorithm(), Slot: p.GetSlot()})
