@@ -2,15 +2,12 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
-
-	"github.com/truvity/sluis/v2/kits/go/audit"
 )
 
 const root = "../../.."
@@ -114,7 +111,7 @@ func TestCompatFindsWhatAReleaseOfTheSameMajorMustNotChange(t *testing.T) {
 			got := compat(parseTable(t, baseline), cur)
 			if c.want == "" && len(got) == 0 {
 				// What compat passes is what the schemas prove: the records of the old table still validate.
-				if bad := oldRecordsUnder(t, parseTable(t, baseline), cur); len(bad) > 0 {
+				if bad := mustOldRecordsUnder(t, parseTable(t, baseline), cur); len(bad) > 0 {
 					t.Fatalf("compat passes a change under which the old records fail: %v", bad)
 				}
 			}
@@ -253,48 +250,11 @@ func TestCompatFindsASubjectThatIsNowRequired(t *testing.T) {
 	}
 }
 
-// oldRecordsUnder builds the example record of every action of the old table and validates it against the schemas of the
-// new one; it returns the actions whose record fails.
-func oldRecordsUnder(t *testing.T, old, cur *tableFile) []string {
-	t.Helper()
-	vec, err := buildVectors(old)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var f struct {
-		Cases []struct {
-			Name     string `json:"name"`
-			Expected string `json:"expected"`
-		} `json:"cases"`
-	}
-	if err := json.Unmarshal(vec, &f); err != nil {
-		t.Fatal(err)
-	}
-	_, texts, err := schemaTexts(cur)
-	if err != nil {
-		t.Fatal(err)
-	}
-	schemas, err := audit.ParseSchemas(texts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var bad []string
-	for _, c := range f.Cases {
-		if _, ok := texts[c.Name+".schema.json"]; !ok {
-			continue // an action the new table lacks is found by compat
-		}
-		if schemas.Validate(c.Name+".schema.json", []byte(c.Expected)) != nil {
-			bad = append(bad, c.Name)
-		}
-	}
-	return bad
-}
-
 // The reason for the rule that a new member is optional: the old record lacks it and the new schema refuses the record. The
 // compatibility check names what the schema would otherwise show only after the release.
 func TestANewRequiredMemberIsWhatBreaksTheRecordsOfTheOldRelease(t *testing.T) {
 	cur := parseTable(t, strings.Replace(baseline, "      kept: {type: word, required: true}", "      kept: {type: word, required: true}\n      added: {type: word, required: true}", 1))
-	if bad := oldRecordsUnder(t, parseTable(t, baseline), cur); len(bad) != 1 || bad[0] != "a.b" {
+	if bad := mustOldRecordsUnder(t, parseTable(t, baseline), cur); len(bad) != 1 || bad[0] != "a.b" {
 		t.Fatalf("records that fail the new schema: %v, want a.b", bad)
 	}
 }
@@ -311,5 +271,53 @@ func TestTheTableMustDefineTheTypesTheEnvelopeUses(t *testing.T) {
 		if err := tf.check(); err == nil || !strings.Contains(err.Error(), name) {
 			t.Errorf("a table without %s: err = %v", name, err)
 		}
+	}
+}
+
+func mustOldRecordsUnder(t *testing.T, old, cur *tableFile) []string {
+	t.Helper()
+	bad, err := oldRecordsUnder(old, cur)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bad
+}
+
+// The OCSF version and the product are in every record (metadata.version and metadata.product.name are constants of every
+// schema), so a table that moves either leaves the records of the old release refused by the newest schema.
+func TestCompatFindsAMovedOCSFVersionOrProduct(t *testing.T) {
+	for name, c := range map[string]struct{ from, to, want string }{
+		"another OCSF version": {`ocsf: "1.9.0"`, `ocsf: "1.10.0"`, "the OCSF version changed"},
+		"another product":      {"product: sluis", "product: other", "the product changed"},
+	} {
+		cur := parseTable(t, strings.Replace(baseline, c.from, c.to, 1))
+		got := compat(parseTable(t, baseline), cur)
+		if !strings.Contains(strings.Join(got, "\n"), c.want) {
+			t.Errorf("%s: findings %v", name, got)
+		}
+		if bad := mustOldRecordsUnder(t, parseTable(t, baseline), cur); len(bad) == 0 {
+			t.Errorf("%s: the old records still validate, so the rule has no reason", name)
+		}
+	}
+}
+
+// runCompat runs the same proof as the unit tests: the old table's examples under the new schemas. A table that compat passes
+// and under which an old record fails is a finding too.
+func TestRunCompatProvesWithTheOldRecords(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	old := write("old.yaml", baseline)
+	if err := runCompatTables(old, write("same.yaml", baseline)); err != nil {
+		t.Fatalf("the same table: %v", err)
+	}
+	err := runCompatTables(old, write("moved.yaml", strings.Replace(baseline, `ocsf: "1.9.0"`, `ocsf: "1.10.0"`, 1)))
+	if err == nil || !strings.Contains(err.Error(), "the OCSF version changed") {
+		t.Fatalf("a moved OCSF version: %v", err)
 	}
 }

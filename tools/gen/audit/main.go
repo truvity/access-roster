@@ -164,15 +164,29 @@ func main() {
 
 // runCompat compares the table of the repository with the table of the last release.
 func runCompat(root, oldPath string) error {
+	return runCompatTables(oldPath, filepath.Join(root, tablePath))
+}
+
+// runCompatTables compares two tables: the rules of compat, and the proof that the old table's example records still validate
+// against the new schemas, which fails the build even where the rules found nothing.
+func runCompatTables(oldPath, curPath string) error {
 	old, err := load(oldPath)
 	if err != nil {
 		return err
 	}
-	cur, err := load(filepath.Join(root, tablePath))
+	cur, err := load(curPath)
 	if err != nil {
 		return err
 	}
-	if found := compat(old, cur); len(found) > 0 {
+	found := compat(old, cur)
+	bad, err := oldRecordsUnder(old, cur)
+	if err != nil {
+		return err
+	}
+	for _, a := range bad {
+		found = append(found, a+": the example record of the old release fails the schema of the new")
+	}
+	if len(found) > 0 {
 		return fmt.Errorf("the table is not compatible with the last release (a change of this kind needs a new major version of sluis):\n  %s", strings.Join(found, "\n  "))
 	}
 	return nil
