@@ -436,15 +436,15 @@ func TestUserInfoFailsClosedWhenADependencyFails(t *testing.T) {
 
 // verifies: REQ-SEC-038
 // A clock that is behind fails closed. A token made in the future of the clock is refused (the clock is behind the moment the token
-// was made, so nothing the token says about its own life can be trusted against it), with thirty seconds of leeway for clocks that
+// was made, so nothing the token says about its own life can be trusted against it), with a minute of leeway (signer's own) for clocks that
 // differ a little. A token made a moment ahead is served.
 func TestABearerTokenFromTheClocksFutureIsRefused(t *testing.T) {
 	e := newEnv(t, nil)
 	b, _ := e.redeemed()
 	at := b["access_token"].(string)
-	e.clk.advance(-10 * time.Second)
+	e.clk.advance(-50 * time.Second)
 	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
-		t.Fatalf("a clock 10 s behind: %d", r.GetStatus())
+		t.Fatalf("a clock 50 s behind: %d", r.GetStatus())
 	}
 	e.clk.advance(-time.Minute)
 	assertBearer(t, e.userinfo(bearerOf(at)), http.StatusUnauthorized, "invalid_token")
@@ -504,5 +504,66 @@ func TestASignerThatIsDownIsAskedOnceInTwoSeconds(t *testing.T) {
 	e.clk.advance(3 * time.Second)
 	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
 		t.Errorf("signer back, three seconds on: %d", r.GetStatus())
+	}
+}
+
+// verifies: REQ-SEC-038
+// A caller who gives up cannot fail the fetch of the key set for everyone else. A well-formed request that drops its connection while
+// the set is being fetched (the set is stale) leaves the fetch to finish on a context of its own: the next request is served at once,
+// and no failure is remembered that signer did not make. Without this a stranger, who needs no credentials, could answer 503 to every
+// request for two seconds, as often as he likes.
+func TestACallerThatGivesUpDoesNotFailTheKeySetForOthers(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	at := b["access_token"].(string)
+	e.clk.advance(time.Minute) // the held set is stale
+	e.signer.mu.Lock()
+	e.signer.delay = 300 * time.Millisecond
+	e.signer.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := e.client.UserInfo(ctx, connect.NewRequest(&sessionv2alpha1.UserInfoRequest{Authorization: bearerOf(at)}))
+	if err == nil {
+		t.Fatal("the caller was answered inside its own deadline; the test needs a slower signer")
+	}
+	time.Sleep(500 * time.Millisecond) // the fetch finishes without the caller
+	e.signer.mu.Lock()
+	e.signer.delay = 0
+	e.signer.mu.Unlock()
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("the next request after a caller gave up: %d %s", r.GetStatus(), r.GetBody())
+	}
+}
+
+// verifies: REQ-SEC-038
+// A fresh key set is used while signer is failing: the failure is remembered only for a fetch that is needed.
+func TestAFreshKeySetIsUsedWhileSignerFails(t *testing.T) {
+	e := newEnv(t, nil)
+	b, _ := e.redeemed()
+	at := b["access_token"].(string)
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("%d", r.GetStatus())
+	}
+	e.clk.advance(11 * time.Second)
+	e.signer.mu.Lock()
+	e.signer.err = connect.NewError(connect.CodeUnavailable, nil)
+	e.signer.mu.Unlock()
+	if _, err := e.client.UserInfo(context.Background(), connect.NewRequest(&sessionv2alpha1.UserInfoRequest{Authorization: bearerOf(at)})); connect.CodeOf(err) != connect.CodeUnavailable {
+		t.Fatalf("stale set, signer down: %v", err)
+	}
+	e.signer.mu.Lock()
+	e.signer.err = nil
+	e.signer.mu.Unlock()
+	e.clk.advance(3 * time.Second)
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("signer back: %d", r.GetStatus())
+	}
+	e.signer.mu.Lock()
+	e.signer.err = connect.NewError(connect.CodeUnavailable, nil)
+	e.signer.mu.Unlock()
+	// The set is fresh now, and a failure from before it does not take it away.
+	if r := e.userinfo(bearerOf(at)); r.GetStatus() != http.StatusOK {
+		t.Fatalf("a fresh set was not used while signer fails: %d", r.GetStatus())
 	}
 }
