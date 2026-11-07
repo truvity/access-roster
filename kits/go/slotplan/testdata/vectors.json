@@ -191,6 +191,87 @@
    ],
    "error": "",
    "card": ""
+  },
+  {
+   "name": "an empty plan",
+   "check": [],
+   "error": "",
+   "card": ""
+  },
+  {
+   "name": "a slot that is not hex",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "zz"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "a slot of one digit",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "9"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "a slot of three digits",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "988"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "a slot with a sign",
+   "check": [
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": "+a"
+    }
+   ],
+   "error": "not a slot of a board",
+   "card": ""
+  },
+  {
+   "name": "four refusals in one plan, in the order of the list",
+   "check": [
+    {
+     "purpose": "token-signing",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "x509-intermediate",
+     "algorithm": "ES384",
+     "slot": "9a"
+    },
+    {
+     "purpose": "issuance-log",
+     "algorithm": "ES384",
+     "slot": ""
+    },
+    {
+     "purpose": "wrapping",
+     "algorithm": "ECDH-P384",
+     "slot": "9e"
+    }
+   ],
+   "error": "purposes[1].slot: shared with token-signing; purposes[2]: no slot (name one of the spare slots 88 to 95); purposes[3].slot: not a slot of a board",
+   "card": ""
   }
  ]
 }

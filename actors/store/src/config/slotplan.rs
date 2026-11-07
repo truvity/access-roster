@@ -1,7 +1,7 @@
 //! The card slot map check (ADR 0006, "The slot plan"; docs/reference/keys.md, "Board slot plan"): which PIV slot each
 //! enabled key purpose of a KeyPlan lives in. It is the Rust twin of `kits/go/slotplan`, which key@ applies when it
 //! starts and in its check command, and the two read the same vectors (`kits/go/slotplan/testdata/vectors.json`), so
-//! that `sluis config check`, store@ at load and key@ refuse the same plans (REQ-PKI-037, REQ-PKI-038, REQ-PKI-042).
+//! that `sluis config check`, store@ at load and key@ apply the same slot map rules (REQ-PKI-037, REQ-PKI-038, REQ-PKI-042). These are the rules common to all stores; on a card key@ adds limits of the card driver (`CheckCard`: no override of a default slot, no card-key purpose outside the default map) that only key@'s check applies.
 //!
 //! The map is the default one (version 1) with the installation's overrides: a purpose names its slot in the KeyPlan, or
 //! takes the default. A purpose the KeyPlan does not list is not enabled, needs no slot and gets no key. A refusal names
@@ -142,6 +142,6 @@ mod tests {
                 }
             }
         }
-        assert!(refused >= 8, "{refused} refusals");
+        assert!(refused >= 13, "{refused} refusals");
     }
 }
