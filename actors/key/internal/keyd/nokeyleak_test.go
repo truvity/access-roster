@@ -284,6 +284,8 @@ func exercise(t *testing.T, n *node) *exercised {
 	mustOpen("evidence", "indexer", "evidence", "usage", "acme", indexer)
 	mustSeal("chain", "session", "chain", "session-chain", "acme", nil)
 	mustOpen("chain", "exchange", "chain", "session-chain", "acme", nil)
+	mustSeal("credential", "session", "credential", "staff-passkey", "acme", nil)
+	mustOpen("credential", "session", "credential", "staff-passkey", "acme", nil)
 	mustSeal("cookie", "session", "cookie", "cookie", "", nil)
 	mustOpen("cookie", "session", "cookie", "cookie", "", nil)
 	mustSeal("boundary-data", "exchange", "data", "person", "", nil)
@@ -422,7 +424,7 @@ func TestNoDataKeyIsWrittenOrSaidOutsideItsWrap(t *testing.T) {
 
 	keys := recoverKeys(t, e, a)
 	want := []keyRef{
-		{"acme", "data", 1}, {"acme", "evidence", 1}, {"acme", "chain", 1}, {"acme", "pairwise", 1}, {"acme", "pseudonym", 202611},
+		{"acme", "data", 1}, {"acme", "evidence", 1}, {"acme", "chain", 1}, {"acme", "credential", 1}, {"acme", "pairwise", 1}, {"acme", "pseudonym", 202611},
 		{"", "grant", 1}, {"", "cookie", 1}, {"", "mac", 1}, {"", "data", 1},
 	}
 	for _, ref := range want {

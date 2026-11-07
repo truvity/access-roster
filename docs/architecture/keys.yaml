@@ -315,6 +315,11 @@ data_keys:
       users: [session, exchange]
       erased: "tenant exit"
       notes: "Seals the facts of a session chain (the person's accounts): session seals and opens them, exchange opens them, and no other actor does either. Checked by rule alone, with no grant, because policy needs these facts to decide. A generation is kept for the longest time to live of a chain (90 days) after it last sealed (ADR 0006)."
+    credential:
+      ops: [seal, open]
+      users: [session]
+      erased: "tenant exit"
+      notes: "Seals the StaffPasskey kind and nothing else: the public key, the counter, the class and the accounts of a passkey. Only session uses it. Checked by rule alone, with no grant, because a sign-in with a passkey has to open the credential before it knows whose it is, and the decision of policy that a grant comes from needs the person's accounts, which the credential holds. key@ refuses the purpose for any kind but staff-passkey. A generation is kept as long as one of `data` (ADR 0006)."
   boundary:
     grant:
       ops: [seal, open]

@@ -75,10 +75,11 @@ func sealCall(actor, purpose, kind string) func(*testing.T, *node, string) {
 	}
 }
 
-// The five purposes of a tenant, each by an actor that holds its rule.
+// The six purposes of a tenant, each by an actor that holds its rule.
 var tenantUses = []tenantUse{
 	{"pairwise", macCall("session", "pairwise", "")},
 	{"chain", sealCall("session", "chain", "session-chain")},
+	{"credential", sealCall("session", "credential", "staff-passkey")},
 	{"pseudonym", macCall("reader", "pseudonym", "202611")},
 	{"data", sealCall("session", "data", "person")},
 	{"evidence", sealCall("writer", "evidence", "usage")},
@@ -106,14 +107,14 @@ func useAll(t *testing.T, n *node, tenant string, boundary bool) {
 }
 
 // verifies: REQ-KEYS-035
-// A tenant has exactly five data keys, data, pseudonym, pairwise, evidence and chain, and a boundary four of its own:
+// A tenant has exactly six data keys, data, pseudonym, pairwise, evidence, chain and credential, and a boundary four of its own:
 // grant, cookie, mac and data. The keys are made on the first use (ADR 0006), so the test uses a new tenant and counts
 // the purposes that have a wrap after each call: each call makes the one key it needs and no other, and when all are
-// used the tenant has five and the boundary four. Then every purpose name key@ could be asked for, by every actor
+// used the tenant has six and the boundary four. Then every purpose name key@ could be asked for, by every actor
 // that may call it, for the tenant and for the boundary, with and without a grant, is tried; the ones that are
 // refused make no key, so no sixth purpose appears. The count is of purposes: the pseudonym key has a generation for
 // each month (a second epoch is a second wrap of the same purpose), which the test shows and does not count again.
-func TestATenantHasFiveDataKeysAndABoundaryFour(t *testing.T) {
+func TestATenantHasSixDataKeysAndABoundaryFour(t *testing.T) {
 	e := newTestEnv(t, "development")
 	n := e.startedNode(nodeOpts{})
 	if got := wrapPurposes(t, e); len(got) != 0 {
@@ -140,7 +141,7 @@ func TestATenantHasFiveDataKeysAndABoundaryFour(t *testing.T) {
 		u.do(t, n, "")
 	}
 	got := wrapPurposes(t, e)
-	if want := []string{"chain", "data", "evidence", "pairwise", "pseudonym"}; !slices.Equal(got[tenant], want) {
+	if want := []string{"chain", "credential", "data", "evidence", "pairwise", "pseudonym"}; !slices.Equal(got[tenant], want) {
 		t.Fatalf("the tenant's keys = %v, want exactly %v", got[tenant], want)
 	}
 	if want := []string{"cookie", "data", "grant", "mac"}; !slices.Equal(got[""], want) {
@@ -149,15 +150,15 @@ func TestATenantHasFiveDataKeysAndABoundaryFour(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("wraps are under %d tenants (%v), want the tenant and the boundary", len(got), got)
 	}
-	// A pseudonym of another month is another generation of the same purpose: the purposes stay five.
+	// A pseudonym of another month is another generation of the same purpose: the purposes stay six.
 	macCall("reader", "pseudonym", "202612")(t, n, tenant)
-	if got := wrapPurposes(t, e)[tenant]; len(got) != 5 {
+	if got := wrapPurposes(t, e)[tenant]; len(got) != 6 {
 		t.Fatalf("a second pseudonym epoch made the tenant's keys %v", got)
 	}
 
 	// Every purpose name, by every actor that can call key@, with a grant that would pass for a tenant call. The
 	// calls that the rules and the address checks refuse make no key; the others are the nine above.
-	candidates := []string{"data", "pseudonym", "pairwise", "evidence", "chain", "grant", "cookie", "mac", "wrapping", "token-signing", "audit-log",
+	candidates := []string{"data", "pseudonym", "pairwise", "evidence", "chain", "credential", "grant", "cookie", "mac", "wrapping", "token-signing", "audit-log",
 		"release-signing", "x509-intermediate", "ssh-user", "ssh-host", "issuance-log", "workload-issuer", "pin-release", "archive", "recovery", "tenant", ""}
 	refused, answered := 0, 0
 	for _, actor := range registry.CallersOf("key") {
@@ -175,7 +176,7 @@ func TestATenantHasFiveDataKeysAndABoundaryFour(t *testing.T) {
 		t.Fatalf("the sweep was refused %d times and answered %d: it did not sweep", refused, answered)
 	}
 	after := wrapPurposes(t, e)
-	if want := []string{"chain", "data", "evidence", "pairwise", "pseudonym"}; !slices.Equal(after[tenant], want) {
+	if want := []string{"chain", "credential", "data", "evidence", "pairwise", "pseudonym"}; !slices.Equal(after[tenant], want) {
 		t.Errorf("after the sweep the tenant's keys = %v, want exactly %v", after[tenant], want)
 	}
 	if want := []string{"cookie", "data", "grant", "mac"}; !slices.Equal(after[""], want) {
@@ -195,7 +196,7 @@ func count(err error, refused, answered *int) {
 }
 
 // verifies: REQ-ISO-070
-// A tenant costs the key store nothing: a new tenant gets all five of its data keys, wrapped in the store@ kind
+// A tenant costs the key store nothing: a new tenant gets all six of its data keys, wrapped in the store@ kind
 // DataKeyWrap, and the key store (the driver) is not asked for a key of any kind and holds the same keys as before.
 // The test counts both the keys the driver holds and the Ensure requests it gets, before the tenants and after three
 // of them have used every one of their purposes. It proves that a tenant creates no key in the driver of this
@@ -234,9 +235,9 @@ func TestANewTenantCreatesNoKeyInTheKeyStore(t *testing.T) {
 	if !slices.Equal(ensuresAfter, ensuresBefore) {
 		t.Fatalf("the driver was asked to Ensure %v after the tenants, %v before", ensuresAfter, ensuresBefore)
 	}
-	// The control: the tenants did get their keys, as wraps: 3 tenants x 5 keys + the grant key and 3 boundary keys.
-	if got := e.store.wrapCount() - wrapsBefore; got != 3*5+4 {
-		t.Fatalf("%d wraps made for three tenants, want %d: the tenants got no keys, so the count above says nothing", got, 3*5+4)
+	// The control: the tenants did get their keys, as wraps: 3 tenants x 6 keys + the grant key and 3 boundary keys.
+	if got := e.store.wrapCount() - wrapsBefore; got != 3*6+4 {
+		t.Fatalf("%d wraps made for three tenants, want %d: the tenants got no keys, so the count above says nothing", got, 3*6+4)
 	}
 	if n.driver.made == nil || len(n.driver.made) != len(before) {
 		t.Fatalf("the driver made %d keys", len(n.driver.made))

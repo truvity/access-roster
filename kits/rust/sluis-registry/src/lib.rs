@@ -335,13 +335,13 @@ mod tests {
         assert_eq!(KINDS.len(), 114);
         assert_eq!(ACTORS.len(), 20);
         assert_eq!(STORE_RULES.len(), 491);
-        assert_eq!(KEY_RULES.len(), 63);
+        assert_eq!(KEY_RULES.len(), 64);
         let verbs: u32 = STORE_RULES.iter().map(|r| (r.2 & 0x7f).count_ones()).sum();
         let self_marks: u32 = STORE_RULES
             .iter()
             .map(|r| (r.2 >> SELF_SHIFT).count_ones())
             .sum();
         let ops: u32 = KEY_RULES.iter().map(|r| r.3.count_ones()).sum();
-        assert_eq!((verbs, self_marks, ops), (1774, 704, 90));
+        assert_eq!((verbs, self_marks, ops), (1774, 704, 92));
     }
 }

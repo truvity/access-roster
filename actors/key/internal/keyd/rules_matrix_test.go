@@ -252,8 +252,11 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 		return n.grant(actor, []string{tenant}, []string{"seal", "open"}, time.Minute)
 	}
 	kindOf := func(purpose string) string {
-		if purpose == "cookie" {
+		switch purpose {
+		case "cookie":
 			return "cookie"
+		case "credential":
+			return "staff-passkey" // the one kind the purpose seals
 		}
 		return "person"
 	}
@@ -383,19 +386,19 @@ func TestEveryCallerPurposeAndOperationNotInTheFilesIsRefused(t *testing.T) {
 	t.Logf("%d cells given by the files; key@ called %d refused cells, %d succeeded and %d reached the check after the rule", expectedAllowed, refusedCells, succeeded, reached)
 	// The counts are the registry's today. A change to the files changes them, in the same pull request: the numbers are
 	// the sweep's evidence that it called what it says, and not a smaller set.
-	if expectedAllowed != 83 || succeeded != 59 || reached != 17 || refusedCells != 3743 {
-		t.Fatalf("cells given by the files %d (want 83), succeeded %d (59), reached the check %d (17), refused %d (3743): "+
+	if expectedAllowed != 85 || succeeded != 61 || reached != 17 || refusedCells != 3836 {
+		t.Fatalf("cells given by the files %d (want 85), succeeded %d (61), reached the check %d (17), refused %d (3836): "+
 			"if the registry changed on purpose, change these numbers with it", expectedAllowed, succeeded, reached, refusedCells)
 	}
 }
 
 // scopeFitsPurpose says whether a Seal, Open or Mac of the purpose is a call in the scope: cookie, grant and mac are the
-// boundary's, evidence, chain, pseudonym and pairwise a tenant's, data either, and a name that is none either.
+// boundary's, evidence, chain, credential, pseudonym and pairwise a tenant's, data either, and a name that is none either.
 func scopeFitsPurpose(purpose, scope string) bool {
 	switch purpose {
 	case "cookie", "grant", "mac":
 		return scope == registry.ScopeBoundary
-	case "evidence", "chain", "pseudonym", "pairwise":
+	case "evidence", "chain", "credential", "pseudonym", "pairwise":
 		return scope == registry.ScopeTenant
 	}
 	return true

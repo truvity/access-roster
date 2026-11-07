@@ -873,3 +873,97 @@ func TestGrantIsSealedUnderTheGrantKeyWithThePurposeInTheContext(t *testing.T) {
 	_, err = n.client("session").SealGrant(context.Background(), connect.NewRequest(&keyv2alpha1.SealGrantRequest{Grant: g}))
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
 }
+
+// REQ-KEYS-263: the credential key of a tenant is sealed and opened by session alone, by rule and with no grant, for the
+// kind StaffPasskey and no other (ADR 0006, "Data keys").
+// verifies: REQ-KEYS-263
+func TestCredentialKeyIsSessionsAloneAndSealsOnlyStaffPasskey(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	const kind = "staff-passkey"
+	value := []byte("a credential")
+	env, err := seal1(n.client("session"), "credential", kind, "acme", vecID, value, nil)
+	if err != nil {
+		t.Fatalf("session seals under credential with no grant: %v", err)
+	}
+	if h, err := envelope.ParseHeader(env); err != nil || h.Purpose != envelope.CodeCredential {
+		t.Errorf("header = %+v, %v; want the credential code", h, err)
+	}
+	pt, err := open1(n.client("session"), "credential", kind, "acme", vecID, env, nil)
+	if err != nil || !bytes.Equal(pt, value) {
+		t.Fatalf("session opens it with no grant: %q, %v", pt, err)
+	}
+	// Every actor of the registry is checked, not a list kept here. An actor that may call key@ reaches the rule and is
+	// refused by it; one that may not has no socket and the registry gives it no rule.
+	callers := map[string]bool{}
+	for _, c := range registry.CallersOf("key") {
+		callers[c] = true
+	}
+	refused := 0
+	for _, act := range registry.Actors() {
+		for _, op := range []string{"seal", "open", "mac", "sign", "public-key", "wrap", "unwrap"} {
+			allowed := act.Name == "session" && (op == "seal" || op == "open")
+			if got := registry.KeyAllows(act.Name, registry.ScopeTenant, "credential", op); got != allowed {
+				t.Errorf("registry: %s %s credential = %v, want %v", act.Name, op, got, allowed)
+			}
+			if registry.KeyAllows(act.Name, registry.ScopeBoundary, "credential", op) {
+				t.Errorf("registry: %s %s the boundary's credential key, which does not exist", act.Name, op)
+			}
+		}
+		if act.Name == "session" || !callers[act.Name] {
+			continue
+		}
+		_, err := seal1(n.client(act.Name), "credential", kind, "acme", vecID, value, nil)
+		if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "rule" {
+			t.Errorf("%s seals under credential: %v, want permission_denied/rule", act.Name, err)
+		}
+		_, err = open1(n.client(act.Name), "credential", kind, "acme", vecID, env, nil)
+		if r, _ := refusal.Reason(err); connect.CodeOf(err) != connect.CodePermissionDenied || r != "rule" {
+			t.Errorf("%s opens under credential: %v, want permission_denied/rule", act.Name, err)
+		}
+		// An envelope that is a credential does not open as `data` for an actor that holds the data rule either: the
+		// header names the purpose.
+		if registry.KeyAllows(act.Name, registry.ScopeTenant, "data", "open") {
+			grant := n.grant(act.Name, []string{"acme"}, []string{"open"}, time.Minute)
+			if _, err := open1(n.client(act.Name), "data", kind, "acme", vecID, env, grant); err == nil {
+				t.Errorf("%s opened a credential envelope as data", act.Name)
+			}
+		}
+		refused++
+	}
+	if refused == 0 {
+		t.Fatal("the sweep refused no call: it checked nothing")
+	}
+	// The kind: the credential key seals StaffPasskey and nothing else, for the one actor that holds the rule.
+	for _, other := range []string{"person", "session-chain", "upstream-link", "staff-passkeys", "Staff-Passkey"} {
+		_, err := seal1(n.client("session"), "credential", other, "acme", vecID, value, nil)
+		wantRefusal(t, err, connect.CodeInvalidArgument, "address")
+		_, err = open1(n.client("session"), "credential", other, "acme", vecID, env, nil)
+		wantRefusal(t, err, connect.CodeInvalidArgument, "address")
+	}
+	// A credential has a tenant. The key of the boundary does not exist.
+	_, err = seal1(n.client("session"), "credential", kind, "", vecID, value, nil)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "tenant")
+	// The address binds the envelope, and another tenant's key does not open it (that key exists first).
+	_, err = open1(n.client("session"), "credential", kind, "acme", "other"+vecID[5:], env, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	other, err := seal1(n.client("session"), "credential", kind, "globex", vecID, []byte("globex"), nil)
+	if err != nil {
+		t.Fatalf("session seals under globex's credential key: %v", err)
+	}
+	_, err = open1(n.client("session"), "credential", kind, "globex", vecID, env, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+	// What rule-only access gives: session opens a credential of any tenant it names, if it holds the envelope. That is
+	// the access of `chain`, and the reason the purpose is session's alone.
+	if pt, err := open1(n.client("session"), "credential", kind, "globex", vecID, other, nil); err != nil || string(pt) != "globex" {
+		t.Errorf("session opens globex's credential: %q, %v", pt, err)
+	}
+	// A `data` envelope is not a credential: the header names the purpose.
+	grant := n.grant("session", []string{"acme"}, []string{"seal", "open"}, time.Minute)
+	dataEnv, err := seal1(n.client("session"), "data", kind, "acme", vecID, value, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = open1(n.client("session"), "credential", kind, "acme", vecID, dataEnv, nil)
+	wantRefusal(t, err, connect.CodePermissionDenied, "open")
+}

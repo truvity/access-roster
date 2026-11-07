@@ -1200,12 +1200,13 @@ var keyRules = map[string]map[KeyUse]uint8{
 		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
 	},
 	"session": {
-		{Scope: "boundary", Purpose: "cookie"}:  0x03, // seal open
-		{Scope: "boundary", Purpose: "mac"}:     0x08, // mac
-		{Scope: "tenant", Purpose: "chain"}:     0x03, // seal open
-		{Scope: "tenant", Purpose: "data"}:      0x03, // seal open
-		{Scope: "tenant", Purpose: "pairwise"}:  0x08, // mac
-		{Scope: "tenant", Purpose: "pseudonym"}: 0x08, // mac
+		{Scope: "boundary", Purpose: "cookie"}:   0x03, // seal open
+		{Scope: "boundary", Purpose: "mac"}:      0x08, // mac
+		{Scope: "tenant", Purpose: "chain"}:      0x03, // seal open
+		{Scope: "tenant", Purpose: "credential"}: 0x03, // seal open
+		{Scope: "tenant", Purpose: "data"}:       0x03, // seal open
+		{Scope: "tenant", Purpose: "pairwise"}:   0x08, // mac
+		{Scope: "tenant", Purpose: "pseudonym"}:  0x08, // mac
 	},
 	"signer": {
 		{Scope: "boundary", Purpose: "grant"}:               0x02, // open
