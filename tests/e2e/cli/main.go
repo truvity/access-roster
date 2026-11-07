@@ -45,6 +45,9 @@ func smoke() error {
 	if err := doctorSmoke(cli); err != nil {
 		return fmt.Errorf("sluis doctor: %w", err)
 	}
+	if err := keyStatusSmoke(cli); err != nil {
+		return fmt.Errorf("sluis key status: %w", err)
+	}
 	return nil
 }
 
@@ -78,7 +81,12 @@ func onHost(cli string, args ...string) (ran, error) {
 // inContainer runs the CLI as root in a container of the installation, with no network and a read-only filesystem. The
 // default capabilities stay: root needs them to open a socket that another uid owns.
 func inContainer(cli string, mounts []string, args ...string) (ran, error) {
-	a := []string{"run", "--rm", "--network", "none", "--read-only", "--security-opt", "no-new-privileges:true", "--user", "0:0"}
+	return inContainerAs("0:0", cli, mounts, args...)
+}
+
+// inContainerAs is inContainer as another user.
+func inContainerAs(user, cli string, mounts []string, args ...string) (ran, error) {
+	a := []string{"run", "--rm", "--network", "none", "--read-only", "--security-opt", "no-new-privileges:true", "--user", user}
 	for _, m := range mounts {
 		a = append(a, "-v", project+"_"+m)
 	}
@@ -107,7 +115,15 @@ type object struct {
 	Command  string `json:"command"`
 	ExitCode int    `json:"exit_code"`
 	Outcome  string `json:"outcome"`
-	Checks   []struct {
+	Keys     []struct {
+		Purpose     string `json:"purpose"`
+		Boundary    string `json:"boundary"`
+		Store       string `json:"store"`
+		Fingerprint string `json:"fingerprint"`
+		NotAfter    string `json:"not_after"`
+		Level       string `json:"level"`
+	} `json:"keys"`
+	Checks []struct {
 		Name   string `json:"name"`
 		Result string `json:"result"`
 		Path   string `json:"path"`
@@ -190,5 +206,81 @@ func doctorSmoke(cli string) error {
 			return fmt.Errorf("%s: systemd is %s in a container, want not-run", where.name, res)
 		}
 	}
+	return nil
+}
+
+// boundary is the boundary of the local installation, and runKey is where key@'s run directory is in its volume.
+const (
+	boundary = "dev"
+	runKey   = "run-key:/run/sluis/key:ro"
+)
+
+// keyStatusSmoke runs `sluis key status` and `sluis doctor --boundary dev` as root in a container that has key@'s run
+// directory, where key@'s admin socket is, and checks what they print. A peer that is not root must be a failure, not an
+// empty list. The local installation's keys have no certificate chain yet, so the table has no expiry and the exit is 0.
+func keyStatusSmoke(cli string) error {
+	fmt.Println("== sluis key status")
+	var first string
+	for i := 0; i < 2; i++ {
+		r, err := inContainer(cli, []string{runKey}, "key", "status", "--boundary", boundary, "--output", "json")
+		if err != nil {
+			return err
+		}
+		o, err := decode(r, "key status")
+		if err != nil {
+			return err
+		}
+		if r.code != 0 || o.Outcome != "done" {
+			return fmt.Errorf("exit %d, outcome %s: %s", r.code, o.Outcome, cut(r.stdout+r.stderr))
+		}
+		var purposes []string
+		for _, k := range o.Keys {
+			purposes = append(purposes, k.Purpose)
+			if k.Boundary != boundary || k.Store != "software" || len(k.Fingerprint) != 64 || k.Level != "none" || k.NotAfter != "" {
+				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits, level %q, not_after %q", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint), k.Level, k.NotAfter)
+			}
+		}
+		// The asymmetric purposes of the local KeyPlan (tests/installations/local/config/key-plan.yaml), in its order.
+		if strings.Join(purposes, ",") != "wrapping,token-signing,audit-log" {
+			return fmt.Errorf("the keys are %v", purposes)
+		}
+		fmt.Printf("%-44s exit %d  %s\n", "as root in a container of the installation", r.code, strings.Join(purposes, " "))
+		// A second call answers the same: the call changes nothing.
+		if i == 0 {
+			first = r.stdout
+		} else if r.stdout != first {
+			return errors.New("a second status answered differently: the call must change nothing")
+		}
+	}
+	// A peer that is not root cannot ask: exit 1, no keys.
+	r, err := inContainerAs("61999:61999", cli, []string{runKey}, "key", "status", "--boundary", boundary, "--output", "json")
+	if err != nil {
+		return err
+	}
+	o, err := decode(r, "key status")
+	if err != nil {
+		return err
+	}
+	if r.code != 1 || o.Outcome != "failed" || len(o.Keys) != 0 {
+		return fmt.Errorf("as a user that is not root: exit %d, outcome %s, %d keys; want a failure with no keys", r.code, o.Outcome, len(o.Keys))
+	}
+	fmt.Printf("%-44s exit %d  failed, no keys\n", "as a user that is not root", r.code)
+
+	// doctor asks key@ too.
+	r, err = inContainer(cli, []string{runKey}, "doctor", "--boundary", boundary, "--output", "json")
+	if err != nil {
+		return err
+	}
+	od, err := decode(r, "doctor")
+	if err != nil {
+		return err
+	}
+	if (r.code != 0 && r.code != 10) || od.Outcome != "done" {
+		return fmt.Errorf("doctor with key@: exit %d, outcome %s: %s", r.code, od.Outcome, cut(r.stdout+r.stderr))
+	}
+	if res, note, ok := od.check("key-store"); !ok || res != "ok" || !strings.Contains(note, "software") {
+		return fmt.Errorf("doctor: the key-store check is %q %q (found: %t)", res, note, ok)
+	}
+	fmt.Printf("%-44s exit %d  key-store ok\n", "doctor with key@, as root in a container", r.code)
 	return nil
 }
