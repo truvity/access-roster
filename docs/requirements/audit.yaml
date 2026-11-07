@@ -1539,7 +1539,7 @@ requirements:
       - {id: ST-114, section: "validation", depth: Partial}
     issues: [1120]
     verification:
-      - {kind: integration-test, ref: "OCSF toolkit check of the action table examples in CI (just ocsf-check); known findings are in tools/ocsf/known-findings.tsv"}
+      - {kind: integration-test, ref: "OCSF toolkit check of the action table examples in CI (just ocsf-check); known findings, counted, in tools/ocsf/known-findings.tsv, which CI refuses to grow"}
   - id: REQ-AUDIT-101
     area: AUDIT
     split_from: REQ-AUDIT-100
