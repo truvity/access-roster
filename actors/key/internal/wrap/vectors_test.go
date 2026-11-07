@@ -80,7 +80,7 @@ func aesUnwrap(t *testing.T, kek, wrapped []byte) []byte {
 	}
 	for j := 5; j >= 0; j-- {
 		for i := n; i >= 1; i-- {
-			tv := uint64(n*j + i)
+			tv := uint64(n*j + i) //nolint:gosec // small and positive
 			x := bytes.Clone(a)
 			binary.BigEndian.PutUint64(x, binary.BigEndian.Uint64(a)^tv)
 			b := make([]byte, 16)
@@ -100,11 +100,11 @@ func info(c wrap.Context) []byte {
 	var b []byte
 	b = append(b, "sluis-wrap-v1"...)
 	for _, s := range []string{c.Boundary, c.Tenant, c.Purpose} {
-		b = binary.BigEndian.AppendUint16(b, uint16(len(s)))
+		b = binary.BigEndian.AppendUint16(b, uint16(len(s))) //nolint:gosec // a short test string
 		b = append(b, s...)
 	}
 	b = binary.BigEndian.AppendUint32(b, c.Generation)
-	b = binary.BigEndian.AppendUint16(b, uint16(len(c.Recipient)))
+	b = binary.BigEndian.AppendUint16(b, uint16(len(c.Recipient))) //nolint:gosec // a short test string
 	return append(b, c.Recipient...)
 }
 
