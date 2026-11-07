@@ -207,7 +207,7 @@ requirements:
       - {kind: integration-test, ref: "fuzz corpus in CI"}
   - id: REQ-SEC-008
     area: SEC
-    statement: "Cryptographic primitives and protocol parsers MUST come from approved, maintained libraries."
+    statement: "Cryptographic primitives and the parsers of external protocol standards MUST come from approved, maintained libraries."
     rationale: "Home-made crypto is the main risk."
     level: MUST
     source: standard
@@ -224,8 +224,8 @@ requirements:
   - id: REQ-SEC-018
     area: SEC
     split_from: REQ-SEC-008
-    statement: "sluis MUST NOT implement its own cryptographic primitives or protocol parsers."
-    rationale: "Home-made crypto is the main risk."
+    statement: "sluis MUST NOT write its own code for an external cryptographic or protocol standard when a vetted library exists, nor ship a format of its own without a written specification, length limits and fuzz tests."
+    rationale: "Home-made code for a published standard is the main risk, and a format only sluis reads still needs a specification, limits and fuzzing."
     level: MUST
     source: standard
     status: partial
@@ -238,6 +238,8 @@ requirements:
     verification:
       - {kind: manual, ref: "dependency lint"}
       - {kind: integration-test, ref: "TestCheckpointsVerifyWithTheTransparencyDevVerifier: audit-log checkpoints open with the transparency-dev reference; fuzz targets in cli/sluis and writerd"}
+      - {kind: test-vectors, ref: "official vectors for each external standard it implements"}
+      - {kind: integration-test, ref: "fuzz corpus in CI for each format of its own"}
       - {kind: test-vectors, ref: "RFC 8785 corpus of the RFC's author, identical bytes in Go and Rust"}
   - id: REQ-SEC-009
     area: SEC
