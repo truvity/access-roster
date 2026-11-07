@@ -13,6 +13,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -36,7 +37,8 @@ var (
 )
 
 type slotKey struct {
-	priv     *ecdsa.PrivateKey
+	priv     *ecdsa.PrivateKey // an EC key; nil for an RSA key
+	rsaPriv  *rsa.PrivateKey   // an RSA key; nil for an EC key
 	imported bool
 	spec     card.KeySpec
 	// shown is the policy the attestation states; it differs from spec only when a test makes a card lie.
@@ -65,6 +67,19 @@ type Card struct {
 	LoginAttempts int
 	// Signs counts the signatures made.
 	Signs int
+	// RSASigns counts the RSA signatures that were started, and RSADone those that ended.
+	RSASigns, RSADone int
+	// RSAGate, when set, is waited on by every RSA signature after it started and before it ends, with the card's lock
+	// released: a test holds the "2.3 seconds" of a real card as long as it likes, and lets it go with a send or a close,
+	// so no test depends on the clock. RSAStarted, when set, receives one value as each RSA signature starts (a send that
+	// would block is skipped), so that a test knows the card is busy.
+	RSAGate    chan struct{}
+	RSAStarted chan struct{}
+	// RSAKeyBits is the size of the RSA key Generate and PutRSAKey make; 2048 when 0. A test makes another size to show that the
+	// driver refuses it.
+	RSAKeyBits int
+	// RSACorrupt makes the RSA signatures wrong by a bit, as a card with a fault does.
+	RSACorrupt bool
 	// Loggedin is the PIN state of the powered card.
 	Loggedin bool
 	// ResetErr makes ResetSession fail with it, as a card that another process holds does (card.ErrSharing).
@@ -266,7 +281,33 @@ func (c *Card) PutKey(s card.Slot, spec card.KeySpec) (*ecdsa.PublicKey, error) 
 	if err := c.init(); err != nil {
 		return nil, err
 	}
-	return c.generate(s, spec)
+	pub, err := c.generate(s, spec)
+	if err != nil {
+		return nil, err
+	}
+	ec, ok := pub.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, errors.New("cardtest: PutKey makes an EC key; PutRSAKey makes an RSA key")
+	}
+	return ec, nil
+}
+
+// PutRSAKey is PutKey for an RSA-2048 key.
+func (c *Card) PutRSAKey(s card.Slot, spec card.KeySpec) (*rsa.PublicKey, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if err := c.init(); err != nil {
+		return nil, err
+	}
+	pub, err := c.generate(s, spec)
+	if err != nil {
+		return nil, err
+	}
+	r, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		return nil, errors.New("cardtest: PutRSAKey makes an RSA key; PutKey makes an EC key")
+	}
+	return r, nil
 }
 
 // Lie makes the attestation of a slot state other policies than the key has.
@@ -276,13 +317,24 @@ func (c *Card) Lie(s card.Slot, shown card.KeySpec) {
 	c.slots[s].shown = shown
 }
 
-func (c *Card) generate(s card.Slot, spec card.KeySpec) (*ecdsa.PublicKey, error) {
+func (c *Card) generate(s card.Slot, spec card.KeySpec) (crypto.PublicKey, error) {
 	var curve elliptic.Curve
 	switch spec.Algorithm {
 	case card.EC256:
 		curve = elliptic.P256()
 	case card.EC384:
 		curve = elliptic.P384()
+	case card.RSA2048:
+		bits := c.RSAKeyBits
+		if bits == 0 {
+			bits = 2048
+		}
+		k, err := rsa.GenerateKey(rand.Reader, bits)
+		if err != nil {
+			return nil, err
+		}
+		c.slots[s] = &slotKey{rsaPriv: k, spec: spec, shown: spec}
+		return &k.PublicKey, nil
 	default:
 		return nil, errors.New("cardtest: algorithm")
 	}
@@ -301,6 +353,13 @@ func (c *Card) PrivateScalars() [][]byte {
 	defer c.mu.Unlock()
 	var out [][]byte
 	for _, k := range c.slots {
+		if k.rsaPriv != nil {
+			out = append(out, k.rsaPriv.D.Bytes())
+			for _, p := range k.rsaPriv.Primes {
+				out = append(out, p.Bytes())
+			}
+			continue
+		}
 		b, err := k.priv.Bytes()
 		if err != nil {
 			panic(err)
@@ -388,7 +447,7 @@ func (c *Card) Attest(s card.Slot) (*x509.Certificate, error) {
 			{Id: oidKeyPolicy, Value: policyBytes(k.shown)},
 		},
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.attCert, &k.priv.PublicKey, c.attKey)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.attCert, k.public(), c.attKey)
 	if err != nil {
 		return nil, err
 	}
@@ -587,12 +646,20 @@ func (c *Card) auth(k *slotKey, policy card.PINPolicy, pin card.PINSource) error
 	return c.login(string(p))
 }
 
-func (c *Card) key(s card.Slot, pub *ecdsa.PublicKey) (*slotKey, error) {
+// public is the public key of the slot's key.
+func (k *slotKey) public() crypto.PublicKey {
+	if k.rsaPriv != nil {
+		return &k.rsaPriv.PublicKey
+	}
+	return &k.priv.PublicKey
+}
+
+func (c *Card) key(s card.Slot, pub crypto.PublicKey) (*slotKey, error) {
 	k, ok := c.slots[s]
 	if !ok {
 		return nil, card.ErrNoKey
 	}
-	if !k.priv.PublicKey.Equal(pub) {
+	if eq, ok := k.public().(interface{ Equal(crypto.PublicKey) bool }); !ok || !eq.Equal(pub) {
 		return nil, errors.New("cardtest: the public key is not the slot's")
 	}
 	return k, nil
@@ -609,8 +676,63 @@ func (c *Card) Sign(s card.Slot, pub *ecdsa.PublicKey, policy card.PINPolicy, pi
 	if err := c.auth(k, policy, pin); err != nil {
 		return nil, err
 	}
+	if k.priv == nil {
+		return nil, errors.New("cardtest: the slot does not hold an EC key")
+	}
 	c.Signs++
 	return ecdsa.SignASN1(rand.Reader, k.priv, digest)
+}
+
+// SignRSA implements card.Card: RSASSA-PKCS1-v1_5 over a SHA-256 digest. The card's lock is released while the signature is
+// held at RSAGate, as the real card takes seconds and the driver, not the card, serialises the conversation.
+func (c *Card) SignRSA(s card.Slot, pub *rsa.PublicKey, policy card.PINPolicy, pin card.PINSource, digest []byte) ([]byte, error) {
+	c.mu.Lock()
+	k, err := c.key(s, pub)
+	if err == nil && k.rsaPriv == nil {
+		err = errors.New("cardtest: the slot does not hold an RSA key")
+	}
+	if err == nil && len(digest) != sha256.Size {
+		err = errors.New("cardtest: an RS256 digest is 32 octets")
+	}
+	if err == nil {
+		err = c.auth(k, policy, pin)
+	}
+	if err != nil {
+		c.mu.Unlock()
+		return nil, err
+	}
+	c.Signs++
+	c.RSASigns++
+	gate, started := c.RSAGate, c.RSAStarted
+	c.mu.Unlock()
+	if started != nil {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+	}
+	if gate != nil {
+		<-gate
+	}
+	sig, err := rsa.SignPKCS1v15(rand.Reader, k.rsaPriv, crypto.SHA256, digest)
+	c.mu.Lock()
+	c.RSADone++
+	gone := c.dead()
+	if c.RSACorrupt && err == nil {
+		sig[len(sig)-1] ^= 1
+	}
+	c.mu.Unlock()
+	if gone != nil {
+		return nil, gone
+	}
+	return sig, err
+}
+
+// RSACounts is RSASigns and RSADone, read under the card's lock.
+func (c *Card) RSACounts() (started, done int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.RSASigns, c.RSADone
 }
 
 // ECDH implements card.Card.
@@ -623,6 +745,9 @@ func (c *Card) ECDH(s card.Slot, pub *ecdsa.PublicKey, policy card.PINPolicy, pi
 	}
 	if err := c.auth(k, policy, pin); err != nil {
 		return nil, err
+	}
+	if k.priv == nil {
+		return nil, errors.New("cardtest: the slot does not hold an EC key")
 	}
 	own, err := k.priv.ECDH()
 	if err != nil {

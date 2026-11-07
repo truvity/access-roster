@@ -10,6 +10,7 @@ import (
 	"crypto"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -25,8 +26,9 @@ type Algorithm int
 
 // The algorithms of the slot plan.
 const (
-	EC256 Algorithm = iota + 1 // ECDSA or ECDH over P-256
-	EC384                      // ECDSA or ECDH over P-384
+	EC256   Algorithm = iota + 1 // ECDSA or ECDH over P-256
+	EC384                        // ECDSA or ECDH over P-384
+	RSA2048                      // RSA with a 2048-bit modulus and the exponent 65537: the RS256 purpose's key (ADR 0006, "Named exceptions")
 )
 
 // PINPolicy says when a key needs the PIN (NIST SP 800-73-4; the Yubico key policy extension).
@@ -167,6 +169,10 @@ type Card interface {
 	// Sign signs a digest with the key of the slot and returns an ASN.1 DER signature. A key whose PIN policy is
 	// PINOnce asks for the PIN through pin when the card is logged out.
 	Sign(slot Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, digest []byte) ([]byte, error)
+	// SignRSA signs a SHA-256 digest (32 octets) with the RSA-2048 key of the slot, RSASSA-PKCS1-v1_5 (RFC 8017, section
+	// 8.2.1), and returns the 256 octets of the signature. The padding is made on the host and the card does one private-key
+	// operation, which takes seconds on a YubiKey: the call holds the card for all that time. The PIN is asked for as in Sign.
+	SignRSA(slot Slot, pub *rsa.PublicKey, policy PINPolicy, pin PINSource, digest []byte) ([]byte, error)
 	// ECDH derives the shared secret of the key of the slot with a peer's public key.
 	ECDH(slot Slot, pub *ecdsa.PublicKey, policy PINPolicy, pin PINSource, peer *ecdh.PublicKey) ([]byte, error)
 

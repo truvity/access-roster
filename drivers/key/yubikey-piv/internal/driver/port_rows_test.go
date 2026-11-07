@@ -128,7 +128,7 @@ func TestNoAnswerOfTheCardDriverHoldsAPrivateKey(t *testing.T) {
 }
 
 // verifies: REQ-KEYS-004, REQ-KEYS-022
-// The card driver declares the signature algorithms it supports (ES384, ES256 for the audit-log purpose, and ECDH-P384
+// The card driver declares the signature algorithms it supports (ES384, ES256 for the audit-log purpose, RS256 for the RS256 purpose, and ECDH-P384
 // for key agreement) and refuses every other: Ensure and Sign answer an undeclared algorithm, EdDSA among them, with the
 // reason "algorithm", on a card at the firmware floor and on a newer one, so a card whose firmware has no EdDSA is never
 // asked for it and a card whose firmware has it is not given it by this driver. A card below the floor is refused at start
@@ -146,10 +146,10 @@ func TestTheDriverRefusesAnAlgorithmItDoesNotDeclare(t *testing.T) {
 				t.Fatal(err)
 			}
 			declared := caps.Msg.GetAlgorithms()
-			if !slices.Equal(declared, []string{"ES384", "ES256", "ECDH-P384"}) {
+			if !slices.Equal(declared, []string{"ES384", "ES256", "RS256", "ECDH-P384"}) {
 				t.Fatalf("declared %v", declared)
 			}
-			for _, alg := range []string{"EdDSA", "Ed25519", "RS256", "PS256", "ES512", "ES384 ", "es384", ""} {
+			for _, alg := range []string{"EdDSA", "Ed25519", "RS384", "PS256", "ES512", "ES384 ", "es384", "rs256", ""} {
 				if slices.Contains(declared, alg) {
 					t.Fatalf("%q is declared", alg)
 				}
@@ -163,7 +163,7 @@ func TestTheDriverRefusesAnAlgorithmItDoesNotDeclare(t *testing.T) {
 				t.Fatalf("%d PIN attempts", n)
 			}
 			// Each declared algorithm is served by the purpose that has it.
-			for _, p := range []struct{ purpose, alg string }{{"token-signing", "ES384"}, {"audit-log", "ES256"}, {"wrapping", "ECDH-P384"}} {
+			for _, p := range []struct{ purpose, alg string }{{"token-signing", "ES384"}, {"audit-log", "ES256"}, {"wrapping", "ECDH-P384"}, {"token-signing-rs256", "RS256"}} {
 				ensure(t, r.key, p.purpose, p.alg)
 			}
 		})
