@@ -172,6 +172,10 @@ func (t *tableFile) check() error {
 				return fmt.Errorf("action %s: %s %q", a.Name, v.name, v.val)
 			}
 		}
+		if a.Class == classApplicationLifecycle && (a.Policy != "" && a.Policy != "none" || a.Subject != "" && a.Subject != "none") {
+			// The profile of the class is `host`, and a person or a decision belongs to the record of an action, not to a start.
+			return fmt.Errorf("action %s: an Application Lifecycle row names no person and no policy decision", a.Name)
+		}
 		if a.Tenant == "required" {
 			return fmt.Errorf("action %s: tenant is optional or none (a record without one is the operator's own)", a.Name)
 		}

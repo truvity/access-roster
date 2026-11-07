@@ -1857,6 +1857,130 @@
     }
    ],
    "valid": false
+  },
+  {
+   "name": "a start without the application it names",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "application"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a start of another application than the actor",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "application.name",
+     "value": "key"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a start without its host profile",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "metadata.profiles"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a start with a profile that is not host",
+   "action": "store.start",
+   "ops": [
+    {
+     "op": "set",
+     "path": "metadata.profiles",
+     "value": [
+      "security_control"
+     ]
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authentication without the service",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "service"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authentication of the service of another actor",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "service.name",
+     "value": "exchange"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authentication without a user",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "delete",
+     "path": "user"
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authentication whose subject is not known",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "unknown"
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "an authentication whose user is neither a pseudonym nor unknown",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "someone"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an authentication of a row that names no person cannot name one",
+   "action": "upstream.begin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+     }
+    }
+   ],
+   "valid": false
   }
  ]
 }

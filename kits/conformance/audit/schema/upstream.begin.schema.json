@@ -89,6 +89,18 @@
    ],
    "type": "object"
   },
+  "service": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "const": "adapter-upstream-oidc"
+    }
+   },
+   "required": [
+    "name"
+   ],
+   "type": "object"
+  },
   "severity_id": {
    "const": 1,
    "type": "integer"
@@ -127,6 +139,18 @@
     "sluis"
    ],
    "type": "object"
+  },
+  "user": {
+   "additionalProperties": false,
+   "properties": {
+    "uid": {
+     "const": "unknown"
+    }
+   },
+   "required": [
+    "uid"
+   ],
+   "type": "object"
   }
  },
  "required": [
@@ -136,10 +160,12 @@
   "category_uid",
   "class_uid",
   "metadata",
+  "service",
   "severity_id",
   "status_id",
   "time",
-  "type_uid"
+  "type_uid",
+  "user"
  ],
  "title": "upstream.begin",
  "type": "object"

@@ -40,6 +40,14 @@ const (
 	// severityInformational is OCSF severity_id 1.
 	severityInformational = 1
 
+	// classApplicationLifecycle and classAuthentication are the OCSF classes whose required attributes the record
+	// fills from what the emitter knows (0030 "The class mapping", "The OCSF attributes a class requires").
+	classApplicationLifecycle = 6002
+	classAuthentication       = 3002
+	// userUnknown is the user.uid of an Authentication record whose subject is not known: OCSF requires the user,
+	// and a refusal before anyone is identified has none to name. It cannot be a pseudonym (those begin p1.).
+	userUnknown = "unknown"
+
 	// pseudonymPurpose, pseudonymLabel and pseudonymBytes fix the pseudonym (0029 "Pseudonyms"): Mac under the
 	// tenant's pseudonym key, with this label (which key@ binds in), kept to the first 128 bits.
 	pseudonymPurpose = "pseudonym"
@@ -576,9 +584,17 @@ func buildRecord(in recordInput) ([]byte, error) {
 		"uid":        in.uid,
 		"version":    OCSFVersion,
 	}
+	// REQ-AUDIT-120: the record declares the profiles whose attributes it uses. The security_control profile holds
+	// policy, action_id and authorizations; Application Lifecycle takes `actor` from the host profile.
+	var profiles []string
+	if a.ClassUID == classApplicationLifecycle {
+		profiles = append(profiles, "host")
+	}
 	if in.ev.Policy != nil {
-		// REQ-AUDIT-120: the record declares the profile whose attributes it uses.
-		md["profiles"] = []string{"security_control"}
+		profiles = append(profiles, "security_control")
+	}
+	if len(profiles) > 0 {
+		md["profiles"] = profiles
 	}
 	if in.correlation != "" {
 		md["correlation_uid"] = in.correlation
@@ -603,8 +619,20 @@ func buildRecord(in recordInput) ([]byte, error) {
 	if in.ev.StatusCode != "" {
 		rec["status_code"] = in.ev.StatusCode
 	}
-	if in.pseudonym != "" {
+	switch {
+	case in.pseudonym != "":
 		rec["user"] = map[string]any{"uid": in.pseudonym}
+	case a.ClassUID == classAuthentication:
+		// OCSF requires the subject of an authentication; none is known, and the record says so.
+		rec["user"] = map[string]any{"uid": userUnknown}
+	}
+	// The attributes a class requires that the emitter's own name fills: the application that started or reloaded,
+	// the service that authenticated. Both are the emitting actor, a name of the registry.
+	switch a.ClassUID {
+	case classApplicationLifecycle:
+		rec["application"] = map[string]any{"name": in.actor}
+	case classAuthentication:
+		rec["service"] = map[string]any{"name": in.actor}
 	}
 	sluis := in.ev.Sluis
 	if in.lost.total > 0 {
