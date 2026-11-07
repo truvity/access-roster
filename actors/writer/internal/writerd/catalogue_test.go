@@ -14,6 +14,27 @@ import (
 
 const schemaDir = "../../../../kits/conformance/audit/schema"
 
+// realCatalogue is the AuditCatalogue of a release with the real schemas, as the generator makes the document.
+func realCatalogue(t *testing.T, release string) *configv2alpha1.AuditCatalogue {
+	t.Helper()
+	ents, err := os.ReadDir(schemaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &configv2alpha1.AuditCatalogue{Release: release}
+	for _, e := range ents {
+		b, err := os.ReadFile(filepath.Join(schemaDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Schemas = append(c.Schemas, &configv2alpha1.AuditSchema{Name: e.Name(), Json: string(b)})
+		if e.Name() != audit.DefsName {
+			c.Actions = append(c.Actions, strings.TrimSuffix(e.Name(), ".schema.json"))
+		}
+	}
+	return c
+}
+
 // realChecker is a checker whose AuditCatalogue is the real one: the schemas generated from the action table, as the
 // release pipeline publishes them, at the release the local installation names.
 func realChecker(t *testing.T) checker {
@@ -188,5 +209,33 @@ func TestStartRefusesACatalogueItCannotUse(t *testing.T) {
 				t.Fatal("started on it")
 			}
 		})
+	}
+}
+
+// verifies: REQ-AUDIT-146, REQ-AUDIT-149
+//
+// The releases the writer takes and refuses are the corpus store@ and the generator use: the release of a catalogue is read
+// the same way in all three, and x/mod orders only what semver.org writes.
+func TestTheWriterReadsReleasesAsTheSharedCorpusDoes(t *testing.T) {
+	var f struct {
+		Accept []string `json:"accept"`
+		Reject []string `json:"reject"`
+	}
+	b, err := os.ReadFile("../../../../kits/conformance/audit/semver-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range f.Accept {
+		if !releaseCovered("v999.0.0", s) {
+			t.Errorf("record release %q refused by a catalogue of 999.0.0", s)
+		}
+	}
+	for _, s := range f.Reject {
+		if releaseCovered("v999.0.0", s) {
+			t.Errorf("record release %q taken", s)
+		}
 	}
 }
