@@ -23,7 +23,7 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/subject"
 )
 
-// verifies: REQ-EXCH-010
+// verifies: REQ-EXCH-010, REQ-TOKEN-033
 func TestExchangeForExampleAppReturnsAnAccessTokenNarrowedToThatAudience(t *testing.T) {
 	e := newEnv(t, envOptions{requires: []string{"dev:example-app:user"}})
 	// The person holds the full set after the ladder; the audience asks for the pair dev:example-app only.
@@ -671,6 +671,7 @@ func TestASubjectTokenWithLessThanASecondLeftGivesNoToken(t *testing.T) {
 	}
 }
 
+// verifies: REQ-TOKEN-033
 func TestTheNarrowingKeepsPairsAndNeverWidens(t *testing.T) {
 	e := newEnv(t, envOptions{requires: []string{"dev:example-app:admin", "acme:billing:user", "*:x:y", "bad"}})
 	e.policy.decide = allow("dev:example-app:user", "acme:billing:admin", "acme:billing:user", "dev:x:y", "prod:example-app:admin")

@@ -1235,9 +1235,8 @@ requirements:
     rationale: "Two checks in different holders, with different credentials and different registries, mean a flaw in one is caught by the other (ADR 0007)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: no-proving-test
     runtimes: all
     actors: [key]
     standards: []

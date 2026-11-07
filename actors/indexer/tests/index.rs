@@ -442,6 +442,7 @@ async fn a_record_of_no_tenant_is_indexed_under_the_tenant_the_writer_routed_it_
     assert!(env.search(&["acme"], "").await.is_empty());
 }
 
+/// verifies: REQ-AUDIT-160
 #[tokio::test]
 async fn policy_that_denies_the_grant_halts_the_log_and_one_that_is_down_does_not() {
     let mut env = Env::new().await;
@@ -460,6 +461,7 @@ async fn policy_that_denies_the_grant_halts_the_log_and_one_that_is_down_does_no
     );
 }
 
+/// verifies: REQ-AUDIT-160
 #[tokio::test]
 async fn a_grant_that_key_at_finds_expired_is_asked_for_again_once() {
     let mut env = Env::new().await;
