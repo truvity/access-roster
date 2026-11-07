@@ -477,12 +477,13 @@ requirements:
     rationale: "A pull request runs the files it proposes, so a job it reaches with id-token write can sign through GitHub's own Sigstore instance, which the signing API does not govern (ADR 0042, C3 A; REQ-WORKLOAD-007)."
     level: MUST
     source: security-review
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     features: [design]
     issues: [1124]
+    tests: [tools/workflows/release_rules_test.go]
     verification:
       - {kind: integration-test, ref: "fixtures: id-token write in a job under a pull-request trigger, or in a workflow that such a trigger calls through workflow_call, fails the lint; the same job on a tag or a dispatch passes"}
   - id: REQ-SUPPLY-040
@@ -527,7 +528,7 @@ requirements:
     features: [design]
     tests: [tools/release/gate_test.go, tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "tools/release/gate.sh over scratch repositories, gh stubbed: a green commit on main passes; an unmerged, unrun, failed, cancelled, running or unreadable one is refused; release.yaml needs the gate"}
+      - {kind: integration-test, ref: "gate.sh over scratch repositories, gh stubbed: a green commit on main passes; an unmerged, unrun, failed, cancelled, running or unreadable one is refused; the other jobs need the gate"}
   - id: REQ-SUPPLY-033
     area: SUPPLY
     statement: "A release workflow MUST declare no permission at workflow level."
@@ -556,7 +557,7 @@ requirements:
     features: [design]
     tests: [tools/workflows/release_rules_test.go]
     verification:
-      - {kind: integration-test, ref: "a workflow test: each job of release.yaml lists its permissions as a map, the write permissions are on the job release alone, and fixtures that break each part fail the rule"}
+      - {kind: integration-test, ref: "a workflow test: each job of release.yaml lists its permissions, only the job release writes, the build job has no write and no token, and fixtures fail each part"}
   - id: REQ-SUPPLY-042
     area: SUPPLY
     split_from: REQ-SUPPLY-033
