@@ -719,6 +719,12 @@ release-publish: rqlite-fetch
         export BUILDX_BUILDER="$builder"
     fi
     go run ./tools/release check-dist -config .goreleaser.yaml -dist "$dist"
+    # The audit catalogue of this release, from the table of this commit (here, not in the build job: it is made by this
+    # repository's own code from the tagged tree, and nothing of it comes out of the build). Without a catalogue for the
+    # version, the writer of an installation refuses every record that the release's emitters send (REQ-AUDIT-146), so the
+    # release stops here, before anything is pushed.
+    go run ./tools/gen/audit -catalogue "$dist/audit-catalogue.yaml" -release "$version"
+    go run ./tools/release check-catalogue -dist "$dist"
     go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
     go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
     go run ./tools/release release-images -dist "$dist"
@@ -729,12 +735,12 @@ release-publish: rqlite-fetch
     for f in "$dist"/*.sbom.spdx.json; do
         case "$f" in *.tar.gz.sbom.spdx.json) ;; *) sboms+=("$(basename "$f")") ;; esac
     done
-    go run ./tools/release sums-add -dist "$dist" release-images.txt "${sboms[@]}"
+    go run ./tools/release sums-add -dist "$dist" release-images.txt audit-catalogue.yaml "${sboms[@]}"
     go run ./tools/release check-sums -dist "$dist"
     go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
     if [ -z "$fresh" ]; then
-        # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs.
-        assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt)
+        # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs, the audit catalogue.
+        assets=("$dist"/*.tar.gz "$dist"/*.tar.gz.sha256 "$dist"/*.sbom.spdx.json "$dist"/SHA256SUMS "$dist"/release-images.txt "$dist"/audit-catalogue.yaml)
         pre=()
         case "$version" in *-*) pre=(--prerelease) ;; esac
         gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" ${pre[@]+"${pre[@]}"} "${assets[@]}"
@@ -787,7 +793,7 @@ release-rehearsal: rqlite-fetch
     # it. That is the first "done when" line of the first working version, run against the images of this commit. It needs the
     # upstream the smokes need (SLUIS_UPSTREAM_TARGET and SLUIS_KEYCLOAK_SECRETS, as the job smokes of checks.yaml makes them).
     if [ -n "${SLUIS_REHEARSAL_LOCAL:-}" ]; then
-        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/release/release-images.txt"
+        export SLUIS_LOCAL_IMAGES=release SLUIS_RELEASE_IMAGES="$PWD/dist/release/release-images.txt" SLUIS_RELEASE_CATALOGUE="$PWD/dist/release/audit-catalogue.yaml"
         project_up=1
         # The smokes mount their executable into any image of the project: the release's signer image, by digest.
         SLUIS_SMOKE_IMAGE=$(grep -m1 '/actor-signer:' dist/release/release-images.txt)

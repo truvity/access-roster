@@ -18,7 +18,10 @@
 #                            images of a release, pulled from the registry, and build nothing. The release needs
 #                            SLUIS_LOCAL_VERSION (the version of the release, 2.0.0-alpha.1, without the v) or
 #                            SLUIS_RELEASE_IMAGES (the release-images.txt of the release, a file or an https URL, which pins
-#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis
+#                            every image by its digest); SLUIS_IMAGE_PREFIX moves the namespace from ghcr.io/truvity/sluis.
+#                            It also needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release (a file or an https
+#                            URL), which the harness signs in place of the catalogue of this checkout (release 0.0.0): the
+#                            writer refuses the records of a release newer than its catalogue
 #   SLUIS_LOCAL_SUBNET       the subnet of the project's network (default: a free /24 of 10.99.0.0/16, chosen from the project
 #                            name and kept while the project's network exists; see default_subnet). Set it where the
 #                            host's firewall lets only some subnets reach the upstream
@@ -111,6 +114,23 @@ release_version() {
 	[[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "local: the version of the release is '$v'; set SLUIS_LOCAL_VERSION (2.0.0-alpha.1, without the v)" >&2; return 1; }
 	printf '%s' "$v"
 }
+# release_catalogue puts the audit catalogue of the release at $1, in place of the catalogue of this checkout. The emitters of a
+# release report its version in every record, and the writer refuses a record of a release newer than its catalogue
+# (REQ-AUDIT-146); the committed catalogue names 0.0.0. The release ships audit-catalogue.yaml (a file or an https URL in
+# SLUIS_RELEASE_CATALOGUE), and the harness signs it here as the operator's pipeline signs it in production. A catalogue for
+# another version than the images' is refused.
+release_catalogue() {
+	local dest=$1 src=${SLUIS_RELEASE_CATALOGUE:-} want got
+	[ -n "$src" ] || { echo "local: SLUIS_LOCAL_IMAGES=release needs SLUIS_RELEASE_CATALOGUE, the audit-catalogue.yaml of the release: the catalogue of this checkout names release 0.0.0, and the writer refuses the records of a newer release" >&2; return 1; }
+	want=$(release_version) || return 1
+	case "$src" in
+	https://*) curl --fail --silent --show-error --location --output "$dest" "$src" || { echo "local: $src could not be read" >&2; return 1; } ;;
+	*) [ -r "$src" ] || { echo "local: SLUIS_RELEASE_CATALOGUE=$src is not a readable file" >&2; return 1; }; cp "$src" "$dest" ;;
+	esac
+	got=$(sed -nE 's/^  release: *([^ ]+) *$/\1/p' "$dest" | head -n1)
+	[ "$got" = "$want" ] || { echo "local: the catalogue is for the release '$got', the project runs '$want'" >&2; return 1; }
+}
+
 root_dir=$state/root         # the throwaway root; its key is in $root_dir/private and is never mounted into a container
 handoff_dir=$state/handoff   # requests/ and answers/ of the hand-off
 handoff_stem=dev-x509-intermediate
@@ -189,6 +209,9 @@ config_source() {
 	rm -rf "$state/config"
 	mkdir -p "$state/config"
 	cp tests/installations/local/config/* "$state/config/"
+	if [ "$images_mode" = release ]; then
+		release_catalogue "$state/config/audit-catalogue.yaml" || return 1
+	fi
 	[ "$(grep -cxF -- "$line" "$state/config/key-plan.yaml")" = 1 ] || { echo "local: key-plan.yaml does not hold the line '$line' once; update deploy/local/local.sh" >&2; return 1; }
 	t=$(mktemp)
 	AT=$line NEW='    - { purpose: x509-intermediate, algorithm: ES384, slot: 9c }' awk '$0 == ENVIRON["AT"] { print ENVIRON["NEW"] } { print }' "$state/config/key-plan.yaml" >"$t"
@@ -200,14 +223,6 @@ config_source() {
 sign_config() {
 	local extra=()
 	[ ! -s "$state/recipients" ] || extra=(-recipients "$state/recipients")
-	# The writer refuses a record whose product version is newer than the catalogue's release (REQ-AUDIT-146). A build from this
-	# checkout is stamped 0.0.0-dev, which the committed catalogue (release 0.0.0) covers; the images of a release are stamped
-	# with the release's version, so the catalogue of such a run is of that release.
-	if [ "$images_mode" = release ]; then
-		local rel
-		rel=$(release_version) || exit 1
-		extra+=(-audit-release "$rel")
-	fi
 	config_source
 	go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"

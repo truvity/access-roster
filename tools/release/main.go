@@ -6,6 +6,7 @@
 //	publish-images   build and push the images from the archives with docker buildx; write dist/digests.txt
 //	release-images   write release-images.txt from the digests
 //	check-images     the release test of the images against the registry (-fresh for the throwaway one)
+//	check-catalogue  the release ships audit-catalogue.yaml for its own version (without it the writer refuses the release's records)
 //	check-sboms      the SPDX documents of the archives and the images
 //	rust-changed     the Cargo packages with a binary that a change can affect (they are checked alone: the release builds each alone)
 //	sums-add         append files of dist to SHA256SUMS
@@ -73,6 +74,9 @@ func main() {
 		sboms := fs.String("sboms", "dist/release", "the directory that holds the SBOM documents of the images (<image>.sbom.spdx.json)")
 		_ = fs.Parse(os.Args[2:])
 		finish("check-sboms: every archive and every image has a valid SPDX document that records its dependencies", CheckSBOMs(*cfg, *imgs, *dist, *sboms))
+	case "check-catalogue":
+		_ = fs.Parse(os.Args[2:])
+		finish("check-catalogue: the release ships the audit catalogue for its own version", CheckCatalogue(*dist))
 	case "rust-changed":
 		base := fs.String("base", "", "the commit the change is compared with")
 		_ = fs.Parse(os.Args[2:])
@@ -108,7 +112,7 @@ func needPrefix(p string) {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: release check-dist | preflight | publish-images | release-images | check-images -registry URL | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
+	fmt.Fprintln(os.Stderr, "usage: release check-dist | preflight | publish-images | release-images | check-images -registry URL | check-catalogue | check-sboms | sums-add FILE... | check-sums  [-prefix P] [-config F] [-images F] [-dist D]  [-config .goreleaser.yaml] [-dist dist/release]")
 	os.Exit(2)
 }
 

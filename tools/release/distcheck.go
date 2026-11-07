@@ -153,7 +153,7 @@ func CheckDist(configPath, dist string) []string {
 	}
 	for name := range sums {
 		// The list of images and the SBOMs of the images are added to SHA256SUMS after the images are pushed (tools/release sums).
-		if !expected[name] && name != "release-images.txt" && (!strings.HasSuffix(name, ".sbom.spdx.json") || strings.Contains(name, ".tar.gz")) {
+		if !expected[name] && name != "release-images.txt" && name != CatalogueFile && (!strings.HasSuffix(name, ".sbom.spdx.json") || strings.Contains(name, ".tar.gz")) {
 			bad("SHA256SUMS lists %s, which no archive of the configuration is", name)
 		}
 	}
