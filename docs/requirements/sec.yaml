@@ -497,13 +497,13 @@ requirements:
     rationale: "A revocation is the most urgent event for a key, and it must be on record, with the node that took it and the uid that delivered it; a fact whose emit is lost is not sent again yet (ADR 0041)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     issues: [1362]
     runtimes: all
     actors: [key]
     standards: []
+    tests: [actors/key/internal/keyd/declaration_test.go, actors/key/main_test.go]
     verification:
       - {kind: integration-test, ref: "revoke a key: one audit record names the key, the reason and the operator, the publisher key that signed the declaration"}
   - id: REQ-SEC-035

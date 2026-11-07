@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/refusal"
+	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
 // revoke puts a KeyRevocation item into the store as key@ would write it on an operator's declaration, at the time of
@@ -37,12 +39,30 @@ func (e *testEnv) revokeUnindexed(kind, target string) {
 }
 
 func (n *node) signFor(purpose string, content []byte) error {
-	actor := "signer"
-	if purpose == "audit-log" {
-		actor = "writer"
-	}
-	_, err := n.client(actor).Sign(context.Background(), signReq(purpose, content))
+	_, err := n.client(signerOf(purpose)).Sign(context.Background(), signReq(purpose, content))
 	return err
+}
+
+// signerOf is the actor that the registry lets sign under the purpose: one actor for each signing key (keys.yaml).
+func signerOf(purpose string) string {
+	for _, a := range registry.CallersOf("key") {
+		if registry.KeyAllows(a, registry.ScopeBoundary, purpose, "sign") {
+			return a
+		}
+	}
+	return ""
+}
+
+// signingPurposes are the purposes of the KeyPlan that some actor may sign under, in order: what a Sign can reach.
+func (n *node) signingPurposes() []string {
+	var out []string
+	for p := range n.srv.keys {
+		if signerOf(p) != "" {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 func signContent(t *testing.T, n *node, purpose string) []byte {
@@ -77,7 +97,13 @@ func (n *node) refusal(t *testing.T, err error, code connect.Code, reason, path 
 // key@ refuses a Sign with a key that KeyRevocation lists by its kid, for each signing purpose it serves, names the
 // target in the refusal and audits it. A revocation of another key leaves the key alone.
 func TestSignWithARevokedKeyIsRefused(t *testing.T) {
-	for _, purpose := range []string{"token-signing", "audit-log"} {
+	// The purposes are the ones the KeyPlan serves and the registry lets an actor sign under, not a list written here:
+	// a purpose that key@ learns to serve is tested, or this test says it cannot sign for it.
+	served := newTestEnv(t, "development").startedNode(nodeOpts{}).signingPurposes()
+	if !slices.Equal(served, []string{"audit-log", "token-signing"}) {
+		t.Fatalf("key@ serves the signing purposes %v: give signContent the content of each, and extend this test", served)
+	}
+	for _, purpose := range served {
 		t.Run(purpose, func(t *testing.T) {
 			e := newTestEnv(t, "development")
 			n := e.startedNode(nodeOpts{})
