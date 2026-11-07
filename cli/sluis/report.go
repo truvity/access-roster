@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/truvity/sluis/v2/kits/go/cli"
 )
@@ -50,6 +51,20 @@ type loginOut struct {
 	Subject   string `json:"subject,omitempty"`
 	ExpiresAt string `json:"expires_at"`
 }
+
+// The exit codes of `doctor` and `key status` beyond the common ones (cli.md, "Exit codes"): a notice, an alert and a
+// critical alert.
+const (
+	exitNotice   = 10
+	exitAlert    = 11
+	exitCritical = 12
+)
+
+// findingExit is the end of a command that did what it was asked and found something: the exit code is 10, 11 or 12 and
+// the outcome stays `done` (cli.md, "JSON output").
+type findingExit int
+
+func (e findingExit) Error() string { return "finding with exit code " + strconv.Itoa(int(e)) }
 
 // exitNotConfirmed is exit code 5 of cli.md: `sluis key revoke` delivered the declaration and could not confirm it.
 const exitNotConfirmed = 5
