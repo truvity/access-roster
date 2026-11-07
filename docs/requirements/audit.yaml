@@ -443,7 +443,7 @@ requirements:
   - id: REQ-AUDIT-187
     area: AUDIT
     split_from: REQ-AUDIT-013
-    statement: "An emitter MAY lose a best-effort fact when its delivery fails, and the best-effort facts are refusals and denials, start and reload facts, data-key creations, wrap writes, revocations and changes of the signer's ring, but not the successful sign-in, code, token or exchange outcomes of session, exchange and the upstream adapter, which fail their operation."
+    statement: "An emitter MAY lose a best-effort fact when its delivery fails, and the best-effort facts are refusals and denials, start and reload facts, data-key creations, wrap writes, revocations, ends of a session chain and changes of the signer's ring, but not the successful sign-in, code, token or exchange outcomes of session, exchange and the upstream adapter, which fail their operation."
     rationale: "A full spool must never block a revocation or answer a refusal on the log's health, and a fact whose operation failed is not lost (ADR 0029)."
     level: MAY
     source: design-decision
