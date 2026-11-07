@@ -647,6 +647,8 @@ type nodeOpts struct {
 	unlisted bool
 	// stateDir is key@'s durable state; empty makes a new one, as a node with a new disk has.
 	stateDir string
+	// rewrapEvery is the period of the rewrap pass; 0 is an hour, which no test waits for.
+	rewrapEvery time.Duration
 }
 
 // newNode makes a key@ for the node, with its run directory and driver, but does not start it.
@@ -681,9 +683,12 @@ func (e *testEnv) newNode(o nodeOpts) *node {
 	dpath, dh := keystorev2alpha1connect.NewKeyStoreServiceHandler(o.driver)
 	serveFake(e.t, dsock, dpath, dh)
 
+	if o.rewrapEvery == 0 {
+		o.rewrapEvery = time.Hour
+	}
 	srv, err := New(Config{
 		Boundary: testBoundary, RunDir: runDir, StoreSocket: e.sock, DriverSocket: dsock, Node: o.name,
-		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RewrapEvery: time.Hour, TransportSocket: o.transport,
+		Bootstrap: e.bootstrap, StateDir: o.stateDir, Auditor: o.audit, Now: e.clock.now, RewrapEvery: o.rewrapEvery, TransportSocket: o.transport,
 	})
 	if err != nil {
 		e.t.Fatal(err)
