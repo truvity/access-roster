@@ -161,3 +161,63 @@ func TestEachBoundaryHasItsOwnIssuerKeysAndKeySet(t *testing.T) {
 		t.Errorf("a token of another boundary reached policy %d times", n-asked)
 	}
 }
+
+// verifies: REQ-CLIENT-006
+func TestAPublicNativeClientThatIsDeletedIsInvalidClientOnItsNextRequest(t *testing.T) {
+	// A native public client exchanges its own token without credentials. Once it is deleted from the config, its next
+	// exchange is the one answer of a client that cannot be authenticated, as at the token endpoint of session.
+	for _, id := range []string{"sluis-cli", "native-app"} {
+		t.Run(id, func(t *testing.T) {
+			e := newEnv(t, envOptions{})
+			req := func() *exchangev2alpha1.TokenExchangeRequest {
+				r := request(e.mint(subjectClaims(map[string]any{"aud": id, "client_id": id})))
+				r.ClientId = id
+				return r
+			}
+			// Before: the same request is served, so the refusal below is the deletion's.
+			if r := e.exchange(req()); r.GetStatus() != 200 {
+				t.Fatalf("before the deletion: %d %s", r.GetStatus(), r.GetBody())
+			}
+			issued, asked, macs := len(e.signer.requests()), len(e.policy.requests()), len(e.key.pairwise())
+
+			e.store.drop("installation-client", id)
+			rep := e.exchange(req())
+			if rep.GetStatus() != 401 || body(t, rep)["error"] != "invalid_client" {
+				t.Fatalf("status %d: %s", rep.GetStatus(), rep.GetBody())
+			}
+			if wwwAuthenticate(rep) == "" {
+				t.Error("no WWW-Authenticate on a 401")
+			}
+			// The audit reason names the lookup that failed, and the record is a refusal of this client.
+			rec := e.lastRecord()
+			if get(rec, "metadata", "event_code") != "exchange.refused" || get(rec, "status_code") != "client" ||
+				get(rec, "unmapped", "sluis", "client", "id") != id || get(rec, "unmapped", "sluis", "client", "authenticated") != false {
+				t.Errorf("record = %v", rec)
+			}
+			if len(e.signer.requests()) != issued || len(e.policy.requests()) != asked || len(e.key.pairwise()) != macs {
+				t.Error("a deleted client reached policy, key@ or the signer")
+			}
+
+			// The answer shows no more than invalid_client already does: a client that never existed gets the same
+			// bytes, and a token that does not verify is the same invalid_request whether its client exists or not.
+			ghost := request(e.mint(subjectClaims(map[string]any{"aud": "ghost", "client_id": "ghost"})))
+			ghost.ClientId = "ghost"
+			if e.answer(ghost) != e.answer(req()) {
+				t.Errorf("a deleted client and one that never existed are told apart:\n%s\n%s", e.answer(req()), e.answer(ghost))
+			}
+			for _, client := range []string{id, "sluis-cli", "ghost"} {
+				bad := request(tamper(e.mint(subjectClaims(map[string]any{"aud": id, "client_id": id}))))
+				bad.ClientId = client
+				failure(t, e.exchange(bad), "invalid_request")
+			}
+		})
+	}
+
+	// A live client is not affected: it is served, and the others are served after one is deleted.
+	e := newEnv(t, envOptions{})
+	e.store.drop("installation-client", "native-app")
+	r := request(e.mint(subjectClaims(nil)))
+	if rep := e.exchange(r); rep.GetStatus() != 200 {
+		t.Fatalf("a live public client after another was deleted: %d %s", rep.GetStatus(), rep.GetBody())
+	}
+}
