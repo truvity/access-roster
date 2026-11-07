@@ -81,8 +81,17 @@ func buildDefs(t *tableFile) obj {
 		"description": "metadata.uid: a UUIDv7 in the form of RFC 9562."}
 	defs["pseudonym"] = obj{"type": "string", "pattern": "^p1\\.[0-9]{6}\\.[A-Za-z0-9_-]{22}$",
 		"description": "user.uid: a keyed pseudonym of a person, never the person (ADR 0029, Pseudonyms)."}
-	defs["user_uid"] = obj{"anyOf": []obj{ref("pseudonym"), {"const": userUnknown}},
-		"description": "user.uid of an Authentication record whose subject may be unknown: a pseudonym, or unknown (OCSF requires the user; ADR 0030, The OCSF attributes a class requires)."}
+	defs["user_known"] = obj{
+		"type": "object", "additionalProperties": false, "required": []string{"type_id", "uid"},
+		"description": "user of a record whose subject is known: the pseudonym, and what kind of identity it is (1 a person, 3 a client or a workload, 99 another kind), so a pseudonym of a client never passes for a person's.",
+		"properties":  obj{"uid": ref("pseudonym"), "type_id": obj{"type": "integer", "enum": []int{1, 3, 99}}},
+	}
+	defs["user_unknown"] = obj{
+		"type": "object", "additionalProperties": false, "required": []string{"type_id", "uid"},
+		"description": "user of an Authentication record that established no subject: OCSF requires the user, and this says there is none (ADR 0030, The OCSF attributes a class requires).",
+		"properties":  obj{"uid": obj{"const": userUnknown}, "type_id": obj{"const": 0}},
+	}
+	defs["user_either"] = obj{"anyOf": []obj{ref("user_known"), ref("user_unknown")}}
 	defs["correlation"] = obj{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$",
 		"description": "metadata.correlation_uid: the id of the call being served."}
 	defs["lost"] = obj{
@@ -238,17 +247,17 @@ func buildAction(t *tableFile, a action) obj {
 	switch {
 	case a.Class == classAuthentication:
 		// OCSF requires the subject of an authentication. A row that may name nobody says `unknown` then.
-		uid := obj{"const": userUnknown}
+		user := ref("user_unknown")
 		switch a.Subject {
 		case "required":
-			uid = ref("pseudonym")
+			user = ref("user_known")
 		case "optional":
-			uid = ref("user_uid")
+			user = ref("user_either")
 		}
-		props["user"] = obj{"type": "object", "additionalProperties": false, "required": []string{"uid"}, "properties": obj{"uid": uid}}
+		props["user"] = user
 		required = append(required, "user")
 	case a.Subject == "optional" || a.Subject == "required":
-		props["user"] = obj{"type": "object", "additionalProperties": false, "required": []string{"uid"}, "properties": obj{"uid": ref("pseudonym")}}
+		props["user"] = ref("user_known")
 		if a.Subject == "required" {
 			required = append(required, "user")
 		}

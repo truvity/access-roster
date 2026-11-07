@@ -1615,7 +1615,8 @@
      "op": "set",
      "path": "user",
      "value": {
-      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 1
      }
     }
    ],
@@ -1629,7 +1630,8 @@
      "op": "set",
      "path": "user",
      "value": {
-      "uid": "someone@example.com"
+      "uid": "someone@example.com",
+      "type_id": 1
      }
     }
    ],
@@ -1948,7 +1950,8 @@
      "op": "set",
      "path": "user",
      "value": {
-      "uid": "unknown"
+      "uid": "unknown",
+      "type_id": 0
      }
     }
    ],
@@ -1962,7 +1965,8 @@
      "op": "set",
      "path": "user",
      "value": {
-      "uid": "someone"
+      "uid": "someone",
+      "type_id": 1
      }
     }
    ],
@@ -1976,7 +1980,97 @@
      "op": "set",
      "path": "user",
      "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 1
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a subject that is known with its kind: a client",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 3
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a subject that is known with another kind",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 99
+     }
+    }
+   ],
+   "valid": true
+  },
+  {
+   "name": "a subject that is known without its kind",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
       "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA"
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a subject of a kind that OCSF does not number",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 7
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "an unknown subject that claims to be a person",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "unknown",
+      "type_id": 1
+     }
+    }
+   ],
+   "valid": false
+  },
+  {
+   "name": "a pseudonym that claims not to be known",
+   "action": "session.signin",
+   "ops": [
+    {
+     "op": "set",
+     "path": "user",
+     "value": {
+      "uid": "p1.202611.AAAAAAAAAAAAAAAAAAAAAA",
+      "type_id": 0
      }
     }
    ],
