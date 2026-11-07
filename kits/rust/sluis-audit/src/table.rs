@@ -74,6 +74,49 @@ impl Retrieve for Docs {
     }
 }
 
+/// Compiles one document of a set, which resolves its references among the set by name.
+fn compile(
+    uri: &str,
+    doc: &Value,
+    docs: &Arc<HashMap<String, Value>>,
+) -> std::result::Result<Validator, String> {
+    jsonschema::options()
+        .with_base_uri(uri.to_owned())
+        .with_retriever(Docs(Arc::clone(docs)))
+        .build(doc)
+        .map_err(|e| e.to_string())
+}
+
+/// Checks that a set of schema documents (file name to JSON text), as an `AuditCatalogue` holds them, is a set the
+/// writer can use: each is JSON, [`DEFS_NAME`] is among them, and each of the others compiles with the references
+/// among the set resolved. store@ refuses a catalogue that fails this, so the writer never starts on one.
+///
+/// # Errors
+///
+/// A message that names the document and the reason, never a value of a record.
+pub fn check_documents(documents: &[(String, String)]) -> std::result::Result<(), String> {
+    let mut docs = HashMap::new();
+    for (name, text) in documents {
+        let v: Value = serde_json::from_str(text).map_err(|e| format!("schema {name}: {e}"))?;
+        if !v.is_object() {
+            return Err(format!("schema {name}: not a JSON Schema object"));
+        }
+        docs.insert(format!("{BASE}{name}"), v);
+    }
+    if !docs.contains_key(&format!("{BASE}{DEFS_NAME}")) {
+        return Err(format!("schema: no {DEFS_NAME}"));
+    }
+    let docs = Arc::new(docs);
+    for (name, _) in documents {
+        if name == DEFS_NAME {
+            continue;
+        }
+        let uri = format!("{BASE}{name}");
+        compile(&uri, &docs[&uri], &docs).map_err(|e| format!("schema {name}: {e}"))?;
+    }
+    Ok(())
+}
+
 impl Table {
     /// Returns a table from rows and schema documents (file name to JSON text), which must hold [`DEFS_NAME`] and the
     /// schema of every row.
@@ -107,11 +150,7 @@ impl Table {
             let doc = docs
                 .get(&uri)
                 .ok_or_else(|| format!("audit table: the action {:?} has no schema", r.name))?;
-            let v = jsonschema::options()
-                .with_base_uri(uri.clone())
-                .with_retriever(Docs(Arc::clone(&docs)))
-                .build(doc)
-                .map_err(|e| format!("schema {}: {e}", r.name))?;
+            let v = compile(&uri, doc, &docs).map_err(|e| format!("schema {}: {e}", r.name))?;
             validators.insert(r.name, v);
         }
         Ok(Self {

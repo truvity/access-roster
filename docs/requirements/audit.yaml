@@ -1716,7 +1716,7 @@ requirements:
     rationale: "OCSF cannot type the object, so sluis's own schema must, and the writer stays authoritative (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
@@ -2190,27 +2190,28 @@ requirements:
     rationale: "The release identifies the action table, so a log needs no copy of it, and a record of an unknown release cannot be validated (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
     issues: [1121, 1120]
     verification:
-      - {kind: integration-test, ref: "a record from a release whose catalogue is not published is quarantined"}
+      - {kind: integration-test, ref: "a record of a release newer than the catalogue is quarantined (TestTheWriterRefusesARecordOfAReleaseNewerThanTheCatalogue)"}
   - id: REQ-AUDIT-147
     area: AUDIT
     statement: "The build MUST publish the AuditCatalogue document of a release, together with its schemas, before that release emits."
     rationale: "A product release then needs no writer upgrade (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
     verification:
-      - {kind: integration-test, ref: "a release pipeline run publishes the catalogue document and the writer validates the first record of the release"}
+      - {kind: integration-test, ref: "tools/gen/audit -catalogue -release makes the document of a release (tested); the release pipeline does not run it yet"}
   - id: REQ-AUDIT-148
     area: AUDIT
     statement: "The writer MUST refuse a record whose metadata.product.name its project does not declare."

@@ -1308,7 +1308,7 @@ async fn a_change_of_any_one_document_reloads_the_whole_snapshot_with_no_restart
         ),
         (
             "audit-catalogue",
-            source("audit-catalogue").replace("release: \"0.0.0\"", "release: \"0.0.1\""),
+            source("audit-catalogue").replace("release: 0.0.0", "release: 0.0.1"),
         ),
         (
             "upstream",
@@ -1699,6 +1699,64 @@ fn the_local_catalogue_names_the_actions_policy_the_signer_and_exchange_emit() {
         "exchange.refused",
     ] {
         assert!(a.actions.iter().any(|x| x == action), "{action}");
+    }
+}
+
+/// verifies: REQ-AUDIT-149
+///
+/// An AuditCatalogue is the table with its schemas, and store@ refuses one that the writer could not use: a release that is
+/// no version, an action without its schema, a schema without its action, a schema that is no JSON Schema, a document
+/// twice. The reason names the place, never a value.
+#[test]
+fn an_audit_catalogue_the_writer_could_not_use_is_refused_with_its_path() {
+    let good = source("audit-catalogue");
+    let decode = |text: &str| payload::decode(kind("AuditCatalogue"), text.as_bytes());
+    decode(good).expect("the local catalogue is good");
+    for (name, text, want) in [
+        (
+            "a release that is no version",
+            good.replace("release: 0.0.0", "release: latest"),
+            "default.release: not a semantic version",
+        ),
+        (
+            "a release with a v",
+            good.replace("release: 0.0.0", "release: v0.0.0"),
+            "default.release: not a semantic version",
+        ),
+        (
+            "an action twice",
+            good.replacen("    - key.start\n", "    - key.start\n    - key.start\n", 1),
+            "default.actions[1]: twice",
+        ),
+        (
+            "an action without its schema",
+            good.replacen(
+                "    - key.start\n",
+                "    - key.start\n    - key.nothing\n",
+                1,
+            ),
+            "default.schemas: an action has no schema",
+        ),
+        (
+            "a schema without its action",
+            good.replacen("    - key.start\n", "", 1),
+            "default.schemas: a schema has no action",
+        ),
+        (
+            "a schema that does not compile",
+            good.replacen("\"type\":\"object\"", "\"type\":\"nonsense\"", 1),
+            "default.schemas: a schema does not compile",
+        ),
+        (
+            "no schemas",
+            good.split("  schemas:").next().unwrap().to_owned(),
+            "default.schemas: required",
+        ),
+    ] {
+        let e = decode(&text);
+        let msg = e.as_ref().err().map(|e| e.0.clone()).unwrap_or_default();
+        assert!(e.is_err(), "{name}: accepted");
+        assert_eq!(msg, want, "{name}");
     }
 }
 

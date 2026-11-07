@@ -51,7 +51,7 @@ use sluis_proto::sluis::port::transport::v2alpha1::{
 };
 
 pub use canonical::canonical;
-pub use table::{Activity, DEFS_NAME, Row, Table};
+pub use table::{Activity, DEFS_NAME, Row, Table, check_documents};
 pub use uuid::new_uuid_v7;
 
 /// The result of every call: a Connect error with the `Refusal` detail (contracts.md "Errors").

@@ -6,6 +6,9 @@ import (
 	"errors"
 	"io"
 	"strconv"
+	"strings"
+
+	"golang.org/x/mod/semver"
 
 	"github.com/truvity/sluis/v2/kits/go/audit"
 	"github.com/truvity/sluis/v2/kits/go/store"
@@ -23,6 +26,7 @@ const (
 	reasonSchema    = "schema"    // a required field is missing or has another type
 	reasonBound     = "bound"     // larger than the writer takes
 	reasonAction    = "action"    // metadata.event_code is not in the catalogue
+	reasonRelease   = "release"   // metadata.product.version is newer than the catalogue's release, or not a version
 	reasonBoundary  = "boundary"  // metadata.log_name is another boundary
 	reasonProduct   = "product"   // metadata.product.name is not the project's
 	reasonEmitter   = "emitter"   // actor.user.uid is not the emitter the transport saw
@@ -42,19 +46,23 @@ type recordInfo struct {
 	timeMS, actorTypeID                   int64
 }
 
-// catalogue is the minimal AuditCatalogue of decision D-15: the action names of a release.
+// catalogue is the set of action names of the AuditCatalogue.
 type catalogue map[string]struct{}
 
-// checker validates the messages of one project's log.
+// checker validates the messages of one project's log against its AuditCatalogue: the action table of the newest
+// release, with the JSON Schema of each action's records (0030, "The catalogue is the table with its schemas").
 type checker struct {
 	boundary, project string
+	release           string // the release of the catalogue, a semantic version with a "v"
 	actions           catalogue
+	schemas           *audit.Schemas
 }
 
 // check validates one message and returns the projection of its record. The rules are those of 0030 "The record
-// format" that decision D-15 builds tonight: the bytes are canonical (parse, canonicalise again, compare), the
-// envelope fields have their types, the boundary and the product are the log's, the action is in the catalogue,
-// and the actor is the emitter the transport saw. A usage part is refused: the minimal catalogue declares no meter.
+// format": the bytes are canonical (parse, canonicalise again, compare), the envelope fields have their types, the
+// boundary and the product are the log's, the action is in the catalogue and the release is not newer than it, the
+// actor is the emitter the transport saw, and the record validates against the schema of its action (REQ-AUDIT-113).
+// A usage part is refused: the catalogue declares no meter.
 func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, *rejection) {
 	var zero recordInfo
 	if len(rec) > audit.RecordMax {
@@ -102,8 +110,14 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 	if info.product, ok = prod["name"].(string); !ok || info.product != c.project {
 		return zero, &rejection{reasonProduct, "metadata.product.name"}
 	}
-	if v, ok := prod["version"].(string); !ok || v == "" {
+	version, ok := prod["version"].(string)
+	if !ok || version == "" {
 		return zero, &rejection{reasonSchema, "metadata.product.version"}
+	}
+	// REQ-AUDIT-146: the catalogue is the newest release's table, and within a major version it only grows, so it holds
+	// for every older release; a record of a newer one has no catalogue yet and is kept aside.
+	if !releaseCovered(c.release, version) {
+		return zero, &rejection{reasonRelease, "metadata.product.version"}
 	}
 	if t, present := md["tenant_uid"]; present {
 		s, ok := t.(string)
@@ -139,7 +153,39 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 		}
 		*f.dst = n
 	}
+	// REQ-AUDIT-113: the whole record against the schema of its action, unmapped.sluis included. The path names the
+	// member and never a value.
+	if err := c.schemas.Validate(info.event+".schema.json", rec); err != nil {
+		return zero, &rejection{reasonSchema, schemaPath(err)}
+	}
 	return info, nil
+}
+
+// releaseCovered reports whether a record of release version is covered by the catalogue of release newest: it is not
+// newer. Both are semantic versions; the record's has no "v".
+func releaseCovered(newest, version string) bool {
+	v := "v" + version
+	return fullSemver(v) && semver.Compare(v, newest) <= 0
+}
+
+// fullSemver reports whether v ("v" + a version) is MAJOR.MINOR.PATCH with an optional prerelease and build: x/mod
+// also takes "v2" and "v2.3", which a release never is.
+func fullSemver(v string) bool {
+	core, _, _ := strings.Cut(strings.SplitN(v, "+", 2)[0], "-")
+	return semver.IsValid(v) && strings.Count(core, ".") == 2
+}
+
+// schemaPath is the path of the member that failed its schema, as a dotted path, or "record" when it is not a plain one.
+func schemaPath(err error) string {
+	var se *audit.SchemaError
+	if !errors.As(err, &se) {
+		return "record"
+	}
+	p := strings.ReplaceAll(strings.TrimPrefix(se.Path, "/"), "/", ".")
+	if p == "" || len(p) > 128 || strings.Trim(p, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-") != "" {
+		return "record"
+	}
+	return p
 }
 
 // tenantID reports whether s is a tenant id: one part of an address, and not the "-" of a kind with no tenant.

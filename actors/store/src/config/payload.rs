@@ -593,8 +593,17 @@ fn audit_log(mut o: Obj) -> R<pb::AuditLog> {
     })
 }
 
+/// The most schema documents one AuditCatalogue holds, the most bytes of one, and of all of them. The document as a whole is
+/// at most `DOCUMENT_MAX`; these keep one catalogue from filling it.
+const SCHEMAS_MAX: usize = 512;
+const SCHEMA_MAX: usize = 64 << 10;
+const SCHEMAS_TOTAL_MAX: usize = 1 << 20;
+
 fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
     let release = o.required("release")?;
+    if !semver_like(&release) {
+        return err(&o.at("release"), "not a semantic version");
+    }
     let actions = o.strings("actions")?;
     if actions.is_empty() {
         return err(&o.at("actions"), "required");
@@ -609,13 +618,81 @@ fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
         if !ok {
             return err(&format!("{}[{i}]", o.at("actions")), "not an action name");
         }
+        if actions[..i].contains(a) {
+            return err(&format!("{}[{i}]", o.at("actions")), "twice");
+        }
     }
+    let mut schemas = Vec::new();
+    let mut total = 0;
+    let path = o.at("schemas");
+    for (i, mut s) in o.objects("schemas")?.into_iter().enumerate() {
+        let name = s.required("name")?;
+        let json = s.required("json")?;
+        s.done()?;
+        let at = format!("{path}[{i}]");
+        if schemas.iter().any(|x: &pb::AuditSchema| x.name == name) {
+            return err(&format!("{at}.name"), "twice");
+        }
+        if json.len() > SCHEMA_MAX {
+            return err(&format!("{at}.json"), "too long");
+        }
+        total += json.len();
+        schemas.push(pb::AuditSchema {
+            name,
+            json,
+            ..pb::AuditSchema::default()
+        });
+    }
+    if schemas.len() > SCHEMAS_MAX || total > SCHEMAS_TOTAL_MAX {
+        return err(&path, "too large");
+    }
+    // The table and its schemas move together: every action has its schema, and no schema is left without its action.
+    if schemas.is_empty() {
+        return err(&path, "required");
+    }
+    for a in &actions {
+        let want = format!("{a}.schema.json");
+        if !schemas.iter().any(|s| s.name == want) {
+            return err(&path, "an action has no schema");
+        }
+    }
+    for s in &schemas {
+        let known = s.name == sluis_audit::DEFS_NAME
+            || s.name
+                .strip_suffix(".schema.json")
+                .is_some_and(|a| actions.iter().any(|x| x == a));
+        if !known {
+            return err(&path, "a schema has no action");
+        }
+    }
+    let docs: Vec<(String, String)> = schemas
+        .iter()
+        .map(|s| (s.name.clone(), s.json.clone()))
+        .collect();
+    // The reason names the document; a value of a schema is the file's own text and is not repeated.
+    sluis_audit::check_documents(&docs).or_else(|_| err(&path, "a schema does not compile"))?;
     o.done()?;
     Ok(pb::AuditCatalogue {
         release,
         actions,
+        schemas,
         ..pb::AuditCatalogue::default()
     })
+}
+
+/// `MAJOR.MINOR.PATCH`, with an optional `-prerelease` and `+build`, as semver.org writes it, and no `v`.
+fn semver_like(s: &str) -> bool {
+    let (core, rest) = s.split_at(s.find(['-', '+']).unwrap_or(s.len()));
+    let parts: Vec<&str> = core.split('.').collect();
+    parts.len() == 3
+        && parts.iter().all(|p| {
+            !p.is_empty()
+                && p.bytes().all(|c| c.is_ascii_digit())
+                && (p.len() == 1 || !p.starts_with('0'))
+        })
+        && rest
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'+' | b'.'))
 }
 
 fn exchange_trust(mut o: Obj) -> R<pb::ExchangeTrust> {
