@@ -837,14 +837,23 @@ impl<D: Destination> Destination for Hang<D> {
 pub struct Lossy<D> {
     pub inner: D,
     pub lose_answer: Arc<AtomicBool>,
+    /// A listing that is frozen (an eventually consistent one): it keeps saying what it said when it was frozen.
+    frozen: Arc<Mutex<Option<sluis_destination::Page>>>,
 }
 
-impl<D> Lossy<D> {
+impl<D: Destination> Lossy<D> {
     pub fn new(inner: D) -> Self {
         Self {
             inner,
             lose_answer: Arc::new(AtomicBool::new(false)),
+            frozen: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// From now on the listing of `address` says what it says now, however the destination changes.
+    pub async fn freeze_listing(&self, address: &str) {
+        let page = self.inner.list(address, None, 0).await.unwrap();
+        *self.frozen.lock().unwrap() = Some(page);
     }
 }
 
@@ -870,6 +879,9 @@ impl<D: Destination> Destination for Lossy<D> {
         page: Option<&str>,
         page_size: usize,
     ) -> Result<sluis_destination::Page, sluis_destination::Error> {
+        if let Some(p) = self.frozen.lock().unwrap().clone() {
+            return Ok(p);
+        }
         self.inner.list(prefix, page, page_size).await
     }
     async fn purge(

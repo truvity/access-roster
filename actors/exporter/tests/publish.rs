@@ -1386,6 +1386,29 @@ async fn the_unverified_alarm_repeats_while_it_lasts() {
     );
 }
 
+/// Waits until the exporter has made no pass for `quiet` (a pass reads the revocations once), however long it takes to be
+/// that quiet. A pending nudge runs on this same thread as soon as the test yields, so a quiet that long means nothing is
+/// queued: what happens next is not coalesced with what happened before.
+async fn until_idle(w: &World, quiet: Duration) {
+    let passes = || {
+        w.store
+            .lists()
+            .iter()
+            .filter(|(k, _)| k == "key-revocation")
+            .count()
+    };
+    let mut last = (passes(), std::time::Instant::now());
+    loop {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let now = passes();
+        if now != last.0 {
+            last = (now, std::time::Instant::now());
+        } else if last.1.elapsed() >= quiet {
+            return;
+        }
+    }
+}
+
 /// The write facts so far, in order: the digest, the number of kids and whether the write replaced a document.
 fn write_facts(w: &World) -> Vec<(String, u64, bool)> {
     w.spool
@@ -1406,10 +1429,11 @@ fn write_facts(w: &World) -> Vec<(String, u64, bool)> {
 /// listings unreadable, must not write that old body back: it subtracts every kid this process was ever told is revoked,
 /// not only the one the latest event names.
 ///
-/// The trim must run on the old body, so nothing may refresh it in between: the retry is a minute, and the only thing
-/// that makes the exporter look again is the revocation of `kid-c`, whose listings are unreadable. (Were the timer short,
-/// a pass that found the landed document would refresh the last good document, and the test would pass for the wrong
-/// reason on a quick machine.)
+/// The trim must run on the old body, so nothing may refresh it in between, and any pass may run in between (the watches
+/// nudge the exporter a second time at the start, and a loaded machine delays everything). So the destination here lists
+/// as it did before the write (a listing that lags, as an object store's can) and never answers a put: no pass can find
+/// the landed document, and the last good document stays the first one until the end. The mutant that forgets the kids
+/// seen revoked fails this test every time.
 ///
 /// verifies: REQ-EXPORT-020, REQ-EXPORT-024
 #[tokio::test]
@@ -1430,6 +1454,109 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
     let run = spawn(w.engine(targets, |c| {
         c.timing.budget = Duration::from_millis(600);
         c.retry = Duration::from_secs(60);
+    }));
+    until(10, "the first document", || m.inner.body("jwks").is_some()).await;
+    until(10, "the fact of the first write", || {
+        write_facts(&w).len() == 1
+    })
+    .await;
+
+    // Both watches are open, so each has delivered its listing: a late listing would name `kid-a` again after it is
+    // revoked, and the exporter would know it from that event as well as from the listings it read (which is the thing
+    // this test is about).
+    until(10, "both watches are open", || {
+        let opens = w.store.opens();
+        opens.iter().any(|(k, _)| k == "signing-ring")
+            && opens.iter().any(|(k, _)| k == "key-revocation")
+    })
+    .await;
+
+    // From here the listing says what the destination holds now, and every put lands and loses its answer.
+    m.freeze_listing("jwks").await;
+    m.lose_answer.store(true, Ordering::SeqCst);
+
+    // `kid-a` is revoked and the new document lands, but the answer is lost: the last good document still lists it.
+    w.store.revoke("kid-a");
+    until(
+        10,
+        "the document without kid-a is at the destination",
+        || {
+            m.inner
+                .body("jwks")
+                .is_some_and(|b| kids(&b) == ["kid-b", "kid-c"])
+        },
+    )
+    .await;
+    // The report says `unverified` until a pass looks again; the reports written are the record of it.
+    until_saying(
+        10,
+        "a report that says unverified (the destination did not answer)",
+        || {
+            w.store
+                .report_log()
+                .iter()
+                .any(|(id, r, _)| id == "mem/jwks" && r.state == "unverified")
+        },
+        || {
+            format!(
+                "the report is {:?}; reports written: {:?}",
+                w.store.report("mem/jwks").map(|r| r.state),
+                w.store
+                    .report_log()
+                    .iter()
+                    .map(|(_, r, _)| r.state.clone())
+                    .collect::<Vec<_>>()
+            )
+        },
+    )
+    .await;
+
+    // Every pass the revocation of `kid-a` caused is over (the exporter knows of it from a listing and from its event, both
+    // already used), so what comes next is not one ask with it.
+    until_idle(&w, Duration::from_millis(1500)).await;
+
+    // The listings cannot be read now, and `kid-c` is revoked. The destination still takes the writes and loses the answers.
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.revoke("kid-c");
+    until(10, "kid-c leaves", || {
+        m.inner
+            .body("jwks")
+            .is_some_and(|b| !kids(&b).contains(&"kid-c".to_owned()))
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        kids(&m.inner.body("jwks").unwrap()),
+        ["kid-b"],
+        "an old body brought a revoked key back"
+    );
+    // No pass ever saw a write that landed, so none of them is a fact: only the first, which was answered.
+    assert_eq!(write_facts(&w).len(), 1, "{:?}", write_facts(&w));
+    run.stop().await;
+}
+
+/// A write whose answer was lost, and that the next write covers before any pass has seen it, is still a fact: the pass that
+/// writes over it lists the destination first and finds it there. Whatever passes run in between (the facts do not depend
+/// on them), the facts say what each write was: its digest, its kids, and that the first replaced nothing.
+///
+/// verifies: REQ-EXPORT-017
+#[tokio::test]
+async fn a_landed_write_that_is_written_over_before_it_is_seen_is_still_a_fact() {
+    let w = World::new().await;
+    let m = common::Lossy::new(Memory::new());
+    let keys: Vec<_> = ["kid-a", "kid-b", "kid-c"]
+        .iter()
+        .map(|k| test_key(k, "active"))
+        .collect();
+    w.store
+        .set_ring(keys.iter().map(|k| k.key.clone()).collect());
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |c| {
+        c.timing.budget = Duration::from_millis(600);
     }));
     until(10, "the first document", || m.inner.body("jwks").is_some()).await;
     until(10, "the fact of the first write", || {
@@ -1475,11 +1602,6 @@ async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
         },
     )
     .await;
-    assert_eq!(
-        write_facts(&w).len(),
-        1,
-        "the write that was not answered is not a fact until the destination shows it"
-    );
 
     // Now the answers come back, the listings cannot be read, and `kid-c` is revoked.
     m.lose_answer.store(false, Ordering::SeqCst);
