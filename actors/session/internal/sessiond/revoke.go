@@ -3,6 +3,7 @@ package sessiond
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	sessionv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/session/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
 
@@ -27,10 +29,12 @@ const maxRevokeHint = 64
 // is the proof: the sid is in every token of the chain and is no secret) and the chain is the calling client's. The client
 // authenticates as at the token endpoint (REQ-TOKEN-009).
 //
-// The answer is 200 for everything that is not a request for a type of token this endpoint cannot revoke (RFC 7009 section 2.2:
-// "200 ... if the client submitted an invalid token"). A token that is unknown, ended, expired, of another client, or whose secret
-// is wrong gets the same answer as one that was revoked, so the answer says nothing about whether the token existed and a client
-// cannot end another client's token or learn that it exists (REQ-TOKEN-026). What a caller can tell is its own request's shape.
+// The answer is 200 (RFC 7009 section 2.2: "200 ... if the client submitted an invalid token") for a token that is revoked and
+// for every one that is not: unknown, ended, expired, of another client, or with a wrong secret. The answers are the same, so
+// the answer says nothing about whether the token existed, and a client cannot end another client's token or learn that it
+// exists (REQ-TOKEN-026). What a caller can tell is its own request's shape. The one other answer for a refresh token is 503,
+// when the token is proved and policy gives no grant to delete the chain with: it is the caller's own session, so the answer
+// reveals nothing, and 200 would say an ended session that is not.
 //
 // An access token is not revoked: a signed token is checked by its signature and exp alone elsewhere, and recalling one that
 // was issued is REQ-SESS-055, which is not built. A token of that shape (three parts, as an access token and an ID token are)
@@ -81,9 +85,17 @@ func (s *Service) revokeRefresh(ctx context.Context, tc *tokenCtx, sid, secret s
 	}
 	chain := it.Value
 	h := secretHash(secret)
-	// Another client's chain, and a token that is not one the chain issued, are not this caller's to end.
-	if !equal(chain.GetClientId(), tc.client.GetId()) || chain.GetClass() != chainClassHuman ||
-		!hashEqual(h, chain.GetRefreshHash()) && !hashIn(h, chain.GetSpentHashes()) {
+	// Another client's chain, and a token that is not one the chain issued, are not this caller's to end. The class of the
+	// chain does not matter: a client ends any chain of its own that it holds a token of.
+	var endedBy string
+	switch {
+	case !equal(chain.GetClientId(), tc.client.GetId()):
+		return revoked(), nil
+	case hashEqual(h, chain.GetRefreshHash()):
+		endedBy = "current"
+	case hashIn(h, chain.GetSpentHashes()):
+		endedBy = "spent"
+	default:
 		return revoked(), nil
 	}
 	person := personSubject(tc.tenant, chain.GetSubject())
@@ -108,18 +120,41 @@ func (s *Service) revokeRefresh(ctx context.Context, tc *tokenCtx, sid, secret s
 		return nil, unavailable("policy", err)
 	}
 	if !v.allow {
-		// Policy gave no grant to delete with (a held person, for one): the chain is left to end by itself, and a refresh is
-		// denied by the same decision. The caller is told what it is told for every token; the refusal is the audit's.
+		// Policy gave no grant to delete with, and a chain is personal data that only a grant deletes: session cannot end it.
+		// The caller has proved a token of the chain by now, so an answer that says "not done" tells it nothing it does not
+		// know, and 200 would tell it that the session has ended when it has not. RFC 7009 section 2.2.1 has the answer for a
+		// server that cannot do it now: 503. (The example policy forbids a person who is not live every action, so a held
+		// person cannot sign out until the hold is lifted; the refresh token is refused all the same, by the same decision.)
+		// The denial is audited.
 		_ = s.refuse(ctx, tc, person, &v, deniedReason(state, v), deniedError(v))
-		return revoked(), nil
+		return nil, refusal.New(connect.CodeUnavailable, "grant", "")
 	}
-	if err := s.deleteChain(ctx, tc, sid, v.grant, reasonRevoked); err != nil {
-		return nil, err
+	// The chain is deleted whether or not the records are accepted. The end of a session the client asked for is not held
+	// back by the audit transport: a failed record is counted (the next record carries the count, ADR 0029, "Facts that are
+	// lost are counted") and the client is answered, where answering 503 after the delete would have the retry read "absent",
+	// answer 200 and record nothing at all. The delete is the step that may fail the request.
+	err = s.chains.Delete(ctx, tc.tenant, sid, 0, store.WithGrant(v.grant))
+	switch {
+	case err == nil:
+	case errors.Is(err, store.ErrNotFound):
+		return revoked(), nil // another request ended it first, and recorded it
+	default:
+		return nil, unavailable("store", err)
 	}
-	if aerr := s.record(ctx, audited{
-		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(), sluis: map[string]any{"sid": sid},
-	}); aerr != nil {
-		return nil, aerr
-	}
+	s.emit(ctx, audited{
+		action: actionChainEnd, tenant: tc.tenant, subject: clientSubject(tc.tenant, tc.client.GetId()),
+		sluis: map[string]any{"sid": sid, "reason": reasonRevoked},
+	})
+	s.emit(ctx, audited{
+		action: tc.action, tenant: tc.tenant, subject: person, policy: v.ref(),
+		sluis: map[string]any{"sid": sid, "ended_by": endedBy},
+	})
 	return revoked(), nil
+}
+
+// emit hands a fact to the audit transport without waiting for it to be accepted; a fact that is not accepted is counted.
+func (s *Service) emit(ctx context.Context, a audited) {
+	if err := s.opts.Audit.Emit(ctx, s.event(a)); err != nil {
+		slog.Error("audit emit failed", "action", a.action.Name)
+	}
 }

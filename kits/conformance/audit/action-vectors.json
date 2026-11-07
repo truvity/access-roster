@@ -781,6 +781,7 @@
     "status": 1,
     "tenant": "acme",
     "sluis": {
+     "ended_by": "current",
      "sid": "s1"
     },
     "policy": {
@@ -792,7 +793,7 @@
      "decision": 1
     }
    },
-   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Revocation\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.revoke\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
+   "expected": "{\"action_id\":1,\"activity_id\":99,\"activity_name\":\"Token Revocation\",\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"session@dev\"}},\"authorizations\":[{\"decision\":\"Allowed\",\"policy\":{\"uid\":\"p1\"}}],\"category_uid\":3,\"class_uid\":3002,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"session.revoke\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"profiles\":[\"security_control\"],\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"policy\":{\"uid\":\"dec-1\",\"version\":\"v1\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300299,\"unmapped\":{\"sluis\":{\"ended_by\":\"current\",\"sid\":\"s1\"}},\"user\":{\"uid\":\"p1.202611.AAAAAAAAAAAAAAAAAAAAAA\"}}"
   },
   {
    "name": "session.signin",
