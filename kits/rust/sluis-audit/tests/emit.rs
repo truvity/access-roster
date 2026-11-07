@@ -159,6 +159,13 @@ impl KeyService for Keys {
     ) -> ServiceResult<SignResponse> {
         unsupported()
     }
+    async fn put_certificate(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::PutCertificateRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::PutCertificateResponse> {
+        unsupported()
+    }
     async fn public_key(
         &self,
         _: RequestContext,

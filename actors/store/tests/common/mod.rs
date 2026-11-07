@@ -455,6 +455,13 @@ impl KeyService for FakeKey {
     ) -> ServiceResult<MacResponse> {
         Err(not_here())
     }
+    async fn put_certificate(
+        &self,
+        _: RequestContext,
+        _: ServiceRequest<'_, sluis_proto::sluis::key::v2alpha1::PutCertificateRequest>,
+    ) -> ServiceResult<sluis_proto::sluis::key::v2alpha1::PutCertificateResponse> {
+        Err(not_here())
+    }
     async fn public_key(
         &self,
         _c: RequestContext,
