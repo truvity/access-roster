@@ -1,0 +1,94 @@
+# The OpenID Foundation conformance suite against the local installation (docs/standards/conformance.md; issue 1100). The suite
+# is the released Java application (release v5.3.4) with its MongoDB and nginx, self-hosted in containers on the runner, every image
+# pinned by digest (tests/conformance/compose.yaml). It needs no account and no secret: the identity provider is a Keycloak
+# container whose secrets are random values made for the run, as in the smokes of Checks, and alice signs in through its forms
+# (the runner of tests/conformance/runner).
+#
+# The job fails on any difference from tests/conformance/expected.yaml, in either direction: a module that passed and does not
+# any more, one that was expected to fail and passes, or fails for another reason, a skip that was not expected, a module that
+# does not end. See tests/conformance/run.sh. The first version runs the suite as a public client, which is not the certification
+# profile, so a green run is not a claim of OpenID certification.
+#
+# When it runs: on a push to main, and on a pull request that touches the code or the configuration the suite exercises (entry,
+# session, signer, the installation's configuration, the runner). It is a separate workflow and not a job of Checks because a job
+# of Checks cannot be path-filtered and stay a required check, and the run costs more than the other jobs of Checks (the cost is in
+# docs/standards/conformance.md, "How the tests run in CI"). It reads the repository only: no secret, no write, no id-token, no
+# pull_request_target, and a pull request from a fork runs the code of its own head with the same read-only token.
+name: Conformance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - actors/entry/**
+      - actors/session/**
+      - actors/signer/**
+      - actors/adapter-upstream-oidc/**
+      - proto/**
+      - tests/conformance/**
+      - tests/installations/local/**
+      - tools/harness/kclogin/**
+      - deploy/local/**
+      - .github/workflows/conformance.yaml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  conformance:
+    name: 'conformance (OIDF suite v5.3.4, Config OP, Basic and Form Post as a public client)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # The project's network is fixed so that the adapter's forwarder reaches the upstream at the network's gateway.
+      SLUIS_LOCAL_SUBNET: 10.99.203.0/24
+      SLUIS_UPSTREAM_TARGET: 10.99.203.1:8180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # The Rust toolchain, by itself, before any other step runs cargo (see the job `code` of Checks).
+      - run: devbox run -- just rust-toolchain
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+            .cache/rqlite
+          key: conformance-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            conformance-${{ runner.os }}-
+            smokes-${{ runner.os }}-
+      - name: The upstream, Keycloak 26.8 with the realm of the test users
+        run: |
+          echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
+          tests/installations/local/idp/start.sh "$RUNNER_TEMP/upstream.env"
+      - run: devbox run -- just rqlite-fetch local-up
+      - name: The suite, the plans, the table and the gate
+        run: devbox run -- just local-conformance
+      # The results hold the suite's log of every module: the test clients' ids, the codes and tokens of alice, the test user, for
+      # this run's throwaway installation. No secret of the repository or of an account is in them.
+      - name: The results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: conformance-results
+          path: .cache/conformance
+          if-no-files-found: warn
+          retention-days: 14
+      - name: What the installation did (on a failure only)
+        if: ${{ failure() }}
+        run: |
+          devbox run -- just local-status || true
+          devbox run -- just local-logs || true

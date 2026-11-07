@@ -18,3 +18,27 @@ example-app:
   # makes (ADR 0005, "Secret sources"). The document never holds the secret.
   secret: client-example-app
   requires: ["dev:example-app:user"]
+# The OpenID Foundation conformance suite, as two relying parties (tests/conformance, docs/standards/conformance.md): the
+# suite is a public client, because the first version serves no other kind (a secret is refused), and its second client is
+# the one that a few modules use as someone else. The redirect of a client is the suite's address and the alias of the plan
+# (the suite's callback is <base>/test/a/<alias>/callback; a plan whose error pages the suite's own browser reads has the alias with -pages); the address is fixed in tests/conformance/compose.yaml.
+oidf-suite:
+  kind: public
+  redirects:
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-config/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-basic/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-formpost/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-basic-pages/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-formpost-pages/callback
+  profile: web
+  requires: ["dev:example-app:user"]
+oidf-suite-2:
+  kind: public
+  redirects:
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-config/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-basic/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-formpost/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-basic-pages/callback
+    - https://localhost.emobix.co.uk:8443/test/a/sluis-formpost-pages/callback
+  profile: web
+  requires: ["dev:example-app:user"]
