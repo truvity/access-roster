@@ -839,10 +839,10 @@ func grantCaps(r *policyv2alpha1.DecideRequest) (verbs, ops []string) {
 	if !ok {
 		panic("grantCaps: no caps for the action " + r.GetAction())
 	}
-	narrow := func(asked, cap []string) []string {
+	narrow := func(asked, allowed []string) []string {
 		var out []string
 		for _, a := range asked {
-			if slices.Contains(cap, a) && !slices.Contains(out, a) {
+			if slices.Contains(allowed, a) && !slices.Contains(out, a) {
 				out = append(out, a)
 			}
 		}
