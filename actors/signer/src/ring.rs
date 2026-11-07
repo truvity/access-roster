@@ -500,6 +500,13 @@ fn plan_alg(
             && k.state != PRE_PUBLISHED
             && k.state != DROPPED
     });
+    // An algorithm none of whose keys has ever signed (every key is still pre-published) has no key to replace: its first key
+    // waits for the window like any new key, and the shortcut of REQ-KEYS-089 is not taken for it.
+    let never_served = !keys.is_empty()
+        && keys
+            .iter()
+            .all(|k| k.state == PRE_PUBLISHED && !revoked.contains(&k.key_id));
+    let shortcut = !issuer_signs && !never_served;
     let mut changes = Vec::new();
     let change = |k: &str, kind| Change {
         key_id: k.to_owned(),
@@ -516,12 +523,18 @@ fn plan_alg(
                 // A node's first key signs at once while the ring is young (the first deploy); every other
                 // key is published for the full window first.
                 let first_of_node = !keys.iter().any(|k| k.node == node);
-                // A key of unknown age counts as old: it never makes the ring young.
-                let young = keys.iter().all(|k| {
+                // A key of unknown age counts as old: it never makes the ring young. The whole ring counts, whatever the
+                // algorithm of its keys: a ring that has served for a while is not young because it holds no key of this one.
+                let young = ring.keys.iter().all(|k| {
                     instant(k.added_at.as_option()).is_some_and(|at| now < at + t.bootstrap)
                 });
                 let first_deploy = first_of_node && young;
-                let state = if (first_deploy || !issuer_signs) && !reported {
+                // The first key of an algorithm on a ring that already serves is published for the window like any new key:
+                // a relying party may hold a key set from a moment ago without it. The shortcut of REQ-KEYS-089 is for the
+                // replacement of a key that was revoked, and an algorithm with no key has none to replace.
+                let first_of_algorithm = keys.is_empty() && !ring.keys.is_empty();
+                let state = if (first_deploy || (!issuer_signs && !first_of_algorithm)) && !reported
+                {
                     ACTIVE
                 } else {
                     PRE_PUBLISHED
@@ -551,7 +564,7 @@ fn plan_alg(
                 if !cur_revoked
                     && k.node == node
                     && k.state == PRE_PUBLISHED
-                    && publication.ready(&k.key_id, since(k, now), now, t.prepublish, !issuer_signs)
+                    && publication.ready(&k.key_id, since(k, now), now, t.prepublish, shortcut)
                 {
                     let skipped = match publication {
                         Publication::Unreported => now < since(k, now) + t.prepublish,
@@ -706,9 +719,19 @@ impl Snapshot {
     }
 }
 
+/// How long the KeyPlan may omit the RS256 purpose before the node's RS256 keys stop. A key that stopped does not come back
+/// (a retiring key never signs again), so one write of the KeyPlan that forgot the purpose must not end the key: for this
+/// long the algorithm is not offered (nothing signs with RS256) and the key stays as it is, and a KeyPlan that lists the
+/// purpose again within it finds the key active.
+pub const RS256_OFF_GRACE: Duration = Duration::from_secs(60 * 60);
+/// How long `signer` leaves key@ alone after key@ refused the RS256 purpose as one its KeyPlan does not list: key@ audits each
+/// refusal, and an idle installation writes at most 60 records an hour (REQ-AUDIT-180).
+pub const RS256_RETRY: Duration = Duration::from_secs(60 * 60);
+
 /// What the KeyPlan and key@ say of the RS256 key at a reconcile.
 enum Rs256 {
-    /// The KeyPlan does not list the purpose: the node's RS256 keys stop and the algorithm is not offered.
+    /// The KeyPlan has not listed the purpose for [`RS256_OFF_GRACE`]: the node's RS256 keys stop and the algorithm is not
+    /// offered.
     Off,
     /// The KeyPlan or key@ could not be read, or key@ gave a key that is not an RS256 key: nothing is planned for the
     /// algorithm this time and nothing signs with it. The other algorithm is not touched.
@@ -725,6 +748,10 @@ pub struct RingKeeper {
     manifests: Store<ManifestKind>,
     revocations: KeyRevocations,
     key_plan: Store<KeyPlanKind>,
+    /// Since when the KeyPlan has not listed the RS256 purpose, as `signer` has seen it; `None` while it lists it.
+    rs256_off_since: Mutex<Option<SystemTime>>,
+    /// Until when `signer` does not ask key@ for the RS256 key, after key@ refused the purpose.
+    rs256_retry_at: Mutex<Option<SystemTime>>,
     key: Arc<KeyAt>,
     audit: Arc<Auditor>,
     clock: Clock,
@@ -753,6 +780,8 @@ impl RingKeeper {
             manifests: Store::new(store.clone())?,
             revocations: KeyRevocations::new(store)?,
             key_plan: Store::new(store.clone())?,
+            rs256_off_since: Mutex::new(None),
+            rs256_retry_at: Mutex::new(None),
             key,
             audit,
             clock,
@@ -977,6 +1006,7 @@ impl RingKeeper {
     /// key@ a request that it would refuse and audit (REQ-AUDIT-180). Whatever goes wrong here concerns the RS256 key
     /// alone; the reconcile of the ES384 key goes on (REQ-KEYS-270).
     async fn rs256(&self) -> Rs256 {
+        let now = (self.clock)();
         let listed = match tokio::time::timeout(CALL, self.key_plan.get("", ID)).await {
             Ok(Ok(item)) => item
                 .value
@@ -992,11 +1022,32 @@ impl RingKeeper {
                 return Rs256::Unknown;
             }
         };
+        let mut off_since = self.rs256_off_since.lock().await;
         if !listed {
-            return Rs256::Off;
+            // Not offered meanwhile, and the key is left alone until the purpose has been out for the grace.
+            let since = *off_since.get_or_insert(now);
+            return if now
+                .duration_since(since)
+                .is_ok_and(|d| d >= RS256_OFF_GRACE)
+            {
+                Rs256::Off
+            } else {
+                Rs256::Unknown
+            };
         }
+        *off_since = None;
+        drop(off_since);
+        let mut retry = self.rs256_retry_at.lock().await;
+        if retry.is_some_and(|at| now < at) {
+            return Rs256::Unknown;
+        }
+        *retry = None;
         match self.key.current(Alg::Rs256).await {
             Ok(cur) => Rs256::On(cur),
+            Err(KeyError::NotPlanned) => {
+                *retry = Some(now + RS256_RETRY);
+                Rs256::Unknown
+            }
             Err(e) => {
                 tracing::warn!(alert = "signer-rs256-key-unavailable", error = ?e, "key@ gave no RS256 key: nothing signs with RS256");
                 Rs256::Unknown
@@ -1941,19 +1992,44 @@ mod tests {
         r
     }
 
-    /// An RS256 key joins the ring with its algorithm and leaves the ES384 key alone.
+    /// An RS256 key joins the ring with its algorithm and leaves the ES384 key alone. On a ring that has served for a while it is
+    /// the first key of its algorithm and is published for the window before it signs, like any new key: a relying party may hold
+    /// a key set from a moment ago that lacks it. On a ring that is young (the first deploy) it signs at once, as the first key
+    /// of a node does.
     ///
     /// verifies: REQ-KEYS-270
     #[test]
-    fn an_rs256_key_joins_with_its_algorithm_and_changes_no_es384_key() {
+    fn an_rs256_key_joins_with_its_algorithm_changes_no_es384_key_and_is_published_first_on_a_ring_that_serves()
+     {
         let (r, _) = step(&SigningRing::default(), A, "a", 1000);
         let (next, ch) = step_rs(&r, A, "r", 1000 + 3 * HOUR);
-        // The first RS256 key of the node signs at once, as the first key of a node does: no RS256 token has been signed.
-        assert_eq!(ch, [rs(added("r", ChangeKind::Added(ACTIVE)))]);
+        assert_eq!(ch, [rs(added("r", ChangeKind::Added(PRE_PUBLISHED)))]);
         assert_eq!(alg_of(&next, "r"), Some("RS256"));
         assert_eq!(alg_of(&next, "a"), Some("ES384"));
         assert_eq!(next.keys[0], r.keys[0], "the ES384 key is untouched");
         assert_eq!(next.keys.len(), 2);
+        // Before the window is over it does not sign; when it is, it does, and the ES384 key is not touched.
+        let (still, ch) = step_rs(&next, A, "r", 1000 + 3 * HOUR + WINDOW - 1);
+        assert!(ch.is_empty(), "{ch:?}");
+        assert_eq!(state_of(&still, "r"), Some(PRE_PUBLISHED));
+        let (active, ch) = step_rs(&next, A, "r", 1000 + 3 * HOUR + WINDOW);
+        assert_eq!(ch, [rs(added("r", ChangeKind::Activated))]);
+        assert_eq!(state_of(&active, "a"), Some(ACTIVE));
+        // A young ring: both algorithms of a first deploy sign at once.
+        let (young, ch) = step_rs(&r, A, "r", 1000 + MIN);
+        assert_eq!(ch, [rs(added("r", ChangeKind::Added(ACTIVE)))]);
+        assert_eq!(state_of(&young, "r"), Some(ACTIVE));
+        // The shortcut of a replacement is for a revoked key: a ring that serves, with its RS256 key revoked, still replaces it at once.
+        let (both_r, _) = step_rs(&r, A, "r", 1000 + MIN);
+        let (_, ch) = plan(
+            &both_r,
+            &cur_rs("r2"),
+            A,
+            at(1000 + 3 * HOUR),
+            &T,
+            &revoked(&["r"]),
+        );
+        assert_eq!(ch, [rs(skipped("r2", ChangeKind::Added(ACTIVE)))]);
     }
 
     /// A rotation of one algorithm does not retire, activate, drop or hold the key of the other, even of the same node.
