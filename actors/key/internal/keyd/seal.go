@@ -44,10 +44,12 @@ func tenantFits(purpose, tenant string) bool {
 	return true
 }
 
-// kindFits says whether the kind of the address fits the purpose: the credential key seals the StaffPasskey and nothing
-// else, so the one actor that holds the rule cannot make it a second `data` key. Every other purpose takes any kind.
+// kindFits says whether the kind of the address fits the purpose, both ways: the credential key seals the StaffPasskey and
+// nothing else, so the one actor that holds the rule cannot make it a second `data` key; and the StaffPasskey is sealed
+// under the credential key and no other, so an actor with the `data` rule (session and exchange hold it) cannot seal a
+// forgery of it under `data` or open one. Every other pair is free.
 func kindFits(purpose, kind string) bool {
-	return purpose != "credential" || kind == credentialKind
+	return (purpose == "credential") == (kind == credentialKind)
 }
 
 // credentialKind is the segment of the kind that the credential purpose seals.

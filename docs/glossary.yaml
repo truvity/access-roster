@@ -486,7 +486,7 @@ terms:
     avoid: ["unwrap (for a value)", "decrypt in the store"]
 
   - term: data key
-    definition: "A software AES-256 key. Each tenant has five, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated), `evidence` (audit and usage) and `chain` (the facts of a session chain); each boundary has four: `grant`, `cookie`, `mac` and `data` (the last, with tenant `-`, seals the kinds that have no tenant). key@ makes it, keeps it only wrapped, and opens it only in its own memory."
+    definition: "A software AES-256 key. Each tenant has six, one per purpose: `data` (personal and operational data), `pseudonym` (keyed hashes, rolled by epoch), `pairwise` (pairwise subjects, never rotated), `evidence` (audit and usage) and `chain` (the facts of a session chain); each boundary has four: `grant`, `cookie`, `mac` and `data` (the last, with tenant `-`, seals the kinds that have no tenant). key@ makes it, keeps it only wrapped, and opens it only in its own memory."
     category: keys
     see: ["0006-keys-and-sealing#data-keys"]
     avoid: ["data key per kind", "data-key record"]
@@ -510,7 +510,7 @@ terms:
     avoid: ["escrow recipient", "offline copy of the sealing key"]
 
   - term: crypto-shred
-    definition: "Erasing a tenant by deleting its data key wraps: the `data`, `pseudonym`, `pairwise` and `chain` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
+    definition: "Erasing a tenant by deleting its data key wraps: the `data`, `pseudonym`, `pairwise`, `chain` and `credential` wraps at once, so every value sealed for it stops opening, and an archive that still holds the wraps stops opening it when that archive expires; the `evidence` wrap when the evidence retention ends, because evidence never shares a key with personal data and outlives it."
     category: keys
     see: ["0006-keys-and-sealing#erasing-a-tenant"]
 
@@ -592,7 +592,7 @@ terms:
     avoid: ["environment (as the general term)", "company boundary", "product boundary"]
 
   - term: tenant
-    definition: "A division inside a boundary with its own data keys (data, pseudonym, pairwise, evidence, chain), settings, clients and allowance; the second scope dimension, used only by durable and temp kinds. A tenant may exist in several boundaries, with separate data keys in each."
+    definition: "A division inside a boundary with its own data keys (data, pseudonym, pairwise, evidence, chain, credential), settings, clients and allowance; the second scope dimension, used only by durable and temp kinds. A tenant may exist in several boundaries, with separate data keys in each."
     category: boundaries
     see: ["0008-boundaries-and-tenants#tenants"]
     avoid: ["key-less tenant", "company (as a scope)", "audit tenant", "quota tenant"]
