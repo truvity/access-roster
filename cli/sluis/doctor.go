@@ -39,20 +39,6 @@ const (
 	resultNotRun = "not-run"
 )
 
-// The exit codes of `doctor` and `key status` beyond the common ones (cli.md, "Exit codes"): a notice, an alert and a
-// critical alert.
-const (
-	exitNotice   = 10
-	exitAlert    = 11
-	exitCritical = 12
-)
-
-// findingExit is the end of a command that did what it was asked and found something: the exit code is 10, 11 or 12 and
-// the outcome stays `done` (cli.md, "JSON output").
-type findingExit int
-
-func (e findingExit) Error() string { return "finding with exit code " + strconv.Itoa(int(e)) }
-
 // clockState is what the kernel says about its clock.
 type clockState struct {
 	// Observed is false when the kernel did not answer.
