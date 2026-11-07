@@ -77,6 +77,8 @@ pub struct FakeStore {
     pub reports_down: AtomicBool,
     /// Watch calls are counted so a test can wait for one.
     pub watching: AtomicU64,
+    /// A stream does not say it is caught up while this is set: it has rows to deliver, and the claim waits for them.
+    pub claims_held: AtomicBool,
     /// Shown to the report hook: the destination whose calls are counted.
     pub memory: Mutex<Option<Memory>>,
 }
@@ -392,63 +394,85 @@ impl StoreService for StoreSvc {
         self.0.watching.fetch_add(1, Ordering::SeqCst);
         let store = Arc::clone(&self.0);
         let epoch = 1 + store.inner.lock().unwrap().restores;
-        let stream = futures::stream::unfold((store, from), move |(store, mut at)| {
-            let kind = kind.clone();
-            async move {
-                loop {
-                    if store.down.load(Ordering::SeqCst)
-                        || store.inner.lock().unwrap().watch_down.contains(&kind)
-                    {
-                        // The store goes away: the stream breaks.
-                        return Some((
-                            Err(refusal(ErrorCode::Unavailable, "engine", "")),
-                            (store, at),
-                        ));
-                    }
-                    let watched = Arc::clone(&store);
-                    let notified = watched.changed.notified();
-                    tokio::pin!(notified);
-                    notified.as_mut().enable();
-                    let next = {
-                        let i = store.inner.lock().unwrap();
-                        i.log
-                            .iter()
-                            .find(|(s, k, _)| *s > at && *k == kind)
-                            .cloned()
-                            .map(|(s, k, id)| {
-                                let (v, b) =
-                                    i.items.get(&(k.clone(), id.clone())).cloned().unwrap();
-                                (s, item(&k, &id, v, &b))
-                            })
-                    };
-                    if let Some((seq, it)) = next {
-                        at = seq;
-                        let m = WatchResponse {
-                            resume_point: seq,
-                            log_epoch: epoch,
-                            r#type: ChangeType::CHANGE_TYPE_PUT.into(),
-                            item: Some(it).into(),
-                            ..WatchResponse::default()
+        // As the real store@ does: the head at the opening, which the stream claims once it has delivered through it.
+        let head_at_open = store.inner.lock().unwrap().seq;
+        let stream = futures::stream::unfold(
+            (store, from, Some(head_at_open)),
+            move |(store, mut at, mut claim)| {
+                let kind = kind.clone();
+                async move {
+                    loop {
+                        if store.down.load(Ordering::SeqCst)
+                            || store.inner.lock().unwrap().watch_down.contains(&kind)
+                        {
+                            // The store goes away: the stream breaks.
+                            return Some((
+                                Err(refusal(ErrorCode::Unavailable, "engine", "")),
+                                (store, at, claim),
+                            ));
+                        }
+                        let watched = Arc::clone(&store);
+                        let notified = watched.changed.notified();
+                        tokio::pin!(notified);
+                        notified.as_mut().enable();
+                        let next = {
+                            let i = store.inner.lock().unwrap();
+                            i.log
+                                .iter()
+                                .find(|(s, k, _)| *s > at && *k == kind)
+                                .cloned()
+                                .map(|(s, k, id)| {
+                                    let (v, b) =
+                                        i.items.get(&(k.clone(), id.clone())).cloned().unwrap();
+                                    (s, item(&k, &id, v, &b))
+                                })
                         };
-                        return Some((Ok(m), (store, at)));
-                    }
-                    // Nothing to say: wait for a change, and say a bookmark now and then.
-                    if tokio::time::timeout(Duration::from_millis(300), notified)
-                        .await
-                        .is_err()
-                    {
-                        let head = store.inner.lock().unwrap().seq;
-                        let m = WatchResponse {
-                            resume_point: head.max(at),
-                            log_epoch: epoch,
-                            r#type: ChangeType::CHANGE_TYPE_BOOKMARK.into(),
-                            ..WatchResponse::default()
-                        };
-                        return Some((Ok(m), (store, at)));
+                        // The stream has delivered through the head it was opened at (the rows of other kinds are rows of the
+                        // log too, so the next row of this kind is past it): it says so, once.
+                        if let Some(h) = claim.filter(|h| {
+                            !store.claims_held.load(Ordering::SeqCst)
+                                && next.as_ref().is_none_or(|(s, _)| s > h)
+                        }) {
+                            claim = None;
+                            at = at.max(h);
+                            let m = WatchResponse {
+                                resume_point: h,
+                                log_epoch: epoch,
+                                r#type: ChangeType::CHANGE_TYPE_BOOKMARK.into(),
+                                caught_up: true,
+                                ..WatchResponse::default()
+                            };
+                            return Some((Ok(m), (store, at, claim)));
+                        }
+                        if let Some((seq, it)) = next {
+                            at = seq;
+                            let m = WatchResponse {
+                                resume_point: seq,
+                                log_epoch: epoch,
+                                r#type: ChangeType::CHANGE_TYPE_PUT.into(),
+                                item: Some(it).into(),
+                                ..WatchResponse::default()
+                            };
+                            return Some((Ok(m), (store, at, claim)));
+                        }
+                        // Nothing to say: wait for a change, and say a bookmark now and then.
+                        if tokio::time::timeout(Duration::from_millis(300), notified)
+                            .await
+                            .is_err()
+                        {
+                            let head = store.inner.lock().unwrap().seq;
+                            let m = WatchResponse {
+                                resume_point: head.max(at),
+                                log_epoch: epoch,
+                                r#type: ChangeType::CHANGE_TYPE_BOOKMARK.into(),
+                                ..WatchResponse::default()
+                            };
+                            return Some((Ok(m), (store, at, claim)));
+                        }
                     }
                 }
-            }
-        });
+            },
+        );
         Response::ok(Box::pin(stream) as ServiceStream<WatchResponse>)
     }
 }
