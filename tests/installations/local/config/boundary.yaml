@@ -12,9 +12,11 @@ default:
   default_tenant: acme
   # The acr values this boundary enforces in `acr_values` and lists in discovery; any other value in a request is ignored and
   # counted (REQ-AUTHN-009). The one the local policy asks for in its step-up rule (`@step_up`) is listed, or that rule's
-  # challenge would not be enforced.
+  # challenge would not be enforced; so is the one of the passkey sign-in (sign-in-methods.yaml), or no request could reach
+  # its page. The set is refused when either is missing.
   acr_values_supported:
     - urn:example:acr:mfa
+    - urn:sluis:acr:passkey
   declared_kinds:
     - KeyPlan
     - TokenLifetime
