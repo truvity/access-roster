@@ -103,7 +103,7 @@ STUB
 os_env() { :; }
 
 if [ "$(x getenforce)" = Enforcing ]; then ok "SELinux is enforcing"; else bad "SELinux is not enforcing"; fi
-x 'dnf -y -q install python3 util-linux audit policycoreutils >/dev/null 2>&1; systemctl enable --now auditd >/dev/null 2>&1 || true'
+x 'dnf -y -q install python3 util-linux audit policycoreutils nftables >/dev/null 2>&1; systemctl enable --now auditd >/dev/null 2>&1 || true'
 os_prepare_repo
 os_check_refusal
 x "$(os_card_packages)"
