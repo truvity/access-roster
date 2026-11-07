@@ -322,6 +322,205 @@ async fn an_idle_watch_says_its_resume_point() {
     panic!("no bookmark followed the change");
 }
 
+// ---- caught up ----
+
+/// Writes `n` temp items `node-a/<prefix><i>`, 50 to a request.
+async fn write_many(f: &F, prefix: &str, n: usize) {
+    for chunk in (0..n).collect::<Vec<_>>().chunks(50) {
+        let ops = chunk
+            .iter()
+            .map(|i| write_temp(Verb::CREATE, &format!("node-a/{prefix}{i:04}"), b"v"))
+            .collect();
+        f.write(ops, &[]).await.unwrap();
+    }
+}
+
+/// Everything a watch says until it says it is caught up, raw: the changes, then the bookmark.
+async fn until_caught_up(w: &mut Watcher) -> (Vec<WatchResponse>, WatchResponse) {
+    let mut seen = Vec::new();
+    loop {
+        let m = w.msg_raw().await;
+        if kind_of(&m) == ChangeType::CHANGE_TYPE_BOOKMARK && m.caught_up {
+            return (seen, m);
+        }
+        seen.push(m);
+    }
+}
+
+/// verifies: REQ-DATA-120
+/// A watch from the head sends the caught-up bookmark at once, without waiting for the idle bookmark (30 seconds here), and
+/// so does a watch from now: an empty catch-up. The bookmark names the head and the epoch, is the first message, and is not
+/// said twice.
+#[tokio::test]
+async fn a_watch_from_the_head_says_it_is_caught_up_at_once() {
+    let f = F::new().await;
+    f.as_("key");
+    let listed = f
+        .list(ListRequest {
+            kind: TEMP.into(),
+            ..ListRequest::default()
+        })
+        .await
+        .unwrap();
+    for (what, from) in [("from the head", listed.resume_point), ("from now", 0)] {
+        let started = std::time::Instant::now();
+        let mut w = f.watch_in(TEMP, "", from, listed.log_epoch).await.unwrap();
+        let m = w.msg_raw().await;
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{what}: the bookmark came after the idle interval"
+        );
+        assert_eq!(kind_of(&m), ChangeType::CHANGE_TYPE_BOOKMARK, "{what}");
+        assert!(m.caught_up, "{what}");
+        assert_eq!(
+            (m.resume_point, m.log_epoch),
+            (listed.resume_point, listed.log_epoch),
+            "{what}"
+        );
+        assert!(m.item.as_option().is_none());
+        assert!(w.quiet(SHORT).await, "{what}: said again with nothing new");
+    }
+}
+
+/// verifies: REQ-DATA-120
+/// A watch from a point behind the head delivers every change up to the head, then the bookmark at the head, and nothing
+/// after it while nothing is written: 600 rows, more than a run (256) and a batch of the driver, so the position crosses
+/// runs. The bookmark is not early (every change is before it) and not late (it does not wait for the idle interval).
+#[tokio::test]
+async fn a_watch_behind_the_head_delivers_its_changes_then_the_bookmark_at_the_head() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    write_many(&f, "r", 600).await;
+    let head = f.temp.head();
+    let started = std::time::Instant::now();
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let (changes, bookmark) = until_caught_up(&mut w).await;
+    assert_eq!(changes.len(), 600, "every change before the bookmark");
+    assert!(
+        changes
+            .windows(2)
+            .all(|p| p[0].resume_point < p[1].resume_point),
+        "in the order of the log"
+    );
+    assert_eq!(
+        bookmark.resume_point, head,
+        "at the head read at the opening"
+    );
+    assert_eq!(changes.last().map(|m| m.resume_point), Some(head));
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(w.quiet(SHORT).await);
+}
+
+/// verifies: REQ-DATA-120
+/// Writes that arrive while the stream is catching up come after the bookmark, never before it, and the bookmark names the
+/// head read at the opening, not a later one: a reader is caught up to the moment it asked, and what follows is the live
+/// stream.
+#[tokio::test]
+async fn writes_during_the_catch_up_follow_the_bookmark() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    write_many(&f, "a", 400).await;
+    let head = f.temp.head();
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    // The stream is open and has not been read: these arrive during the catch-up.
+    write_many(&f, "late", 5).await;
+    let (before, bookmark) = until_caught_up(&mut w).await;
+    assert_eq!(
+        bookmark.resume_point, head,
+        "the head at the opening, not the head now"
+    );
+    assert!(
+        before.iter().all(|m| m.resume_point <= head),
+        "no change past the head comes before the bookmark"
+    );
+    assert!(before.iter().all(|m| !id_of(m).starts_with("node-a/late")));
+    let mut after = Vec::new();
+    while after.len() < 5 {
+        let m = w.msg().await;
+        assert!(m.resume_point > head);
+        after.push(id_of(&m));
+    }
+    assert_eq!(
+        after,
+        (0..5)
+            .map(|i| format!("node-a/late{i:04}"))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// verifies: REQ-DATA-122
+/// The head is read linearizably, not at the level a follower gives: with a read that is not linearizable 3 behind, the
+/// bookmark still names the true head. A weaker read could name a head that lags a write acknowledged before the call, and
+/// the stream would say "caught up" without a revocation written just before.
+#[tokio::test]
+async fn the_head_of_a_watch_is_read_linearizably() {
+    let f = F::new().await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    write_many(&f, "l", 10).await;
+    let head = f.temp.head();
+    f.temp.set_weak_lag(3);
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let (changes, bookmark) = until_caught_up(&mut w).await;
+    assert_eq!(changes.len(), 10);
+    assert_eq!(bookmark.resume_point, head, "the true head, not 3 below it");
+    let asked: Vec<_> = f.temp.queries().iter().map(|q| q.linearizable).collect();
+    assert_eq!(
+        asked.last(),
+        Some(&true),
+        "the query for the head of a watch asks for a linearizable read: {asked:?}"
+    );
+    // From now takes the same head.
+    let mut now = f.watch(TEMP, "", 0).await.unwrap();
+    let m = now.msg_raw().await;
+    assert!(m.caught_up && m.resume_point == head, "{m:?}");
+}
+
+/// verifies: REQ-DATA-120
+/// The bookmark is a claim about rows delivered, never about the head alone. A log that lags (a replica that has not shown
+/// the last rows) delays it: the idle bookmarks in between carry the position the stream is at and no claim, and the
+/// caught-up bookmark comes after the rows, when they arrive. A lagging reader cannot make it early.
+#[tokio::test]
+async fn a_lagging_log_delays_the_bookmark_and_cannot_make_it_early() {
+    let f = F::new_with(Duration::from_millis(250)).await;
+    f.as_("key");
+    let from = position(&f, TEMP).await;
+    write_many(&f, "g", 6).await;
+    let head = f.temp.head();
+    f.temp.hold_tail_above(from + 3);
+    let mut w = f.watch(TEMP, "", from).await.unwrap();
+    let mut seen = Vec::new();
+    // Three rows come, then only idle bookmarks, none of which claims anything.
+    let mut idle = 0;
+    while idle < 2 {
+        let m = w.msg_raw().await;
+        match kind_of(&m) {
+            ChangeType::CHANGE_TYPE_PUT => seen.push(m.resume_point),
+            ChangeType::CHANGE_TYPE_BOOKMARK => {
+                assert!(!m.caught_up, "caught up with rows still to come: {m:?}");
+                assert_eq!(
+                    m.resume_point,
+                    from + 3,
+                    "the idle bookmark names where the stream is"
+                );
+                idle += 1;
+            }
+            t => panic!("{t:?}"),
+        }
+    }
+    assert_eq!(seen.len(), 3);
+    f.temp.release_tail();
+    let (rest, bookmark) = until_caught_up(&mut w).await;
+    assert_eq!(
+        rest.len(),
+        3,
+        "the rows that were withheld come before the bookmark"
+    );
+    assert_eq!(bookmark.resume_point, head);
+}
+
 // ---- the limit ----
 
 /// verifies: REQ-DATA-104
@@ -539,6 +738,33 @@ async fn a_listing_and_every_message_of_a_watch_name_the_epoch_of_the_log() {
     assert_eq!((none.resume_point, none.log_epoch), (0, 0));
 }
 
+/// verifies: REQ-DATA-124
+/// A kind that nobody watches writes no log, so a watch over it has nothing to follow: it is refused, from now and from a
+/// point, where a stream would say it is caught up at once and then deliver nothing for ever.
+#[tokio::test]
+async fn a_watch_of_a_kind_with_no_change_log_is_refused() {
+    let f = F::new().await;
+    f.as_("session");
+    for point in [0, 5] {
+        let e = f
+            .watch("person", "acme", point)
+            .await
+            .err()
+            .expect("a kind with no log is not watched");
+        assert_eq!(
+            (e.code, reason(&e)),
+            (ErrorCode::InvalidArgument, "address".into()),
+            "from {point}"
+        );
+    }
+    assert!(
+        f.audit()
+            .iter()
+            .any(|a| a.action == "store.refused" && a.reason == "address"),
+        "the refusal is audited"
+    );
+}
+
 /// verifies: REQ-DATA-117
 /// A watch from a position of another log is refused as a resume point the log does not hold, and audited: the epoch
 /// differs (a restore or a reset made the log again, and the same number names another position, which the new log may
@@ -647,7 +873,7 @@ async fn a_stream_that_is_open_when_the_log_is_made_again_ends_with_the_refusal(
 
 /// verifies: REQ-DATA-119
 /// An engine that names a position without an epoch is out of its contract: the position could be the same number in
-/// another log. store@ names none and fails closed, for a listing and for a watch from now.
+/// another log. store@ names none and fails closed, for a listing and for a watch, from now or from a point.
 #[tokio::test]
 async fn a_log_with_no_epoch_is_not_named_and_fails_closed() {
     let f = F::new().await;
@@ -670,6 +896,16 @@ async fn a_log_with_no_epoch_is_not_named_and_fails_closed() {
         .await
         .err()
         .unwrap_or_else(|| panic!("a watch from now without an epoch"));
+    assert_eq!(
+        (e.code, reason(&e)),
+        (ErrorCode::Unavailable, "engine".into())
+    );
+    // Every watch reads the epoch when it opens, so one from a point is no different.
+    let e = f
+        .watch_in(TEMP, "", 1, 1)
+        .await
+        .err()
+        .unwrap_or_else(|| panic!("a watch from a point without an epoch"));
     assert_eq!(
         (e.code, reason(&e)),
         (ErrorCode::Unavailable, "engine".into())
