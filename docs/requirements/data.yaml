@@ -645,7 +645,7 @@ requirements:
   - id: REQ-DATA-044
     area: DATA
     statement: "A duration in a configuration file MUST be written as a number with a unit, such as `900s`, `15m`, `12h` or `30d`."
-    rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern (ADR 0004)."
+    rationale: "An operator reads and reviews a duration as written, and the loader converts it to a Duration that the generated schema checks by pattern, so a kind that adds a duration comes with its schema in the same change (ADR 0004)."
     level: MUST
     source: design-decision
     status: done

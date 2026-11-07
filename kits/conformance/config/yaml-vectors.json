@@ -1,0 +1,503 @@
+{
+ "about": "Plain scalars, in YAML text: the vectors of schema-vectors.json are JSON and never meet the typing of the strict profile (bootstrap-file.md Format, rule 4), where an unquoted 84 or 1e3 is a number, 0x1f and 010 and 1_000 are strings, and only null, ~ and an empty value are null. Each case is read by the strict YAML reader of the language and its schema applied to what it reads, in Go (kits/go/signedconfig) and in Rust (actors/store): the verdict and the words must be the case's. The cases are the ones a hand-written slot, thumbprint, duration or number meets.",
+ "cases": [
+  {
+   "name": "a KeyPlan with plain scalars",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [NzbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs]\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot 84 unquoted is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: audit-log, algorithm: ES256, slot: 84 }\n",
+   "want": "default.purposes[0].slot: must be a string"
+  },
+  {
+   "name": "a purpose slot 84 quoted is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: audit-log, algorithm: ES256, slot: \"84\" }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot 1e3 is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 1e3 }\n",
+   "want": "default.purposes[0].slot: must be a string"
+  },
+  {
+   "name": "a purpose slot 9e is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 9e }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot 1e is a string, no exponent",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 1e }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot 0x1f is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 0x1f }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot 010 is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: 010 }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot true is a boolean",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: true }\n",
+   "want": "default.purposes[0].slot: must be a string"
+  },
+  {
+   "name": "a purpose slot Null is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: Null }\n",
+   "want": null
+  },
+  {
+   "name": "a purpose slot ~ is null",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  purposes:\n    - { purpose: wrapping, algorithm: ECDH-P384, slot: ~ }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 87 quoted",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: \"87\", purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 87 unquoted is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 87, purpose: pin-release, public_key: AQID }\n",
+   "want": "default.slot_map[0].slots[0].slot: must be a string"
+  },
+  {
+   "name": "a slot map slot 99 unquoted is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 99, purpose: pin-release, public_key: AQID }\n",
+   "want": "default.slot_map[0].slots[0].slot: must be a string"
+  },
+  {
+   "name": "a slot map slot 9d plain is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 9d, purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 8a plain is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 8a, purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 1e3 is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 1e3, purpose: pin-release, public_key: AQID }\n",
+   "want": "default.slot_map[0].slots[0].slot: must be a string"
+  },
+  {
+   "name": "a slot map slot 0x1f is a string of four",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 0x1f, purpose: pin-release, public_key: AQID }\n",
+   "want": "default.slot_map[0].slots[0].slot: not in the form the schema requires"
+  },
+  {
+   "name": "a slot map slot 1e is a hex slot",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 1e, purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 0b is a hex slot",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 0b, purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a slot map slot 00 is a string, a leading zero is not a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  slot_map:\n    - node: board-a\n      slots:\n        - { slot: 00, purpose: pin-release, public_key: AQID }\n",
+   "want": null
+  },
+  {
+   "name": "a recipient of 43 digits is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [1234567890123456789012345678901234567890123]\n",
+   "want": "default.recipients[0]: must be a string"
+  },
+  {
+   "name": "a recipient 1e5 is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [1e5]\n",
+   "want": "default.recipients[0]: must be a string"
+  },
+  {
+   "name": "a recipient true is a boolean",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [true]\n",
+   "want": "default.recipients[0]: must be a string"
+  },
+  {
+   "name": "a recipient null in a list",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [null]\n",
+   "want": "default.recipients[0]: must be a string"
+  },
+  {
+   "name": "recipients null",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: ~\n",
+   "want": null
+  },
+  {
+   "name": "recipients empty value is null",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients:\n",
+   "want": null
+  },
+  {
+   "name": "a recipient of 43 characters with a leading hyphen is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [-zbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs]\n",
+   "want": null
+  },
+  {
+   "name": "a recipient with a leading underscore is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n  recipients: [_zbLsXh8uDCcd-6MNwXF4W_7noWXFZAfHkxZsRGC9Xs]\n",
+   "want": null
+  },
+  {
+   "name": "cache_ttl 15 is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15\n",
+   "want": "default.cache_ttl: must be a string"
+  },
+  {
+   "name": "cache_ttl 1e3 is a number",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 1e3\n",
+   "want": "default.cache_ttl: must be a string"
+  },
+  {
+   "name": "cache_ttl 0x1f is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 0x1f\n",
+   "want": "default.cache_ttl: not in the form the schema requires"
+  },
+  {
+   "name": "cache_ttl 15m is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 15m\n",
+   "want": null
+  },
+  {
+   "name": "cache_ttl 0m is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 0m\n",
+   "want": null
+  },
+  {
+   "name": "cache_ttl 1_0s is a string",
+   "schema": "key-plan/v1/key-plan.schema.json",
+   "yaml": "default:\n  cache_ttl: 1_0s\n",
+   "want": "default.cache_ttl: not in the form the schema requires"
+  },
+  {
+   "name": "a uid block 0",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": null
+  },
+  {
+   "name": "a uid block 1e3 is an integer number",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 1e3\n",
+   "want": null
+  },
+  {
+   "name": "a uid block 1.0 is an integer number",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 1.0\n",
+   "want": null
+  },
+  {
+   "name": "a uid block -0 is zero",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: -0\n",
+   "want": null
+  },
+  {
+   "name": "a uid block 4294967295",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 4294967295\n",
+   "want": null
+  },
+  {
+   "name": "a uid block 4294967296",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 4294967296\n",
+   "want": "default.uid_block: too high"
+  },
+  {
+   "name": "a uid block -1",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: -1\n",
+   "want": "default.uid_block: too low"
+  },
+  {
+   "name": "a uid block 1.5",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 1.5\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block 0x1f is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0x1f\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block 010 is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 010\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block +1 is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: +1\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block 1_000 is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 1_000\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block .5 is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: .5\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block yes is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: yes\n",
+   "want": "default.uid_block: must be an integer"
+  },
+  {
+   "name": "a uid block 1e999 is a number that no float holds",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 1e999\n",
+   "want": "default.uid_block: too high"
+  },
+  {
+   "name": "a uid block -1e999 is a number that no float holds",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: -1e999\n",
+   "want": "default.uid_block: too low"
+  },
+  {
+   "name": "a name 123 is a number",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: 123\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": "default.name: must be a string"
+  },
+  {
+   "name": "a name yes is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: yes\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": null
+  },
+  {
+   "name": "a name 2026-11-01 is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: 2026-11-01\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": null
+  },
+  {
+   "name": "a name 0x1F is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: 0x1F\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": null
+  },
+  {
+   "name": "a name true is a boolean",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: true\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": "default.name: must be a string"
+  },
+  {
+   "name": "a name True is a string",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: True\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": null
+  },
+  {
+   "name": "a name null is null",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: null\n  kind: environment\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": "default.name: must be a string"
+  },
+  {
+   "name": "a kind 1e3 is a number",
+   "schema": "boundary/v1/boundary.schema.json",
+   "yaml": "default:\n  name: dev\n  kind: 1e3\n  level: L2\n  environment: development\n  issuer: https://sluis.dev.local.test\n  uid_block: 0\n",
+   "want": "default.kind: must be a string"
+  },
+  {
+   "name": "an upstream id of digits is a string key",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "123:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n",
+   "want": null
+  },
+  {
+   "name": "an upstream id 1e3 is a string key",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "1e3:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n",
+   "want": null
+  },
+  {
+   "name": "an upstream id with a dot first",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": ".5:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n",
+   "want": null
+  },
+  {
+   "name": "an upstream id true is a string key",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "true:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n",
+   "want": null
+  },
+  {
+   "name": "an upstream id with upper case",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "Workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n",
+   "want": "<id>: not a valid id"
+  },
+  {
+   "name": "an upstream client_id 123 is a number",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: 123\n  subject_claim: sub\n",
+   "want": "workforce.client_id: must be a string"
+  },
+  {
+   "name": "an upstream subject_claim 1e3 is a number",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: 1e3\n",
+   "want": "workforce.subject_claim: must be a string"
+  },
+  {
+   "name": "an upstream secret 123 is a number",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n  secret: 123\n",
+   "want": "workforce.secret: must be a string"
+  },
+  {
+   "name": "an upstream secret 0x1f is a string credential name",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n  secret: 0x1f\n",
+   "want": null
+  },
+  {
+   "name": "an upstream scope 123 is a number",
+   "schema": "upstream/v1/upstream.schema.json",
+   "yaml": "workforce:\n  kind: oidc\n  issuer: http://127.0.0.1:8180/realms/sluis-test\n  client_id: sluis-local\n  subject_claim: sub\n  scopes: [openid, 123]\n",
+   "want": "workforce.scopes[1]: must be a string"
+  },
+  {
+   "name": "a lifetime 600 is a number",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 600\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": "default.id_token: must be a string"
+  },
+  {
+   "name": "a lifetime 600s",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 600s\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": null
+  },
+  {
+   "name": "a lifetime 0x258 is a string",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 0x258\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": "default.id_token: not in the form the schema requires"
+  },
+  {
+   "name": "a lifetime 1e3s is a string",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 1e3s\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": "default.id_token: not in the form the schema requires"
+  },
+  {
+   "name": "a lifetime 10_0s is a string",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 10_0s\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": "default.id_token: not in the form the schema requires"
+  },
+  {
+   "name": "a lifetime 010m is a string that matches",
+   "schema": "token-lifetime/v1/token-lifetime.schema.json",
+   "yaml": "default:\n  id_token: 010m\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+   "want": null
+  },
+  {
+   "name": "a bootstrap file with plain scalars",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 30s\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": null
+  },
+  {
+   "name": "a bootstrap start_timeout 30 is a number",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 30\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": "start_timeout: must be a string"
+  },
+  {
+   "name": "a bootstrap start_timeout 0x1e is a string",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 0x1e\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": "start_timeout: not in the form the schema requires"
+  },
+  {
+   "name": "a bootstrap start_timeout 1e2 is a number",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 1e2\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": "start_timeout: must be a string"
+  },
+  {
+   "name": "a bootstrap boundary 123 is a number",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: 123\nstart_timeout: 30s\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": "boundary: must be a string"
+  },
+  {
+   "name": "a bootstrap boundary yes is a boundary named yes",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: yes\nstart_timeout: 30s\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: \"000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"\n",
+   "want": null
+  },
+  {
+   "name": "a bootstrap spki_sha384 of digits unquoted is a number",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 30s\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: 111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\n",
+   "want": "publishers[0].spki_sha384: must be a string"
+  },
+  {
+   "name": "a bootstrap spki_sha384 of zeros unquoted is a string, a leading zero is not a number",
+   "schema": "bootstrap/v1/bootstrap.schema.json",
+   "yaml": "$schema: https://sluis.id/schema/bootstrap/v1/bootstrap.schema.json\nboundary: dev\nstart_timeout: 30s\nconfig_source: { driver: file, socket: /a }\nsecret_source: { driver: credential, socket: /b }\ndurable: { driver: rqlite, socket: /c }\ntemp: { driver: rqlite, socket: /d }\npublishers:\n  - kid: publisher-1\n    public_key: x\n    spki_sha384: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\n",
+   "want": null
+  }
+ ]
+}
