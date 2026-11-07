@@ -1,0 +1,94 @@
+// The destination port of exporter@ (0009 "The destination port"): where a published document is written, listed,
+// removed, purged at the edge and read back. One driver for each destination type, private to exporter@; the first is
+// `directory`. A driver with no public address (a store of record, a directory with none declared) answers
+// `unimplemented` with the reason `unsupported` to Purge and ReadBack.
+syntax = "proto3";
+
+package sluis.port.destination.v2alpha1;
+
+// DestinationService writes the documents exporter@ publishes. Its socket answers exporter@ alone.
+service DestinationService {
+  rpc Put(PutRequest) returns (PutResponse);              // a document, whole and atomically, with its content type and Cache-Control
+  rpc Delete(DeleteRequest) returns (DeleteResponse);     // a document exporter@ wrote
+  rpc List(ListRequest) returns (ListResponse);           // the documents under a prefix, with their digests
+  rpc Purge(PurgeRequest) returns (PurgeResponse);        // evicts the edge copy of public addresses
+  rpc ReadBack(ReadBackRequest) returns (ReadBackResponse);  // fetches a public address the way a verifier does
+}
+
+// PutRequest writes one document.
+message PutRequest {
+  string address = 1;        // where the document goes at the destination: segments of lower-case letters, digits, "-", "_" and ".", joined by "/"
+  string content_type = 2;   // the Content-Type it is served with
+  string cache_control = 3;  // the Cache-Control it is served with
+  bytes body = 4;            // the whole document
+}
+
+// PutResponse says what the destination holds now.
+message PutResponse {
+  string version = 1;  // the destination's own version of the document (opaque)
+  string sha256 = 2;   // the SHA-256 of the body the destination holds, lower-case hex
+}
+
+// DeleteRequest removes one document.
+message DeleteRequest {
+  string address = 1;  // the document's address
+}
+
+// DeleteResponse says whether there was a document.
+message DeleteResponse {
+  bool removed = 1;  // false when the address held nothing exporter@ wrote
+}
+
+// ListRequest lists the documents under a prefix.
+message ListRequest {
+  string prefix = 1;      // an address prefix; empty is every document
+  string page_token = 2;  // opaque
+  int32 page_size = 3;    // the page size; 0 is the driver's default
+}
+
+// ListResponse is one page of documents, in address order.
+message ListResponse {
+  repeated Document documents = 1;  // the documents of the page
+  string next_page_token = 2;       // empty on the last page
+}
+
+// Document is what a destination holds at one address.
+message Document {
+  string address = 1;        // the document's address
+  string sha256 = 2;         // the SHA-256 of its body, lower-case hex
+  string content_type = 3;   // the Content-Type it was written with
+  string cache_control = 4;  // the Cache-Control it was written with
+  uint64 size = 5;           // the length of the body, in bytes
+}
+
+// PurgeRequest evicts the edge copy of public addresses.
+message PurgeRequest {
+  repeated string addresses = 1;  // public addresses (URLs) of documents of this destination, and nothing else
+}
+
+// PurgeResponse says what the purge did.
+message PurgeResponse {
+  PurgeResult result = 1;  // the outcome
+}
+
+// PurgeResult is the outcome of a purge.
+enum PurgeResult {
+  PURGE_RESULT_UNSPECIFIED = 0;
+  PURGE_RESULT_NONE = 1;    // the destination has no edge: nothing to evict
+  PURGE_RESULT_PURGED = 2;  // the edge accepted the purge
+}
+
+// ReadBackRequest fetches a public address.
+message ReadBackRequest {
+  string address = 1;  // the public address (URL) of a document of this destination
+}
+
+// ReadBackResponse is what a verifier would have seen: a GET with no credential and no cache-buster.
+message ReadBackResponse {
+  uint32 status = 1;         // the HTTP status
+  string cache_control = 2;  // the Cache-Control of the answer
+  string content_type = 3;   // the Content-Type of the answer
+  string age = 4;            // the Age of the answer, as sent; empty when it has none
+  string cache_state = 5;    // the cache state the edge reports (for Cloudflare, cf-cache-status); empty when it reports none
+  bytes body = 6;            // the body
+}
