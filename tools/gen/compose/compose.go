@@ -527,6 +527,9 @@ func (p *plan) build() error {
 			if c.Name == "store" || c.Name == "key" {
 				continue // the data and keys ports, above
 			}
+			if cs, ok := actorSpecs[c.Name]; ok && !cs.Socket {
+				continue // an actor that serves no socket (ca in the first working version) has nothing to mount or to join
+			}
 			v := runVol(c.Name)
 			s.Mounts = append(s.Mounts, mount{v, "/run/sluis/" + c.Name, true})
 			join(c.Name)

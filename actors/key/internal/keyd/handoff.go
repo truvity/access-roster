@@ -203,9 +203,13 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 			// The end of the leaf that this one replaces, so that a bypass of the guard below shows in the log.
 			fact["previous_not_after"] = old.NotAfter.Unix()
 		}
-		// The same certificate with more behind it (the root it was issued by, which a chain of one lacks) is not an older
-		// answer put back: it is the same answer, completed. A chain that loses certificates is not.
-		completed := bytes.Equal(firstOf(cur.GetChain()), chain[0]) && len(chain) >= len(cur.GetChain()) && req.Msg.GetTrustSequence() >= cur.GetTrustSequence()
+		// The same certificate with its root behind it is not an older answer put back: it is the same answer, completed. The
+		// completion is exactly that: the stored chain is the leaf alone, the new one is the same leaf and one certificate that
+		// is a root (self-signed: its issuer is its subject and it verifies under its own key), and the trust sequence does not
+		// go back. Anything else that keeps the leaf (a longer tail, another certificate behind it) is not recognised as
+		// completing, and meets the guard like any other chain.
+		completed := len(cur.GetChain()) == 1 && len(chain) == 2 && bytes.Equal(cur.GetChain()[0], chain[0]) && isRoot(certs[1]) &&
+			req.Msg.GetTrustSequence() >= cur.GetTrustSequence()
 		if !completed && !req.Msg.GetReplace() && (oerr != nil || !leaf.NotAfter.After(old.NotAfter) || req.Msg.GetTrustSequence() < cur.GetTrustSequence()) {
 			return nil, refuse(connect.CodeFailedPrecondition, reasonStale, "chain")
 		}
@@ -221,6 +225,12 @@ func (s *Server) Install(ctx context.Context, req *connect.Request[keyv2alpha1.I
 		return nil, refuse(connect.CodeUnavailable, reasonStore, "")
 	}
 	return connect.NewResponse(&keyv2alpha1.InstallResponse{Id: id, Audited: true, Replaced: replaced}), nil
+}
+
+// isRoot says that the certificate is self-signed: a CA whose issuer is its subject and whose signature verifies under its own
+// key. key@ holds no anchors, so this is what it can know of a root.
+func isRoot(c *x509.Certificate) bool {
+	return c.IsCA && bytes.Equal(c.RawIssuer, c.RawSubject) && c.CheckSignatureFrom(c) == nil
 }
 
 func firstOf(chain [][]byte) []byte {

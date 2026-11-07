@@ -320,6 +320,9 @@ pub enum ChangeKind {
     Activated,
     /// The key stopped signing.
     Retired,
+    /// key@ withdrew the chain (`x5c`) of the key: the certificate ended, the intermediate is revoked or it did not sign it. The
+    /// ring has none then. The state is the key's, unchanged.
+    Uncertified(&'static str),
     /// The key's chain (`x5c`) changed: key@ gave another certificate chain for it (the token certificate was made, or made
     /// again). The state is the key's, unchanged.
     Certified(&'static str),
@@ -459,6 +462,21 @@ pub fn plan_with(
             // certificate once an intermediate is installed) and changes when the certificate is made again, so the ring takes
             // it whenever it differs. An empty answer leaves what the ring has: the old chain still verifies the same key,
             // and a revoked key is not in the key set at all. Another node's key is that node's to update.
+            // key@ says when it withdraws a chain on purpose (the certificate ended, the intermediate is revoked): then the ring
+            // has none, and the key set does not claim a custody that key@ no longer vouches for. An empty answer that is not
+            // a withdrawal means none yet, or that key@ could not tell, and leaves the chain.
+            if !cur_revoked
+                && k.node == node
+                && cur.x5c.is_empty()
+                && cur.x5c_withdrawn
+                && !k.x5c.is_empty()
+            {
+                k.x5c.clear();
+                changes.push(change(
+                    &cur.key_id,
+                    ChangeKind::Uncertified(state_word(&k.state)),
+                ));
+            }
             if !cur_revoked && k.node == node && !cur.x5c.is_empty() && k.x5c != cur.x5c {
                 k.x5c = cur.x5c.clone();
                 changes.push(change(
@@ -886,6 +904,7 @@ mod tests {
             key_id: id.into(),
             spki_der: vec![1, 2, 3],
             x5c: vec![],
+            x5c_withdrawn: false,
         }
     }
     fn states(r: &SigningRing) -> Vec<(&str, &str)> {
@@ -958,6 +977,42 @@ mod tests {
             ch.iter()
                 .all(|c| !matches!(c.kind, ChangeKind::Certified(_)))
         );
+    }
+
+    /// A chain that key@ withdraws on purpose (the certificate ended, the intermediate is revoked) leaves the ring; an empty
+    /// answer that is not a withdrawal (none yet, or key@ could not tell) leaves what the ring has; another node's chain and a
+    /// revoked key's are not touched.
+    /// verifies: REQ-PKI-034
+    #[test]
+    fn a_chain_key_withdraws_leaves_the_ring_and_an_empty_answer_does_not() {
+        let with = |c: Vec<Vec<u8>>, withdrawn: bool| Current {
+            x5c: c,
+            x5c_withdrawn: withdrawn,
+            ..cur("a")
+        };
+        let (r0, _) = step(&SigningRing::default(), A, "a", 0);
+        let (r1, _) = plan(&r0, &with(chain(1), false), A, at(10), &T, &HashSet::new());
+        assert_eq!(r1.keys[0].x5c, chain(1));
+        // None yet / could not tell: kept.
+        let (r2, ch) = plan(&r1, &with(vec![], false), A, at(20), &T, &HashSet::new());
+        assert_eq!(r2.keys[0].x5c, chain(1));
+        assert!(ch.is_empty());
+        // Another node's key: not ours to change.
+        let (r3, ch) = plan(&r1, &with(vec![], true), B, at(30), &T, &HashSet::new());
+        assert_eq!(r3.keys[0].x5c, chain(1));
+        assert!(
+            ch.iter()
+                .all(|c| !matches!(c.kind, ChangeKind::Uncertified(_)))
+        );
+        // Withdrawn: dropped, once.
+        let (r4, ch) = plan(&r1, &with(vec![], true), A, at(40), &T, &HashSet::new());
+        assert!(r4.keys[0].x5c.is_empty());
+        assert_eq!(ch, [added("a", ChangeKind::Uncertified(ACTIVE))]);
+        let (_, ch) = plan(&r4, &with(vec![], true), A, at(50), &T, &HashSet::new());
+        assert!(ch.is_empty(), "a chain that is gone is not dropped again");
+        // And it comes back when key@ gives one again.
+        let (r5, _) = plan(&r4, &with(chain(2), false), A, at(60), &T, &HashSet::new());
+        assert_eq!(r5.keys[0].x5c, chain(2));
     }
 
     /// verifies: REQ-KEYS-106
@@ -1519,6 +1574,7 @@ mod publication_tests {
             key_id: id.into(),
             spki_der: vec![1, 2, 3],
             x5c: vec![],
+            x5c_withdrawn: false,
         }
     }
 

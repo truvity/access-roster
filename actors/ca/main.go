@@ -31,7 +31,8 @@ func (f *flags) add(fs *flag.FlagSet) {
 	fs.StringVar(&f.keySocket, "key-socket", "", "the socket of key@ for this actor (default /run/sluis/key/<boundary>/ca/key.sock)")
 }
 
-func (f *flags) worker(c cli.Flags) (*cad.Worker, error) {
+// socketPaths are the sockets ca needs, by name: the flag, or the socket layout of the plan.
+func (f *flags) socketPaths(c cli.Flags) (map[string]string, error) {
 	if c.Boundary == "" {
 		return nil, cli.Usage(fmt.Errorf("required: --boundary"))
 	}
@@ -41,9 +42,19 @@ func (f *flags) worker(c cli.Flags) (*cad.Worker, error) {
 		}
 		return def
 	}
-	storeSocket := orDefault(f.storeSocket, filepath.Join("/run/sluis/store", c.Boundary+".sock"))
-	transportSocket := orDefault(f.transportSocket, filepath.Join("/run/sluis/audit", c.Boundary, "emit.sock"))
-	keySocket := orDefault(f.keySocket, filepath.Join("/run/sluis/key", c.Boundary, cad.Actor, "key.sock"))
+	return map[string]string{
+		"store":     orDefault(f.storeSocket, filepath.Join("/run/sluis/store", c.Boundary+".sock")),
+		"transport": orDefault(f.transportSocket, filepath.Join("/run/sluis/audit", c.Boundary, "emit.sock")),
+		"key":       orDefault(f.keySocket, filepath.Join("/run/sluis/key", c.Boundary, cad.Actor, "key.sock")),
+	}, nil
+}
+
+func (f *flags) worker(c cli.Flags) (*cad.Worker, error) {
+	sockets, err := f.socketPaths(c)
+	if err != nil {
+		return nil, err
+	}
+	storeSocket, transportSocket, keySocket := sockets["store"], sockets["transport"], sockets["key"]
 
 	sh, surl := rpc.Dial(storeSocket)
 	th, turl := rpc.Dial(transportSocket)
@@ -82,11 +93,11 @@ func commands(f *flags) cli.Commands {
 			return w.Run(ctx)
 		},
 		Check: func(ctx context.Context, c cli.Flags) error {
-			w, err := f.worker(c)
+			sockets, err := f.socketPaths(c)
 			if err != nil {
 				return err
 			}
-			if bad := w.Check(ctx); len(bad) > 0 {
+			if bad := cad.Check(ctx, sockets); len(bad) > 0 {
 				slog.Error("check failed", "paths", bad)
 				return cli.Refused(bad...)
 			}

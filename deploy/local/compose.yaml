@@ -50,7 +50,6 @@ services:
       - key-writer:/v/key-writer
       - rqlite-data:/v/rqlite-data
       - run-adapter-upstream-oidc:/v/run-adapter-upstream-oidc
-      - run-ca:/v/run-ca
       - run-entry:/v/run-entry
       - run-exchange:/v/run-exchange
       - run-key:/v/run-key
@@ -505,7 +504,6 @@ services:
     group_add:
       - "61004"
       - "61005"
-      - "61006"
       - "61009"
       - "61012"
       - "61024"
@@ -518,7 +516,6 @@ services:
       - audit:/run/sluis/audit/dev:ro
       - run-signer:/run/sluis/signer:ro
       - run-policy:/run/sluis/policy:ro
-      - run-ca:/run/sluis/ca:ro
       - run-adapter-upstream-oidc:/run/sluis/adapter-upstream-oidc:ro
     read_only: true
     cap_drop: [ALL]
@@ -1015,7 +1012,6 @@ volumes:
   key-writer: {}
   rqlite-data: {}
   run-adapter-upstream-oidc: {}
-  run-ca: {}
   run-entry: {}
   run-exchange: {}
   run-key: {}

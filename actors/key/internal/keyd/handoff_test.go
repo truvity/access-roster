@@ -564,6 +564,78 @@ func TestInstallCompletesAChainOfOneWithItsRoot(t *testing.T) {
 	n.refusal(t, err, connect.CodeInvalidArgument, reasonChain, "chain")
 }
 
+// What is added to a chain of one must be a root, and only one: a tail that is not self-signed, or a second certificate behind
+// the first, is no completion, and the stale-answer guard stops it (the reviewer installed [leaf, X, Y] with a made-up Y).
+func TestInstallDoesNotCompleteAChainWithAnythingButItsRoot(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	der := certFor(t, n, root, true)
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, der); err != nil {
+		t.Fatal(err)
+	}
+	// An issuer of the leaf that is not a root: a CA certificate that the root signed, and that signs the leaf.
+	k, _ := n.driver.key("x509-intermediate")
+	mid, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	now := n.e.clock.now()
+	midTmpl := &x509.Certificate{SerialNumber: big.NewInt(5), Subject: pkix.Name{CommonName: "Not a root (TEST ONLY)"}, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(5, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	midDER, err := x509.CreateCertificate(rand.Reader, midTmpl, root.cert, &mid.PublicKey, root.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafTmpl := &x509.Certificate{SerialNumber: big.NewInt(6), RawSubject: mustParse(t, der).RawSubject, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(0, 13, 0), ExtraExtensions: mustParse(t, der).Extensions}
+	midCert := mustParse(t, midDER)
+	leafUnderMid, err := x509.CreateCertificate(rand.Reader, leafTmpl, midCert, &k.PublicKey, mid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A cross-signature: the root's key, certified by another CA. It signs the leaf (same key), and it is not self-signed.
+	y := newIntRoot(t, n)
+	crossTmpl := &x509.Certificate{SerialNumber: big.NewInt(7), Subject: root.cert.Subject, NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(5, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	crossDER, err := x509.CreateCertificate(rand.Reader, crossTmpl, y.cert, &root.key.PublicKey, y.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string][][]byte{
+		"a cross-signed root, which signs the leaf but is no root": {der, crossDER},
+		"a cross-signed root and the CA behind it":                 {der, crossDER, y.cert.Raw},
+		"the root and a CA the root is not signed by":              {der, root.cert.Raw, y.cert.Raw},
+		"a tail that is not a root":                                {der, mustParse(t, der).Raw},
+		"a made-up second certificate":                             {der, root.cert.Raw, midDER},
+		"the leaf and a CA that is not a root":                     {leafUnderMid, midDER},
+		"the same leaf, a CA that is not a root":                   {der, midDER},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := len(stored().GetChain())
+			_, err := install(n, "x509-intermediate", false, 3, tc...)
+			if err == nil {
+				t.Fatal("accepted")
+			}
+			if len(stored().GetChain()) != before || !bytes.Equal(stored().GetChain()[0], der) {
+				t.Fatal("the stored chain changed")
+			}
+		})
+	}
+}
+
+func mustParse(t *testing.T, der []byte) *x509.Certificate {
+	t.Helper()
+	c, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
 // Two installs at once cannot both pass the guard: of chains that end on successive days, whatever the order, the one that
 // ends last is the one installed.
 func TestConcurrentInstallsKeepTheNewest(t *testing.T) {

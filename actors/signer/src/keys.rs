@@ -28,6 +28,8 @@ pub struct Current {
     pub spki_der: Vec<u8>,
     /// The certificate chain, DER, when key@ has one (none while the key is a software key, D-8).
     pub x5c: Vec<Vec<u8>>,
+    /// key@ holds a certificate for the key and does not give it now: the ring drops the chain it has.
+    pub x5c_withdrawn: bool,
 }
 
 /// Why key@ gave no answer `signer` can use.
@@ -93,6 +95,7 @@ impl KeyAt {
             key_id: resp.key_id,
             spki_der: resp.spki_der,
             x5c: resp.x5c,
+            x5c_withdrawn: resp.x5c_withdrawn,
         })
     }
 

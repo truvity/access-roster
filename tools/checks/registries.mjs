@@ -82,7 +82,7 @@ const seconds = (v) => {
   return Number(m[1]) * SECONDS[m[2].toLowerCase()];
 };
 
-const OPS = ['seal', 'open', 'sign', 'mac', 'public-key', 'wrap', 'unwrap'];
+const OPS = ['seal', 'open', 'sign', 'mac', 'public-key', 'wrap', 'unwrap', 'certify'];
 const PURPOSE_KINDS = ['signing', 'key-agreement', 'wrapping'];
 const ENABLED = ['baseline', 'on-use', 'named-exception'];
 const KEY_TOP = ['schema', 'checked', 'algorithms', 'purposes', 'slot_plan', 'data_keys', 'wrapping'];
