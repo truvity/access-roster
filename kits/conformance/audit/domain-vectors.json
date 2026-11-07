@@ -1,0 +1,293 @@
+{
+ "comment": "The values that really reach the audit fields of a key, a store address, a tenant or a policy, and where they are put in a record. Each entry sets the path of the example record of the action (kits/conformance/audit/action-vectors.json) to the shape, with $v replaced by each value of the domain, and the schema must accept every one. A domain is the characters a value may begin with and may go on with, and its shortest and longest length; the values are made from it in one way, shared by Go and Rust: for each first character, a value of the shortest and one of the longest length, the rest cycling through the characters of the domain from the position of the first (so the first characters and the rest are all seen at both ends of the length range), minus `except`, plus `extra`. A `refused` value must not validate. The class of bug this is for: the table took a key id only if it began with a letter or a digit, and one thumbprint in thirty-two begins with - or _ (#1610). Hand-written; Go and Rust must agree on every entry (REQ-AUDIT-101).",
+ "domains": {
+  "kid": {
+   "doc": "an RFC 7638 thumbprint of a P-256 or P-384 key: SHA-256 in base64url without padding, 43 characters (jwks.rs thumbprint, keyd keyID)",
+   "first": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "rest": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+   "min": 43,
+   "max": 43,
+   "refused": [
+    "",
+    "has space",
+    "aé"
+   ]
+  },
+  "recipient": {
+   "doc": "recipientLabel in key@: the key id bytes in lower-case base32, 52 characters",
+   "first": "abcdefghijklmnopqrstuvwxyz234567",
+   "rest": "abcdefghijklmnopqrstuvwxyz234567",
+   "min": 52,
+   "max": 52
+  },
+  "random_id": {
+   "doc": "a session id, a subject, a token id: 128 random bits as 26 lower-case base32 characters (sessiond ids.go)",
+   "first": "abcdefghijklmnopqrstuvwxyz234567",
+   "rest": "abcdefghijklmnopqrstuvwxyz234567",
+   "min": 26,
+   "max": 26
+  },
+  "store_part": {
+   "doc": "a part of a store address and so a boundary or a tenant: 1 to 128 of a-z 0-9 - _ ., never . or .. (store-api.md Address encoding)",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 128,
+   "except": [
+    ".",
+    ".."
+   ],
+   "refused": [
+    "",
+    "has space",
+    "UPPERé"
+   ]
+  },
+  "store_id": {
+   "doc": "the id of a store address: parts of the above joined by /",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_./",
+   "min": 1,
+   "max": 128,
+   "extra": [
+    "a/.b",
+    "x/y/z",
+    "..a/-b/_c"
+   ]
+  },
+  "tenant": {
+   "doc": "a tenant of a grant: a store part, or * for all of them",
+   "first": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "rest": "abcdefghijklmnopqrstuvwxyz0123456789-_.",
+   "min": 1,
+   "max": 128,
+   "except": [
+    ".",
+    ".."
+   ],
+   "extra": [
+    "*"
+   ],
+   "refused": [
+    "",
+    "has space"
+   ]
+  },
+  "policy_id": {
+   "doc": "the @id of a policy or a template: 1 to 128 of letters, digits and - _ . : / (policy engine.rs plain_id)",
+   "first": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:/",
+   "rest": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:/",
+   "min": 1,
+   "max": 128,
+   "refused": [
+    "",
+    "has space"
+   ]
+  }
+ },
+ "fields": [
+  {
+   "action": "signer.ring.add",
+   "path": "unmapped.sluis.key_id",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "signer.ring.change",
+   "path": "unmapped.sluis.key_id",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "signer.ring.drop",
+   "path": "unmapped.sluis.key_id",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "signer.sign",
+   "path": "unmapped.sluis.key_id",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "key.sign",
+   "path": "unmapped.sluis.key_id",
+   "shape": "$v",
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.kids",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.written",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.already",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.pending",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.unknown",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.revoke",
+   "path": "unmapped.sluis.operator",
+   "shape": [
+    "$v"
+   ],
+   "domain": "kid"
+  },
+  {
+   "action": "key.start",
+   "path": "unmapped.sluis.recipient",
+   "shape": "$v",
+   "domain": "recipient"
+  },
+  {
+   "action": "key.wrap.write",
+   "path": "unmapped.sluis.recipient",
+   "shape": "$v",
+   "domain": "recipient"
+  },
+  {
+   "action": "session.token",
+   "path": "unmapped.sluis.sid",
+   "shape": "$v",
+   "domain": "random_id"
+  },
+  {
+   "action": "session.refresh",
+   "path": "unmapped.sluis.sid",
+   "shape": "$v",
+   "domain": "random_id"
+  },
+  {
+   "action": "session.chain.end",
+   "path": "unmapped.sluis.sid",
+   "shape": "$v",
+   "domain": "random_id"
+  },
+  {
+   "action": "key.data_key.make",
+   "path": "metadata.tenant_uid",
+   "shape": "$v",
+   "domain": "tenant"
+  },
+  {
+   "action": "exchange.token",
+   "path": "metadata.tenant_uid",
+   "shape": "$v",
+   "domain": "tenant"
+  },
+  {
+   "action": "policy.decide",
+   "path": "metadata.tenant_uid",
+   "shape": "$v",
+   "domain": "tenant"
+  },
+  {
+   "action": "reader.search",
+   "path": "unmapped.sluis.tenants",
+   "shape": [
+    "$v"
+   ],
+   "domain": "tenant"
+  },
+  {
+   "action": "store.start",
+   "path": "unmapped.sluis.boundary",
+   "shape": "$v",
+   "domain": "store_part"
+  },
+  {
+   "action": "store.reload",
+   "path": "unmapped.sluis.boundary",
+   "shape": "$v",
+   "domain": "store_part"
+  },
+  {
+   "action": "store.refused",
+   "path": "unmapped.sluis.id",
+   "shape": "$v",
+   "domain": "store_id"
+  },
+  {
+   "action": "exchange.token",
+   "path": "unmapped.sluis.token.audience",
+   "shape": "$v",
+   "domain": "store_id"
+  },
+  {
+   "action": "exchange.refused",
+   "path": "unmapped.sluis.token.audience",
+   "shape": "$v",
+   "domain": "store_id"
+  },
+  {
+   "action": "policy.decide",
+   "path": "authorizations",
+   "shape": [
+    {
+     "decision": "Allowed",
+     "policy": {
+      "uid": "$v"
+     }
+    }
+   ],
+   "domain": "policy_id"
+  },
+  {
+   "action": "exchange.token",
+   "path": "authorizations",
+   "shape": [
+    {
+     "decision": "Allowed",
+     "policy": {
+      "uid": "$v"
+     }
+    }
+   ],
+   "domain": "policy_id"
+  },
+  {
+   "action": "reader.search",
+   "path": "authorizations",
+   "shape": [
+    {
+     "decision": "Allowed",
+     "policy": {
+      "uid": "$v"
+     }
+    }
+   ],
+   "domain": "policy_id"
+  }
+ ]
+}
