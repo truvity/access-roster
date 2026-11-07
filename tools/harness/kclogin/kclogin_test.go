@@ -125,3 +125,69 @@ func TestAuthorizeRefusesWhatItCannotAnswer(t *testing.T) {
 		t.Error("a driver with no client signed in")
 	}
 }
+
+// A person the provider already knows, asked to re-authenticate (prompt=login, or a max_age older than the session), gets
+// a form with the password only: the user name is kept.
+func TestAuthorizeAnswersTheReauthenticationForm(t *testing.T) {
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/auth", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `<span class="kc-feedback-text">Please re-authenticate to continue</span>`+
+			`<form action="`+srv.URL+`/again" method="post"><input type="hidden" name="session_code" value="s1"/><input type="password" name="password"/></form>`)
+	})
+	mux.HandleFunc("/again", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostForm.Get("password") != "pw" || r.PostForm.Get("username") != "" || r.PostForm.Get("session_code") != "s1" {
+			http.Error(w, "bad", http.StatusForbidden)
+			return
+		}
+		http.Redirect(w, r, "http://127.0.0.1:1/callback?code=again", http.StatusFound)
+	})
+	srv = httptest.NewServer(mux)
+	defer srv.Close()
+	d := &Driver{Client: srv.Client(), Stop: stopAtCallback}
+	u, err := d.Authorize(context.Background(), srv.URL+"/auth", Credentials{Username: "alice", Password: "pw"})
+	if err != nil || u.Query().Get("code") != "again" {
+		t.Fatalf("redirect = %v, %v", u, err)
+	}
+}
+
+// A second code for the same user is the code of the next step and is sent at once; a third waits for that step to begin
+// on the provider's clock, and then sends the one after.
+func TestCodeUsesTheNextStepAtOnceAndWaitsBeyondIt(t *testing.T) {
+	const authKey = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	key := []byte("12345678901234567890")
+	clock := time.Unix(1111111111, 0) // 1 s before the end of its step
+	step := clock.Unix() / Period
+	var slept []time.Duration
+	d := &Driver{
+		Now: func() time.Time { return clock },
+		Sleep: func(_ context.Context, w time.Duration) error {
+			slept = append(slept, w)
+			clock = clock.Add(w)
+			return nil
+		},
+	}
+	code := func(retry bool) string {
+		c, err := d.code(context.Background(), authKey, retry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	if got, want := code(false), TOTP(key, time.Unix(step*Period, 0)); got != want {
+		t.Errorf("first code = %s, want the current step's %s", got, want)
+	}
+	if got, want := code(false), TOTP(key, time.Unix((step+1)*Period, 0)); got != want {
+		t.Errorf("second code = %s, want the next step's %s", got, want)
+	}
+	if len(slept) != 0 {
+		t.Fatalf("slept %v before the third code", slept)
+	}
+	if got, want := code(false), TOTP(key, time.Unix((step+2)*Period, 0)); got != want {
+		t.Errorf("third code = %s, want the step after next, %s", got, want)
+	}
+	if len(slept) != 1 || clock.Unix() < (step+1)*Period || clock.Unix() >= (step+2)*Period {
+		t.Errorf("slept %v, now %d: want one wait to the start of step %d", slept, clock.Unix(), step+1)
+	}
+}
