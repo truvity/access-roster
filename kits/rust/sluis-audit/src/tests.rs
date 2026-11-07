@@ -279,6 +279,7 @@ fn event_of(v: &Value) -> Event {
                 .and_then(Value::as_array)
                 .map(|l| l.iter().map(|s| s.as_str().unwrap().into()).collect())
                 .unwrap_or_default(),
+            ..PolicyRef::default()
         }),
         sluis: sluis_of(v.get("sluis")),
         correlation_id: None,

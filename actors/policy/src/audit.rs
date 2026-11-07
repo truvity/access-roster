@@ -111,6 +111,7 @@ pub fn decide(o: &Outcome<'_>) -> Event {
             digest: o.digest.to_owned(),
             policy_ids: o.reasons.iter().map(|r| r.policy_id.clone()).collect(),
             decision: o.decision,
+            ..PolicyRef::default()
         }),
         sluis,
         correlation_id: None,

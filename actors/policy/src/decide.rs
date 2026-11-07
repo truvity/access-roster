@@ -288,6 +288,22 @@ impl Engine {
             u
         };
         let (resource_type, resource_id) = match r.r#type.as_str() {
+            // A read is of one log (`<project>/<kind>`), never of the boundary at large: the project and the log kind
+            // are two of the three things a binding decides on (ADR 0028 "Access", REQ-AUDIT-073).
+            "Boundary" if spec.name == "audit.read" => return Err(invalid("resource.type")),
+            "AuditLog" if spec.name == "audit.read" => {
+                let (project, kind) = r.id.split_once('/').ok_or(invalid("resource.id"))?;
+                if !text_ok(project) || project.contains('/') || !["audit", "usage"].contains(&kind)
+                {
+                    return Err(invalid("resource.id"));
+                }
+                entities.push(json!({
+                    "uid": {"type": "AuditLog", "id": r.id},
+                    "attrs": {"project": project, "kind": kind},
+                    "parents": [{"type": "Boundary", "id": self.boundary}],
+                }));
+                ("AuditLog", r.id.clone())
+            }
             "Boundary" if r.id == self.boundary => ("Boundary", self.boundary.clone()),
             "Boundary" => return Err(invalid("resource.id")),
             "Client" if spec.token => {

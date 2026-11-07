@@ -149,6 +149,7 @@ The types follow the [actor registry](/reference/actors/) and the [kinds](/refer
 | `Boundary` | A boundary, and the place a link is made in | The asker, from the `Boundary` config kind | The boundary's name |
 | `Workload` | A workload that proved its identity: in the first version a GitHub Actions job, checked by the `github-oidc` verifier | `exchange`, from the verified proof | `<verifier>/<proof subject>` |
 | `SigningKey` | A signing key of a boundary | `exchange` | The key's purpose, `release-signing` ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)) |
+| `AuditLog` | One log of a project of the boundary, `in` the `Boundary`, with its `project` and its `kind` (`audit` or `usage`) | `reader`, from the `AuditLog` config kind | `<project>/<kind>`, such as `sluis/audit` ([0028](/decisions/0028-audit-pieces/#access)) |
 
 - **A person is named by an account, because an operator cannot know a subject.** The subject is 128 random bits assigned at the first sign-in, so a binding or a link written before it names the account that will be linked. A binding never names an e-mail address, which does not identify ([0019](/decisions/0019-person-and-upstream-link/#what-policy-sees)).
 - **`org` is the tenant the person belongs to,** the tenant of the client the person signs in to ([0033](/decisions/0033-customer-connections/#which-tenant-a-person-belongs-to), [0019](/decisions/0019-person-and-upstream-link/#the-records)). The broker's organisation id is not copied into `org`: the asker reads `org` from the person's item, and no policy document sets it. `Account.org` is, in the same way, the tenant of the sign-in that linked the account; a config `Upstream` names no tenant.
@@ -178,6 +179,7 @@ Each of these is added by the record or pull request that first asks about it, a
 | `token.issue` | `Person` | `Client` | `session` | Whether this person may have a token for this client, at a code exchange or a refresh |
 | `token.exchange` | `Person` | `Client` | `exchange` | Whether this person's token may become a token for this client, as when `sluis login` exchanges the token of the front issuer at a boundary |
 | `artifact.sign` | `Workload` | `SigningKey` | `exchange` | Whether this workload may have this key sign this content ([0024](/decisions/0024-root-custody-and-the-signing-api/#the-signing-api)) |
+| `audit.read` | `Actor` or `Person` | `AuditLog` | `reader` | Whether this reader may have a grant to open this tenant's evidence in this log of this project. The reader asks once for each log and tenant a call names ([0028](/decisions/0028-audit-pieces/#access)) |
 | `policy.link` | `Person` (the one who asks) | `Boundary` | `exchange`, for a write that `console` routed | Whether this person may link this template, with these slot values, in this boundary |
 
 There is no separate action for step-up. A request that needs a fresher or stronger authentication is denied by a policy that says so ([below](#step-up)), which keeps the one question "may this person have this token" in one place.
@@ -548,14 +550,16 @@ when {
 
 // ---- Reading the audit log -------------------------------------------------------------
 
-// The reader of the local installation may ask for a grant to open any tenant's evidence (ADR 0028
+// The reader of the local installation may ask for a grant to open any tenant's evidence in any log (ADR 0028
 // "Access", ADR 0007 "Four layers": `audit.read` comes from the bindings of the configuration, not from
 // the built-in layer). The local audit front has no sign-in yet, so the reader asks for itself; a
 // boundary that signs people in binds the people and not the actor. `policy` cannot tell tenants
 // apart in Cedar (a tenant is not an entity), so this permit is for every tenant of the boundary, and
-// the tenant a grant names is the one the reader asked for, which key@ checks again.
+// the tenant a grant names is the one the reader asked for, which key@ checks again. The log is the
+// resource: `resource.project` and `resource.kind` (`audit` or `usage`) narrow a binding to a project or to a
+// kind, as `resource.project == "sluis" && resource.kind == "audit"` does.
 @id("bind-reader-audit-read")
-permit (principal == Actor::"reader", action == Action::"audit.read", resource is Boundary);
+permit (principal == Actor::"reader", action == Action::"audit.read", resource is AuditLog);
 
 // ---- Templates, for bindings that operators link at run time ---------------------------
 
