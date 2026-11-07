@@ -920,7 +920,7 @@ State with a time to live, kept in the temp engine.
 | [`AuthCode`](#authcode) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`DeviceCode`](#devicecode) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`SessionChain`](#sessionchain) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
-| [`WebAuthnChallenge`](#webauthnchallenge) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
+| [`WebAuthnChallenge`](#webauthnchallenge) | boundary | hashed | none | [`session`](/reference/actors/#session) |
 | [`UpstreamSession`](#upstreamsession) | boundary+tenant | hashed | none | [`session`](/reference/actors/#session) |
 | [`ClientDocument`](#clientdocument) | boundary | plain | none | [`session`](/reference/actors/#session) |
 | [`UpstreamMetadata`](#upstreammetadata) | boundary | plain | none | [`adapter-upstream-oidc`](/reference/actors/#adapter-upstream-oidc) |
@@ -980,9 +980,9 @@ Interactive or agent chain: the hash of the current refresh token and its spent 
 
 ### `WebAuthnChallenge`
 
-Spent once. Tenant `-` for staff ceremonies.
+Spent once: the id is the hash of the challenge of a passkey ceremony, and a second create is a replay. Boundary-scoped, with no tenant and so no grant: a usernameless sign-in (ADR 0017) has no person yet when the challenge is spent, and the marker holds nothing of one.
 
-- **Class:** temp; scope boundary+tenant; hashed; profile none; module core; serves the work family.
+- **Class:** temp; scope boundary; hashed; profile none; module core; serves the work family.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session).
 - **Exportable:** no; **backed up:** no.
