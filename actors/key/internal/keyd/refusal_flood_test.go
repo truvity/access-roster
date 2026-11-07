@@ -65,8 +65,10 @@ func TestAFloodOfRefusalsAtTheGuardIsCountedAndSigningGoesOn(t *testing.T) {
 	wg.Wait()
 	t.Logf("%d refusals in %v", total, time.Since(began))
 	time.Sleep(2500 * time.Millisecond) // the window ends and its timer folds the rest
-	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		if _, folded, _ := transportFacts(n); folded > 0 {
+	// Wait for the whole count and not for the first summary: a flood that spans several windows has a summary for each, and
+	// the last arrives after the first.
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if singles, folded, _ := transportFacts(n); singles+folded == total {
 			break
 		}
 	}
@@ -170,8 +172,8 @@ func TestAFloodOfRefusalsByRuleFromACallerIsCountedAndSigningGoesOn(t *testing.T
 	}
 	t.Logf("%d refusals in %v", total, time.Since(began))
 	time.Sleep(2500 * time.Millisecond)
-	for end := time.Now().Add(5 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
-		if _, folded, _ := ruleFacts(n, reasonRule); folded > 0 {
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if singles, folded, _ := ruleFacts(n, reasonRule); singles+folded == total {
 			break
 		}
 	}

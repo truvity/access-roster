@@ -579,27 +579,31 @@ func TestOnRefusedIsRateLimitedAndNeverHoldsTheCaller(t *testing.T) {
 			t.Fatalf("a refusal was %v", err)
 		}
 	}
-	if took := time.Since(began); took > 20*time.Second {
+	took := time.Since(began)
+	// The hook is held until the loop is over, so a transport that waited for it would hang here and not return: the bound is
+	// only there to end such a test before the package timeout.
+	if took > 2*time.Minute {
 		t.Fatalf("2000 refusals took %v: the hook held the callers", took)
 	}
 	time.Sleep(1600 * time.Millisecond) // the window ends, its timer folds the rest
 	close(release)
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		mu.Lock()
-		done := len(summaries) > 0
-		mu.Unlock()
-		if done || time.Now().After(deadline) {
-			break
-		}
+	// Every refusal is heard or folded, but not at once: the hook was held, so the summaries of all the windows that the
+	// refusals spanned (a loaded machine spreads 2000 calls over several windows) and the last window's timer arrive after
+	// the release, one after the other. Wait for the whole count and not for the first summary.
+	total := func() int { mu.Lock(); defer mu.Unlock(); return heard + suppressed }
+	released := time.Now()
+	for deadline := time.Now().Add(30 * time.Second); total() != 2000 && time.Now().Before(deadline); {
 		time.Sleep(10 * time.Millisecond)
 	}
+	t.Logf("2000 refusals took %v; %d were heard or folded %v after the hook was released", took, total(), time.Since(released))
 	mu.Lock()
-	if heard > 3+3 || len(summaries) == 0 || len(summaries) > 3 {
-		t.Fatalf("hook heard %d calls and %d summaries for 2000 refusals, want about the burst of 3 and a summary per window", heard, len(summaries))
+	// The refusals ran for `took`, so they spanned at most took/window + 1 windows, and the last one is folded by its timer.
+	windows := int(took/(1500*time.Millisecond)) + 2
+	if heard > 3*windows || len(summaries) == 0 || len(summaries) > windows {
+		t.Fatalf("hook heard %d calls and %d summaries for 2000 refusals over %v, want at most the burst of 3 and a summary for each of %d windows", heard, len(summaries), took, windows)
 	}
 	if heard+suppressed != 2000 {
-		t.Fatalf("heard %d + folded %d = %d, want 2000: a refusal was lost", heard, suppressed, heard+suppressed)
+		t.Fatalf("heard %d + folded %d = %d (%d summaries, over %v), want 2000: a refusal was lost", heard, suppressed, heard+suppressed, len(summaries), took)
 	}
 	if s := summaries[0]; s.Reason != "call_graph" || s.Peer.Name != "exchange" || s.Peer.UID != self || !s.Known || s.Procedure != "" || s.Window != 1500*time.Millisecond {
 		t.Fatalf("summary %+v", s)
@@ -608,7 +612,7 @@ func TestOnRefusedIsRateLimitedAndNeverHoldsTheCaller(t *testing.T) {
 	mu.Unlock()
 	// A later refusal, in a new window, is heard one by one again.
 	_ = echo(context.Background(), c)
-	deadline = time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		mu.Lock()
 		got := heard
