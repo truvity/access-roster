@@ -627,6 +627,68 @@ func TestInstallDoesNotCompleteAChainWithAnythingButItsRoot(t *testing.T) {
 	}
 }
 
+// A different leaf with a real root behind it, over an installed chain, is no completion: only the same leaf is. The leaf
+// is another certificate for the same key, it ends no later, and the guard stops it unless --replace says so; a later end
+// renews as it always did.
+func TestInstallOfAnotherLeafWithItsRootIsNotACompletion(t *testing.T) {
+	n := handoffNode(t, nil)
+	root := newIntRoot(t, n)
+	k, _ := n.driver.key("x509-intermediate")
+	csr := csrOf(t, k)
+	now := n.e.clock.now()
+	first := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, 0), nil)
+	sameEnd := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 13, 0), nil)
+	earlier := root.issue(t, csr, now.Add(-time.Hour), now.AddDate(0, 12, 0), nil)
+	if bytes.Equal(first, sameEnd) {
+		t.Fatal("two leaves are one")
+	}
+	stored := func() *keyv2alpha1.KeyCertificate {
+		for _, c := range certItems(n) {
+			if c.GetPurpose() == "x509-intermediate" {
+				return c
+			}
+		}
+		return nil
+	}
+	if _, err := install(n, "x509-intermediate", false, 3, first); err != nil {
+		t.Fatal(err)
+	}
+	for name, leaf := range map[string][]byte{"the same end": sameEnd, "an earlier end": earlier} {
+		_, err := install(n, "x509-intermediate", false, 3, leaf, root.cert.Raw)
+		n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+		if len(stored().GetChain()) != 1 || !bytes.Equal(stored().GetChain()[0], first) {
+			t.Fatalf("%s: the stored chain changed", name)
+		}
+	}
+	// With --replace the operator says so, and it is stored.
+	if res, err := install(n, "x509-intermediate", true, 3, sameEnd, root.cert.Raw); err != nil || !res.GetReplaced() || !bytes.Equal(stored().GetChain()[0], sameEnd) {
+		t.Fatalf("replace: %v, %v", res, err)
+	}
+	// A root issued again over the same key is another certificate: its chain needs --replace too.
+	root2 := &intRoot{key: root.key, cert: reissue(t, n, root)}
+	_, err := install(n, "x509-intermediate", false, 3, sameEnd, root2.cert.Raw)
+	n.refusal(t, err, connect.CodeFailedPrecondition, reasonStale, "chain")
+	if len(stored().GetChain()) != 2 || !bytes.Equal(stored().GetChain()[1], root.cert.Raw) {
+		t.Fatal("the root was swapped without --replace")
+	}
+	if res, err := install(n, "x509-intermediate", true, 3, sameEnd, root2.cert.Raw); err != nil || !res.GetReplaced() || !bytes.Equal(stored().GetChain()[1], root2.cert.Raw) {
+		t.Fatalf("replace with the new root: %v, %v", res, err)
+	}
+}
+
+// reissue is the root's certificate made again over the same key, with another serial number.
+func reissue(t *testing.T, n *node, r *intRoot) *x509.Certificate {
+	t.Helper()
+	now := n.e.clock.now()
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(99), Subject: r.cert.Subject, NotBefore: now.AddDate(-5, 0, 0), NotAfter: now.AddDate(6, 0, 0),
+		IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &r.key.PublicKey, r.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return mustParse(t, der)
+}
+
 func mustParse(t *testing.T, der []byte) *x509.Certificate {
 	t.Helper()
 	c, err := x509.ParseCertificate(der)
