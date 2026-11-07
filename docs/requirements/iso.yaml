@@ -90,13 +90,15 @@ requirements:
     rationale: "Content-aware signing stops a caller that holds the CA key from using it for another protocol or a wider certificate."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
     standards:
       - {id: ST-62, section: "4.1", depth: Partial}
     issues: [913, 914]
+    tests: [actors/key/internal/content/tokencert_test.go, actors/key/internal/keyd/tokencert_test.go]
     verification:
       - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a JWS signing input; refused (content-aware)"}
       - {kind: test-vectors, ref: "T-9: the ca purpose is asked to sign a TBSCertificate with basicConstraints CA true outside its constraints; refused"}
