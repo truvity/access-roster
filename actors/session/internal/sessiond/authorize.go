@@ -30,6 +30,10 @@ const (
 	maxNonce       = 256
 	maxRedirectURI = 1024
 	maxScope       = 256
+	// maxACRValues bounds the whole acr_values parameter, and maxACRCount the values in it. A value longer than maxACRLen
+	// (assurance.go) could never be an acr of a token anyway.
+	maxACRValues = 256
+	maxACRCount  = 8
 
 	// maxCookie is the longest sign-in cookie value entry passes on (HEADER_VALUE_MAX in entry's handler.rs). The
 	// pending sign-in is sealed into it, so the client-supplied fields above (the state, the nonce, the redirect_uri and the
@@ -155,6 +159,12 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 	case errors.Is(perr, errPromptAccount):
 		return fail("account_selection_required", "an account is not chosen here", reasonPrompt)
 	}
+	// acr_values (OpenID Connect Core section 3.1.2.1, RFC 9470): the client names the authentication it needs, and the
+	// callback holds the upstream to it. The list goes to the upstream as given, so that the upstream can meet it.
+	acrValues, err := parseACRValues(r.GetAcrValues())
+	if err != nil {
+		return fail("invalid_request", "acr_values is malformed", reasonACR)
+	}
 	// max_age is kept in the pending sign-in and checked against the upstream's auth_time at the callback. max_age=0
 	// asks for a fresh authentication, the same as prompt=login.
 	var maxAge *int64
@@ -206,6 +216,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: s256(verifier),
 		Prompt:        pr,
 		MaxAge:        maxAge,
+		AcrValues:     acrValues,
 	}))
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeUnavailable || connect.CodeOf(err) == connect.CodeDeadlineExceeded {
@@ -218,7 +229,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
 		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge, Prompt: pr,
-		HintSubject: hintSub, ResponseMode: answerMode(r.GetResponseMode()),
+		HintSubject: hintSub, ResponseMode: answerMode(r.GetResponseMode()), AcrValues: acrValues,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {
@@ -234,6 +245,47 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		return nil, aerr
 	}
 	return redirect(begin.Msg.GetAuthorizationUrl(), setCookie(cookie, cookieMaxAge)), nil
+}
+
+// errACRValues says the acr_values parameter is not a space-separated list of acr values.
+var errACRValues = errors.New("acr_values: malformed")
+
+// parseACRValues checks the space-separated acr_values of an authorization request and returns it as sent. Each value is
+// a non-empty run of the characters of a scope token (RFC 6749 section 3.3: no space, quote or backslash) of at most
+// maxACRLen bytes, separated by single spaces; the whole is at most maxACRValues bytes and maxACRCount values, so that it fits the
+// sealed pending sign-in. Empty means the client sent none.
+func parseACRValues(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if len(raw) > maxACRValues {
+		return "", errACRValues
+	}
+	vs := strings.Split(raw, " ")
+	if len(vs) > maxACRCount {
+		return "", errACRValues
+	}
+	for _, v := range vs {
+		if len(v) > maxACRLen || !scopeToken(v) {
+			return "", errACRValues
+		}
+	}
+	return raw, nil
+}
+
+// acrMet says whether the authentication met one of the acr values the client asked for: the acr the upstream stated is one
+// of them, exactly. An upstream that stated none has shown nothing, so it meets none (REQ-AUTHN-009, REQ-AUTHN-034: no
+// silent downgrade, and no guess from the methods in amr).
+func acrMet(asked string, a assurance) bool {
+	if a.acr == nil {
+		return false
+	}
+	for _, v := range strings.Split(asked, " ") {
+		if v == *a.acr {
+			return true
+		}
+	}
+	return false
 }
 
 // The ways a prompt is not served (OpenID Connect Core section 3.1.2.1). errPromptMalformed is a value outside the four

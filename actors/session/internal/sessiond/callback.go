@@ -121,6 +121,12 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	assure := assuranceOf(assertion)
 	account := up.GetName() + "/" + assertion.GetSubject()
 
+	// acr_values (RFC 9470, REQ-AUTHN-009): the authentication must be one of the classes the client asked for, or the
+	// client is told that nothing met them. It is never answered with a lower class passed off as met, and nothing is
+	// written for it: it is decided before policy and before a person is linked.
+	if a := pending.GetAcrValues(); a != "" && !acrMet(a, assure) {
+		return deny("unmet_authentication_requirements", "the authentication does not meet the requested acr_values", reasonACR, nil)
+	}
 	// max_age (OpenID Connect Core section 3.1.2.1): the authentication must be no older than the client asked, and the
 	// upstream must say when it happened; an upstream that sends no auth_time cannot show it, so it is refused. This
 	// is also what makes auth_time reach the ID token whenever a client asked for max_age.

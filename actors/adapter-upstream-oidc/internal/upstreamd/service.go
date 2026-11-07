@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -25,15 +26,18 @@ const Actor = "adapter-upstream-oidc"
 // The bounds of what the adapter takes from a caller and from an upstream. The audit library bounds a string at 1024
 // bytes, so an assertion that would not fit an audit record is refused before it is made.
 const (
-	maxParam   = 2048      // code, redirect_uri
-	maxToken   = 512       // state, nonce
-	maxMaxAge  = 1<<31 - 1 // max_age in seconds, the bound session holds a client to
-	maxClaim   = 256       // a claim the assertion carries
-	maxSubject = 255       // the subject claim, in bytes (REQ-SUBJ-040, OpenID Connect Core 1.0 section 2)
-	maxAMR     = 16        // methods in amr
-	pkceLenS   = 43        // an S256 challenge: 32 octets in base64url without padding (RFC 7636 section 4.2)
-	verifierLo = 43        // RFC 7636 section 4.1
-	verifierHi = 128
+	maxParam     = 2048 // code, redirect_uri
+	maxToken     = 512  // state, nonce
+	maxACRValues = 256  // the bytes of acr_values session passes on, as session bounds them
+	maxACRCount  = 8
+	maxACRLen    = 256
+	maxMaxAge    = 1<<31 - 1 // max_age in seconds, the bound session holds a client to
+	maxClaim     = 256       // a claim the assertion carries
+	maxSubject   = 255       // the subject claim, in bytes (REQ-SUBJ-040, OpenID Connect Core 1.0 section 2)
+	maxAMR       = 16        // methods in amr
+	pkceLenS     = 43        // an S256 challenge: 32 octets in base64url without padding (RFC 7636 section 4.2)
+	verifierLo   = 43        // RFC 7636 section 4.1
+	verifierHi   = 128
 )
 
 // verifierRE is the code verifier of RFC 7636 section 4.1: unreserved characters.
@@ -151,6 +155,30 @@ func checkToken(v, path string) error {
 	return nil
 }
 
+// checkACRValues holds the client's acr_values to the shape session checks (at most 256 bytes, at most eight values, single
+// spaces between values of visible characters without a quote or a backslash): the adapter does not trust its caller to
+// have done it, and the list goes into a URL.
+func checkACRValues(v string) error {
+	if v == "" {
+		return nil
+	}
+	vs := strings.Split(v, " ")
+	if len(v) > maxACRValues || len(vs) > maxACRCount {
+		return oidc.Invalid("acr_values")
+	}
+	for _, one := range vs {
+		if one == "" || len(one) > maxACRLen {
+			return oidc.Invalid("acr_values")
+		}
+		for _, r := range one {
+			if r < 0x21 || r > 0x7e || r == '"' || r == '\\' {
+				return oidc.Invalid("acr_values")
+			}
+		}
+	}
+	return nil
+}
+
 // Begin makes the authorization URL (ADR 0025, "The upstream contract"). The adapter keeps nothing about the sign-in:
 // session keeps the state, the nonce and the verifier in its PendingSignIn.
 func (s *Service) Begin(ctx context.Context, req *connect.Request[integrationv2alpha1.BeginRequest]) (*connect.Response[integrationv2alpha1.BeginResponse], error) {
@@ -191,6 +219,9 @@ func (s *Service) begin(ctx context.Context, t *target, r *integrationv2alpha1.B
 	if r.MaxAge != nil && (r.GetMaxAge() < 0 || r.GetMaxAge() > maxMaxAge) {
 		return "", oidc.Invalid("max_age")
 	}
+	if err := checkACRValues(r.GetAcrValues()); err != nil {
+		return "", err
+	}
 	p, err := s.dir.Provider(ctx, t.up.GetIssuer(), t.dev)
 	if err != nil {
 		return "", err
@@ -199,7 +230,7 @@ func (s *Service) begin(ctx context.Context, t *target, r *integrationv2alpha1.B
 		return "", oidc.Unsupported("discovery.code_challenge_methods_supported")
 	}
 	return p.AuthorizationURL(t.up.GetClientId(), r.GetRedirectUri(), r.GetState(), r.GetNonce(), r.GetCodeChallenge(), scopes(t.up),
-		oidc.Ask{Prompt: r.GetPrompt(), MaxAge: r.MaxAge})
+		oidc.Ask{Prompt: r.GetPrompt(), MaxAge: r.MaxAge, AcrValues: r.GetAcrValues()})
 }
 
 // Complete exchanges the code and returns the verified assertion. It checks, in order: the request, the iss parameter
