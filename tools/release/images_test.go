@@ -8,6 +8,7 @@ import (
 	"debug/elf"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -171,7 +172,7 @@ func imagesRelease(t *testing.T, o imageOpts, mutateDist func(dist string)) (cfg
 
 func TestGoodImagesPass(t *testing.T) {
 	cfg, dist, url := imagesRelease(t, imageOpts{}, nil)
-	if p := CheckImages(cfg, dist, url, "sluis"); len(p) != 0 {
+	if p := CheckImages(cfg, dist, url, "sluis", true); len(p) != 0 {
 		t.Fatalf("good images have problems: %v", p)
 	}
 	lines, _, err := ReleaseImages(cfg, dist)
@@ -202,7 +203,7 @@ func TestCheckImagesBites(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg, dist, url := imagesRelease(t, c.o, nil)
-			p := CheckImages(cfg, dist, url, "sluis")
+			p := CheckImages(cfg, dist, url, "sluis", true)
 			if len(p) == 0 {
 				t.Fatal("the release test passed a broken image")
 			}
@@ -215,13 +216,13 @@ func TestCheckImagesBites(t *testing.T) {
 		cfg, dist, url := imagesRelease(t, imageOpts{}, func(d string) {
 			_ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte(strings.Repeat("a", 64)+"  localhost:5000/sluis/actor-key:"+version+"\n"), 0o600)
 		})
-		if p := CheckImages(cfg, dist, url, "sluis"); !strings.Contains(strings.Join(p, "\n"), "digests.txt says") {
+		if p := CheckImages(cfg, dist, url, "sluis", true); !strings.Contains(strings.Join(p, "\n"), "digests.txt says") {
 			t.Errorf("problems %v", p)
 		}
 	})
 	t.Run("an image that was not pushed", func(t *testing.T) {
 		cfg, dist, url := imagesRelease(t, imageOpts{}, func(d string) { _ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte("\n"), 0o600) })
-		if p := CheckImages(cfg, dist, url, "sluis"); len(p) == 0 {
+		if p := CheckImages(cfg, dist, url, "sluis", true); len(p) == 0 {
 			t.Error("an empty digests file passed")
 		}
 	})
@@ -259,5 +260,51 @@ func TestNamesOfImages(t *testing.T) {
 	}{{ID: "sluis", Tags: []string{"latest"}, Platforms: []string{"linux/amd64"}}}})
 	if got := strings.Join(p, "\n"); !strings.Contains(got, "no image is named sluis") || !strings.Contains(got, "no latest") || !strings.Contains(got, "platforms") {
 		t.Errorf("expectedNames = %v", p)
+	}
+}
+
+// ghcr.io answers 401 with a Bearer challenge and gives a token for the user and token it is sent, or anonymously.
+func TestTheRegistryClientFollowsABearerChallenge(t *testing.T) {
+	cfg, dist, plain := imagesRelease(t, imageOpts{}, nil)
+	target := plain
+	var tokenCalls, basic int
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			tokenCalls++
+			if _, _, ok := r.BasicAuth(); ok {
+				basic++
+			}
+			_, _ = w.Write([]byte(`{"token":"t0k"}`))
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer t0k" {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+srv.URL+`/token",service="registry.test",scope="repository:x:pull"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		resp, err := http.Get(target + r.URL.RequestURI()) //nolint:gosec // the test's own server
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		for k, v := range resp.Header {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("SLUIS_REGISTRY_TOKEN", "secret")
+	if p := CheckImages(cfg, dist, srv.URL, "sluis", true); len(p) != 0 {
+		t.Fatalf("problems behind a bearer challenge: %v", p)
+	}
+	if tokenCalls != 1 || basic != 1 {
+		t.Errorf("the token endpoint was asked %d times (%d with credentials); the token is kept per challenge", tokenCalls, basic)
+	}
+	// Without the catalog, as on ghcr.io, the same images pass.
+	if p := CheckImages(cfg, dist, srv.URL, "sluis", false); len(p) != 0 {
+		t.Fatalf("problems without the catalog: %v", p)
 	}
 }
