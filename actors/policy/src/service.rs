@@ -255,6 +255,8 @@ impl Service {
             action: verdict.action,
             now,
         });
+        // The writer and other askers that keep a grant for reuse read the expiry here, not from inside the sealed grant.
+        let expires_at = g.expires_at.clone();
         let sealed = match self
             .keys
             .seal_grant(SealGrantRequest {
@@ -279,6 +281,7 @@ impl Service {
             digest,
             sealed_grant: sealed,
             decision_id,
+            expires_at,
             ..DecideResponse::default()
         }))
     }

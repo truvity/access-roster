@@ -13,6 +13,7 @@ fn allowed(d: Decision) -> bool {
     d == Decision::ALLOW
 }
 
+/// verifies: REQ-AUDIT-181
 #[tokio::test]
 async fn an_allow_has_the_grant_names_and_a_grant_sealed_for_the_asker_that_ends_in_60_seconds() {
     let rig = Rig::new("session").await;
@@ -52,6 +53,11 @@ async fn an_allow_has_the_grant_names_and_a_grant_sealed_for_the_asker_that_ends
         "at most 60 s, which key@ enforces too"
     );
     assert_eq!(i.seconds, 1_793_750_400);
+    assert_eq!(
+        r.expires_at.as_option().map(|t| (t.seconds, t.nanos)),
+        Some((e.seconds, e.nanos)),
+        "the response names the same expiry as the grant it carries"
+    );
     assert_eq!(g.store_verbs, ["create", "get"]);
     assert_eq!(g.key_ops, ["open", "seal"]);
 }
@@ -111,6 +117,10 @@ async fn a_denial_by_a_policy_has_no_grant_names_the_forbid_and_its_step_up() {
         .into_owned();
     assert!(!allowed(r.decision.as_known().unwrap()));
     assert!(r.sealed_grant.is_empty());
+    assert!(
+        r.expires_at.as_option().is_none(),
+        "a denial has no grant and no expiry"
+    );
     assert_eq!(r.reasons.len(), 1);
     assert_eq!(r.reasons[0].policy_id, "example-app-fresh-mfa");
     assert_eq!(

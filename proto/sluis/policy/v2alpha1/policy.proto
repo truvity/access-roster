@@ -3,6 +3,8 @@ syntax = "proto3";
 
 package sluis.policy.v2alpha1;
 
+import "google/protobuf/timestamp.proto";
+
 // PolicyService decides, and seals the grant of an allow.
 service PolicyService {
   rpc Decide(DecideRequest) returns (DecideResponse);
@@ -79,4 +81,5 @@ message DecideResponse {
   string digest = 4;                   // SHA-384 hex of the effective set, the vocabulary and the schema version
   bytes sealed_grant = 5;              // on ALLOW only
   string decision_id = 6;              // UUIDv7, also in the audit record of the decision
+  google.protobuf.Timestamp expires_at = 7;  // on ALLOW only: when the sealed grant expires, the same instant as inside it; an asker that keeps a grant for reuse stops presenting it before this
 }

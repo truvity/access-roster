@@ -11,6 +11,7 @@ package policyv2alpha1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -565,6 +566,7 @@ type DecideResponse struct {
 	Digest        string                 `protobuf:"bytes,4,opt,name=digest,proto3" json:"digest,omitempty"`                                          // SHA-384 hex of the effective set, the vocabulary and the schema version
 	SealedGrant   []byte                 `protobuf:"bytes,5,opt,name=sealed_grant,json=sealedGrant,proto3" json:"sealed_grant,omitempty"`             // on ALLOW only
 	DecisionId    string                 `protobuf:"bytes,6,opt,name=decision_id,json=decisionId,proto3" json:"decision_id,omitempty"`                // UUIDv7, also in the audit record of the decision
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`                   // on ALLOW only: when the sealed grant expires, the same instant as inside it; an asker that keeps a grant for reuse stops presenting it before this
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -641,11 +643,18 @@ func (x *DecideResponse) GetDecisionId() string {
 	return ""
 }
 
+func (x *DecideResponse) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
 var File_sluis_policy_v2alpha1_policy_proto protoreflect.FileDescriptor
 
 const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"\n" +
-	"\"sluis/policy/v2alpha1/policy.proto\x12\x15sluis.policy.v2alpha1\"/\n" +
+	"\"sluis/policy/v2alpha1/policy.proto\x12\x15sluis.policy.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\"/\n" +
 	"\tEntityRef\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\x8f\x01\n" +
@@ -688,7 +697,7 @@ const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"\vannotations\x18\x03 \x03(\v2..sluis.policy.v2alpha1.Reason.AnnotationsEntryR\vannotations\x1a>\n" +
 	"\x10AnnotationsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x83\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbe\x02\n" +
 	"\x0eDecideResponse\x12;\n" +
 	"\bdecision\x18\x01 \x01(\x0e2\x1f.sluis.policy.v2alpha1.DecisionR\bdecision\x127\n" +
 	"\areasons\x18\x02 \x03(\v2\x1d.sluis.policy.v2alpha1.ReasonR\areasons\x12\x1f\n" +
@@ -697,7 +706,9 @@ const file_sluis_policy_v2alpha1_policy_proto_rawDesc = "" +
 	"\x06digest\x18\x04 \x01(\tR\x06digest\x12!\n" +
 	"\fsealed_grant\x18\x05 \x01(\fR\vsealedGrant\x12\x1f\n" +
 	"\vdecision_id\x18\x06 \x01(\tR\n" +
-	"decisionId*9\n" +
+	"decisionId\x129\n" +
+	"\n" +
+	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt*9\n" +
 	"\bDecision\x12\x18\n" +
 	"\x14DECISION_UNSPECIFIED\x10\x00\x12\t\n" +
 	"\x05ALLOW\x10\x01\x12\b\n" +
@@ -721,16 +732,17 @@ func file_sluis_policy_v2alpha1_policy_proto_rawDescGZIP() []byte {
 var file_sluis_policy_v2alpha1_policy_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_sluis_policy_v2alpha1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_sluis_policy_v2alpha1_policy_proto_goTypes = []any{
-	(Decision)(0),          // 0: sluis.policy.v2alpha1.Decision
-	(*EntityRef)(nil),      // 1: sluis.policy.v2alpha1.EntityRef
-	(*Authentication)(nil), // 2: sluis.policy.v2alpha1.Authentication
-	(*PersonFacts)(nil),    // 3: sluis.policy.v2alpha1.PersonFacts
-	(*ClientFacts)(nil),    // 4: sluis.policy.v2alpha1.ClientFacts
-	(*ActorFacts)(nil),     // 5: sluis.policy.v2alpha1.ActorFacts
-	(*DecideRequest)(nil),  // 6: sluis.policy.v2alpha1.DecideRequest
-	(*Reason)(nil),         // 7: sluis.policy.v2alpha1.Reason
-	(*DecideResponse)(nil), // 8: sluis.policy.v2alpha1.DecideResponse
-	nil,                    // 9: sluis.policy.v2alpha1.Reason.AnnotationsEntry
+	(Decision)(0),                 // 0: sluis.policy.v2alpha1.Decision
+	(*EntityRef)(nil),             // 1: sluis.policy.v2alpha1.EntityRef
+	(*Authentication)(nil),        // 2: sluis.policy.v2alpha1.Authentication
+	(*PersonFacts)(nil),           // 3: sluis.policy.v2alpha1.PersonFacts
+	(*ClientFacts)(nil),           // 4: sluis.policy.v2alpha1.ClientFacts
+	(*ActorFacts)(nil),            // 5: sluis.policy.v2alpha1.ActorFacts
+	(*DecideRequest)(nil),         // 6: sluis.policy.v2alpha1.DecideRequest
+	(*Reason)(nil),                // 7: sluis.policy.v2alpha1.Reason
+	(*DecideResponse)(nil),        // 8: sluis.policy.v2alpha1.DecideResponse
+	nil,                           // 9: sluis.policy.v2alpha1.Reason.AnnotationsEntry
+	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
 }
 var file_sluis_policy_v2alpha1_policy_proto_depIdxs = []int32{
 	1,  // 0: sluis.policy.v2alpha1.DecideRequest.principal:type_name -> sluis.policy.v2alpha1.EntityRef
@@ -743,13 +755,14 @@ var file_sluis_policy_v2alpha1_policy_proto_depIdxs = []int32{
 	9,  // 7: sluis.policy.v2alpha1.Reason.annotations:type_name -> sluis.policy.v2alpha1.Reason.AnnotationsEntry
 	0,  // 8: sluis.policy.v2alpha1.DecideResponse.decision:type_name -> sluis.policy.v2alpha1.Decision
 	7,  // 9: sluis.policy.v2alpha1.DecideResponse.reasons:type_name -> sluis.policy.v2alpha1.Reason
-	6,  // 10: sluis.policy.v2alpha1.PolicyService.Decide:input_type -> sluis.policy.v2alpha1.DecideRequest
-	8,  // 11: sluis.policy.v2alpha1.PolicyService.Decide:output_type -> sluis.policy.v2alpha1.DecideResponse
-	11, // [11:12] is the sub-list for method output_type
-	10, // [10:11] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	10, // 10: sluis.policy.v2alpha1.DecideResponse.expires_at:type_name -> google.protobuf.Timestamp
+	6,  // 11: sluis.policy.v2alpha1.PolicyService.Decide:input_type -> sluis.policy.v2alpha1.DecideRequest
+	8,  // 12: sluis.policy.v2alpha1.PolicyService.Decide:output_type -> sluis.policy.v2alpha1.DecideResponse
+	12, // [12:13] is the sub-list for method output_type
+	11, // [11:12] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_sluis_policy_v2alpha1_policy_proto_init() }

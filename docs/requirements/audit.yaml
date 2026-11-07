@@ -2598,12 +2598,63 @@ requirements:
     level: MUST
     source: design-decision
     status: partial
-    gap: partly-built
+    gap: attestation-missing
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     tests:
       - actors/key/internal/keyd/pinpoll_test.go
+      - actors/writer/internal/writerd/idle_loop_test.go
+      - actors/writer/internal/writerd/retry_test.go
     verification:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
-      - {kind: manual, ref: "on a board with no traffic for an hour, with the writer running, the audit spool grows by 60 records or fewer"}
+      - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
+      - {kind: manual, ref: "board check idle-hour: on an unlocked board with no traffic for an hour after the writer sealed its last record, the audit spool grows by 60 records or fewer and the log's size does not move"}
+  - id: REQ-AUDIT-181
+    area: AUDIT
+    statement: "The writer MUST keep the sealed grant that policy gave it for a tenant, with the expiry that policy states in its answer, and present it for every seal of every batch until ten seconds before that expiry."
+    rationale: "A grant is reusable for about 60 seconds (ADR 0007), and a grant asked for in every batch made the record of each decision the input of the next batch, so an idle board sealed about 600 records and signed about 600 checkpoints an hour (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    tests:
+      - actors/writer/internal/writerd/idle_loop_test.go
+      - actors/key/internal/keyd/seal_test.go
+      - actors/policy/tests/service.rs
+    verification:
+      - {kind: integration-test, ref: "on the fakes: a busy writer makes about 72 decisions an hour (TestABusyWriter...); key@ takes one grant for many seals until its expiry (TestOneGrantSealsManyRecords...)"}
+  - id: REQ-AUDIT-182
+    area: AUDIT
+    statement: "The writer MUST NOT present a grant after ten seconds before its expiry, keep one that policy or key@ refused or that came with no expiry beyond its batch, or hold one across a start."
+    rationale: "A permission that policy takes away must reach the writer within the life of the grant it holds, which ADR 0007 puts at about 60 seconds, and a grant is never stored."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    tests: [actors/writer/internal/writerd/idle_loop_test.go]
+    verification:
+      - {kind: integration-test, ref: "on the fakes: a permission taken away stops the sealing 50 s after the decision (TestARevokedPermission...); a refused grant, a restart and a clock set back each make it ask again"}
+  - id: REQ-AUDIT-183
+    area: AUDIT
+    statement: "The writer MUST wait between 1 and 30 seconds before it opens the transport stream again after a failure, doubling the wait at each failure in a row and starting from 1 second again after a batch is sealed."
+    rationale: "Every try that reaches policy is a decision and an audit record, and a writer that retried each second while key@ was locked wrote up to 3,600 records an hour for nothing, where the wait now bounds how long a writer takes to recover after an unlock (ADR 0029)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [writer]
+    standards: []
+    features: ["design"]
+    tests: [actors/writer/internal/writerd/retry_test.go]
+    verification:
+      - {kind: integration-test, ref: "a simulated hour with key@ locked is about 124 tries, the writer seals at the first try after the unlock, and the next failure waits 1 s (TestAWriterWhoseKeyIsLockedBacksOff...)"}

@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
@@ -137,6 +139,17 @@ type fakePolicy struct {
 	// mode: "" allows; "deny" denies; "fail" answers unavailable.
 	mode string
 	reqs []*policyv2alpha1.DecideRequest
+	// now is the clock the grant is made on; nil means time.Now. life is how long a grant lives; zero means 60 s.
+	now  func() time.Time
+	life time.Duration
+	// noExpiry leaves expires_at out of the answer, as a policy that does not state it.
+	noExpiry bool
+}
+
+func (f *fakePolicy) setClock(now func() time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.now = now
 }
 
 func (f *fakePolicy) Decide(_ context.Context, req *connect.Request[policyv2alpha1.DecideRequest]) (*connect.Response[policyv2alpha1.DecideResponse], error) {
@@ -150,9 +163,24 @@ func (f *fakePolicy) Decide(_ context.Context, req *connect.Request[policyv2alph
 	case "deny":
 		return connect.NewResponse(&policyv2alpha1.DecideResponse{Decision: policyv2alpha1.Decision_DENY}), nil
 	}
-	return connect.NewResponse(&policyv2alpha1.DecideResponse{
-		Decision: policyv2alpha1.Decision_ALLOW, SealedGrant: []byte("grant:" + req.Msg.GetTenant()), DecisionId: "d",
-	}), nil
+	now := time.Now
+	if f.now != nil {
+		now = f.now
+	}
+	life := f.life
+	if life == 0 {
+		life = 60 * time.Second
+	}
+	// The grant says its tenant, its expiry and the number of the decision: the fake key@ refuses an expired one, as key@ does.
+	expires := now().Add(life)
+	res := &policyv2alpha1.DecideResponse{
+		Decision: policyv2alpha1.Decision_ALLOW, DecisionId: fmt.Sprintf("d%d", len(f.reqs)),
+		SealedGrant: fmt.Appendf(nil, "grant:%s:%d:%d", req.Msg.GetTenant(), expires.UnixMilli(), len(f.reqs)),
+	}
+	if !f.noExpiry {
+		res.ExpiresAt = timestamppb.New(expires)
+	}
+	return connect.NewResponse(res), nil
 }
 
 func (f *fakePolicy) requests() []*policyv2alpha1.DecideRequest {
@@ -164,7 +192,8 @@ func (f *fakePolicy) requests() []*policyv2alpha1.DecideRequest {
 // ---- key@
 
 // fakeKey seals with AES-256-GCM bound to the address, as key@ does, and signs as key@ does for the audit-log purpose: a P-256 key made for the test, ES256 over the SHA-256 of the content (D-25).
-// It accepts a Seal only with the grant "grant:<tenant>", which the fake policy gives.
+// It accepts a Seal only with a grant "grant:<tenant>:<expiry>:<n>" that the fake policy gave, for the tenant of the
+// address and not expired on its clock, as key@ refuses an expired grant; it keeps the grants it was shown.
 type fakeKey struct {
 	keyv2alpha1connect.UnimplementedKeyServiceHandler
 	ev   *events
@@ -174,6 +203,41 @@ type fakeKey struct {
 	// failSign, when set, is returned by Sign.
 	failSign error
 	seals    int
+	// now is the clock the grants are judged on; nil means time.Now.
+	now func() time.Time
+	// granted is the grant of each seal, in order.
+	granted []string
+}
+
+func (f *fakeKey) setClock(now func() time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.now = now
+}
+
+// grantsShown is the grants of the seals so far, in order.
+func (f *fakeKey) grantsShown() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.granted)
+}
+
+// grantOK says whether g is a grant for the tenant that has not expired.
+func (f *fakeKey) grantOK(g, tenant string) bool {
+	rest, ok := strings.CutPrefix(g, "grant:"+tenant+":")
+	if !ok {
+		return false
+	}
+	ms, _, _ := strings.Cut(rest, ":")
+	n, err := strconv.ParseInt(ms, 10, 64)
+	if err != nil {
+		return false
+	}
+	now := time.Now
+	if f.now != nil {
+		now = f.now
+	}
+	return time.UnixMilli(n).After(now())
 }
 
 func newFakeKey(t *testing.T, ev *events) *fakeKey {
@@ -237,16 +301,20 @@ func (f *fakeKey) Seal(_ context.Context, req *connect.Request[keyv2alpha1.SealR
 	if m.GetPurpose() != "evidence" || a.GetTenant() == "" {
 		return nil, refusal.New(connect.CodeInvalidArgument, "purpose", "purpose")
 	}
-	if string(m.GetGrant()) != "grant:"+a.GetTenant() {
+	f.mu.Lock()
+	ok := f.grantOK(string(m.GetGrant()), a.GetTenant())
+	if ok {
+		f.seals++
+		f.granted = append(f.granted, string(m.GetGrant()))
+	}
+	f.mu.Unlock()
+	if !ok {
 		return nil, refusal.New(connect.CodePermissionDenied, "grant", "grant")
 	}
 	nonce := make([]byte, f.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	f.mu.Lock()
-	f.seals++
-	f.mu.Unlock()
 	return connect.NewResponse(&keyv2alpha1.SealResponse{
 		Envelope: f.aead.Seal(nonce, nonce, m.GetPlaintext(), aad(a.GetTenant(), a.GetKind(), a.GetId())),
 	}), nil
@@ -631,6 +699,9 @@ func newEnv(t *testing.T) *env {
 // writer builds a writer on the environment; cfg may be adjusted by the caller first.
 func (e *env) writer() *Server {
 	e.t.Helper()
+	// The fakes judge a grant on the clock the writer is given, so that a simulated hour expires it.
+	e.pol.setClock(e.cfg.Now)
+	e.key.setClock(e.cfg.Now)
 	s, err := New(e.cfg)
 	if err != nil {
 		e.t.Fatal(err)
