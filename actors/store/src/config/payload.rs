@@ -601,12 +601,16 @@ const SCHEMAS_TOTAL_MAX: usize = 1 << 20;
 
 fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
     let release = o.required("release")?;
-    if !semver_like(&release) {
+    if !sluis_audit::valid_release(&release) {
         return err(&o.at("release"), "not a semantic version");
     }
     let actions = o.strings("actions")?;
     if actions.is_empty() {
         return err(&o.at("actions"), "required");
+    }
+    // The bound comes before the scan for a name twice, which is quadratic.
+    if actions.len() > SCHEMAS_MAX {
+        return err(&o.at("actions"), "too many");
     }
     for (i, a) in actions.iter().enumerate() {
         let ok = a.split('.').count() >= 2
@@ -678,21 +682,6 @@ fn audit_catalogue(mut o: Obj) -> R<pb::AuditCatalogue> {
         schemas,
         ..pb::AuditCatalogue::default()
     })
-}
-
-/// `MAJOR.MINOR.PATCH`, with an optional `-prerelease` and `+build`, as semver.org writes it, and no `v`.
-fn semver_like(s: &str) -> bool {
-    let (core, rest) = s.split_at(s.find(['-', '+']).unwrap_or(s.len()));
-    let parts: Vec<&str> = core.split('.').collect();
-    parts.len() == 3
-        && parts.iter().all(|p| {
-            !p.is_empty()
-                && p.bytes().all(|c| c.is_ascii_digit())
-                && (p.len() == 1 || !p.starts_with('0'))
-        })
-        && rest
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'+' | b'.'))
 }
 
 fn exchange_trust(mut o: Obj) -> R<pb::ExchangeTrust> {

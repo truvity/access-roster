@@ -759,7 +759,7 @@ requirements:
       - {kind: integration-test, ref: "free-text bound test"}
   - id: REQ-AUDIT-047
     area: AUDIT
-    statement: "The writer MUST seal a batch when it holds 256 records or when its first record is 5 seconds old, whichever comes first, and never seal an empty batch."
+    statement: "The writer MUST seal a batch when it holds 256 records or when its first record is 5 seconds old, whichever comes first, and never seal a batch that took no record and refused none."
     rationale: "A short bound keeps the index and the witnesses within seconds while an idle log signs nothing."
     level: MUST
     source: design-decision
@@ -771,7 +771,7 @@ requirements:
     issues: [838]
     tests: [actors/writer/internal/writerd/seal_entry_test.go, actors/writer/internal/writerd/writer_test.go]
     verification:
-      - {kind: integration-test, ref: "defaults of 256 records and 5 s, closing at either bound, and no empty batch (TestWithTheDefaultBatchMaxABatchClosesAtTwoHundredFiftySix, TestABatchOfRepeatsAndRefusalsIsNotSealed)"}
+      - {kind: integration-test, ref: "256 records or 5 s; repeats alone unsealed; refusals alone sealed (TestABatchOfRepeatsOnlyIsNotSealed, TestABatchThatOnlyRefusesIsSealedWithTheCountAndTheReasons)"}
   - id: REQ-AUDIT-048
     area: AUDIT
     statement: "Each sealed batch MUST end with a seal entry, inside the tree, that records its record count, the writer instance and the observed clock offset."
@@ -2193,18 +2193,19 @@ requirements:
       - {kind: integration-test, ref: "a query in one partition never returns a row of another"}
   - id: REQ-AUDIT-146
     area: AUDIT
-    statement: "The writer MUST refuse a record whose release has no published AuditCatalogue."
+    statement: "The writer MUST refuse a record whose release is newer than the release of its AuditCatalogue, and a record whose release is not a semantic version."
     rationale: "The release identifies the action table, so a log needs no copy of it, and a record of an unknown release cannot be validated (ADR 0030)."
     level: MUST
     source: design-decision
-    status: done
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [writer]
     standards: []
     issues: [1121, 1120]
     verification:
-      - {kind: integration-test, ref: "a record of a release newer than the catalogue is quarantined (TestTheWriterRefusesARecordOfAReleaseNewerThanTheCatalogue)"}
+      - {kind: integration-test, ref: "a record of a newer release is quarantined and the batch sealed with the reason (TestABatchOfRecordsTheCatalogueRefusesIsQuarantinedAndSealed); the pipeline step is REQ-AUDIT-147"}
   - id: REQ-AUDIT-147
     area: AUDIT
     statement: "The build MUST publish the AuditCatalogue document of a release, together with its schemas, before that release emits."

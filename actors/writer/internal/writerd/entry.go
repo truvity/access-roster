@@ -2,6 +2,7 @@ package writerd
 
 import (
 	"encoding/base64"
+	"sort"
 
 	"github.com/truvity/sluis/v2/kits/go/audit"
 )
@@ -56,13 +57,15 @@ func (c clockObservation) value() map[string]any {
 // batchCounts are the numbers a seal entry states.
 type batchCounts struct {
 	records, duplicates, refused int
+	// reasons counts the refused messages by the reason of the refusal; nil when none was refused.
+	reasons map[string]int
 	// timeChecks says whether the checks by the clock ran for the batch, and why not when they did not.
 	timeChecks map[string]any
 }
 
 // sealEntry builds the seal entry of a batch.
 func sealEntry(n batchCounts, instance string, recordedMS int64, clock clockObservation) ([]byte, error) {
-	return audit.Canonical(map[string]any{
+	m := map[string]any{
 		"entry":       entrySeal,
 		"records":     int64(n.records),
 		"duplicates":  int64(n.duplicates),
@@ -70,5 +73,20 @@ func sealEntry(n batchCounts, instance string, recordedMS int64, clock clockObse
 		"clock":       clock.value(),
 		"time_checks": n.timeChecks,
 		"writer":      map[string]any{"instance": instance, "recorded_at": recordedMS},
-	})
+	}
+	if len(n.reasons) > 0 {
+		// Only a batch that refused something has it, so the seal entry of a batch that refused nothing is what it was.
+		// A list, in the order of the reasons, so that a reason is a value here and never a member name.
+		names := make([]string, 0, len(n.reasons))
+		for r := range n.reasons {
+			names = append(names, r)
+		}
+		sort.Strings(names)
+		by := make([]any, 0, len(names))
+		for _, r := range names {
+			by = append(by, map[string]any{"reason": r, "count": int64(n.reasons[r])})
+		}
+		m["refused_by"] = by
+	}
+	return audit.Canonical(m)
 }

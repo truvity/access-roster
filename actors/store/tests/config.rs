@@ -1811,3 +1811,86 @@ fn a_wildcard_or_a_malformed_name_in_a_clients_requires_is_refused_with_its_path
         );
     }
 }
+
+/// verifies: REQ-AUDIT-149
+///
+/// The release of an AuditCatalogue is read as the shared corpus reads it (`kits/conformance/audit/semver-vectors.json`, which
+/// the Go package and the writer read too), so that store@ refuses no release the writer takes and takes none it refuses.
+#[test]
+fn the_release_of_an_audit_catalogue_is_read_as_the_shared_corpus_reads_it() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../kits/conformance/audit/semver-vectors.json"
+    ))
+    .unwrap();
+    let good = source("audit-catalogue");
+    for (key, want) in [("accept", true), ("reject", false)] {
+        for r in corpus[key].as_array().unwrap() {
+            let r = r.as_str().unwrap();
+            // A release that cannot be written on one line of a YAML plain scalar is quoted.
+            let doc = good.replace(
+                "release: 0.0.0",
+                &format!("release: {}", serde_json::to_string(r).unwrap()),
+            );
+            let verdict = payload::decode(kind("AuditCatalogue"), doc.as_bytes());
+            assert_eq!(
+                verdict.is_ok(),
+                want,
+                "release {r:?}: {:?}",
+                verdict.err().map(|e| e.0)
+            );
+        }
+    }
+}
+
+/// verifies: REQ-AUDIT-149
+///
+/// store@ holds the schema documents of an AuditCatalogue to the policy of the shared corpus
+/// (`kits/conformance/audit/schema-policy-vectors.json`, which the Go package and the writer read too): it refuses what the
+/// writer could not use, or could be driven by (a `$ref` to a file, a look-ahead, nested combinators that take seconds for one
+/// record), and takes what the writer takes.
+#[test]
+fn an_audit_catalogue_is_held_to_the_policy_of_the_shared_corpus() {
+    let corpus: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../kits/conformance/audit/schema-policy-vectors.json"
+    ))
+    .unwrap();
+    let cases = corpus["cases"].as_array().unwrap();
+    assert!(cases.len() >= 50, "the vector file lost its cases");
+    let quote = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    for c in cases {
+        let docs = c["docs"].as_object().unwrap();
+        // The catalogue needs an action for each document that is not the definitions, with a name of two parts.
+        let mut actions = Vec::new();
+        let mut schemas = String::new();
+        for (name, text) in docs {
+            let named = if name == "defs.schema.json" {
+                name.clone()
+            } else {
+                let action = format!("x.{}", name.trim_end_matches(".schema.json"));
+                actions.push(action.clone());
+                format!("{action}.schema.json")
+            };
+            schemas.push_str(&format!(
+                "    - name: {named}\n      json: {}\n",
+                quote(text.as_str().unwrap())
+            ));
+        }
+        if actions.is_empty() || !docs.contains_key("defs.schema.json") {
+            // A catalogue with no action, or no definitions: refused for that, which the corpus also says.
+            assert!(!c["ok"].as_bool().unwrap() || actions.is_empty());
+            continue;
+        }
+        let list: String = actions.iter().map(|a| format!("    - {a}\n")).collect();
+        let doc = format!("default:\n  release: 1.0.0\n  actions:\n{list}  schemas:\n{schemas}");
+        let verdict = payload::decode(kind("AuditCatalogue"), doc.as_bytes());
+        let want = c["ok"].as_bool().unwrap();
+        // The size bounds are store@'s own: the document of 4001 schemas is over 64 KiB and refused for that as well.
+        assert_eq!(
+            verdict.is_ok(),
+            want,
+            "{}: {:?}",
+            c["name"].as_str().unwrap(),
+            verdict.err().map(|e| e.0)
+        );
+    }
+}

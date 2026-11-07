@@ -252,7 +252,7 @@ func (s *Server) Init(ctx context.Context) error {
 		return errors.New("auditcatalogue/default: no action")
 	}
 	release := "v" + cat.Value.GetRelease()
-	if !fullSemver(release) {
+	if !audit.ValidRelease(cat.Value.GetRelease()) {
 		return errors.New("auditcatalogue/default: release is not a semantic version")
 	}
 	files := map[string]string{}

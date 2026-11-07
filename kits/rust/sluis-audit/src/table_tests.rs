@@ -288,3 +288,47 @@ async fn the_emitter_refuses_an_unknown_action_by_name() {
     let (reason, path) = refusal_of(&err);
     assert_eq!((reason.as_str(), path.as_str()), ("schema", "action"));
 }
+
+const POLICY: &str = include_str!("../../../conformance/audit/schema-policy-vectors.json");
+const SEMVER: &str = include_str!("../../../conformance/audit/semver-vectors.json");
+
+/// verifies: REQ-AUDIT-149
+///
+/// The policy of the schema documents of an `AuditCatalogue`, on the corpus the Go package reads too: the closed keywords, the
+/// references to the shared definitions only, patterns RE2 and Rust read alike, bounded depth and size. A document the policy
+/// takes also compiles.
+#[test]
+fn the_policy_of_the_catalogue_schemas_gives_the_verdicts_of_the_shared_vectors() {
+    let f = parse(POLICY);
+    assert!(
+        arr(&f, "cases").len() >= 50,
+        "the vector file lost its cases"
+    );
+    for c in arr(&f, "cases") {
+        let docs: Vec<(String, String)> = c["docs"]
+            .as_object()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+            .collect();
+        let ok = c["ok"].as_bool().unwrap();
+        let verdict = crate::check_documents(&docs);
+        assert_eq!(verdict.is_ok(), ok, "{}: {verdict:?}", text(c, "name"));
+        if ok {
+            assert!(crate::check_policy(&docs).is_ok(), "{}", text(c, "name"));
+        }
+    }
+}
+
+/// verifies: REQ-AUDIT-149
+#[test]
+fn the_releases_of_the_shared_vectors() {
+    let f = parse(SEMVER);
+    assert!(arr(&f, "accept").len() >= 10 && arr(&f, "reject").len() >= 20);
+    for s in arr(&f, "accept") {
+        assert!(crate::valid_release(s.as_str().unwrap()), "{s} refused");
+    }
+    for s in arr(&f, "reject") {
+        assert!(!crate::valid_release(s.as_str().unwrap()), "{s} taken");
+    }
+}

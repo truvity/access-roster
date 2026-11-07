@@ -95,16 +95,12 @@ fn compile(
 ///
 /// A message that names the document and the reason, never a value of a record.
 pub fn check_documents(documents: &[(String, String)]) -> std::result::Result<(), String> {
+    // The documents are held to what the generator makes before the library sees them (policy.rs).
+    crate::policy::check_policy(documents)?;
     let mut docs = HashMap::new();
     for (name, text) in documents {
         let v: Value = serde_json::from_str(text).map_err(|e| format!("schema {name}: {e}"))?;
-        if !v.is_object() {
-            return Err(format!("schema {name}: not a JSON Schema object"));
-        }
         docs.insert(format!("{BASE}{name}"), v);
-    }
-    if !docs.contains_key(&format!("{BASE}{DEFS_NAME}")) {
-        return Err(format!("schema: no {DEFS_NAME}"));
     }
     let docs = Arc::new(docs);
     for (name, _) in documents {
