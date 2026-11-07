@@ -255,16 +255,29 @@ fn the_table_refuses_a_record_whose_member_is_not_in_the_row_and_names_no_value(
     assert!(path.starts_with("record"), "{path}");
 }
 
-/// The table of sluis is built the first time an emitter needs it, in every actor that emits. It must not hold a start
-/// back: a bound of a second is far above what it takes (measured 2026-11-07: tens of milliseconds in a debug build).
+/// The table of sluis is built once per process, by `Emitter::new` (so at the start of every actor that emits, and never per
+/// emit: the emitter holds the table), and it must not hold a start back. Building it compiles the 49 schemas of the
+/// generated table, which is real work: measured 2026-11-07 on a quiet 32-core machine, about 140 ms in a debug build
+/// (about 3 ms a schema, the `jsonschema` crate and its regex engine unoptimised) and about 28 ms in a release build.
+///
+/// A wall-clock reading is a poor judge on a loaded runner: with 64 busy loops on that machine (load average about 100)
+/// the best of three builds took 0.55 to 1.04 s, and 1.28 s was seen once at a load average of 75. So the test builds a
+/// fresh table three times, not the shared one, which another test may already have built and which would then cost
+/// nothing, and takes the fastest: a build that a busy machine slowed three times running is rare, and a build that is slow
+/// by itself is slow every time. The bound is 10 s, about 70 times the quiet debug time. It still catches a build that has
+/// become pathological (a fetch, a quadratic compile); it does not catch a slow-down of 2x or 10x, which no wall-clock bound
+/// that is safe under load can.
 #[test]
 fn the_table_of_sluis_is_built_quickly() {
-    let t0 = std::time::Instant::now();
-    let table = Table::sluis();
-    let took = t0.elapsed();
-    assert!(!table.names().is_empty());
-    assert!(took < std::time::Duration::from_secs(1), "{took:?}");
-    eprintln!("the table of sluis was built in {took:?}");
+    let mut fastest = std::time::Duration::MAX;
+    for _ in 0..3 {
+        let t0 = std::time::Instant::now();
+        let table = Table::new(crate::generated::ROWS, crate::generated::SCHEMAS).unwrap();
+        fastest = fastest.min(t0.elapsed());
+        assert!(!table.names().is_empty());
+    }
+    assert!(fastest < std::time::Duration::from_secs(10), "{fastest:?}");
+    eprintln!("the table of sluis was built in {fastest:?} at best of three");
 }
 
 /// verifies: REQ-AUDIT-022
