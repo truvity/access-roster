@@ -115,3 +115,8 @@ attestations:
     on: "2026-11-07"
     agent_run: true
     checked: "On three boards at main ea228a864 a reinstalled board came up locked and unlocked from its peers with no hand action, 7 to 16 s after its request; a peer that is itself locked with nobody to unlock it was not tried, and the backoff test of both peers off was not run."
+  - req: REQ-TOKEN-042
+    by: o.tsarev@truvity.com
+    on: "2026-11-07"
+    agent_run: true
+    checked: "I read the page Verifying tokens (docs/integrations/applications.md) at main a1cfa1cb5: it states both duties, to honour the max-age of the key set (public, max-age=300) and to fetch it again when a token names an unfamiliar kid (OpenID Connect Core section 10.1.1), and says a verifier that does neither breaks at a rotation."

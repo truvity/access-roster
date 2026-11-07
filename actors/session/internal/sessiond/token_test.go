@@ -325,6 +325,10 @@ func TestTokenCodeExpires(t *testing.T) {
 	}
 }
 
+// Every refusal of the token endpoint is JSON with an OAuth error code, never cached, and has status 400, or 401 with
+// WWW-Authenticate for invalid_client (RFC 6749 section 5.2); a refused request spends nothing.
+//
+// verifies: REQ-TOKEN-028
 func TestTokenRefusesWhatItDoesNotServe(t *testing.T) {
 	e := newEnv(t, func(o *options) {
 		o.extra = []*configv2alpha1.InstallationClient{{Id: "confidential-app", Kind: "confidential", Redirects: []string{"https://app.example.com/cb"}}}

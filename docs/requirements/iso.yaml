@@ -418,8 +418,7 @@ requirements:
     rationale: "A readable client ID that each relying party pins stops a token for one client being accepted by another."
     level: MUST
     source: design-decision
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:

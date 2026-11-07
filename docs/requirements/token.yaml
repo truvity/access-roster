@@ -8,8 +8,7 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -44,8 +43,7 @@ requirements:
     rationale: "A typed access token cannot be confused with an ID token."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
@@ -351,7 +349,7 @@ requirements:
     level: MUST
     source: v1-parity
     status: partial
-    gap: partly-built
+    gap: external-suite-not-run
     milestone: first-version
     runtimes: all
     standards:
@@ -647,8 +645,7 @@ requirements:
     rationale: "The lead time of a new key assumes a verifier that follows HTTP caching and the discovery rule, so the page must say what sluis relies on (ADR 0006)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: attestation-missing
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
