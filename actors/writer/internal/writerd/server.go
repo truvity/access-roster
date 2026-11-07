@@ -217,6 +217,11 @@ func (s *Server) Init(ctx context.Context) error {
 	if err := store.ValidateID(s.project); err != nil || strings.Contains(s.project, "/") {
 		return errors.New("auditlog/default: project is not a name")
 	}
+	switch al.Value.GetLockMode() { // REQ-AUDIT-008: the lock mode is explicit (store@ checks it too)
+	case "none", "removable", "compliance":
+	default:
+		return errors.New("auditlog/default: lock_mode is not none, removable or compliance")
+	}
 	var found bool
 	for _, l := range al.Value.GetLogs() {
 		if l.GetKind() != auditKind {

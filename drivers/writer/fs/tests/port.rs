@@ -57,12 +57,16 @@ fn root() -> tempfile::TempDir {
     d
 }
 
-/// verifies: REQ-AUDIT-103, REQ-TEST-009
+/// verifies: REQ-AUDIT-103, REQ-TEST-009, REQ-ISO-022, REQ-AUDIT-008
 #[test]
 fn the_port_suite_passes() {
     suite::run_temp().unwrap();
 }
 
+/// A name that exists is refused to a second create whatever the bytes, and a put changes nothing but a pointer: the
+/// port has no way to rewrite a sealed object, and no delete.
+///
+/// verifies: REQ-ISO-022, REQ-AUDIT-025
 #[tokio::test]
 async fn the_writer_uses_the_port_and_every_refusal_names_a_reason() {
     let (r, s) = (root(), tempfile::tempdir().unwrap());
