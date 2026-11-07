@@ -265,7 +265,7 @@ type SigningKey struct {
 	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"`          // the public key, SubjectPublicKeyInfo in DER
 	X5C           [][]byte               `protobuf:"bytes,4,rep,name=x5c,proto3" json:"x5c,omitempty"`                                 // the certificate chain, DER, when there is one
 	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"`          // when the key joined the ring
-	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`                             // "pre-published", "active" or "retiring" (0006 "Rotation")
+	State         string                 `protobuf:"bytes,6,opt,name=state,proto3" json:"state,omitempty"`                             // "pre-published", "active", "retiring" or "dropped" (a tombstone with no key; 0006 "Rotation")
 	StateSince    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=state_since,json=stateSince,proto3" json:"state_since,omitempty"` // when the key entered its present state; the clocks of the prepublish and the retention
 	Node          string                 `protobuf:"bytes,8,opt,name=node,proto3" json:"node,omitempty"`                               // the node whose key@ holds the key; only that node's signer retires it (0006: one token-signing key per board)
 	unknownFields protoimpl.UnknownFields

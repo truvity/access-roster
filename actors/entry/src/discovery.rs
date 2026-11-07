@@ -294,6 +294,7 @@ mod tests {
                 "pre-published",
                 "active",
                 "retiring",
+                "dropped",
                 "revoked",
                 "destroyed",
                 "",
