@@ -12,6 +12,10 @@
 # `build`, the checks, the GitHub release): it never builds. The write token is in its steps and in no other job. The split
 # bounds the damage of a compromised dependency to this release's content; it does not make that content trustworthy.
 #
+# The gate is in this file, and GitHub runs the file of the tagged commit, so it cannot stop a tag on a branch whose copy of the
+# workflow has no gate. What stops that is a tag ruleset on `v2.*` that only the owner can create and nobody can update or delete
+# (a prerequisite of the first tag; there is no `environment: release`).
+#
 # docs/distribution/packages.md, "Releasing", says what to do before and after a tag.
 name: Release
 
