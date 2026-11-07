@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::bail;
@@ -20,13 +21,19 @@ use sluis_kit::cli::{Commands, Flags, Refused, shutdown_signal};
 use sluis_kit::dial;
 
 use crate::config::Config;
-use crate::follow::{Follower, Log, Progress};
+use crate::follow::{Clock, Follower, Log, Progress};
 use crate::ports::{Failure, Ports, Sockets};
 
 /// How often a halted log repeats its alert.
 const REPEAT_ALERT: Duration = Duration::from_secs(300);
 /// The default poll, in seconds.
 const POLL_SECS: u64 = 5;
+/// The longest poll, in seconds. The pass that indexes the record of the indexer's own decision must come while the grant
+/// of that decision is still presented (50 of its 60 seconds), or it decides again, and so for ever: the writer seals the
+/// record about 5 seconds after the decision, and a pass can last several seconds more. 30 seconds leaves about 15 for
+/// both. A poll above the grant's life (60 seconds) can never end the loop, since the grant has always expired by the
+/// next pass.
+const MAX_POLL_SECS: u64 = 30;
 /// How long one attempt to reach a socket may take.
 const REACH: Duration = Duration::from_secs(2);
 
@@ -69,9 +76,19 @@ impl Runner {
     ///
     /// When the config kind is not in the registry.
     pub fn new(s: &Settings) -> anyhow::Result<Self> {
+        let began = Instant::now();
+        Self::with_clock(s, Arc::new(move || began.elapsed()))
+    }
+
+    /// A runner that tells time by `clock` (a test moves it).
+    ///
+    /// # Errors
+    ///
+    /// When the config kind is not in the registry.
+    pub fn with_clock(s: &Settings, clock: Clock) -> anyhow::Result<Self> {
         let store = dial(&s.sockets.store);
         Ok(Self {
-            follower: Follower::new(&s.boundary, Ports::new(&s.sockets)),
+            follower: Follower::with_clock(&s.boundary, Ports::new(&s.sockets), clock),
             config: Config::new(&store).map_err(|e| anyhow::anyhow!("{e}"))?,
             key_dir: s.key_dir.clone(),
             halted: HashMap::new(),
@@ -204,7 +221,7 @@ pub fn extra(c: Command) -> Command {
             .value_name("SECONDS")
             .default_value("5")
             .global(true)
-            .help("The time between rounds"),
+            .help("The time between rounds, from 1 to 30 seconds"),
     )
 }
 
@@ -235,8 +252,10 @@ fn settings(f: &Flags) -> anyhow::Result<Settings> {
     let secs = one("poll-secs")
         .map_or(Ok(POLL_SECS), |s| s.parse::<u64>())
         .ok()
-        .filter(|s| (1..=3600).contains(s))
-        .ok_or_else(|| anyhow::anyhow!("--poll-secs: a number of seconds from 1 to 3600"))?;
+        .filter(|s| (1..=MAX_POLL_SECS).contains(s))
+        .ok_or_else(|| {
+            anyhow::anyhow!("--poll-secs: a number of seconds from 1 to {MAX_POLL_SECS}")
+        })?;
     Ok(Settings {
         boundary: f.boundary.clone(),
         sockets,

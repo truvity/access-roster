@@ -55,7 +55,12 @@ const (
 	// auditKind is the kind of the log the writer writes tonight (the usage log comes with the meters).
 	auditKind = "audit"
 
-	retryAfter = time.Second
+	// firstRetry and longestRetry bound the wait before the stream is opened again after a failure: it starts at firstRetry,
+	// doubles at each failure in a row and stops at longestRetry. A stream that did a batch, or stayed open for longestRetry,
+	// starts it again from firstRetry. Every try that reaches policy is a decision and an audit record, so a writer that
+	// cannot seal (key@ locked) must not try every second for an hour.
+	firstRetry   = time.Second
+	longestRetry = 30 * time.Second
 )
 
 // SealID is the id of the address a record is sealed at: <project>/<kind>/<log>/<record id>.
@@ -82,6 +87,9 @@ type Config struct {
 	// Mono is a clock that does not step, as time since some start; nil means the time since the process began.
 	// The writer compares it with Now to see that the wall clock has jumped.
 	Mono func() time.Duration
+	// Sleep waits d, or until ctx ends, before the stream is opened again; nil waits on the real clock. A test makes
+	// it a simulated wait.
+	Sleep func(ctx context.Context, d time.Duration)
 }
 
 // Server is the writer.
@@ -107,6 +115,9 @@ type Server struct {
 	cur         treeState
 	state       *writerState
 	pointerETag string
+	// held is the grant kept for each tenant (batch.go, grantFor); only the consuming goroutine uses it. A new writer
+	// holds none.
+	held map[string]heldGrant
 
 	mono func() time.Duration
 	gate clockGate
@@ -271,8 +282,10 @@ func (s *Server) Run(ctx context.Context) error {
 	if err := s.recover(ctx); err != nil {
 		return err
 	}
+	wait := firstRetry
 	for ctx.Err() == nil {
-		err := s.consume(ctx)
+		began := s.mono()
+		worked, err := s.consume(ctx)
 		var fatal *fatalError
 		if errors.As(err, &fatal) {
 			return err
@@ -280,13 +293,25 @@ func (s *Server) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		slog.Warn("the transport stream ended; reconnecting", "err", err)
-		select {
-		case <-ctx.Done():
-		case <-time.After(retryAfter):
+		if worked || s.mono()-began >= longestRetry {
+			wait = firstRetry // it did a batch, or stayed up: the next failure is a new one
 		}
+		slog.Warn("the transport stream ended; reconnecting", "err", err, "after", wait.String())
+		s.sleep(ctx, wait)
+		wait = min(wait*2, longestRetry)
 	}
 	return nil
+}
+
+func (s *Server) sleep(ctx context.Context, d time.Duration) {
+	if s.cfg.Sleep != nil {
+		s.cfg.Sleep(ctx, d)
+		return
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
 }
 
 // recover brings the log, the state and the pointer to one place after a start. It reads the state and adopts the
@@ -467,13 +492,13 @@ func (s *Server) movePointer(ctx context.Context, data []byte, size int64) error
 }
 
 // consume holds one Receive stream open and processes the batches it delivers. It returns when the stream ends or a
-// batch fails; Run opens a new stream, which replays what is not acknowledged.
-func (s *Server) consume(ctx context.Context) error {
+// batch fails; Run opens a new stream, which replays what is not acknowledged. worked says that it sealed a batch.
+func (s *Server) consume(ctx context.Context) (worked bool, _ error) {
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := s.tr.Receive(sctx, connect.NewRequest(&transportv2alpha1.ReceiveRequest{MaxBatch: uint32(s.cfg.BatchMax)})) //nolint:gosec // a small positive number
 	if err != nil {
-		return fmt.Errorf("receive: %w", err)
+		return false, fmt.Errorf("receive: %w", err)
 	}
 	defer func() { _ = stream.Close() }()
 
@@ -500,14 +525,15 @@ func (s *Server) consume(ctx context.Context) error {
 		batch, streamErr := s.collect(sctx, in, ended)
 		if len(batch) > 0 {
 			if err := s.processBatch(ctx, batch); err != nil {
-				return err
+				return worked, err
 			}
+			worked = true
 		}
 		if streamErr != nil {
-			return streamErr
+			return worked, streamErr
 		}
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return worked, ctx.Err()
 		}
 	}
 }

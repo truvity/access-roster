@@ -455,6 +455,8 @@ pub struct Control {
     pub grants: Mutex<Vec<Vec<u8>>>,
     /// The number of grants policy made.
     pub made: AtomicUsize,
+    /// policy states no expiry, as an older policy does.
+    pub no_expiry: AtomicBool,
     /// The addresses key@ was asked to open.
     pub addresses: Mutex<Vec<Address>>,
     /// What key@ opens, by sealed envelope, for a log made by another program (the Go writer's fixture).
@@ -494,6 +496,18 @@ impl PolicyService for PolicySvc {
             decision: Decision::ALLOW.into(),
             sealed_grant: format!("grant:{}:{n}", r.tenant).into_bytes(),
             decision_id: "d".into(),
+            expires_at: if self.0.no_expiry.load(Ordering::SeqCst) {
+                ::buffa::MessageField::none()
+            } else {
+                // A grant lives 60 seconds, from when it is made.
+                let at = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+                let d = at.duration_since(std::time::UNIX_EPOCH).unwrap();
+                ::buffa::MessageField::some(buffa_types::google::protobuf::Timestamp {
+                    seconds: i64::try_from(d.as_secs()).unwrap(),
+                    nanos: i32::try_from(d.subsec_nanos()).unwrap(),
+                    ..Default::default()
+                })
+            },
             ..DecideResponse::default()
         })
     }

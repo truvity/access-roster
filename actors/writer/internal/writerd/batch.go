@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
@@ -16,6 +17,7 @@ import (
 	transportv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/transport/v2alpha1"
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
 	"github.com/truvity/sluis/v2/kits/go/audit"
+	"github.com/truvity/sluis/v2/kits/go/refusal"
 )
 
 // writerName is the name policy knows the writer by (decision D-6: the audit pieces are principals).
@@ -105,10 +107,44 @@ type refusedMessage struct {
 	rej *rejection
 }
 
-// grantCache holds the sealed grants a batch has asked policy for, by tenant.
+// grantCache holds the sealed grants one batch has asked policy for, by tenant, that carry no expiry and so cannot be
+// kept: a grant with an expiry is kept by the writer (heldGrant) and not here.
 type grantCache map[string][]byte
 
+// grantMargin is how long before its expiry the writer stops presenting a grant it holds (ADR 0007, "Sealed grants":
+// a grant is reusable for about 60 seconds). key@ judges the expiry on its own clock and allows a skew of five seconds
+// either way, so a grant that the writer still presents when it is about to die could be refused in the middle of a
+// batch; ten seconds is the room for that, for a batch that began just before the margin, and for a clock that is a
+// little apart from policy's. The writer therefore makes one decision about every 50 seconds when it is busy.
+const grantMargin = 10 * time.Second
+
+// heldGrant is a grant the writer keeps for a tenant until it nears its expiry.
+type heldGrant struct {
+	sealed []byte
+	// until is the wall-clock time after which the grant is no longer presented: policy's expiry less grantMargin.
+	until time.Time
+	// monoUntil bounds the same on the clock that does not step, counted from when the grant arrived, so that a wall
+	// clock set back cannot keep a grant past its life.
+	monoUntil time.Duration
+}
+
+// usable says whether the writer may still present the grant.
+func (h heldGrant) usable(now time.Time, mono time.Duration) bool {
+	return len(h.sealed) > 0 && now.Before(h.until) && mono < h.monoUntil
+}
+
+// grantFor returns the grant to seal a tenant's evidence with. The writer keeps the grant policy gave it, for the
+// grant's life less grantMargin, and presents it to key@ for every seal of every batch in that time; so a batch
+// whose records are the by-products of an earlier decision costs no decision of its own, and an idle log goes quiet
+// (ADR 0007: "reusable for about 60 seconds"; ADR 0029: none when idle). A refused, expired or denied grant is not
+// kept, a restart holds none, and nothing durable holds one.
 func (s *Server) grantFor(ctx context.Context, c grantCache, tenant string) ([]byte, error) {
+	if h, ok := s.held[tenant]; ok {
+		if h.usable(s.now(), s.mono()) {
+			return h.sealed, nil
+		}
+		delete(s.held, tenant)
+	}
 	if g, ok := c[tenant]; ok {
 		return g, nil
 	}
@@ -116,8 +152,36 @@ func (s *Server) grantFor(ctx context.Context, c grantCache, tenant string) ([]b
 	if err != nil {
 		return nil, err
 	}
-	c[tenant] = g
-	return g, nil
+	if g.expires.IsZero() {
+		c[tenant] = g.sealed // policy named no expiry: the grant serves this batch only
+		return g.sealed, nil
+	}
+	if s.held == nil {
+		s.held = map[string]heldGrant{}
+	}
+	// The expiry is policy's word: the grant is kept for the life it states less the margin, counted from now on both
+	// clocks, and never for more than a grant may live. A far-future expiry therefore buys nothing; key@ judges the
+	// real one.
+	life := min(g.expires.Sub(s.now()), maxGrantLife) - grantMargin
+	if life <= 0 {
+		c[tenant] = g.sealed // it dies before it could be reused: it serves this batch only
+		return g.sealed, nil
+	}
+	s.held[tenant] = heldGrant{sealed: g.sealed, until: s.now().Add(life), monoUntil: s.mono() + life}
+	return g.sealed, nil
+}
+
+// reasonGrant is the word key@ refuses with when the grant is missing, unreadable, for another holder, tenant or
+// operation, or expired (permission_denied/grant, actors/key/internal/keyd/grant.go, checkGrant).
+const reasonGrant = "grant"
+
+// dropGrant forgets the grant held for a tenant, after key@ refused it: the next seal asks policy again. Only a refusal
+// that names the grant drops it. Any other refusal (a tenant whose evidence key is gone, a rule) says nothing against
+// the grant, and dropping it would cost one decision and one record for every retry of a batch that cannot be sealed.
+func (s *Server) dropGrant(tenant string, err error) {
+	if r, ok := refusal.Reason(err); ok && r == reasonGrant {
+		delete(s.held, tenant)
+	}
 }
 
 // quarantineKind is the kind of the address a refused message is sealed at; the id is
@@ -154,6 +218,7 @@ func (s *Server) quarantine(ctx context.Context, grants grantCache, r refusedMes
 		Grant:     g,
 	}))
 	if err != nil {
+		s.dropGrant(tenant, err)
 		return fmt.Errorf("seal a refused message: %w", err)
 	}
 	body, err := audit.Canonical(map[string]any{
@@ -203,6 +268,7 @@ func (s *Server) sealEntries(ctx context.Context, grants grantCache, acc []accep
 			Grant:     g,
 		}))
 		if err != nil {
+			s.dropGrant(a.tenant, err)
 			return nil, fmt.Errorf("seal a record: %w", err)
 		}
 		e, err := recordEntry(a.info, a.tenant, res.Msg.GetEnvelope(), s.cfg.Instance, nowMS)
@@ -218,9 +284,19 @@ func (s *Server) sealEntries(ctx context.Context, grants grantCache, acc []accep
 	return append(entries, seal), nil
 }
 
+// policyGrant is the grant policy gave, with the time it expires.
+type policyGrant struct {
+	sealed []byte
+	// expires is the expiry policy states, or the zero time when the answer names none.
+	expires time.Time
+}
+
+// maxGrantLife is the longest a grant lives (ADR 0007, "Sealed grants"; key@ refuses a longer one).
+const maxGrantLife = 60 * time.Second
+
 // grant asks policy for the grant that lets the writer seal a tenant's evidence (decision D-6: action audit.seal,
 // a built-in permit of the writer). A refusal is an error: the writer does not seal without one.
-func (s *Server) grant(ctx context.Context, tenant string) ([]byte, error) {
+func (s *Server) grant(ctx context.Context, tenant string) (policyGrant, error) {
 	res, err := s.pol.Decide(ctx, connect.NewRequest(&policyv2alpha1.DecideRequest{
 		Action:      "audit.seal",
 		Principal:   &policyv2alpha1.EntityRef{Type: "Actor", Id: writerName},
@@ -230,12 +306,16 @@ func (s *Server) grant(ctx context.Context, tenant string) ([]byte, error) {
 		GrantKeyOps: []string{"seal"},
 	}))
 	if err != nil {
-		return nil, fmt.Errorf("ask policy for a grant: %w", err)
+		return policyGrant{}, fmt.Errorf("ask policy for a grant: %w", err)
 	}
 	if res.Msg.GetDecision() != policyv2alpha1.Decision_ALLOW || len(res.Msg.GetSealedGrant()) == 0 {
-		return nil, errors.New("policy gave no grant to seal")
+		return policyGrant{}, errors.New("policy gave no grant to seal")
 	}
-	return res.Msg.GetSealedGrant(), nil
+	g := policyGrant{sealed: res.Msg.GetSealedGrant()}
+	if e := res.Msg.GetExpiresAt(); e != nil && e.IsValid() {
+		g.expires = e.AsTime()
+	}
+	return g, nil
 }
 
 // write is the durable part of a batch, in the order of 0029: bundles and tiles, the state in one conditional put,
