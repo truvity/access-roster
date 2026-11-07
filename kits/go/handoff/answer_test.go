@@ -179,6 +179,23 @@ func TestAnswerWithATrustSequenceAboveTheHeldListIsRefused(t *testing.T) {
 	}
 }
 
+// A root list that nothing anchored still bounds the sequence, but the check is reported as not run, never as passed.
+func TestAnUnanchoredListDoesNotCountTheTrustSequenceAsChecked(t *testing.T) {
+	a := goodAnswer(t)
+	a.in.RootList = &RootList{Sequence: 7, Roots: []Root{{Label: "A", X509SPKISHA256: SPKIPin(a.root.cert), OpenPGPFingerprint: strings.Repeat("a", 40)}}}
+	a.in.ListUnanchored = true
+	v, err := CheckX509(a.in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(v.Ran, CheckTrustSequence) || !contains(v.NotRun, CheckTrustSequence) {
+		t.Fatalf("ran %v, not run %v", v.Ran, v.NotRun)
+	}
+	a.in.ResultFile = resultFile(t, a.csr, a.in.CertFile, a.in.CertName, a.root, 8)
+	_, err = CheckX509(a.in)
+	assertCode(t, err, CodeIssuer)
+}
+
 // With a root list held, a certificate of the bundle is an anchor only if its key is on the list; a bundle that names
 // another sequence than the list's is refused.
 func TestRootListGatesTheAnchors(t *testing.T) {

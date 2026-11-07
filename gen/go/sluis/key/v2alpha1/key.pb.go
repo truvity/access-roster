@@ -1193,11 +1193,12 @@ func (x *DataKeyWrap) GetWrappedKey() []byte {
 // each node, with id wrapping/<recipient> and no chain.
 type KeyCertificate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`                // the key purpose
-	Recipient     string                 `protobuf:"bytes,2,opt,name=recipient,proto3" json:"recipient,omitempty"`            // the recipient label of a wrapping key: its RFC 7638 thumbprint in lower-case base32
-	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
-	Chain         [][]byte               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                    // the certificate chain, DER, leaf first; empty when there is none
-	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"` // when key@ published it
+	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`                                   // the key purpose
+	Recipient     string                 `protobuf:"bytes,2,opt,name=recipient,proto3" json:"recipient,omitempty"`                               // the recipient label of a wrapping key: its RFC 7638 thumbprint in lower-case base32
+	SpkiDer       []byte                 `protobuf:"bytes,3,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"`                    // the public key, SubjectPublicKeyInfo in DER
+	Chain         [][]byte               `protobuf:"bytes,4,rep,name=chain,proto3" json:"chain,omitempty"`                                       // the certificate chain, DER, leaf first; empty when there is none
+	AddedAt       *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=added_at,json=addedAt,proto3" json:"added_at,omitempty"`                    // when key@ published it
+	TrustSequence int64                  `protobuf:"varint,6,opt,name=trust_sequence,json=trustSequence,proto3" json:"trust_sequence,omitempty"` // the trust sequence of the answer that brought the chain (hand-off); 0 for a key with no chain or an answer on the floor
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1265,6 +1266,13 @@ func (x *KeyCertificate) GetAddedAt() *timestamppb.Timestamp {
 		return x.AddedAt
 	}
 	return nil
+}
+
+func (x *KeyCertificate) GetTrustSequence() int64 {
+	if x != nil {
+		return x.TrustSequence
+	}
+	return 0
 }
 
 // KeyRevocation is the kind KeyRevocation (ADR 0041, "The tighten-only record"): one revoked target, create only. key@
@@ -1538,13 +1546,14 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\trecipient\x18\x03 \x01(\tR\trecipient\x12)\n" +
 	"\x10ephemeral_public\x18\x04 \x01(\fR\x0fephemeralPublic\x12\x1f\n" +
 	"\vwrapped_key\x18\x05 \x01(\fR\n" +
-	"wrappedKey\"\xb0\x01\n" +
+	"wrappedKey\"\xd7\x01\n" +
 	"\x0eKeyCertificate\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x1c\n" +
 	"\trecipient\x18\x02 \x01(\tR\trecipient\x12\x19\n" +
 	"\bspki_der\x18\x03 \x01(\fR\aspkiDer\x12\x14\n" +
 	"\x05chain\x18\x04 \x03(\fR\x05chain\x125\n" +
-	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\"\xa4\x01\n" +
+	"\badded_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\aaddedAt\x12%\n" +
+	"\x0etrust_sequence\x18\x06 \x01(\x03R\rtrustSequence\"\xa4\x01\n" +
 	"\rKeyRevocation\x12\x1f\n" +
 	"\vtarget_kind\x18\x01 \x01(\tR\n" +
 	"targetKind\x12\x16\n" +
