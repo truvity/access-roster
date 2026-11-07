@@ -77,7 +77,7 @@ ssh-keygen -lf "$PWD/.cache/boards/known_hosts" | grep <board>
 
 Compare the fingerprint on the last line with what the board's console prints (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the board). Do not use `StrictHostKeyChecking=no` or an empty known-hosts file: the scripts refuse them for the unlock, and the host-key check is the only thing between the PIN and a host that answers on the address. If the board's entries in the file are hashed, `ssh-keygen -R` still finds them. The other boards' entries are not touched.
 
-Check: `SLUIS_BOARDS=<board> devbox run -- just boards-status` connects with no host-key warning. It reports the board's units and rqlite as not installed or not running; that is expected before steps 4 and 5.
+Check: `SLUIS_BOARDS=<board> devbox run -- just boards-status` connects with no host-key warning. It reports the board's units and rqlite as not installed or not running; that is expected before steps 4 and 5. It also reports the rqlite firewall as ABSENT and exits 1 for that reason, which is expected until the board has the firewall again ([the rqlite firewall](/runtimes/bare-metal/#the-rqlite-firewall): apply it to the rebuilt board, one board, after step 9).
 
 ### 4. Rejoin under the same Raft address
 

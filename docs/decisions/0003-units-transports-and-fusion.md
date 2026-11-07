@@ -92,6 +92,12 @@ Which actor may call which is predefined in code and logic, and each transport e
 - **Calls between boundaries are federation,** and name SPIFFE IDs ([0008](/decisions/0008-boundaries-and-tenants/#federation-between-boundaries)).
 - **The deny tests check that nothing else binds a TCP address,** apart from rqlite's client API on the loopback address, which only store@'s driver reaches ([0005](/decisions/0005-the-store/#engines)). Any further flow between nodes amends this record.
 
+### The boot failure of the peer-only firewall
+
+Amendment of 2026-11-07. The firewall of the first bullet above is a table that the board loads before rqlite starts ([The rqlite firewall](/runtimes/bare-metal/#the-rqlite-firewall)): it admits the Raft port from the declared peers and the administration host, and the client port from the loopback interface and the administration host, and drops both from every other source. If that table cannot be loaded at boot, **rqlite starts anyway.** The unit that loads the rules fails with one journal line that says the ports are not restricted, and `boards-status` fails for the board.
+
+"Admitted by the firewall from the declared peers only" is a property of a running installation, and an installation that stops its store because a file in `/etc` is missing has traded an exposure for an outage of the whole board. This is the stance for the test installation, where rqlite has no TLS and no authentication. It is to be revisited before any real PIN or key goes through the boards, and the owner's confirmation of it is awaited ([follow-ups](#follow-ups)).
+
 ### Fusion
 
 - **Fusion is an explicit installation choice,** made to fit a small machine: several work actors run in one unit. It is never the default.
@@ -136,5 +142,6 @@ Which actor may call which is predefined in code and logic, and each transport e
 
 ## Follow-ups
 
+- The boot failure of the peer-only firewall opens rqlite's ports to the network (fail open) when the rules cannot be loaded. It is the stance for the test installation; the owner has not confirmed it yet. Revisit it before any real PIN or key goes through the boards: fail closed is `Requires=` on the firewall unit from a drop-in of `rqlited.service`.
 - The Lambda latency spike (invoke latency between actor functions, the per-request cost of opening session cookies at key@, and whether an in-process store exception is needed) is done: [#1179](https://github.com/truvity/sluis/issues/1179). Measured on 2026-11-03, a whole warm sign-in takes about 0.40 s at p50 and 0.49 s at p99, and about 0.29 s and 0.36 s with concurrent reads; no exception is needed.
 - The Helm chart for the parity milestone, with the measured requests and limits and the details of the edge relay: [#844](https://github.com/truvity/sluis/issues/844) and [#876](https://github.com/truvity/sluis/issues/876).
