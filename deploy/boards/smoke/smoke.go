@@ -88,9 +88,10 @@ func sshArgs(opts []string, target, script string) []string {
 // board is one board reached over SSH.
 type board struct {
 	addr, user, agent string
-	dir               string // a directory only root can write, with the smoke's executables
-	node              string // the board's host name, which is the node name in the ring
-	keyID             string // the key that signed this run's token, which the later boards must find in the ring
+	dir               string    // a directory only root can write, with the smoke's executables
+	node              string    // the board's host name, which is the node name in the ring
+	keyID             string    // the key that signed this run's token, which the later boards must find in the ring
+	wraps             []itemOut // the DataKeyWrap items this board read, which the later boards must read too, at the same version or newer
 }
 
 func smoke() error {
@@ -263,11 +264,12 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 		if !strings.Contains(detail, e.keyID+" ES384 ") {
 			return fmt.Errorf("the SigningRing holds no key %s of node %s, which ran before: the boards do not share the store", e.keyID, e.node)
 		}
-		if !strings.Contains(strings.Join(ids, " "), e.node) {
-			return fmt.Errorf("DataKeyWrap holds no item for node %s, which ran before: the boards do not share the store", e.node)
+		if err := sameWraps(e.wraps, wraps.Items); err != nil {
+			return fmt.Errorf("node %s, which ran before: %w: the boards do not share the store", e.node, err)
 		}
-		fmt.Printf("shared:        found the SigningRing key %s and the DataKeyWrap item of %s, which ran before\n", e.keyID, e.node)
+		fmt.Printf("shared:        found the SigningRing key %s and all %d DataKeyWrap items (same ids, versions not older) of %s, which ran before\n", e.keyID, len(e.wraps), e.node)
 	}
+	b.wraps = wraps.Items
 
 	fmt.Println("== 5. Memory")
 	mem, err := b.sh(nil, `free -m | sed -n '1,2p'; for u in $(systemctl list-units 'sluis-*' --no-legend --plain | awk '{print $1}'); do p=$(systemctl show -p MainPID --value "$u"); printf '%-46s rss %s kB\n' "$u" "$(ps -o rss= -p "$p" | tr -d ' ')"; done`)
@@ -275,6 +277,30 @@ func (b *board) run(step, cli string, earlier []*board, tokenOnly bool) error {
 		return err
 	}
 	fmt.Print(mem)
+	return nil
+}
+
+// sameWraps checks that a board read what an earlier one read. The ids of DataKeyWrap items are hashes and carry no node name,
+// so the proof is the item set itself: every item the earlier board read (its id) is on this board too, at its version or a
+// newer one (a later write may have bumped it, but a shared store never goes back). Items that are new on this board are
+// fine; items that are gone, or older, mean the board reads another store.
+func sameWraps(earlier, now []itemOut) error {
+	if len(earlier) == 0 {
+		return errors.New("the earlier board read no DataKeyWrap item, so there is nothing to compare")
+	}
+	byID := make(map[string]uint64, len(now))
+	for _, it := range now {
+		byID[it.ID] = it.Version
+	}
+	for _, it := range earlier {
+		v, ok := byID[it.ID]
+		if !ok {
+			return fmt.Errorf("DataKeyWrap item %s is missing", it.ID)
+		}
+		if v < it.Version {
+			return fmt.Errorf("DataKeyWrap item %s is at version %d, older than %d", it.ID, v, it.Version)
+		}
+	}
 	return nil
 }
 

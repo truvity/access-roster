@@ -68,3 +68,33 @@ func TestSSHArgsCarryTheOptionsOfTheRunAfterTheDefaults(t *testing.T) {
 		t.Errorf("with no options the arguments are %q", got)
 	}
 }
+
+// DataKeyWrap ids are hashes and never name a node: the cross-check compares the item sets and versions instead.
+func TestSameWrapsComparesHashShapedItems(t *testing.T) {
+	earlier := []itemOut{
+		{ID: "evidence/1/gey5lqkxj3mvzsaxk2wnn3a7oq", Version: 3},
+		{ID: "pseudonym/202611/r7hq4dnwcmtlh5c6xd2vbzpa4u", Version: 1},
+	}
+	// The same set, one version bumped, one new item: the later board reads what the earlier wrote.
+	now := []itemOut{
+		{ID: "evidence/1/gey5lqkxj3mvzsaxk2wnn3a7oq", Version: 4},
+		{ID: "evidence/1/mfxgg2djnrsw4y3pnzqxi5lt2e", Version: 1},
+		{ID: "pseudonym/202611/r7hq4dnwcmtlh5c6xd2vbzpa4u", Version: 1},
+	}
+	if err := sameWraps(earlier, now); err != nil {
+		t.Errorf("a shared store was refused: %v", err)
+	}
+	// An item the earlier board read is gone: another store.
+	if err := sameWraps(earlier, now[1:]); err == nil || !strings.Contains(err.Error(), "evidence/1/gey5") {
+		t.Errorf("a missing item was accepted or not named: %v", err)
+	}
+	// An item at an older version: another store.
+	old := []itemOut{{ID: earlier[0].ID, Version: 2}, earlier[1]}
+	if err := sameWraps(earlier, old); err == nil || !strings.Contains(err.Error(), "older") {
+		t.Errorf("an older version was accepted: %v", err)
+	}
+	// Nothing to compare is not a pass.
+	if err := sameWraps(nil, now); err == nil {
+		t.Error("an empty earlier set was accepted")
+	}
+}
