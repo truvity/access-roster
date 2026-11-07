@@ -70,6 +70,10 @@ types:
     minimum: -1
     maximum: 4294967295
     doc: "The uid of a peer as the kernel read it, or -1 for a peer the registry does not know."
+  decimal:
+    type: string
+    pattern: "^[0-9]{1,16}$"
+    doc: "A count written as decimal digits: the generation of a data key, which OCSF's entity.version holds as a string."
   uint:
     type: integer
     minimum: 0
@@ -151,11 +155,13 @@ actions:
     activity: {id: 1}
     outcomes: [success]
     tenant: optional
+    entity: {type: data_key, name: true, version: true}
     fields:
       purpose: {type: ident, required: true}
       generation: {type: uint, required: true}
       recipients: {type: uint, required: true}
     example:
+      entity: {name: data, version: "1"}
       tenant: acme
       sluis: {purpose: data, generation: 1, recipients: 3}
 
@@ -165,11 +171,13 @@ actions:
     activity: {id: 1}
     outcomes: [success]
     tenant: optional
+    entity: {type: key_wrap, name: true, uid: true, version: true}
     fields:
       purpose: {type: ident, required: true}
       generation: {type: uint, required: true}
       recipient: {type: ident, required: true}
     example:
+      entity: {name: data, uid: wrap-key-1, version: "1"}
       tenant: acme
       sluis: {purpose: data, generation: 1, recipient: wrap-key-1}
 
@@ -549,12 +557,14 @@ actions:
     class: 3004
     activity: {id: 1}
     outcomes: [success]
+    entity: {type: signing_key, uid: true}
     fields: &ring
       key_id: {type: ident, required: true}
       state: {type: word, required: true}
       algorithm: {type: ident, required: true}
       reason: {type: word}
     example:
+      entity: {uid: key-2026-11}
       sluis: {key_id: key-2026-11, state: published, algorithm: ES384}
 
   - name: signer.ring.change
@@ -562,8 +572,10 @@ actions:
     class: 3004
     activity: {id: 3}
     outcomes: [success]
+    entity: {type: signing_key, uid: true}
     fields: *ring
     example:
+      entity: {uid: key-2026-11}
       sluis: {key_id: key-2026-11, state: active, algorithm: ES384}
 
   - name: signer.ring.drop
@@ -571,8 +583,10 @@ actions:
     class: 3004
     activity: {id: 4}
     outcomes: [success]
+    entity: {type: signing_key, uid: true}
     fields: *ring
     example:
+      entity: {uid: key-2026-10}
       sluis: {key_id: key-2026-10, state: dropped, algorithm: ES384, reason: expired}
 
   # exporter (actors/exporter/src/audit.rs): the start, each write to a destination, a document that goes into or out of
@@ -594,6 +608,7 @@ actions:
     class: 3004
     activity: {id: 3}
     outcomes: [success]
+    entity: {type: export_document, name: true}
     fields:
       destination: {type: ident, required: true}
       document: {type: ident, required: true}
@@ -602,29 +617,34 @@ actions:
       kids: {type: uint, required: true}
       replaced: {type: bool, required: true}
     example:
+      entity: {name: jwks}
       sluis: {destination: edge, document: jwks, address: jwks, sha256: "0000000000000000000000000000000000000000000000000000000000000000", kids: 2, replaced: true}
 
   - name: exporter.unverified
     actor: exporter
-    class: 6003
+    class: 3004
     activity: {id: 99, name: Unverified}
     outcomes: [success, failure]
+    entity: {type: export_document, name: true}
     fields:
       destination: {type: ident, required: true}
       document: {type: ident, required: true}
     example:
+      entity: {name: jwks}
       status_code: key_revocation
       sluis: {destination: edge, document: jwks}
 
   - name: exporter.refused
     actor: exporter
-    class: 6003
+    class: 3004
     activity: {id: 99, name: Refuse}
     outcomes: [failure]
+    entity: {type: export_document, name: true}
     fields:
       destination: {type: ident, required: true}
       document: {type: ident, required: true}
     example:
+      entity: {name: jwks}
       status_code: not_exportable
       sluis: {destination: edge, document: bundle}
 

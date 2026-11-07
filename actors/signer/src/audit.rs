@@ -14,7 +14,7 @@
 //! changes of the key set wait for the transport, as an administrative change does (0028).
 
 use serde_json::{Map, Value, json};
-use sluis_audit::{Action, Config, Emitter, Event, Status};
+use sluis_audit::{Action, Config, Emitter, Entity, Event, Status};
 
 use crate::ring::{Change, ChangeKind};
 
@@ -118,6 +118,12 @@ impl Auditor {
                 activity_name: String::new(),
             },
             status: Status::Success,
+            // The key whose place in the ring changed (OCSF's entity; ADR 0030, "The OCSF attributes a class requires").
+            entity: Some(Entity {
+                kind: "signing_key".into(),
+                uid: c.key_id.clone(),
+                ..Entity::default()
+            }),
             sluis,
             ..Event::default()
         };

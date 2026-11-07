@@ -14,6 +14,8 @@ const (
 	// from the emitting actor's name (kits/go/audit buildRecord).
 	classApplicationLifecycle = 6002
 	classAuthentication       = 3002
+	classEntityManagement     = 3004
+	entityTypeOther           = 99
 
 	defsFile = "defs.schema.json"
 	draft    = "https://json-schema.org/draft/2020-12/schema"
@@ -272,6 +274,23 @@ func buildAction(t *tableFile, a action) obj {
 		named("application")
 	case classAuthentication:
 		named("service")
+	case classEntityManagement:
+		e := a.Entity
+		eprops := obj{"type": obj{"const": e.Type}, "type_id": obj{"const": entityTypeOther}}
+		ereq := []string{"type", "type_id"}
+		for _, m := range []struct {
+			on   bool
+			name string
+			typ  string
+		}{{e.Name, "name", "ident"}, {e.UID, "uid", "ident"}, {e.Version, "version", "decimal"}} {
+			if m.on {
+				eprops[m.name] = ref(m.typ)
+				ereq = append(ereq, m.name)
+			}
+		}
+		sortStrings(ereq)
+		props["entity"] = obj{"type": "object", "additionalProperties": false, "required": ereq, "properties": eprops}
+		required = append(required, "entity")
 	}
 	if policyOK {
 		props["policy"] = ref("policy")

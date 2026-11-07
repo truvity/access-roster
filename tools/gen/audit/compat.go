@@ -88,6 +88,36 @@ func compatRow(o, n action) []string {
 			out = append(out, fmt.Sprintf("%s: %s went from %s to %s", o.Name, p.name, nameOf(p.old), nameOf(p.new)))
 		}
 	}
+	return append(out, compatEntity(o.Name, o.Entity, n.Entity)...)
+}
+
+// compatEntity compares the entity of two rows of Entity Management: the records of the old release carry what the old row
+// says, so a row that gains an entity, changes its type or takes a member it did not carry makes them fail, and a member
+// that goes makes the new schema refuse the old records.
+func compatEntity(name string, o, n *entitySpec) []string {
+	switch {
+	case o == nil && n == nil:
+		return nil
+	case o == nil:
+		return []string{name + ": the row gains an entity, which the records of the old release do not carry"}
+	case n == nil:
+		return []string{name + ": the row loses its entity"}
+	}
+	var out []string
+	if o.Type != n.Type {
+		out = append(out, fmt.Sprintf("%s: the type of the entity changed from %s to %s", name, o.Type, n.Type))
+	}
+	for _, m := range []struct {
+		n      string
+		is, to bool
+	}{{"name", o.Name, n.Name}, {"uid", o.UID, n.UID}, {"version", o.Version, n.Version}} {
+		switch {
+		case m.is && !m.to:
+			out = append(out, fmt.Sprintf("%s: the entity no longer has a %s", name, m.n))
+		case !m.is && m.to:
+			out = append(out, fmt.Sprintf("%s: the entity now has a %s, which the records of the old release do not carry", name, m.n))
+		}
+	}
 	return out
 }
 

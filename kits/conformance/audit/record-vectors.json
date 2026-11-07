@@ -162,6 +162,53 @@
    "sha384": "c38dd0c22c955dc82448a0a3d7f86d4783a225b4a8daef54a52428e1c4c4f1ac0092f3fb35605ddeff3c0d66e496d64f"
   },
   {
+   "actor": "key",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "an entity names the thing that changed: a type, a name, a uid and a version",
+   "event": {
+    "action": {
+     "name": "key.wrap.write",
+     "class_uid": 3004,
+     "activity_id": 1
+    },
+    "status": 1,
+    "tenant": "acme",
+    "entity": {
+     "type": "key_wrap",
+     "name": "data",
+     "uid": "wrap-key-1",
+     "version": "1"
+    }
+   },
+   "expected": "{\"activity_id\":1,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"key@dev\"}},\"category_uid\":3,\"class_uid\":3004,\"entity\":{\"name\":\"data\",\"type\":\"key_wrap\",\"type_id\":99,\"uid\":\"wrap-key-1\",\"version\":\"1\"},\"metadata\":{\"event_code\":\"key.wrap.write\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"tenant_uid\":\"acme\",\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300401}",
+   "sha384": "70b1977044bca857d8e86bc623bcee4b76bd400dba28378295cbe62d9d52d35a951bb92f16847e59bcd2bde6dcac276a"
+  },
+  {
+   "actor": "signer",
+   "boundary": "dev",
+   "release": "0.0.0-test",
+   "uid": "01950000-0000-7000-8000-000000000001",
+   "time_ms": 1793750400000,
+   "name": "an entity of a uid alone",
+   "event": {
+    "action": {
+     "name": "signer.ring.drop",
+     "class_uid": 3004,
+     "activity_id": 4
+    },
+    "status": 1,
+    "entity": {
+     "type": "signing_key",
+     "uid": "-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+   },
+   "expected": "{\"activity_id\":4,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"signer@dev\"}},\"category_uid\":3,\"class_uid\":3004,\"entity\":{\"type\":\"signing_key\",\"type_id\":99,\"uid\":\"-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"},\"metadata\":{\"event_code\":\"signer.ring.drop\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":300404}",
+   "sha384": "dc427fd39326be9caab25551cd9cf3115d2a0d53086db2853b69504b5e473ea496f83bc980279bd99390d9c27b50c72c"
+  },
+  {
    "actor": "session",
    "boundary": "dev",
    "release": "0.0.0-test",
