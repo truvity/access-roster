@@ -1065,7 +1065,7 @@ requirements:
   - id: REQ-DATA-119
     area: DATA
     split_from: REQ-DATA-116
-    statement: "store@ MUST refuse a listing of a watched kind and a watch from now, with unavailable and the reason engine, when the engine names a log position with no epoch."
+    statement: "store@ MUST refuse a listing of a watched kind and a watch, with unavailable and the reason engine, when the engine names a log position with no epoch."
     rationale: "A position without an epoch could be the same number in another log, and store@ must never hand one out (ADR 0005, issue 1459)."
     level: MUST
     source: design-decision
@@ -1078,7 +1078,7 @@ requirements:
     tests:
       - actors/store/tests/watch.rs
     verification:
-      - {kind: integration-test, ref: "an engine that names a position with epoch 0 gives unavailable for a listing and for a watch from now"}
+      - {kind: integration-test, ref: "an engine that names a position with epoch 0 gives unavailable for a listing and for a watch, from now or from a point"}
   - id: REQ-DATA-117
     area: DATA
     statement: "store@ MUST refuse a watch from a nonzero resume point under any epoch but the log's, an absent epoch included, with the reason resume_point_expired, even when the log holds that number."
@@ -1114,6 +1114,95 @@ requirements:
     verification:
       - {kind: integration-test, ref: "a scripted store@: a point of another epoch or none lists again, a message of another epoch moves nothing, a change below the old sequence is applied, no epoch ends the watch"}
       - {kind: integration-test, ref: "store@ end to end: a point saved before a restore is refused when the new log has grown past it, and a change of the restored log below the old point is applied and not dropped"}
+  - id: REQ-DATA-120
+    area: DATA
+    statement: "store@ MUST send one bookmark that says the stream is caught up as soon as a watch has delivered every row of the change log up to the head it read when it opened, at once when there is none to deliver, after the last row up to the head and before any row past it."
+    rationale: "A reader that fails closed must know when its state holds what was committed before it reconnected, and neither the first change nor an idle bookmark says so (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/src/watch.rs
+      - actors/store/tests/watch.rs
+      - actors/store/tests/watch_engines.rs
+      - actors/store/tests/watch_client.rs
+    verification:
+      - {kind: integration-test, ref: "an empty catch-up is the first message; 600 rows behind come before the bookmark at the head; writes during it follow it; other kinds and a put kept for a row past the head are placed right"}
+      - {kind: integration-test, ref: "a log that lags gets idle bookmarks with no claim until the rows arrive; a stream that ends before the head never claims it; on the memory engine and rqlite"}
+  - id: REQ-DATA-121
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "The Rust typed client's watch helper MUST report the caught-up bookmark as an event and hold its state unconfirmed after a listing, a break, a reconnect and a dropped call until that event of the current stream, which no idle bookmark gives."
+    rationale: "A reader that answers \"not revoked\" from a followed kind may answer only from a state that holds what was committed before it connected (ADR 0005, ADR 0041, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - kits/rust/sluis-store/tests/watch.rs
+      - actors/store/tests/watch_client.rs
+    verification:
+      - {kind: integration-test, ref: "a scripted store@: a listing and a first change do not confirm, the caught-up bookmark does, an idle one keeps it, a break, a resync or a dropped call takes it away, the new stream gives it back"}
+      - {kind: integration-test, ref: "store@ end to end: confirmed right after the listing, after a restart from a saved point, and after 300 rows behind, with a change made during the catch-up after it"}
+  - id: REQ-DATA-122
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "store@ MUST read the head of the change log that a watch opens at, and its epoch, at a linearizable level, or refuse the watch, and never at a weaker one."
+    rationale: "A head read from a replica that lags a write acknowledged before the call would let the stream say it is caught up without that write (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/tests/watch.rs
+    verification:
+      - {kind: integration-test, ref: "with a read that is not linearizable 3 rows behind, the caught-up bookmark of a watch from a point and of one from now names the true head, and the query for it asks for a linearizable read"}
+  - id: REQ-DATA-123
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "The Rust typed client's watch helper MUST end its count of failures only on a change or on a caught-up stream that has stayed up, interrupt a stream that is not caught up within a stated time, and give a reader the time since the stream last spoke."
+    rationale: "A store@ that opens streams and cannot read them would otherwise be asked again at the first wait for ever, hide its failure from the limit on failures, and leave a fail-closed reader with a claim of unknown age (ADR 0005, ADR 0041, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - kits/rust/sluis-store/tests/watch.rs
+    verification:
+      - {kind: integration-test, ref: "streams that say caught up and die: the count grows to the cap and give_up_after is reached; a caught-up stream that stays up ends the count, one never caught up does not"}
+      - {kind: integration-test, ref: "a stream not caught up in time, though idle bookmarks keep coming, is interrupted (catch-up stalled) and the reconnects back off; a reader can bound the time since the stream last spoke"}
+  - id: REQ-DATA-124
+    area: DATA
+    split_from: REQ-DATA-120
+    statement: "store@ MUST refuse a watch of a kind that has no change log, whatever its rules grant, with invalid_argument and the reason address."
+    rationale: "A stream over a kind that nothing logs would say it is caught up at once and then deliver nothing for ever (ADR 0005, issue 1458)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [store]
+    standards: []
+    issues: [1458, 1453]
+    tests:
+      - actors/store/tests/watch.rs
+    verification:
+      - {kind: integration-test, ref: "a watch of a durable kind that is neither watched nor exportable is refused from now and from a point, and the refusal is audited"}
   - id: REQ-DATA-059
     area: DATA
     statement: "On serverless the store MUST answer a re-read with an unchanged reply when the ETag matches."

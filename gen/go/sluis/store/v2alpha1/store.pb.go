@@ -924,11 +924,15 @@ func (x *WatchRequest) GetLogEpoch() uint64 {
 
 // WatchResponse is one change.
 type WatchResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ResumePoint   uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind: apply every config change
-	Type          ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
-	Item          *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
-	LogEpoch      uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`              // the epoch of the change log that resume_point belongs to: the same on every message of a stream, and to be handed back with the point. 0 for a config kind
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	ResumePoint uint64                 `protobuf:"varint,1,opt,name=resume_point,json=resumePoint,proto3" json:"resume_point,omitempty"`     // the log sequence of this change; hand it back after a restart, and dedupe by it. 0 for a config kind: apply every config change
+	Type        ChangeType             `protobuf:"varint,2,opt,name=type,proto3,enum=sluis.store.v2alpha1.ChangeType" json:"type,omitempty"` // PUT, DELETE or BOOKMARK
+	Item        *Item                  `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`                                       // PUT: the item as read at delivery. DELETE: its address and the version of the row, no value. BOOKMARK: none
+	LogEpoch    uint64                 `protobuf:"varint,4,opt,name=log_epoch,json=logEpoch,proto3" json:"log_epoch,omitempty"`              // the epoch of the change log that resume_point belongs to: the same on every message of a stream, and to be handed back with the point. 0 for a config kind
+	// true on the one BOOKMARK that says the stream has delivered every change up to the log head that store@ read, linearizably, when the stream
+	// opened; resume_point is that head. It is sent at once when there was nothing to deliver, and never before the rows up to the head. False on every
+	// other message, an idle bookmark included: that one is a sign of life and a point to resume from, and proves nothing about what the stream has seen.
+	CaughtUp      bool `protobuf:"varint,5,opt,name=caught_up,json=caughtUp,proto3" json:"caught_up,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -989,6 +993,13 @@ func (x *WatchResponse) GetLogEpoch() uint64 {
 		return x.LogEpoch
 	}
 	return 0
+}
+
+func (x *WatchResponse) GetCaughtUp() bool {
+	if x != nil {
+		return x.CaughtUp
+	}
+	return false
 }
 
 // GetSignedConfigRequest asks for the signed document of one config kind.
@@ -1144,12 +1155,13 @@ const file_sluis_store_v2alpha1_store_proto_rawDesc = "" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06tenant\x18\x02 \x01(\tR\x06tenant\x12!\n" +
 	"\fresume_point\x18\x03 \x01(\x04R\vresumePoint\x12\x1b\n" +
-	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\"\xb5\x01\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\"\xd2\x01\n" +
 	"\rWatchResponse\x12!\n" +
 	"\fresume_point\x18\x01 \x01(\x04R\vresumePoint\x124\n" +
 	"\x04type\x18\x02 \x01(\x0e2 .sluis.store.v2alpha1.ChangeTypeR\x04type\x12.\n" +
 	"\x04item\x18\x03 \x01(\v2\x1a.sluis.store.v2alpha1.ItemR\x04item\x12\x1b\n" +
-	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\",\n" +
+	"\tlog_epoch\x18\x04 \x01(\x04R\blogEpoch\x12\x1b\n" +
+	"\tcaught_up\x18\x05 \x01(\bR\bcaughtUp\",\n" +
 	"\x16GetSignedConfigRequest\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\"5\n" +
 	"\x17GetSignedConfigResponse\x12\x1a\n" +
