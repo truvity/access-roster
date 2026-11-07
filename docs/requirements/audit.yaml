@@ -242,12 +242,15 @@ requirements:
     rationale: "The lock mode defines what tamper-evidence the log gives."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Partial}
     issues: [1121, 837, 1419]
+    tests:
+      - actors/store/tests/validate.rs
     verification:
       - {kind: integration-test, ref: "config-check lock-mode report test"}
   - id: REQ-AUDIT-009
