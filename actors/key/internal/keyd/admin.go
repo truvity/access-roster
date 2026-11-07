@@ -42,6 +42,9 @@ func (s *Server) serveAdmin(ctx context.Context) error {
 	hpath, h := keyv2alpha1connect.NewKeyAdminServiceHandler(s, connect.WithReadMaxBytes(adminReadLimit))
 	mux := http.NewServeMux()
 	mux.Handle(hpath, h)
+	// The hand-off calls share the socket, and so the root-only guard (handoff.go).
+	hopath, ho := keyv2alpha1connect.NewKeyHandoffServiceHandler(s, connect.WithReadMaxBytes(adminReadLimit))
+	mux.Handle(hopath, ho)
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true) // h2c, as every other socket of sluis (kits/go/rpc)

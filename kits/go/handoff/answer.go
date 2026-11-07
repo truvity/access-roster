@@ -57,6 +57,8 @@ type Verified struct {
 	CertDER []byte
 	// Floor says there was no result file.
 	Floor bool
+	// TrustSequence is the sequence the answer named; 0 on the floor, which has none.
+	TrustSequence int64
 	// Ran and NotRun name the checks. A check that cannot run is never reported as passed (principle 4).
 	Ran    []string
 	NotRun []string
@@ -151,6 +153,9 @@ func CheckX509(a X509Answer) (*Verified, error) {
 		v.Ran = append(v.Ran, CheckDigests)
 	}
 	v.Cert, v.CertDER = cert, der
+	if res != nil {
+		v.TrustSequence = res.TrustSequence
+	}
 	return v, nil
 }
 
