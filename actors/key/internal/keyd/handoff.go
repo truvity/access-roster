@@ -278,7 +278,7 @@ func checkIntermediate(c *x509.Certificate) string {
 // installed returns the item with this id, or nil. It lists the kind and never asks for one id: store@ audits a refusal
 // for an absent item, and the answer "not there yet" is the expected one (ADR 0005; REQ-AUDIT-180).
 func (s *Server) installed(ctx context.Context, id string) (*keyv2alpha1.KeyCertificate, error) {
-	all, err := s.certificates(ctx)
+	all, err := s.certificatesByID(ctx)
 	if err != nil {
 		return nil, err
 	}

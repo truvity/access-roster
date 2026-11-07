@@ -35,10 +35,10 @@ const tokenPurpose = "token-signing"
 
 var errNoIntermediate = errors.New("keyd: no intermediate installed")
 
-// certificates lists KeyCertificate whole, by id. The kind is small (a wrapping key for each node, an intermediate, a
+// certificatesByID lists KeyCertificate whole, by id. The kind is small (a wrapping key for each node, an intermediate, a
 // token certificate) and it is listed, never asked for by id: store@ audits a refusal for an absent item, and "not there
 // yet" is the expected answer (ADR 0005; REQ-AUDIT-180).
-func (s *Server) certificates(ctx context.Context) (map[string]*keyv2alpha1.KeyCertificate, error) {
+func (s *Server) certificatesByID(ctx context.Context) (map[string]*keyv2alpha1.KeyCertificate, error) {
 	out := map[string]*keyv2alpha1.KeyCertificate{}
 	for token := ""; ; {
 		items, next, err := s.certs.List(ctx, "", store.PageSize(200), store.PageToken(token))
@@ -72,7 +72,7 @@ func (s *Server) tokenCertificateRules(ctx context.Context) (content.TokenCertif
 	if !ok || !ok2 || inter.algorithm != algES384 || tok.algorithm != algES384 {
 		return content.TokenCertificateRules{}, nil, errNoIntermediate
 	}
-	all, err := s.certificates(ctx)
+	all, err := s.certificatesByID(ctx)
 	if err != nil {
 		return content.TokenCertificateRules{}, nil, err
 	}
@@ -122,7 +122,7 @@ func (s *Server) tokenChain(ctx context.Context, pk purposeKey) [][]byte {
 // they can be read. This fails open, on purpose: a store@ outage must not take down a key set that is right, and the chain
 // is custody evidence for a verifier that wants it, never what a token is checked with.
 func (s *Server) tokenChainState(ctx context.Context, pk purposeKey) (chain [][]byte, withdrawn bool) {
-	all, err := s.certificates(ctx)
+	all, err := s.certificatesByID(ctx)
 	if err != nil {
 		slog.Warn("KeyCertificate cannot be read: no x5c")
 		return nil, false
@@ -226,7 +226,7 @@ func (s *Server) PutCertificate(ctx context.Context, req *connect.Request[keyv2a
 	// One write at a time, as Install: the guard reads the stored chain and the write replaces it.
 	s.handoffMu.Lock()
 	defer s.handoffMu.Unlock()
-	all, err := s.certificates(ctx)
+	all, err := s.certificatesByID(ctx)
 	if err != nil {
 		return nil, s.refuse(ctx, caller, op, purpose, "", connect.CodeUnavailable, reasonStore, "")
 	}
