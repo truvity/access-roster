@@ -3,13 +3,14 @@
 # The part of boards.sh that runs on a board, as root:
 #   remote.sh deploy|preflight|undeploy|status|settle|avc STAGE
 #   remote.sh rqlite-install|rqlite-undeploy|rqlite-status STAGE          (rqlite.sh and boards.sh; see "rqlite" below)
+#   remote.sh firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE   (firewall.sh and boards.sh)
 # It is shipped to the board inside the stage and is never installed. deploy and undeploy change only what the manifest lists,
 # and refuse to touch anything outside the paths and names that deploy makes. rqlite is not in that set: rqlited.service belongs
 # to the upstream package, and only the rqlite-* modes touch it, and only through the drop-in that rqlite-install wrote.
 set -euo pipefail
 
-mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
-stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status STAGE}
+mode=${1:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
+stage=${2:?usage: remote.sh deploy|preflight|undeploy|status|settle|avc|rqlite-install|rqlite-undeploy|rqlite-status|firewall-apply|firewall-confirm|firewall-remove|firewall-status|firewall-boot-order STAGE}
 boundary=dev
 bin_dir=/opt/sluis/bin
 manifest=/etc/sluis/deployed-$boundary.manifest
@@ -539,6 +540,29 @@ rqlite-undeploy)
 	rmdir -- "$rqlite_dropin_dir" 2>/dev/null || true
 	systemctl daemon-reload
 	echo "rqlite: removed"
+	;;
+
+firewall-apply)
+	# What firewall.sh sent: the rules and their unit below $stage/firewall, and in the environment this board's address, the
+	# boards, the administration host (empty: none), the seconds of the dead-man timer and the address the ssh session came from.
+	# The rules are loaded and a timer is armed; nothing is kept until firewall-confirm (remote-lib.sh, firewall_apply).
+	firewall_apply "$stage"
+	;;
+
+firewall-confirm)
+	firewall_confirm
+	;;
+
+firewall-remove)
+	firewall_remove
+	;;
+
+firewall-status)
+	firewall_status
+	;;
+
+firewall-boot-order)
+	firewall_boot_order
 	;;
 
 *)

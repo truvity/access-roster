@@ -39,7 +39,8 @@
 #
 # NO TLS AND NO AUTHENTICATION: this is a test installation (docs/runtimes/bare-metal.md, "rqlite on the boards"). Anyone who reaches
 # the two ports can read and write the store. Before any real PIN or key goes through these boards, a firewall rule must admit
-# 4001 and 4002 from the peers alone.
+# 4001 and 4002 from the peers alone (`just boards-firewall` writes it, firewall.sh; it narrows who can reach the ports, it does not add
+# TLS or authentication).
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"

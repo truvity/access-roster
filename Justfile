@@ -513,9 +513,38 @@ boards-smoke:
     CGO_ENABLED=0 go build -trimpath -o dist/boardsmoke ./deploy/boards/smoke
     dist/boardsmoke && smoke=0 || smoke=$?; deploy/boards/boards.sh avc || smoke=1; exit "$smoke"
 
-# Read only: the units of boards-deploy on every board, whether they are active, and rqlite (its unit, and whether its node is a ready voter).
+# Read only: the units of boards-deploy on every board, whether they are active, and rqlite (its unit, and whether its node is a ready
+# voter), and whether the rqlite firewall is present and kept (boards-firewall); a board without it fails the run.
 boards-status:
     deploy/boards/boards.sh status
+
+# The peer-only firewall of rqlite (deploy/boards/firewall.sh, docs/runtimes/bare-metal.md "The rqlite firewall"): on each board of
+# SLUIS_FIREWALL_BOARDS (default: all), a table of its own that admits TCP 4001 and 4002 from the loopback interface, the boards of
+# SLUIS_BOARDS and the one SLUIS_FIREWALL_ADMIN_HOST (empty: no access for it) and drops them from everyone else; no other port, table
+# or zone is touched. It loads the rules and arms a dead-man timer (SLUIS_FIREWALL_CONFIRM_SECONDS, 300) that takes them back; nothing is
+# kept until boards-firewall-confirm. SLUIS_BOARDS_DRY_RUN=1 prints the exact rules and commands. No TLS and no authentication yet.
+boards-firewall:
+    deploy/boards/firewall.sh apply
+
+# Prove, per board, that ssh works, rqlite is a whole cluster (all voters, one leader), and every other board and the administration host
+# reach 4001 and 4002 of the board; only then keep the rules: the unit that loads them at boot, before rqlited, is started and enabled
+# and the dead-man timer stopped. A failed proof keeps nothing.
+boards-firewall-confirm:
+    deploy/boards/firewall.sh confirm
+
+# Take the rules back: no table, no unit, no timer, no file. Idempotent; the way out when a confirm does not pass and the timer is not awaited.
+boards-firewall-remove:
+    deploy/boards/firewall.sh remove
+
+# Read only: the board check of REQ-DEPLOY-045. The rules are kept, the cluster is whole, the other boards and the administration host reach
+# the ports, and a host that is not admitted (SLUIS_FIREWALL_OUTSIDE_HOST, or this workstation when no administration host is set) times out.
+boards-firewall-check:
+    deploy/boards/firewall.sh check
+
+# Reboot ONE board (SLUIS_FIREWALL_BOARDS) and prove it comes back with the rules loaded before rqlited started, and a whole cluster, then
+# run the check. A card board comes back locked: boards-unlock it after.
+boards-firewall-reboot-check:
+    deploy/boards/firewall.sh reboot-check
 
 # Read only: the id (RFC 7638 thumbprint) of the wrapping key of key@ on every board, by running its check, into the file that
 # `boards-prepare` signs into the KeyPlan as the wrap recipients. The second step of the first deploy; see boards.sh.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2001,SC2030,SC2031,SC2015,SC2016 # `A && ok || fail` pairs report a check either way; single quotes hold the code of `bash -c`
+# shellcheck disable=SC2001,SC2030,SC2031,SC2015,SC2016,SC2317,SC2329 # `A && ok || fail` pairs report a check either way; single quotes hold the code of `bash -c`
 # A test of the operating-system checks of remote.sh (deploy/boards/remote-lib.sh) against fakes of dpkg, rpm, systemctl,
 # restorecon and the files of SELinux, and a fake os-release: no board, no package manager. Run from anywhere:
 # deploy/boards/prereq-test.sh
@@ -875,4 +875,208 @@ lock locked
 out=$(status_of)
 sexpect "status: a board without the card driver has no lock, and the CLI is not asked" "$out" '^lock: no card driver' "^${lock_prefix}none$" '^rc=0$'
 [ ! -e "$sc/cli.calls" ] && echo "ok   status: the CLI is not run on a board without the card driver" || { echo "FAIL the CLI was run on a software board"; fail=1; }
+
+# --- remote.sh firewall-*: the rqlite firewall on a board, against a fake nft, systemctl, systemd-run and ip -------------------------
+# The fakes keep a board's state in files: what nft has loaded (a copy of the last file it was given), whether the unit is enabled and
+# active, and whether the dead-man timer is armed (with the command it was given). Every call that changes the board is logged in order
+# (FW_LOG), so the test can say what came first. The timer is "fired" by running the command it was given, with the same fakes.
+fw=$work/fw
+fwbin=$fw/bin
+fwst=$fw/state
+fwlog=$fw/log
+mkdir -p "$fwbin" "$fwst" "$fw/root/etc/sluis" "$fw/root/etc/systemd/system" "$fw/stage/firewall"
+for t in bash dirname uname cmp sed head tr paste sort cat grep mktemp chmod rm mv cp mkdir touch date; do ln -sf "$(command -v "$t")" "$fwbin/$t"; done
+cat >"$fwbin/nft" <<'F'
+#!/bin/bash
+echo "nft $*" >>"$FW_LOG"
+case "$1 $2 $3" in
+"-c -f "*) [ -z "${FW_NFT_BAD:-}" ] || { echo "Error: syntax error, unexpected junk" >&2; exit 1; }; grep -q '^table inet sluis_rqlite {' "$3" ;;
+"-f "*) [ -z "${FW_NFT_LOAD_FAIL:-}" ] || { echo "Error: Operation not permitted" >&2; exit 1; }; cp "$2" "$FW_STATE/loaded" ;;
+"list table inet") [ -e "$FW_STATE/loaded" ] ;;
+"list set inet") [ -e "$FW_STATE/loaded" ] && { echo "table inet sluis_rqlite {"; echo "	set allowed {"; echo "		type ipv4_addr"; sed -n '/elements =/p' "$FW_STATE/loaded"; echo "	}"; echo "}"; } ;;
+"list chain inet") [ -e "$FW_STATE/loaded" ] && echo "		tcp dport { 4001, 4002 } counter packets 7 bytes 420 drop" ;;
+"delete table inet") [ -e "$FW_STATE/loaded" ] && rm -f "$FW_STATE/loaded" ;;
+*) echo "fake nft: unexpected: $*" >&2; exit 2 ;;
+esac
+F
+cat >"$fwbin/systemctl" <<'F'
+#!/bin/bash
+echo "systemctl $*" >>"$FW_LOG"
+u=sluis-rqlite-firewall.service
+args=()
+for a in "$@"; do case "$a" in --quiet | --now | --no-pager) ;; *) args+=("$a") ;; esac; done
+set -- "${args[@]}"
+case "$1 $2" in
+"is-enabled $u") [ -e "$FW_STATE/enabled" ] ;;
+"is-active $u") [ -e "$FW_STATE/active" ] ;;
+"is-active sluis-rqlite-firewall-revert.timer") [ -e "$FW_STATE/timer" ] ;;
+"enable $u") [ -z "${FW_ENABLE_FAIL:-}" ] && touch "$FW_STATE/enabled" ;;
+"disable $u") rm -f "$FW_STATE/enabled" "$FW_STATE/active" "$FW_STATE/loaded" ;;
+"start $u" | "reload $u") [ -z "${FW_START_FAIL:-}" ] || exit 1; touch "$FW_STATE/active"; cp "$FW_RULES" "$FW_STATE/loaded" ;;
+"stop sluis-rqlite-firewall-revert.timer") rm -f "$FW_STATE/timer" ;;
+"cat $u") [ -e "$FW_UNIT_FILE" ] ;;
+"show sluis-rqlite-firewall-revert.timer") echo "Sat 2026-11-07 12:05:00 UTC" ;;
+"show $u") echo "${FW_ACTIVE_ENTER:-100}" ;;
+"show rqlited.service") echo "${FW_RQLITED_EXIT:-200}" ;;
+*) true ;;
+esac
+F
+cat >"$fwbin/systemd-run" <<'F'
+#!/bin/bash
+echo "systemd-run $*" >>"$FW_LOG"
+[ -z "${FW_ARM_FAIL:-}" ] || exit 1
+for a in "$@"; do last=$a; done
+printf '%s\n' "$last" >"$FW_STATE/revert.sh"
+printf '%s\n' "$@" >"$FW_STATE/revert.args"
+touch "$FW_STATE/timer"
+F
+printf '#!/bin/bash\necho "unit failed: nft said no"\n' >"$fwbin/journalctl"
+cat >"$fwbin/ip" <<'F'
+#!/bin/bash
+case "$*" in
+"-o -4 addr show") printf '1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 192.0.2.12/24 brd 192.0.2.255 scope global eth0\n' ;;
+"-o -4 route get "*) printf '%s via 192.0.2.1 dev eth0 src %s uid 0\n' "$4" "${FW_SRC:-192.0.2.12}" ;;
+esac
+F
+cat >"$fwbin/install" <<F
+#!/bin/bash
+args=()
+while [ \$# -gt 0 ]; do case "\$1" in -o | -g) shift 2 ;; *) args+=("\$1"); shift ;; esac; done
+exec $(command -v install) "\${args[@]}"
+F
+chmod +x "$fwbin"/nft "$fwbin"/systemctl "$fwbin"/systemd-run "$fwbin"/journalctl "$fwbin"/ip "$fwbin"/install
+fwroot=$fw/root
+fw_gen() { # what firewall-lib.sh prints: ruleset|unit, then the arguments of the function
+	local what=$1
+	shift
+	(
+		# shellcheck source=/dev/null
+		. "$here/remote-lib.sh"
+		# shellcheck source=/dev/null
+		. "$here/firewall-lib.sh"
+		"firewall_$what" "$@"
+	)
+}
+fw_stage() { # admin: the stage that firewall.sh sends, for the three boards and this administration host (none: empty)
+	local -a all
+	mapfile -t all < <(fw_gen allowed "$1" 192.0.2.11 192.0.2.12 192.0.2.13)
+	fw_gen ruleset 4001 4002 "${all[@]}" >"$fw/stage/firewall/rqlite-firewall.nft"
+	fw_gen unit 4001 4002 >"$fw/stage/firewall/sluis-rqlite-firewall.service"
+}
+fwx() { # mode [VAR=value]...: remote.sh as the board runs it, with the paths moved into the work directory
+	local mode=$1
+	shift
+	env -i PATH="$fwbin" HOME="$fw" firewall_nft="$fwbin/nft" firewall_bash="$fwbin/bash" firewall_dir="$fwroot/etc/sluis" \
+		firewall_unit_dir="$fwroot/etc/systemd/system" selinux_enforce_file="$work/enforce" os_release_file="$work/os-release" \
+		FW_STATE="$fwst" FW_LOG="$fwlog" FW_RULES="$fwroot/etc/sluis/rqlite-firewall.nft" FW_UNIT_FILE="$fwroot/etc/systemd/system/sluis-rqlite-firewall.service" \
+		FW_SELF=192.0.2.12 FW_PEERS="192.0.2.11 192.0.2.12 192.0.2.13" FW_ADMIN=203.0.113.5 FW_SECONDS=300 FW_SSH_CLIENT=203.0.113.5 \
+		"$@" "$fwbin/bash" "$here/remote.sh" "$mode" "$fw/stage"
+}
+fwreset() { rm -rf "$fwst" "$fwroot/etc/sluis" "$fwroot/etc/systemd/system"; mkdir -p "$fwst" "$fwroot/etc/sluis" "$fwroot/etc/systemd/system"; : >"$fwlog"; }
+fw_fire() { # the dead-man timer runs: the command it was given, with the same fakes, and then it is gone
+	env -i PATH="$fwbin" FW_STATE="$fwst" FW_LOG="$fwlog" FW_UNIT_FILE="$fwroot/etc/systemd/system/sluis-rqlite-firewall.service" FW_RULES="$fwroot/etc/sluis/rqlite-firewall.nft" \
+		"$fwbin/bash" -c "$(cat "$fwst/revert.sh")" >"$work/fire.out" 2>&1
+	rm -f "$fwst/timer"
+}
+fw_state_of() { { fwx firewall-status 2>&1 || true; } | sed -n 's/^SLUIS-FIREWALL: //p'; }
+fw_none() { # the check that a refused apply changed nothing
+	[ ! -e "$fwst/loaded" ] && [ ! -e "$fwst/timer" ] && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && ! grep -q '^nft -f' "$fwlog"
+}
+selinux off
+osrel ubuntu debian
+
+# A first apply: the timer is armed BEFORE the rules are loaded, the rules are loaded and not kept.
+fwreset
+fw_stage 203.0.113.5
+if fwx firewall-apply >"$work/out" 2>&1; then echo "ok   firewall-apply: a first apply succeeds"; else echo "FAIL firewall-apply: $(cat "$work/out")"; fail=1; fi
+[ -e "$fwst/loaded" ] && cmp -s "$fwst/loaded" "$fw/stage/firewall/rqlite-firewall.nft" && echo "ok   firewall-apply: the rules are loaded as they were sent" || { echo "FAIL firewall-apply: nothing loaded"; fail=1; }
+[ -e "$fwst/timer" ] && echo "ok   firewall-apply: the dead-man timer is armed" || { echo "FAIL firewall-apply: no timer"; fail=1; }
+arm_line=$(grep -n '^systemd-run' "$fwlog" | head -n 1 | cut -d: -f1)
+load_line=$(grep -n '^nft -f' "$fwlog" | head -n 1 | cut -d: -f1)
+if [ -n "$arm_line" ] && [ -n "$load_line" ] && [ "$arm_line" -lt "$load_line" ]; then echo "ok   firewall-apply: the timer is armed before the rules are loaded, so no moment has rules without a timer"; else echo "FAIL firewall-apply: order: $(cat "$fwlog")"; fail=1; fi
+grep -qx -- '--on-active=300s' "$fwst/revert.args" && echo "ok   firewall-apply: the timer waits the seconds it was given" || { echo "FAIL firewall-apply: $(cat "$fwst/revert.args")"; fail=1; }
+[ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && [ -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && echo "ok   firewall-apply: the rules are pending, not kept: no file the unit loads at boot" || { echo "FAIL firewall-apply: a file the unit loads exists"; fail=1; }
+[ -e "$fwroot/etc/systemd/system/sluis-rqlite-firewall.service" ] && [ ! -e "$fwst/enabled" ] && echo "ok   firewall-apply: the unit is written and not enabled, so unconfirmed rules do not survive a reboot" || { echo "FAIL firewall-apply: unit/enable"; fail=1; }
+grep -q 'NOT KEPT YET' "$work/out" && grep -q 'within 300 s' "$work/out" && echo "ok   firewall-apply: it says that nothing is kept and for how long" || { echo "FAIL firewall-apply: message: $(cat "$work/out")"; fail=1; }
+is "firewall-status: an applied change is unconfirmed" unconfirmed fw_state_of
+if fwx firewall-status >"$work/out" 2>&1; then echo "FAIL firewall-status: unconfirmed exited 0"; fail=1; else grep -q 'admits 192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5; dropped 7 packets' "$work/out" && grep -qx 'SLUIS-FIREWALL-ALLOWS: 192.0.2.11 192.0.2.12 192.0.2.13 203.0.113.5' "$work/out" && echo "ok   firewall-status: unconfirmed fails, and shows what is admitted and the drops" || { echo "FAIL firewall-status: $(cat "$work/out")"; fail=1; }; fi
+# The timer fires on an apply that was never confirmed: no rules, no pending file.
+fw_fire
+[ ! -e "$fwst/loaded" ] && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && grep -q 'not confirmed in time' "$work/fire.out" && echo "ok   the dead-man timer removes the rules of a first apply that nobody confirmed, and says so" || { echo "FAIL timer: $(cat "$work/fire.out")"; fail=1; }
+is "firewall-status: after the timer, absent" absent fw_state_of
+
+# Apply, confirm, and the same apply again.
+fwreset
+fwx firewall-apply >/dev/null 2>&1
+if fwx firewall-confirm >"$work/out" 2>&1; then echo "ok   firewall-confirm: keeps the loaded rules"; else echo "FAIL firewall-confirm: $(cat "$work/out")"; fail=1; fi
+cmp -s "$fwroot/etc/sluis/rqlite-firewall.nft" "$fw/stage/firewall/rqlite-firewall.nft" && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft.pending" ] && [ -e "$fwst/enabled" ] && [ ! -e "$fwst/timer" ] && echo "ok   firewall-confirm: the file the unit loads at boot is the confirmed rules, the unit is enabled, the timer is stopped" || { echo "FAIL confirm: files"; fail=1; }
+grep -q '^systemctl start sluis-rqlite-firewall.service' "$fwlog" && echo "ok   firewall-confirm: the rules went through the unit (the path of a boot) before they were kept" || { echo "FAIL confirm: the unit was not started: $(cat "$fwlog")"; fail=1; }
+is "firewall-status: confirmed is ok" ok fw_state_of
+fwx firewall-status >/dev/null 2>&1 && echo "ok   firewall-status: ok exits 0" || { echo "FAIL firewall-status: ok exited non-zero"; fail=1; }
+: >"$fwlog"
+if fwx firewall-apply >"$work/out" 2>&1 && grep -q 'unchanged' "$work/out" && ! grep -q '^systemd-run\|^nft -f' "$fwlog"; then echo "ok   firewall-apply: the same rules again change nothing (no timer, no load)"; else echo "FAIL idempotence: $(cat "$work/out") $(cat "$fwlog")"; fail=1; fi
+fwx firewall-confirm 2>&1 | grep -q 'already confirmed' && echo "ok   firewall-confirm: a second confirm is a no-op" || { echo "FAIL second confirm"; fail=1; }
+
+# A changed apply over kept rules: the timer takes it back to the kept rules, not to nothing.
+cp "$fw/stage/firewall/rqlite-firewall.nft" "$work/kept.nft"
+fw_stage ""
+fwx firewall-apply FW_ADMIN= >"$work/out" 2>&1 || { echo "FAIL changed apply: $(cat "$work/out")"; fail=1; }
+grep -q 'no administration host is set' "$work/out" && echo "ok   firewall-apply: with no administration host it says plainly that the administration host gets no access" || { echo "FAIL no-admin message"; fail=1; }
+grep -q '203.0.113.5' "$fwst/loaded" && { echo "FAIL the administration host is in rules that name none"; fail=1; } || echo "ok   firewall-apply: and the rules loaded do not have it"
+is "firewall-status: kept rules plus an unconfirmed change is unconfirmed" unconfirmed fw_state_of
+fw_fire
+cmp -s "$fwst/loaded" "$work/kept.nft" && [ -e "$fwst/enabled" ] && echo "ok   the dead-man timer puts back the last confirmed rules over an unconfirmed change" || { echo "FAIL timer over kept rules: $(cat "$work/fire.out")"; fail=1; }
+is "firewall-status: and the board is ok again" ok fw_state_of
+
+# What a refused apply leaves: nothing.
+fwreset
+fw_stage 203.0.113.5
+refuse "firewall-apply: a board without nft is refused, with the fix" 'install nftables' fwx firewall-apply firewall_nft="$fwbin/no-such-nft"
+fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL traces after no-nft: $(cat "$fwlog")"; fail=1; }
+refuse "firewall-apply: rules that nft -c refuses are refused before anything is loaded" 'nft refuses the rules' fwx firewall-apply FW_NFT_BAD=1
+fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL traces after nft -c: $(cat "$fwlog")"; fail=1; }
+refuse "firewall-apply: a board that would send to a peer from an address the rules do not admit is refused, naming it" 'sends from 192.0.2.99' fwx firewall-apply FW_SRC=192.0.2.99
+fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL traces after route: $(cat "$fwlog")"; fail=1; }
+fw_gen ruleset 4001 4002 192.0.2.11 192.0.2.13 >"$fw/stage/firewall/rqlite-firewall.nft"
+refuse "firewall-apply: rules that do not admit the board itself are refused" 'do not admit this board' fwx firewall-apply
+fw_stage 203.0.113.5
+refuse "firewall-apply: an address the board does not own is refused" 'this board has no address 192.0.2.13' fwx firewall-apply FW_SELF=192.0.2.13
+fw_none && echo "ok   firewall-apply: and nothing changed" || { echo "FAIL traces: $(cat "$fwlog")"; fail=1; }
+refuse "firewall-apply: a timer that cannot be armed means no rules are loaded" 'rules were not loaded' fwx firewall-apply FW_ARM_FAIL=1
+fw_none && echo "ok   firewall-apply: and nothing is left" || { echo "FAIL traces after arm failure: $(cat "$fwlog")"; fail=1; }
+refuse "firewall-apply: rules that nft cannot load put the board back as it was" 'could not load the rules' fwx firewall-apply FW_NFT_LOAD_FAIL=1
+[ ! -e "$fwst/loaded" ] && [ ! -e "$fwst/timer" ] && echo "ok   firewall-apply: and no timer is left running" || { echo "FAIL traces after load failure"; fail=1; }
+if fwx firewall-apply FW_SSH_CLIENT=198.51.100.7 >"$work/out" 2>&1 && grep -q 'warning: this ssh session comes from 198.51.100.7, not from the administration host' "$work/out"; then echo "ok   firewall-apply: an ssh session from another address than the administration host is warned about, not refused"; else echo "FAIL ssh client warning: $(cat "$work/out")"; fail=1; fi
+
+# Confirm: refused when there is nothing to keep, when the rules are gone, and when the unit cannot load them.
+fwreset
+refuse "firewall-confirm: nothing pending is refused" 'nothing to confirm' fwx firewall-confirm
+fwx firewall-apply >/dev/null 2>&1
+rm -f "$fwst/loaded"
+refuse "firewall-confirm: rules that the timer already took are refused" 'run boards-firewall again' fwx firewall-confirm
+[ ! -e "$fwst/enabled" ] && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && echo "ok   firewall-confirm: and nothing was kept" || { echo "FAIL confirm kept something"; fail=1; }
+fwreset
+fwx firewall-apply >/dev/null 2>&1
+refuse "firewall-confirm: a unit that cannot load the rules keeps nothing and says where to look" 'boards-avc' fwx firewall-confirm FW_START_FAIL=1
+[ ! -e "$fwst/enabled" ] && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && [ -e "$fwst/timer" ] && echo "ok   firewall-confirm: the rules file is not kept, the unit is not enabled and the timer is still armed" || { echo "FAIL failed unit: files"; fail=1; }
+
+# Remove, twice.
+fwreset
+fwx firewall-apply >/dev/null 2>&1
+fwx firewall-confirm >/dev/null 2>&1
+if fwx firewall-remove >"$work/out" 2>&1; then echo "ok   firewall-remove succeeds"; else echo "FAIL remove: $(cat "$work/out")"; fail=1; fi
+[ ! -e "$fwst/loaded" ] && [ ! -e "$fwst/enabled" ] && [ ! -e "$fwst/timer" ] && [ ! -e "$fwroot/etc/sluis/rqlite-firewall.nft" ] && [ ! -e "$fwroot/etc/systemd/system/sluis-rqlite-firewall.service" ] && echo "ok   firewall-remove: no rules, no unit, no timer, no file" || { echo "FAIL remove left something"; fail=1; }
+fwx firewall-remove >/dev/null 2>&1 && echo "ok   firewall-remove: a second remove, on a board with none, succeeds" || { echo "FAIL second remove"; fail=1; }
+is "firewall-status: after the remove, absent" absent fw_state_of
+
+# Status: rules lost after a boot (the unit is enabled, the table is gone) are broken, not absent.
+fwreset
+fwx firewall-apply >/dev/null 2>&1
+fwx firewall-confirm >/dev/null 2>&1
+rm -f "$fwst/loaded"
+is "firewall-status: kept and enabled but not loaded (a flush of the ruleset) is broken" broken fw_state_of
+
+# The order at boot.
+if fwx firewall-boot-order FW_ACTIVE_ENTER=100 FW_RQLITED_EXIT=200 >"$work/out" 2>&1 && grep -q 'rules came first' "$work/out"; then echo "ok   firewall-boot-order: a unit that was active before rqlited began is ok"; else echo "FAIL boot order: $(cat "$work/out")"; fail=1; fi
+if fwx firewall-boot-order FW_ACTIVE_ENTER=300 FW_RQLITED_EXIT=200 >"$work/out" 2>&1; then echo "FAIL boot order: a late unit was ok"; fail=1; else grep -q 'AFTER rqlited' "$work/out" && echo "ok   firewall-boot-order: a unit that was active after rqlited began is wrong" || { echo "FAIL boot order message"; fail=1; }; fi
 exit "$fail"

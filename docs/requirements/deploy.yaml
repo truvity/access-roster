@@ -548,6 +548,21 @@ requirements:
     standards: []
     verification:
       - {kind: integration-test, ref: "tools/gen/units: every actor unit has StartLimitIntervalSec=0 and Restart=on-failure with RestartSec=2s, and the committed units equal the generator's output"}
+  - id: REQ-DEPLOY-045
+    area: DEPLOY
+    statement: "On a boards installation, the rqlite client port and Raft port of a board MUST answer only the loopback interface, the boards of the installation and the one administration host that the operator names, and no other address."
+    rationale: "rqlite has no TLS and no authentication in the test installation, so who can reach its two ports is who can read and write the store and burn the release requests of the PIN path; with no administration host named, that host is admitted to nothing (docs/runtimes/bare-metal.md, The rqlite firewall; ADR 0003, Calls between nodes)."
+    level: MUST
+    source: design-decision
+    status: partial
+    gap: attestation-missing
+    features: [design]
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    standards: []
+    verification:
+      - {kind: integration-test, ref: "boards-test.sh: the rules pass nft -c and, in a network namespace, admit the boards, admin host and loopback and drop a stranger. prereq-test.sh: timer first, nothing kept before the confirm"}
+      - {kind: manual, ref: "boards-firewall-check and -reboot-check on Ubuntu 26.04 and Rocky 10.2 boards: a stranger times out, peers and admin host answer, a rebooted board has its rules before rqlited"}
   - id: REQ-DEPLOY-042
     area: DEPLOY
     statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."
