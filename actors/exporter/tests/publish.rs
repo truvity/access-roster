@@ -1295,3 +1295,183 @@ async fn the_unverified_alarm_repeats_while_it_lasts() {
         "one fact in, one out"
     );
 }
+
+/// A `put` that timed out but landed leaves the last good document older than the destination. A later trim, with the
+/// listings unreadable, must not write that old body back: it subtracts every kid this process was ever told is revoked,
+/// not only the one the latest event names.
+///
+/// verifies: REQ-EXPORT-020, REQ-EXPORT-024
+#[tokio::test]
+async fn a_put_that_landed_but_timed_out_cannot_bring_a_revoked_key_back() {
+    let w = World::new().await;
+    let m = common::Lossy::new(Memory::new());
+    let keys: Vec<_> = ["kid-a", "kid-b", "kid-c"]
+        .iter()
+        .map(|k| test_key(k, "active"))
+        .collect();
+    w.store
+        .set_ring(keys.iter().map(|k| k.key.clone()).collect());
+    let targets = vec![Target {
+        name: "mem".into(),
+        driver: m.clone(),
+        documents: vec![doc()],
+    }];
+    let run = spawn(w.engine(targets, |c| c.timing.budget = Duration::from_millis(600)));
+    until(10, "the first document", || m.inner.body("jwks").is_some()).await;
+
+    // `kid-a` is revoked and the new document lands, but the answer is lost: the last good document still lists it.
+    m.lose_answer.store(true, Ordering::SeqCst);
+    w.store.revoke("kid-a");
+    until(
+        10,
+        "the document without kid-a is at the destination",
+        || {
+            m.inner
+                .body("jwks")
+                .is_some_and(|b| kids(&b) == ["kid-b", "kid-c"])
+        },
+    )
+    .await;
+    until(10, "unverified (the destination did not answer)", || {
+        w.store
+            .report("mem/jwks")
+            .is_some_and(|r| r.state == "unverified")
+    })
+    .await;
+
+    // Now the answers come back, the listings cannot be read, and `kid-c` is revoked.
+    m.lose_answer.store(false, Ordering::SeqCst);
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.revoke("kid-c");
+    until(10, "kid-c leaves", || {
+        m.inner
+            .body("jwks")
+            .is_some_and(|b| !kids(&b).contains(&"kid-c".to_owned()))
+    })
+    .await;
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    assert_eq!(
+        kids(&m.inner.body("jwks").unwrap()),
+        ["kid-b"],
+        "an old body brought a revoked key back"
+    );
+    run.stop().await;
+}
+
+/// The revocations are read even when the ring cannot be, and what they list is taken out of the last good document: a
+/// revocation is a fact whatever else is unknown. No event names the kid here (the watch of the revocations is down).
+///
+/// verifies: REQ-EXPORT-024
+#[tokio::test]
+async fn the_revoked_kids_are_used_when_only_the_ring_cannot_be_read() {
+    let w = World::new().await;
+    let d = dir();
+    let (a, b) = (test_key("kid-a", "active"), test_key("kid-b", "active"));
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    let run = spawn(w.engine(d.target(), |_| {}));
+    until(10, "the first document", || d.read().is_some()).await;
+
+    w.store.watch_down("key-revocation");
+    until(10, "the revocations' watch is seen to be broken", || {
+        !w.spool.of("exporter.unverified").is_empty()
+    })
+    .await;
+    w.store.ring_down.store(true, Ordering::SeqCst);
+    w.store.revoke("kid-a");
+    // The ring's watch is up: a change of the ring wakes the exporter, whose read of the ring is refused.
+    w.store.set_ring(vec![a.key.clone(), b.key.clone()]);
+    until(10, "kid-a leaves although the ring cannot be read", || {
+        d.read().is_some_and(|x| kids(&x) == ["kid-b"])
+    })
+    .await;
+    run.stop().await;
+}
+
+/// Every name of an audit fact is a name the table accepts, whatever the operator's file holds: the refusal of a
+/// document is the very case in which its name is empty, has a space or starts with `-`. A name that does not fit is its
+/// digest, and no fact is lost to the schema.
+///
+/// verifies: REQ-EXPORT-017
+#[tokio::test]
+async fn a_name_the_table_would_refuse_is_written_as_its_digest() {
+    let w = World::new().await;
+    let d = dir();
+    w.store.set_ring(vec![test_key("kid-a", "active").key]);
+    let odd = exporter::config::Doc {
+        name: "-jwks".into(),
+        ..doc()
+    };
+    let targets = vec![Target {
+        name: "_edge".into(),
+        driver: d.driver.clone(),
+        documents: vec![odd],
+    }];
+    let refused = vec![
+        Refused {
+            destination: "_edge".into(),
+            document: String::new(),
+            reason: "name",
+        },
+        Refused {
+            destination: "_edge".into(),
+            document: "has a space".into(),
+            reason: "name",
+        },
+        Refused {
+            destination: "plain".into(),
+            document: "plain".into(),
+            reason: "not_exportable",
+        },
+    ];
+    let run = spawn(w.engine(targets, |c| c.refused = refused));
+    until(10, "the write and the three refusals", || {
+        !w.spool.of("exporter.write").is_empty() && w.spool.of("exporter.refused").len() == 3
+    })
+    .await;
+    // And a fact into and out of unverified.
+    w.store.revocations_down.store(true, Ordering::SeqCst);
+    w.store.set_ring(vec![test_key("kid-b", "active").key]);
+    until(10, "unverified", || {
+        !w.spool.of("exporter.unverified").is_empty()
+    })
+    .await;
+    w.store.revocations_down.store(false, Ordering::SeqCst);
+    until(10, "no longer unverified", || {
+        w.spool.of("exporter.unverified").len() == 2
+    })
+    .await;
+    run.stop().await;
+
+    let fits = |v: &str| {
+        !v.is_empty()
+            && v.len() <= 256
+            && v.starts_with(|c: char| c.is_ascii_alphanumeric())
+            && v.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._:/+=@~*-".contains(&b))
+    };
+    let facts: Vec<_> = ["exporter.write", "exporter.unverified", "exporter.refused"]
+        .iter()
+        .flat_map(|a| w.spool.of(a))
+        .collect();
+    assert!(facts.len() >= 6, "{facts:?}");
+    for f in &facts {
+        for field in ["destination", "document", "address"] {
+            if let Some(v) = f["unmapped"]["sluis"][field].as_str() {
+                assert!(fits(v), "{field} {v:?} of {f}");
+            }
+        }
+    }
+    let refusals = w.spool.of("exporter.refused");
+    assert!(
+        refusals.iter().any(|r| r["unmapped"]["sluis"]["document"]
+            .as_str()
+            .is_some_and(|v| v.starts_with("h-"))),
+        "an odd name is its digest: {refusals:?}"
+    );
+    assert!(
+        refusals
+            .iter()
+            .any(|r| r["unmapped"]["sluis"]["document"] == "plain"),
+        "a name that fits is written as it is"
+    );
+}

@@ -78,8 +78,10 @@ pub enum Read {
     Snapshot(Snapshot),
     /// The ring does not exist yet: nothing to publish, and nothing wrong.
     NoRing,
-    /// A kind could not be read: the closed word names it. The published object stays as it is.
-    Unreadable(&'static str),
+    /// A kind could not be read: the closed word names it. The published object stays as it is. The kids that
+    /// `KeyRevocation` lists are carried when that kind could be read though the ring could not: a revocation is a fact
+    /// whatever else is unknown.
+    Unreadable(&'static str, HashSet<String>),
 }
 
 /// The reader of the two kinds the key set is built from.
@@ -134,18 +136,16 @@ impl Source {
     /// is checked against a list of revocations read after it, so a revocation acknowledged before the ring was read is
     /// in the list; one that comes later is a change, and wakes `exporter` again.
     pub async fn read(&self) -> Read {
-        let ring = match tokio::time::timeout(READ, self.ring()).await {
-            Ok(Ok(r)) => r,
-            _ => return Read::Unreadable("signing_ring"),
-        };
+        let ring = tokio::time::timeout(READ, self.ring()).await;
+        // Read also when the ring could not be: what is revoked is wanted most when the rest is unknown.
         let revoked =
-            match tokio::time::timeout(READ, self.revocations.revoked_kids_linearizable()).await {
-                Ok(Ok(k)) => k,
-                _ => return Read::Unreadable("key_revocation"),
-            };
-        match ring {
-            Some(ring) => Read::Snapshot(Snapshot { ring, revoked }),
-            None => Read::NoRing,
+            tokio::time::timeout(READ, self.revocations.revoked_kids_linearizable()).await;
+        match (ring, revoked) {
+            (Ok(Ok(Some(ring))), Ok(Ok(revoked))) => Read::Snapshot(Snapshot { ring, revoked }),
+            (Ok(Ok(None)), Ok(Ok(_))) => Read::NoRing,
+            (Ok(Ok(_)), _) => Read::Unreadable("key_revocation", HashSet::new()),
+            (_, Ok(Ok(revoked))) => Read::Unreadable("signing_ring", revoked),
+            _ => Read::Unreadable("signing_ring", HashSet::new()),
         }
     }
 }
