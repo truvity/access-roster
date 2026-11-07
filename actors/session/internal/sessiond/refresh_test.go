@@ -4,18 +4,15 @@ package sessiond_test
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"net/http"
 	"reflect"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	integrationv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/integration/v2alpha1"
@@ -88,7 +85,9 @@ func TestRefreshOfASpentTokenEndsTheChain(t *testing.T) {
 	second := body(t, e.token(refreshRequest(rt1)))
 	rt2 := second["refresh_token"].(string)
 
-	// The old token again: refused, and the chain ends at once (REQ-SESS-001), so the new token is dead as well.
+	// The old token again, after the grace window (refresh_grace_test.go): refused, and the chain ends at once
+	// (REQ-SESS-001), so the new token is dead as well.
+	e.clk.advance(testGrace + time.Second)
 	assertOAuth(t, e.token(refreshRequest(rt1)), http.StatusBadRequest, "invalid_grant")
 	if n := e.store.count("session-chain", testTenant); n != 0 {
 		t.Fatalf("%d chains after a reuse", n)
@@ -296,34 +295,6 @@ func TestRefreshOfAHeldPersonIsRefused(t *testing.T) {
 	assertOAuth(t, e.token(refreshRequest(first["refresh_token"].(string))), http.StatusBadRequest, "invalid_grant")
 	if state != "held" {
 		t.Errorf("state = %q", state)
-	}
-}
-
-func TestRefreshConcurrentUseOfOneTokenEndsTheChain(t *testing.T) {
-	e := newEnv(t, nil)
-	first, _ := e.redeemed()
-	rt := first["refresh_token"].(string)
-	var wg sync.WaitGroup
-	results := make([]int32, 6)
-	for i := range results {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			res, err := e.client.Token(context.Background(), connect.NewRequest(refreshRequest(rt)))
-			if err == nil {
-				results[i] = res.Msg.GetStatus()
-			}
-		}()
-	}
-	wg.Wait()
-	ok := 0
-	for _, s := range results {
-		if s == http.StatusOK {
-			ok++
-		}
-	}
-	if ok > 1 {
-		t.Fatalf("%d of 6 refreshes of one token succeeded: %v", ok, results)
 	}
 }
 
