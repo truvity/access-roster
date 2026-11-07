@@ -88,7 +88,8 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	if r.GetError() != "" {
 		code, silent := upstreamErrorCode(r.GetError(), pending.GetPrompt() == "none")
 		if silent {
-			return deny(code, "the person must take part", reasonSilent, nil)
+			// The reason is the code itself, one of the four: which of them the upstream sent is what an operator reads.
+			return deny(code, "the person must take part", code, nil)
 		}
 		return deny(code, "the upstream did not sign the person in", reasonUpstream, nil)
 	}
@@ -130,8 +131,8 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 	// section 3.1.2.1). The upstream was asked to authenticate the person again; an upstream that answered from its
 	// single sign-on session instead is held to it here, by the time of the authentication it reports.
 	if pending.GetPrompt() == "login" || (pending.MaxAge != nil && *pending.MaxAge == 0) {
-		if !assure.hasAuthTime || assure.authTime.Before(pending.GetCreatedAt().AsTime().Add(-freshSkew)) {
-			return deny("login_required", "a fresher authentication is needed", reasonMaxAge, nil)
+		if !assure.authenticatedSince(pending.GetCreatedAt().AsTime(), now, freshSkew) {
+			return deny("login_required", "a fresher authentication is needed", reasonFresh, nil)
 		}
 	}
 
@@ -237,7 +238,7 @@ func upstreamErrorCode(c string, promptNone bool) (code string, silent bool) {
 		return "access_denied", false
 	case "temporarily_unavailable":
 		return "temporarily_unavailable", false
-	case "login_required", "interaction_required", "consent_required", "account_selection_required":
+	case reasonLoginRequired, reasonInteractionRequired, reasonConsentRequired, reasonAccountSelectionRequired:
 		if promptNone {
 			return c, true
 		}
