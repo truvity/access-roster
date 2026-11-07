@@ -16,7 +16,4 @@ default:
     - { purpose: wrapping, algorithm: ECDH-P384, slot: 9d }
     - { purpose: token-signing, algorithm: ES384, slot: 9a }
     - { purpose: audit-log, algorithm: ES256, slot: "84" }
-    # The key of the boundary's X.509 intermediate (ADR 0024, "The hand-off"): `sluis key request` asks key@ for it and
-    # `sluis key install` puts the certified chain back (deploy/local/local.sh handoff).
-    - { purpose: x509-intermediate, algorithm: ES384, slot: 9c }
     - { purpose: data, algorithm: AES-256-GCM }

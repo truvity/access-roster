@@ -180,6 +180,22 @@ need_env() {
 	[ -n "${secrets:-}" ] && [ -r "$secrets" ] || { echo "local: SLUIS_KEYCLOAK_SECRETS does not name a readable file" >&2; exit 1; }
 }
 
+# config_source copies the config sources to $state/config and adds what only the local installation has: the key of the
+# boundary's intermediate in the KeyPlan (the hand-off, below). The committed source is shared with the boards' prepare
+# (deploy/boards/prepare.sh), which signs a plan of its own; a purpose added there would make key@ on a board make a key on
+# its card at the next start, which the board run adds deliberately.
+config_source() {
+	local line='    - { purpose: data, algorithm: AES-256-GCM }' t
+	rm -rf "$state/config"
+	mkdir -p "$state/config"
+	cp tests/installations/local/config/* "$state/config/"
+	[ "$(grep -cxF -- "$line" "$state/config/key-plan.yaml")" = 1 ] || { echo "local: key-plan.yaml does not hold the line '$line' once; update deploy/local/local.sh" >&2; return 1; }
+	t=$(mktemp)
+	AT=$line NEW='    - { purpose: x509-intermediate, algorithm: ES384, slot: 9c }' awk '$0 == ENVIRON["AT"] { print ENVIRON["NEW"] } { print }' "$state/config/key-plan.yaml" >"$t"
+	cat "$t" >"$state/config/key-plan.yaml"
+	rm -f "$t"
+}
+
 # sign_config signs the config sources, with the recipients of the KeyPlan when the run has learned them.
 sign_config() {
 	local extra=()
@@ -192,7 +208,8 @@ sign_config() {
 		rel=$(release_version) || exit 1
 		extra+=(-audit-release "$rel")
 	fi
-	go run ./tools/harness/sign-config -config tests/installations/local/config -bootstrap tests/installations/local/bootstrap.yaml \
+	config_source
+	go run ./tools/harness/sign-config -config "$state/config" -bootstrap tests/installations/local/bootstrap.yaml \
 		-key-dir "$state/publisher" -out "$seed/config" -bootstrap-out "$seed/bootstrap.yaml" -subjects "$state/subjects" "${extra[@]}"
 }
 
@@ -334,16 +351,26 @@ cmd_handoff() {
 	local pin out
 	need_env_quiet
 	mkdir -p "$handoff_dir/requests" "$handoff_dir/answers"
-	go run ./tools/harness/certifier init -dir "$root_dir"
+	# The key of the request lives in key@'s state volume. A volume made again with this state kept (a `docker volume rm`, or a
+	# `docker compose down -v` without `local-down`) holds another key, and the answer in the state is for the old one: `key
+	# install` would refuse it as key-mismatch. The creation time of the volume tells, so it is said here and not after an install.
+	local vol_now vol_then
+	vol_now=$(docker volume inspect --format '{{.CreatedAt}}' "${COMPOSE_PROJECT_NAME:-sluis-local}_state-key" 2>/dev/null) || vol_now=""
+	if [ -s "$handoff_dir/key-volume" ]; then
+		vol_then=$(<"$handoff_dir/key-volume")
+		[ "$vol_then" = "$vol_now" ] || { echo "local: the volumes of this run were made again, and the hand-off in $handoff_dir was made for the old key (key install would refuse it as key-mismatch); run 'just local-down' and start again" >&2; return 1; }
+	fi
+	go run ./tools/harness/certifier init -dir "$root_dir" || return 1
 	pin=$(<"$root_dir/trust/root.pin")
 	if [ ! -s "$handoff_dir/requests/$handoff_stem.csr.pem" ]; then
 		handoff_cli key request --boundary dev --trust-domain dev.local.test --dns-zone dev.local.test --out /requests ||
 			{ echo "local: sluis key request failed; see 'just local-logs key'" >&2; return 1; }
+		printf '%s' "$vol_now" >"$handoff_dir/key-volume"
 	fi
-	go run ./tools/harness/certifier certify -dir "$root_dir" -requests "$handoff_dir/requests" -answers "$handoff_dir/answers"
+	go run ./tools/harness/certifier certify -dir "$root_dir" -requests "$handoff_dir/requests" -answers "$handoff_dir/answers" || return 1
 	out=$(handoff_cli key install /answers --boundary dev --requests /requests --ca-bundle /trust/ca-bundle.pem \
 		--root-list /trust/root-list.json --root-pin "$pin") ||
-		{ printf '%s\n' "$out" >&2; echo "local: sluis key install failed. If the volumes of this run were deleted but its state was not, run 'just local-down' and start again; otherwise see 'just local-logs key'" >&2; return 1; }
+		{ printf '%s\n' "$out" >&2; echo "local: sluis key install failed. see 'just local-logs key'" >&2; return 1; }
 	printf '%s\n' "$out"
 	HANDOFF_OUT=$out
 }
