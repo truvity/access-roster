@@ -454,6 +454,119 @@ fn the_secret_an_upstream_names_is_a_credential_name() {
     }
 }
 
+/// A client's `signing_alg` is the algorithm of its ID tokens: left out or ES384 for the default, RS256 for a relying party
+/// that cannot take it, and no other word. An exchange client is given access tokens only, so it has none to name.
+///
+/// verifies: REQ-CLIENT-046
+#[test]
+fn the_algorithm_of_a_clients_id_tokens_is_es384_or_rs256_and_an_exchange_client_has_none() {
+    let client = |ty: &str, line: &str| {
+        format!(
+            "app:\n  kind: {ty}\n  redirects: [\"https://app.example.com/cb\"]\n  requires: [\"dev:app:user\"]\n{line}"
+        )
+    };
+    let alg = |ty: &str, line: &str| {
+        let items =
+            payload::decode(kind("InstallationClient"), client(ty, line).as_bytes()).unwrap();
+        pb::InstallationClient::decode_from_slice(&items[0].1)
+            .unwrap()
+            .signing_alg
+    };
+    for ty in ["public", "confidential"] {
+        assert_eq!(alg(ty, ""), "", "{ty}");
+        assert_eq!(alg(ty, "  signing_alg: ES384\n"), "ES384", "{ty}");
+        assert_eq!(alg(ty, "  signing_alg: RS256\n"), "RS256", "{ty}");
+        assert_eq!(alg(ty, "  signing_alg: \"\"\n"), "", "{ty}");
+        assert_eq!(alg(ty, "  signing_alg: null\n"), "", "{ty}");
+    }
+    for bad in ["PS256", "rs256", "RS256 ", "none", "ES256", "EdDSA"] {
+        let e = refused(
+            "InstallationClient",
+            &client("confidential", &format!("  signing_alg: \"{bad}\"\n")),
+        );
+        assert_eq!(e, "app.signing_alg: not one of the values of the schema");
+    }
+    let e = refused(
+        "InstallationClient",
+        &client("confidential", "  signing_alg: 1\n"),
+    );
+    assert_eq!(e, "app.signing_alg: must be a string");
+    for line in ["  signing_alg: RS256\n", "  signing_alg: ES384\n"] {
+        let e = refused("InstallationClient", &client("exchange", line));
+        assert_eq!(e, "app.signing_alg: an exchange client gets no ID token");
+    }
+    assert_eq!(alg("exchange", ""), "");
+}
+
+/// A code is bound to the client that asked by PKCE, or, for a confidential client that says so, by the nonce of its ID token
+/// (RFC 9700 section 2.1.1). The word `nonce` is refused for a public client, an exchange client and a confidential client
+/// that names no secret, at load, and every other word but `required` is refused.
+///
+/// verifies: REQ-AUTHN-102
+#[test]
+fn only_a_confidential_client_that_names_its_secret_can_take_the_nonce_in_place_of_pkce() {
+    let client = |ty: &str, secret: &str, line: &str| {
+        let secret = if secret.is_empty() {
+            String::new()
+        } else {
+            format!("  secret: {secret}\n")
+        };
+        format!(
+            "app:\n  kind: {ty}\n  redirects: [\"https://app.example.com/cb\"]\n  requires: [\"dev:app:user\"]\n{secret}{line}"
+        )
+    };
+    let pkce = |text: &str| {
+        let items = payload::decode(kind("InstallationClient"), text.as_bytes()).unwrap();
+        pb::InstallationClient::decode_from_slice(&items[0].1)
+            .unwrap()
+            .pkce
+    };
+    assert_eq!(pkce(&client("confidential", "client-app", "")), "");
+    assert_eq!(
+        pkce(&client("confidential", "client-app", "  pkce: required\n")),
+        "required"
+    );
+    assert_eq!(
+        pkce(&client("confidential", "client-app", "  pkce: \"\"\n")),
+        ""
+    );
+    assert_eq!(
+        pkce(&client("confidential", "client-app", "  pkce: nonce\n")),
+        "nonce"
+    );
+    // The default is always allowed, for every kind.
+    for ty in ["public", "exchange"] {
+        assert_eq!(
+            pkce(&client(ty, "", "  pkce: required\n")),
+            "required",
+            "{ty}"
+        );
+    }
+    // `nonce` is a confidential client's alone.
+    for ty in ["public", "exchange"] {
+        let e = refused("InstallationClient", &client(ty, "", "  pkce: nonce\n"));
+        assert_eq!(
+            e, "app.pkce: only a confidential client can take the nonce in place of PKCE",
+            "{ty}"
+        );
+    }
+    let e = refused(
+        "InstallationClient",
+        &client("confidential", "", "  pkce: nonce\n"),
+    );
+    assert_eq!(
+        e,
+        "app.pkce: a client that takes the nonce in place of PKCE must name its secret"
+    );
+    for bad in ["none", "plain", "Nonce", "S256", "off"] {
+        let e = refused(
+            "InstallationClient",
+            &client("confidential", "client-app", &format!("  pkce: {bad}\n")),
+        );
+        assert_eq!(e, "app.pkce: not one of the values of the schema", "{bad}");
+    }
+}
+
 /// verifies: REQ-CLIENT-005
 #[test]
 fn a_client_is_of_exactly_one_type_from_the_closed_set() {

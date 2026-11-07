@@ -277,6 +277,66 @@ fn a_client_requiring_a_grant_the_vocabulary_does_not_declare_is_refused_with_it
     }
 }
 
+/// A client that wants its ID tokens signed with RS256 needs a key for it, and the key exists only where the KeyPlan lists the
+/// purpose with that algorithm (ADR 0006, "Key purposes": enabled on use). The set is refused with one failed `set` line that
+/// names the client and the field, and no value.
+///
+/// verifies: REQ-CLIENT-047
+#[test]
+fn a_client_that_wants_rs256_needs_the_key_plan_to_list_the_purpose() {
+    let clients = source("installation-client");
+    let anchor = "  secret: client-example-app\n";
+    assert!(clients.contains(anchor));
+    let rs256 = clients.replace(anchor, &format!("{anchor}  signing_alg: RS256\n"));
+    let plan = source("key-plan");
+    let listing = |line: &str| {
+        plan.replace(
+            "    - { purpose: data,",
+            &format!("    - {{ {line} }}\n    - {{ purpose: data,"),
+        )
+    };
+    let want = [
+        "set : InstallationClient: example-app.signing_alg: RS256 needs the KeyPlan to list the purpose token-signing-rs256",
+    ];
+    // The plan of the local installation lists no RS256 key.
+    let e = env();
+    e.sign("installation-client", &rs256);
+    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(3), "{all}");
+    assert_eq!(failures(&checks), want, "{all}");
+    // The purpose under another algorithm is no RS256 key.
+    let e = env();
+    e.sign("installation-client", &rs256);
+    e.sign(
+        "key-plan",
+        &listing("purpose: token-signing-rs256, algorithm: ES384, slot: \"88\""),
+    );
+    let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(3), "{all}");
+    assert_eq!(failures(&checks), want, "{all}");
+    // A plan that lists it, and the same client, load; so does a plan that lists it and no client wants it.
+    for with_client in [true, false] {
+        let e = env();
+        if with_client {
+            e.sign("installation-client", &rs256);
+        }
+        e.sign(
+            "key-plan",
+            &listing("purpose: token-signing-rs256, algorithm: RS256, slot: \"88\""),
+        );
+        let (code, _, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(0), "{with_client}: {all}");
+    }
+    // A client that names the default is not asking for the key.
+    let e = env();
+    e.sign(
+        "installation-client",
+        &clients.replace(anchor, &format!("{anchor}  signing_alg: ES384\n")),
+    );
+    let (code, _, all) = run(&e.bootstrap(), e.docs.path());
+    assert_eq!(code, Some(0), "{all}");
+}
+
 /// The KeyPlan's slot map is checked as key@ checks it, on the whole set: two purposes in one slot, an enabled
 /// purpose with no slot, a slot that is no slot of a board and a purpose listed twice are each one failed `set` line
 /// that names the entry (`default.purposes[2].slot`) and a word, and no slot is printed. A plan that lists none of the
@@ -718,6 +778,41 @@ fn paths(v: &Value) -> Vec<&str> {
 fn sha384(text: &str) -> String {
     let d = aws_lc_rs::digest::digest(&aws_lc_rs::digest::SHA384, text.as_bytes());
     store::config::document::hex(d.as_ref())
+}
+
+/// A client that takes the nonce in place of PKCE, and one that wants RS256 ID tokens, are visible to the operator: `config
+/// explain` prints each setting with its value, its layer and the document it comes from, and the default is printed as
+/// absent, so a setting that was turned on is a line in the output and a review sees it.
+///
+/// verifies: REQ-AUTHN-103
+#[test]
+fn explain_shows_a_client_that_takes_the_nonce_in_place_of_pkce() {
+    let clients = source("installation-client");
+    let anchor = "  secret: client-example-app\n";
+    let e = env();
+    e.sign(
+        "installation-client",
+        &clients.replace(anchor, &format!("{anchor}  pkce: nonce\n")),
+    );
+    let (code, v, all) = explain_with(&e.bootstrap(), e.docs.path(), &[]);
+    assert_eq!(code, Some(0), "{all}");
+    let f = field(&v, "InstallationClient.example-app.pkce");
+    assert_eq!(f["value"], "nonce", "{all}");
+    assert_eq!(
+        (f["class"].as_str(), f["layer"].as_str()),
+        (Some("config"), Some("config"))
+    );
+    assert!(
+        f["source"]
+            .as_str()
+            .unwrap()
+            .starts_with("InstallationClient:")
+    );
+    // The client that did not turn it on has no such line.
+    assert!(
+        !paths(&v).contains(&"InstallationClient.sluis-cli.pkce"),
+        "{all}"
+    );
 }
 
 /// verifies: REQ-OPS-023
