@@ -1,6 +1,7 @@
 package writerd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -27,6 +28,23 @@ type blobIO struct {
 func (b blobIO) create(ctx context.Context, path string, data []byte) error {
 	_, err := b.c.Create(ctx, connect.NewRequest(&blobv2alpha1.CreateRequest{Path: path, Data: data}))
 	return mapBlob("create", err)
+}
+
+// createOnce writes an object that must not exist. An object that exists with the same bytes is the same write
+// repeated, and passes; one with other bytes is the fence.
+func (b blobIO) createOnce(ctx context.Context, path string, data []byte) error {
+	err := b.create(ctx, path, data)
+	if err == nil || !errors.Is(err, errExists) {
+		return err
+	}
+	have, _, gerr := b.get(ctx, path)
+	if gerr != nil {
+		return gerr
+	}
+	if !bytes.Equal(have, data) {
+		return fmt.Errorf("%w: %s", ErrFence, path)
+	}
+	return nil
 }
 
 // put overwrites a pointer when its entity tag is ifMatch; an empty ifMatch means the pointer must be absent.

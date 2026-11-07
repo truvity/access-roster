@@ -319,7 +319,11 @@ func (s *Server) recover(ctx context.Context) error {
 			}
 		}
 		// The state first, as in a batch: a writer that lost the fence must not have signed.
-		if err := st.commit(ctx, s.blob, st.next(s.logName, adopted.size, adopted.root, ids, s.stamp())); err != nil {
+		doc, err := st.next(ctx, s.logName, adopted.size, adopted.root, ids, s.stamp())
+		if err != nil {
+			return err
+		}
+		if err := st.commit(ctx, s.blob, doc); err != nil {
 			return err
 		}
 		cur = adopted

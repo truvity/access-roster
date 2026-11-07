@@ -82,6 +82,9 @@ func (c checker) check(uid, emitter string, rec []byte, usage int) (recordInfo, 
 	if info.uid, ok = md["uid"].(string); !ok || info.uid == "" || info.uid != uid {
 		return zero, &rejection{reasonSchema, "metadata.uid"}
 	}
+	if _, _, ok := parseUID(info.uid); !ok { // 0029: a UUIDv7 in the form of RFC 9562
+		return zero, &rejection{reasonSchema, "metadata.uid"}
+	}
 	if info.event, ok = md["event_code"].(string); !ok || info.event == "" {
 		return zero, &rejection{reasonSchema, "metadata.event_code"}
 	}
