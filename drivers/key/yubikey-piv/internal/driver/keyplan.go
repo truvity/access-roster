@@ -57,23 +57,29 @@ func (s *Service) slotMap(doc []byte) ([]*configv2alpha1.NodeSlotMap, error) {
 	p := &s.plan
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	newer := false
 	switch p.seq.Peek(v) {
 	case signedconfig.Older:
 		return nil, &errPlan{signedconfig.ErrOlder.Error()}
 	case signedconfig.Conflict:
 		return nil, &errPlan{signedconfig.ErrConflict.Error()}
 	case signedconfig.Newer:
-		if err := p.write(v); err != nil {
-			return nil, &errPlan{"its mark cannot be saved"}
-		}
+		newer = true
 	case signedconfig.Same:
 	}
-	if _, err := p.seq.Admit(v); err != nil {
-		return nil, &errPlan{err.Error()}
-	}
+	// The payload is read, schema first, before a mark is saved or the seq is admitted: a payload that the schema or the reader
+	// refuses leaves no trace, and a retry of a document whose mark could not be saved is still a newer one.
 	m, err := pinrelease.SlotMapOf(v.Payload)
 	if err != nil {
 		return nil, &errPlan{"step 6: the slot map: " + err.Error()}
+	}
+	if newer {
+		if err := p.write(v); err != nil {
+			return nil, &errPlan{"its mark cannot be saved"}
+		}
+	}
+	if _, err := p.seq.Admit(v); err != nil {
+		return nil, &errPlan{err.Error()}
 	}
 	return m, nil
 }
