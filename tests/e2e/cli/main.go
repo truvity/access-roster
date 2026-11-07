@@ -219,7 +219,7 @@ const (
 
 // keyStatusSmoke runs `sluis key status` and `sluis doctor --boundary dev` as root in a container that has key@'s run
 // directory, where key@'s admin socket is, and checks what they print. A peer that is not root must be a failure, not an
-// empty list. The local installation's keys have no certificate chain yet, so the table has no expiry and the exit is 0.
+// empty list. The local installation's intermediate and token-signing keys have a certificate chain, which is new, so the exit is 0.
 func keyStatusSmoke(cli string) error {
 	fmt.Println("== sluis key status")
 	var first string
@@ -242,13 +242,16 @@ func keyStatusSmoke(cli string) error {
 				return fmt.Errorf("key %s: boundary %q, store %q, fingerprint of %d digits", k.Purpose, k.Boundary, k.Store, len(k.Fingerprint))
 			}
 			// The intermediate has a real certificate once the local installation runs the hand-off (key request and key
-			// install at the end of local-up); until then it has none. A fresh certificate has time left and no warning. Every other
+			// install at the end of local-up), and the token-signing key has one once ca has made it from the intermediate's
+			// signature, which local-up waits for (keyset-check). A fresh certificate has time left and no warning. Every other
 			// key has no certificate.
 			switch {
-			case k.Purpose == "x509-intermediate" && k.Certificate == "installed":
+			case (k.Purpose == "x509-intermediate" || k.Purpose == "token-signing") && k.Certificate == "installed":
 				if k.NotAfter == "" || k.Level != "none" {
 					return fmt.Errorf("the installed certificate of %s: not_after %q, level %q", k.Purpose, k.NotAfter, k.Level)
 				}
+			case k.Purpose == "token-signing":
+				return fmt.Errorf("the token-signing key has certificate %q, want the one ca made (local-up waits for it)", k.Certificate)
 			case k.Level != "none" || k.NotAfter != "" || k.Certificate != "none":
 				return fmt.Errorf("key %s: level %q, not_after %q, certificate %q: want no certificate and no warning", k.Purpose, k.Level, k.NotAfter, k.Certificate)
 			}

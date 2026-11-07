@@ -15,6 +15,13 @@ services:
     healthcheck:
       test: ["CMD", "/usr/libexec/sluis/actors/adapter-upstream-oidc", "check", "--boundary", "dev", "--socket", "/run/sluis/adapter-upstream-oidc/dev.sock"]
 
+  ca:
+    image: ${SLUIS_IMAGE_actor_ca:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/actor-ca:${SLUIS_LOCAL_VERSION:-unset}}
+    build: !reset null
+    entrypoint: ["/usr/libexec/sluis/actors/ca"]
+    healthcheck:
+      test: ["CMD", "/usr/libexec/sluis/actors/ca", "check", "--boundary", "dev"]
+
   drv-exporter-dir:
     image: ${SLUIS_IMAGE_driver_exporter_dir:-${SLUIS_IMAGE_PREFIX:-ghcr.io/truvity/sluis}/driver-exporter-dir:${SLUIS_LOCAL_VERSION:-unset}}
     build: !reset null

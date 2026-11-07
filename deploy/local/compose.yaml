@@ -104,6 +104,40 @@ services:
       key: { condition: service_healthy }
       idp-loopback: { condition: service_healthy }
 
+  ca:
+    image: sluis-local/ca:${SLUIS_LOCAL_TAG:-dev}
+    build:
+      context: ../../dist/local/bin
+      dockerfile: ../../../deploy/local/Dockerfile
+      args:
+        BINARY: actors/ca
+    command: ["serve", "--boundary", "dev"]
+    user: "61006:61006"
+    group_add:
+      - "61012"
+      - "61024"
+      - "61706"
+    network_mode: none
+    volumes:
+      - run-store:/run/sluis/store:ro
+      - key-ca:/run/sluis/key/dev/ca:ro
+      - audit:/run/sluis/audit/dev:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test: ["CMD", "/sluis", "check", "--boundary", "dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: "on-failure"
+    depends_on:
+      init: { condition: service_completed_successfully }
+      store: { condition: service_healthy }
+      key: { condition: service_healthy }
+
   drv-exporter-dir:
     image: sluis-local/drv-exporter-dir:${SLUIS_LOCAL_TAG:-dev}
     build:
