@@ -117,6 +117,16 @@ impl Ns {
                 ),
                 vec![Param::Int(epoch)],
             ),
+            // The floor belongs to the log it trimmed. A log that never had a row is a new one that begins at sequence 1, so a
+            // floor left by the old one (the meta table stayed, the log table did not) would stand above its first rows and
+            // hide them: the head is the higher of the newest row and the floor.
+            Stmt::new(
+                format!(
+                    "UPDATE {meta} SET value = 0 WHERE name = 'log_floor' \
+                     AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = '{log}')"
+                ),
+                none(),
+            ),
             // The log starts with a marker row, sequence 1, so that its head is never 0: a resume point
             // of 0 means "from now" and a snapshot taken from an empty log must still have a position to
             // watch from. Only a log that never had a row gets it (a trimmed log keeps its counter).
