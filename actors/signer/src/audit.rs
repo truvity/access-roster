@@ -105,7 +105,7 @@ impl Auditor {
         let mut sluis = Map::new();
         sluis.insert("key_id".into(), text(&c.key_id));
         sluis.insert("state".into(), text(state));
-        sluis.insert("algorithm".into(), text(crate::keys::ALGORITHM));
+        sluis.insert("algorithm".into(), text(c.alg.name()));
         // Why the lead time was skipped, when it was (REQ-KEYS-089).
         if let Some(reason) = c.reason {
             sluis.insert("reason".into(), text(reason));
