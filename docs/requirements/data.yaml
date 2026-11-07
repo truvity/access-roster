@@ -1225,7 +1225,7 @@ requirements:
       - actors/store/tests/watch_client.rs
       - actors/store/tests/watch_engines.rs
     verification:
-      - {kind: integration-test, ref: "an interval at the position renews the claim with one linearizable read, quiet or busy; a head ahead, a failed read or a held tail renews nothing; another epoch ends the stream"}
+      - {kind: integration-test, ref: "an interval at the position renews the claim with one linearizable read, quiet or busy; a head ahead, a failed read or a held tail renews nothing; a claim behind a stale read is not sent"}
       - {kind: integration-test, ref: "on rqlited behind a proxy that sees the level of each query: the head is read linearizably at the opening and at the tick, the claim waits for held rows, the tick renews it"}
   - id: REQ-DATA-126
     area: DATA
