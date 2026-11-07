@@ -33,3 +33,18 @@ requirements:
     issues: [885]
     verification:
       - {kind: manual, ref: "path walkthrough"}
+  - id: REQ-A11Y-003
+    area: A11Y
+    statement: "The operator console MUST meet WCAG 2.1 level AA, checked by automated tests in CI for every screen."
+    rationale: "REQ-A11Y-001 names the hosted pages; the console is the larger surface (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards:
+      - {id: NC-04, section: "WCAG 2.1 AA", depth: Full}
+    issues: [796, 831]
+    verification:
+      - {kind: integration-test, ref: "axe checks and keyboard and focus scenarios in every browser scenario, at 390 and 1440 pixels"}
+      - {kind: manual, ref: "manual audit of the console"}

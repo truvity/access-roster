@@ -1675,3 +1675,16 @@ requirements:
     issues: [1220]
     verification:
       - {kind: integration-test, ref: "a bundle with a cross-tenant grant on DirectoryUser fails to load, one on DesiredState (shared_by: [reconciler]) loads, and an audit read over a set of tenants loads"}
+  - id: REQ-ISO-120
+    area: ISO
+    statement: "The owner of a kind MUST decide again, through policy, whether the operator named by a console-routed write may make it."
+    rationale: "A flaw in the console must not become an authorisation bypass at every owner; REQ-ISO-053 is the console's own check (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [960]
+    verification:
+      - {kind: integration-test, ref: "the owner called with a context for an operator that policy does not allow, bypassing the console, refuses and audits the call"}

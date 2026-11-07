@@ -184,3 +184,55 @@ requirements:
     features: ["parity"]
     verification:
       - {kind: manual, ref: "each fake vendor server carries the vendor release and the date it was read, in a header comment that the suite prints"}
+  - id: REQ-TEST-013
+    area: TEST
+    statement: "Each console screen MUST have a browser test against the local installation that covers the ok, empty, forbidden, unavailable, stale and waiting states, run as a required check of every pull request."
+    rationale: "Nearly every v1 console defect was found by a person looking at the live page (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 1100]
+    verification:
+      - {kind: integration-test, ref: "a CI job that runs the scenarios of every screen and is a required check"}
+  - id: REQ-TEST-014
+    area: TEST
+    statement: "The local installation MUST offer a documented fixture set of people, groups, tenants and states that only a test-only kind set loads and that no production image contains."
+    rationale: "Fixtures replace the v1 demonstration mode (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 849]
+    verification:
+      - {kind: integration-test, ref: "the fixture set loads into the local installation, and a check fails when a production image holds the test-only kind set"}
+  - id: REQ-TEST-015
+    area: TEST
+    statement: "CI MUST fail when a scripted console flow raises a content security policy violation."
+    rationale: "A policy that breaks a flow was found by hand twice in v1 (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [796, 831]
+    verification:
+      - {kind: integration-test, ref: "a violation listener in every browser scenario fails the job"}
+  - id: REQ-TEST-016
+    area: TEST
+    statement: "CI MUST call every method of the operator API as each role and scope and compare each answer with the one that the method's annotations declare."
+    rationale: "A generated matrix finds the read that a viewer must not have before a person does (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [831, 960]
+    verification:
+      - {kind: integration-test, ref: "the matrix runs against the local installation, and a method with no annotation fails it"}
