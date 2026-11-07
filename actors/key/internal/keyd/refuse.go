@@ -125,15 +125,18 @@ func (r *refusalLimiters) close() {
 // one summary with their number (rpc.Limiter), with the caps of an hour of ADR 0005. The facts are made on the caller's
 // goroutine, as before; a summary is made on the limiter's.
 func (s *Server) newRefusalLimiter() *rpc.Limiter {
-	return rpc.NewLimiter(rpc.LimiterConfig{Burst: s.cfg.RefusalBurst, Window: s.cfg.RefusalWindow, Hourly: s.cfg.RefusalHourly, Total: s.cfg.RefusalTotal},
-		func(v any) {
-			r := v.(refusal1)
-			slog.Info("refused", "caller", r.caller, "op", r.op, "purpose", r.purpose, "code", r.code, "reason", r.reason, "path", r.path)
-			s.audit(r.ctx, Event{
-				Action: ActionRefuse, Failure: true, Reason: r.reason, Tenant: r.tenant,
-				Fields: refusalFields(map[string]any{"caller": r.caller, "op": r.op, "purpose": r.purpose, "code": r.code, "path": r.path}),
-			})
-		},
+	event := func(v any) {
+		r := v.(refusal1)
+		slog.Info("refused", "caller", r.caller, "op", r.op, "purpose", r.purpose, "code", r.code, "reason", r.reason, "path", r.path)
+		s.audit(r.ctx, Event{
+			Action: ActionRefuse, Failure: true, Reason: r.reason, Tenant: r.tenant,
+			Fields: refusalFields(map[string]any{"caller": r.caller, "op": r.op, "purpose": r.purpose, "code": r.code, "path": r.path}),
+		})
+	}
+	// A handler that read the limiter before Serve replaced and closed it reaches a closed one: its refusal is a fact on its
+	// own (Late), whose loss the emitter counts, and not a call the limiter drops.
+	return rpc.NewLimiter(rpc.LimiterConfig{Burst: s.cfg.RefusalBurst, Window: s.cfg.RefusalWindow, Hourly: s.cfg.RefusalHourly, Total: s.cfg.RefusalTotal, Late: event},
+		event,
 		func(v any, f rpc.Fold) {
 			r := v.(refusal1)
 			fields := map[string]any{"caller": r.caller, "op": r.op, "code": r.code,
