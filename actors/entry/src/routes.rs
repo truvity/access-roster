@@ -30,6 +30,11 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "prompt",
     "max_age",
     "acr_values",
+    // Defined by OpenID Connect Core sections 6 and 7.2.1 and not served: `session` answers each with its error
+    // (3.1.2.6), once it knows the client and the redirect_uri, so the answer can go to the client.
+    "request",
+    "request_uri",
+    "registration",
 ];
 
 /// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a

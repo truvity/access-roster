@@ -145,10 +145,14 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         // The union over the grants of /token (RFC 8414 has no list per grant): `none` for sign-in and
         // refresh, the two secret methods for token exchange. The list is the handler's.
         "token_endpoint_auth_methods_supported": TOKEN_ENDPOINT_AUTH_METHODS,
-        // The field defaults to true (OpenID Connect Discovery 1.0 section 3) and `/authorize` takes no `request_uri`
-        // (its closed list is `routes::AUTHORIZE`), so the document says false. `request_parameter_supported` and
-        // `claims_parameter_supported` default to false and stay out.
+        // The field defaults to true (OpenID Connect Discovery 1.0 section 3) and `/authorize` serves no `request_uri`
+        // (`session` answers it with request_uri_not_supported), so the document says false. `request_parameter_supported`
+        // and `claims_parameter_supported` default to false and stay out.
         "request_uri_parameter_supported": false,
+        // The scopes `session` grants (OpenID Connect Discovery 1.0 section 3: RECOMMENDED). A client that reads the list
+        // does not ask for address or phone and is not refused with invalid_scope, which is how a scope that is not served
+        // is answered (REQ-CLIENT-022). `session`'s tests hold the list to its own.
+        "scopes_supported": ["openid", "profile", "email"],
         // RFC 9207 section 3: `session` puts the issuer in `iss` on every redirect to a client, a code and an error
         // alike, and the field defaults to false, so the document says true.
         "authorization_response_iss_parameter_supported": true,
@@ -372,10 +376,9 @@ mod tests {
             serde_json::from_str(include_str!("../tests/testdata/discovery.json")).unwrap();
         assert_eq!(got, golden);
         assert_eq!(got["request_uri_parameter_supported"], false);
-        // The claim is true: `/authorize` has no `request` or `request_uri` parameter, and its list is closed.
-        for name in ["request", "request_uri"] {
-            assert!(!crate::routes::AUTHORIZE.contains(&name), "{name}");
-        }
+        // The claim is true: `/authorize` accepts `request_uri` only to have `session` answer request_uri_not_supported
+        // (`session`'s tests, which read the same golden file, hold that side).
+        assert!(crate::routes::AUTHORIZE.contains(&"request_uri"));
         // The other two claims that are not about a route: `session`'s tests (`discovery_claims_test.go`) read the same
         // golden file and hold the redirect's `iss` and the subject type to it.
         assert_eq!(got["authorization_response_iss_parameter_supported"], true);

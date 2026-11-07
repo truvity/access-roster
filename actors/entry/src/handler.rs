@@ -294,6 +294,9 @@ async fn route(
                 prompt: p.get("prompt"),
                 max_age: p.get("max_age"),
                 acr_values: p.get("acr_values"),
+                request: p.get("request"),
+                request_uri: p.get("request_uri"),
+                registration: p.get("registration"),
                 ..AuthorizeRequest::default()
             };
             let reply = state

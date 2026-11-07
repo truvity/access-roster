@@ -40,6 +40,9 @@ type AuthorizeRequest struct {
 	Prompt              string                 `protobuf:"bytes,10,opt,name=prompt,proto3" json:"prompt,omitempty"`                                                       // the OpenID Connect prompt, if sent
 	MaxAge              string                 `protobuf:"bytes,11,opt,name=max_age,json=maxAge,proto3" json:"max_age,omitempty"`                                         // the OpenID Connect max_age, if sent
 	AcrValues           string                 `protobuf:"bytes,12,opt,name=acr_values,json=acrValues,proto3" json:"acr_values,omitempty"`                                // the OpenID Connect acr_values, if sent
+	Request             string                 `protobuf:"bytes,13,opt,name=request,proto3" json:"request,omitempty"`                                                     // the OpenID Connect request object, if sent; session answers request_not_supported
+	RequestUri          string                 `protobuf:"bytes,14,opt,name=request_uri,json=requestUri,proto3" json:"request_uri,omitempty"`                             // the OpenID Connect request_uri, if sent; session answers request_uri_not_supported
+	Registration        string                 `protobuf:"bytes,15,opt,name=registration,proto3" json:"registration,omitempty"`                                           // the OpenID Connect registration, if sent; session answers registration_not_supported
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -154,6 +157,27 @@ func (x *AuthorizeRequest) GetMaxAge() string {
 func (x *AuthorizeRequest) GetAcrValues() string {
 	if x != nil {
 		return x.AcrValues
+	}
+	return ""
+}
+
+func (x *AuthorizeRequest) GetRequest() string {
+	if x != nil {
+		return x.Request
+	}
+	return ""
+}
+
+func (x *AuthorizeRequest) GetRequestUri() string {
+	if x != nil {
+		return x.RequestUri
+	}
+	return ""
+}
+
+func (x *AuthorizeRequest) GetRegistration() string {
+	if x != nil {
+		return x.Registration
 	}
 	return ""
 }
@@ -1026,7 +1050,7 @@ var File_sluis_session_v2alpha1_session_proto protoreflect.FileDescriptor
 
 const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	"\n" +
-	"$sluis/session/v2alpha1/session.proto\x12\x16sluis.session.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\x89\x03\n" +
+	"$sluis/session/v2alpha1/session.proto\x12\x16sluis.session.v2alpha1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1esluis/type/v2alpha1/type.proto\"\xe8\x03\n" +
 	"\x10AuthorizeRequest\x12#\n" +
 	"\rresponse_type\x18\x01 \x01(\tR\fresponseType\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12!\n" +
@@ -1041,7 +1065,11 @@ const file_sluis_session_v2alpha1_session_proto_rawDesc = "" +
 	" \x01(\tR\x06prompt\x12\x17\n" +
 	"\amax_age\x18\v \x01(\tR\x06maxAge\x12\x1d\n" +
 	"\n" +
-	"acr_values\x18\f \x01(\tR\tacrValues\"\xa8\x01\n" +
+	"acr_values\x18\f \x01(\tR\tacrValues\x12\x18\n" +
+	"\arequest\x18\r \x01(\tR\arequest\x12\x1f\n" +
+	"\vrequest_uri\x18\x0e \x01(\tR\n" +
+	"requestUri\x12\"\n" +
+	"\fregistration\x18\x0f \x01(\tR\fregistration\"\xa8\x01\n" +
 	"\x0fCallbackRequest\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12\x14\n" +

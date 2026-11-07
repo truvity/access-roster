@@ -1311,10 +1311,10 @@ async fn discovery_and_the_key_set_are_built_from_the_store_and_cacheable() {
 
 /// The discovery document that `entry` serves lists what `entry` serves. It is the golden file, with the issuer of this
 /// test; every endpoint in it is a route that reaches the actor behind (and no other endpoint field is in it); each
-/// grant it lists is dispatched to its actor and a grant it does not list is refused; and `/authorize` takes neither
-/// `request` nor `request_uri`, as `request_uri_parameter_supported: false` says. What the document says of the
-/// behaviour of `session` (response types and modes, PKCE, `iss`, subject type, ID token algorithm) is held to the
-/// same file by `session`'s tests.
+/// grant it lists is dispatched to its actor and a grant it does not list is refused; and `/authorize` hands `request`,
+/// `request_uri` and `registration` to `session` to be answered as not supported, as `request_uri_parameter_supported: false`
+/// says. What the document says of the behaviour of `session` (response types and modes, PKCE, `iss`, subject type, ID token
+/// algorithm, scopes) is held to the same file by `session`'s tests.
 ///
 /// verifies: REQ-AUTHN-006
 #[tokio::test]
@@ -1439,13 +1439,15 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
         );
     }
 
-    // request_uri_parameter_supported is false because /authorize takes no request or request_uri.
+    // request_uri_parameter_supported is false because /authorize serves no request_uri: entry passes the parameter to
+    // session, which answers request_uri_not_supported at the client's redirect (its test holds that side).
     assert_eq!(doc["request_uri_parameter_supported"], false);
-    let authorized = up.fake.calls.lock().unwrap().authorize.len();
     for name in [
         "request_uri=https%3A%2F%2Frp.example.test%2Fr",
         "request=eyJ",
+        "registration=%7B%7D",
     ] {
+        let before = up.fake.calls.lock().unwrap().authorize.len();
         let r = http(
             &up,
             "GET",
@@ -1454,9 +1456,23 @@ async fn the_served_discovery_document_lists_what_entry_serves_and_no_more() {
             b"",
         )
         .await;
-        assert_eq!(r.status, 400, "{name}");
+        assert_eq!(r.status, 200, "{name}");
+        let c = up.fake.calls.lock().unwrap();
+        assert_eq!(c.authorize.len(), before + 1, "{name}");
+        let a = &c.authorize[before];
+        let (key, value) = name.split_once('=').unwrap();
+        let got = match key {
+            "request" => &a.request,
+            "request_uri" => &a.request_uri,
+            _ => &a.registration,
+        };
+        assert!(!got.is_empty() && value.len() > 2, "{name}: {got:?}");
     }
-    assert_eq!(up.fake.calls.lock().unwrap().authorize.len(), authorized);
+    // The list of scopes is the document's; a scope is not asked for that it does not list (session's test).
+    assert_eq!(
+        doc["scopes_supported"],
+        serde_json::json!(["openid", "profile", "email"])
+    );
 }
 
 /// The issuer in the discovery document is the boundary's issuer as written, whatever its form (a port, a path, capitals,
