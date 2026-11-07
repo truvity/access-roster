@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/ecdh"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/base32"
 	"encoding/base64"
 	"errors"
@@ -90,10 +91,11 @@ type Config struct {
 
 // purposeKey is the public half of an authority key that the key store holds for a purpose of the KeyPlan.
 type purposeKey struct {
-	algorithm string // ES384 or ECDH-P384
+	algorithm string // ES384, ES256, RS256 or ECDH-P384
 	spki      []byte
-	keyID     string // RFC 7638 thumbprint
-	pub       *ecdsa.PublicKey
+	keyID     string           // RFC 7638 thumbprint
+	pub       *ecdsa.PublicKey // the key of an EC purpose; nil for the RS256 purpose
+	rsa       *rsa.PublicKey   // the key of the RS256 purpose; nil for every other
 }
 
 // Server is key@.
