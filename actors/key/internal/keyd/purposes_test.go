@@ -25,6 +25,9 @@ func driverPurposes(d *fakeDriver) []string {
 	for p := range d.keys {
 		out = append(out, p)
 	}
+	for p := range d.rsaKeys {
+		out = append(out, p)
+	}
 	sort.Strings(out)
 	return out
 }

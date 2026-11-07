@@ -741,7 +741,7 @@ type SignRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`     // a purpose name from the key registry, e.g. token-signing or audit-log
 	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`     // the content key@ checks and signs
-	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // the purpose's own: "ES256" (P-256, SHA-256) for audit-log, "ES384" for every other signing purpose
+	Algorithm     string                 `protobuf:"bytes,3,opt,name=algorithm,proto3" json:"algorithm,omitempty"` // the purpose's own: "ES256" (P-256, SHA-256) for audit-log, "RS256" (RSASSA-PKCS1-v1_5, SHA-256) for token-signing-rs256, "ES384" for every other signing purpose
 	Grant         []byte                 `protobuf:"bytes,4,opt,name=grant,proto3" json:"grant,omitempty"`         // only for purposes that carry an effect
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -808,8 +808,8 @@ func (x *SignRequest) GetGrant() []byte {
 // SignResponse carries the signature in both encodings.
 type SignResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SignatureRaw  []byte                 `protobuf:"bytes,1,opt,name=signature_raw,json=signatureRaw,proto3" json:"signature_raw,omitempty"` // raw r||s (JWS)
-	SignatureDer  []byte                 `protobuf:"bytes,2,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ASN.1 DER (signed notes)
+	SignatureRaw  []byte                 `protobuf:"bytes,1,opt,name=signature_raw,json=signatureRaw,proto3" json:"signature_raw,omitempty"` // raw r||s (JWS); for RS256 the 256-octet RSASSA-PKCS1-v1_5 signature (RFC 7518, section 3.3)
+	SignatureDer  []byte                 `protobuf:"bytes,2,opt,name=signature_der,json=signatureDer,proto3" json:"signature_der,omitempty"` // ASN.1 DER (signed notes); empty for RS256, whose signature has no DER form
 	KeyId         string                 `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                      // the signing key's RFC 7638 thumbprint, base64url
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

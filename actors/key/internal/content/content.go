@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -88,6 +89,19 @@ func intMember(m map[string]json.RawMessage, name string) (int64, bool) {
 // (alg "ES384", kid the key's id, typ "JWT" or "at+jwt", RFC 9068 section 2.1), and the payload is a JSON
 // object with a string iss, a string aud and integer iat and exp (RFC 7519, section 4.1) where exp > iat.
 func JWSSigningInput(content []byte, keyID string) error {
+	return jwsSigningInput(content, keyID, "ES384", "JWT", "at+jwt")
+}
+
+// JWSSigningInputRS256 is JWSSigningInput for the RS256 purpose (ADR 0006, "Named exceptions"): the header holds
+// exactly alg "RS256", the key's kid and typ "JWT". It never takes "at+jwt": an RS256 key signs ID tokens only, and an
+// access token is ES384 (the bearer check of session requires both). An input of the ES384 purpose is refused here
+// for its alg, and one of this purpose is refused by JWSSigningInput for the same member, so neither key signs for
+// the other.
+func JWSSigningInputRS256(content []byte, keyID string) error {
+	return jwsSigningInput(content, keyID, "RS256", "JWT")
+}
+
+func jwsSigningInput(content []byte, keyID, wantAlg string, wantTyps ...string) error {
 	if len(content) > MaxLen {
 		return refuse("content")
 	}
@@ -108,13 +122,13 @@ func JWSSigningInput(content []byte, keyID string) error {
 	if !ok || len(h) != 3 {
 		return refuse("content.header")
 	}
-	if alg, _ := stringMember(h, "alg"); alg != "ES384" {
+	if alg, _ := stringMember(h, "alg"); alg != wantAlg {
 		return refuse("content.header.alg")
 	}
 	if kid, _ := stringMember(h, "kid"); kid == "" || kid != keyID {
 		return refuse("content.header.kid")
 	}
-	if typ, _ := stringMember(h, "typ"); typ != "JWT" && typ != "at+jwt" {
+	if typ, _ := stringMember(h, "typ"); !slices.Contains(wantTyps, typ) {
 		return refuse("content.header.typ")
 	}
 	p, ok := objectMembers(pb)
