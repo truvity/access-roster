@@ -272,6 +272,35 @@ fn a_keyplan_that_lists_the_rs256_purpose_is_warned_about_its_cost_on_a_card() {
     }
 }
 
+/// A client id that the actors use for no client is not a client's: a document that declares one is refused at load with
+/// the id and no value. session audits a request that names an unregistered client under the pseudonym of `unregistered`,
+/// and a registered client of that name would make its own records look like those refusals.
+///
+/// verifies: REQ-AUDIT-188
+#[test]
+fn a_client_of_a_reserved_id_is_refused() {
+    let clients = source("installation-client");
+    for reserved in ["unregistered", "unknown-audience"] {
+        let e = env();
+        e.sign(
+            "installation-client",
+            &clients.replace(
+                "example-app:\n  kind: confidential",
+                &format!("{reserved}:\n  kind: confidential"),
+            ),
+        );
+        let (code, checks, all) = run(&e.bootstrap(), e.docs.path());
+        assert_eq!(code, Some(3), "{reserved}: {all}");
+        assert_eq!(
+            failures(&checks),
+            [format!(
+                "set : InstallationClient: {reserved}: a client id that the actors use for no client"
+            )],
+            "{reserved}: {all}"
+        );
+    }
+}
+
 /// A client's `requires` is checked against the boundary's vocabulary at load, as a policy is: a grant name that is not
 /// declared (a role, a thing or a scope nobody wrote) is one failed `set` line that
 /// names the client and the position, not the value; a vocabulary the reader refuses is one failed `set` line too.
