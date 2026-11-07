@@ -102,6 +102,9 @@ type driverProc struct {
 	// StateMode is the mode of the state directory when it is not 0700: the blob directory of the writer's driver is 0750,
 	// because the read-only driver of the indexer and the reader reads it through the group.
 	StateMode string
+	// Public is a second directory below StateRoot/<boundary>, named by %PUBLIC% in Args and of the same mode as the state
+	// directory: the documents a directory destination publishes, which a file server of another user reads.
+	Public string
 	// Socket2 is a second socket for another caller, below the same directory: its file name, the flag that names it, the
 	// flag that gives it its group, and the registry name of the caller, whose group (its uid) the socket is given to. The
 	// driver joins that group to give the socket away.
@@ -180,6 +183,16 @@ var drivers = map[string]driverSpec{
 			Socket2: "index-ro.sock", Flag2: "--ro-socket", GidFlag2: "--ro-socket-gid", Caller2: "reader",
 			Joins:   []string{"reader"},
 			DirMode: "1771",
+		}},
+	},
+	// drivers/exporter/dir: serve --socket --root --state-dir [--socket-gid]. The destination of exporter@ that a file
+	// server serves: the documents go to the public directory (0755, public material), the driver's records to its state
+	// directory, whose own subdirectories are closed (0700).
+	"driver-exporter-dir": {
+		Language: "Rust",
+		Units: []driverProc{{
+			Socket: "directory.sock", State: true, StateMode: "0755", Public: "exporter-public",
+			Args: []string{"--root", "%PUBLIC%", "--state-dir", "%STATE%"},
 		}},
 	},
 	// drivers/store/rqlite: serve --socket --rqlite-url --namespace durable|temp. One process per port. The engine's URL is
@@ -274,6 +287,10 @@ var actorSpecs = map[string]actorSpec{
 	// key of each log it follows is a file <log id>.vkey in /etc/sluis/vkeys/<boundary>, which the deploy writes from the key
 	// the writer logs at its start (a public key; the directory is root's, 0755).
 	"indexer": {NoSocket: true, Args: []string{"--verifier-key-dir", "/etc/sluis/vkeys/%i"}},
+	// actors/exporter: a client only (store@, the audit transport, the directory driver it owns), so it serves no socket. The
+	// file of ExportDestination items is the operator's: with none, it has no destination and publishes nothing. The
+	// documents of a bucket and its edge come with the bucket driver.
+	"exporter": {NoSocket: true},
 	// actors/signer: the sockets of store@, key@ and the audit transport have the defaults of the plan; --node is the board's
 	// short name, which keeps each board's token-signing key its own. The listener is the default group, signer's own,
 	// which session and exchange join.
@@ -842,10 +859,15 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	}
 	groups = append(groups, du.ExtraGroups...)
 	b.line("SupplementaryGroups=%s", strings.Join(groups, " "))
-	state := ""
+	state, public := "", ""
 	if du.State {
 		state = fmt.Sprintf("%s/%%i/%s", StateRoot, strings.TrimPrefix(stem, "sluis-"))
-		b.line("StateDirectory=%s", strings.TrimPrefix(state, "/var/lib/"))
+		dirs := strings.TrimPrefix(state, "/var/lib/")
+		if du.Public != "" {
+			public = fmt.Sprintf("%s/%%i/%s", StateRoot, du.Public)
+			dirs += " " + strings.TrimPrefix(public, "/var/lib/")
+		}
+		b.line("StateDirectory=%s", dirs)
 		mode := "0700"
 		if du.StateMode != "" {
 			mode = du.StateMode
@@ -860,7 +882,8 @@ func driverUnit(o Options, u Unit) (svc, sysusers, tmpfiles string, err error) {
 	writerState := fmt.Sprintf("%s/%%i/%s", StateRoot, strings.TrimPrefix(unitStem(writerDriver), "sluis-"))
 	args := make([]string, 0, len(du.Args)+4)
 	for _, a := range du.Args {
-		args = append(args, strings.ReplaceAll(strings.ReplaceAll(a, "%STATE%", state), "%WRITERSTATE%", writerState))
+		a = strings.ReplaceAll(strings.ReplaceAll(a, "%STATE%", state), "%WRITERSTATE%", writerState)
+		args = append(args, strings.ReplaceAll(a, "%PUBLIC%", public))
 	}
 	if du.Socket2 != "" {
 		caller, ok := registry.UID(du.Caller2, o.UIDBlock)

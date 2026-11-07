@@ -101,14 +101,16 @@ requirements:
     rationale: "The mark is a property of the kind and is set in review (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1014, 1453]
+    tests:
+      - actors/exporter/src/config.rs
     verification:
-      - {kind: test-vectors, ref: "exports of marked and unmarked kinds"}
+      - {kind: test-vectors, ref: "only_a_kind_the_registry_marks_exportable_is_published (config.rs): every kind of the registry is tried as a document; the seven marked pass the mark, the rest are refused"}
 
   # ---- exporter@ and the exportable kinds (decision 0009)
   - id: REQ-EXPORT-008
@@ -199,28 +201,32 @@ requirements:
     rationale: "A missed change or an edit made at the destination is corrected within a day (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1014, 1453]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "edit a destination by hand and delete one of its documents; the next reconcile restores both"}
+      - {kind: integration-test, ref: "the_reconcile_restores_an_edited_and_a_deleted_document: the scheduled reconcile restores a hand-edited and a deleted document, and the start reconcile one edited while exporter@ was down"}
   - id: REQ-EXPORT-015
     area: EXPORT
     statement: "exporter@ MUST keep the resume point of each destination in the temp kind ExportCursor."
     rationale: "Losing the cursor costs a full reconcile and not data (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1217]
+    issues: [1217, 1453]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "delete the ExportCursor items; exporter@ resumes with a full reconcile and loses no document"}
+      - {kind: integration-test, ref: "a_restart_resumes_from_the_cursor, a_lost_cursor_costs_a_full_reconcile_and_loses_no_document, a_stale_resume_point_is_resynced_and_nothing_is_skipped (publish.rs)"}
   - id: REQ-EXPORT-016
     area: EXPORT
     statement: "exporter@ MUST remove from a destination what it wrote for a value that no longer exists."
@@ -241,14 +247,17 @@ requirements:
     rationale: "A refusal is an alarm and not a retry loop, and an operator must see why (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: v1-parity
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1014]
+    issues: [1014, 1453]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "each write and each refusal produces a fact; a refusal raises an alarm"}
+      - {kind: integration-test, ref: "each_write_and_each_refusal_is_one_fact_and_no_fact_carries_a_list: one fact for each write and refusal, none when idle; the alarm is a log line (alert exporter.refused) for now"}
   - id: REQ-EXPORT-018
     area: EXPORT
     statement: "sluis MUST NOT write a Kubernetes object, except a Secret that exporter@ writes when an installation chooses the direct path."
@@ -284,42 +293,49 @@ requirements:
     rationale: "The omission is a filter at publication, so it does not depend on signer or on the node that owns the key; the live half is REQ-KEYS-107 (ADR 0041, ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [exporter]
     standards: []
     issues: [1453, 1362]
+    tests:
+      - actors/exporter/tests/publish.rs
+      - drivers/exporter/dir/tests/port.rs
     verification:
-      - {kind: integration-test, ref: "revoke a key: the next key set written to a directory and to a bucket lacks its kid, and a token it signed fails against the document"}
+      - {kind: integration-test, ref: "a_revoked_key_leaves_the_set_and_its_tokens_fail_against_the_document: the next key set in a directory lacks the kid and its token fails; a crash or a reader never sees half a document. Bucket: #1454"}
   - id: REQ-EXPORT-021
     area: EXPORT
     statement: "After a change of KeyRevocation or SigningRing, exporter@ MUST write the document, purge its public address, read it back and write its report, in this order."
     rationale: "The purge must come after the write or the edge fills again with the old document, and the report must come after the read back; the behaviour is UNVERIFIED on a real edge until the first measurement (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [exporter]
     standards: []
     issues: [1453, 1454]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "a destination driver with a recorded call log: the log shows write, purge, read back and the report in this order after the revocation"}
+      - {kind: integration-test, ref: "write_purge_read_back_then_report_in_that_order: the in-memory destination's call log shows Put, Purge and ReadBack in this order after the revocation, and the report comes after the read back"}
   - id: REQ-EXPORT-022
     area: EXPORT
     statement: "exporter@ MUST write the temp kind ExportReport after each publication, with the state published only when the read back returned the written digest and the state written when the destination cannot read back."
     rationale: "A reader that waits for a key to be published needs what a verifier would see, and not what exporter@ intended (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [exporter]
     standards: []
     issues: [1453]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "a read back that returns another digest: the report says purge-pending; one that returns the written digest: published"}
+      - {kind: integration-test, ref: "the_report_says_published_only_for_the_written_digest: a stale edge keeps purge-pending, the written digest gives published, and a destination with no public address reports written"}
   - id: REQ-EXPORT-023
     area: EXPORT
     statement: "The edge in front of the key set MUST NOT serve a cached copy more than 65 minutes after it expired."
@@ -340,14 +356,16 @@ requirements:
     rationale: "Deleting the document for a blip of store@ would stop verification for every relying party, and exporter@ cannot learn of a revocation it cannot read (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     actors: [exporter]
     standards: []
     issues: [1453]
+    tests:
+      - actors/exporter/tests/publish.rs
     verification:
-      - {kind: integration-test, ref: "store@ refuses the read of KeyRevocation: the document is byte-for-byte as before, an alarm is raised and the report says unverified"}
+      - {kind: integration-test, ref: "an_unreadable_revocation_list_leaves_the_object_as_it_is (and with the store away): the document is byte for byte as before and the report says unverified (alert exporter.unverified)"}
   - id: REQ-EXPORT-025
     area: EXPORT
     statement: "Where a bucket destination serves the key set, the edge MUST fall back to the live key set of entry when the bucket cannot be read."
@@ -382,14 +400,17 @@ requirements:
     rationale: "One contract lets exporter@ publish to any destination and lets a new driver be proven the same way (ADR 0009, ADR 0005)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     actors: [exporter]
     standards: []
-    issues: [1453, 1014]
+    issues: [1453, 1454, 1014]
+    tests:
+      - drivers/exporter/dir/tests/port.rs
     verification:
-      - {kind: integration-test, ref: "the conformance suite runs against the directory driver, the in-memory driver and the bucket driver; a driver without a public address answers unsupported to Purge and ReadBack"}
+      - {kind: integration-test, ref: "the suite runs against the directory driver (in process, through its socket) and the in-memory driver; with no public address ReadBack is unsupported and Purge answers none; bucket: #1454"}
   - id: REQ-EXPORT-028
     area: EXPORT
     split_from: REQ-EXPORT-021

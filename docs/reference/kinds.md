@@ -371,7 +371,7 @@ Protective rate bounds per connection, client and source address. Not quota.
 
 ### `ExportDestination`
 
-Store of record (SSM or OpenBao), a Kubernetes Secret for a single cluster, or a bucket for public material. The config check refuses a destination that overlaps a secret source.
+Store of record (SSM or OpenBao), a Kubernetes Secret for a single cluster, a directory a forwarder serves, or a bucket for public material. The config check refuses a destination that overlaps a secret source. The message is `ExportDestination` in config.proto, keyed by the destination's name; store@ does not serve the kind yet, so exporter@ reads the same message from a file it is given (`--destinations`) until its reader of config payloads knows the kind.
 
 - **Class:** config; scope boundary; plain; profile Fixed; module core; serves the data family.
 - **Writer:** `IaC`.
@@ -1243,7 +1243,7 @@ The one answer to a PinReleaseRequest, same id: the boundary's PIN sealed by an 
 
 ### `ExportReport`
 
-What exporter@ published and saw, one item per destination and document (ADR 0009, "Publishing public material"): the state (published, purge-pending, written, unverified), the digest of the body, for a key set the kids it lists, and the times of the write, the purge and the read back from the public address. A destination with no public address cannot read back (ReadBack answers unsupported), so its report says written, carries no purge or read back time, and signer does not count it. signer makes a token key active only after the report of every published key set has the state published, lists the kid and has a read back at most 26 hours old, and the lead time has passed since (REQ-KEYS-085, REQ-KEYS-116); the console shows the state. Rewritten by every publication and by the daily reconcile, so an item that expires is a publisher that has gone quiet, which a reader treats as not seen. Plain: it holds public addresses, digests and kids.
+What exporter@ published and saw, one item per destination and document, id &lt;destination>/&lt;document> (ADR 0009, "Publishing public material"): the state (published, purge-pending, written, unverified), the kind the document is built from, the digest of the body, for a key set the kids it lists, whether the destination has a public address (`public`: signer counts only those reports), and the times of the write, the purge and the read back from the public address. A destination with no public address cannot read back (ReadBack answers unsupported), so its report says written, carries no purge or read back time, and signer does not count it. signer makes a token key active only after the report of every published key set has the state published, lists the kid and has a read back at most 26 hours old, and the lead time has passed since (REQ-KEYS-085, REQ-KEYS-116); the console shows the state. Rewritten by every publication and by the daily reconcile, with the longest time to live the kind allows (7 days), so an item that expires is a publisher that has gone quiet, which a reader treats as not seen. Plain: it holds public addresses, digests and kids.
 
 - **Class:** temp; scope boundary; plain; profile none; module core; serves the data family.
 - **Writer:** [`exporter@`](/reference/actors/#exporter).

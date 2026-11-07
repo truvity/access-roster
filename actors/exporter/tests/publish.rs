@@ -18,7 +18,7 @@ use exporter::run::Target;
 use serde_json::Value;
 use sluis_destination::memory::{Call, Memory, Op};
 use sluis_destination::{Destination, Error, sha256_hex};
-use sluis_driver_exporter_directory::{Directory, suite};
+use sluis_driver_exporter_dir::{Directory, suite};
 use sluis_proto::sluis::store::v2alpha1::Consistency;
 
 struct Dir {

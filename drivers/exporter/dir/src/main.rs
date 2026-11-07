@@ -1,10 +1,10 @@
 //! The `directory` driver of exporter@.
 //!
 //! ```text
-//! driver-exporter-directory serve       --socket PATH --root DIR --state-dir DIR [--socket-gid GID]
-//! driver-exporter-directory check       --root DIR --state-dir DIR
-//! driver-exporter-directory conformance        # the destination port suite over temporary directories
-//! driver-exporter-directory version
+//! driver-exporter-dir serve       --socket PATH --root DIR --state-dir DIR [--socket-gid GID]
+//! driver-exporter-dir check       --root DIR --state-dir DIR
+//! driver-exporter-dir conformance        # the destination port suite over temporary directories
+//! driver-exporter-dir version
 //! ```
 //!
 //! `--socket` answers exporter@ alone. `--root` is the directory a forwarder serves; `--state-dir` is the driver's
@@ -18,7 +18,7 @@ use anyhow::{Context, bail};
 use clap::Arg;
 use connectrpc::Router;
 use sluis_destination::rpc::Service;
-use sluis_driver_exporter_directory::{Directory, NAME, OWNER, suite};
+use sluis_driver_exporter_dir::{Directory, NAME, OWNER, suite};
 use sluis_kit::cli::{Commands, Flags, Refused, shutdown_signal};
 use sluis_kit::{Allow, ServerConfig};
 use sluis_proto::sluis::port::destination::v2alpha1::DestinationServiceExt;

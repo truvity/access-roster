@@ -1737,12 +1737,16 @@ requirements:
     rationale: "When exporter@ cannot tell what is published, a key could sign before a verifier can have it; 26 hours is a day of the reconcile and a margin, and a destination that cannot read back is not counted (ADR 0009)."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     issues: [1453, 1362]
     runtimes: all
     actors: [signer]
     standards: []
+    tests:
+      - actors/signer/src/ring.rs
+      - actors/signer/tests/sign.rs
     verification:
       - {kind: integration-test, ref: "a report that is unverified, absent, without the kid or older than 26 hours keeps a pre-published key pre-published; a published report with the kid lets it become active after the lead time"}
   - id: REQ-KEYS-108

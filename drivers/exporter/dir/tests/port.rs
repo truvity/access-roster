@@ -12,7 +12,7 @@ use connectrpc::error::ErrorCode;
 use sluis_destination::rpc::{Client, Service};
 use sluis_destination::suite::{Caps, run};
 use sluis_destination::{Destination, Document, Error};
-use sluis_driver_exporter_directory::{Directory, Until, suite};
+use sluis_driver_exporter_dir::{Directory, Until, suite};
 use sluis_kit::{Allow, Identities, ServerConfig, dial};
 use sluis_proto::sluis::port::destination::v2alpha1::{DestinationServiceClient, ReadBackRequest};
 
@@ -20,7 +20,7 @@ fn serve(socket: &Path, d: Directory, me_is: &'static str) -> tokio::sync::onesh
     let me = rustix::process::geteuid().as_raw();
     let ids = Identities::with(0, move |uid| (uid == me).then_some((me_is, 0)));
     let cfg = ServerConfig {
-        actor: "driver-exporter-directory",
+        actor: "driver-exporter-dir",
         boundary: "dev".into(),
         socket: socket.to_path_buf(),
         mode: 0o600,
@@ -203,10 +203,22 @@ fn the_directories_are_checked_at_the_start() {
         "a root others' group can write"
     );
     std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
-    std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(0o750)).unwrap();
+    // The state directory may be open to traverse (its records are in closed subdirectories), never to a write.
+    std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let d = Directory::open(root.path(), state.path()).unwrap();
+    assert_eq!(
+        std::fs::metadata(state.path().join("meta"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    drop(d);
+    std::fs::set_permissions(state.path(), std::fs::Permissions::from_mode(0o775)).unwrap();
     assert!(
         Directory::open(root.path(), state.path()).is_err(),
-        "a state directory open to a group"
+        "a state directory a group can write"
     );
 }
 

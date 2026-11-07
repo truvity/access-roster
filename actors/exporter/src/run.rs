@@ -388,10 +388,20 @@ pub struct Settings {
     pub boundary: String,
     /// The sockets.
     pub sockets: Sockets,
-    /// The destinations file.
-    pub destinations: PathBuf,
+    /// The destinations file, if one was given.
+    pub destinations: Option<PathBuf>,
     /// The time between full reconciles.
     pub reconcile: Duration,
+}
+
+fn load(file: Option<&Path>) -> anyhow::Result<config::Loaded> {
+    match file {
+        Some(f) => config::load(f).map_err(|e| Refused(e.to_string()).into()),
+        None => {
+            tracing::info!("no --destinations: nothing to publish");
+            Ok(config::Loaded::default())
+        }
+    }
 }
 
 /// Serves until `shutdown` resolves.
@@ -400,7 +410,7 @@ pub struct Settings {
 ///
 /// When the destinations file is not usable, or the engine cannot be built.
 pub async fn serve(s: Settings, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
-    let loaded = config::load(&s.destinations).map_err(|e| Refused(e.to_string()))?;
+    let loaded = load(s.destinations.as_deref())?;
     let targets = loaded
         .destinations
         .into_iter()
@@ -460,7 +470,7 @@ pub fn extra(c: Command) -> Command {
         "driver-dir",
         "the directory of the destination drivers' sockets, <type>.sock each; <run-dir>/exporter/<boundary> by default",
     ))
-    .arg(path("destinations", "the file of ExportDestination items (JSON)"))
+    .arg(path("destinations", "the file of ExportDestination items (JSON); without it exporter has no destination"))
     .arg(
         Arg::new("reconcile-secs")
             .long("reconcile-secs")
@@ -490,9 +500,8 @@ fn settings(f: &Flags) -> anyhow::Result<Settings> {
             *slot = PathBuf::from(p);
         }
     }
-    let Some(destinations) = one("destinations") else {
-        bail!("--destinations is needed");
-    };
+    // Without a file there is no destination: `exporter` runs, follows nothing it has to publish, and says so.
+    let destinations = one("destinations").map(PathBuf::from);
     let secs = one("reconcile-secs")
         .map_or(Ok(RECONCILE.as_secs()), |s| s.parse::<u64>())
         .ok()
@@ -501,7 +510,7 @@ fn settings(f: &Flags) -> anyhow::Result<Settings> {
     Ok(Settings {
         boundary: f.boundary.clone(),
         sockets,
-        destinations: PathBuf::from(destinations),
+        destinations,
         reconcile: Duration::from_secs(secs),
     })
 }
@@ -526,7 +535,7 @@ impl Commands for Exporter {
 
 async fn check(f: &Flags) -> anyhow::Result<()> {
     let s = settings(f)?;
-    let loaded = config::load(&s.destinations).map_err(|e| Refused(e.to_string()))?;
+    let loaded = load(s.destinations.as_deref())?;
     let mut missing = Vec::new();
     let mut sockets = vec![
         ("store@".to_owned(), s.sockets.store.clone()),

@@ -922,7 +922,7 @@ dependencies = [
  "serde_json",
  "sluis-audit",
  "sluis-destination",
- "sluis-driver-exporter-directory",
+ "sluis-driver-exporter-dir",
  "sluis-kit",
  "sluis-proto",
  "sluis-registry",
@@ -2461,7 +2461,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sluis-driver-exporter-directory"
+name = "sluis-driver-exporter-dir"
 version = "0.0.0"
 dependencies = [
  "anyhow",
