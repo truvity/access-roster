@@ -15,7 +15,10 @@ import (
 	"testing"
 )
 
-const version = "2.0.0-alpha.0-snapshot.abc"
+const (
+	version = "2.0.0-alpha.0-snapshot.abc"
+	commit  = "0123456789abcdef0123456789abcdef01234567"
+)
 
 // fakeELF is the smallest ELF file debug/elf reads: a 64-bit little-endian header and, when interp is set, one PT_INTERP header.
 func fakeELF(machine elf.Machine, interp bool, tail string) []byte {
@@ -84,7 +87,7 @@ func release(t *testing.T, mutate func(dist string)) (cfg, dist string) {
 		}
 	}
 	write(cfg, []byte(conf))
-	write(filepath.Join(dist, "metadata.json"), []byte(`{"version":"`+version+`"}`))
+	write(filepath.Join(dist, "metadata.json"), []byte(`{"version":"`+version+`","commit":"`+commit+`"}`))
 	var sums strings.Builder
 	for arch, m := range map[string]elf.Machine{"amd64": elf.EM_X86_64, "arm64": elf.EM_AARCH64} {
 		name := fmt.Sprintf("sluis-actor-key_%s_linux_%s.tar.gz", version, arch)
@@ -158,6 +161,9 @@ func TestCheckDistBites(t *testing.T) {
 		"not stamped": {func(d string) {
 			rewrite(d, amd, map[string][]byte{"key": fakeELF(elf.EM_X86_64, false, "0.0.0-dev"), "LICENSE": []byte("MIT")})
 		}, "did not stamp it"},
+		"a build path": {func(d string) {
+			rewrite(d, amd, map[string][]byte{"key": fakeELF(elf.EM_X86_64, false, version+" panicked at "+filepath.Dir(d)+"/src/main.rs"), "LICENSE": []byte("MIT")})
+		}, "holds the build path"},
 		"not an ELF": {func(d string) {
 			rewrite(d, amd, map[string][]byte{"key": []byte("#!/bin/sh"), "LICENSE": []byte("MIT")})
 		}, "is not an ELF"},

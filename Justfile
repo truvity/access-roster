@@ -527,20 +527,95 @@ release-snapshot: rust-toolchain
     export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
     # GoReleaser runs the SBOM command in dist/, so it is found on PATH.
     export PATH="$PWD/tools/release:$PATH"
-    goreleaser release --snapshot --clean --skip=publish,announce,validate,docker --config .goreleaser.yaml
+    goreleaser release --snapshot --clean --skip=publish,announce,validate --config .goreleaser.yaml
     go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
 
+# The build half of a release: GoReleaser builds every executable, the archives, the checksums and the SBOMs of the archives into
+# dist/release. It publishes nothing and it holds no credential: the build runs the build scripts and macros of every
+# dependency, so the tokens are taken out of its environment (the job `build` of release.yaml gives it none, and the rehearsal has
+# none). The version is that of GORELEASER_CURRENT_TAG, v2.0.0-alpha.0 when unset; `skip` is what GoReleaser leaves out, and a
+# release leaves out `validate` only if it must not check the tag against HEAD.
+release-build skip="announce,publish,validate": rust-toolchain
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GORELEASER_CURRENT_TAG=${GORELEASER_CURRENT_TAG:-v2.0.0-alpha.0}
+    unset GITHUB_TOKEN GH_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_REQUEST_URL
+    # GoReleaser runs the SBOM command in dist/, so it is found on PATH.
+    export PATH="$PWD/tools/release:$PATH"
+    goreleaser release --clean --skip={{ skip }} --config .goreleaser.yaml
+    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
+
+# The publish half of a release, from the dist/release that `release-build` made (the job `release` of release.yaml downloads
+# it). In order: check the archives again, refuse a version that is already published, push the image of every actor and driver
+# and the engine, write release-images.txt, run the release test of the images against the registry, make the SBOM of each image
+# from the registry, add the list and the SBOMs to SHA256SUMS (the one anchor of trust of an unsigned release), and check them.
+# SLUIS_PUBLISH_PREFIX is where the images go (ghcr.io/truvity/sluis by default); SLUIS_PUBLISH_FRESH=1 says the registry is a
+# throwaway one (a rehearsal: no GitHub release, no credential, the version is its only tag). Otherwise this is a release: it
+# needs GITHUB_REF_NAME (the tag, which names the version of the build), GITHUB_TOKEN and `docker login ghcr.io`, refuses a tag
+# that already has a release (a draft included), then creates the GitHub release as a draft with every file, and makes it public
+# only when all of it is there. A failure after the first push leaves images in the registry and, at the end, a draft: the
+# published tag is never overwritten, so the next attempt needs the next version (docs/distribution/packages.md, "Releasing").
+release-publish: rqlite-fetch
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dist=dist/release
+    prefix=${SLUIS_PUBLISH_PREFIX:-ghcr.io/truvity/sluis}
+    fresh=${SLUIS_PUBLISH_FRESH:-}
+    host=${prefix%%/*}
+    repo_prefix=${prefix#*/}
+    case "$host" in localhost*|127.0.0.1*) base="http://$host" ;; *) base="https://$host" ;; esac
+    version=$(jq -r .version "$dist/metadata.json")
+    if [ -z "$fresh" ]; then
+        : "${GITHUB_TOKEN:?release-publish: GITHUB_TOKEN is not set}"
+        : "${GITHUB_REPOSITORY:?release-publish: GITHUB_REPOSITORY is not set}"
+        tag=${GITHUB_REF_NAME:?release-publish: GITHUB_REF_NAME (the tag) is not set}
+        [ "$tag" = "v$version" ] || { echo "release-publish: the tag $tag is not v$version, the version of the build" >&2; exit 1; }
+        [ "$prefix" = ghcr.io/truvity/sluis ] || { echo "release-publish: a release publishes to ghcr.io/truvity/sluis, not $prefix" >&2; exit 1; }
+        export SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}"
+        notes=$(mktemp)
+        awk -v v="$version" '$0 ~ "^## \\[?" v "\\]?( |$)" {on=1; next} /^## / {on=0} on' CHANGELOG.md >"$notes"
+        grep -q '[^[:space:]]' "$notes" || { echo "release-publish: CHANGELOG.md has no section '## $version' with text: rename '## Unreleased' in the pull request that merges before the tag" >&2; exit 1; }
+        releases=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name') || { echo "release-publish: could not list the releases" >&2; exit 1; }
+        if grep -Fxq "$tag" <<<"$releases"; then
+            echo "release-publish: $tag already has a release (a draft counts): a release is never overwritten" >&2; exit 1
+        fi
+        buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
+        builder="sluis-release-builder-$$"
+        trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
+        docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
+        export BUILDX_BUILDER="$builder"
+    fi
+    go run ./tools/release check-dist -config .goreleaser.yaml -dist "$dist"
+    go run ./tools/release preflight -dist "$dist" -prefix "$prefix"
+    go run ./tools/release publish-images -dist "$dist" -prefix "$prefix"
+    go run ./tools/release release-images -dist "$dist"
+    go run ./tools/release check-images -dist "$dist" -registry "$base" -repo-prefix "$repo_prefix" ${fresh:+-fresh}
+    if [ -n "$fresh" ]; then export SLUIS_SBOM_INSECURE=1; fi
+    tools/release/sbom-images.sh "$dist/release-images.txt" "$dist"
+    sboms=$(cd "$dist" && ls ./*.sbom.spdx.json | grep -v '\.tar\.gz\.sbom\.spdx\.json$' | sed 's|^\./||')
+    # shellcheck disable=SC2086 # one argument for each file name
+    go run ./tools/release sums-add -dist "$dist" release-images.txt $sboms
+    go run ./tools/release check-sums -dist "$dist"
+    go run ./tools/release check-sboms -config .goreleaser.yaml -dist "$dist" -sboms "$dist"
+    if [ -z "$fresh" ]; then
+        # Every file of the release: the archives with their checksums and SBOMs, SHA256SUMS, the list of images, the image SBOMs.
+        mapfile -t assets < <(cd "$dist" && ls ./*.tar.gz ./*.tar.gz.sha256 ./*.sbom.spdx.json ./SHA256SUMS ./release-images.txt | sed "s|^\./|$dist/|")
+        pre=()
+        case "$version" in *-*) pre=(--prerelease) ;; esac
+        gh release create "$tag" --draft --verify-tag --title "$tag" --notes-file "$notes" "${pre[@]}" "${assets[@]}"
+        have=$(gh release view "$tag" --json assets --jq '.assets | length')
+        [ "$have" -eq "${#assets[@]}" ] || { echo "release-publish: the draft holds $have of ${#assets[@]} files; it stays a draft" >&2; exit 1; }
+        gh release edit "$tag" --draft=false
+    fi
+
 # The whole release, rehearsed against a throwaway registry (CI runs this on every pull request: the job `release` of
-# checks.yaml). GoReleaser runs as it does for a tag, minus the GitHub release: it builds and archives every executable,
-# builds the image of each for amd64 and arm64, and pushes them to a registry that this recipe starts on a free loopback
-# port and removes at the end, with no credential, no token and nothing published. It needs Docker, and no tag (the
-# version is v2.0.0-alpha.0). Then `tools/release` checks the archives (check-dist), writes release-images.txt, and
-# runs the release test of the images (check-images): the registry holds the version tag and no other, both
-# platforms, and the executable in each image is, hash for hash, the file of the archive of the same architecture. Last, syft
-# makes the SPDX SBOM of each image from the registry (the archives' came with GoReleaser), and check-sboms validates all of
-# them and that each records the crates or Go modules of its executable. With SLUIS_REHEARSAL_LOCAL=1 it also starts the local
-# installation from these images and runs the two smokes.
-release-rehearsal: rust-toolchain rqlite-fetch
+# checks.yaml). It is the two halves of a release, `release-build` and `release-publish`, in one job: GoReleaser builds with no
+# credential, and the images are pushed to a registry that this recipe starts on a free loopback port and removes at the end,
+# with no credential, no token and no GitHub release. It needs Docker, and no tag (the version is v2.0.0-alpha.0). The checks
+# are those of a release: the archives, the list of images, the release test of the images (the version tag alone, both platforms,
+# every layer by its hash, the executable of its archive), the SPDX SBOMs, and SHA256SUMS. With SLUIS_REHEARSAL_LOCAL=1 it also
+# starts the local installation from these images and runs the two smokes.
+release-rehearsal: rqlite-fetch
     #!/usr/bin/env bash
     set -euo pipefail
     # Pinned by digest (MEASURED 2026-11-07): the registry that holds the images of the run, and the BuildKit that builds
@@ -562,6 +637,7 @@ release-rehearsal: rust-toolchain rqlite-fetch
         docker rm --force "$registry" >/dev/null 2>&1 || true
     }
     trap cleanup EXIT
+    just release-build
     docker run --detach --name "$registry" --publish "127.0.0.1:$port:5000" "$registry_image" >/dev/null
     docker buildx create --name "$builder" --driver docker-container --driver-opt network=host --driver-opt "image=$buildkit_image" >/dev/null
     for _ in $(seq 1 30); do
@@ -570,17 +646,7 @@ release-rehearsal: rust-toolchain rqlite-fetch
     done
     curl --fail --silent "http://127.0.0.1:$port/v2/" >/dev/null || { echo "release-rehearsal: the throwaway registry does not answer" >&2; exit 1; }
     export BUILDX_BUILDER="$builder"
-    # GoReleaser runs the SBOM command in dist/, so it is found on PATH.
-    export PATH="$PWD/tools/release:$PATH"
-    export SLUIS_IMAGE_PREFIX="localhost:$port/sluis"
-    export SLUIS_REHEARSAL=1
-    export GORELEASER_CURRENT_TAG=v2.0.0-alpha.0
-    goreleaser release --clean --skip=announce,validate --config .goreleaser.yaml
-    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
-    go run ./tools/release release-images -config .goreleaser.yaml -dist dist/release
-    go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry "http://127.0.0.1:$port" -prefix sluis
-    SLUIS_SBOM_INSECURE=1 tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
-    go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
+    SLUIS_PUBLISH_PREFIX="localhost:$port/sluis" SLUIS_PUBLISH_FRESH=1 just release-publish
     # With SLUIS_REHEARSAL_LOCAL set, the last proof: the local installation starts under Compose from these images, pinned by the
     # digests of release-images.txt and pulled from the throwaway registry, with nothing built, and both smokes pass against
     # it. That is the first "done when" line of the first working version, run against the images of this commit. It needs the
@@ -599,35 +665,6 @@ release-rehearsal: rust-toolchain rqlite-fetch
         just local-smoke
         just local-person-smoke
     fi
-
-# The release (the job `release` of release.yaml runs this, on a tag, after the release gate): GoReleaser builds, archives and
-# pushes everything to ghcr.io/truvity/sluis and creates the GitHub release as a draft; then the checks of the rehearsal run
-# against what was published (the archives, the list of images, the images by digest, the SBOMs), the list of images and the
-# SBOMs of the images join the release, and only then the draft is made public. A failed check leaves a draft and the
-# pushed images, which the maintainer inspects; nothing is announced. Needs GITHUB_TOKEN with contents and packages write,
-# and `docker login ghcr.io` done. Never run it by hand: a tag is the maintainer's.
-release: rust-toolchain rqlite-fetch
-    #!/usr/bin/env bash
-    set -euo pipefail
-    : "${GITHUB_TOKEN:?release: GITHUB_TOKEN is not set}"
-    tag=${GITHUB_REF_NAME:?release: GITHUB_REF_NAME (the tag) is not set}
-    [[ "$tag" =~ ^v2\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]] || { echo "release: $tag is not a v2 release tag" >&2; exit 1; }
-    [ -z "${SLUIS_REHEARSAL:-}${SLUIS_IMAGE_PREFIX:-}" ] || { echo "release: SLUIS_REHEARSAL and SLUIS_IMAGE_PREFIX redirect a release; unset them" >&2; exit 1; }
-    buildkit_image='moby/buildkit:v0.29.0@sha256:0039c1d47e8748b5afea56f4e85f14febaf34452bd99d9552d2daa82262b5cc5'
-    builder="sluis-release-builder-$$"
-    trap 'docker buildx rm --force "$builder" >/dev/null 2>&1 || true' EXIT
-    docker buildx create --name "$builder" --driver docker-container --driver-opt "image=$buildkit_image" >/dev/null
-    export BUILDX_BUILDER="$builder"
-    export PATH="$PWD/tools/release:$PATH"
-    goreleaser release --clean --skip=announce --config .goreleaser.yaml
-    go run ./tools/release check-dist -config .goreleaser.yaml -dist dist/release
-    go run ./tools/release release-images -config .goreleaser.yaml -dist dist/release
-    SLUIS_REGISTRY_TOKEN="$GITHUB_TOKEN" SLUIS_REGISTRY_USER="${GITHUB_ACTOR:-token}" \
-        go run ./tools/release check-images -config .goreleaser.yaml -dist dist/release -registry https://ghcr.io -prefix truvity/sluis -catalog=false
-    tools/release/sbom-images.sh dist/release/release-images.txt dist/release/sbom-images
-    go run ./tools/release check-sboms -config .goreleaser.yaml -dist dist/release -images dist/release/sbom-images
-    gh release upload "$tag" dist/release/release-images.txt dist/release/sbom-images/*.sbom.spdx.json
-    gh release edit "$tag" --draft=false
 
 # Sign the boards' config with the boards' own publisher key and make the seed that boards-deploy installs (the bootstrap
 # file that pins the key, the credentials). The state is below .cache/boards and never committed.

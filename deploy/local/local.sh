@@ -71,9 +71,24 @@ release_pins() {
 		n=$((n + 1))
 	done <<<"$list"
 	[ "$n" -gt 0 ] || { echo "local: $src lists no image" >&2; return 1; }
+	# Every image the project runs must be pinned: a variable left unset would fall back to the tag, and the project would
+	# run some images by digest and the rest by tag without a word.
+	local want var missing=()
+	want=$(grep -o 'SLUIS_IMAGE_[A-Za-z0-9_]*' deploy/local/compose.release.yaml | grep -v '^SLUIS_IMAGE_PREFIX$' | sort -u)
+	for var in $want; do
+		[ -n "${!var:-}" ] || missing+=("$var")
+	done
+	if [ "${#missing[@]}" -gt 0 ]; then
+		echo "local: $src does not pin ${missing[*]}; every image the project runs must be in it" >&2
+		return 1
+	fi
 }
 if [ "$images_mode" = release ]; then
-	release_pins
+	if [ -n "${SLUIS_RELEASE_IMAGES:-}" ]; then
+		release_pins
+	else
+		echo "local: WARNING: SLUIS_RELEASE_IMAGES is not set, so every image is pulled by the tag SLUIS_LOCAL_VERSION=${SLUIS_LOCAL_VERSION:-} and not pinned by digest; a tag can move" >&2
+	fi
 fi
 
 # cidr_range prints the first and last address of an IPv4 CIDR as integers.
