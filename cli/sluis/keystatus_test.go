@@ -208,7 +208,7 @@ func TestKeyStatusTakesTheEarliestEndOfTheChainAndTheHighestLevelOfTheKeys(t *te
 	}
 }
 
-// verifies: REQ-KEYS-243
+// verifies: REQ-KEYS-243, REQ-KEYS-246
 // `key status` lists each key with its purpose, boundary, store, slot, fingerprint (the SHA-256 of the DER public key, as
 // `key request` prints it), expiry and level, in text and in the JSON object; a key with no chain has no expiry, and the
 // intermediate without one is named on standard error without a finding.
@@ -229,6 +229,9 @@ func TestKeyStatusListsEachKeyWithItsStoreSlotFingerprintAndExpiry(t *testing.T)
 		t.Fatalf("fingerprint = %v", w["fingerprint"])
 	}
 	tk := keyEntry(t, o, "token-signing")
+	if w["certificate"] != "none" || tk["certificate"] != "installed" {
+		t.Fatalf("certificate: wrapping %v, token-signing %v", w["certificate"], tk["certificate"])
+	}
 	if tk["slot"] != "9a" || tk["not_after"] != "2027-12-12T12:00:00Z" || tk["days_left"] != float64(400) {
 		t.Fatalf("token-signing = %v", tk)
 	}
@@ -245,13 +248,13 @@ func TestKeyStatusListsEachKeyWithItsStoreSlotFingerprintAndExpiry(t *testing.T)
 	}
 	lines := strings.Split(strings.TrimSuffix(ta2.out.String(), "\n"), "\n")
 	if len(lines) != 4 || strings.Join(strings.Fields(lines[0]), " ") != "purpose store slot fingerprint expires warning" ||
-		strings.Join(strings.Fields(lines[1]), " ") != "wrapping yubikey-piv - 039058c6f2c0cb49... - none" ||
+		strings.Join(strings.Fields(lines[1]), " ") != "wrapping yubikey-piv - 039058c6f2c0cb49... no certificate none" ||
 		strings.Join(strings.Fields(lines[2]), " ") != "token-signing yubikey-piv 9a f63893d26c31b9b1... 2027-12-12 none" {
 		t.Fatalf("text = %q", ta2.out.String())
 	}
 }
 
-// verifies: REQ-KEYS-244
+// verifies: REQ-KEYS-244, REQ-KEYS-247
 // A key@ that cannot be asked is a failure (exit 1) and never an empty list or a pass: a socket that is not there, a peer
 // that is not root, a key@ whose store is down, a chain that does not parse. A missing boundary is a usage error.
 func TestKeyStatusIsAFailureWhenKeyCannotBeAsked(t *testing.T) {
@@ -278,6 +281,12 @@ func TestKeyStatusIsAFailureWhenKeyCannotBeAsked(t *testing.T) {
 			}
 		})
 	}
+	t.Run("an empty list of keys", func(t *testing.T) {
+		ta, code, o := runKeyStatus(t, &fakeKeyStatus{resp: &keyv2alpha1.StatusResponse{Store: "software"}}, statusNow)
+		if code != cli.ExitFailed || o["outcome"] != "failed" || o["keys"] != nil || !strings.Contains(o["error"].(string), "no keys") {
+			t.Fatalf("exit %d: %v; standard error %q", code, o, ta.err.String())
+		}
+	})
 	t.Run("no socket", func(t *testing.T) {
 		ta := newTestApp(t)
 		code := ta.do("key", "status", "--boundary", "dev", "--socket", filepath.Join(t.TempDir(), "none.sock"), "--output", "json")
@@ -293,6 +302,79 @@ func TestKeyStatusIsAFailureWhenKeyCannotBeAsked(t *testing.T) {
 		}
 		if code := ta.do("key", "status", "--boundary", "dev", "extra"); code != cli.ExitUsage {
 			t.Fatalf("an argument: exit %d", code)
+		}
+	})
+}
+
+// certBetween is a certificate that is valid from notBefore to notAfter.
+func certBetween(t *testing.T, notBefore, notAfter time.Time) []byte {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "test"}, NotBefore: notBefore, NotAfter: notAfter, IsCA: true, BasicConstraintsValid: true}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &k.PublicKey, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
+}
+
+// verifies: REQ-KEYS-245
+// A clock that has lost its time must not make an expired chain look fine: a board just rebooted after a power cut shows
+// 2017, and a chain that ended in 2026 would have thousands of days left and the level none. With the date before the
+// floor year, or before a certificate of an installed chain began, the expiry is not judged: exit 1, an error that says so
+// and tells what to do, and the keys listed with no days left and no level.
+func TestKeyStatusDoesNotJudgeAnExpiryOnAClockThatIsNotSet(t *testing.T) {
+	day := 24 * time.Hour
+	ended := certBetween(t, time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	cases := []struct {
+		name string
+		now  time.Time
+	}{
+		{"2017, as a board's backup clock after a power cut", time.Date(2017, 8, 5, 3, 0, 0, 0, time.UTC)},
+		{"a year before the floor", time.Date(2025, 12, 31, 23, 0, 0, 0, time.UTC)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := keyStatusOf(t, map[string][][]byte{"x509-intermediate": {ended}}, "wrapping", "x509-intermediate")
+			ta, code, o := runKeyStatus(t, f, c.now)
+			if code != cli.ExitFailed || o["outcome"] != "failed" || !strings.Contains(o["error"].(string), "clock") || !strings.Contains(o["error"].(string), "run it again in a minute") {
+				t.Fatalf("exit %d: %v; standard error %q", code, o, ta.err.String())
+			}
+			k := keyEntry(t, o, "x509-intermediate")
+			if k["level"] != nil || k["days_left"] != nil || k["certificate"] != "installed" || k["not_after"] == nil {
+				t.Fatalf("the key = %v: want the chain shown and no level or days left", k)
+			}
+		})
+	}
+	t.Run("before a certificate began, though the year is after the floor", func(t *testing.T) {
+		nb := statusNow.Add(10 * day)
+		f := keyStatusOf(t, map[string][][]byte{"x509-intermediate": {certBetween(t, nb, nb.Add(300*day))}}, "x509-intermediate")
+		_, code, o := runKeyStatus(t, f, statusNow)
+		if code != cli.ExitFailed || o["outcome"] != "failed" || keyEntry(t, o, "x509-intermediate")["level"] != nil {
+			t.Fatalf("exit %d: %v", code, o)
+		}
+	})
+	t.Run("a root that began later than the leaf counts", func(t *testing.T) {
+		leaf := certBetween(t, statusNow.Add(-100*day), statusNow.Add(300*day))
+		root := certBetween(t, statusNow.Add(day), statusNow.Add(900*day))
+		f := keyStatusOf(t, map[string][][]byte{"x509-intermediate": {leaf, root}}, "x509-intermediate")
+		if _, code, _ := runKeyStatus(t, f, statusNow); code != cli.ExitFailed {
+			t.Fatalf("exit %d", code)
+		}
+	})
+	t.Run("a key with no chain needs no clock", func(t *testing.T) {
+		f := keyStatusOf(t, nil, "wrapping")
+		if _, code, _ := runKeyStatus(t, f, time.Date(2017, 8, 5, 3, 0, 0, 0, time.UTC)); code != 0 {
+			t.Fatalf("exit %d", code)
+		}
+	})
+	t.Run("a right clock judges", func(t *testing.T) {
+		_, code, o := runKeyStatus(t, keyStatusOf(t, map[string][][]byte{"x509-intermediate": {ended}}, "x509-intermediate"), statusNow)
+		if code != 12 || keyEntry(t, o, "x509-intermediate")["level"] != "critical" {
+			t.Fatalf("exit %d: %v", code, o)
 		}
 	})
 }
