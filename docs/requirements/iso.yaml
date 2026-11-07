@@ -122,8 +122,7 @@ requirements:
     rationale: "A token key that signs certificates would let a token signer mint a CA."
     level: MUST
     source: design-decision
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: ["bare-metal", "kubernetes"]
     actors: [key]
@@ -965,7 +964,7 @@ requirements:
     rationale: "A grant data key per boundary keeps a decision made for one boundary from being spent in another."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
