@@ -58,7 +58,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		if aerr := s.record(ctx, audited{action: actionAuthorize, tenant: tenant, subject: clientSubject(tenant, clientID), reason: reason}); aerr != nil {
 			return nil, aerr
 		}
-		return errorPage(), nil
+		return errorPage(ctx), nil
 	}
 	cl, err := s.opts.Config.Client(ctx, r.GetClientId())
 	switch {

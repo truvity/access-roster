@@ -8,8 +8,7 @@ requirements:
     rationale: "Detailed reasons help an attacker."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: partly-built
+    status: done
     milestone: first-version
     runtimes: all
     standards:

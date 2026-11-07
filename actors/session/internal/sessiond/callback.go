@@ -42,7 +42,7 @@ func (s *Service) Callback(ctx context.Context, req *connect.Request[sessionv2al
 		if aerr := s.record(ctx, audited{action: actionSignin, tenant: tenant, subject: clientSubject(tenant, "unknown"), reason: reason}); aerr != nil {
 			return nil, aerr
 		}
-		return errorPage(clearCookie()), nil
+		return errorPage(ctx, clearCookie()), nil
 	}
 
 	pending, err := s.openPending(ctx, r.GetCookie(), now)

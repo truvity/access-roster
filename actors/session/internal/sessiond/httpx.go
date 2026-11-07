@@ -1,6 +1,8 @@
 package sessiond
 
 import (
+	"context"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -8,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 
 	typev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/type/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/rpc"
 )
 
 // SigninCookie is the name of the sign-in cookie. entry reads this name and hands the value to Callback
@@ -51,17 +54,28 @@ func redirect(location string, h ...*typev2alpha1.Header) *connect.Response[type
 
 // errorPage is the answer to an authorize or callback request that cannot be redirected to a client (an unknown
 // client, a redirect_uri that is not registered, a callback that is not ours): a fixed page. It holds no value of
-// the request, so there is nothing to escape; the request must never be reflected (RFC 6749 section 10.15).
-func errorPage(h ...*typev2alpha1.Header) *connect.Response[typev2alpha1.HttpReply] {
+// the request, so there is nothing to escape; the request must never be reflected (RFC 6749 section 10.15). The one
+// thing that varies is the request identifier, the correlation id that entry made for this request: the person gives it
+// when asking for help, and the audit record of the refusal carries it (REQ-UX-001, REQ-UX-006).
+func errorPage(ctx context.Context, h ...*typev2alpha1.Header) *connect.Response[typev2alpha1.HttpReply] {
 	hs := append([]*typev2alpha1.Header{header("Content-Type", "text/html; charset=utf-8")}, noStore()...)
-	return reply(http.StatusBadRequest, []byte(errorPageHTML), append(hs, h...)...)
+	return reply(http.StatusBadRequest, []byte(errorPageHTML(rpc.CorrelationID(ctx))), append(hs, h...)...)
 }
 
-const errorPageHTML = `<!doctype html>
+// errorPageHTML is the page. The identifier is a token of letters, digits, "-" and "_" (the kit drops any other), and is
+// escaped all the same; with none, as when the page is made outside a request, the page has no reference line.
+func errorPageHTML(requestID string) string {
+	ref := ""
+	if requestID != "" {
+		ref = "\n<p>If you ask for help, give this reference: <code>" + html.EscapeString(requestID) + "</code></p>"
+	}
+	return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Sign-in could not continue</title></head>
 <body><h1>Sign-in could not continue</h1>
-<p>The request was not valid. Go back to the application and start again.</p></body></html>
+<p>The request was not valid. Go back to the application and start again.</p>` + ref + `
+</body></html>
 `
+}
 
 // clientRedirect answers a client's redirect_uri with the parameters of RFC 6749 section 4.1.2 (and 4.1.2.1 for an
 // error), in the query (the only response mode: session builds no form_post page). Every redirect carries the issuer
