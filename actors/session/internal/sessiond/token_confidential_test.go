@@ -20,9 +20,12 @@ const (
 	confClient   = "conf-app"
 	confRedirect = "https://app.example.com/cb"
 	// confSecret holds characters that a form-URL-encoding has to escape (REQ-CLIENT-002).
-	confSecret  = "s3cret:with %&+=/ and ü CANARY-right" //nolint:gosec // G101: a test value, not a credential
-	wrongSecret = "CANARY-wrong-0123456789"              //nolint:gosec // G101: a test value, not a credential
+	confSecret  = "s3cret:with %&+=/ and ü CANARY-right"
+	wrongSecret = "CANARY-wrong-0123456789"
 )
+
+// credential is the name of the credential that holds the secret of a client in the secret source (as local.sh makes them).
+func credential(client string) string { return "client-" + client }
 
 // confEnv is an installation with a confidential client and its secret, a confidential client whose secret the
 // secret source does not hold, an exchange client with a secret of its own, and the public client of the other tests.
@@ -30,10 +33,10 @@ func confEnv(t *testing.T) *env {
 	t.Helper()
 	e := newEnv(t, func(o *options) {
 		o.extra = []*configv2alpha1.InstallationClient{
-			{Id: confClient, Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: "client-conf-app"},
-			{Id: "conf-ghost", Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: "client-conf-ghost"},
-			{Id: "conf-other", Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: "client-conf-other"},
-			{Id: "exch-app", Kind: "exchange", Secret: "client-exch-app"},
+			{Id: confClient, Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: credential(confClient)},
+			{Id: "conf-ghost", Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: credential("conf-ghost")},
+			{Id: "conf-other", Kind: "confidential", Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: credential("conf-other")},
+			{Id: "exch-app", Kind: "exchange", Secret: credential("exch-app")},
 		}
 	})
 	for id, secret := range map[string]string{confClient: confSecret, "conf-other": "another-clients-secret", "exch-app": confSecret} {
