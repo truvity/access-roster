@@ -3585,7 +3585,7 @@ requirements:
       - {kind: integration-test, ref: "the burst of 100 and the refill of 50 a second on the test's clock; draining either of the ES384 and RS256 purposes leaves the other full (TestTheRS256PurposeHasItsOwnRateLimit)"}
   - id: REQ-KEYS-272
     area: KEYS
-    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that names an algorithm it holds no key for, with the entry named."
+    statement: "key@ MUST refuse, at start and in the check command, a KeyPlan that names an algorithm it holds no key for, or AES-256-GCM for a purpose that is no data key purpose, with the entry named."
     rationale: "A planned key that is skipped without a word leaves an installation that starts ready with a key missing, as the RS256 purpose did on a card before it was refused."
     level: MUST
     source: design-decision
@@ -3597,4 +3597,19 @@ requirements:
     issues: [788]
     tests: [actors/key/internal/keyd/rs256_test.go]
     verification:
-      - {kind: integration-test, ref: "PS256, EdDSA, ES512, RS384, other cases and spellings: Init and Check refuse, no key is asked of the driver (TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused)"}
+      - {kind: integration-test, ref: "PS256, EdDSA, ES512, other spellings, and AES-256-GCM for a signing purpose: Init and Check refuse, no key is asked (TestAPlanWithAnAlgorithmNoKeyIsHeldForIsRefused)"}
+  - id: REQ-KEYS-273
+    area: KEYS
+    statement: "key@ MUST record a signature of the key store that does not verify under the public key as a refusal, and return no signature."
+    rationale: "A signature that does not verify is a fault of the driver or a fault attack on the card, and it must not go unseen (ADR 0005: every refusal is audited, within the limit of refusals)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    actors: [key]
+    standards: []
+    issues: [788]
+    tests: [actors/key/internal/keyd/rs256_test.go]
+    verification:
+      - {kind: integration-test, ref: "a driver that signs a wrong digest, for ES384 and RS256: no signature, no key.sign fact, one refusal fact (TestAWrongSignatureFromTheDriverIsAFactAndNoSignature)"}

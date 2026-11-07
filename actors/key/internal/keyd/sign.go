@@ -21,7 +21,6 @@ import (
 	"github.com/truvity/sluis/v2/actors/key/internal/content"
 	keyv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/key/v2alpha1"
 	keystorev2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/port/keystore/v2alpha1"
-	"github.com/truvity/sluis/v2/kits/go/refusal"
 	"github.com/truvity/sluis/v2/kits/go/registry"
 )
 
@@ -115,11 +114,11 @@ func (s *Server) Sign(ctx context.Context, req *connect.Request[keyv2alpha1.Sign
 	der := res.Msg.GetSignatureDer()
 	// Verify with the public key before the signature leaves: a driver that signs wrongly is caught here.
 	if !ecdsa.VerifyASN1(pk.pub, digest, der) {
-		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
+		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInternal, reasonDriver, "")
 	}
 	raw, err := rawSignature(der, pk.pub.Curve.Params().BitSize)
 	if err != nil {
-		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
+		return nil, s.refuse(ctx, caller, "sign", purpose, "", connect.CodeInternal, reasonDriver, "")
 	}
 	// D-24: every token-signing signature is an audit fact, durable before the signature is returned; if the
 	// fact cannot be made durable the signature is withheld. An audit-log signature is not an audit fact, because
@@ -150,7 +149,7 @@ func (s *Server) signRS256(ctx context.Context, caller string, pk purposeKey, co
 	}
 	sig := res.Msg.GetSignatureDer()
 	if len(sig) != rs256SignatureLen || rsa.VerifyPKCS1v15(pk.rsa, crypto.SHA256, digest[:], sig) != nil {
-		return nil, refusal.New(connect.CodeInternal, reasonDriver, "")
+		return nil, s.refuse(ctx, caller, "sign", rs256Purpose, "", connect.CodeInternal, reasonDriver, "")
 	}
 	if err := s.auditBlocking(ctx, Event{Action: ActionSign, Fields: map[string]any{"purpose": rs256Purpose, "key_id": pk.keyID, "caller": caller}}); err != nil {
 		return nil, unavailable(reasonAudit)
