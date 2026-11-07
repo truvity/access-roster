@@ -336,13 +336,20 @@ async fn route(
             trace.route = HEALTH_ROUTE;
             health(&parts.method, query, &body)
         }
-        (Front::Identity, "/.well-known/openid-configuration") => {
+        (Front::Identity, path) if discovery_suffix(path).is_some() => {
             trace.route = "discovery";
-            public_document(state, &parts.method, query, &body, false).await
+            public_document(
+                state,
+                &parts.method,
+                query,
+                &body,
+                Document::Discovery(discovery_suffix(path).unwrap_or_default()),
+            )
+            .await
         }
         (Front::Identity, "/jwks") => {
             trace.route = "jwks";
-            public_document(state, &parts.method, query, &body, true).await
+            public_document(state, &parts.method, query, &body, Document::KeySet).await
         }
         (Front::Audit, search::PATH) => {
             trace.route = "search";
@@ -428,12 +435,36 @@ fn is_json(h: &HeaderMap) -> bool {
     parts.next() == Some("application/json") && parts.all(|p| p == "charset=utf-8")
 }
 
+/// The two well-known names of the discovery document: OpenID Connect Discovery 1.0 section 4 and RFC 8414 section 3. The
+/// document is the same at both (it is the OpenID Provider Metadata, which carries the Authorization Server Metadata's
+/// members that sluis serves).
+const DISCOVERY_NAMES: [&str; 2] = [
+    "/.well-known/openid-configuration",
+    "/.well-known/oauth-authorization-server",
+];
+
+/// What follows a well-known name in `path`: `Some("")` for the name itself, `Some("/rest")` for the name with a path
+/// inserted after it (RFC 8414 section 3.1: the name goes between the host and the issuer's path), `None` for any other
+/// path. Whether the inserted path is the issuer's is decided against the issuer, which only the store knows.
+fn discovery_suffix(path: &str) -> Option<&str> {
+    DISCOVERY_NAMES.iter().find_map(|name| {
+        path.strip_prefix(name)
+            .filter(|rest| rest.is_empty() || rest.starts_with('/'))
+    })
+}
+
+/// The public document a route serves; the discovery document carries what followed its well-known name.
+enum Document<'a> {
+    Discovery(&'a str),
+    KeySet,
+}
+
 async fn public_document(
     state: &State,
     method: &Method,
     query: &str,
     body: &Incoming,
-    jwks: bool,
+    which: Document<'_>,
 ) -> Result<Done, Refuse> {
     method_ok(method, &[Method::GET, Method::HEAD], "GET, HEAD")?;
     no_body(body)?;
@@ -443,11 +474,17 @@ async fn public_document(
         .map_err(bad)?;
     let docs = state.docs.get().await?;
     Ok(Done::Json {
-        body: if jwks {
+        body: match which {
             // KeyRevocation was unreadable when the pair was built: no key set that might list a revoked key.
-            docs.jwks.ok_or(Refuse::new(503, "key_revocation"))?
-        } else {
-            docs.discovery
+            Document::KeySet => docs.jwks.ok_or(Refuse::new(503, "key_revocation"))?,
+            // A path after the well-known name is the issuer's own or nothing: an issuer with no path has no
+            // path-inserted location, and another path is another issuer's.
+            Document::Discovery(inserted)
+                if inserted.is_empty() || inserted == docs.issuer_path =>
+            {
+                docs.discovery
+            }
+            Document::Discovery(_) => return Err(Refuse::new(404, "route")),
         },
         public: true,
     })

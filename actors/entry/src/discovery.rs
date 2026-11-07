@@ -54,6 +54,9 @@ impl Kind for RingKind {
 #[derive(Clone)]
 pub(crate) struct Documents {
     pub discovery: Bytes,
+    /// The path of the issuer as written, `""` for an issuer with none: the suffix of the path-inserted names of
+    /// RFC 8414 section 3, which are served for it and for no other path.
+    pub issuer_path: String,
     /// `None` when `KeyRevocation` could not be read: the key set is then refused (503), the discovery document is not.
     pub jwks: Option<Bytes>,
 }
@@ -101,6 +104,7 @@ impl Source {
         let discovery = discovery(&b.value).ok_or(Refuse::new(503, "boundary_issuer"))?;
         Ok(Documents {
             discovery: Bytes::from(discovery),
+            issuer_path: issuer_path(&b.value.issuer).to_owned(),
             jwks: revoked.map(|kids| Bytes::from(jwks(&without_revoked(r.value, &kids)))),
         })
     }
@@ -115,6 +119,12 @@ fn issuer_ok(i: &str) -> bool {
             && !rest.contains(['?', '#'])
             && !i.chars().any(|c| c.is_whitespace() || c.is_control())
     })
+}
+
+/// The path of a valid issuer (`issuer_ok`): what follows the host, `""` when there is none.
+pub(crate) fn issuer_path(i: &str) -> &str {
+    let rest = i.strip_prefix("https://").unwrap_or(i);
+    rest.find('/').map_or("", |at| &rest[at..])
 }
 
 /// The OpenID Provider Metadata (OpenID Connect Discovery 1.0 section 3). `None` when the boundary
