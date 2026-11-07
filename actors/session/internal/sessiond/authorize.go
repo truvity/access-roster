@@ -138,6 +138,16 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		maxAge = &v
 	}
 
+	// An id_token_hint names the person the client expects (OpenID Connect Core section 3.1.2.1). Its subject is kept in the
+	// pending sign-in, and the callback refuses a sign-in of another person with login_required: ignoring the hint would
+	// answer for whoever signs in.
+	hintSub := ""
+	if h := r.GetIdTokenHint(); h != "" {
+		if hintSub, err = hintSubject(h, b.GetIssuer(), cl.GetId()); err != nil {
+			return fail("invalid_request", "id_token_hint is not an ID token of this issuer for this client", reasonHint)
+		}
+	}
+
 	up, err := s.opts.Config.Upstream(ctx, s.opts.UpstreamName)
 	if err != nil {
 		return nil, unavailable("upstream", err)
@@ -177,6 +187,7 @@ func (s *Service) Authorize(ctx context.Context, req *connect.Request[sessionv2a
 		CodeChallenge: r.GetCodeChallenge(), Tenant: tenant, Upstream: up.GetName(),
 		UpstreamState: upState, UpstreamNonce: upNonce, UpstreamVerifier: verifier,
 		CreatedAt: timestamppb.New(now), ExpiresAt: timestamppb.New(now.Add(pendingLife)), MaxAge: maxAge,
+		HintSubject: hintSub,
 	}
 	envelope, err := s.keys.sealFlow(ctx, pendingKind, pid, pending)
 	if err != nil {

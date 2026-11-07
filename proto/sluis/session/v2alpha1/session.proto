@@ -27,6 +27,7 @@ message AuthorizeRequest {
   string prompt = 10;                // the OpenID Connect prompt, if sent
   string max_age = 11;               // the OpenID Connect max_age, if sent
   string acr_values = 12;            // the OpenID Connect acr_values, if sent
+  string id_token_hint = 16;         // the OpenID Connect id_token_hint, if sent: an ID token this issuer made, whose subject the sign-in must be of
 }
 
 // CallbackRequest is the answer of the upstream to the sign-in redirect.
@@ -71,6 +72,7 @@ message PendingSignIn {
   google.protobuf.Timestamp created_at = 12;     // when the request was made
   google.protobuf.Timestamp expires_at = 13;     // when the pending sign-in ends
   optional int64 max_age = 14;                   // the client's max_age in seconds, if sent; the callback refuses an older auth_time
+  string hint_subject = 16;                      // the sub of the client's id_token_hint, if sent; the callback refuses a sign-in of another subject
 }
 
 // Person is the kind Person (0019 "The records"): the id is the subject.

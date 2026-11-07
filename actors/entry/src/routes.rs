@@ -30,6 +30,8 @@ pub(crate) const AUTHORIZE: &[&str] = &[
     "prompt",
     "max_age",
     "acr_values",
+    // A hint about who the person is (OpenID Connect Core 3.1.2.1): `session` holds the sign-in to its subject.
+    "id_token_hint",
 ];
 
 /// The names `/callback` recognises: the fields of `CallbackRequest` without `cookie`, which is a

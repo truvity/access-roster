@@ -57,6 +57,7 @@ const (
 	reasonStepUp       = "step_up"       // policy asks for a fresher authentication
 	reasonScope        = "scope"         // a scope outside the grant
 	reasonClientSecret = "client_secret" // a public client sent a secret
+	reasonHint         = "id_token_hint" // the hint is not an ID token of this issuer for the client, or the person who signed in is not its subject
 	reasonPin          = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
 )
 
