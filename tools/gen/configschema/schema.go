@@ -30,11 +30,35 @@ type root struct {
 	Name    string // the name in the path
 	Version string // v1, v2, ...: a new version is a new identifier beside the old one
 	Title   string
+	// Shape is "" for a file that is the message itself (the bootstrap file). A signed config document is a mapping from item
+	// id to item (signed-config.md "The payload"): "single" for a kind with one item, `default`, and "keyed" for a kind whose
+	// items are named by their id. The message is the item.
+	Shape string
+	// Nullable lets every field that is not required, and is a string, bytes or a list, be null in the file: the loaders of the
+	// signed documents read a null as absent, as proto3 JSON does. The bootstrap file's loaders do not, so its schema does not.
+	Nullable bool
 }
+
+// payload is the root of one kind of signed config document.
+func payload(message, name, title, shape string) root {
+	return root{Message: "sluis.config.v2alpha1." + message, Name: name, Version: "v1", Title: title, Shape: shape, Nullable: true}
+}
+
+// storeIDPattern is the id of an item: a store part (store-api.md "Address encoding"). The schema does not exclude "." and
+// "..", which the loaders do: a schema is never stricter than its loaders.
+const storeIDPattern = "^[a-z0-9._-]{1,128}$"
 
 // roots lists every published schema. A configuration joins it with the message that reads it ([principle 8]).
 var roots = []root{
 	{Message: "sluis.config.v2alpha1.Bootstrap", Name: "bootstrap", Version: "v1", Title: "The bootstrap file of store@"},
+	payload("Boundary", "boundary", "The payload of a signed Boundary document", "single"),
+	payload("KeyPlan", "key-plan", "The payload of a signed KeyPlan document", "single"),
+	payload("TokenLifetime", "token-lifetime", "The payload of a signed TokenLifetime document", "single"),
+	payload("AuditLog", "audit-log", "The payload of a signed AuditLog document", "single"),
+	payload("AuditCatalogue", "audit-catalogue", "The payload of a signed AuditCatalogue document", "single"),
+	payload("ExchangeTrust", "exchange-trust", "The payload of a signed ExchangeTrust document", "single"),
+	payload("Upstream", "upstream", "The payload of a signed Upstream document", "keyed"),
+	payload("InstallationClient", "installation-client", "The payload of a signed InstallationClient document", "keyed"),
 }
 
 const idBase = "https://sluis.id/schema/"
@@ -90,13 +114,17 @@ func encode(v any) ([]byte, error) {
 
 // A generator makes the schema of one root.
 type generator struct {
-	defs  map[string]obj // by message name, for $defs
-	order []string
+	defs     map[string]obj // by message name, for $defs
+	order    []string
+	nullable bool // a field that is not required may be null (root.Nullable)
 }
 
 // schemaOf returns the JSON Schema of a root message as indented JSON ending in a newline.
 func schemaOf(r root, md protoreflect.MessageDescriptor) ([]byte, error) {
-	g := &generator{defs: map[string]obj{}}
+	g := &generator{defs: map[string]obj{}, nullable: r.Nullable}
+	if r.Shape != "" {
+		return g.payloadSchema(r, md)
+	}
 	body, err := g.message(md, true)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", r.Message, err)
@@ -122,6 +150,11 @@ func schemaOf(r root, md protoreflect.MessageDescriptor) ([]byte, error) {
 		}
 		doc.set(e.k, e.v)
 	}
+	return g.finish(doc)
+}
+
+// finish adds the definitions to a document and writes it as indented JSON ending in a newline.
+func (g *generator) finish(doc obj) ([]byte, error) {
 	if len(g.defs) > 0 {
 		defs := obj{}
 		names := append([]string(nil), g.order...)
@@ -141,6 +174,40 @@ func schemaOf(r root, md protoreflect.MessageDescriptor) ([]byte, error) {
 	}
 	out.WriteByte('\n')
 	return out.Bytes(), nil
+}
+
+// payloadSchema is the schema of a signed config document: a mapping from item id to item, where the item is the message.
+// There is no `$schema` key: a key of the mapping is an item id.
+func (g *generator) payloadSchema(r root, md protoreflect.MessageDescriptor) ([]byte, error) {
+	name := string(md.Name())
+	g.defs[name] = nil
+	g.order = append(g.order, name)
+	item, err := g.message(md, false)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", r.Message, err)
+	}
+	g.defs[name] = item
+	ref := obj{{"$ref", "#/$defs/" + name}}
+	doc := obj{}
+	doc.set("$schema", draft)
+	doc.set("$id", r.ID())
+	doc.set("title", r.Title)
+	doc.set("type", "object")
+	switch r.Shape {
+	case "single":
+		// One item, with the id `default`.
+		doc.set("properties", obj{{"default", ref}})
+		doc.set("required", []string{"default"})
+		doc.set("unevaluatedProperties", false)
+	case "keyed":
+		// One item or more, each named by its id.
+		doc.set("minProperties", 1)
+		doc.set("propertyNames", obj{{"pattern", storeIDPattern}})
+		doc.set("additionalProperties", ref)
+	default:
+		return nil, fmt.Errorf("%s: the shape %q is neither single nor keyed", r.Message, r.Shape)
+	}
+	return g.finish(doc)
 }
 
 // message is the object schema of a message: every key it does not name is an error (unevaluatedProperties).
@@ -204,10 +271,60 @@ func (g *generator) field(fd protoreflect.FieldDescriptor) (obj, bool, error) {
 	} else if s, err = g.single(fd, rules); err != nil {
 		return nil, false, err
 	}
+	// Required bytes are not empty.
+	if rules.required && !fd.IsList() && fd.Kind() == protoreflect.BytesKind {
+		for i, e := range s {
+			if e.k == "pattern" {
+				s[i].v = "^[A-Za-z0-9_-]+$"
+			}
+		}
+	}
+	// A required string says something: the loaders refuse an empty one, as protovalidate does.
+	if rules.required && !fd.IsList() && (fd.Kind() == protoreflect.StringKind || fd.Kind() == protoreflect.BytesKind) && !has(s, "pattern", "minLength", "enum", "const") {
+		s = insertAfterType(s, "minLength", uint64(1))
+	}
+	// A string, bytes or list that is not required may be null where the loaders read null as absent.
+	if g.nullable && !rules.required && (fd.IsList() || fd.Kind() == protoreflect.StringKind || fd.Kind() == protoreflect.BytesKind) {
+		s = nullable(s)
+	}
 	if d := description(fd); d != "" {
 		s = withDescription(s, d)
 	}
 	return s, rules.required, nil
+}
+
+func has(s obj, keys ...string) bool {
+	for _, e := range s {
+		for _, k := range keys {
+			if e.k == k {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// insertAfterType puts a keyword right after "type", so that the golden file reads type first.
+func insertAfterType(s obj, k string, v any) obj {
+	for i, e := range s {
+		if e.k == "type" {
+			out := append(obj{}, s[:i+1]...)
+			out = append(out, kv{k, v})
+			return append(out, s[i+1:]...)
+		}
+	}
+	return append(s, kv{k, v})
+}
+
+// nullable makes the type of a schema "the type or null".
+func nullable(s obj) obj {
+	out := append(obj{}, s...)
+	for i, e := range out {
+		if e.k == "type" {
+			out[i].v = []string{e.v.(string), "null"}
+		}
+	}
+	return out
 }
 
 // withDescription puts the field's own comment in the schema (beside a $ref, which draft 2020-12 allows), in place of
@@ -229,6 +346,15 @@ func (g *generator) single(fd protoreflect.FieldDescriptor, rules *fieldRules) (
 	case protoreflect.StringKind:
 		s.set("type", "string")
 		stringRules(&s, rules)
+	case protoreflect.BytesKind:
+		// Bytes in a file are base64url without padding (RFC 4648 section 5). The loaders also refuse stray bits in the last
+		// character, which a pattern cannot state.
+		s.set("type", "string")
+		s.set("pattern", "^[A-Za-z0-9_-]*$")
+	case protoreflect.Uint32Kind:
+		s.set("type", "integer")
+		s.set("minimum", 0)
+		s.set("maximum", 4294967295)
 	case protoreflect.MessageKind:
 		if fd.Message().FullName() == "google.protobuf.Duration" {
 			// A duration range is a protovalidate rule: the pattern states the form only (ADR 0004).

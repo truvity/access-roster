@@ -107,10 +107,29 @@ fn the_local_values_are_the_ones_the_skeleton_needs() {
 
 // ---- the payload rules ----
 
+/// The text before the first `: `, the path of a refusal; none for a refusal of the whole document.
+fn path_of(e: &str) -> Option<&str> {
+    e.split_once(": ").map(|(p, _)| p)
+}
+
+/// What the decoder alone says about a payload, with its own words. The service applies the generated schema first
+/// (REQ-DATA-038): it must refuse the same payload too, and name the same place (the path before the colon), though in the
+/// words of the schema, which `schema-vectors.json` holds.
 fn refused(kind_name: &str, text: &str) -> String {
-    payload::decode(kind(kind_name), text.as_bytes())
-        .expect_err("must be refused")
-        .0
+    let decoder = payload::decode_unvalidated(kind(kind_name), text.as_bytes())
+        .expect_err("the decoder must refuse it")
+        .0;
+    let service = payload::decode(kind(kind_name), text.as_bytes())
+        .expect_err("the service, schema first, must refuse it too")
+        .0;
+    if let (Some(d), Some(s)) = (path_of(&decoder), path_of(&service)) {
+        // The same place, or the list that holds it (a schema says a list has a repeat, the decoder says which item).
+        assert!(
+            d == s || d.strip_prefix(s).is_some_and(|r| r.starts_with('[')),
+            "the place: decoder {decoder:?}, service {service:?}"
+        );
+    }
+    decoder
 }
 
 #[test]
@@ -825,7 +844,13 @@ async fn a_cold_start_refuses_on_any_failure_and_says_why() {
         ),
         (
             "a document is signed but its payload is not valid for the kind",
-            Box::new(|e| e.sign("token-lifetime", "default:\n  id_token: ten minutes\n", 1)),
+            Box::new(|e| {
+                e.sign(
+                    "token-lifetime",
+                    "default:\n  id_token: ten minutes\n  access_token: 10m\n  human_session_absolute: 12h\n  refresh_idle: 8h\n",
+                    1,
+                )
+            }),
             "TokenLifetime: step 6: default.id_token",
         ),
         (

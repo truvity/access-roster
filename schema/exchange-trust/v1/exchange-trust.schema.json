@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/exchange-trust/v1/exchange-trust.schema.json",
+  "title": "The payload of a signed ExchangeTrust document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/ExchangeTrust"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "ExchangeTrust": {
+      "type": "object",
+      "description": "ExchangeTrust is the kind ExchangeTrust; id \"default\".",
+      "properties": {
+        "issuers": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/TrustedIssuer"
+          }
+        }
+      },
+      "unevaluatedProperties": false
+    },
+    "TrustedIssuer": {
+      "type": "object",
+      "description": "TrustedIssuer is one issuer trusted for token exchange.",
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "pattern": "^https?://.",
+          "description": "the issuer URL: http or https"
+        },
+        "audiences": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "proof_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jwks_uri": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^$|^https?://.",
+          "description": "where its keys are: empty, or an http or https URL"
+        }
+      },
+      "required": [
+        "issuer",
+        "proof_kind"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/audit-catalogue/v1/audit-catalogue.schema.json",
+  "title": "The payload of a signed AuditCatalogue document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/AuditCatalogue"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "AuditCatalogue": {
+      "type": "object",
+      "description": "AuditCatalogue is the kind AuditCatalogue; id \"default\".",
+      "properties": {
+        "release": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"
+          },
+          "description": "the action names (decision D-15: names only tonight): two or more lower-case words joined by dots"
+        }
+      },
+      "required": [
+        "release",
+        "actions"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

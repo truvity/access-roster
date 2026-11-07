@@ -506,69 +506,6 @@ mod tests {
         }
     }
 
-    /// The parent of the node a JSON Pointer names, and the pointer's last segment.
-    fn parent<'a>(d: &'a mut serde_json::Value, path: &str) -> (&'a mut serde_json::Value, String) {
-        let (p, last) = path.rsplit_once('/').unwrap();
-        (d.pointer_mut(p).unwrap(), last.to_owned())
-    }
-
-    /// verifies: REQ-DATA-038
-    #[test]
-    fn the_decoder_is_never_looser_than_the_schema() {
-        // Every document of the shared vectors goes through the whole reader. A document the schema refuses is refused, and
-        // a document the reader accepts is one the schema accepts: the schema does not refuse a file that loaded before.
-        // The reverse is not true by design: the schema states the form, the decoder the rest.
-        use serde_json::Value as J;
-        const VECTORS: &str = include_str!("../../../kits/conformance/config/schema-vectors.json");
-        let v: J = serde_json::from_str(VECTORS).unwrap();
-        let mut accepted = 0;
-        for c in v["cases"].as_array().unwrap() {
-            let mut doc = v["base"].clone();
-            for o in c["ops"].as_array().unwrap() {
-                let value = o["value"].clone();
-                let path = o["path"].as_str().unwrap_or_default();
-                match o["op"].as_str().unwrap() {
-                    "replace" => doc = value,
-                    "set" => match parent(&mut doc, path) {
-                        (J::Object(m), last) => {
-                            m.insert(last, value);
-                        }
-                        (J::Array(a), last) => a[last.parse::<usize>().unwrap()] = value,
-                        _ => unreachable!(),
-                    },
-                    "remove" => {
-                        let (p, last) = parent(&mut doc, path);
-                        p.as_object_mut().unwrap().remove(&last);
-                    }
-                    "append" => {
-                        let (p, last) = parent(&mut doc, path);
-                        p[&last].as_array_mut().unwrap().push(value);
-                    }
-                    other => panic!("{other}"),
-                }
-            }
-            let name = c["name"].as_str().unwrap();
-            let parsed = Bootstrap::parse(&doc.to_string());
-            if c["want"].is_string() {
-                assert!(
-                    parsed.is_err(),
-                    "{name}: the schema refuses it and the reader accepted it"
-                );
-            }
-            if parsed.is_ok() {
-                accepted += 1;
-                assert!(
-                    c["want"].is_null(),
-                    "{name}: the reader accepted a file that the schema refuses"
-                );
-            }
-        }
-        assert!(
-            accepted >= 5,
-            "{accepted} documents of the vectors were read"
-        );
-    }
-
     #[test]
     fn start_timeout_defaults_and_follows_the_duration_grammar() {
         let b = Bootstrap::parse(&local(&[("start_timeout: 30s\n", "")])).unwrap();

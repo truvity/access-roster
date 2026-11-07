@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sluis.id/schema/audit-log/v1/audit-log.schema.json",
+  "title": "The payload of a signed AuditLog document",
+  "type": "object",
+  "properties": {
+    "default": {
+      "$ref": "#/$defs/AuditLog"
+    }
+  },
+  "required": [
+    "default"
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "AuditLog": {
+      "type": "object",
+      "description": "AuditLog is the kind AuditLog; id \"default\".",
+      "properties": {
+        "project": {
+          "type": "string",
+          "minLength": 1
+        },
+        "logs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/LogDecl"
+          }
+        },
+        "lock_mode": {
+          "type": "string",
+          "enum": [
+            "none",
+            "removable",
+            "compliance"
+          ],
+          "description": "the object-lock mode of the log's store: \"none\", \"removable\" or \"compliance\""
+        }
+      },
+      "required": [
+        "project",
+        "logs",
+        "lock_mode"
+      ],
+      "unevaluatedProperties": false
+    },
+    "LogDecl": {
+      "type": "object",
+      "description": "LogDecl declares one log of the audit project.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "audit",
+            "usage"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "origin"
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

@@ -430,9 +430,12 @@ func TestMalformedRecipientsStopTheStart(t *testing.T) {
 		list []string
 		want string
 	}{
-		"a label":   {[]string{"node-1-abcdefghijklmnop"}, "recipients[0] is not an RFC 7638 thumbprint"},
-		"a repeat":  {[]string{good, good}, "recipients[1] is listed twice"},
-		"too short": {[]string{good[:40]}, "recipients[0] is not an RFC 7638 thumbprint"},
+		// The schema of the KeyPlan answers first, by the form of a thumbprint and by a repeat (REQ-DATA-038).
+		"a label":   {[]string{"node-1-abcdefghijklmnop"}, "default.recipients[0]: not in the form the schema requires"},
+		"a repeat":  {[]string{good, good}, "default.recipients: items are not unique"},
+		"too short": {[]string{good[:40]}, "default.recipients[0]: not in the form the schema requires"},
+		// Of the right form and not the canonical encoding of a hash: the schema accepts it, and key@'s own check refuses it.
+		"a last character that is not canonical": {[]string{good[:42] + "B"}, "recipients[0] is not an RFC 7638 thumbprint"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newTestEnv(t, "development")
@@ -441,7 +444,7 @@ func TestMalformedRecipientsStopTheStart(t *testing.T) {
 			plan.Recipients = c.list
 			e.putPlan(plan)
 			err := n.srv.Init(context.Background())
-			if err == nil || !strings.Contains(err.Error(), "keyplan/default: "+c.want) {
+			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("Init = %v, want a refusal that says %q", err, c.want)
 			}
 			if len(n.driver.keys) != 0 {

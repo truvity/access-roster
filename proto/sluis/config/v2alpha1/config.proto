@@ -1,31 +1,41 @@
-// The skeleton's config kinds: one message per kind, the payload schema. Ids follow decision D-17:
+// The skeleton's config kinds: one message per kind, the payload schema. The rules are protovalidate options, and
+// tools/gen/configschema makes the JSON Schema of each signed document from them (schema/<kind>/v1/, ADR 0004). A schema states
+// the form of a value and is never stricter than the loaders: the patterns below are the ones both loaders (store@
+// payload.rs, key@ plan.go and boundary.go) already hold, or looser, and the domains of the values that really reach them are
+// in kits/conformance/config/domain-vectors.json. A string that is not required may be null in the file, as the loaders
+// read it (proto3 JSON does too). Ids follow decision D-17:
 // a singleton kind has one item with id "default", a keyed kind uses its name.
 syntax = "proto3";
 
 package sluis.config.v2alpha1;
 
+import "buf/validate/validate.proto";
 import "google/protobuf/duration.proto";
 
 // Boundary is the kind Boundary (bootstrap file and signed config); id "default".
 message Boundary {
-  string name = 1;                       // the boundary's name
-  string kind = 2;                       // the boundary's kind
-  string level = 3;                      // the boundary's level
-  string environment = 4;                // "development", "staging" or "production"
-  string issuer = 5;                     // the issuer URL of the boundary
+  string name = 1 [(buf.validate.field).required = true];         // the boundary's name
+  string kind = 2 [(buf.validate.field).required = true];         // the boundary's kind
+  string level = 3 [(buf.validate.field).required = true];        // the boundary's level
+  // "development", "staging" or "production"
+  string environment = 4 [(buf.validate.field).required = true, (buf.validate.field).string = {in: ["development", "staging", "production"]}];
+  // the issuer URL of the boundary: http or https
+  string issuer = 5 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^https?://."];
   uint32 uid_block = 6;                  // the index of the boundary's block of actor uids: the uid of an actor is 61000 + its ordinal + 1000 x the block (REQ-ISO-072)
-  repeated string declared_kinds = 7;    // the kinds the boundary declares
-  string default_tenant = 8;             // decision D-4: the one tenant of the skeleton until Tenant items exist
+  repeated string declared_kinds = 7 [(buf.validate.field).repeated.items.string.min_len = 1];    // the kinds the boundary declares
+  // decision D-4: the one tenant of the skeleton until Tenant items exist; empty, or a store part
+  string default_tenant = 8 [(buf.validate.field).string.pattern = "^$|^[a-z0-9._-]{1,128}$"];
 }
 
 // KeyPlan is the kind KeyPlan: which keys exist and where they live; id "default".
 message KeyPlan {
   repeated KeyPurposePlan purposes = 1;      // one entry per purpose
-  google.protobuf.Duration cache_ttl = 2;    // how long key@ may cache an unwrapped data key
+  google.protobuf.Duration cache_ttl = 2 [(buf.validate.field).required = true];    // how long key@ may cache an unwrapped data key
   // The signed list of wrap recipients (0006 "Who may receive a wrap"): the RFC 7638 thumbprint of each node's
   // wrapping public key, base64url without padding, the recovery recipient's included. key@ wraps a data key to
   // these and to no one else.
-  repeated string recipients = 3;
+  // 43 characters of base64url: the loader checks the canonical form of the last one.
+  repeated string recipients = 3 [(buf.validate.field).repeated = {unique: true, items: {string: {pattern: "^[A-Za-z0-9_-]{43}$"}}}];
   // The slot map (0006 "The slot plan", decided 2026-11-04 as D20b): which card slot of each node holds which key, under
   // the publisher's signature with the rest of the KeyPlan. A peer's key@ verifies a PinReleaseRequest and a PinRelease
   // with the public key of the pin-release slot of the node that signed it, and only after its own card driver has
@@ -35,44 +45,50 @@ message KeyPlan {
 
 // NodeSlotMap is the slots of one node's card.
 message NodeSlotMap {
-  string node = 1;               // the node, as its key@ names itself (--node); an address part, listed once
+  // the node, as its key@ names itself (--node); an address part of at most 64 characters, listed once
+  string node = 1 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^[a-z0-9._-]{1,64}$"];
   repeated SlotKey slots = 2;    // one entry per slot, none twice
 }
 
 // SlotKey is the key of one card slot. In the YAML payload the byte fields are base64url without padding (RFC 4648,
 // section 5).
 message SlotKey {
-  string slot = 1;                  // the PIV slot, two lower-case hex digits: 9a, 9c, 9d, 82 to 95
-  string purpose = 2;               // the purpose of keys.yaml the slot serves
-  bytes public_key = 3;             // the slot's public key, SubjectPublicKeyInfo in DER
+  // the PIV slot, two lower-case hex digits: 9a, 9c, 9d, 82 to 95
+  string slot = 1 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^[0-9a-f]{2}$"];
+  string purpose = 2 [(buf.validate.field).required = true];    // the purpose of keys.yaml the slot serves
+  bytes public_key = 3 [(buf.validate.field).required = true];  // the slot's public key, SubjectPublicKeyInfo in DER
   bytes attestation = 4;            // the slot's attestation certificate, DER, made by the card; empty for a store that does not attest
   bytes attestation_signer = 5;     // the card's attestation certificate that signed it, DER; present exactly when attestation is
 }
 
 // KeyPurposePlan is the plan of one purpose.
 message KeyPurposePlan {
-  string purpose = 1;    // a purpose name from keys.yaml
-  string algorithm = 2;  // the algorithm of the purpose's key
+  string purpose = 1 [(buf.validate.field).required = true];    // a purpose name from keys.yaml
+  string algorithm = 2 [(buf.validate.field).required = true];  // the algorithm of the purpose's key
   string slot = 3;       // where the key lives in the key store
 }
 
 // TokenLifetime is the kind TokenLifetime; id "default".
 message TokenLifetime {
-  google.protobuf.Duration id_token = 1;                  // lifetime of an ID token
-  google.protobuf.Duration access_token = 2;              // lifetime of an access token
-  google.protobuf.Duration human_session_absolute = 3;    // the longest a person's session lasts
-  google.protobuf.Duration refresh_idle = 4;              // how long a refresh token may sit unused
+  google.protobuf.Duration id_token = 1 [(buf.validate.field).required = true];                  // lifetime of an ID token
+  google.protobuf.Duration access_token = 2 [(buf.validate.field).required = true];              // lifetime of an access token
+  google.protobuf.Duration human_session_absolute = 3 [(buf.validate.field).required = true];    // the longest a person's session lasts
+  google.protobuf.Duration refresh_idle = 4 [(buf.validate.field).required = true];              // how long a refresh token may sit unused
 }
 
 // InstallationClient is the kind InstallationClient; id is the client id.
 message InstallationClient {
-  string id = 1;                              // the client id
-  string kind = 2;                            // "public", "confidential" or "exchange"
-  repeated string redirects = 3;              // the allowed redirect URIs
-  repeated string requires = 4;               // what the client requires of a sign-in
+  string id = 1;                              // the client id: the id of the item, or left out
+  // "public", "confidential" or "exchange"
+  string kind = 2 [(buf.validate.field).required = true, (buf.validate.field).string = {in: ["public", "confidential", "exchange"]}];
+  // the allowed redirect URIs: https, or http on a loopback address
+  repeated string redirects = 3 [(buf.validate.field).repeated.items.string.pattern = "^https?://."];
+  // what the client requires of a sign-in: grant names, <scope>:<thing>:<role>, no wildcard
+  repeated string requires = 4 [(buf.validate.field).repeated.items.string.pattern = "^[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}:[A-Za-z0-9_-]{1,64}$"];
   google.protobuf.Duration ttl_cap = 5;       // the longest token lifetime the client may get
   string profile = 6;                         // the client's profile
-  string secret = 7;                          // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
+  // the name of the client's secret in the secret source (0005 "Secret sources"); empty for a public client
+  string secret = 7 [(buf.validate.field).string.pattern = "^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"];
 }
 
 // InstallationClientSecret is the kind InstallationClientSecret; id is the client id. Its value is what store@ answers
@@ -85,14 +101,17 @@ message InstallationClientSecret {
 
 // Upstream is the kind Upstream; id is the upstream's name. It names no tenant (kinds.yaml).
 message Upstream {
-  string name = 1;                 // the upstream's name
-  string kind = 2;                 // the kind of upstream, e.g. "oidc"
-  string issuer = 3;               // the upstream's issuer URL
-  string client_id = 4;            // sluis's client id at the upstream
-  string subject_claim = 5;        // the claim that holds the subject
+  string name = 1;                 // the upstream's name: the id of the item, or left out
+  // the kind of upstream: "oidc"
+  string kind = 2 [(buf.validate.field).required = true, (buf.validate.field).string = {in: ["oidc"]}];
+  // the upstream's issuer URL: http or https
+  string issuer = 3 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^https?://."];
+  string client_id = 4 [(buf.validate.field).required = true];       // sluis's client id at the upstream
+  string subject_claim = 5 [(buf.validate.field).required = true];   // the claim that holds the subject
   string org_claim = 6;            // the claim that holds the organisation; may be empty
-  repeated string scopes = 7;      // the scopes to ask for
-  string secret = 8;               // the name of sluis's client secret at the upstream in the secret source (0005 "Secret sources")
+  repeated string scopes = 7 [(buf.validate.field).repeated.items.string.min_len = 1];      // the scopes to ask for
+  // the name of sluis's client secret at the upstream in the secret source (0005 "Secret sources")
+  string secret = 8 [(buf.validate.field).string.pattern = "^$|^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"];
 }
 
 // UpstreamSecret is the kind UpstreamSecret; id is the upstream's name. Its value is what store@ answers to a get from
@@ -121,30 +140,34 @@ message ExchangeTrust {
 
 // TrustedIssuer is one issuer trusted for token exchange.
 message TrustedIssuer {
-  string issuer = 1;                 // the issuer URL
-  repeated string audiences = 2;     // the audiences accepted from it
-  string proof_kind = 3;             // how its tokens are proven
-  string jwks_uri = 4;               // where its keys are
+  // the issuer URL: http or https
+  string issuer = 1 [(buf.validate.field).required = true, (buf.validate.field).string.pattern = "^https?://."];
+  repeated string audiences = 2 [(buf.validate.field).repeated.items.string.min_len = 1];     // the audiences accepted from it
+  string proof_kind = 3 [(buf.validate.field).required = true];             // how its tokens are proven
+  // where its keys are: empty, or an http or https URL
+  string jwks_uri = 4 [(buf.validate.field).string.pattern = "^$|^https?://."];
 }
 
 // AuditLog is the kind AuditLog; id "default".
 message AuditLog {
-  string project = 1;            // the audit project
-  repeated LogDecl logs = 2;     // the logs of the project
-  string lock_mode = 3;          // the object-lock mode of the log's store
+  string project = 1 [(buf.validate.field).required = true];            // the audit project
+  repeated LogDecl logs = 2 [(buf.validate.field).required = true, (buf.validate.field).repeated.min_items = 1];     // the logs of the project
+  // the object-lock mode of the log's store: "none", "removable" or "compliance"
+  string lock_mode = 3 [(buf.validate.field).required = true, (buf.validate.field).string = {in: ["none", "removable", "compliance"]}];
 }
 
 // LogDecl declares one log of the audit project.
 message LogDecl {
-  string kind = 1;     // "audit" or "usage"
-  string id = 2;       // the log's id
-  string origin = 3;   // the C2SP checkpoint origin line, per 0029 "Tiled log" (terms-allow: origin)
+  string kind = 1 [(buf.validate.field).required = true, (buf.validate.field).string = {in: ["audit", "usage"]}];     // "audit" or "usage"
+  string id = 2 [(buf.validate.field).required = true];       // the log's id
+  string origin = 3 [(buf.validate.field).required = true];   // the C2SP checkpoint origin line, per 0029 "Tiled log" (terms-allow: origin)
 }
 
 // AuditCatalogue is the kind AuditCatalogue; id "default".
 message AuditCatalogue {
-  string release = 1;              // the release the catalogue belongs to
-  repeated string actions = 2;     // the action names (decision D-15: names only tonight)
+  string release = 1 [(buf.validate.field).required = true];              // the release the catalogue belongs to
+  // the action names (decision D-15: names only tonight): two or more lower-case words joined by dots
+  repeated string actions = 2 [(buf.validate.field).required = true, (buf.validate.field).repeated = {min_items: 1, items: {string: {pattern: "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$"}}}];
 }
 
 // ExportDestination is the kind ExportDestination: where exporter@ publishes (0009 "Destinations"); keyed by the

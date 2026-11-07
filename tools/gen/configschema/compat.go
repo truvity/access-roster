@@ -128,7 +128,8 @@ func compatNode(where string, oldRoot, newRoot, o, n map[string]any, depth int) 
 
 	known := map[string]bool{"$schema": true, "$id": true, "type": true, "properties": true, "required": true, "items": true,
 		"unevaluatedProperties": true, "pattern": true, "minLength": true, "maxLength": true, "minItems": true, "maxItems": true,
-		"uniqueItems": true, "const": true, "enum": true}
+		"uniqueItems": true, "const": true, "enum": true, "minimum": true, "maximum": true, "minProperties": true,
+		"propertyNames": true, "additionalProperties": true}
 	for _, side := range []map[string]any{o, n} {
 		for k := range side {
 			if !known[k] && !annotations[k] {
@@ -170,10 +171,10 @@ func compatNode(where string, oldRoot, newRoot, o, n map[string]any, depth int) 
 		}
 	}
 	// Bounds: a minimum may only fall, a maximum only rise, and none may appear.
-	for _, k := range []string{"minLength", "minItems"} {
+	for _, k := range []string{"minLength", "minItems", "minProperties", "minimum"} {
 		out = append(out, bound(where, k, o, n, func(old, cur float64) bool { return cur > old })...)
 	}
-	for _, k := range []string{"maxLength", "maxItems"} {
+	for _, k := range []string{"maxLength", "maxItems", "maximum"} {
 		out = append(out, bound(where, k, o, n, func(old, cur float64) bool { return cur < old })...)
 	}
 	if u, _ := n["uniqueItems"].(bool); u {
@@ -222,6 +223,17 @@ func compatNode(where string, oldRoot, newRoot, o, n map[string]any, depth int) 
 			continue
 		}
 		out = append(out, compatNode(w, oldRoot, newRoot, om, nm, depth+1)...)
+	}
+	// The names of the keys and the schema of the other keys' values are schemas of their own.
+	for _, k := range []string{"propertyNames", "additionalProperties"} {
+		nv, nHas := n[k].(map[string]any)
+		ov, oHas := o[k].(map[string]any)
+		switch {
+		case nHas && !oHas:
+			out = append(out, fmt.Sprintf("%s: %s is new", where, k))
+		case nHas && oHas:
+			out = append(out, compatNode(where+"."+k, oldRoot, newRoot, ov, nv, depth+1)...)
+		}
 	}
 	if oi, ok := o["items"].(map[string]any); ok {
 		ni, nok := n["items"].(map[string]any)
