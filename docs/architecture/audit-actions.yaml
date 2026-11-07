@@ -413,10 +413,11 @@ actions:
     subject: optional
     fields:
       ignored_acr_values: {type: acr_count}
+      pkce: {type: word}
     example:
       tenant: acme
       subject: true
-      sluis: {ignored_acr_values: 2}
+      sluis: {ignored_acr_values: 2, pkce: s256}
 
   - name: session.signin
     actor: session
@@ -445,6 +446,7 @@ actions:
     fields:
       grant_type: {type: word}
       sid: {type: ident}
+      pkce: {type: word}
       client:
         fields:
           method: {type: word}
@@ -453,7 +455,7 @@ actions:
       tenant: acme
       subject: true
       policy: {decision_id: dec-1, digest: v1, policy_ids: [p1], decision: allowed}
-      sluis: {grant_type: authorization_code, sid: s1, client: {method: client_secret_basic, authenticated: true}}
+      sluis: {grant_type: authorization_code, sid: s1, pkce: s256, client: {method: client_secret_basic, authenticated: true}}
 
   - name: session.refresh
     actor: session
