@@ -418,7 +418,7 @@ async fn an_asker_asks_only_its_own_actions() {
 
 #[tokio::test]
 async fn an_action_cannot_widen_its_own_grant() {
-    // token.exchange may allow get, list, create, update and seal, open; whatever the asker asks.
+    // token.exchange may allow get, list, create, update and seal, open, mac; whatever the asker asks.
     let rig = Rig::new("exchange").await;
     let mut req = token("token.exchange", &["workforce/u-1001"], "live", fresh_mfa());
     req.grant_store_verbs = ["get", "create", "delete", "apply"]
@@ -434,7 +434,8 @@ async fn an_action_cannot_widen_its_own_grant() {
             .sealed_grant,
     );
     assert_eq!(g.store_verbs, ["create", "get"]);
-    assert_eq!(g.key_ops, ["open", "seal"]);
+    // sign is not an operation of the action, whatever exchange asks; mac is, for the pairwise key.
+    assert_eq!(g.key_ops, ["mac", "open", "seal"]);
 
     // An audit grant allows no store verb at all.
     let rig = Rig::new("writer").await;
@@ -807,4 +808,60 @@ async fn a_required_name_the_vocabulary_does_not_declare_is_refused_not_left_out
         "{paths:?}"
     );
     assert_eq!(paths.last().map(String::as_str), Some("requester.requires"));
+}
+
+/// The caps of each action are the file that session's tests narrow their stand-in to: a table here that drifts from it
+/// fails, and so does a stand-in that gives session more than the real policy does.
+///
+/// verifies: REQ-KEYS-260
+#[test]
+fn the_caps_of_every_action_are_the_shared_vectors() {
+    let v: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/testdata/policy/grant-caps.json"
+    ))
+    .unwrap();
+    let actions = v["actions"].as_object().unwrap();
+    assert!(actions.len() >= 5, "a sweep over nothing proves nothing");
+    for (name, want) in actions {
+        let (verbs, ops) = policy::grant::caps(name).unwrap_or_else(|| panic!("no action {name}"));
+        let list = |k: &str| -> Vec<String> {
+            want[k]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_str().unwrap().to_owned())
+                .collect()
+        };
+        let mut got_verbs: Vec<String> = verbs.iter().map(|s| (*s).to_owned()).collect();
+        let mut got_ops: Vec<String> = ops.iter().map(|s| (*s).to_owned()).collect();
+        got_verbs.sort();
+        got_ops.sort();
+        assert_eq!(got_verbs, list("verbs"), "{name}");
+        assert_eq!(got_ops, list("ops"), "{name}");
+    }
+}
+
+/// The first sign-in at a tenant and every refresh need the pairwise key, which key@ makes only under a grant that names
+/// the tenant and the operation mac: session asks for seal and mac at the code exchange, and the real policy gives both.
+/// A grant narrowed to seal and open alone would leave the key unmade and the chain begun (a spent code and an orphan
+/// chain for every attempt).
+///
+/// verifies: REQ-KEYS-260
+#[tokio::test]
+async fn session_gets_seal_and_mac_at_a_code_exchange_and_mac_at_a_refresh() {
+    let rig = Rig::new("session").await;
+    for (asked, want) in [
+        (vec!["seal", "mac"], vec!["mac", "seal"]),
+        (vec!["mac"], vec!["mac"]),
+        (vec!["seal", "open", "mac"], vec!["mac", "open", "seal"]),
+        // Nothing beyond the action's caps is given, whatever is asked.
+        (vec!["seal", "mac", "sign"], vec!["mac", "seal"]),
+    ] {
+        let mut req = token("token.issue", &["workforce/u-1001"], "live", fresh_mfa());
+        req.grant_store_verbs = vec!["create".into(), "update".into()];
+        req.grant_key_ops = asked.iter().map(|s| (*s).to_owned()).collect();
+        let r = rig.client.decide(req).await.unwrap().into_owned();
+        assert!(allowed(r.decision.as_known().unwrap()), "{asked:?}");
+        assert_eq!(open_sealed(&r.sealed_grant).key_ops, want, "{asked:?}");
+    }
 }

@@ -512,7 +512,8 @@ func TestClientCredentialsIsNotServedAndIssuesNoRefreshToken(t *testing.T) {
 }
 
 func allowAll(r *policyv2alpha1.DecideRequest) *policyv2alpha1.DecideResponse {
-	g := fakeGrant{id: "d-x", tenant: r.GetTenant(), verbs: r.GetGrantStoreVerbs(), ops: r.GetGrantKeyOps(), expires: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)}
+	verbs, ops := grantCaps(r)
+	g := fakeGrant{id: "d-x", tenant: r.GetTenant(), verbs: verbs, ops: ops, expires: time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)}
 	return &policyv2alpha1.DecideResponse{
 		Decision: policyv2alpha1.Decision_ALLOW, DecisionId: "d-x", Digest: "digest-1", GrantNames: []string{testGroup}, SealedGrant: []byte(g.encode()),
 	}

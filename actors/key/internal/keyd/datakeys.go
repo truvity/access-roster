@@ -53,6 +53,31 @@ func (s *Server) withKey(ctx context.Context, ref keyRef, create bool, fn func(k
 	return unavailable(reasonWrap)
 }
 
+// withExistingKey is withKey for a call that may not make the key: the key is used when it exists, and errNoKey says it does
+// not. It makes nothing, so it does not take loadMu, which serializes the makers: a caller that names a tenant with no
+// key (and no grant to make one) costs the store a Get and a List, as any call does, and never holds up the cold load of a
+// key for anyone else. Two callers that open the same wrap at once do the work twice and the later put replaces the
+// earlier entry, which is wiped once its users are done (cache.put).
+func (s *Server) withExistingKey(ctx context.Context, ref keyRef, fn func(key []byte) error) error {
+	for range 2 {
+		e := s.cache.get(ref)
+		if e == nil {
+			key, err := s.openOwn(ctx, ref)
+			if err != nil {
+				return err
+			}
+			if ref.tenant != "" {
+				s.tenants.Store(ref.tenant, struct{}{})
+			}
+			e = s.cache.put(ref, key)
+		}
+		if used, err := e.use(fn); used {
+			return err
+		}
+	}
+	return unavailable(reasonWrap)
+}
+
 // load opens the key of ref, making it when asked and when no wrap of it exists. One key is loaded at a time.
 // The audit facts of a new key (1 + N, each with its own timeout) are emitted after the lock is released, so a
 // slow transport holds up the caller that made the key and no other.
