@@ -369,3 +369,72 @@ func TestAPublicClientWithoutCredentialsFetchesNoSecret(t *testing.T) {
 		t.Errorf("%d fetches of a secret for a public client with no credentials", got)
 	}
 }
+
+// Another client that presents a spent code ends nothing: only the client the code was issued to reads a replay as a leak and
+// ends the chain. The public client needs no secret and knows a code that leaked, so without the owner check it could end the
+// sessions of a confidential client; and the owner's own replay still ends them.
+//
+// verifies: REQ-CLIENT-042
+func TestASpentCodeEndsTheChainOnlyForTheClientItWasIssuedTo(t *testing.T) {
+	e := confEnv(t)
+	code, v := confSignIn(e)
+	first := e.token(withPost(confCode(code, v), confSecret))
+	if first.GetStatus() != http.StatusOK {
+		t.Fatalf("first: %d %s", first.GetStatus(), first.GetBody())
+	}
+	rt := body(t, first)["refresh_token"].(string)
+	if e.store.count("session-chain", testTenant) != 1 {
+		t.Fatal("no chain")
+	}
+	// The public client presents the leaked code with the redirect_uri of the confidential client and a well-formed verifier.
+	other := &sessionv2alpha1.TokenRequest{
+		GrantType: "authorization_code", Code: code, RedirectUri: confRedirect, CodeVerifier: v, ClientId: testClient,
+	}
+	assertOAuth(t, e.token(other), http.StatusBadRequest, "invalid_grant")
+	// Another confidential client, with its own right secret.
+	third := confCode(code, v)
+	third.ClientId = "conf-other"
+	third = withBasic(third, "conf-other", "another-clients-secret")
+	assertOAuth(t, e.token(third), http.StatusBadRequest, "invalid_grant")
+	if n := e.store.count("session-chain", testTenant); n != 1 {
+		t.Fatalf("%d chains: a client that does not own the code ended the chain", n)
+	}
+	refreshed := e.token(withPost(&sessionv2alpha1.TokenRequest{GrantType: "refresh_token", RefreshToken: rt, ClientId: confClient}, confSecret))
+	if refreshed.GetStatus() != http.StatusOK {
+		t.Fatalf("the owner's refresh token was ended: %d %s", refreshed.GetStatus(), refreshed.GetBody())
+	}
+	// The owner's own replay ends it.
+	assertOAuth(t, e.token(withPost(confCode(code, v), confSecret)), http.StatusBadRequest, "invalid_grant")
+	if n := e.store.count("session-chain", testTenant); n != 0 {
+		t.Errorf("%d chains survive the owner's replay", n)
+	}
+}
+
+// A client whose kind changes between the authorization request and the callback is not given a code: the callback reads the
+// declaration again, and only a public or a confidential client signs a person in.
+//
+// verifies: REQ-CLIENT-042
+func TestACallbackRefusesAClientThatIsNoLongerOneThatSignsPeopleIn(t *testing.T) {
+	for _, kind := range []string{"exchange", "service", ""} {
+		t.Run("changed to "+kind, func(t *testing.T) {
+			e := confEnv(t)
+			p := newAuthorize()
+			p.req.ClientId, p.req.RedirectUri = confClient, confRedirect
+			a := e.authorize(p.req)
+			up := location(e.t, a)
+			e.store.put("installation-client", "", confClient, &configv2alpha1.InstallationClient{
+				Id: confClient, Kind: kind, Redirects: []string{confRedirect}, Requires: []string{testGroup}, Secret: credential(confClient),
+			})
+			cb := e.callback(&sessionv2alpha1.CallbackRequest{
+				Code: "upstream-code-" + up.Query().Get("state")[:8], State: up.Query().Get("state"),
+				Iss: "https://idp.example.test/realms/test", Cookie: cookieValue(e.t, a),
+			})
+			if cb.GetStatus() == http.StatusFound {
+				t.Fatalf("a redirect to %s", location(t, cb))
+			}
+			if e.store.count("auth-code", testTenant) != 0 {
+				t.Error("a code was written")
+			}
+		})
+	}
+}
