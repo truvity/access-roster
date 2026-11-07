@@ -2592,8 +2592,7 @@ requirements:
     rationale: "Every refusal and every decision is a record that the writer must seal, and a board with no traffic that writes thousands an hour fills a spool of 256 MiB in days and takes card signatures for facts about itself (ADR 0029); the indexer's own decisions end only while it polls at most every 30 seconds, inside the 50 seconds a grant is presented."
     level: MUST
     source: design-decision
-    status: partial
-    gap: attestation-missing
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
@@ -2606,7 +2605,7 @@ requirements:
       - {kind: integration-test, ref: "key@'s share on the fakes: a simulated hour with an unanswerable request, and an idle hour, write no audit fact and sign nothing (TestAnIdleUnlockedBoardWritesNoAuditFactsAndSignsNothing)"}
       - {kind: integration-test, ref: "the writer's share on the fakes, policy's part played: one record and its decision's record are sealed, then two simulated hours write and sign nothing (TestAnIdleWriterSeals...)"}
       - {kind: integration-test, ref: "the indexer's share: it keeps its grant for the expiry policy states, so at the longest poll (30 s) it decides once and goes quiet (a_slow_poll_within_the_life_of_the_grant_goes_quiet...)"}
-      - {kind: manual, ref: "board check, idle hour: unlocked, no traffic, after the last seal, the spool grows by 60 records or fewer, log size flat. Before the fix: 23 entries, 11.5 checkpoints a minute; fix not yet recorded"}
+      - {kind: manual, ref: "board check, idle hour: unlocked, no traffic, after the last seal, 60 records or fewer, log flat. Run 2026-11-07, three boards: 0 in 60 min; before the fix 23 entries a minute"}
   - id: REQ-AUDIT-181
     area: AUDIT
     statement: "The writer MUST keep the sealed grant that policy gave it for a tenant, with the expiry that policy states in its answer, and present it for every seal of every batch until ten seconds before that expiry."
@@ -2661,8 +2660,7 @@ requirements:
     rationale: "A grant lives 60 seconds and the log of a board that has run for days holds thousands of records, so a pass that holds the one grant it asked for first is refused by key@ part of the way (ADR 0007, ADR 0028)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: attestation-missing
+    status: done
     milestone: first-version
     runtimes: all
     actors: [indexer]
@@ -2670,7 +2668,7 @@ requirements:
     tests: [tests/e2e/spine/audit_test.go]
     verification:
       - {kind: integration-test, ref: "a pass over 300 records at 25 s an Open: key@ refuses none and policy is asked again; a grant that ran out before key@ saw it is asked for again (audit_test.go in tests/e2e/spine)"}
-      - {kind: manual, ref: "board check: boards-smoke step 3 on a board whose writer ran a day or more (thousands of records) finds the records of its run and verifies the log. Not run yet"}
+      - {kind: manual, ref: "board check: boards-smoke step 3 on a board whose writer ran a day or more (thousands of records) finds the records of its run and verifies the log. Run 2026-11-07, three boards"}
   - id: REQ-AUDIT-185
     area: AUDIT
     split_from: REQ-AUDIT-184

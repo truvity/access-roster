@@ -562,21 +562,20 @@ requirements:
       - cli/sluis/node_test.go
     verification:
       - {kind: integration-test, ref: "cli/sluis node_test.go: counter line for 3, 2, 1, 0 and unreadable, lock line last and exact, no -1 (TestNodeStatusSaysThePINCounter); boards-test.sh, prereq-test.sh: counter line ignored"}
+      - {kind: manual, ref: "on three boards: the counter line, unknown while unlocked, then the lock line; the board lock, state and boards-status stay correct. Run 2026-11-07"}
   - id: REQ-DEPLOY-046
     area: DEPLOY
     statement: "On a boards installation, the rqlite Raft port of a board MUST answer only the loopback interface, the boards of the installation and the one administration host that the operator names, and its client port only the loopback interface and that administration host."
-    rationale: "rqlite has no TLS or authentication in the test installation, so whoever reaches its ports reads and writes the store; with no administration host named it gets nothing, and if the rules cannot load at boot the board fails open, a stance awaiting the owner, to revisit before any real PIN (docs/runtimes/bare-metal.md, The rqlite firewall; ADR 0003)."
+    rationale: "rqlite has no TLS or authentication in the test installation, so whoever reaches its ports reads and writes the store; with no administration host named it gets nothing, and if the rules cannot load at boot the board fails open, a stance the owner accepted on 2026-11-07 for the test installation, to revisit before any real PIN (docs/runtimes/bare-metal.md, The rqlite firewall; ADR 0003)."
     level: MUST
     source: design-decision
-    status: partial
-    gap: attestation-missing
-    features: [design]
+    status: done
     milestone: first-version
     runtimes: ["bare-metal"]
     standards: []
     verification:
       - {kind: integration-test, ref: "boards-test.sh: the rules pass nft -c and, in a network namespace, admit the boards, admin host and loopback and drop a stranger. prereq-test.sh: timer first, nothing kept before the confirm"}
-      - {kind: manual, ref: "boards-firewall-check and -reboot-check on Ubuntu 26.04 and Rocky 10.2 boards: a stranger times out, peers and admin host answer, a rebooted board has its rules before rqlited"}
+      - {kind: manual, ref: "boards-firewall-check on three boards (Ubuntu 26.04.1 x2, Rocky 10.2): stranger times out, peers and admin host answer; -reboot-check on two: rules before rqlited. 2026-11-07"}
   - id: REQ-DEPLOY-042
     area: DEPLOY
     statement: "The .rpm SHOULD ship an SELinux policy module and the .deb an AppArmor profile that confine each actor to its own sockets and state and let only key@ reach the card service and the card device."

@@ -3243,3 +3243,4 @@ requirements:
       - drivers/key/yubikey-piv/internal/driver/cardreset_test.go
     verification:
       - {kind: integration-test, ref: "on the fake card, each reset leaves one line with its place and the card state, a card found logged in with no PIN held warns, no line holds the PIN (cardreset_test.go: TestTheResetAt*IsInTheJournal)"}
+      - {kind: manual, ref: "on three boards, the reset line after each deploy and after a plain driver restart, with the card state and no PIN held as the page says. Seen 2026-11-07"}
