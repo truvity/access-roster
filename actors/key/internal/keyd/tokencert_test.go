@@ -504,6 +504,7 @@ func TestPublicKeyGivesNoChainForACertificateTheIntermediateDidNotSign(t *testin
 	if got := publicKeyX5C(t, n, "signer"); len(got) != 0 {
 		t.Fatalf("a chain of %d certificates led by a certificate the intermediate did not sign", len(got))
 	}
+}
 
 // ca learns which key it certifies from TokenKey, which only ca may ask (the registry gives the token key's public key to
 // signer alone). The answer is what PublicKey gives signer: the key, and the chain once there is one that fits.
