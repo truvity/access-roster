@@ -1216,10 +1216,14 @@ fn explain_and_the_payload_decoder_read_the_same_texts_from_every_fixture() {
                     format!("{:?}", pb::TokenLifetime::decode_from_slice(bytes).unwrap())
                 }
                 "AuditLog" => format!("{:?}", pb::AuditLog::decode_from_slice(bytes).unwrap()),
-                "AuditCatalogue" => format!(
-                    "{:?}",
-                    pb::AuditCatalogue::decode_from_slice(bytes).unwrap()
-                ),
+                "AuditCatalogue" => {
+                    // The schema documents are printed as digests by the walk, whatever their length.
+                    let mut a = pb::AuditCatalogue::decode_from_slice(bytes).unwrap();
+                    for s in &mut a.schemas {
+                        s.json.clear();
+                    }
+                    format!("{a:?}")
+                }
                 "ExchangeTrust" => {
                     format!("{:?}", pb::ExchangeTrust::decode_from_slice(bytes).unwrap())
                 }

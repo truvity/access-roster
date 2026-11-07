@@ -93,6 +93,8 @@ pub const FIELDS: &[(&str, &str, Treatment)] = &[
     ("AuditLog", "lock_mode", Show),
     ("AuditCatalogue", "release", Show),
     ("AuditCatalogue", "actions[]", Show),
+    ("AuditCatalogue", "schemas[].name", Show),
+    ("AuditCatalogue", "schemas[].json", Digest),
     ("ExchangeTrust", "issuers[].issuer", Url),
     ("ExchangeTrust", "issuers[].audiences[]", Show),
     ("ExchangeTrust", "issuers[].proof_kind", Show),

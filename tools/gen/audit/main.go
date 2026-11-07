@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+var semverRE = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$`)
 
 const (
 	tablePath  = "docs/architecture/audit-actions.yaml"
@@ -18,6 +21,11 @@ const (
 	vectorsOut = "kits/conformance/audit/action-vectors.json"
 	goOut      = "kits/go/audit/zz_table.go"
 	rustOut    = "kits/rust/sluis-audit/src/generated.rs"
+	// catalogueOut is the AuditCatalogue document of the local installation: the table and its schemas as one item, signed
+	// and served by the harness (REQ-AUDIT-147). A release pipeline makes the document of a release with -catalogue.
+	catalogueOut = "tests/installations/local/config/audit-catalogue.yaml"
+	// localRelease is the release the local installation's document names: no release of sluis is below it.
+	localRelease = "0.0.0"
 )
 
 // generate returns every generated file by its path below the root.
@@ -26,23 +34,17 @@ func generate(root string) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	schemas, err := buildSchemas(t)
+	schemas, texts, err := schemaTexts(t)
 	if err != nil {
 		return nil, err
 	}
 	files := map[string][]byte{}
-	texts := map[string]string{} // compact text, for the emitters
 	for name, doc := range schemas {
 		pretty, err := marshal(doc, true)
 		if err != nil {
 			return nil, err
 		}
-		compact, err := marshal(doc, false)
-		if err != nil {
-			return nil, err
-		}
 		files[filepath.Join(schemaDir, name)] = pretty
-		texts[name] = string(compact)
 	}
 	vec, err := buildVectors(t)
 	if err != nil {
@@ -55,7 +57,27 @@ func generate(root string) (map[string][]byte, error) {
 	if files[rustOut], err = emitRust(t, texts); err != nil {
 		return nil, err
 	}
+	if files[catalogueOut], err = emitCatalogue(t, texts, localRelease); err != nil {
+		return nil, err
+	}
 	return files, nil
+}
+
+// schemaTexts returns the schema documents and their compact text (for the emitters and the catalogue), by file name.
+func schemaTexts(t *tableFile) (map[string]obj, map[string]string, error) {
+	schemas, err := buildSchemas(t)
+	if err != nil {
+		return nil, nil, err
+	}
+	texts := map[string]string{}
+	for name, doc := range schemas {
+		compact, err := marshal(doc, false)
+		if err != nil {
+			return nil, nil, err
+		}
+		texts[name] = string(compact)
+	}
+	return schemas, texts, nil
 }
 
 func run(root string, check bool) error {
@@ -113,11 +135,20 @@ func compare(root string, files map[string][]byte) error {
 func main() {
 	root := flag.String("root", ".", "the repository root")
 	check := flag.Bool("check", false, "fail when a generated file is not what the table makes, and write nothing")
+	catalogue := flag.String("catalogue", "", "write the AuditCatalogue document of -release to this file (the release pipeline's step, REQ-AUDIT-147) and nothing else")
+	release := flag.String("release", "", "the release the -catalogue document is made for, a semantic version")
 	against := flag.String("against", "", "the action table of the last release: fail when this table removes or retypes a member of unmapped.sluis against it (REQ-AUDIT-119); nothing is written")
 	flag.Parse()
 	if flag.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "audit: no arguments, only flags")
 		os.Exit(2)
+	}
+	if *catalogue != "" {
+		if err := runCatalogue(*root, *catalogue, *release); err != nil {
+			fmt.Fprintf(os.Stderr, "audit: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 	if *against != "" {
 		if err := runCompat(*root, *against); err != nil {
@@ -146,4 +177,24 @@ func runCompat(root, oldPath string) error {
 		return fmt.Errorf("the table is not compatible with the last release (a change of this kind needs a new major version of sluis):\n  %s", strings.Join(found, "\n  "))
 	}
 	return nil
+}
+
+// runCatalogue writes the AuditCatalogue document of a release.
+func runCatalogue(root, out, release string) error {
+	if !semverRE.MatchString(release) {
+		return fmt.Errorf("-release %q is not a semantic version (MAJOR.MINOR.PATCH, no v)", release)
+	}
+	t, err := load(filepath.Join(root, tablePath))
+	if err != nil {
+		return err
+	}
+	_, texts, err := schemaTexts(t)
+	if err != nil {
+		return err
+	}
+	doc, err := emitCatalogue(t, texts, release)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(out, doc, 0o600)
 }

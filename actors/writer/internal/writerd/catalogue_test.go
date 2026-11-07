@@ -1,0 +1,192 @@
+package writerd
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	configv2alpha1 "github.com/truvity/sluis/v2/gen/go/sluis/config/v2alpha1"
+	"github.com/truvity/sluis/v2/kits/go/audit"
+)
+
+const schemaDir = "../../../../kits/conformance/audit/schema"
+
+// realChecker is a checker whose AuditCatalogue is the real one: the schemas generated from the action table, as the
+// release pipeline publishes them, at the release the local installation names.
+func realChecker(t *testing.T) checker {
+	t.Helper()
+	ents, err := os.ReadDir(schemaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, actions := map[string]string{}, catalogue{}
+	for _, e := range ents {
+		b, err := os.ReadFile(filepath.Join(schemaDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[e.Name()] = string(b)
+		if e.Name() != audit.DefsName {
+			actions[strings.TrimSuffix(e.Name(), ".schema.json")] = struct{}{}
+		}
+	}
+	if len(actions) < 40 {
+		t.Fatalf("%d schemas: the directory lost its files", len(actions))
+	}
+	s, err := audit.ParseSchemas(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return checker{boundary: "dev", project: "sluis", release: "v0.0.0", actions: actions, schemas: s}
+}
+
+type exampleCase struct {
+	Name     string `json:"name"`
+	Actor    string `json:"actor"`
+	UID      string `json:"uid"`
+	Expected string `json:"expected"`
+}
+
+func exampleCases(t *testing.T) []exampleCase {
+	t.Helper()
+	b, err := os.ReadFile("../../../../kits/conformance/audit/action-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Cases []exampleCase `json:"cases"`
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	return f.Cases
+}
+
+// verifies: REQ-AUDIT-113
+//
+// The writer accepts the example record of every action of the table against the real catalogue, as the emitter of
+// that actor sends it: the schemas the pipeline publishes accept what the emitters make.
+func TestTheWriterAcceptsTheExampleOfEveryActionAgainstTheRealCatalogue(t *testing.T) {
+	c := realChecker(t)
+	for _, ex := range exampleCases(t) {
+		t.Run(ex.Name, func(t *testing.T) {
+			if _, rej := c.check(ex.UID, ex.Actor+"@dev", []byte(ex.Expected), 0); rej != nil {
+				t.Fatalf("refused: %v", rej)
+			}
+		})
+	}
+}
+
+// verifies: REQ-AUDIT-113
+//
+// The negative vectors of unmapped.sluis through the writer: a member the action lacks, a required member missing, a
+// value of the wrong type or shape, `lost` of the wrong shape. The refusal names the member and never a value.
+func TestTheWriterRefusesAnUnmappedSluisThatDoesNotValidate(t *testing.T) {
+	c := realChecker(t)
+	var base exampleCase
+	for _, ex := range exampleCases(t) {
+		if ex.Name == "key.sign" {
+			base = ex
+		}
+	}
+	mutate := func(f func(sluis map[string]any)) []byte {
+		v, err := parseStrict([]byte(base.Expected))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := v.(map[string]any)["unmapped"].(map[string]any)["sluis"].(map[string]any)
+		f(u)
+		return canonical(t, v)
+	}
+	for name, tc := range map[string]struct {
+		f    func(map[string]any)
+		path string
+	}{
+		"a member the action lacks": {func(s map[string]any) { s["extra"] = "x" }, "unmapped.sluis"},
+		"a required member missing": {func(s map[string]any) { delete(s, "key_id") }, "unmapped.sluis"},
+		"an integer for a string":   {func(s map[string]any) { s["purpose"] = int64(7) }, "unmapped.sluis.purpose"},
+		"a name with a space":       {func(s map[string]any) { s["caller"] = "a secret value" }, "unmapped.sluis.caller"},
+		"lost of the wrong shape":   {func(s map[string]any) { s["lost"] = "3" }, "unmapped.sluis.lost"},
+		"lost with a total of zero": {func(s map[string]any) {
+			s["lost"] = map[string]any{"process": "0123456789abcdef", "total": int64(0), "since": int64(1)}
+		}, "unmapped.sluis.lost.total"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, rej := c.check(base.UID, "key@dev", mutate(tc.f), 0)
+			if rej == nil || rej.Reason != reasonSchema || rej.Path != tc.path {
+				t.Fatalf("rejection = %v, want schema at %s", rej, tc.path)
+			}
+		})
+	}
+	// And one that is valid, with lost beside the members: the note of lost facts is part of the record.
+	ok := mutate(func(s map[string]any) {
+		s["lost"] = map[string]any{"process": "0123456789abcdef", "total": int64(3), "since": int64(1793750400000)}
+	})
+	if _, rej := c.check(base.UID, "key@dev", ok, 0); rej != nil {
+		t.Fatalf("a record with the note of lost facts: %v", rej)
+	}
+}
+
+// verifies: REQ-AUDIT-146
+//
+// A record of a release newer than the catalogue's is kept aside, and one that is not a version too; the same release
+// and older ones, prereleases included, are taken: the catalogue only grows within a major version (REQ-AUDIT-119).
+func TestTheWriterRefusesARecordOfAReleaseNewerThanTheCatalogue(t *testing.T) {
+	c := realChecker(t)
+	c.release = "v2.3.0"
+	var base exampleCase
+	for _, ex := range exampleCases(t) {
+		if ex.Name == "key.sign" {
+			base = ex
+		}
+	}
+	at := func(version string) *rejection {
+		v, err := parseStrict([]byte(base.Expected))
+		if err != nil {
+			t.Fatal(err)
+		}
+		v.(map[string]any)["metadata"].(map[string]any)["product"].(map[string]any)["version"] = version
+		_, rej := c.check(base.UID, "key@dev", canonical(t, v), 0)
+		return rej
+	}
+	for _, v := range []string{"2.3.0", "2.2.9", "2.3.0-rc.1", "1.9.0", "2.3.0+build.5", "0.0.0-dev"} {
+		if rej := at(v); rej != nil {
+			t.Errorf("release %s: refused: %v", v, rej)
+		}
+	}
+	for _, v := range []string{"2.3.1", "2.4.0", "3.0.0", "2.10.0", "not-a-version", "2.3", "v2.3.0"} {
+		if rej := at(v); rej == nil || rej.Reason != reasonRelease || rej.Path != "metadata.product.version" {
+			t.Errorf("release %s: rejection = %v, want release", v, rej)
+		}
+	}
+}
+
+// verifies: REQ-AUDIT-113, REQ-AUDIT-149
+//
+// The writer starts on no catalogue it cannot use: an action without its schema, a release that is no version, schemas
+// that do not compile. It does not start and says which document, never a value.
+func TestStartRefusesACatalogueItCannotUse(t *testing.T) {
+	for name, edit := range map[string]func(*configv2alpha1.AuditCatalogue){
+		"an action without its schema": func(c *configv2alpha1.AuditCatalogue) { c.Schemas = c.Schemas[:1] },
+		"a release that is no version": func(c *configv2alpha1.AuditCatalogue) { c.Release = "latest" },
+		"a short release":              func(c *configv2alpha1.AuditCatalogue) { c.Release = "1.2" },
+		"a schema that is not JSON":    func(c *configv2alpha1.AuditCatalogue) { c.Schemas[1].Json = "{" },
+		"a schema that does not compile": func(c *configv2alpha1.AuditCatalogue) {
+			c.Schemas[1].Json = `{"type":"nonsense"}`
+		},
+		"no definitions document": func(c *configv2alpha1.AuditCatalogue) { c.Schemas = c.Schemas[1:] },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			c := openCatalogue("0.0.0", "key.sign", "store.start")
+			edit(c)
+			e.store.items["audit-catalogue"] = c
+			if err := e.writer().Init(context.Background()); err == nil {
+				t.Fatal("started on it")
+			}
+		})
+	}
+}
