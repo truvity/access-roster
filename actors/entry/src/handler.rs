@@ -78,6 +78,7 @@ impl State {
                 status: 403,
                 reason: "peer",
                 grant: "",
+                ignored: None,
                 correlation: &crate::ids::new_correlation_id(),
             })
             .await;
@@ -103,6 +104,8 @@ impl State {
 struct Trace {
     route: &'static str,
     grant: &'static str,
+    /// How many parameters `/authorize` read and ignored: a number, never a name.
+    ignored: Option<usize>,
 }
 
 /// An answer, relayed or made here.
@@ -149,6 +152,7 @@ pub(crate) async fn handle(state: &State, req: http::Request<Incoming>) -> Reply
                     status,
                     reason,
                     grant: trace.grant,
+                    ignored: trace.ignored,
                     correlation: &id,
                 })
                 .await;
@@ -294,9 +298,14 @@ async fn route(
             } else {
                 QUERY_MAX
             };
-            let p = Params::parse(&raw, limit)
-                .and_then(|p| p.only_among(&[routes::AUTHORIZE, routes::AUTHORIZE_IGNORED]))
-                .map_err(bad)?;
+            // Every name is read, bounded and checked for a repeat, whether it is ignored or not.
+            let all = Params::parse(&raw, limit).map_err(bad)?;
+            if routes::AUTHORIZE_REFUSED.iter().any(|n| all.has(n)) {
+                return Err(Refuse::new(400, "refused_parameter"));
+            }
+            // The names that are not on the list are ignored, and only their number is audited.
+            let (p, ignored) = all.keeping(routes::AUTHORIZE);
+            trace.ignored = Some(ignored);
             let r = AuthorizeRequest {
                 response_type: p.get("response_type"),
                 client_id: p.get("client_id"),

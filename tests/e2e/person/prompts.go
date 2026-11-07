@@ -21,6 +21,8 @@ import (
 //	signed in, max_age=3600       a code, with no form shown, and the ID token carries auth_time
 //	signed in, prompt=login       the form is shown again, and the ID token's auth_time is from this request
 //	prompt=none with login        invalid_request; consent: consent_required (sluis shows neither)
+//	extra=foobar, claims          a code, as the OpenID Foundation's oidcc-ensure-request-with-unknown-parameter-succeeds and
+//	                              oidcc-claims-essential expect (REQ-AUTHN-012): sluis ignores a name it does not know
 //
 // The case that makes the identity provider ask again needs a second one-time password, which it takes once in a 30 second
 // step, so it is the last and the one that can wait.
@@ -106,6 +108,13 @@ func (s *session) prompts(ctx context.Context) error {
 		return errors.New("max_age=3600: the ID token carries no auth_time")
 	}
 	fmt.Printf("%-34s a code with no form shown, and auth_time in the ID token\n", "max_age=3600, signed in:")
+	// RFC 6749 section 3.1: an unrecognised parameter is ignored. `claims` is accepted and ignored too (discovery says
+	// claims_parameter_supported is false).
+	ignored := url.Values{"extra": {"foobar"}, "claims": {`{"userinfo":{"name":{"essential":true}}}`}}
+	if _, err := wantCode("extra and claims, signed in", signedIn, ignored, none); err != nil {
+		return err
+	}
+	fmt.Printf("%-34s a code with no form shown, the unknown parameter ignored\n", "extra and claims, signed in:")
 	if err := wantError("prompt=none login", signedIn, url.Values{"prompt": {"none login"}}, "invalid_request"); err != nil {
 		return err
 	}

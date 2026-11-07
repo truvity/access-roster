@@ -18,10 +18,11 @@
     "status": 1,
     "sluis": {
      "http_status": 200,
+     "ignored_parameters": 2,
      "route": "authorize"
     }
    },
-   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"entry@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"entry.authorize\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302,\"unmapped\":{\"sluis\":{\"http_status\":200,\"route\":\"authorize\"}}}"
+   "expected": "{\"activity_id\":2,\"actor\":{\"user\":{\"type_id\":3,\"uid\":\"entry@dev\"}},\"category_uid\":6,\"class_uid\":6003,\"metadata\":{\"correlation_uid\":\"req-7f3a_01\",\"event_code\":\"entry.authorize\",\"log_name\":\"dev\",\"product\":{\"name\":\"sluis\",\"version\":\"0.0.0-test\"},\"uid\":\"01950000-0000-7000-8000-000000000001\",\"version\":\"1.9.0\"},\"severity_id\":1,\"status_id\":1,\"time\":1793750400000,\"type_uid\":600302,\"unmapped\":{\"sluis\":{\"http_status\":200,\"ignored_parameters\":2,\"route\":\"authorize\"}}}"
   },
   {
    "name": "entry.callback",

@@ -25,6 +25,8 @@ pub(crate) struct Request<'a> {
     pub reason: &'a str,
     /// `grant_type` of a token request, when it is one of the closed list; otherwise empty.
     pub grant: &'a str,
+    /// The number of parameters of an authorization request that were read and ignored; never their names.
+    pub ignored: Option<usize>,
     pub correlation: &'a str,
 }
 
@@ -53,6 +55,9 @@ impl Auditor {
         sluis.insert("http_status".into(), Value::from(r.status));
         if !r.grant.is_empty() {
             sluis.insert("grant_type".into(), Value::from(r.grant));
+        }
+        if let Some(n) = r.ignored {
+            sluis.insert("ignored_parameters".into(), Value::from(n));
         }
         let ev = Event {
             action: Action {

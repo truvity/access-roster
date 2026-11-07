@@ -13,6 +13,10 @@ pub(crate) const FORM_MAX: usize = 32 * 1024;
 const VALUE_MAX: usize = 8 * 1024;
 /// The longest parameter name.
 const NAME_MAX: usize = 64;
+/// The most names a request can hold, and so the most that [`Params::keeping`] can drop: a pair is at least one byte and
+/// a separator, and the largest list is a form body of [`FORM_MAX`]. The audit table's `param_count` type has this as
+/// its maximum, and a test reads both.
+pub(crate) const IGNORED_MAX: usize = FORM_MAX / 2;
 
 /// Why a parameter list was refused. The text goes to the audit record, never to the caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -102,17 +106,21 @@ impl Params {
         }
     }
 
-    /// Refuses a name that is on none of the lists: the route's closed list and the names it accepts and ignores.
-    pub(crate) fn only_among(self, allowed: &[&[&str]]) -> Result<Self, Bad> {
-        if self
+    /// Keeps the names on `known` and drops the rest, for a route that ignores what it does not recognise (RFC 6749
+    /// section 3.1: "The authorization server MUST ignore unrecognized request parameters"). It returns the number of
+    /// names dropped and never the names, because the caller chooses them. What `parse` refused stays refused: a
+    /// repeat, an escape, a control character and a size are checked on every name, a dropped one too. The count is at
+    /// most [`IGNORED_MAX`].
+    pub(crate) fn keeping(self, known: &[&str]) -> (Self, usize) {
+        let before = self.0.len();
+        let kept: Vec<(String, String)> = self
             .0
-            .iter()
-            .all(|(k, _)| allowed.iter().any(|l| l.contains(&k.as_str())))
-        {
-            Ok(self)
-        } else {
-            Err(Bad::Unknown)
-        }
+            .into_iter()
+            .filter(|(k, _)| known.contains(&k.as_str()))
+            .collect();
+        let dropped = before - kept.len();
+        debug_assert!(dropped <= IGNORED_MAX);
+        (Self(kept), dropped)
     }
 
     /// The value of a parameter; the empty string when it was not sent (a proto3 field's default).
@@ -252,6 +260,75 @@ mod tests {
             Params::parse_ignoring_unknown("code=c&x=1", 4, &k).unwrap_err(),
             Bad::Size
         );
+    }
+
+    /// A name off the list is dropped and counted, never named. Everything `parse` refuses stays refused for a name that
+    /// is dropped: the drop happens after the read.
+    ///
+    /// verifies: REQ-AUTHN-012
+    #[test]
+    fn keeping_drops_the_names_off_the_list_and_counts_them() {
+        let known = ["code", "state"];
+        let (kept, n) = p("code=c&extra=foobar&state=st&claims=%7B%7D&login_hint=a")
+            .unwrap()
+            .keeping(&known);
+        assert_eq!(
+            (kept.get("code"), kept.get("state"), n),
+            ("c".into(), "st".into(), 3)
+        );
+        assert!(!kept.has("extra") && !kept.has("claims") && !kept.has("login_hint"));
+        let (_, none) = p("code=c").unwrap().keeping(&known);
+        assert_eq!(none, 0);
+        // The repeat of a name that will be dropped, the escape, the control character and the size are refused
+        // before any name is dropped.
+        assert_eq!(p("code=c&extra=1&extra=2").unwrap_err(), Bad::Duplicate);
+        assert_eq!(p("extra=1&%65xtra=2").unwrap_err(), Bad::Duplicate);
+        assert_eq!(p("code=c&extra=%zz").unwrap_err(), Bad::Syntax);
+        assert_eq!(p("code=c&ex%00tra=1").unwrap_err(), Bad::Syntax);
+        assert_eq!(p("code=c&extra=1&&x=1").unwrap_err(), Bad::Syntax);
+        let long = format!("code=c&extra={}", "a".repeat(VALUE_MAX + 1));
+        assert_eq!(Params::parse(&long, FORM_MAX).unwrap_err(), Bad::Size);
+        let name = format!("code=c&{}=1", "n".repeat(NAME_MAX + 1));
+        assert_eq!(p(&name).unwrap_err(), Bad::Size);
+    }
+
+    /// The count is bounded by the request. The largest list of distinct names that fits a form body, with the shortest
+    /// names there are, drops fewer names than `IGNORED_MAX`, and the audit table's `param_count` has the same maximum.
+    ///
+    /// verifies: REQ-AUTHN-012
+    #[test]
+    fn the_count_of_dropped_names_is_bounded_by_the_request_and_by_the_audit_table() {
+        let mut body = String::new();
+        let mut i = 0u32;
+        loop {
+            // Names a, b, ..., z, aa, ab, ...: the shortest distinct names, so the most that a body can hold.
+            let mut n = String::new();
+            let mut k = i;
+            loop {
+                n.insert(0, (b'a' + (k % 26) as u8) as char);
+                if k < 26 {
+                    break;
+                }
+                k = k / 26 - 1;
+            }
+            let pair = if body.is_empty() { n } else { format!("&{n}") };
+            if body.len() + pair.len() > FORM_MAX {
+                break;
+            }
+            body.push_str(&pair);
+            i += 1;
+        }
+        let (kept, dropped) = Params::parse(&body, FORM_MAX).unwrap().keeping(&[]);
+        assert!(kept.0.is_empty());
+        assert_eq!(dropped, i as usize);
+        assert!(dropped > 8_000 && dropped <= IGNORED_MAX, "{dropped}");
+        // n one-byte pairs need 2n - 1 bytes, so no body holds more than this many names.
+        assert_eq!(IGNORED_MAX, FORM_MAX.div_ceil(2));
+        let defs: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../kits/conformance/audit/schema/defs.schema.json"
+        ))
+        .unwrap();
+        assert_eq!(defs["$defs"]["param_count"]["maximum"], IGNORED_MAX);
     }
 
     #[test]
