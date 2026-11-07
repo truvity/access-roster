@@ -8,6 +8,7 @@ import (
 	"debug/elf"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -31,14 +32,14 @@ func j(t *testing.T, v any) []byte {
 	return b
 }
 
-// layer is a gzip tar of the files, each with mode 0555.
-func layer(t *testing.T, files map[string][]byte) []byte {
+// layer is a gzip tar of the files, each with the mode given.
+func layer(t *testing.T, files map[string][]byte, mode int64) []byte {
 	t.Helper()
 	var out bytes.Buffer
 	zw := gzip.NewWriter(&out)
 	tw := tar.NewWriter(zw)
 	for name, data := range files {
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o555, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tw.Write(data); err != nil {
@@ -54,9 +55,11 @@ func layer(t *testing.T, files map[string][]byte) []byte {
 	return out.Bytes()
 }
 
-// fakeRegistry serves what a registry holds after a run: repositories, tags, manifests and blobs, by path.
+// fakeRegistry serves what a registry holds after a run: tags, manifests and blobs, by path.
 type fakeRegistry struct {
 	files map[string][]byte
+	// corrupt, when it names a path, serves other bytes there than the digest names.
+	corrupt map[string]bool
 }
 
 func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +71,9 @@ func (f *fakeRegistry) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(r.URL.Path, "/manifests/") {
 		w.Header().Set("Docker-Content-Digest", digestOf(b))
 	}
+	if f.corrupt[r.URL.Path] {
+		b = append(append([]byte{}, b...), ' ')
+	}
 	_, _ = w.Write(b)
 }
 
@@ -75,27 +81,47 @@ type imageOpts struct {
 	entrypoint string
 	user       string
 	extraFile  bool
+	writable   bool
 	binary     map[string][]byte // by arch; the executable in the image
 	tags       []string
 	platforms  []string
 	repoExtra  []string
 	labels     map[string]string
+	fresh      bool
+	corrupt    func(f *fakeRegistry, repo string, base, top []byte)
 }
 
-// image publishes the image of "actor-key" at prefix sluis to a fake registry and returns its digest file line.
+const imagesYAML = `images:
+  - name: actor-key
+    dockerfile: deploy/release/Dockerfile.actor-key
+    title: "sluis actor key"
+    package: sluis-actor-key
+    source: archive
+    bin: key
+    licence: MIT
+    layers: 1
+    files: [/usr/libexec/sluis/actors/key]
+`
+
+// image publishes the image of "actor-key" at prefix sluis to a fake registry and returns the hex digest of its index.
 func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 	t.Helper()
 	repo := "sluis/actor-key"
 	var entries []descriptor
 	for _, arch := range o.platforms {
+		mode := int64(0o555)
+		if o.writable {
+			mode = 0o755
+		}
 		files := map[string][]byte{"usr/libexec/sluis/actors/key": o.binary[arch]}
 		if o.extraFile {
 			files["etc/passwd"] = []byte("root")
 		}
-		l := layer(t, files)
-		base := layer(t, map[string][]byte{"etc/os-release": []byte("distroless")})
+		top := layer(t, files, mode)
+		base := layer(t, map[string][]byte{"etc/os-release": []byte("distroless")}, 0o444)
 		labels := map[string]string{
-			"id.sluis.image": "actor-key", "org.opencontainers.image.version": version, "id.sluis.package": "sluis-actor-key",
+			"id.sluis.image": "actor-key", "id.sluis.package": "sluis-actor-key", "org.opencontainers.image.title": "sluis actor key",
+			"org.opencontainers.image.version": version, "org.opencontainers.image.revision": commit, "org.opencontainers.image.created": "2026-11-07T00:00:00Z",
 			"org.opencontainers.image.source": "https://github.com/truvity/sluis", "org.opencontainers.image.licenses": "MIT",
 		}
 		for k, v := range o.labels {
@@ -109,12 +135,15 @@ func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 		}{User: o.user, Entrypoint: []string{o.entrypoint}, Labels: labels}})
 		m := j(t, manifest{Config: descriptor{Digest: digestOf(cfg)}, Layers: []descriptor{
 			{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: digestOf(base)},
-			{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: digestOf(l)},
+			{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: digestOf(top)},
 		}})
 		reg.files["/v2/"+repo+"/blobs/"+digestOf(cfg)] = cfg
 		reg.files["/v2/"+repo+"/blobs/"+digestOf(base)] = base
-		reg.files["/v2/"+repo+"/blobs/"+digestOf(l)] = l
+		reg.files["/v2/"+repo+"/blobs/"+digestOf(top)] = top
 		reg.files["/v2/"+repo+"/manifests/"+digestOf(m)] = m
+		if o.corrupt != nil {
+			o.corrupt(reg, repo, base, top)
+		}
 		d := descriptor{Digest: digestOf(m)}
 		d.Platform = &struct {
 			OS           string `json:"os"`
@@ -130,20 +159,17 @@ func image(t *testing.T, reg *fakeRegistry, o imageOpts) string {
 	return strings.TrimPrefix(digestOf(idx), "sha256:")
 }
 
-// imagesRelease is a dist of "actor-key" (see release) with a dockers_v2 section and the digests file of the run.
-func imagesRelease(t *testing.T, o imageOpts, mutateDist func(dist string)) (cfg, dist, url string) {
+// imagesRelease is a dist of "actor-key" (see release) with the list of images, the digests file of the run and a registry.
+func imagesRelease(t *testing.T, o imageOpts, mutateDist func(dist string)) (c ImageCheck, reg *fakeRegistry) {
 	t.Helper()
-	cfg, dist = release(t, nil)
-	conf, err := os.ReadFile(cfg) //nolint:gosec // a test file
-	if err != nil {
+	_, dist := release(t, nil)
+	imgs := filepath.Join(filepath.Dir(dist), "images.yaml")
+	if err := os.WriteFile(imgs, []byte(imagesYAML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	conf = append(conf, []byte("dockers_v2:\n  - id: actor-key\n    ids: [actor-key]\n    tags: [\"{{ .Version }}\"]\n    platforms: [linux/amd64, linux/arm64]\n")...)
-	if err := os.WriteFile(cfg, conf, 0o600); err != nil { //nolint:gosec // a test file
-		t.Fatal(err)
-	}
-	reg := &fakeRegistry{files: map[string][]byte{}}
+	reg = &fakeRegistry{files: map[string][]byte{}, corrupt: map[string]bool{}}
 	if o.binary == nil {
+		// The executable in the archive of release() is fakeELF(machine, false, version).
 		o.binary = map[string][]byte{"amd64": fakeELF(elf.EM_X86_64, false, version), "arm64": fakeELF(elf.EM_AARCH64, false, version)}
 	}
 	if o.entrypoint == "" {
@@ -167,17 +193,35 @@ func imagesRelease(t *testing.T, o imageOpts, mutateDist func(dist string)) (cfg
 	if mutateDist != nil {
 		mutateDist(dist)
 	}
-	return cfg, dist, srv.URL
+	return ImageCheck{ImagesPath: imgs, Dist: dist, Registry: srv.URL, Prefix: "sluis", Fresh: o.fresh, Root: filepath.Dir(dist)}, reg
 }
 
 func TestGoodImagesPass(t *testing.T) {
-	cfg, dist, url := imagesRelease(t, imageOpts{}, nil)
-	if p := CheckImages(cfg, dist, url, "sluis", true); len(p) != 0 {
-		t.Fatalf("good images have problems: %v", p)
+	for _, fresh := range []bool{true, false} {
+		c, _ := imagesRelease(t, imageOpts{}, nil)
+		c.Fresh = fresh
+		if p := CheckImages(c); len(p) != 0 {
+			t.Fatalf("good images have problems (fresh %v): %v", fresh, p)
+		}
 	}
-	lines, _, err := ReleaseImages(cfg, dist)
+	c, _ := imagesRelease(t, imageOpts{}, nil)
+	lines, _, err := ReleaseImages(c.ImagesPath, c.Dist)
 	if err != nil || len(lines) != 1 || !strings.HasPrefix(lines[0], "localhost:5000/sluis/actor-key:"+version+"@sha256:") {
 		t.Fatalf("release-images = %v, %v", lines, err)
+	}
+}
+
+// The second release of a repository: ghcr holds the earlier versions beside this one, and that is not a failure. A fresh
+// registry holds this version alone, so an earlier one there is.
+func TestASecondReleaseOnTheSameRepositoryPasses(t *testing.T) {
+	o := imageOpts{tags: []string{"2.0.0-alpha.0", version, "2.0.0"}}
+	c, _ := imagesRelease(t, o, nil)
+	if p := CheckImages(c); len(p) != 0 {
+		t.Fatalf("a repository that holds earlier releases was refused: %v", p)
+	}
+	c.Fresh = true
+	if p := CheckImages(c); !strings.Contains(strings.Join(p, "\n"), "alone on a fresh registry") {
+		t.Fatalf("a fresh registry with an earlier tag passed: %v", p)
 	}
 }
 
@@ -188,22 +232,32 @@ func TestCheckImagesBites(t *testing.T) {
 		o    imageOpts
 		want string
 	}{
-		"a latest tag":    {imageOpts{tags: []string{version, "latest"}}, "no latest"},
-		"no version tag":  {imageOpts{tags: []string{"dev"}}, "want"},
-		"another binary":  {imageOpts{binary: map[string][]byte{"amd64": other, "arm64": fakeELF(elf.EM_AARCH64, false, version)}}, "is not the file of"},
+		"a latest tag":    {imageOpts{tags: []string{version, "latest"}}, "no floating tag"},
+		"a branch tag":    {imageOpts{tags: []string{version, "main"}}, "no floating tag"},
+		"no version tag":  {imageOpts{tags: []string{"2.0.0"}}, "is not among the tags"},
+		"another binary":  {imageOpts{binary: map[string][]byte{"amd64": other, "arm64": fakeELF(elf.EM_AARCH64, false, version)}}, "is not the archive file"},
 		"a wrong entry":   {imageOpts{entrypoint: "/sluis"}, "the entrypoint is"},
 		"root":            {imageOpts{user: "root"}, "nonroot"},
-		"an extra file":   {imageOpts{extraFile: true}, "beside the executable"},
+		"an extra file":   {imageOpts{extraFile: true}, "holds 2 files"},
+		"a writable file": {imageOpts{writable: true}, "not writable"},
 		"one platform":    {imageOpts{platforms: []string{"amd64"}}, "want linux/amd64 and linux/arm64 alone"},
-		"a repo is sluis": {imageOpts{repoExtra: []string{"sluis"}}, "no image is named sluis"},
-		"a stray repo":    {imageOpts{repoExtra: []string{"sluis/actor-other"}}, "no image of the configuration"},
+		"a repo is sluis": {imageOpts{repoExtra: []string{"sluis"}, fresh: true}, "no image is named sluis"},
+		"a stray repo":    {imageOpts{repoExtra: []string{"sluis/actor-other"}, fresh: true}, "no image of the list"},
 		"no source label": {imageOpts{labels: map[string]string{"org.opencontainers.image.source": ""}}, "label org.opencontainers.image.source"},
-		"no package":      {imageOpts{labels: map[string]string{"id.sluis.package": ""}}, "no label id.sluis.package"},
+		"no package":      {imageOpts{labels: map[string]string{"id.sluis.package": ""}}, "label id.sluis.package"},
 		"wrong version":   {imageOpts{labels: map[string]string{"org.opencontainers.image.version": "9"}}, "label org.opencontainers.image.version"},
+		"wrong revision":  {imageOpts{labels: map[string]string{"org.opencontainers.image.revision": "abc"}}, "label org.opencontainers.image.revision"},
+		"a swapped base": {imageOpts{corrupt: func(f *fakeRegistry, repo string, base, _ []byte) {
+			f.corrupt["/v2/"+repo+"/blobs/"+digestOf(base)] = true
+		}}, "hash to"},
+		"a swapped top": {imageOpts{corrupt: func(f *fakeRegistry, repo string, _, top []byte) {
+			f.corrupt["/v2/"+repo+"/blobs/"+digestOf(top)] = true
+		}}, "hash to"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			cfg, dist, url := imagesRelease(t, c.o, nil)
-			p := CheckImages(cfg, dist, url, "sluis", true)
+			ic, _ := imagesRelease(t, c.o, nil)
+			ic.Fresh = c.o.fresh
+			p := CheckImages(ic)
 			if len(p) == 0 {
 				t.Fatal("the release test passed a broken image")
 			}
@@ -213,63 +267,59 @@ func TestCheckImagesBites(t *testing.T) {
 		})
 	}
 	t.Run("digest file differs from the registry", func(t *testing.T) {
-		cfg, dist, url := imagesRelease(t, imageOpts{}, func(d string) {
+		ic, _ := imagesRelease(t, imageOpts{}, func(d string) {
 			_ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte(strings.Repeat("a", 64)+"  localhost:5000/sluis/actor-key:"+version+"\n"), 0o600)
 		})
-		if p := CheckImages(cfg, dist, url, "sluis", true); !strings.Contains(strings.Join(p, "\n"), "digests.txt says") {
+		if p := CheckImages(ic); !strings.Contains(strings.Join(p, "\n"), "digests.txt says") {
 			t.Errorf("problems %v", p)
 		}
 	})
 	t.Run("an image that was not pushed", func(t *testing.T) {
-		cfg, dist, url := imagesRelease(t, imageOpts{}, func(d string) { _ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte("\n"), 0o600) })
-		if p := CheckImages(cfg, dist, url, "sluis", true); len(p) == 0 {
+		ic, _ := imagesRelease(t, imageOpts{}, func(d string) { _ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte("\n"), 0o600) })
+		if p := CheckImages(ic); len(p) == 0 {
 			t.Error("an empty digests file passed")
 		}
 	})
 	t.Run("a tag that is not the version in digests.txt", func(t *testing.T) {
-		cfg, dist, _ := imagesRelease(t, imageOpts{}, func(d string) {
+		ic, _ := imagesRelease(t, imageOpts{}, func(d string) {
 			_ = os.WriteFile(filepath.Join(d, "digests.txt"), []byte(strings.Repeat("a", 64)+"  localhost:5000/sluis/actor-key:latest\n"), 0o600)
 		})
-		if _, _, err := ReleaseImages(cfg, dist); err == nil || !strings.Contains(err.Error(), "want the release version") {
+		if _, _, err := ReleaseImages(ic.ImagesPath, ic.Dist); err == nil || !strings.Contains(err.Error(), "want the release version") {
 			t.Errorf("err = %v", err)
 		}
 	})
 }
 
-func TestNamesOfImages(t *testing.T) {
-	for image, want := range map[string]string{
-		"actor-store":            "/usr/libexec/sluis/actors/store",
-		"driver-store-rqlite":    "/usr/libexec/sluis/drivers/store/rqlite",
-		"driver-key-yubikey-piv": "/usr/libexec/sluis/drivers/key/yubikey-piv",
-		"vendor-rqlite":          "/usr/libexec/sluis/vendor/rqlited",
-	} {
-		if got, ok := installPath(image); !ok || got != want {
-			t.Errorf("%s: %q %v, want %q", image, got, ok, want)
-		}
+// The preflight: a version that is a tag already must stop the release before it pushes anything.
+func TestPreflightRefusesAPublishedVersion(t *testing.T) {
+	c, reg := imagesRelease(t, imageOpts{}, nil)
+	srv := httptest.NewServer(reg)
+	defer srv.Close()
+	p := Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: strings.TrimPrefix(srv.URL, "http://") + "/sluis", Root: c.Root}
+	if got := Preflight(p); !strings.Contains(strings.Join(got, "\n"), "already published") {
+		t.Errorf("a published version passed the preflight: %v", got)
 	}
-	for _, bad := range []string{"sluis", "cli-sluis", "driver-store", "actor"} {
-		if _, ok := installPath(bad); ok {
-			t.Errorf("%s was accepted as an image name", bad)
-		}
+	empty := httptest.NewServer(&fakeRegistry{files: map[string][]byte{}})
+	defer empty.Close()
+	p.Prefix = strings.TrimPrefix(empty.URL, "http://") + "/sluis"
+	if got := Preflight(p); len(got) != 0 {
+		t.Errorf("a free version was refused: %v", got)
 	}
-	p := expectedNames(imageConfig{DockersV2: []struct {
-		ID        string   `yaml:"id"`
-		IDs       []string `yaml:"ids"`
-		Tags      []string `yaml:"tags"`
-		Platforms []string `yaml:"platforms"`
-	}{{ID: "sluis", Tags: []string{"latest"}, Platforms: []string{"linux/amd64"}}}})
-	if got := strings.Join(p, "\n"); !strings.Contains(got, "no image is named sluis") || !strings.Contains(got, "no latest") || !strings.Contains(got, "platforms") {
-		t.Errorf("expectedNames = %v", p)
+	// "I could not tell" is not "free".
+	broken := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusBadGateway) }))
+	defer broken.Close()
+	p.Prefix = strings.TrimPrefix(broken.URL, "http://") + "/sluis"
+	if got := Preflight(p); !strings.Contains(strings.Join(got, "\n"), "could not tell") {
+		t.Errorf("an unreadable registry passed the preflight: %v", got)
 	}
 }
 
 // ghcr.io answers 401 with a Bearer challenge and gives a token for the user and token it is sent, or anonymously.
-func TestTheRegistryClientFollowsABearerChallenge(t *testing.T) {
-	cfg, dist, plain := imagesRelease(t, imageOpts{}, nil)
-	target := plain
+func TestTheRegistryClientFollowsABearerChallengeAndKeepsTheTokenOnTheRegistrysHost(t *testing.T) {
+	c, reg := imagesRelease(t, imageOpts{}, nil)
 	var tokenCalls, basic int
 	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/token" {
 			tokenCalls++
 			if _, _, ok := r.BasicAuth(); ok {
@@ -283,28 +333,169 @@ func TestTheRegistryClientFollowsABearerChallenge(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		resp, err := http.Get(target + r.URL.RequestURI()) //nolint:gosec // the test's own server
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			return
-		}
-		defer func() { _ = resp.Body.Close() }()
-		for k, v := range resp.Header {
-			w.Header()[k] = v
-		}
-		w.WriteHeader(resp.StatusCode)
-		_, _ = io.Copy(w, resp.Body)
+		reg.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	t.Setenv("SLUIS_REGISTRY_TOKEN", "secret")
-	if p := CheckImages(cfg, dist, srv.URL, "sluis", true); len(p) != 0 {
+	c.Registry, c.Client = srv.URL, srv.Client()
+	if p := CheckImages(c); len(p) != 0 {
 		t.Fatalf("problems behind a bearer challenge: %v", p)
 	}
 	if tokenCalls != 1 || basic != 1 {
 		t.Errorf("the token endpoint was asked %d times (%d with credentials); the token is kept per challenge", tokenCalls, basic)
 	}
-	// Without the catalog, as on ghcr.io, the same images pass.
-	if p := CheckImages(cfg, dist, srv.URL, "sluis", false); len(p) != 0 {
-		t.Fatalf("problems without the catalog: %v", p)
+}
+
+func TestTheTokenIsNeverSentToAnotherHostOrOverPlainHTTP(t *testing.T) {
+	var sawCredentials bool
+	thief := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := r.BasicAuth(); ok {
+			sawCredentials = true
+		}
+		_, _ = w.Write([]byte(`{"token":"x"}`))
+	}))
+	defer thief.Close()
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, _, ok := r.BasicAuth(); ok {
+			sawCredentials = true
+		}
+		_, _ = w.Write([]byte(`{"token":"x"}`))
+	}))
+	defer plain.Close()
+	for name, realm := range map[string]string{"another host": strings.Replace(thief.URL, "127.0.0.1", "localhost", 1) + "/token", "plain http": plain.URL + "/token"} {
+		t.Run(name, func(t *testing.T) {
+			sawCredentials = false
+			t.Setenv("SLUIS_REGISTRY_TOKEN", "secret")
+			registrySrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm=%q`, realm))
+				w.WriteHeader(http.StatusUnauthorized)
+			}))
+			defer registrySrv.Close()
+			r := newRegistry(registrySrv.URL, registrySrv.Client())
+			if _, _, err := r.get("/v2/x/manifests/1", ""); err == nil {
+				t.Fatal("the registry client followed a realm it must not")
+			}
+			if sawCredentials {
+				t.Fatal("the token was sent to the realm")
+			}
+		})
+	}
+	_ = io.Discard
+}
+
+func TestSplitPrefix(t *testing.T) {
+	for in, want := range map[string][2]string{
+		"ghcr.io/truvity/sluis":  {"https://ghcr.io", "truvity/sluis"},
+		"localhost:5055/sluis":   {"http://localhost:5055", "sluis"},
+		"127.0.0.1:1/sluis/more": {"http://127.0.0.1:1", "sluis/more"},
+	} {
+		b, r, err := splitPrefix(in)
+		if err != nil || b != want[0] || r != want[1] {
+			t.Errorf("%s: %q %q %v", in, b, r, err)
+		}
+	}
+	for _, bad := range []string{"ghcr.io", "ghcr.io/", "/x", ""} {
+		if _, _, err := splitPrefix(bad); err == nil {
+			t.Errorf("%q was accepted", bad)
+		}
+	}
+}
+
+func TestSumsCoverTheListOfImagesAndTheirSBOMs(t *testing.T) {
+	c, _ := imagesRelease(t, imageOpts{}, nil)
+	dist := c.Dist
+	write := func(n, body string) {
+		if err := os.WriteFile(filepath.Join(dist, n), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("release-images.txt", "x\n")
+	write("actor-key.sbom.spdx.json", "{}")
+	if p := CheckSums(c.ImagesPath, dist); len(p) != 2 {
+		t.Fatalf("before they are added: %v", p)
+	}
+	if err := AddSums(dist, []string{"release-images.txt", "actor-key.sbom.spdx.json"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := CheckSums(c.ImagesPath, dist); len(p) != 0 {
+		t.Fatalf("after: %v", p)
+	}
+	if err := AddSums(dist, []string{"release-images.txt"}); err == nil {
+		t.Error("a name listed twice was accepted")
+	}
+	write("release-images.txt", "changed\n")
+	if p := CheckSums(c.ImagesPath, dist); !strings.Contains(strings.Join(p, "\n"), "SHA256SUMS says") {
+		t.Errorf("a changed file passed: %v", p)
+	}
+	// The dist check still passes with those lines present.
+	write("release-images.txt", "x\n")
+	if p := CheckDist(filepath.Join(filepath.Dir(dist), ".goreleaser.yaml"), dist); len(p) != 0 {
+		t.Errorf("check-dist after the sums were added: %v", p)
+	}
+}
+
+func TestLoadImageListRefusesWhatWouldShipTheWrongThing(t *testing.T) {
+	dir := t.TempDir()
+	good := imagesYAML
+	for name, c := range map[string]struct{ doc, want string }{
+		"an empty list":      {"images: []\n", "no image"},
+		"the name sluis":     {strings.Replace(good, "actor-key", "sluis", 1), "no image is named sluis"},
+		"two of one name":    {good + strings.TrimPrefix(good, "images:\n"), "listed twice"},
+		"a source":           {strings.Replace(good, "source: archive", "source: web", 1), "source"},
+		"files that differ":  {strings.Replace(good, "layers: 1", "layers: 2", 1), "layers"},
+		"a file outside usr": {strings.Replace(good, "/usr/libexec", "/opt/libexec", 1), "outside /usr"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := filepath.Join(dir, "images.yaml")
+			if err := os.WriteFile(p, []byte(c.doc), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadImageList(p); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("err = %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
+// PublishImages is tested with a stand-in for docker that records its arguments and answers with a digest.
+func TestPublishImagesBuildsEachImageFromItsArchiveAndWritesTheDigests(t *testing.T) {
+	c, _ := imagesRelease(t, imageOpts{}, nil)
+	bin := t.TempDir()
+	log := filepath.Join(bin, "docker.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\nmeta=\nwhile [ $# -gt 0 ]; do if [ \"$1\" = --metadata-file ]; then meta=$2; fi; ctx=$1; shift; done\n" +
+		"printf '{\"containerimage.digest\":\"sha256:%064d\"}' 7 > \"$meta\"\n" +
+		"for f in linux/amd64/key linux/arm64/key; do test -s \"$ctx/$f\" || { echo \"no $f in $ctx\" >&2; exit 1; }; done\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0o700); err != nil { //nolint:gosec // a test stand-in
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	old := commitDate
+	commitDate = func(string, string) (string, error) { return "2026-11-07T00:00:00+00:00", nil }
+	defer func() { commitDate = old }()
+	// The Dockerfile path need not exist for the stand-in.
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: "localhost:5000/sluis", Root: c.Root}); err != nil {
+		t.Fatal(err)
+	}
+	logged, _ := os.ReadFile(log) //nolint:gosec // a test file
+	for _, want := range []string{"buildx build", "--platform linux/amd64,linux/arm64", "--push", "--provenance=false", "--sbom=false",
+		"--tag localhost:5000/sluis/actor-key:" + version, "--label id.sluis.image=actor-key", "--label id.sluis.package=sluis-actor-key",
+		"--label org.opencontainers.image.revision=" + commit, "--label org.opencontainers.image.created=2026-11-07T00:00:00+00:00"} {
+		if !strings.Contains(string(logged), want) {
+			t.Errorf("the docker call lacks %q: %s", want, logged)
+		}
+	}
+	if strings.Contains(string(logged), "latest") {
+		t.Errorf("a latest tag was pushed: %s", logged)
+	}
+	digests, _ := os.ReadFile(filepath.Join(c.Dist, "digests.txt"))
+	if !strings.HasPrefix(string(digests), strings.Repeat("0", 63)+"7  localhost:5000/sluis/actor-key:"+version) {
+		t.Errorf("digests.txt = %q", digests)
+	}
+	// A docker that fails stops the release.
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nexit 3\n"), 0o700); err != nil { //nolint:gosec // a test stand-in
+		t.Fatal(err)
+	}
+	if err := PublishImages(Publish{ImagesPath: c.ImagesPath, Dist: c.Dist, Prefix: "localhost:5000/sluis", Root: c.Root}); err == nil {
+		t.Error("a failed push was not an error")
 	}
 }

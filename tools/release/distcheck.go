@@ -38,6 +38,21 @@ type config struct {
 	} `yaml:"archives"`
 }
 
+// loadConfig reads the parts of .goreleaser.yaml the checks use.
+func loadConfig(p string) (config, error) {
+	var c config
+	raw, err := os.ReadFile(p) //nolint:gosec // the repository's own configuration
+	if err != nil {
+		return c, err
+	}
+	if err := yaml.Unmarshal(raw, &c); err != nil {
+		return c, fmt.Errorf("%s: %w", p, err)
+	}
+	return c, nil
+}
+
+func yamlUnmarshal(raw []byte, v any) error { return yaml.Unmarshal(raw, v) }
+
 var nameTemplate = regexp.MustCompile(`^([a-z0-9-]+)_\{\{ \.Version \}\}_\{\{ \.Os \}\}_\{\{ \.Arch \}\}$`)
 
 // CheckDist reads what a GoReleaser run left in dist, against the configuration it ran with, and returns every problem.
@@ -70,6 +85,15 @@ func CheckDist(configPath, dist string) []string {
 		return []string{fmt.Sprintf("metadata.json has no version: %v", err)}
 	}
 	version := meta.Version
+
+	// The executables must not carry the paths of the machine that built them (Go has -trimpath, Rust --remap-path-prefix).
+	var forbidden []string
+	if root, err := filepath.Abs(filepath.Dir(configPath)); err == nil && len(root) > 4 {
+		forbidden = append(forbidden, root)
+	}
+	if home := os.Getenv("HOME"); len(home) > 5 {
+		forbidden = append(forbidden, home)
+	}
 
 	binaryOf := map[string]string{}
 	for _, b := range cfg.Builds {
@@ -115,7 +139,7 @@ func CheckDist(configPath, dist string) []string {
 			case len(each) != 1 || each[name] != hexSum:
 				bad("%s.sha256 does not hold exactly the hash of the archive", name)
 			}
-			for _, p := range checkArchive(name, body, bin, machine, version) {
+			for _, p := range checkArchive(name, body, bin, machine, version, forbidden) {
 				bad("%s", p)
 			}
 			// With an sboms stage, the SPDX document of the archive is a release file too, and SHA256SUMS covers it.
@@ -135,7 +159,8 @@ func CheckDist(configPath, dist string) []string {
 		}
 	}
 	for name := range sums {
-		if !expected[name] {
+		// The list of images and the SBOMs of the images are added to SHA256SUMS after the images are pushed (tools/release sums).
+		if !expected[name] && name != "release-images.txt" && (!strings.HasSuffix(name, ".sbom.spdx.json") || strings.Contains(name, ".tar.gz")) {
 			bad("SHA256SUMS lists %s, which no archive of the configuration is", name)
 		}
 	}
@@ -145,7 +170,7 @@ func CheckDist(configPath, dist string) []string {
 	}
 	for _, e := range entries {
 		n := e.Name()
-		if (strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tar.gz.sha256") || strings.HasSuffix(n, ".sbom.spdx.json")) && !expected[strings.TrimSuffix(n, ".sha256")] {
+		if (strings.HasSuffix(n, ".tar.gz") || strings.HasSuffix(n, ".tar.gz.sha256") || strings.HasSuffix(n, ".tar.gz.sbom.spdx.json")) && !expected[strings.TrimSuffix(n, ".sha256")] {
 			bad("%s: nobody asked for this file", n)
 		}
 	}
@@ -178,7 +203,7 @@ func readSums(path string) (map[string]string, error) {
 
 // checkArchive reads one .tar.gz: the executable bin and LICENSE, nothing else; the executable is a static ELF of the machine
 // that holds the version.
-func checkArchive(name string, body []byte, bin string, machine elf.Machine, version string) []string {
+func checkArchive(name string, body []byte, bin string, machine elf.Machine, version string, forbidden []string) []string {
 	var problems []string
 	bad := func(format string, a ...any) { problems = append(problems, name+": "+fmt.Sprintf(format, a...)) }
 	zr, err := gzip.NewReader(bytes.NewReader(body))
@@ -207,7 +232,7 @@ func checkArchive(name string, body []byte, bin string, machine elf.Machine, ver
 				bad("%v", err)
 				continue
 			}
-			for _, p := range checkExecutable(data, machine, version) {
+			for _, p := range checkExecutable(data, machine, version, forbidden) {
 				bad("%s: %s", bin, p)
 			}
 		default:
@@ -224,7 +249,7 @@ func checkArchive(name string, body []byte, bin string, machine elf.Machine, ver
 
 // checkExecutable says what is wrong with an executable of a release: not an ELF of the machine, an interpreter or a shared
 // library (it must be static, ADR 0013), or no release version in it (the build did not stamp it).
-func checkExecutable(data []byte, machine elf.Machine, version string) []string {
+func checkExecutable(data []byte, machine elf.Machine, version string, forbidden []string) []string {
 	f, err := elf.NewFile(bytes.NewReader(data))
 	if err != nil {
 		return []string{"is not an ELF file: " + err.Error()}
@@ -244,6 +269,11 @@ func checkExecutable(data []byte, machine elf.Machine, version string) []string 
 	}
 	if libs, err := f.ImportedLibraries(); err == nil && len(libs) > 0 {
 		problems = append(problems, "needs shared libraries "+strings.Join(libs, ", ")+": it is not static")
+	}
+	for _, path := range forbidden {
+		if bytes.Contains(data, []byte(path)) {
+			problems = append(problems, "holds the build path "+path+": the build did not remap its paths")
+		}
 	}
 	if !bytes.Contains(data, []byte(version)) {
 		problems = append(problems, "does not hold the release version "+version+": the build did not stamp it")
