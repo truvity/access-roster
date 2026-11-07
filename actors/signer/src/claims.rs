@@ -434,6 +434,69 @@ mod tests {
         assert_eq!(p.as_object().unwrap().len(), 6);
     }
 
+    /// The claims of the shared vector file (`tests/testdata/token/claims-vectors.json`): `signer` accepts each accepted
+    /// claim set, refuses each refused one at the field path the file names, and its table of required and optional
+    /// claims per type is the file's lists, no more and no less. `session`'s tests hold the tokens it asks for to the same
+    /// file. The header `typ` of each type is the file's, and the algorithm is ES384.
+    ///
+    /// verifies: REQ-TOKEN-001, REQ-TOKEN-018
+    #[test]
+    fn the_claims_equal_the_shared_vectors() {
+        let v: Value = serde_json::from_str(include_str!(
+            "../../../tests/testdata/token/claims-vectors.json"
+        ))
+        .unwrap();
+        let typ_of = |name: &str| match name {
+            "id" => Typ::Id,
+            "access" => Typ::Access,
+            other => panic!("{other}"),
+        };
+        for name in ["id", "access"] {
+            assert_eq!(typ_of(name).header(), v["typ"][name].as_str().unwrap());
+            let names = |need: Need| {
+                let mut n: Vec<&str> = TABLE
+                    .iter()
+                    .filter(|c| (if name == "id" { c.id } else { c.access }) == need)
+                    .map(|c| c.name)
+                    .collect();
+                n.sort_unstable();
+                n
+            };
+            let list = |key: &str| {
+                let mut n: Vec<&str> = v["claims"][name][key]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|c| c.as_str().unwrap())
+                    .collect();
+                n.sort_unstable();
+                n
+            };
+            assert_eq!(names(Required), list("required"), "{name}: required");
+            assert_eq!(names(Optional), list("optional"), "{name}: optional");
+        }
+        let accepted = v["accepted"].as_array().unwrap();
+        let refused = v["refused"].as_array().unwrap();
+        assert!(accepted.len() >= 4 && refused.len() >= 15);
+        for case in accepted {
+            let c = serde_json::to_vec(&case["claims"]).unwrap();
+            let typ = typ_of(case["token"].as_str().unwrap());
+            let shaped = shape(typ, &c).unwrap_or_else(|e| panic!("{}: {e:?}", case["name"]));
+            // What is signed is the checked members, the same set.
+            let signed: Value = serde_json::from_slice(&shaped.payload()).unwrap();
+            assert_eq!(signed, case["claims"], "{}", case["name"]);
+        }
+        for case in refused {
+            let c = serde_json::to_vec(&case["claims"]).unwrap();
+            let typ = typ_of(case["token"].as_str().unwrap());
+            let path = case["path"].as_str().unwrap();
+            match shape(typ, &c) {
+                Err(Bad(got)) => assert_eq!(got, path, "{}", case["name"]),
+                Ok(_) => panic!("{} was accepted", case["name"]),
+            }
+        }
+    }
+
     /// verifies: REQ-TOKEN-034, REQ-TOKEN-039
     #[test]
     fn a_claim_outside_the_set_is_not_issued() {

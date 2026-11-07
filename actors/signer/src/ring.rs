@@ -986,6 +986,49 @@ mod tests {
         assert_eq!(states(&r2), [("a", RETIRING), ("a2", ACTIVE)]);
     }
 
+    /// A retiring key stays retiring, in the ring and so in the key set, until the retention drops it, however often
+    /// and from whichever node key@ is asked to sign with it again or with another key. The retention is 65 minutes,
+    /// and the run is 4 hours at 5 minutes, from both nodes, with key@ asking for the retiring key and for its
+    /// successor in turn. (What happens to a key that was dropped and is then presented again is not tested here: it is
+    /// a new key to the ring, and only key@ can present it.)
+    ///
+    /// verifies: REQ-KEYS-079
+    #[test]
+    fn a_retiring_key_stays_retiring_until_it_is_dropped_whichever_key_signs_after() {
+        let (r, _) = step(&SigningRing::default(), A, "a", 1000);
+        let (r, _) = step(&r, A, "a2", 2000);
+        let (mut r, _) = step(&r, A, "a2", 2000 + WINDOW);
+        assert_eq!(states(&r), [("a", RETIRING), ("a2", ACTIVE)]);
+        let retired_at = 2000 + WINDOW;
+        let mut t = retired_at;
+        let mut dropped = false;
+        while t < retired_at + 4 * HOUR {
+            t += 5 * MIN;
+            for node in [A, B] {
+                for key in ["a", "a2"] {
+                    if dropped && key == "a" {
+                        continue;
+                    }
+                    let (next, _) = step(&r, node, key, t);
+                    r = next;
+                    match r.keys.iter().find(|k| k.key_id == "a") {
+                        Some(k) => {
+                            assert_eq!(k.state, RETIRING, "at {t}, {node} asked for {key}");
+                            assert!(t < retired_at + 65 * MIN + 5 * MIN);
+                        }
+                        None => {
+                            assert!(t >= retired_at + 65 * MIN, "dropped early at {t}");
+                            dropped = true;
+                        }
+                    }
+                    let a2 = r.keys.iter().find(|k| k.key_id == "a2").unwrap();
+                    assert_eq!(a2.state, ACTIVE, "at {t}");
+                }
+            }
+        }
+        assert!(dropped, "the retiring key was kept for ever");
+    }
+
     /// verifies: REQ-KEYS-077
     #[test]
     fn a_node_never_changes_the_key_of_another_node() {
