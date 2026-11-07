@@ -173,6 +173,54 @@ mod tests {
         assert!(ops.contains(&"open") && !ops.contains(&"seal"));
     }
 
+    /// What the passkey ceremonies of `session` ask a `token.issue` grant for survives the narrowing of the real policy: the
+    /// caps of the action cut with the ceiling of the registry, as `service::narrowed` cuts them. A stand-in for policy that
+    /// copies what it is asked would not show it if the real one took the verbs away.
+    #[test]
+    fn the_grant_of_a_sign_in_covers_what_a_passkey_writes() {
+        let (cap_verbs, cap_ops) = caps("token.issue").unwrap();
+        let (verbs, ops) = ceiling("session");
+        let verbs: Vec<&str> = verbs
+            .into_iter()
+            .filter(|v| cap_verbs.contains(v))
+            .collect();
+        let ops: Vec<&str> = ops.into_iter().filter(|o| cap_ops.contains(o)).collect();
+        let ask = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        // A registration creates a StaffPasskey, updates the Person (the user handle) and seals it; a sign-in updates the
+        // StaffPasskey's counter.
+        assert_eq!(
+            narrow(&ask(&["create", "update"]), &STORE_VERBS, &verbs),
+            Ok(ask(&["create", "update"]))
+        );
+        assert_eq!(
+            narrow(&ask(&["seal", "open"]), &KEY_OPS, &ops),
+            Ok(ask(&["open", "seal"]))
+        );
+        // The registry gives session the verbs on both kinds the passkey code writes, and the credential key by rule.
+        assert!(sluis_registry::store_allows(
+            "session",
+            "staff-passkey",
+            "create"
+        ));
+        assert!(sluis_registry::store_allows(
+            "session",
+            "staff-passkey",
+            "update"
+        ));
+        assert!(sluis_registry::store_allows("session", "person", "update"));
+        assert!(sluis_registry::store_allows(
+            "session",
+            "web-authn-challenge",
+            "create"
+        ));
+        assert!(sluis_registry::key_allows(
+            "session",
+            sluis_registry::KeyScope::Tenant,
+            "credential",
+            "seal"
+        ));
+    }
+
     #[test]
     fn narrowing_cuts_to_the_ceiling_and_refuses_a_name_that_does_not_exist() {
         let ask = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();

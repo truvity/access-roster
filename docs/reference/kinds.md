@@ -611,12 +611,13 @@ A keyed hash of the subject (key@ Mac, boundary `mac` key, label `tombstone`), t
 
 ### `StaffPasskey`
 
-Sealed under the tenant's `credential` key (the only kind that is: session opens it before it knows whose it is, ADR 0006). An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the credential id is a keyed-hash index. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
+Sealed under the tenant's `credential` key (the only kind that is: session opens it before it knows whose it is, ADR 0006). An operator's or staff member's passkey on the shared sign-in domain: the person's subject, the public key, the sign count, the class (hardware-attested, hardware or synced), the AAGUID and the outcome of the attestation check, sealed; the id is a keyed hash of the credential id (key@ Mac, purpose `mac`), and by_credential and by_subject hold keyed hashes of the credential id and of the subject, so an index value names no one. In the tenant of the person, the operator's own company for staff. End-user passkeys belong to the upstream.
 
 - **Class:** durable; scope boundary+tenant; sealed; profile none; module core; serves the work family. Holds personal data.
 - **Writer:** [`session`](/reference/actors/#session).
 - **Readers:** [`session`](/reference/actors/#session); plus the backup job of [`exporter@`](/reference/actors/#exporter), which reads the kind as ciphertext.
 - **Exportable:** no; **backed up:** yes.
+- **Indexes:** `by_credential`, `by_subject`, besides listing by tenant.
 
 ### `SigningRing`
 
