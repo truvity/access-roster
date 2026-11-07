@@ -43,11 +43,12 @@ func main() {
 	case "check-images":
 		base := fs.String("registry", "", "the base URL of the throwaway registry the run pushed to, for example http://127.0.0.1:5000")
 		prefix := fs.String("prefix", "sluis", "the repository prefix of the images in that registry")
+		catalog := fs.Bool("catalog", true, "read the registry's catalog (a throwaway registry has one; ghcr.io has not)")
 		_ = fs.Parse(os.Args[2:])
 		if *base == "" {
 			usage()
 		}
-		finish("check-images: every image is the release's: version tag alone, both platforms, the executable of its archive", CheckImages(*cfg, *dist, *base, *prefix))
+		finish("check-images: every image is the release's: version tag alone, both platforms, the executable of its archive", CheckImages(*cfg, *dist, *base, *prefix, *catalog))
 	case "check-sboms":
 		images := fs.String("images", "dist/release/sbom-images", "the directory sbom-images.sh wrote the image documents to")
 		_ = fs.Parse(os.Args[2:])
