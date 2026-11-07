@@ -160,6 +160,9 @@ fn a_wildcard_in_the_role_position_is_refused_because_it_gives_several_roles_at_
     );
 }
 
+/// A link to a grant the vocabulary does not declare (`l4`) is one of the refusals: REQ-POLICY-010 for a link.
+///
+/// verifies: REQ-POLICY-010
 #[test]
 fn a_link_that_cannot_be_applied_is_a_refusal_of_the_set() {
     let link = |template: &str, id: &str, principal: &str, resource: &str| Link {

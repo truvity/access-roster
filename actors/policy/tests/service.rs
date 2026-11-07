@@ -751,3 +751,60 @@ async fn a_requester_is_checked_like_a_client_and_belongs_to_an_exchange_only() 
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::InvalidArgument);
 }
+
+/// A required name the vocabulary does not declare is refused with the path, not left out: left out, a policy that tests
+/// `resource.requires.isEmpty()` would match a client whose only requirement was a typo. The same for the requester of an
+/// exchange.
+///
+/// verifies: REQ-POLICY-010
+#[tokio::test]
+async fn a_required_name_the_vocabulary_does_not_declare_is_refused_not_left_out() {
+    let rig = Rig::new("exchange").await;
+    let base = || token("token.exchange", &["workforce/u-1001"], "live", fresh_mfa());
+    // The declared name decides; the same request with a typo is refused.
+    let r = rig
+        .client
+        .decide(requires(base(), &["dev:example-app:user"]))
+        .await
+        .unwrap()
+        .into_owned();
+    assert!(allowed(r.decision.as_known().unwrap()));
+    for names in [
+        &["dev:example-app:typo"][..],
+        &["dev:example-app:user", "dev:example-app:typo"],
+        &["no-such-name"],
+    ] {
+        let e = rig
+            .client
+            .decide(requires(base(), names))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InvalidArgument, "{names:?}");
+        assert_eq!(refusal_reason(&e).as_deref(), Some("schema"), "{names:?}");
+    }
+    // A requester other than the audience client is its own entity, and its names are read the same way.
+    let mut r = with_requester(base(), "other-app", "confidential");
+    let mut q = r.requester.as_option().unwrap().clone();
+    q.requires = vec!["dev:example-app:typo".into()];
+    r.requester = q.into();
+    let e = rig.client.decide(r).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidArgument);
+    let paths: Vec<String> = rig
+        .around
+        .spool
+        .of("policy.decide")
+        .iter()
+        .map(|(r, _)| {
+            r["unmapped"]["sluis"]["path"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        paths.iter().filter(|p| *p == "client.requires").count(),
+        3,
+        "{paths:?}"
+    );
+    assert_eq!(paths.last().map(String::as_str), Some("requester.requires"));
+}
