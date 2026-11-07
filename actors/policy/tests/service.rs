@@ -516,7 +516,7 @@ async fn the_audit_pieces_get_the_built_in_grants_for_themselves_only() {
     );
     assert!(g.store_verbs.is_empty());
     let mut inputs = common::local_inputs();
-    let binding = "@id(\"bind-reader-audit-read\")\npermit (principal == Actor::\"reader\", action == Action::\"audit.read\", resource is Boundary);\n";
+    let binding = "@id(\"bind-reader-audit-read\")\npermit (principal == Actor::\"reader\", action == Action::\"audit.read\", resource is AuditLog);\n";
     assert!(inputs.policies[0].cedar.contains(binding));
     inputs.policies[0].cedar = inputs.policies[0].cedar.replace(binding, "");
     let rig = Rig::with("reader", &inputs).await;

@@ -122,14 +122,16 @@ when {
 
 // ---- Reading the audit log -------------------------------------------------------------
 
-// The reader of the local installation may ask for a grant to open any tenant's evidence (ADR 0028
+// The reader of the local installation may ask for a grant to open any tenant's evidence in any log (ADR 0028
 // "Access", ADR 0007 "Four layers": `audit.read` comes from the bindings of the configuration, not from
 // the built-in layer). The local audit front has no sign-in yet, so the reader asks for itself; a
 // boundary that signs people in binds the people and not the actor. `policy` cannot tell tenants
 // apart in Cedar (a tenant is not an entity), so this permit is for every tenant of the boundary, and
-// the tenant a grant names is the one the reader asked for, which key@ checks again.
+// the tenant a grant names is the one the reader asked for, which key@ checks again. The log is the
+// resource: `resource.project` and `resource.kind` (`audit` or `usage`) narrow a binding to a project or to a
+// kind, as `resource.project == "sluis" && resource.kind == "audit"` does.
 @id("bind-reader-audit-read")
-permit (principal == Actor::"reader", action == Action::"audit.read", resource is Boundary);
+permit (principal == Actor::"reader", action == Action::"audit.read", resource is AuditLog);
 
 // ---- Templates, for bindings that operators link at run time ---------------------------
 

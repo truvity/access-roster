@@ -1093,13 +1093,14 @@ requirements:
     rationale: "One conformance suite needs the same answer from every driver."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-103, section: "test plan", depth: Full}
     issues: [839]
+    tests:
+      - drivers/indexer/sqlite/tests/port.rs
     verification:
       - {kind: test-vectors, ref: "port suite index full text"}
   - id: REQ-AUDIT-071
@@ -1136,14 +1137,16 @@ requirements:
     rationale: "Least privilege per tenant is enforced in one policy language (ADR 0028)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [reader]
     standards:
       - {id: NC-12, section: "1", depth: Partial}
     issues: [839]
+    tests:
+      - actors/reader/tests/search.rs
+      - actors/policy/tests/audit_read.rs
     verification:
       - {kind: integration-test, ref: "reader grant filter test"}
   - id: REQ-AUDIT-074
@@ -1157,8 +1160,11 @@ requirements:
     runtimes: all
     standards: []
     issues: [839]
+    tests:
+      - actors/reader/tests/search.rs
+      - kits/rust/sluis-audit/src/record.rs
     verification:
-      - {kind: integration-test, ref: "read audit test"}
+      - {kind: integration-test, ref: "read audit test: a read of several tenants carries an authorizations entry for each decision, and policy names the decision that denied it"}
   - id: REQ-AUDIT-075
     area: AUDIT
     statement: "The default search index MUST be `postgres` on Aurora on the lambda installation and `postgres` on CloudNativePG on the kubernetes installation."
@@ -2161,13 +2167,14 @@ requirements:
     rationale: "Cedar decides every call on project, log kind and tenant, and the grant is a mandatory filter of the query (ADR 0028, ADR 0007)."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     actors: [reader]
     standards: []
     issues: [839]
+    tests:
+      - actors/reader/tests/search.rs
     verification:
       - {kind: integration-test, ref: "a search under a grant for tenant A returns no record of tenant B; a call naming another project is refused"}
   - id: REQ-AUDIT-145

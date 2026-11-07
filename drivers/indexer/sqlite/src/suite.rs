@@ -429,8 +429,20 @@ fn words(i: &Index) -> Result<()> {
                 status_code: "denied".into(),
                 ..row("acme", "other", 4, 40)
             },
+            // Two forms of one word, in another tenant: a stemmer takes both to `log`.
+            row("globex", "user.logging", 5, 50),
+            row("globex", "user.logged", 6, 60),
         ],
     )?;
+    let globex = || query(&[("words", "audit")], &["globex"]);
+    ensure!(
+        found(i, globex(), "logged")? == ["rec-6"],
+        "logged found logging, or not logged: words are stemmed"
+    );
+    ensure!(
+        found(i, globex(), "logging")? == ["rec-5"],
+        "logging found logged, or not logging: words are stemmed"
+    );
     ensure!(
         found(i, base(), "cafe")? == ["rec-1"],
         "a word without its accent does not find the accented one"

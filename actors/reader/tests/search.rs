@@ -178,6 +178,10 @@ struct Control {
     decides: Mutex<Vec<(String, String, String, String)>>,
     /// policy denies this tenant.
     deny: Mutex<Vec<String>>,
+    /// The resource (type, id) of each question policy was asked, in order.
+    resources: Mutex<Vec<(String, String)>>,
+    /// policy denies this log, `<project>/<kind>`.
+    deny_logs: Mutex<Vec<String>>,
     /// key@ is down.
     key_down: AtomicBool,
     /// policy is down.
@@ -208,10 +212,18 @@ impl PolicyService for PolicySvc {
             p.id,
             req.tenant.clone(),
         ));
+        let res = req.resource.as_option().cloned().unwrap_or_default();
+        self.0
+            .resources
+            .lock()
+            .unwrap()
+            .push((res.r#type.clone(), res.id.clone()));
         if self.0.policy_down.load(Ordering::SeqCst) {
             return Err(refusal(ErrorCode::Unavailable, "engine", ""));
         }
-        if self.0.deny.lock().unwrap().contains(&req.tenant) {
+        if self.0.deny.lock().unwrap().contains(&req.tenant)
+            || self.0.deny_logs.lock().unwrap().contains(&res.id)
+        {
             return Response::ok(DecideResponse {
                 decision: Decision::DENY.into(),
                 decision_id: format!("deny-{}", req.tenant),
@@ -669,6 +681,7 @@ async fn a_grant_for_one_tenant_returns_its_records_opened_from_the_log() {
         )));
 }
 
+/// verifies: REQ-AUDIT-144, REQ-AUDIT-073
 #[tokio::test]
 async fn a_grant_for_another_tenant_returns_nothing_of_the_first() {
     let rd = Rd::new().await;
@@ -686,6 +699,7 @@ async fn a_grant_for_another_tenant_returns_nothing_of_the_first() {
     assert_eq!(opened.iter().filter(|t| *t == "acme").count(), 400);
 }
 
+/// verifies: REQ-AUDIT-144
 #[tokio::test]
 async fn key_at_refuses_a_record_of_a_tenant_the_grant_does_not_name_even_if_policy_and_the_index_agree_on_it()
  {
@@ -1110,4 +1124,150 @@ async fn the_reader_does_not_return_an_entry_whose_envelope_lies_about_its_recor
         other.record_id = Rec::new(7, "acme", "key.sign").uid;
         assert_eq!(rd.search(other).await.unwrap().hits.len(), 1, "{what}");
     }
+}
+
+// ---------------------------------------------------------------- the grant names the log
+
+/// policy is asked about the log (`<project>/<kind>`) of every question, once for each tenant of the call and only
+/// about the logs the reader serves: the `usage` log the AuditLog declares has no index and is never asked about.
+///
+/// verifies: REQ-AUDIT-073
+#[tokio::test]
+async fn policy_is_asked_for_the_log_and_the_tenant_of_every_question() {
+    let rd = Rd::new().await;
+    rd.all(q(&["acme", "globex"])).await;
+    let log = format!("{PROJECT}/audit");
+    let resources = rd.control.resources.lock().unwrap().clone();
+    assert!(!resources.is_empty());
+    assert!(
+        resources
+            .iter()
+            .all(|r| *r == ("AuditLog".to_owned(), log.clone())),
+        "{resources:?}"
+    );
+    let decides = rd.control.decides.lock().unwrap().clone();
+    let tenants: Vec<&str> = decides.iter().map(|d| d.3.as_str()).collect();
+    assert_eq!(tenants, ["acme", "globex"].repeat(tenants.len() / 2));
+    assert_eq!(decides.len() % 2, 0);
+
+    // A log that policy denies is a call that is refused, with the tenant allowed: the grant covers the log too.
+    rd.control.deny_logs.lock().unwrap().push(log);
+    let before = rd.control.opened.lock().unwrap().len();
+    let reads = rd.blob_reads.load(Ordering::SeqCst);
+    let e = rd.search(q(&["acme"])).await.unwrap_err();
+    assert_eq!(
+        (e.code, refusal_reason(&e).as_deref()),
+        (ErrorCode::PermissionDenied, Some("grant"))
+    );
+    assert_eq!(rd.control.opened.lock().unwrap().len(), before);
+    assert_eq!(rd.blob_reads.load(Ordering::SeqCst), reads);
+}
+
+/// A call that names a project the AuditLog declares reads it as a call that names none; a call that names another
+/// project is refused as a denial, policy is not asked, nothing is read and the refusal is audited.
+///
+/// verifies: REQ-AUDIT-144
+#[tokio::test]
+async fn a_call_naming_a_project_the_boundary_does_not_declare_is_refused_and_reads_nothing() {
+    let rd = Rd::new().await;
+    let mut named = q(&["acme"]);
+    named.project = PROJECT.into();
+    assert_eq!(rd.all(named).await.len(), 400);
+
+    let asked = rd.control.decides.lock().unwrap().len();
+    let reads = rd.blob_reads.load(Ordering::SeqCst);
+    let opened = rd.control.opened.lock().unwrap().len();
+    for other in ["billing", "sluis-x", "Sluis"] {
+        let mut r = q(&["acme"]);
+        r.project = other.into();
+        let e = rd.search(r).await.unwrap_err();
+        assert_eq!(
+            (e.code, refusal_reason(&e).as_deref()),
+            (ErrorCode::PermissionDenied, Some("grant")),
+            "{other}"
+        );
+    }
+    assert_eq!(rd.control.decides.lock().unwrap().len(), asked);
+    assert_eq!(rd.blob_reads.load(Ordering::SeqCst), reads);
+    assert_eq!(rd.control.opened.lock().unwrap().len(), opened);
+    let emitted = rd.control.emitted.lock().unwrap();
+    let last = &emitted.last().unwrap().1;
+    assert_eq!(
+        (last["status_id"].as_i64(), last["status_code"].as_str()),
+        (Some(2), Some("grant"))
+    );
+}
+
+/// A tenant's records are returned only under a grant for that tenant, in that log: a grant of another tenant, or of
+/// the same tenant in another log or project, covers none.
+///
+/// verifies: REQ-AUDIT-144
+#[test]
+fn a_grant_covers_the_tenant_the_project_and_the_log_kind_it_names_and_no_other() {
+    use reader::search::covers;
+    assert!(covers(("p", "audit", "acme"), ("p", "audit", "acme")));
+    assert!(covers(("p", "audit", "*"), ("p", "audit", "globex")));
+    assert!(!covers(("p", "audit", "acme"), ("p", "audit", "globex")));
+    assert!(!covers(("p", "audit", "acme"), ("q", "audit", "acme")));
+    assert!(!covers(("p", "audit", "acme"), ("p", "usage", "acme")));
+    assert!(!covers(("p", "audit", "*"), ("q", "audit", "globex")));
+    assert!(!covers(("p", "audit", "*"), ("p", "usage", "globex")));
+}
+
+/// A read of several tenants that policy decided one by one is audited with every decision: one entry of
+/// `authorizations` for each, the policies that allowed and the denial no policy determined, and `policy` and
+/// `action_id` name the decision that refused it.
+///
+/// verifies: REQ-AUDIT-074
+#[tokio::test]
+async fn a_read_of_several_tenants_is_audited_with_every_decision_and_the_denying_one_is_named() {
+    let rd = Rd::new().await;
+    // Two allowed: an entry for each, in the order they were made, and the first is the one `policy` names.
+    rd.search(q(&["acme", "globex"])).await.unwrap();
+    let both = reads(&rd).pop().unwrap();
+    assert_eq!(both["policy"]["uid"], "decision-acme");
+    assert_eq!(both["action_id"], 1);
+    assert_eq!(
+        both["authorizations"],
+        serde_json::json!([
+            {"policy": {"uid": "bind-reader"}, "decision": "Allowed"},
+            {"policy": {"uid": "bind-reader"}, "decision": "Allowed"},
+        ])
+    );
+    assert_eq!(
+        both["unmapped"]["sluis"]["decisions"],
+        serde_json::json!(["decision-acme", "decision-globex"])
+    );
+
+    // The first tenant allowed and the second denied: the refusal is the denying decision's.
+    rd.control.deny.lock().unwrap().push("globex".into());
+    rd.search(q(&["acme", "globex"])).await.unwrap_err();
+    let mixed = reads(&rd).pop().unwrap();
+    assert_eq!(mixed["status_id"], 2);
+    assert_eq!(mixed["status_code"], "grant");
+    assert_eq!(mixed["policy"]["uid"], "deny-globex", "{mixed}");
+    assert_eq!(mixed["action_id"], 2, "{mixed}");
+    assert_eq!(
+        mixed["authorizations"],
+        serde_json::json!([
+            {"decision": "Denied"},
+            {"policy": {"uid": "bind-reader"}, "decision": "Allowed"},
+        ])
+    );
+    assert_eq!(
+        mixed["unmapped"]["sluis"]["decisions"],
+        serde_json::json!(["decision-acme", "deny-globex"])
+    );
+
+    // The denial first changes nothing about which is named.
+    rd.search(q(&["globex", "acme"])).await.unwrap_err();
+    let first = reads(&rd).pop().unwrap();
+    assert_eq!(first["policy"]["uid"], "deny-globex");
+    assert!(
+        first["unmapped"]["sluis"]["decisions"]
+            .as_array()
+            .unwrap()
+            .len()
+            == 1
+    );
 }
