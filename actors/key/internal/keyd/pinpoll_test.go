@@ -130,9 +130,10 @@ func TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts(t *testing.T) {
 	if got > pinAuditBoundPerHour {
 		t.Fatalf("over the bound of %d an hour", pinAuditBoundPerHour)
 	}
-	// Back-off: after the pass that lists the new request (short wait) the passes that find nothing new double the wait
-	// up to the longest one: 500 ms, 1 s, 2 s, 4 s, 8 s, 10 s.
-	seq := []time.Duration{pinPollFirst, 2 * pinPollFirst, 4 * pinPollFirst, 8 * pinPollFirst, 16 * pinPollFirst, pinPollLongest}
+	// Back-off: after the pass that lists the new request (short wait) the passes that find nothing new double the wait,
+	// up to pinLockedRecheck here because this node's own driver is locked (a person may unlock it unseen): 500 ms, 1 s,
+	// 2 s, 2 s. The longest wait, 10 s, is for a request that is open and needs nothing from this node (the next test).
+	seq := []time.Duration{pinPollFirst, 2 * pinPollFirst, pinLockedRecheck, pinLockedRecheck}
 	if !containsRun(m.waits, seq) {
 		t.Fatalf("the waits %v never run as the back-off %v", m.waits[:12], seq)
 	}
@@ -141,14 +142,62 @@ func TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts(t *testing.T) {
 			t.Fatalf("a wait of %v is over the longest %v", w, pinPollLongest)
 		}
 	}
-	// An hour of one request at a time is about 12 requests: each is tried at the short wait, then backed off. At the
-	// short period of before (one pass per half second while a request is open) the hour made 7000 passes; the bound
-	// here is what the longest wait allows (one pass every 10 s: 360) plus the quick looks at the 12 requests.
-	if got, most := len(m.waits), 360+12*8; got > most {
+	// At the short period of before (one pass per half second while a request is open) the hour made 7000 passes; the
+	// bound here is one pass every 2 s (1800) plus the quick looks at the 12 requests. A pass costs no audit fact (above)
+	// and the locked driver refuses before it reaches the card.
+	if got, most := len(m.waits), 3600/2+12*8; got > most {
 		t.Fatalf("%d passes in a simulated hour, want at most %d", got, most)
 	}
-	if got := releaser.d.sealCalls.Load(); got > 456 {
+	if got := releaser.d.sealCalls.Load(); got > 1900 {
 		t.Fatalf("the locked driver was asked %d times in the hour, want about one try per pass", got)
+	}
+}
+
+// verifies: REQ-KEYS-230
+// A request that is open but needs nothing from this node, because a peer has answered it, is looked at once and then at
+// the longest wait: 500 ms, 1 s, 2 s, 4 s, 8 s, 10 s, and no more than one pass every 10 s after.
+func TestARequestAnsweredByAPeerBacksOffToTheLongestWait(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b", "board-c"}, nil)
+	releaser, asker, other := bs[0], bs[2], bs[1] // board-a is unlocked
+	_ = other
+	m, ctx := newSim(e, 10*time.Minute)
+	m.install(releaser.n)
+	releaser.n.srv.cfg.PinReleaseScale = 0
+	id, text := request(t, e, asker, testBoundary, e.clock.now())
+	answerWith(t, e, "board-b", other.d, id, text, false) // a peer answered it already
+	releaser.n.srv.releaseLoop(ctx)
+
+	seq := []time.Duration{pinPollFirst, 2 * pinPollFirst, 4 * pinPollFirst, 8 * pinPollFirst, 16 * pinPollFirst, pinPollLongest, pinPollLongest}
+	if !containsRun(m.waits, seq) {
+		t.Fatalf("the waits %v never run as the back-off %v", m.waits[:12], seq)
+	}
+	if got := releaser.d.sealCalls.Load(); got != 0 {
+		t.Fatalf("the driver sealed %d times for a request a peer had answered", got)
+	}
+	if got, most := len(m.waits), 600/10+8; got > most {
+		t.Fatalf("%d passes in ten simulated minutes, want at most %d", got, most)
+	}
+}
+
+// verifies: REQ-KEYS-230
+// A pass that answers a request says so (PinPass.Answered), and that is progress: the next wait is the short one. The
+// pass after it finds the request answered and nothing new, which is not.
+func TestAnAnsweredRequestIsProgress(t *testing.T) {
+	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
+	id, _ := request(t, e, bs[1], testBoundary, e.clock.now())
+	pass, err := bs[0].n.srv.ReleasePins(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !answered(e, id) || pass.Answered != 1 || !pass.Progress() {
+		t.Fatalf("pass %+v: want the request answered and the pass progress", pass)
+	}
+	pass, err = bs[0].n.srv.ReleasePins(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pass.Answered != 0 || pass.Progress() || pass.Locked {
+		t.Fatalf("second pass %+v: want nothing answered, nothing new, and no progress", pass)
 	}
 }
 

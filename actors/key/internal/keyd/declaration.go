@@ -197,17 +197,22 @@ func (s *Server) checkKids(ctx context.Context, kids []string, retry bool) (kidC
 			known[k.GetKeyId()] = true
 		}
 	}
+	var revoked map[string]struct{}
 	for _, i := range rest {
 		if known[kids[i]] {
 			continue
 		}
 		if retry {
-			_, err := s.revocations.Get(ctx, "", revocationID(targetKid, kids[i]))
-			if err == nil {
-				continue
+			// A listing, as the checks of a Sign and a release do: a Get of a kid that is not revoked is a refusal that store@ audits.
+			if revoked == nil {
+				ids, err := s.revokedIDs(ctx)
+				if err != nil {
+					return out, err
+				}
+				revoked = ids
 			}
-			if !errors.Is(err, store.ErrNotFound) {
-				return out, err
+			if _, ok := revoked[revocationID(targetKid, kids[i])]; ok {
+				continue
 			}
 		}
 		out.unknown = append(out.unknown, i)

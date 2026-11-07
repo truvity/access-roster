@@ -3,6 +3,7 @@ package keyd
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/truvity/sluis/v2/kits/go/store"
 )
@@ -69,6 +70,33 @@ func (s *Server) revokedIDs(ctx context.Context) (map[string]struct{}, error) {
 		token = next
 	}
 	return nil, errRevocationsNotEnded
+}
+
+// revCacheLife is how long the listing of one releasing pass is reused for the requests after the first. A pass that holds
+// many requests (a flood from a compromised store@ is the case that matters) would otherwise walk the whole kind, at the
+// linearizable level, for each of them. The cache is the pass's own and is dropped with it: a revocation acknowledged
+// while the pass runs is seen by the next request that comes more than this after the listing started, and by the next
+// pass at the latest. A Sign never uses it, and neither does the requester, which checks once for each answer.
+const revCacheLife = time.Second
+
+// revCache is the listing a pass holds, and when it began.
+type revCache struct {
+	ids map[string]struct{}
+	at  time.Time
+}
+
+// revocationSet is the revoked ids for a check: the cache when it is younger than revCacheLife, else a new listing
+// (revokedIDs). A nil cache lists every time. A failed listing empties the cache and is an error.
+func (s *Server) revocationSet(ctx context.Context, rc *revCache) (map[string]struct{}, error) {
+	if rc != nil && rc.ids != nil && s.now().Sub(rc.at) < revCacheLife {
+		return rc.ids, nil
+	}
+	began := s.now()
+	ids, err := s.revokedIDs(ctx)
+	if rc != nil {
+		rc.ids, rc.at = ids, began
+	}
+	return ids, err
 }
 
 // revoked says whether KeyRevocation lists the key: the target kind that stops it, or "" when none does.

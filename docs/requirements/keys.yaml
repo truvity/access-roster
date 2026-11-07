@@ -3145,12 +3145,13 @@ requirements:
     standards: []
     tests:
       - actors/key/internal/keyd/pinpoll_test.go
+      - actors/key/internal/keyd/pinwake_test.go
       - actors/key/internal/keyd/revocation_test.go
     verification:
       - {kind: integration-test, ref: "on the fake store, a pass over an unanswerable request and 20 Signs of a key that is not revoked make no lookup that finds nothing (TestAPassOverAnUnanswerableRequestCostsNoRefusal)"}
   - id: REQ-KEYS-230
     area: KEYS
-    statement: "The releasing loop of key@ MUST double its wait after every pass that answered no request and saw no request for the first time, up to 10 seconds, and start again from 500 milliseconds after one that did."
+    statement: "The releasing loop of key@ MUST double its wait after every pass that answered no request and saw no request for the first time, up to 10 seconds (2 seconds while its own driver is locked and a request is open), and start again from 500 milliseconds after one that did."
     rationale: "A request that this node cannot answer stays open for minutes, and a loop that counted the requests it saw instead of the requests it answered polled once a second for as long as it did."
     level: MUST
     source: design-decision
@@ -3161,6 +3162,7 @@ requirements:
     standards: []
     tests:
       - actors/key/internal/keyd/pinpoll_test.go
+      - actors/key/internal/keyd/pinwake_test.go
     verification:
       - {kind: integration-test, ref: "a simulated hour with one unanswerable request: the waits run 500 ms, 1 s, 2 s, 4 s, 8 s, 10 s (TestAnUnansweredPINRequestBacksOffAndWritesNoAuditFacts)"}
   - id: REQ-KEYS-231
@@ -3191,12 +3193,13 @@ requirements:
     standards: []
     tests:
       - actors/key/internal/keyd/pinpoll_test.go
+      - actors/key/internal/keyd/pinwake_test.go
     verification:
-      - {kind: integration-test, ref: "a releaser that could not answer a request answers it within the short wait after its driver unlocks (TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks)"}
+      - {kind: integration-test, ref: "a node unlocked by a peer wakes its releaser, which answers an open request at once (TestTheRequestingLoopWakesTheReleasingLoop, TestARequestLeftOpenIsAnsweredAtOnceWhenThisNodeUnlocks)"}
   - id: REQ-KEYS-233
     area: KEYS
     statement: "key@ MUST read KeyRevocation with a linearizable listing for the check of every Sign and of every PIN release, and refuse when the store cannot give that read."
-    rationale: "A listing that is not asked to be linearizable is read by a leader that may have just been deposed, and a revocation missed by it would let a revoked key sign, which the Get it replaced could not (ADR 0005)."
+    rationale: "A listing that is not asked to be linearizable is read by a leader that may have just been deposed, and a revocation missed by it would let a revoked key sign, which the Get it replaced could not (ADR 0005); the Rust kit cannot ask for that read yet, so entry and signer still read the listing of KeyRevocation at the weak level, which this row does not change."
     level: MUST
     source: design-decision
     status: done
@@ -3208,3 +3211,18 @@ requirements:
       - actors/key/internal/keyd/revocation_list_test.go
     verification:
       - {kind: integration-test, ref: "the Sign, the releaser and the requester each list KeyRevocation with LINEARIZABLE, and a store that refuses that read refuses them (TestEveryRevocationListingAsksForALinearizableRead)"}
+  - id: REQ-KEYS-234
+    area: KEYS
+    statement: "A key@ whose card driver is locked MUST try the PIN release requests that peers left open again at least every 2 seconds."
+    rationale: "A person unlocks a board through the driver and key@ is not told, so the first board of a cold start answers its peers only as soon as its releasing loop looks again."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: ["bare-metal"]
+    actors: [key]
+    standards: []
+    tests:
+      - actors/key/internal/keyd/pinwake_test.go
+    verification:
+      - {kind: integration-test, ref: "a locked releaser with an open request answers within 2 s of a person unlocking its driver, with no wake (TestABoardUnlockedByHandAnswersWithinTheLockedRecheck)"}

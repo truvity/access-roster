@@ -77,10 +77,21 @@ const (
 const (
 	pinPollFirst   = 500 * time.Millisecond
 	pinPollLongest = 10 * time.Second
+	// pinLockedRecheck is the longest wait of the releasing loop after a pass that stopped at a request because this node's
+	// driver is locked. A person unlocks a board through the driver's admin socket and key@ is not told, so the loop is
+	// what finds out; the look costs a refusal line in the driver's journal and no audit fact and no card operation (the
+	// locked driver refuses before it reaches the card).
+	pinLockedRecheck = 2 * time.Second
 	// pinUnlockedRecheck is how often a node whose driver holds the PIN asks it again (a card that is gone restarts
 	// the driver locked).
 	pinUnlockedRecheck = 30 * time.Second
 )
+
+// maxPinPages is how many pages one listing of the PIN release kinds may read, as for KeyRevocation (maxRevocationPages):
+// a listing that does not end is a store@ that is not answering as it should, and the pass fails instead of waiting.
+const maxPinPages = 1000
+
+var errPinListNotEnded = errors.New("PIN release: the listing did not end")
 
 // pinClockSkew is how far ahead of this node's clock the time of a request id may be: the request was made on another
 // node's clock, and time sync keeps the nodes close (the board units start after time-sync.target).
@@ -144,7 +155,7 @@ func refused(why string) error { return &peerRefusal{why: why} }
 
 // peerKey runs the checks on the other node and returns its verified pin-release key. A store@ that cannot be read
 // is an error that is not a refusal: the caller tries again later and audits nothing.
-func (s *Server) peerKey(ctx context.Context, plan *configv2alpha1.KeyPlan, node string) (*ecdsa.PublicKey, error) {
+func (s *Server) peerKey(ctx context.Context, rc *revCache, plan *configv2alpha1.KeyPlan, node string) (*ecdsa.PublicKey, error) {
 	if node == s.cfg.Node {
 		return nil, refused("self")
 	}
@@ -185,7 +196,7 @@ func (s *Server) peerKey(ctx context.Context, plan *configv2alpha1.KeyPlan, node
 	if err != nil {
 		return nil, refused("slot-map")
 	}
-	if why, err := s.peerRevoked(ctx, kid, recipientID); err != nil {
+	if why, err := s.peerRevoked(ctx, rc, kid, recipientID); err != nil {
 		return nil, err
 	} else if why != "" {
 		return nil, refused("revoked")
@@ -211,9 +222,9 @@ func (s *Server) peerKey(ctx context.Context, plan *configv2alpha1.KeyPlan, node
 
 // peerRevoked says which KeyRevocation stops a peer's PIN release: its pin-release key or its wrapping key by kid, or its
 // recipient (ADR 0041, "Boards"). An unreadable store@ is an error: "not revoked" is verified, never assumed.
-func (s *Server) peerRevoked(ctx context.Context, kid, recipientID string) (string, error) {
+func (s *Server) peerRevoked(ctx context.Context, rc *revCache, kid, recipientID string) (string, error) {
 	// One listing for the three ids: a Get of an id that is not revoked is a refusal that store@ audits.
-	ids, err := s.revokedIDs(ctx)
+	ids, err := s.revocationSet(ctx, rc)
 	if err != nil {
 		return "", unavailable(reasonStore)
 	}
@@ -228,13 +239,13 @@ func (s *Server) peerRevoked(ctx context.Context, kid, recipientID string) (stri
 // selfRevoked says why this node releases no PIN: "self-revoked" when KeyRevocation lists its own pin-release key or
 // wrapping key by kid, or its recipient, the three that stop a peer (peerRevoked), and "self-keys" when it holds no
 // pin-release or wrapping key to check. An unreadable store@ is an error, as for a peer.
-func (s *Server) selfRevoked(ctx context.Context) (string, error) {
+func (s *Server) selfRevoked(ctx context.Context, rc *revCache) (string, error) {
 	rel, okRel := s.keys[pinReleasePurpose]
 	wrap, okWrap := s.keys[wrappingPurpose]
 	if !okRel || !okWrap {
 		return "self-keys", nil
 	}
-	why, err := s.peerRevoked(ctx, rel.keyID, wrap.keyID)
+	why, err := s.peerRevoked(ctx, rc, rel.keyID, wrap.keyID)
 	if err != nil {
 		return "", err
 	}
@@ -275,6 +286,9 @@ type PinPass struct {
 	Seen     int // the requests of peers and of this node that were listed
 	New      int // the requests of peers that no pass listed before
 	Answered int // the answers this pass wrote
+	// Locked says that the pass stopped at a request because this node's driver holds no PIN. The request waits for a peer,
+	// and for a person who unlocks this board by hand, which key@ is not told: the loop looks again sooner (pinLockedRecheck).
+	Locked bool
 }
 
 // Progress says whether the next pass should come soon: a request that no pass has seen is worth a quick second look,
@@ -303,7 +317,8 @@ func (s *Server) listed(items []store.Item[*keyv2alpha1.PinReleaseRequest]) int 
 // this was first written, is a refusal of store@ for every request that has no answer yet, and store@ audits it.
 func (s *Server) pinReleases(ctx context.Context) ([]store.Item[*keyv2alpha1.PinRelease], error) {
 	var out []store.Item[*keyv2alpha1.PinRelease]
-	for token := ""; ; {
+	token := ""
+	for range maxPinPages {
 		page, next, err := s.pinRels.List(ctx, "", store.PageSize(200), store.PageToken(token))
 		if err != nil {
 			return nil, err
@@ -314,6 +329,7 @@ func (s *Server) pinReleases(ctx context.Context) ([]store.Item[*keyv2alpha1.Pin
 		}
 		token = next
 	}
+	return nil, errPinListNotEnded
 }
 
 // ReleasePins is one pass of the releasing side: it answers each fresh, verified request of a peer, once. A node whose
@@ -324,16 +340,21 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 	// Every page: a flood of requests (a compromised store@ can write them) must not hide a real one behind it. A
 	// request already decided costs a map lookup; the kind's short life bounds the rest.
 	var items []store.Item[*keyv2alpha1.PinReleaseRequest]
-	for token := ""; ; {
+	token, ended := "", false
+	for range maxPinPages {
 		page, next, err := s.pinReqs.List(ctx, "", store.PageSize(200), store.PageToken(token))
 		if err != nil {
 			return pass, unavailable(reasonStore)
 		}
 		items = append(items, page...)
 		if next == "" {
+			ended = true
 			break
 		}
 		token = next
+	}
+	if !ended {
+		return pass, unavailable(reasonStore)
 	}
 	pass.Seen, pass.New = len(items), s.listed(items)
 	var released map[string]struct{} // the ids that have an answer, listed once, when a request needs it
@@ -341,6 +362,7 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 	var planDoc []byte
 	var selfWhy string
 	selfChecked := false
+	var rc revCache // the revocations this pass read, kept for revCacheLife
 	for _, it := range items {
 		text, sig := it.Value.GetText(), it.Value.GetSignatureDer()
 		r, perr := pinrelease.ParseRequest(text)
@@ -382,7 +404,7 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 		// pass, before the KeyPlan, the peer's checks or any call of the driver. Its requesters would refuse the answer,
 		// but the release would be sealed, signed and audited as key.pin.release all the same.
 		if !selfChecked {
-			why, err := s.selfRevoked(ctx)
+			why, err := s.selfRevoked(ctx, &rc)
 			if err != nil {
 				return pass, err
 			}
@@ -399,7 +421,7 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 				return pass, err
 			}
 		}
-		pub, err := s.peerKey(ctx, plan, r.Node)
+		pub, err := s.peerKey(ctx, &rc, plan, r.Node)
 		var pr *peerRefusal
 		switch {
 		case errors.As(err, &pr):
@@ -414,8 +436,10 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 			s.refusePin(ctx, "request", r.Node, r.ID, text, "signature")
 			continue
 		}
-		if err := s.answer(ctx, it.ID, r, text, sig, planDoc); err != nil {
+		written, err := s.answer(ctx, it.ID, r, text, sig, planDoc)
+		if err != nil {
 			if errors.Is(err, errNoPIN) {
+				pass.Locked = true
 				return pass, nil // locked here as well: a peer answers
 			}
 			if errors.As(err, &pr) {
@@ -425,6 +449,9 @@ func (s *Server) ReleasePins(ctx context.Context) (PinPass, error) {
 				continue
 			}
 			return pass, err
+		}
+		if written {
+			pass.Answered++
 		}
 		s.markSeen(r, text)
 	}
@@ -449,38 +476,38 @@ func driverRefusal(err error) error {
 
 // answer seals this node's PIN to a verified request, signs the answer and writes it, after its audit fact is durable.
 // The driver is given the request's signature and the KeyPlan document key@ verified, and verifies both itself.
-func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, text, sig, planDoc []byte) error {
+func (s *Server) answer(ctx context.Context, id string, r pinrelease.Request, text, sig, planDoc []byte) (bool, error) {
 	sealed, err := s.driver.SealPin(ctx, connect.NewRequest(&keystorev2alpha1.SealPinRequest{RequestText: text, RequestSignatureDer: sig, KeyPlan: planDoc}))
 	if err != nil {
 		if reason, _ := refusal.Reason(err); connect.CodeOf(err) == connect.CodeFailedPrecondition && (reason == "locked" || reason == "no_pin") {
-			return errNoPIN
+			return false, errNoPIN
 		}
 		if rerr := driverRefusal(err); rerr != nil {
-			return rerr
+			return false, rerr
 		}
-		return fmt.Errorf("key-store driver seal: %w", err)
+		return false, fmt.Errorf("key-store driver seal: %w", err)
 	}
 	// The driver wrote and signed the answer; it is published only if it is this node's answer to this request.
 	at, answerSig := sealed.Msg.GetAnswerText(), sealed.Msg.GetAnswerSignatureDer()
 	a, err := pinrelease.ParseAnswer(at)
 	if err != nil || a.Boundary != s.cfg.Boundary || a.Releaser != s.cfg.Node || a.Requester != r.Node || a.ID != r.ID ||
 		!bytes.Equal(a.RequestSHA384, pinrelease.Digest(text)) || !s.ownSigned(at, answerSig) {
-		return errors.New("key-store driver seal: the answer is not this node's answer to the request")
+		return false, errors.New("key-store driver seal: the answer is not this node's answer to the request")
 	}
 	// The release is an effect on a secret: its fact is durable before the answer is written (ADR 0024, "Every
 	// signature is an audit fact").
 	if err := s.auditBlocking(ctx, Event{Action: ActionPinRelease, Fields: map[string]any{"node": r.Node, "request": r.ID}}); err != nil {
-		return err
+		return false, err
 	}
 	_, err = s.pinRels.Create(ctx, "", id, &keyv2alpha1.PinRelease{Text: at, SignatureDer: answerSig})
 	switch {
 	case errors.Is(err, store.ErrExists):
-		return nil // another peer answered first
+		return false, nil // another peer answered first
 	case err != nil:
-		return unavailable(reasonStore)
+		return false, unavailable(reasonStore)
 	}
 	slog.Info("a PIN released to a peer", "node", r.Node, "request", r.ID)
-	return nil
+	return true, nil
 }
 
 // fresh says why a request is not fresh: its id's time is older than the window, or later than this clock allows.
@@ -625,7 +652,7 @@ func (s *Server) takeAnswer(ctx context.Context, r pinrelease.Request, text []by
 	if err != nil {
 		return err
 	}
-	pub, err := s.peerKey(ctx, plan, a.Releaser)
+	pub, err := s.peerKey(ctx, nil, plan, a.Releaser)
 	var pr *peerRefusal
 	switch {
 	case errors.As(err, &pr):
@@ -693,9 +720,13 @@ func (s *Server) releaseLoop(ctx context.Context) {
 		if err != nil {
 			slog.Warn("PIN release pass failed", "err", err)
 		}
-		if pass.Progress() {
+		switch {
+		case pass.Progress():
 			wait = first
-		} else {
+		case pass.Locked:
+			// Stopped at a request because this driver is locked: a person may unlock it any moment, unseen by key@.
+			wait = min(2*wait, s.pinEvery(pinLockedRecheck))
+		default:
 			wait = min(2*wait, longest)
 		}
 		woken, serr := s.pinSleep(ctx, wait, wake)
@@ -704,6 +735,43 @@ func (s *Server) releaseLoop(ctx context.Context) {
 		}
 		if woken {
 			wait = first
+		}
+	}
+}
+
+// requestLoop runs the requests of this node while its driver is locked, until ctx ends or a person must unlock the board.
+// When a PIN has just unlocked the node, or the driver is found unlocked, it wakes the releasing loop (wakeReleaser).
+func (s *Server) requestLoop(ctx context.Context) {
+	wait := s.pinEvery(pinPollFirst)
+	unlocked := false
+	for {
+		err := s.RequestPin(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return
+		case err == nil:
+			// A peer's PIN unlocked this node: the requests that peers left open meanwhile can be answered now.
+			s.wakeReleaser()
+			unlocked = true
+			wait = s.pinEvery(pinUnlockedRecheck)
+		case errors.Is(err, ErrUnlocked):
+			if !unlocked {
+				s.wakeReleaser() // found unlocked, by a person's unlock for instance
+				unlocked = true
+			}
+			wait = s.pinEvery(pinUnlockedRecheck)
+		case errors.Is(err, ErrPINRefused):
+			// The stop here is in memory; the card driver keeps its own in its state directory, so a restart of either
+			// asks again but sends the card no released PIN (pin_refused) until a person unlocks the board.
+			slog.Error("the card did not take a released PIN: no more PIN release requests; unlock the board with sluis node unlock")
+			return
+		default:
+			slog.Warn("PIN release request ended without a PIN", "err", err)
+			unlocked = false
+			wait = min(2*wait, s.pinEvery(pinPollLongest))
+		}
+		if _, err := s.pinSleep(ctx, wait, nil); err != nil {
+			return
 		}
 	}
 }
@@ -729,38 +797,7 @@ func (s *Server) pinLoops(ctx context.Context) {
 	}()
 	go func() {
 		defer wg.Done()
-		wait := s.pinEvery(pinPollFirst)
-		unlocked := false
-		for {
-			err := s.RequestPin(ctx)
-			switch {
-			case ctx.Err() != nil:
-				return
-			case err == nil:
-				// A peer's PIN unlocked this node: the requests that peers left open meanwhile can be answered now.
-				s.wakeReleaser()
-				unlocked = true
-				wait = s.pinEvery(pinUnlockedRecheck)
-			case errors.Is(err, ErrUnlocked):
-				if !unlocked {
-					s.wakeReleaser() // found unlocked, by a person's unlock for instance
-					unlocked = true
-				}
-				wait = s.pinEvery(pinUnlockedRecheck)
-			case errors.Is(err, ErrPINRefused):
-				// The stop here is in memory; the card driver keeps its own in its state directory, so a restart of either
-				// asks again but sends the card no released PIN (pin_refused) until a person unlocks the board.
-				slog.Error("the card did not take a released PIN: no more PIN release requests; unlock the board with sluis node unlock")
-				return
-			default:
-				slog.Warn("PIN release request ended without a PIN", "err", err)
-				unlocked = false
-				wait = min(2*wait, s.pinEvery(pinPollLongest))
-			}
-			if _, err := s.pinSleep(ctx, wait, nil); err != nil {
-				return
-			}
-		}
+		s.requestLoop(ctx)
 	}()
 	wg.Wait()
 }

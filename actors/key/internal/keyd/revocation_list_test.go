@@ -166,7 +166,7 @@ func TestEveryRevocationListingAsksForALinearizableRead(t *testing.T) {
 		if err := <-done; err != nil { // the requester checks the releaser's keys
 			t.Fatalf("RequestPin: %v", err)
 		}
-		if e.store.listCallCount() < 3 { // the releaser: its own keys and the requester's; the requester: the releaser's
+		if e.store.listCallCount() < 2 { // the releaser: its own keys and the requester's in one listing; the requester: the releaser's
 			t.Fatalf("only %d revocation listings for both sides", e.store.listCallCount())
 		}
 		if got := e.store.weakListCount(); got != 0 {
