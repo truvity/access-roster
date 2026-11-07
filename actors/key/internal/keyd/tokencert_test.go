@@ -520,7 +520,8 @@ func TestTokenKeyTellsCaTheKeyAndTheChain(t *testing.T) {
 	}
 	absent := n.e.store.absentCount()
 	got, err := ask("ca")
-	if err != nil || string(got.GetSpkiDer()) != string(tok.spki) || got.GetKeyId() != tok.keyID || len(got.GetChain()) != 0 {
+	if err != nil || string(got.GetSpkiDer()) != string(tok.spki) || got.GetKeyId() != tok.keyID || len(got.GetChain()) != 0 ||
+		string(got.GetIntermediateSpkiDer()) != string(n.srv.keys["x509-intermediate"].spki) {
 		t.Fatalf("before a certificate: %+v, %v", got, err)
 	}
 	der := certifyToken(t, n, inter)
@@ -538,4 +539,21 @@ func TestTokenKeyTellsCaTheKeyAndTheChain(t *testing.T) {
 	// And ca still has no rule for the token key's public key.
 	_, err = n.client("ca").PublicKey(context.Background(), connect.NewRequest(&keyv2alpha1.PublicKeyRequest{Purpose: "token-signing"}))
 	wantRefusal(t, err, connect.CodePermissionDenied, "rule")
+}
+
+// A KeyPlan with no intermediate (the state before the hand-off, and of an installation that never has one): TokenKey answers
+// with no intermediate and refuses nothing, so a ca that waits makes no refusal record each time it looks.
+func TestTokenKeyOfAPlanWithoutAnIntermediateRefusesNothing(t *testing.T) {
+	e := newTestEnv(t, "development")
+	n := e.startedNode(nodeOpts{})
+	before, absent := n.audit.count(ActionRefuse), e.store.absentCount()
+	for range 5 {
+		res, err := n.client("ca").TokenKey(context.Background(), connect.NewRequest(&keyv2alpha1.TokenKeyRequest{}))
+		if err != nil || len(res.Msg.GetIntermediateSpkiDer()) != 0 || len(res.Msg.GetChain()) != 0 || len(res.Msg.GetSpkiDer()) == 0 {
+			t.Fatalf("%+v, %v", res.Msg, err)
+		}
+	}
+	if n.audit.count(ActionRefuse) != before || e.store.absentCount() != absent {
+		t.Fatalf("%d refusals, %d Gets of an absent item", n.audit.count(ActionRefuse)-before, e.store.absentCount()-absent)
+	}
 }

@@ -1031,12 +1031,16 @@ func (*TokenKeyRequest) Descriptor() ([]byte, []int) {
 
 // TokenKeyResponse carries that key and its chain.
 type TokenKeyResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SpkiDer       []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
-	KeyId         string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
-	Chain         [][]byte               `protobuf:"bytes,3,rep,name=chain,proto3" json:"chain,omitempty"`                    // the chain PublicKey gives as x5c: empty when there is none or it no longer fits
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	SpkiDer []byte                 `protobuf:"bytes,1,opt,name=spki_der,json=spkiDer,proto3" json:"spki_der,omitempty"` // the public key, SubjectPublicKeyInfo in DER
+	KeyId   string                 `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`       // RFC 7638 thumbprint, base64url
+	Chain   [][]byte               `protobuf:"bytes,3,rep,name=chain,proto3" json:"chain,omitempty"`                    // the chain PublicKey gives as x5c: empty when there is none or it no longer fits
+	// The public key of this node's x509-intermediate, or empty when the KeyPlan has none. ca learns it here and not by
+	// PublicKey, which refuses (and audits) a purpose the plan lacks: an installation that has no intermediate yet is the
+	// normal state before the hand-off, and a ca that waits for one must not make a refusal each time it looks.
+	IntermediateSpkiDer []byte `protobuf:"bytes,4,opt,name=intermediate_spki_der,json=intermediateSpkiDer,proto3" json:"intermediate_spki_der,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *TokenKeyResponse) Reset() {
@@ -1086,6 +1090,13 @@ func (x *TokenKeyResponse) GetKeyId() string {
 func (x *TokenKeyResponse) GetChain() [][]byte {
 	if x != nil {
 		return x.Chain
+	}
+	return nil
+}
+
+func (x *TokenKeyResponse) GetIntermediateSpkiDer() []byte {
+	if x != nil {
+		return x.IntermediateSpkiDer
 	}
 	return nil
 }
@@ -1753,11 +1764,12 @@ const file_sluis_key_v2alpha1_key_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
 	"\aalready\x18\x02 \x01(\bR\aalready\x12\x1a\n" +
 	"\breplaced\x18\x03 \x01(\bR\breplaced\"\x11\n" +
-	"\x0fTokenKeyRequest\"Z\n" +
+	"\x0fTokenKeyRequest\"\x8e\x01\n" +
 	"\x10TokenKeyResponse\x12\x19\n" +
 	"\bspki_der\x18\x01 \x01(\fR\aspkiDer\x12\x15\n" +
 	"\x06key_id\x18\x02 \x01(\tR\x05keyId\x12\x14\n" +
-	"\x05chain\x18\x03 \x03(\fR\x05chain\"\x96\x01\n" +
+	"\x05chain\x18\x03 \x03(\fR\x05chain\x122\n" +
+	"\x15intermediate_spki_der\x18\x04 \x01(\fR\x13intermediateSpkiDer\"\x96\x01\n" +
 	"\n" +
 	"MacRequest\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x16\n" +

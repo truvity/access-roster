@@ -72,6 +72,7 @@ type fakeKeys struct {
 	puts      int
 	signErr   error
 	wrongKey  bool
+	noPlan    bool // the KeyPlan has no intermediate
 	refuseAll bool
 }
 
@@ -80,18 +81,13 @@ func spkiOf(k *ecdsa.PrivateKey) []byte {
 	return b
 }
 
-func (k *fakeKeys) PublicKey(_ context.Context, req *connect.Request[keyv2alpha1.PublicKeyRequest]) (*connect.Response[keyv2alpha1.PublicKeyResponse], error) {
-	if req.Msg.GetPurpose() != "x509-intermediate" {
-		// The registry gives the token key to signer alone: ca is refused.
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("rule"))
-	}
-	return connect.NewResponse(&keyv2alpha1.PublicKeyResponse{SpkiDer: spkiOf(k.inter), Algorithm: "ES384"}), nil
-}
-
 // TokenKey gives the chain by the rule of key@'s PublicKey: the stored certificate fits this key, is valid and ends in the
 // installed intermediate.
 func (k *fakeKeys) TokenKey(context.Context, *connect.Request[keyv2alpha1.TokenKeyRequest]) (*connect.Response[keyv2alpha1.TokenKeyResponse], error) {
 	out := &keyv2alpha1.TokenKeyResponse{SpkiDer: spkiOf(k.token)}
+	if !k.noPlan {
+		out.IntermediateSpkiDer = spkiOf(k.inter)
+	}
 	k.st.mu.Lock()
 	defer k.st.mu.Unlock()
 	tok, inter := k.st.items["token"], k.st.items["inter"]
@@ -400,5 +396,17 @@ func TestAnIntermediateAboutToEndGetsNoCertificate(t *testing.T) {
 	f.clock = f.clock.AddDate(0, 13, 0).Add(-30 * time.Minute)
 	if st, err := f.w.Once(context.Background()); err != nil || st != StateWaiting || len(f.keys.signs) != 0 {
 		t.Fatalf("%v %v, %d signatures", st, err, len(f.keys.signs))
+	}
+}
+
+// With no intermediate in the KeyPlan, ca waits and asks key@ for nothing but TokenKey: it makes no call that key@ would refuse.
+func TestAPlanWithoutAnIntermediateIsWaitedUnder(t *testing.T) {
+	f := newFixture(t)
+	f.keys.noPlan = true
+	f.install(13)
+	for range 3 {
+		if st, err := f.w.Once(context.Background()); err != nil || st != StateWaiting || len(f.keys.signs) != 0 {
+			t.Fatalf("%v %v, %d signatures", st, err, len(f.keys.signs))
+		}
 	}
 }
