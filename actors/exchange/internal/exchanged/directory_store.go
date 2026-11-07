@@ -121,9 +121,12 @@ func (d *StoreDirectory) Person(ctx context.Context, tenant string, c *Subject) 
 }
 
 // Check says whether the directory is bound: store@ answers a read of the chain kind, and exchange is allowed to make
-// it. An id that cannot exist is "not found" for a reader and "permission denied" for one the rule of the kind does not
-// name. It also proves exchange's rule for the chain key at key@: an Open of an envelope that cannot open is refused for
-// the reason `open` when the rule allows it and for the reason `rule` when it does not, and it needs no real envelope.
+// it. It runs every few seconds, and store@ audits every refusal (ADR 0005), so it asks for nothing that is absent and
+// for nothing that key@ would refuse: it lists the kind by an index, on a value that no chain has, which is an empty
+// page and no refusal, and a listing is refused (permission_denied) for a reader the rule of the kind does not name.
+// It does not open anything at key@: an Open of a made-up envelope can only be refused, key@ audits that refusal as it
+// audits any other, and exchange's rule for the chain key is proved where the rules are, by key@'s own tests
+// (REQ-KEYS-082), not by a call every five seconds.
 func (d *StoreDirectory) Check(ctx context.Context) error {
 	b, err := d.cfg.Boundary(ctx)
 	if err != nil {
@@ -133,22 +136,16 @@ func (d *StoreDirectory) Check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// A valid id that no chain has: 26 characters of the id alphabet.
-	_, err = d.chains.Get(ctx, t.ID, "aaaaaaaaaaaaaaaaaaaaaaaaaa")
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return err
-	}
-	_, err = d.keys.Open(ctx, connect.NewRequest(&keyv2alpha1.OpenRequest{Items: []*keyv2alpha1.OpenItem{{
-		Purpose: "chain", Address: &typev2alpha1.Address{Kind: segChain, Tenant: t.ID, Id: "aaaaaaaaaaaaaaaaaaaaaaaaaa"}, Envelope: []byte("check"),
-	}}}))
-	if r, ok := refusal.Reason(err); ok && r == "open" && connect.CodeOf(err) == connect.CodePermissionDenied {
-		return nil
-	}
-	if err == nil {
-		return errors.New("exchanged: key@ opened a check envelope")
-	}
-	return fmt.Errorf("key open chain: %w", err)
+	_, _, err = d.chains.List(ctx, t.ID, store.ByIndex(indexBySubject, []byte(checkSubject)), store.PageSize(1))
+	return err
 }
+
+// indexBySubject is the index of SessionChain by the subject of the chain, and checkSubject a value that is no subject
+// (a subject is the 26 characters of an id), so the listing of the check is always empty.
+const (
+	indexBySubject = "by_subject"
+	checkSubject   = "check"
+)
 
 // exists says whether an item of a sealed kind exists, without opening it: store@ checks the envelope's header and
 // hands it over, and the directory only needs to know that it is there.
