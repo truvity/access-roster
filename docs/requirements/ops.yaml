@@ -1322,3 +1322,424 @@ requirements:
     issues: [1220]
     verification:
       - {kind: conformance-suite, ref: "provisioner suite: a person with different subjects in the two tenants is reconciled by the part's vendor identifier alone"}
+
+  # ---- company-issued OpenPGP keys on staff GitHub accounts (decision 0042)
+  - id: REQ-OPS-099
+    area: OPS
+    statement: "adapter-github MUST put the certificate of a person's active binding for a company on that person's GitHub account, adding it when it is absent and replacing it when the account holds a copy that lacks a subkey, user ID, binding signature or expiry of the binding."
+    rationale: "GitHub does not follow a key's renewal, so a key uploaded once goes stale and the person's commits turn Unverified (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "against a fake GitHub: an absent key is added, a key whose copy lacks the renewed binding is replaced, and a second pass makes no call that changes the account"}
+  - id: REQ-OPS-100
+    area: OPS
+    statement: "adapter-github MUST NOT add, change or remove a key on a person's GitHub account that is not a company key."
+    rationale: "A personal key belongs to the person, and the company manages only the keys it issued (ADR 0042, GH1 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "an account with a personal key whose user ID carries a company address keeps that key through an add, an update, a removal and a leaver's pass"}
+  - id: REQ-OPS-101
+    area: OPS
+    statement: "adapter-github MUST add a key to a GitHub account only from the certificate of an active binding of the person whose account it is."
+    rationale: "The write permission on a person's keys would let a wrong binding put a key on an account and sign commits as that person (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a certificate whose binding has ended, one that is held by no binding and one that belongs to another person's binding cause no call that adds a key to the account"}
+  - id: REQ-OPS-102
+    area: OPS
+    statement: "adapter-github MUST NOT remove a key from a GitHub account because its binding records are unreadable or older than their time to live."
+    rationale: "Unreadable binding records must never look like no bindings (ADR 0042, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "with unreadable and expired binding records a pass removes no key and reports them as unreadable"}
+  - id: REQ-OPS-103
+    area: OPS
+    statement: "adapter-github MUST remove the company keys of a person from the person's GitHub account when the person's binding has ended or the directory marks the person as left, before it deletes the person's tokens."
+    rationale: "A leaver's company key must not stay on the account, and the tokens that remove it must outlive the removal (ADR 0042, G5 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a person whose binding ended and a person marked left both lose their company keys, the outcome is audited, and only then are the tokens deleted"}
+  - id: REQ-OPS-104
+    area: OPS
+    statement: "adapter-github MUST mark a person's key authorisation revoked, delete the stored tokens and raise an alert only after a call to GitHub with the person's current token has confirmed that the authorisation is gone."
+    rationale: "A revoked authorisation leaves keys on an account that sluis can no longer manage, so the gap must be seen (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "an event, and a 401 with no event, each lead to a probe: a failed probe marks the item revoked, deletes both tokens, audits and alerts; a probe that succeeds leaves it active"}
+  - id: REQ-OPS-105
+    area: OPS
+    statement: "adapter-github MUST store a person's GitHub user token and refresh token sealed under the tenant's data key."
+    rationale: "A token that reaches a personal account is a sharp credential, and a copy of the store must not yield it (ADR 0042, ADR 0025)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "the stored GitHubKeyAuthorization item is ciphertext and holds neither token in clear"}
+  - id: REQ-OPS-106
+    area: OPS
+    statement: "adapter-github MUST write the token pair that a refresh returns before it uses the new user token."
+    rationale: "A refresh token works once, so a pair that is used but not written is lost and the person must authorise again (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "against a fake GitHub that honours a refresh token once: two concurrent passes under the lease burn no pair, and a failed write stops the pass before the new token is used"}
+  - id: REQ-OPS-107
+    area: OPS
+    statement: "adapter-github MUST NOT record a user token, a refresh token or a client secret in an audit record, a log line or a span."
+    rationale: "Nothing that opens a personal account may leave the sealed item (ADR 0042, ADR 0025)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    features: [design]
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a pass with known token values leaves none of them in its audit records, log output and trace attributes"}
+  - id: REQ-OPS-108
+    area: OPS
+    statement: "adapter-github MUST mark a person's key authorisation refresh-lost, as a state apart from revoked, and raise an operator task to ask the person to authorise again, when a refresh was begun and its answer was never written or a refresh is then refused."
+    rationale: "A crash between GitHub's answer and the write loses the pair about as often as a refresh happens, and the person did nothing wrong (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a process killed after GitHub's refresh answer and before the write leaves the item refresh-lost with an operator task and no revoked alert; nothing changes for the person until they authorise again"}
+  - id: REQ-OPS-109
+    area: OPS
+    statement: "adapter-github MUST mark a key authorisation revoked only by a write conditional on the version of the item that it read."
+    rationale: "A stale process with an old token pair must not delete the newer pair that another process wrote (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "process A holds pair P1, its lease lapses, B writes P2, A's call gets 401: A's conditional write conflicts, A re-reads P2 and leaves the item active"}
+  - id: REQ-OPS-110
+    area: OPS
+    statement: "adapter-github MUST hold a pass that would remove more than half of the company keys of all people, or more than half of one person's company keys without an explicit cause."
+    rationale: "A wrong keyring or a mass change must stop before it empties the accounts (ADR 0042, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a keyring that drops most people, and one that drops most of one person's keys with no left state and no withdrawal, are held and reported with no key removed"}
+  - id: REQ-OPS-111
+    area: OPS
+    statement: "adapter-github MUST NOT hold, for the breaker, the removal of the company keys of a person whom the directory marks left or the removal of a withdrawn fingerprint."
+    rationale: "A leaver with one key is more than half of their keys and must still lose it at once (ADR 0042, G5 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a person marked left with a single company key loses it in one pass with the breaker armed"}
+  - id: REQ-OPS-112
+    area: OPS
+    statement: "adapter-github MUST remove only a key that it added or that a binding it held has ended."
+    rationale: "A wrong binding record must not be able to delete a personal key by naming its fingerprint (ADR 0042, GH1 A)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a binding record that names the fingerprint of a personal key causes no delete, and a key that sluis added and whose binding then ends is deleted"}
+  - id: REQ-OPS-113
+    area: OPS
+    statement: "adapter-github MUST add a certificate only to the pinned account of the person whose active binding holds that certificate."
+    rationale: "A wrong or tampered binding of one person must not put a certificate on another person's account, where commits signed as that person would show Verified (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a certificate held by another person's binding, or by no binding, is not added to the person's account"}
+  - id: REQ-OPS-114
+    area: OPS
+    statement: "adapter-github MUST refuse a pass that exceeds the limits of the target for company certificates per person per company, size of a certificate and changes to one account."
+    rationale: "Bounds on a pass limit what a compromised keyring source can do in one run (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "more than one certificate for one person and company, a certificate over the size cap and a pass over the change cap are each refused with a reason and change nothing"}
+  - id: REQ-OPS-115
+    area: OPS
+    statement: "adapter-github MUST identify a key on a GitHub account by the full version 4 fingerprint that it computes from the key's armoured public key."
+    rationale: "GitHub's key object has no fingerprint field, a short key id can collide and a name is set by the uploader (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "two keys with the same key id and different fingerprints, and a personal key named like a company key, are told apart: only the fingerprint match is a company key"}
+  - id: REQ-OPS-116
+    area: OPS
+    statement: "adapter-github MUST delete the old record of a key in an update only when its id differs from the id that the add returned."
+    rationale: "If GitHub answers a second upload with the existing record, deleting the old one would remove the only copy (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "against a fake GitHub that answers a repeat upload with the existing record: no delete is made, and the account still holds the key after the pass"}
+  - id: REQ-OPS-117
+    area: OPS
+    statement: "adapter-github MUST accept a github_app_authorization event only when its X-Hub-Signature-256 verifies against the webhook secret and its sender is the pinned GitHub user."
+    rationale: "An unauthenticated or foreign event must not set a person's state (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "an event with a bad signature, one for another sender, and one for the pinned sender are handled in turn: only the last leads to a probe, and no event is read for an action field"}
+  - id: REQ-OPS-118
+    area: OPS
+    statement: "adapter-github MUST NOT mark an authorisation revoked or raise a revocation alert for the event that follows its own revocation of the grant of a person who has left."
+    rationale: "The leaver step ends the grant itself and must not look like a person's revocation (ADR 0042, G5 A)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a leaver pass that revokes the grant leaves the item left, and the event that GitHub then sends changes nothing and raises no alert"}
+  - id: REQ-OPS-119
+    area: OPS
+    statement: "adapter-github MUST refuse an authorisation of the key App from a GitHub account other than the one pinned for the person, until an operator releases the pin."
+    rationale: "A person must not move their company keys to another account (ADR 0042)."
+    level: MUST
+    source: security-review
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a second authorisation from another GitHub account is refused, the pinned account is unchanged, and it succeeds only after the operator releases the pin"}
+  - id: REQ-OPS-120
+    area: OPS
+    statement: "adapter-github MUST NOT change a GitHub account in a key-sync pass until the operator has enabled the target."
+    rationale: "A new job over personal accounts starts by showing what it would do (ADR 0042, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a pass on a target not enabled changes nothing and lists the adds and removes that an enabled pass then makes"}
+  - id: REQ-OPS-121
+    area: OPS
+    split_from: REQ-OPS-109
+    statement: "adapter-github MUST read the item again and decide again when its conditional write of the revoked state conflicts."
+    rationale: "Another process may have written a newer token pair, and a stale process must not delete it (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "process A holds pair P1, its lease lapses, B writes P2, A's call gets 401: A's conditional write conflicts, A re-reads P2 and leaves the item active"}
+  - id: REQ-OPS-122
+    area: OPS
+    split_from: REQ-OPS-115
+    statement: "adapter-github MUST NOT match a key on a GitHub account by its key id, its name or an email of the key object."
+    rationale: "A short key id can collide and a name is set by whoever uploaded the key (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "two keys with the same key id and different fingerprints, and a personal key named like a company key, are told apart: only the fingerprint match is a company key"}
+  - id: REQ-OPS-123
+    area: OPS
+    split_from: REQ-OPS-116
+    statement: "adapter-github MUST list the account after an update and confirm that the fingerprint of the key is present."
+    rationale: "The check catches an update that left the account without the key (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "after an update against a fake GitHub the account is listed, and a missing fingerprint fails the pass and is audited"}
+  - id: REQ-OPS-124
+    area: OPS
+    split_from: REQ-OPS-117
+    statement: "adapter-github MUST treat a github_app_authorization event as a hint that a call to GitHub confirms."
+    rationale: "An event alone must not set a person's state (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "an event followed by a call that succeeds leaves the item active"}
+  - id: REQ-OPS-125
+    area: OPS
+    split_from: REQ-OPS-120
+    statement: "adapter-github MUST return, in a dry run, the changes that an apply of the same pass would make."
+    rationale: "The operator reads a dry run before enabling the target (ADR 0042, ADR 0026)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a pass on a target not enabled lists the adds and removes that the enabled pass then makes"}
+  - id: REQ-OPS-126
+    area: OPS
+    split_from: REQ-OPS-117
+    statement: "adapter-github MUST NOT rely on an action field of a github_app_authorization event."
+    rationale: "GitHub's page lists no action field for the event (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "an event whose payload has an action value of revoked and one with no action both lead to the same probe, and only the probe sets the state"}
+  - id: REQ-OPS-127
+    area: OPS
+    statement: "adapter-github MUST keep at most one company certificate per person per company on the person's GitHub account."
+    rationale: "A person has one primary per company with card-born subkeys under it, so a second or a lost card changes the certificate and never adds a key (ADR 0042, BD1 B, BD2 B)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a person with a second card, then a lost card, has one company certificate on the account after each pass, replaced each time, and a personal key is untouched"}
+  - id: REQ-OPS-128
+    area: OPS
+    statement: "adapter-github MUST NOT put the certificate of a customer tenant's person on GitHub unless that tenant's policy enables it."
+    rationale: "Only staff are synced; customers get no key on a personal account unless their tenant later says so (ADR 0042)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "a customer tenant's person with an active binding gets no call to GitHub while the tenant's policy does not enable the sync"}
+  - id: REQ-OPS-129
+    area: OPS
+    split_from: REQ-OPS-127
+    statement: "adapter-github MUST replace a person's company certificate on GitHub when the person's subkeys, user ID or expiry change."
+    rationale: "A second card or a lost card changes the subkeys under the one primary, and a change of address or a renewal changes its user ID or expiry, so GitHub's copy must follow (ADR 0042, ADR 0043)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [1214]
+    verification:
+      - {kind: integration-test, ref: "adding a card and losing a card each replace the certificate on the account, a change of the user ID and a renewal of the expiry do the same, and the account holds the new copy after the pass"}
