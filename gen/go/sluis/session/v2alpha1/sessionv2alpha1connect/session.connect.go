@@ -43,6 +43,8 @@ const (
 	SessionServiceCallbackProcedure = "/sluis.session.v2alpha1.SessionService/Callback"
 	// SessionServiceTokenProcedure is the fully-qualified name of the SessionService's Token RPC.
 	SessionServiceTokenProcedure = "/sluis.session.v2alpha1.SessionService/Token"
+	// SessionServiceRevokeProcedure is the fully-qualified name of the SessionService's Revoke RPC.
+	SessionServiceRevokeProcedure = "/sluis.session.v2alpha1.SessionService/Revoke"
 )
 
 // SessionServiceClient is a client for the sluis.session.v2alpha1.SessionService service.
@@ -50,6 +52,7 @@ type SessionServiceClient interface {
 	Authorize(context.Context, *connect.Request[v2alpha1.AuthorizeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Callback(context.Context, *connect.Request[v2alpha1.CallbackRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceClient constructs a client for the sluis.session.v2alpha1.SessionService
@@ -81,6 +84,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("Token")),
 			connect.WithClientOptions(opts...),
 		),
+		revoke: connect.NewClient[v2alpha1.RevokeRequest, v2alpha11.HttpReply](
+			httpClient,
+			baseURL+SessionServiceRevokeProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("Revoke")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -89,6 +98,7 @@ type sessionServiceClient struct {
 	authorize *connect.Client[v2alpha1.AuthorizeRequest, v2alpha11.HttpReply]
 	callback  *connect.Client[v2alpha1.CallbackRequest, v2alpha11.HttpReply]
 	token     *connect.Client[v2alpha1.TokenRequest, v2alpha11.HttpReply]
+	revoke    *connect.Client[v2alpha1.RevokeRequest, v2alpha11.HttpReply]
 }
 
 // Authorize calls sluis.session.v2alpha1.SessionService.Authorize.
@@ -106,11 +116,17 @@ func (c *sessionServiceClient) Token(ctx context.Context, req *connect.Request[v
 	return c.token.CallUnary(ctx, req)
 }
 
+// Revoke calls sluis.session.v2alpha1.SessionService.Revoke.
+func (c *sessionServiceClient) Revoke(ctx context.Context, req *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return c.revoke.CallUnary(ctx, req)
+}
+
 // SessionServiceHandler is an implementation of the sluis.session.v2alpha1.SessionService service.
 type SessionServiceHandler interface {
 	Authorize(context.Context, *connect.Request[v2alpha1.AuthorizeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Callback(context.Context, *connect.Request[v2alpha1.CallbackRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 	Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error)
+	Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -138,6 +154,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("Token")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceRevokeHandler := connect.NewUnaryHandler(
+		SessionServiceRevokeProcedure,
+		svc.Revoke,
+		connect.WithSchema(sessionServiceMethods.ByName("Revoke")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/sluis.session.v2alpha1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceAuthorizeProcedure:
@@ -146,6 +168,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceCallbackHandler.ServeHTTP(w, r)
 		case SessionServiceTokenProcedure:
 			sessionServiceTokenHandler.ServeHTTP(w, r)
+		case SessionServiceRevokeProcedure:
+			sessionServiceRevokeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -165,4 +189,8 @@ func (UnimplementedSessionServiceHandler) Callback(context.Context, *connect.Req
 
 func (UnimplementedSessionServiceHandler) Token(context.Context, *connect.Request[v2alpha1.TokenRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.Token is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) Revoke(context.Context, *connect.Request[v2alpha1.RevokeRequest]) (*connect.Response[v2alpha11.HttpReply], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("sluis.session.v2alpha1.SessionService.Revoke is not implemented"))
 }

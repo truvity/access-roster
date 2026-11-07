@@ -21,6 +21,7 @@ const (
 	ActionToken     = "session.token"
 	ActionRefresh   = "session.refresh"
 	ActionChainEnd  = "session.chain.end"
+	ActionRevoke    = "session.revoke"
 )
 
 var (
@@ -29,6 +30,7 @@ var (
 	actionToken     = audit.Action{Name: ActionToken, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Grant"}
 	actionRefresh   = audit.Action{Name: ActionRefresh, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Refresh"}
 	actionChainEnd  = audit.Action{Name: ActionChainEnd, ClassUID: classAuthentication, ActivityID: 2}
+	actionRevoke    = audit.Action{Name: ActionRevoke, ClassUID: classAuthentication, ActivityID: 99, ActivityName: "Token Revocation"}
 )
 
 // The kinds of identity session names in a record (0029 "Pseudonyms": the kind is part of the pseudonym's input). A
@@ -68,13 +70,15 @@ const (
 	reasonClientSecret             = "client_secret" // a public client sent a secret
 	reasonHint                     = "id_token_hint" // the hint is not an ID token of this issuer for the client, or the person who signed in is not its subject
 	reasonPin                      = "subject_claim" // the upstream's subject claim is not the one its issuer's first link pinned
+	reasonTokenType                = "token_type"    // a token of a type the endpoint does not revoke (an access token)
+	reasonRevoked                  = "revoked"       // the client revoked a refresh token of the chain
 )
 
 // reasons is the closed list of the words above: the only reasons a refusal is logged or audited with.
 var reasons = []string{
 	reasonClient, reasonRedirectURI, reasonRequest, reasonPKCE, reasonMaxAge, reasonCookie, reasonState, reasonUpstream,
 	reasonDenied, reasonHeld, reasonCode, reasonReuse, reasonRefresh, reasonExpired, reasonStepUp, reasonScope,
-	reasonClientSecret, reasonHint, reasonPin,
+	reasonClientSecret, reasonHint, reasonPin, reasonTokenType, reasonRevoked,
 }
 
 // logRefusal writes the log line of a refusal at the authorization, the callback or the token endpoint (REQ-OBS-020 to
