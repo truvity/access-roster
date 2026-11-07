@@ -7,7 +7,8 @@
 //!   token it was for.
 //! - `signer.ring.add`, `signer.ring.change` and `signer.ring.drop`: a change of the published key
 //!   set. The key is public material, so the fact holds its id and the state, and the reason
-//!   `no_active_key` when the change skipped the lead time because no key of the issuer signed.
+//!   `no_active_key` when the change skipped the lead time because no key of the issuer signed, or
+//!   `certificate` when the change is a new chain (`x5c`) of the key.
 //!
 //! Nothing here names a person: `signer` has no pseudonym rule, and the actors that ask for a token
 //! audit the person's action themselves. The facts of the calls use the non-blocking emit; the
@@ -100,6 +101,7 @@ impl Auditor {
             ChangeKind::Added(s) => ("signer.ring.add", 1, s),
             ChangeKind::Activated => ("signer.ring.change", 3, crate::ring::ACTIVE),
             ChangeKind::Retired => ("signer.ring.change", 3, crate::ring::RETIRING),
+            ChangeKind::Certified(s) => ("signer.ring.change", 3, s),
             ChangeKind::Dropped => ("signer.ring.drop", 4, "dropped"),
         };
         let mut sluis = Map::new();
@@ -109,6 +111,9 @@ impl Auditor {
         // Why the lead time was skipped, when it was (REQ-KEYS-089).
         if let Some(reason) = c.reason {
             sluis.insert("reason".into(), text(reason));
+        } else if matches!(c.kind, ChangeKind::Certified(_)) {
+            // A change of the chain is the same change of the key set as a change of state, and says which it was.
+            sluis.insert("reason".into(), text("certificate"));
         }
         let ev = Event {
             action: Action {

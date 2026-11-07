@@ -265,7 +265,8 @@ func (a *app) checkAnswer(stem, requests string, ans *answerFiles, anchors []*x5
 	if err != nil {
 		return nil, 0, nil, err
 	}
-	return [][]byte{v.CertDER}, v.TrustSequence, v.NotRun, nil
+	// The chain ends at the root that issued it, so that the key set's x5c does (REQ-PKI-034).
+	return [][]byte{v.CertDER, v.RootDER}, v.TrustSequence, v.NotRun, nil
 }
 
 // requestStems lists the stems of the requests this node made for the boundary: <boundary>-<purpose>.csr.pem.
