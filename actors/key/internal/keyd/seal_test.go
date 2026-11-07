@@ -998,9 +998,18 @@ func TestCredentialKeyIsSessionsAloneAndSealsOnlyStaffPasskey(t *testing.T) {
 	if pt, err := open1(n.client("session"), "credential", kind, "globex", vecID, other, nil); err != nil || string(pt) != "globex" {
 		t.Errorf("session opens globex's credential: %q, %v", pt, err)
 	}
-	// A `data` envelope is not a credential: the header names the purpose.
+	// The StaffPasskey is sealed under the credential key and no other: an actor with the data rule (session and exchange both
+	// hold it for the tenant) can neither seal a StaffPasskey under `data` nor open one as `data`, and a `data` envelope
+	// does not open as a credential, because the header names the purpose.
 	grant := n.grant("session", []string{"acme"}, []string{"seal", "open"}, time.Minute)
-	dataEnv, err := seal1(n.client("session"), "data", kind, "acme", vecID, value, grant)
+	_, err = seal1(n.client("session"), "data", kind, "acme", vecID, value, grant)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "address")
+	egrant := n.grant("exchange", []string{"acme"}, []string{"seal", "open"}, time.Minute)
+	_, err = seal1(n.client("exchange"), "data", kind, "acme", vecID, value, egrant)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "address")
+	_, err = open1(n.client("session"), "data", kind, "acme", vecID, env, grant)
+	wantRefusal(t, err, connect.CodeInvalidArgument, "address")
+	dataEnv, err := seal1(n.client("session"), "data", "person", "acme", vecID, value, grant)
 	if err != nil {
 		t.Fatal(err)
 	}
