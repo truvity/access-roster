@@ -105,3 +105,38 @@ func TestNoAdapterHoldsAnAuthorityKey(t *testing.T) {
 		t.Fatal("no adapter in the actor registry")
 	}
 }
+
+// No work actor lists a credential in its holds: none is a holder and none has a port beyond the ones every work actor
+// has (data, keys, audit-emit) and those of its job (listener, fetch, provider-api). The four holders are of the other
+// families. The check is run on a copy of each with a holder flag and with a key-store port, so that it is not vacuous.
+//
+// verifies: REQ-ISO-085
+func TestNoWorkActorHoldsACredentialAtRest(t *testing.T) {
+	work := 0
+	for _, a := range Actors() {
+		if a.Family != "work" {
+			continue
+		}
+		work++
+		if why := credentialAtRest(a); why != "" {
+			t.Errorf("work actor %s holds a credential at rest: %s", a.Name, why)
+		}
+		holder := a
+		holder.Holder = true
+		withPort := a
+		withPort.Ports = append(slices.Clone(a.Ports), "secret-source")
+		if credentialAtRest(holder) == "" || credentialAtRest(withPort) == "" {
+			t.Errorf("work actor %s with a holder flag or a credential port was not refused", a.Name)
+		}
+	}
+	if work < 8 {
+		t.Fatalf("only %d work actors in the registry", work)
+	}
+	// The control from the other side: the holders are not work actors, and the same check names what they hold.
+	for _, name := range []string{"store", "key"} {
+		a, ok := ActorByName(name)
+		if !ok || a.Family == "work" || credentialAtRest(a) == "" {
+			t.Errorf("%s: family %q, credentialAtRest %q: the holders are not work actors", name, a.Family, credentialAtRest(a))
+		}
+	}
+}
