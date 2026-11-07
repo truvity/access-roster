@@ -251,6 +251,7 @@ func TestEcdhAgainstReference(t *testing.T) {
 	wantRefused(t, e("token-signing", eph.PublicKey().Bytes()), connect.CodeFailedPrecondition, "algorithm")
 }
 
+// verifies: REQ-KEYS-004
 func TestCapabilities(t *testing.T) {
 	r := start(t, "development", "key")
 	res, err := r.client.Capabilities(context.Background(), connect.NewRequest(&keystorev2alpha1.CapabilitiesRequest{}))

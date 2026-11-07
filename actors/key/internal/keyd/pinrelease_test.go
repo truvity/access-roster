@@ -794,6 +794,7 @@ func TestAForgedOrTamperedAnswerIsNeverAPINAttempt(t *testing.T) {
 }
 
 // A released PIN that the card refuses stops the requests: the card is never asked twice for a released PIN.
+// verifies: REQ-KEYS-118
 func TestARefusedReleasedPINIsNotAskedForAgain(t *testing.T) {
 	e, bs := boards(t, []string{"board-a", "board-b"}, nil)
 	bs[1].d.cardPIN = "654321" // D20a says one PIN per boundary; this card was given another

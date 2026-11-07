@@ -57,7 +57,7 @@ func TestBoardsScriptsAgainstAFakeSsh(t *testing.T) {
 	runScript(t, "deploy/boards/boards-test.sh")
 }
 
-// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-030, REQ-DEPLOY-031, REQ-DATA-112
+// verifies: REQ-DEPLOY-026, REQ-DEPLOY-028, REQ-DEPLOY-030, REQ-DEPLOY-031, REQ-DATA-112, REQ-ISO-061
 func TestBoardsDeployOnASystemdContainer(t *testing.T) {
 	image := os.Getenv("SLUIS_OS_IMAGE")
 	if image == "" {
