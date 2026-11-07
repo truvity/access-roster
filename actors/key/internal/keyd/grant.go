@@ -62,18 +62,29 @@ func (s *Server) grantOf(ctx context.Context, st *grantState) (*typev2alpha1.Gra
 // name the address's tenant (or every tenant), name the operation and not be expired (ADR 0007, "Two
 // independent checks"). A refusal is permission_denied/grant.
 func (s *Server) checkGrant(ctx context.Context, st *grantState, caller, op, purpose, tenant string) error {
-	deny := func() error {
+	ok, err := s.grantOK(ctx, st, caller, op, tenant)
+	switch {
+	case err != nil:
+		return s.keyFailure(ctx, caller, op, purpose, tenant, err, false)
+	case !ok:
 		return s.refuse(ctx, caller, op, purpose, tenant, connect.CodePermissionDenied, reasonGrant, "grant")
 	}
+	return nil
+}
+
+// grantOK says whether the grant passes the checks of checkGrant, and refuses nothing and audits nothing: for the call
+// that needs a grant only to make a key (mayMake), where a missing grant is the ordinary case of a key that exists.
+// The error is a failure of the key lookup, never a verdict on the grant.
+func (s *Server) grantOK(ctx context.Context, st *grantState, caller, op, tenant string) (bool, error) {
 	if len(st.sealed) == 0 {
-		return deny()
+		return false, nil
 	}
 	g, err := s.grantOf(ctx, st)
 	switch {
 	case errors.Is(err, errBadGrant):
-		return deny()
+		return false, nil
 	case err != nil:
-		return s.keyFailure(ctx, caller, op, purpose, tenant, err, false)
+		return false, err
 	}
 	switch {
 	case g.GetBoundary() != s.cfg.Boundary,
@@ -82,9 +93,21 @@ func (s *Server) checkGrant(ctx context.Context, st *grantState, caller, op, pur
 		!slices.Contains(g.GetKeyOps(), op),
 		g.GetExpiresAt() == nil || !g.GetExpiresAt().AsTime().After(s.now()),
 		!s.grantBounded(g):
-		return deny()
+		return false, nil
 	}
-	return nil
+	return true, nil
+}
+
+// mayMake says whether a call may make the data key of a tenant that has none. A tenant's first key is made only under a
+// grant that names the tenant, for the operation and for the caller (the owner's decision of 2026-11-07: a name that
+// nobody checked must not get a key by being named; ADR 0006, "Data keys"). A boundary key is made on its first need, as
+// before. A key that exists is used by rule alone where the purpose is checked by rule, so this decides only whether a
+// missing key is made. The purposes `data` and `evidence` check the grant before anything else; the others pass it here.
+func (s *Server) mayMake(ctx context.Context, st *grantState, caller, op, tenant string) (bool, error) {
+	if tenant == "" {
+		return true, nil
+	}
+	return s.grantOK(ctx, st, caller, op, tenant)
 }
 
 // openGrant opens a sealed grant: the wire form is u16 length | decision_id | envelope, and the grant is bound to
