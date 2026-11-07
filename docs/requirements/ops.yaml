@@ -1889,10 +1889,6 @@ requirements:
     area: OPS
     statement: "`sluis doctor` MUST exit 1 when the kernel check or the entropy check did not run."
     rationale: "`doctor && make-key` must not pass on a host where the generator was never asked (cli.md, Exit codes)."
-  - id: REQ-OPS-140
-    area: OPS
-    statement: "`sluis doctor` MUST warn when key@ holds its keys in software in a staging boundary and fail when it does so in a production boundary."
-    rationale: "The floor of key@ refuses the software store in production and warns in staging, and the check shows a host that has slipped under it (ADR 0006, Floors in code)."
     level: MUST
     source: design-decision
     status: done
@@ -1907,6 +1903,26 @@ requirements:
     area: OPS
     statement: "`sluis doctor` MUST NOT run a program found through the search path."
     rationale: "A script planted earlier in the path would run as root under sudo -E and could say any version of systemd."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
+    issues: [867]
+    tests: [cli/sluis/doctor_test.go]
+    verification:
+      - {kind: integration-test, ref: "a systemctl in $PATH is not run, the fixed paths are absolute, and only one program is started in the sources (TestDoctorRunsNoSystemctlFromPath)"}
+  - id: REQ-OPS-140
+    area: OPS
+    statement: "`sluis doctor` MUST warn when key@ holds its keys in software in a staging boundary and fail when it does so in a production boundary."
+    rationale: "The floor of key@ refuses the software store in production and warns in staging, and the check shows a host that has slipped under it (ADR 0006, Floors in code)."
+    level: MUST
+    source: design-decision
+    status: done
+    milestone: first-version
+    runtimes: all
+    standards: []
     issues: [867, 1068]
     tests: [cli/sluis/doctorkey_test.go]
     verification:
@@ -1921,10 +1937,6 @@ requirements:
     milestone: first-version
     runtimes: all
     standards: []
-    issues: [867]
-    tests: [cli/sluis/doctor_test.go]
-    verification:
-      - {kind: integration-test, ref: "a systemctl in $PATH is not run, the fixed paths are absolute, and only one program is started in the sources (TestDoctorRunsNoSystemctlFromPath)"}
     issues: [867, 1068]
     tests: [cli/sluis/doctorkey_test.go]
     verification:
