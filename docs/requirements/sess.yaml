@@ -815,3 +815,16 @@ requirements:
     features: ["design"]
     verification:
       - {kind: integration-test, ref: "a chain ended by a replayed refresh token: the access token issued before it still carries an exp no later than its lifetime from issue, and no new token is made"}
+  - id: REQ-SESS-056
+    area: SESS
+    statement: "After an operator ends the browser sign-in of a person, the next authorization request from that browser MUST ask for sign-in."
+    rationale: "Revoking every session row left v1's browser sign-in standing, and the next authorization completed silently (ADR 0027)."
+    level: MUST
+    source: design-decision
+    status: planned
+    milestone: v1-parity
+    runtimes: all
+    standards: []
+    issues: [793, 832]
+    verification:
+      - {kind: integration-test, ref: "an operator ends a person's browser sign-in; the next authorization request from that browser is answered with the sign-in page, not a code"}
