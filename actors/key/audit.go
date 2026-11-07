@@ -11,28 +11,8 @@ import (
 	"github.com/truvity/sluis/v2/kits/go/version"
 )
 
-// OCSF class 6003 is API Activity; activity 99 is Other, which names itself. Class 3004 is Entity Management;
-// activity 1 is Create (0030 "The class mapping": a key created, rotated or destroyed is 3004 / 1, 3, 4). The
-// table is code (0030 "The action table is code").
-const (
-	classAPIActivity      = 6003
-	classEntityManagement = 3004
-)
-
-// actions is key@'s action table: metadata.event_code to the class and activity of the record.
-var actions = map[string]audit.Action{
-	keyd.ActionStart:       {Name: keyd.ActionStart, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Start"},
-	keyd.ActionRefuse:      {Name: keyd.ActionRefuse, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Refuse"},
-	keyd.ActionDataKeyMake: {Name: keyd.ActionDataKeyMake, ClassUID: classEntityManagement, ActivityID: 1},
-	keyd.ActionWrapWrite:   {Name: keyd.ActionWrapWrite, ClassUID: classEntityManagement, ActivityID: 1},
-	keyd.ActionSign:        {Name: keyd.ActionSign, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Sign"},
-	// A PIN sealed to a peer and a PIN taken from one are uses of the card key of slot 87, so 0030 gives them the row
-	// "Key use": 6003 / 99, named. A revocation is not in the rows "Key created, rotated or destroyed" (the key is not
-	// destroyed, it is listed in KeyRevocation), so it takes the class of the other facts of key@, named.
-	keyd.ActionPinRelease: {Name: keyd.ActionPinRelease, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Release"},
-	keyd.ActionPinUnlock:  {Name: keyd.ActionPinUnlock, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "PIN Unlock"},
-	keyd.ActionRevoke:     {Name: keyd.ActionRevoke, ClassUID: classAPIActivity, ActivityID: 99, ActivityName: "Revoke"},
-}
+// The action table of key@ is a part of the table of sluis (docs/architecture/audit-actions.yaml, 0030 "The action
+// table is code"): the class and the activity of each action, and the schema of its record, come from there.
 
 // emitter adapts the emitter library to keyd.Auditor. Each event is emitted once: the library gives every call a
 // new metadata.uid, so a second call for the same event would defeat the writer's dedup.
@@ -53,7 +33,7 @@ func newEmitter(boundary, transportSocket string) (keyd.Auditor, error) {
 }
 
 func (a emitter) Emit(ctx context.Context, ev keyd.Event) error {
-	act, ok := actions[ev.Action]
+	act, ok := audit.Sluis().Action(ev.Action)
 	if !ok {
 		return fmt.Errorf("key: no action %q in the action table", ev.Action)
 	}

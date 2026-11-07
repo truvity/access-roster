@@ -39,14 +39,14 @@ requirements:
     rationale: "A closed action table keeps records interpretable."
     level: MUST
     source: v1-parity
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
     issues: [1120]
     verification:
-      - {kind: test-vectors, ref: "JSON-Schema-Test-Suite"}
+      - {kind: test-vectors, ref: "the example record of every action and the mutation vectors of kits/conformance/audit, through the Go and the Rust JSON Schema libraries, which run JSON-Schema-Test-Suite themselves"}
   - id: REQ-AUDIT-022
     area: AUDIT
     split_from: REQ-AUDIT-002
@@ -54,9 +54,8 @@ requirements:
     rationale: "A closed action table keeps records interpretable."
     level: MUST
     source: v1-parity
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -1503,9 +1502,8 @@ requirements:
     rationale: "An ill-formed record is refused where it is made, before a blocking emit waits on it; the writer still validates and stays authoritative."
     level: MUST
     source: design-decision
-    status: partial
+    status: done
     milestone: first-version
-    gap: partly-built
     runtimes: all
     standards:
       - {id: ST-96, section: "2020-12", depth: Full}
@@ -1717,13 +1715,13 @@ requirements:
     rationale: "One source keeps the table, the schema and the generated types from drifting apart (ADR 0030)."
     level: MUST
     source: design-decision
-    status: planned
+    status: done
     milestone: first-version
     runtimes: all
     standards: []
     issues: [1120]
     verification:
-      - {kind: integration-test, ref: "generated schema equals the committed schema check in CI"}
+      - {kind: integration-test, ref: "generated schema equals the committed schema check in CI (just audit-check, and a Go test of tools/gen/audit)"}
   - id: REQ-AUDIT-115
     area: AUDIT
     statement: "The audit log MUST NOT hold a catalogue document or a schema entry."
@@ -1788,7 +1786,8 @@ requirements:
     rationale: "Records are never rewritten, so a field has to keep its meaning for every record that carries it."
     level: MUST
     source: design-decision
-    status: planned
+    status: partial
+    gap: partly-built
     milestone: first-version
     runtimes: all
     standards: []

@@ -1,0 +1,149 @@
+// Command audit generates, from the action table docs/architecture/audit-actions.yaml, the JSON Schema of the audit
+// records (a shared defs.schema.json and one slim schema for each action), one example record for each action, and the
+// table with its schemas as Go and Rust code for the emitters (ADR 0030, "The action table is code"). Run it from the
+// repository root with `just audit-gen`; `just audit-check` fails while a committed file differs from what this makes.
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
+
+const (
+	tablePath  = "docs/architecture/audit-actions.yaml"
+	schemaDir  = "kits/conformance/audit/schema"
+	vectorsOut = "kits/conformance/audit/action-vectors.json"
+	goOut      = "kits/go/audit/zz_table.go"
+	rustOut    = "kits/rust/sluis-audit/src/generated.rs"
+)
+
+// generate returns every generated file by its path below the root.
+func generate(root string) (map[string][]byte, error) {
+	t, err := load(filepath.Join(root, tablePath))
+	if err != nil {
+		return nil, err
+	}
+	schemas, err := buildSchemas(t)
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{}
+	texts := map[string]string{} // compact text, for the emitters
+	for name, doc := range schemas {
+		pretty, err := marshal(doc, true)
+		if err != nil {
+			return nil, err
+		}
+		compact, err := marshal(doc, false)
+		if err != nil {
+			return nil, err
+		}
+		files[filepath.Join(schemaDir, name)] = pretty
+		texts[name] = string(compact)
+	}
+	vec, err := buildVectors(t)
+	if err != nil {
+		return nil, err
+	}
+	files[vectorsOut] = vec
+	if files[goOut], err = emitGo(t, texts); err != nil {
+		return nil, err
+	}
+	if files[rustOut], err = emitRust(t, texts); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func run(root string, check bool) error {
+	files, err := generate(root)
+	if err != nil {
+		return err
+	}
+	if check {
+		return compare(root, files)
+	}
+	// The schema directory holds only what the table makes: a file of a removed action goes.
+	old, _ := filepath.Glob(filepath.Join(root, schemaDir, "*.schema.json"))
+	for _, p := range old {
+		rel, _ := filepath.Rel(root, p)
+		if _, keep := files[rel]; !keep {
+			if err := os.Remove(p); err != nil {
+				return err
+			}
+		}
+	}
+	for rel, src := range files {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, src, 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// compare fails when a committed file differs from what the table makes, or a schema file has no action.
+func compare(root string, files map[string][]byte) error {
+	var bad []string
+	for rel, want := range files {
+		got, err := os.ReadFile(filepath.Join(root, rel)) //nolint:gosec // a generated file of the repository
+		if err != nil || string(got) != string(want) {
+			bad = append(bad, rel)
+		}
+	}
+	old, _ := filepath.Glob(filepath.Join(root, schemaDir, "*.schema.json"))
+	for _, p := range old {
+		rel, _ := filepath.Rel(root, p)
+		if _, ok := files[rel]; !ok {
+			bad = append(bad, rel+" (no action makes it)")
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("stale, run `just audit-gen`: %v", bad)
+	}
+	return nil
+}
+
+func main() {
+	root := flag.String("root", ".", "the repository root")
+	check := flag.Bool("check", false, "fail when a generated file is not what the table makes, and write nothing")
+	against := flag.String("against", "", "the action table of the last release: fail when this table removes or retypes a member of unmapped.sluis against it (REQ-AUDIT-119); nothing is written")
+	flag.Parse()
+	if flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "audit: no arguments, only flags")
+		os.Exit(2)
+	}
+	if *against != "" {
+		if err := runCompat(*root, *against); err != nil {
+			fmt.Fprintf(os.Stderr, "audit: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if err := run(*root, *check); err != nil {
+		fmt.Fprintf(os.Stderr, "audit: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// runCompat compares the table of the repository with the table of the last release.
+func runCompat(root, oldPath string) error {
+	old, err := load(oldPath)
+	if err != nil {
+		return err
+	}
+	cur, err := load(filepath.Join(root, tablePath))
+	if err != nil {
+		return err
+	}
+	if found := compat(old, cur); len(found) > 0 {
+		return fmt.Errorf("the table is not compatible with the last release (a change of this kind needs a new major version of sluis):\n  %s", strings.Join(found, "\n  "))
+	}
+	return nil
+}

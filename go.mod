@@ -10,6 +10,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.7
 	github.com/go-piv/piv-go/v2 v2.6.0
 	github.com/gowebpki/jcs v1.0.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/transparency-dev/formats v0.1.1
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/mod v0.42.0
@@ -20,6 +21,7 @@ require (
 	filippo.io/mldsa v0.0.0-20260215214346-43d0283efc3e // indirect
 	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )
 
 tool connectrpc.com/connect/cmd/protoc-gen-connect-go
