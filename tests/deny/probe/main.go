@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 
@@ -135,8 +136,11 @@ func probeHTTP(ctx context.Context, t spec.Target) spec.Result {
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
 		return spec.Result{ID: t.ID, Outcome: spec.Broken, Detail: "no listener: " + err.Error()}
 	// entry closes a connection it refuses before it reads the request, so the client sees the close as an EOF, a reset,
-	// or, when the close wins the race with the request's write, a broken pipe. Each is the same refusal.
-	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE):
+	// or, when the close wins the race with the request's write, a broken pipe. When the close comes before the transport
+	// has registered the request, net/http gives its own error, "http: server closed idle connection" (unexported, and
+	// wrapping none of the others). Each is the same refusal.
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, syscall.ECONNRESET), errors.Is(err, syscall.EPIPE),
+		strings.Contains(err.Error(), "server closed idle connection"):
 		return spec.Result{ID: t.ID, Outcome: spec.Guard, Detail: "dropped"}
 	}
 	return spec.Result{ID: t.ID, Outcome: spec.Broken, Detail: err.Error()}
