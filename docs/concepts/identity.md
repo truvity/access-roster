@@ -62,7 +62,7 @@ Each kind of proof is a **verifier** inside `exchange`. A verifier holds public 
 
 | Verifier | What it proves | Milestone |
 |---|---|---|
-| `github-oidc` | A GitHub Actions OIDC token, as used by the signing API's callers | First working version |
+| `github-oidc` | A GitHub Actions OIDC token, as used by the signing API's callers | v1 parity (moved out of the first working version on 2026-11-07) |
 | `aws-iid` | The EC2 instance identity document, accepted **once per instance** | Parity |
 | `k8s-sa-token` | A projected ServiceAccount token from a cluster sluis trusts | Parity |
 | `yubikey-attestation` | A PIV attestation, chained through Yubico's published intermediates to **Yubico Attestation Root 1**, which sluis ships, and checked against the registry of known cards | Parity |
