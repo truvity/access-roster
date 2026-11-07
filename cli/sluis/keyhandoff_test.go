@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -378,8 +379,9 @@ func (s *answerSet) install(ta *testApp, sock string, extra ...string) int {
 }
 
 // verifies: REQ-PKI-029
-// An answer that passes the requester's checks is handed to key@ as a chain of the one certificate, with its trust
-// sequence; the output names each stem and the checks that did not run.
+// An answer that passes the requester's checks is handed to key@ as a chain of the certificate and the root that issued it
+// (so that the key set's x5c ends at a root, REQ-PKI-034), with its trust sequence; the output names each stem and the
+// checks that did not run.
 func TestKeyInstallHandsAGoodAnswerToKeyAt(t *testing.T) {
 	f := newFakeHandoff(t)
 	sock := serveHandoff(t, f)
@@ -393,7 +395,7 @@ func TestKeyInstallHandsAGoodAnswerToKeyAt(t *testing.T) {
 	}
 	got := f.installed[0]
 	cert, err := x509.ParseCertificate(got.GetChain()[0])
-	if err != nil || len(got.GetChain()) != 1 || got.GetTrustSequence() != 7 || got.GetPurpose() != "x509-intermediate" || cert.Subject.CommonName != "sluis dev intermediate" {
+	if err != nil || len(got.GetChain()) != 2 || !bytes.Equal(got.GetChain()[1], s.root.der) || got.GetTrustSequence() != 7 || got.GetPurpose() != "x509-intermediate" || cert.Subject.CommonName != "sluis dev intermediate" {
 		t.Fatalf("install = %v, %v", got, err)
 	}
 	inst := ta.object(t)["installed"].([]any)[0].(map[string]any)
