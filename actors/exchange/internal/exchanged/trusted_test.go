@@ -34,6 +34,7 @@ type idp struct {
 	hits         int
 	status       int
 	cacheControl string
+	extra        []jose.JSONWebKey // keys the set holds besides the signing keys
 }
 
 func newIDP(t *testing.T) *idp {
@@ -52,7 +53,7 @@ func newIDP(t *testing.T) *idp {
 			w.Header().Set("Cache-Control", i.cacheControl)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		var set jose.JSONWebKeySet
+		set := jose.JSONWebKeySet{Keys: append([]jose.JSONWebKey(nil), i.extra...)}
 		for kid, k := range i.keys {
 			set.Keys = append(set.Keys, jose.JSONWebKey{Key: &k.PublicKey, KeyID: kid, Algorithm: "ES256", Use: "sig"})
 		}

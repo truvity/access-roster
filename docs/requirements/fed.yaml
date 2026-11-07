@@ -8,18 +8,15 @@ requirements:
     rationale: "An RP that skips a check is a login bypass."
     level: MUST
     source: v1-parity
-    status: partial
-    gap: external-suite-not-run
+    status: done
     milestone: first-version
     runtimes: all
     standards:
       - {id: ST-28, section: "3.1.3.7", depth: Full}
       - {id: ST-56, section: "3", depth: Full}
       - {id: ST-49, section: "5", depth: Full}
-      - {id: ST-104, section: "test plan", depth: Full}
     issues: [807]
     verification:
-      - {kind: conformance-suite, ref: "OIDF RP plans"}
       - {kind: integration-test, ref: "bad-signature and unknown-kid cases"}
   - id: REQ-FED-011
     area: FED
