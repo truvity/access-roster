@@ -139,6 +139,9 @@ pub(crate) fn discovery(b: &Boundary) -> Option<Vec<u8>> {
         "authorization_endpoint": format!("{iss}/authorize"),
         "token_endpoint": format!("{iss}/token"),
         "jwks_uri": format!("{iss}/jwks"),
+        // UserInfo answers `sub` (REQ-TOKEN-008, REQ-TOKEN-024) for an access token of a live session; claims beyond `sub` wait
+        // for the allow-list of REQ-TOKEN-006, and the document lists none (`claims_supported` stays out).
+        "userinfo_endpoint": format!("{iss}/userinfo"),
         "response_types_supported": ["code"],
         "response_modes_supported": ["query"],
         "grant_types_supported": [
@@ -416,7 +419,12 @@ mod tests {
             };
             let v: Value = serde_json::from_slice(&discovery(&b).unwrap()).unwrap();
             assert_eq!(v["issuer"].as_str().unwrap().as_bytes(), iss.as_bytes());
-            for endpoint in ["authorization_endpoint", "token_endpoint", "jwks_uri"] {
+            for endpoint in [
+                "authorization_endpoint",
+                "token_endpoint",
+                "jwks_uri",
+                "userinfo_endpoint",
+            ] {
                 let url = v[endpoint].as_str().unwrap();
                 assert!(
                     url.starts_with(iss) && url[iss.len()..].starts_with('/'),
