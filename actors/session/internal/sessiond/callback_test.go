@@ -792,3 +792,26 @@ func TestCallbackMaxAge(t *testing.T) {
 		})
 	}
 }
+
+// A callback that carries no cookie of ours knows no client, and its record names nobody: `unknown` with type_id 0. It is not
+// the pseudonym of a client called "unknown", which would look like the constant and stand for nothing (0030, "The OCSF
+// attributes a class requires").
+//
+// verifies: REQ-AUDIT-188
+func TestACallbackThatKnowsNoClientNamesNobody(t *testing.T) {
+	e := newEnv(t, nil)
+	e.callback(&sessionv2alpha1.CallbackRequest{Code: "c", State: "s", Cookie: "not-a-cookie"})
+	rec := e.lastRecord("session.signin")
+	if rec == nil {
+		t.Fatal("no record of the refused callback")
+	}
+	user, _ := rec["user"].(map[string]any)
+	if user["uid"] != "unknown" || user["type_id"] != float64(0) {
+		t.Errorf("user = %v, want unknown with type_id 0", user)
+	}
+	for _, c := range e.key.called() {
+		if c == "mac pseudonym" {
+			t.Errorf("a pseudonym was asked of key@ for a step that knows nobody: %v", e.key.called())
+		}
+	}
+}
