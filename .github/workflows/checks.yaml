@@ -365,6 +365,54 @@ jobs:
           echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
       - run: devbox run -- just rqlite-fetch local-deny
 
+  # The two smokes of the local installation (docs/runtimes/local.md, "Recipes"), against the project that `just local-up`
+  # starts: `local-smoke` (M1, the spine: a client under the uid of exchange asks policy and signer for a token, the audit
+  # log is verified) and `local-person-smoke` (M2, the person: `sluis login` signs alice in through Keycloak with a password
+  # and a one-time code, `sluis token` exchanges the token, the audit log is verified). The upstream is a Keycloak container
+  # whose realm (tests/installations/local/idp/realm.json) has alice with her one-time password and the amr mapper, and its
+  # secrets are random values made for the run (tests/installations/local/idp/start.sh). The project's network is fixed so
+  # that the adapter's forwarder reaches the upstream at the network's gateway.
+  smokes:
+    name: 'smokes (the spine and the person on the local installation)'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SLUIS_LOCAL_SUBNET: 10.99.202.0/24
+      SLUIS_UPSTREAM_TARGET: 10.99.202.1:8180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: truvity/ci-actions/setup-devbox@eae9926515d96296eeed99aa358d2957a89647e8 # v3.3.1
+      # The Rust toolchain, by itself, before any other step runs cargo (see the job `code`).
+      - run: devbox run -- just rust-toolchain
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/zig
+            target/
+            .cache/rqlite
+          key: smokes-${{ runner.os }}-${{ hashFiles('go.sum', 'Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            smokes-${{ runner.os }}-
+            deny-${{ runner.os }}-
+      - name: The upstream, Keycloak 26.8 with the realm of the test users
+        run: |
+          echo "SLUIS_KEYCLOAK_SECRETS=$RUNNER_TEMP/upstream.env" >>"$GITHUB_ENV"
+          tests/installations/local/idp/start.sh "$RUNNER_TEMP/upstream.env"
+      - run: devbox run -- just rqlite-fetch local-up
+      - run: devbox run -- just local-smoke
+      - run: devbox run -- just local-person-smoke
+      - name: What the project did (on a failure only)
+        if: ${{ failure() }}
+        run: |
+          devbox run -- just local-status || true
+          devbox run -- just local-logs || true
+
   # The advisory gate (REQ-SUPPLY-030): govulncheck over every Go module (twice: the default build, and the card driver
   # with the tag sluis_card), cargo audit over every Cargo.lock and osv-scanner over the lock files, failing on a known
   # advisory that affects us unless tools/advisories/ignore.yaml lists it, with a reason and an expiry date. A new advisory
@@ -418,16 +466,16 @@ jobs:
 
   # One name to require. A job that was skipped or cancelled is not a pass.
   checks:
-    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, advisories]
+    needs: [site, v1, workers, workflows, rules, code, arm64, native-arm64, os-containers, deny, smokes, advisories]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every check succeeded
         env:
-          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.advisories.result }}
+          RESULTS: ${{ needs.site.result }} ${{ needs.v1.result }} ${{ needs.workers.result }} ${{ needs.workflows.result }} ${{ needs.rules.result }} ${{ needs.code.result }} ${{ needs.arm64.result }} ${{ needs.native-arm64.result }} ${{ needs.os-containers.result }} ${{ needs.deny.result }} ${{ needs.smokes.result }} ${{ needs.advisories.result }}
         run: |
-          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny advisories: $RESULTS"
+          echo "site v1 workers workflows rules code arm64 native-arm64 os-containers deny smokes advisories: $RESULTS"
           for r in $RESULTS; do
             [ "$r" = "success" ] || { echo "::error::a check did not succeed"; exit 1; }
           done
