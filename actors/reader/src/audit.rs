@@ -3,7 +3,9 @@
 //!
 //! One record per call, `reader.search`, OCSF API Activity (6003), activity Read (2). It names the tenants
 //! asked for, how many records were returned and the decisions of policy that took part, with their ids, so
-//! the record of the decision and the record of the read meet by id. It holds no record, no query word and no
+//! the record of the decision and the record of the read meet by id. `decisions[i]` is the decision for
+//! `tenants[i]` (the reader serves the one audit log of its `AuditLog`, so a decision is for a tenant), and
+//! `authorizations[i]` is its result; the record names no log, because the action table has no field for it yet. It holds no record, no query word and no
 //! filter value: a query is a person's interest. The record is routed to the operator's own tenant; the tenants
 //! read are in the body, because a tenant that is mistyped must not get a key by being named (decision D-4).
 
@@ -39,13 +41,17 @@ pub fn search(o: &Outcome<'_>) -> Event {
         "decisions".into(),
         Value::from(o.decisions.iter().map(|d| d.id.clone()).collect::<Vec<_>>()),
     );
-    // The decision that settled the call is the one `policy` names: the denying one, which refused it, and
-    // otherwise the first. Every decision is listed in `authorizations`, in the order they were made after that one.
+    // `policy` and `action_id` name the decision that settled the call: the one that denied it, and otherwise the
+    // first. (Every decision has an id: `search` refuses a policy that gave none.)
     let settled = o
         .decisions
         .iter()
-        .position(|d| !d.allowed && !d.id.is_empty())
-        .or_else(|| o.decisions.iter().position(|d| !d.id.is_empty()));
+        .position(|d| !d.allowed)
+        .or(if o.decisions.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
     let policy = settled.map(|at| {
         let d = &o.decisions[at];
         PolicyRef {
@@ -53,13 +59,14 @@ pub fn search(o: &Outcome<'_>) -> Event {
             digest: d.digest.clone(),
             policy_ids: d.policy_ids.clone(),
             decision: Some(verdict(d)),
-            also: o
+            // `authorizations[i]` is the result of `decisions[i]`, one entry each, in the order they were asked: the
+            // rule that determined it (the first by id, when several did; the rest are in the record of the decision,
+            // which `decisions` names) or the verdict alone when none did.
+            results: o
                 .decisions
                 .iter()
-                .enumerate()
-                .filter(|(i, _)| *i != at)
-                .map(|(_, d)| Decided {
-                    policy_ids: d.policy_ids.clone(),
+                .map(|d| Decided {
+                    policy_id: d.policy_ids.iter().min().cloned().unwrap_or_default(),
                     decision: Some(verdict(d)),
                 })
                 .collect(),

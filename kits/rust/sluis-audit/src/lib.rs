@@ -135,22 +135,22 @@ pub struct PolicyRef {
     pub policy_ids: Vec<String>,
     /// `action_id` and `authorizations[].decision`; `None` records none.
     pub decision: Option<Decision>,
-    /// The other decisions that took part in the same action, such as a read of several tenants that asked policy
-    /// once for each (REQ-AUDIT-074). `policy` and `action_id` stay the one decision named above: the caller puts
-    /// there the decision that settled the action, the denying one when one denied. `authorizations` then lists every
-    /// decision, this one first: the policies of each with its verdict, or one entry with the verdict alone for a
-    /// decision no policy determined. With none here the record is as it always was. At most [`ALSO_MAX`].
-    pub also: Vec<Decided>,
+    /// The authorization results of an action that several decisions gated, such as a read of several tenants that
+    /// asked policy once for each (REQ-AUDIT-074). When it is not empty these are `authorizations`, one entry for
+    /// each, in this order, and `policy_ids` is not used; `policy` and `action_id` stay the one decision named above,
+    /// which the caller chooses as the one that settled the action (the denying one when one denied). With none here
+    /// the record is as it always was. At most [`RESULTS_MAX`].
+    pub results: Vec<Decided>,
 }
 
-/// The most further decisions one record names.
-pub const ALSO_MAX: usize = 64;
+/// The most results one record names (the `authorizations` of the generated schemas hold 128).
+pub const RESULTS_MAX: usize = 128;
 
-/// A further decision of the action: its verdict and the policies that determined it.
+/// One entry of `authorizations`: the verdict of a decision and the policy that determined it.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Decided {
-    /// The policies that took part: `authorizations[].policy.uid`.
-    pub policy_ids: Vec<String>,
+    /// `authorizations[].policy.uid`; empty for a decision no policy determined, which has the verdict alone.
+    pub policy_id: String,
     /// `authorizations[].decision`.
     pub decision: Option<Decision>,
 }
